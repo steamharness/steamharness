@@ -2,7 +2,9 @@ import { readProjectDocument, readProjectDeclarationFromDirectory } from "@steam
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
 import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
-import { DatabaseSpaceRepository } from './database-spaces';
+import { RuntimeStorageRepository } from './runtime-storage/repository';
+import { RelationalDatabaseRepository } from './relational-databases/repository';
+import { KnowledgeBaseRepository } from './knowledge-bases';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
@@ -15,10 +17,10 @@ import { create as createTar, extract as extractTar, list as listTar, type ReadE
 import { Open as openZip } from "unzipper";
 import { copyProjectUploadFiles } from "@steamharness/project-upload/node";
 import { createProjectUploadPortablePathKey } from "@steamharness/project-upload";
-import { createKnowledgeDocument, createProjectKVContext, createProjectPersistentValueContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isProjectKind, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type KnowledgeContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
+import { isProjectKind, HarnessError, type ProjectKind, type TokenUsageAggregate, type TokenUsageEntry } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
-import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type ProjectStorageRevisionEvent } from "./persistence";
+import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
 import { createProjectLocalStorageFromEnv, LocalStorage } from "./local-storage";
 import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
@@ -141,100 +143,6 @@ export interface VersionSummary {
     sourceObjectPath?: string;
       latest: boolean;
   }>;
-}
-
-export type KVEntryScope = "project" | "conversation";
-export type KVEntryValueType =
-  | "null"
-  | "array"
-  | "object"
-  | "string"
-  | "number"
-  | "boolean";
-
-export interface KVEntrySummary {
-  storageKind: StorageKind;
-  scope: KVEntryScope;
-  key: string;
-  // KV list responses intentionally omit full values so the web
-  // inspector does not freeze on large conversation state rows.
-  value?: unknown;
-  valueType: KVEntryValueType;
-  valueSizeBytes: number;
-  valuePreview: string;
-  projectId: string;
-  conversationId?: string;
-  updatedAt: string;
-  lastProjectId?: string;
-  lastRunId?: string;
-  lastConversationId?: string;
-}
-
-export interface KVEntryDetail extends KVEntrySummary {
-  value: unknown;
-}
-
-export interface KVEntryPage {
-  items: KVEntrySummary[];
-  nextCursor?: string;
-  hasMore: boolean;
-  // server/web KV pagination and Keys metrics use the full filtered total.
-  total: number;
-}
-
-export interface ProjectDataSummary {
-  kv: {
-    entryCount: number;
-    projectEntryCount: number;
-    conversationEntryCount: number;
-    valueSizeBytes: number;
-    textCharacterCount: number;
-    updatedAt: string | null;
-  };
-  knowledge: {
-    documentCount: number;
-    characterCount: number;
-    lineCount: number;
-    markdownSizeBytes: number;
-    updatedAt: string | null;
-  };
-}
-
-export interface PersistentValueGetResult {
-  exists: boolean;
-  value?: unknown;
-  revision?: string;
-}
-
-export interface PersistentValueCompareAndSetResult {
-  applied: boolean;
-  revision?: string;
-}
-
-export type PersistentValueKnowledgeMutation =
-  | {
-      type: "create";
-      input: { id?: string; title: string; markdown: string };
-    }
-  | {
-      type: "edit";
-      input: { documentId: string; title?: string; markdown?: string };
-    }
-  | {
-      type: "delete";
-      input: { documentId: string };
-    };
-
-export type KnowledgeDocumentRecord = KnowledgeDocument;
-export type KnowledgeDocumentListItem = KnowledgeDocumentSummaryRecord;
-export type KnowledgeDocumentSearchResult = KnowledgeSearchResultRecord;
-export type KnowledgeDocumentLinesRecord = KnowledgeDocumentLinesResult;
-
-export interface KnowledgeDocumentPageRecord {
-  items: KnowledgeDocumentListItem[];
-  nextCursor?: string;
-  hasMore: boolean;
-  total: number;
 }
 
 export interface TokenUsageProjectSummary {
@@ -375,6 +283,7 @@ export interface ProjectCreateResult {
 }
 
 export interface KanbanWorkspaceState {
+  knowledgeBases?: import("steamharness").KnowledgeBaseRequirement[];
   projectId: string;
   projectName: string;
   target: string;
@@ -382,7 +291,7 @@ export interface KanbanWorkspaceState {
   artifactDir: string;
   entry: string;
   entryId: string;
-  databases: import("@steamharness/database-spaces").DatabaseRequirement[];
+  databases: string[];
   configurations: ProjectConfiguration[];
   activeConfigurationId?: string;
 }
@@ -432,7 +341,9 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 export class Storage {
-  readonly databases: DatabaseSpaceRepository;
+  readonly knowledgeBases: KnowledgeBaseRepository;
+  readonly runtimeStorage?: RuntimeStorageRepository;
+  readonly relationalDatabases?: RelationalDatabaseRepository;
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
@@ -447,10 +358,6 @@ export class Storage {
   // source concurrently; share materialization instead of deleting one directory twice.
   private readonly sourceMaterializationTasks = new Map<string, Promise<void>>();
   private readonly materializedDraftSourceRevisions = new Map<string, string>();
-  private readonly projectStorageRevisionListeners = new Set<(
-    event: ProjectStorageRevisionEvent,
-  ) => void>();
-  private projectStorageRevisionSubscription?: Promise<() => Promise<void>>;
   private readonly kanbanPreviewCapabilitySecret: string;
   private buildInfo?: ServerBuildInfo;
 
@@ -459,6 +366,8 @@ export class Storage {
     repoRoot: string;
     dataRoot?: string;
     db?: DatabaseRepository;
+    runtimeStorage?: RuntimeStorageRepository;
+    relationalDatabases?: RelationalDatabaseRepository;
     artifacts?: ArtifactStorage;
     objectStorage?: ObjectStorage;
     kanbanPreviewCapabilitySecret?: string;
@@ -468,7 +377,9 @@ export class Storage {
     this.repoRoot = options.repoRoot;
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
-    this.databases = new DatabaseSpaceRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
+    this.runtimeStorage = options.runtimeStorage ?? (options.db ? new RuntimeStorageRepository(options.db.connectionString) : undefined);
+    this.relationalDatabases = options.relationalDatabases;
+    this.knowledgeBases = new KnowledgeBaseRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
     this.kanbanPreviewCapabilitySecret = options.kanbanPreviewCapabilitySecret?.trim() ||
@@ -482,7 +393,9 @@ export class Storage {
     this.buildInfo ??= await readServerBuildInfo({ repoRoot: this.repoRoot, serverRoot: this.serverRoot,
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
-    await this.databases.init();
+    await this.knowledgeBases.init();
+    await this.runtimeStorage?.init();
+    await this.relationalDatabases?.init();
     await this.resumePendingPreparationJobs();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
@@ -1972,7 +1885,9 @@ export class Storage {
   }
 
   async close(): Promise<void> {
-    await this.databases.close();
+    await this.knowledgeBases.close();
+    await this.relationalDatabases?.close();
+    await this.runtimeStorage?.close();
     await this.db?.close();
   }
 
@@ -1980,12 +1895,12 @@ export class Storage {
     pageSize?: number;
     cursor?: string;
   } = {}): Promise<TokenUsagePage> {
-    if (this.db === undefined) {
+    if (this.runtimeStorage === undefined) {
       throw new HttpError(501, 501, "Server token usage inspection requires PostgreSQL storage.");
     }
 
-    return this.db.getSystemTokenUsage({
-      pageSize: clampKVPageSize(options.pageSize),
+    return this.runtimeStorage!.getSystemTokenUsage({
+      pageSize: clampUsagePageSize(options.pageSize),
       cursor: options.cursor,
     });
   }
@@ -2001,7 +1916,7 @@ export class Storage {
       throw new HttpError(501, 501, "Server token usage inspection requires PostgreSQL storage.");
     }
 
-    return this.db.getProjectTokenUsage({
+    return this.runtimeStorage!.getProjectTokenUsage({
       projectId: options.projectId,
       conversationId: normalizeExactFilter(options.conversationId),
       includeEntries: options.includeEntries === true,
@@ -2860,27 +2775,30 @@ export class Storage {
     const registration = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
     const artifact = path.posix.join(registration.root, registration.entry);
-    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
+    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [], target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }
 
   async entryDatabaseRequirements(projectId: string, entryId: string, target = "draft") {
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
     return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).databases;
   }
-  async entryDatabases(projectId: string, entryId: string, actor: AccessActor, target = "draft", conversationId?: string) {
+  async entryKnowledgeBaseRequirements(projectId: string, entryId: string, target = "draft") {
+    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
+    return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).knowledgeBases ?? [];
+  }
+  async entryKnowledgeBases(projectId: string, entryId: string, actor: AccessActor, target = "draft") {
+    if (!actor.userId) throw new HttpError(401, 401, "Account login is required for knowledge bases.");
     await this.requireProjectCapability(projectId, actor, "read");
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
     const entry = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
-    const { createDatabasesContext, RemoteDatabaseSpaceStore } = await import("steamharness");
-    return createDatabasesContext({ projectId, entryId: entry.entryId, conversationId, requirements: entry.databases, resolver: { resolve: async requirement => {
-      const authorization = await this.databases.authorization(requirement.databaseId, { projectId, entryId: entry.entryId });
-      const store = new RemoteDatabaseSpaceStore({ serverUrl: "", token: "" }, { projectId, entryId: entry.entryId, alias: requirement.alias, bindingRef: authorization.binding.bindingRef }, authorization.space.spaceId, authorization.grant.credentialVersion, async <T>(body: Record<string, unknown>): Promise<T> => {
-        const write = !["get", "revision", "list"].includes(String(body.operation)) && !(body.operation === "transaction" && (body.entries as any[]).every(item => !item.mutation));
-        await this.requireProjectCapability(projectId, actor, write ? "writeData" : "read");
-        return await this.databases.data(authorization.space.spaceId, body, { ...actor, userId: actor.userId ?? "system-admin" }) as T;
-      });
-      return { authorization, store };
-    } } });
+    const { createKnowledgeBasesContext } = await import("steamharness");
+    return createKnowledgeBasesContext({ projectId, entryId: entry.entryId, requirements: entry.knowledgeBases ?? [], host: {
+      resolve: async identity => { await this.requireProjectCapability(projectId, actor, "read"); return this.knowledgeBases.resolveBinding(actor.userId!, identity); },
+      operation: async (identity, binding, operation, input) => {
+        await this.requireProjectCapability(projectId, actor, /\.(?:create|edit|delete)/.test(operation) ? "writeData" : "read");
+        return this.knowledgeBases.operation(actor.userId!, identity.knowledgeBaseId, operation, input as Record<string, unknown>, { identity, binding });
+      },
+    } });
   }
 
   private projectsRoot(): string {
@@ -2947,10 +2865,6 @@ export class Storage {
     return path.join(this.projectDirectory(projectName), "project-info.json");
   }
 
-  private kvRoot(): string {
-    return path.join(this.dataRoot, "kv");
-  }
-
   private filesRoot(): string {
     return path.join(this.dataRoot, "files");
   }
@@ -2999,78 +2913,6 @@ function isMissingFileError(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-function mapKnowledgeError(
-  error: unknown,
-  options: { conflictAs?: number; notFoundAs?: number },
-): unknown {
-  if (!(error instanceof HarnessError)) {
-    return error;
-  }
-
-  const message = error.message;
-  if (message.includes("already exists") && options.conflictAs !== undefined) {
-    return new HttpError(options.conflictAs, options.conflictAs, message, error.metadata);
-  }
-  if (message.includes("does not exist") && options.notFoundAs !== undefined) {
-    return new HttpError(options.notFoundAs, options.notFoundAs, message, error.metadata);
-  }
-  return new HttpError(400, 400, message, error.metadata);
-}
-
-function normalizeProjectStorageInput(input: {
-  storageKind: StorageKind;
-  scope: KVScope;
-  projectId: string;
-  key: string;
-  conversationId?: string;
-}): KVStoreGetInput {
-  const key = normalizeExactFilter(input.key);
-  if (key === "") {
-    throw new HttpError(400, 400, "Project storage key must be a non-empty string.");
-  }
-  const projectId = normalizeExactFilter(input.projectId);
-  if (!isProjectUuid(projectId)) {
-    throw new HttpError(400, 400, "Project storage projectId must be a UUID.");
-  }
-  if (input.scope === "project") {
-    return { storageKind: input.storageKind, scope: "project", projectId, key };
-  }
-  if (input.scope === "conversation") {
-    const conversationId = normalizeExactFilter(input.conversationId);
-    if (conversationId === "") {
-      throw new HttpError(400, 400, "Project storage conversation scope requires a conversation id.");
-    }
-    return { storageKind: input.storageKind, scope: "conversation", projectId, conversationId, key };
-  }
-  throw new HttpError(400, 400, `Invalid project storage scope "${String(input.scope)}".`);
-}
-
-function normalizeProjectStorageSource(
-  source: KVWriteSource | undefined,
-): KVWriteSource | undefined {
-  if (source === undefined) {
-    return undefined;
-  }
-
-  return {
-    projectId: normalizeOptionalExactFilter(source.projectId),
-    runId: normalizeOptionalExactFilter(source.runId),
-    conversationId: normalizeOptionalExactFilter(source.conversationId),
-  };
-}
-
-function normalizeOptionalExactFilter(value: string | undefined): string | undefined {
-  const normalized = normalizeExactFilter(value);
-  return normalized === "" ? undefined : normalized;
-}
-
-/**
- * Build the configured object storage backend.
- *
- * The Server stores objects on local disk, so this always returns a usable backend:
- * a checkout runs with no object-storage configuration at all, and a driver value
- * this build does not implement fails at startup instead of being ignored.
- */
 export function createProjectObjectStorageFromEnv(options: {
   dataRoot: string;
   env?: NodeJS.ProcessEnv;
@@ -3085,7 +2927,9 @@ export async function createStorageFromEnv(): Promise<Storage> {
   const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
   const objectStorage = createProjectObjectStorageFromEnv({ dataRoot });
-  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
+  const databaseAdminUrl = process.env.STEAMHARNESS_SERVER_DATABASE_ADMIN_URL?.trim();
+  const relationalDatabases = databaseAdminUrl ? new RelationalDatabaseRepository(connectionString, { adminConnectionString: databaseAdminUrl }) : undefined;
+  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString), relationalDatabases,
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
   await storage.init();
   return storage;
@@ -3736,7 +3580,7 @@ function resolveNextManagedVersionFromRecords(latest: string | null, versions: s
   return current === undefined ? "0.0.1" : formatNextManagedVersion(current);
 }
 
-function clampKVPageSize(pageSize: number | undefined): number {
+function clampUsagePageSize(pageSize: number | undefined): number {
   if (pageSize === undefined || !Number.isFinite(pageSize)) {
     return 20;
   }
@@ -4055,7 +3899,7 @@ function configuredDatabaseEntry(entries: ProjectEntry[], defaultEntry: string, 
   if (process.env[PROJECT_CONFIG_ENV] === undefined) return entry;
   const config = readProjectConfig({
     version: 1,
-    databases: Object.fromEntries(entries.flatMap(item => item.databases.map(database => [database.alias, database.databaseId]))),
+    knowledgeBases: Object.fromEntries(entries.flatMap(item => (item.knowledgeBases ?? []).map(base => [base.alias, base.knowledgeBaseId]))),
   }, process.env);
-  return { ...entry, databases: entry.databases.map(database => ({ ...database, databaseId: config.databases[database.alias]! })) };
+  return { ...entry, ...(entry.knowledgeBases ? { knowledgeBases: entry.knowledgeBases.map(base => ({ ...base, knowledgeBaseId: config.knowledgeBases![base.alias]! })) } : {}) };
 }

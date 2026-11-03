@@ -1,22 +1,22 @@
-import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import type { RuntimeHistoryLease, RuntimePersistence } from 'steamharness/runtime-storage';
 import { t } from './localization';
 
 export interface ConversationAccess { readOnly: boolean; reason?: 'opened' | 'running' }
-interface Owner { database: DatabaseSync; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
+interface Owner { lease: RuntimeHistoryLease; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
 
-/** OS-released locks: a crashed window cannot leave a lease that blocks recovery. */
+/** Server leases and fencing protect execution across processes, hosts and restarts. */
 export class ConversationOwnership {
   private readonly owners = new Map<string, Owner>();
+  private readonly pending = new Map<string, Promise<Owner | undefined>>();
+  private readonly releasing = new Map<string, Promise<void>>();
   private readonly selections = new Map<string, string>();
   private readonly disconnects = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly acquired = new Set<string>();
   private readonly scopes = new Map<string, string>();
   private closed = false;
-
-  constructor(private readonly directory: string, private readonly resolveScope: (id: string) => string = id => id) { mkdirSync(directory, { recursive: true }); }
+  private epoch = 0;
+  constructor(private readonly persistence: () => RuntimePersistence | undefined, private readonly resolveScope: (id: string) => string = id => id,
+    private readonly changed: () => void = () => undefined, private readonly lost: (scope: string, error: unknown) => void = () => undefined) {}
 
   scope(id: string): string {
     const scope = this.resolveScope(id);
@@ -24,112 +24,122 @@ export class ConversationOwnership {
     return this.scopes.get(id) ?? scope;
   }
   rememberScope(id: string, scope: string): void { this.scopes.set(id, scope); }
-
-  owns(id: string): boolean { return this.owners.has(this.scope(id)); }
-  takeAcquired(): Set<string> { const acquired = new Set(this.acquired); this.acquired.clear(); return acquired; }
-
-  private acquire(id: string): Owner | undefined {
-    if (this.closed) return;
-    id = this.scope(id);
-    const current = this.owners.get(id);
-    if (current) return current;
-    const filename = path.join(this.directory, `${createHash('sha256').update(id).digest('hex')}.sqlite`);
-    const database = new DatabaseSync(filename);
-    try {
-      database.exec('PRAGMA busy_timeout = 0');
-      database.exec('BEGIN EXCLUSIVE');
-    } catch (error) {
-      database.close();
-      if ((error as { errcode?: number }).errcode === 5) return;
-      throw error;
-    }
-    const owner = { database, clients: new Map<string, string>(), executing: false, running: false, retained: 0 };
-    this.owners.set(id, owner);
-    this.acquired.add(id);
-    return owner;
+  owns(id: string): boolean {
+    const scope = this.scope(id), owner = this.owners.get(scope);
+    if (!owner) return false;
+    try { owner.lease.assertOwned(); return true; }
+    catch (error) { this.release(scope); this.lost(scope, error); return false; }
   }
-
+  lease(id: string): RuntimeHistoryLease {
+    if (!this.owns(id)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    return this.owners.get(this.scope(id))!.lease;
+  }
+  takeAcquired(): Set<string> { const acquired = new Set(this.acquired); this.acquired.clear(); return acquired; }
+  async acquire(id: string): Promise<Owner | undefined> {
+    if (this.closed) return;
+    const scope = this.scope(id);
+    if (this.owns(id)) return this.owners.get(scope);
+    const existing = this.pending.get(scope); if (existing) return existing;
+    const persistence = this.persistence(); if (!persistence) return;
+    const epoch = this.epoch;
+    let acquiredLease: RuntimeHistoryLease | undefined;
+    const pending = (async () => {
+      await this.releasing.get(scope);
+      if (this.closed || epoch !== this.epoch) return;
+      return acquiredLease = await persistence.acquire(scope, error => {
+        if (epoch === this.epoch && (!acquiredLease || this.owners.get(scope)?.lease === acquiredLease)) {
+          this.release(scope); this.lost(scope, error);
+        }
+      });
+    })().then(async lease => {
+      if (!lease) return;
+      if (this.closed || epoch !== this.epoch) { await lease.close(); return; }
+      const owner = { lease, clients: new Map<string, string>(), executing: false, running: false, retained: 0 };
+      this.owners.set(scope, owner); this.acquired.add(scope); this.changed(); return owner;
+    }).catch(error => {
+      if (epoch === this.epoch && (error as { code?: string }).code !== 'RUNTIME_STORAGE_OWNER_CONFLICT') this.lost(scope, error);
+      return undefined;
+    }).finally(() => { if (this.pending.get(scope) === pending) this.pending.delete(scope); });
+    this.pending.set(scope, pending); return pending;
+  }
   select(clientId: string, id: string): ConversationAccess {
     clearTimeout(this.disconnects.get(clientId)); this.disconnects.delete(clientId);
     const previous = this.selections.get(clientId);
-    if (previous !== id) {
-      if (previous) this.releaseClient(previous, clientId);
-      this.selections.set(clientId, id);
+    if (previous !== id) { if (previous) this.releaseClient(previous, clientId); this.selections.set(clientId, id); }
+    if (!this.owns(id)) {
+      void this.acquire(id).then(owner => {
+        if (!owner) return;
+        if (this.selections.get(clientId) === id && !owner.clients.has(id)) owner.clients.set(id, clientId);
+        else if (!owner.clients.size && !owner.executing && !owner.retained) this.release(this.scope(id));
+      });
+      return { readOnly: true, reason: 'opened' };
     }
-    const owner = this.acquire(id);
-    if (!owner) return { readOnly: true, reason: 'opened' };
+    const owner = this.owners.get(this.scope(id))!;
     const writer = owner.clients.get(id);
     if (writer && writer !== clientId) return { readOnly: true, reason: owner.running ? 'running' : 'opened' };
-    owner.clients.set(id, clientId);
-    return { readOnly: false };
+    owner.clients.set(id, clientId); return { readOnly: false };
   }
-
-  assertWritable(id: string, clientId?: string): void {
-    const owner = this.acquire(id);
-    const writer = owner?.clients.get(id);
+  async assertWritable(id: string, clientId?: string): Promise<void> {
+    const owner = await this.acquire(id), writer = owner?.clients.get(id);
     if (!owner || clientId && writer && writer !== clientId) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
-    if (clientId) owner.clients.set(id, clientId);
+    owner.lease.assertOwned(); if (clientId) owner.clients.set(id, clientId);
   }
-
+  async hold(id: string): Promise<() => void> {
+    const owner = await this.acquire(id);
+    if (!owner) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    owner.retained++;
+    return () => { owner.retained--; };
+  }
   execute(id: string): boolean {
-    const owner = this.acquire(id);
-    if (!owner) return false;
-    owner.executing = true;
-    return true;
+    if (!this.owns(id)) { void this.acquire(id); return false; }
+    this.owners.get(this.scope(id))!.executing = true; return true;
   }
-
-  /** Hold the new scope through its migration save, including unopened forks. */
-  independent(id: string): () => void {
-    const previous = this.scopes.get(id) ?? id;
-    this.scopes.set(id, id);
-    const owner = this.acquire(id);
+  async independent(id: string): Promise<() => void> {
+    const previous = this.scopes.get(id) ?? id; this.scopes.set(id, id);
+    const owner = await this.acquire(id);
     if (!owner) { this.scopes.set(id, previous); throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.')); }
     owner.retained++;
-    if (previous !== id) {
-      const parent = this.owners.get(previous), client = parent?.clients.get(id);
-      if (client) { parent!.clients.delete(id); owner.clients.set(id, client); }
-    }
-    return () => {
-      owner.retained--;
-      if (!owner.retained && !owner.executing && !owner.clients.size) this.release(id);
-    };
+    const parent = this.owners.get(previous), client = parent?.clients.get(id);
+    if (client && previous !== id) { parent!.clients.delete(id); owner.clients.set(id, client); }
+    return () => { owner.retained--; if (!owner.retained && !owner.executing && !owner.clients.size) this.release(id); };
   }
-
   update(executing: Set<string>, running: Set<string>): void {
     for (const [id, owner] of this.owners) {
+      if (!this.owns(id)) continue;
       owner.executing = executing.has(id); owner.running = running.has(id);
       if (!owner.retained && !owner.executing && !owner.clients.size) this.release(id);
     }
   }
-
   disconnect(clientId: string, changed: () => void): void {
     clearTimeout(this.disconnects.get(clientId));
-    // A brief reconnect must retain its writer; a closed page releases it.
     this.disconnects.set(clientId, setTimeout(() => {
-      this.disconnects.delete(clientId);
-      this.selections.delete(clientId);
+      this.disconnects.delete(clientId); this.selections.delete(clientId);
       for (const owner of this.owners.values()) for (const [id, writer] of owner.clients) if (writer === clientId) this.releaseClient(id, clientId);
       changed();
     }, 1_000));
   }
-
   private releaseClient(id: string, clientId: string): void {
     for (const [scope, owner] of this.owners) {
       if (owner.clients.get(id) !== clientId) continue;
-      owner.clients.delete(id);
-      if (!owner.retained && !owner.executing && !owner.clients.size) this.release(scope);
+      owner.clients.delete(id); if (!owner.retained && !owner.executing && !owner.clients.size) this.release(scope);
     }
   }
-
   private release(id: string): void {
-    const owner = this.owners.get(id);
-    this.owners.delete(id); this.acquired.delete(id); owner?.database.close();
+    const owner = this.owners.get(id); this.owners.delete(id); this.acquired.delete(id);
+    if (!owner) return;
+    const epoch = this.epoch;
+    const closing = owner.lease.close().catch(error => { if (epoch === this.epoch) this.lost(id, error); })
+      .finally(() => { if (this.releasing.get(id) === closing) this.releasing.delete(id); });
+    this.releasing.set(id, closing);
   }
-
-  close(): void {
-    this.closed = true;
-    for (const timer of this.disconnects.values()) clearTimeout(timer);
-    this.disconnects.clear(); this.selections.clear();
-    for (const id of this.owners.keys()) this.release(id);
+  async reset(): Promise<void> {
+    this.epoch++; this.scopes.clear(); this.acquired.clear(); this.selections.clear();
+    const owners = [...this.owners.values()]; this.owners.clear();
+    const pending = [...this.pending.values()]; this.pending.clear();
+    const releasing = [...this.releasing.values()];
+    await Promise.allSettled([...owners.map(owner => owner.lease.close()), ...pending, ...releasing]);
+  }
+  async close(): Promise<void> {
+    this.closed = true; for (const timer of this.disconnects.values()) clearTimeout(timer); this.disconnects.clear(); await this.reset();
   }
 }

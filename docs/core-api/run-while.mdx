@@ -28,7 +28,7 @@ workflow.runWhile<State>(
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `State` | 初始循环状态。 |
-| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、数据库、files、abortSignal。 |
 | `options.name` | `string` | Diagram 和 Trace 中显示的循环节点标题。默认 `Run while`。 |
 | `options.condition` | `function` | 每轮开始前执行；返回 `true` 时继续循环。第三个参数是从 `0` 开始的 iteration。 |
 | `options.run` | `function` | 条件命中后执行的循环体，返回下一轮状态。 |

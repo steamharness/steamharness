@@ -1,3 +1,4 @@
+import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -193,7 +194,7 @@ test("runtime rejects a conversation executor without projectType", async () => 
       `, "utf8"),
     ]);
 
-    const report = await runLocalProjectWithReport({
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(),
       projectDir,
       projectName: "legacy-conversation-runtime",
       conversationId: "legacy-thread",
@@ -235,7 +236,7 @@ test("runtime rejects a Workflow executor without projectType", async () => {
       `, "utf8"),
     ]);
 
-    const report = await runLocalProjectWithReport({
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(),
       projectDir,
       projectName: "inferred-workflow-runtime",
     });
@@ -259,12 +260,12 @@ test("projectType alone controls runtime conversation context", async () => {
     ]);
 
     const [projectReport, conversationReport] = await Promise.all([
-      runLocalProjectWithReport({
+      runLocalProjectWithReport({ storage: testExecutionStorage(),
         projectDir,
         projectName: "workflow-mode",
         conversationId: "ignored-thread",
       }),
-      runLocalProjectWithReport({
+      runLocalProjectWithReport({ storage: testExecutionStorage(),
         projectDir: conversationDir,
         projectName: "conversation-mode",
         conversationId: "active-thread",
@@ -318,7 +319,7 @@ test("runtime reports static violations before server storage connection checks"
       `, "utf8"),
     ]);
 
-    const report = await runLocalProjectWithReport({
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(),
       projectDir,
       projectName: "legacy-runtime",
       env: {} as NodeJS.ProcessEnv,

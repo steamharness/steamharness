@@ -28,7 +28,7 @@ function fixture(tools: Tool[], policies: ToolPolicies = {}) {
 
 it('groups interleaved built-in, project and MCP tools without losing or duplicating registrations', () => {
   const f = fixture([
-    { name: 'read' }, { name: 'kb_list_documents' }, { name: 'bash' }, { name: 'kv_get_value' },
+    { name: 'read' }, { name: 'kb_list_documents' }, { name: 'bash' }, { name: 'db_rows' },
     { name: 'write' }, { name: 'workflow-studio_open_file' }, { name: 'update_plan' }, { name: 'skill' },
     { name: 'kb_get_document' }, { name: 'db_status' },
     { name: 'tikhub_search_posts' }, { name: 'minimax_understand_media' }, { name: 'tikhub_fetch_post' },
@@ -55,7 +55,7 @@ it('searches names, labels and descriptions, expands matches and restores sectio
   const f = fixture([
     { name: 'read', label: 'Read file' },
     { name: 'kb_get_document', label: 'Find a note', description: 'Retrieve stored Markdown.' },
-    { name: 'kb_delete_document', label: 'Delete a note' }, { name: 'kv_get_value' },
+    { name: 'kb_delete_document', label: 'Delete a note' }, { name: 'db_rows' },
   ]);
   const files = f.section('File tools'), knowledge = f.section('Knowledge');
   const toggled = new Promise(resolve => files.addEventListener('toggle', resolve, { once: true }));

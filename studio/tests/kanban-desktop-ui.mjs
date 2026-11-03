@@ -1,5 +1,3 @@
-import { approveLocalFixtureDatabase } from './approved-database-fixture.mjs';
-import { resolve } from 'import-meta-resolve';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -20,17 +18,18 @@ await cp(example,projectDir,{recursive:true,filter:file=>!file.split(path.sep).i
 await mkdir(path.join(projectDir,'node_modules/@steamharness'),{recursive:true});
 await symlink(await realpath(path.join(example,'node_modules/steamharness')),path.join(projectDir,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
 await symlink(process.env.STEAMHARNESS_UI_CLI_ENTRY?path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY),'..'):await realpath(path.join(example,'node_modules/@steamharness/cli')),path.join(projectDir,'node_modules/@steamharness/cli'),process.platform==='win32'?'junction':'dir');
-const core=await import(resolve('steamharness',new URL('../examples/kanban/package.json',import.meta.url).href));
-await approveLocalFixtureDatabase(core,projectDir,JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8')),path.join(dataDir,'databases'));
+await symlink(await realpath(path.join(example,'node_modules/esbuild')),path.join(projectDir,'node_modules/esbuild'),process.platform==='win32'?'junction':'dir');
 const cliVersion = JSON.parse(await readFile(path.join(projectDir, 'node_modules/@steamharness/cli/package.json'), 'utf8')).version;
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(example, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
-const server = await createKanbanTestServer(), proof = { cliVersion, checks: [], screenshots: [], errors: [] };
+const server = await createKanbanTestServer();
+await server.registerProject(projectDir);
+const proof = { cliVersion, checks: [], screenshots: [], errors: [] };
 const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve)); const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
 const log = await open(path.join(proofDir, 'desktop.log'), 'w');
 const desktop = await desktopLocaleLaunch('zh-cn', dataDir);
 const child = spawn(desktop.executable, [...desktop.args,
   '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, projectDir,
-], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_DATABASES_DIR:path.join(dataDir,'databases'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: server.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: server.connection.accessToken }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); }); const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser, page;
 async function frameFor(selector) { for (let attempt = 0; attempt < 200; attempt++) { for (const frame of page.frames()) { if (frame.isDetached() || !await frame.locator(selector).first().isVisible().catch(() => false)) continue;
@@ -46,6 +45,7 @@ try {
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   for (let attempt = 0; attempt < 100; attempt++) { page = browser.contexts()[0].pages().find(candidate => candidate.url().includes('workbench')); if (page) break; await pause(100); }
   assert.ok(page); page.setDefaultTimeout(20_000); page.on('pageerror', error => proof.errors.push(error.message)); await page.setViewportSize({ width: 1440, height: 1000 });
+  await command('SteamHarness: 登录'); const account = await frameFor('#login-app'); await account.locator('#server-url').fill(server.connection.serverUrl); await account.locator('#login-email').fill(server.profile.email); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click(); await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: server.profile.displayName }).waitFor();
   const run = page.locator('.part.titlebar .studio-workflow-run').getByRole('button', { name: '\u8fd0\u884c\u9879\u76ee', exact: true }); await run.waitFor({ timeout: 45_000 }); await run.click();
   let frame = await frameFor('#kanban-title'); await ready(frame); assert.match(frame.url(), /^http:\/\/127\.0\.0\.1:/); let preview = frame.frameLocator('#kanban-preview'); await preview.locator('.task').first().waitFor();
   assert.equal(await preview.locator('.task').count(), 3); proof.checks.push('folder detection runs the project-owned CLI Kanban page in a VS Code tab');
@@ -55,7 +55,7 @@ try {
   await frame.locator('#create').click(); await frame.waitForFunction(() => document.querySelector('#configuration').options.length === 2); await ready(frame);
   const first = await frame.locator('#configuration option').first().getAttribute('value'); await frame.locator('#configuration').selectOption(first); await ready(frame); assert.equal(await frame.locator('#workflow-param-title').inputValue(), 'Desktop roadmap');
   await preview.locator('#new-task').click(); await preview.locator('#task-title').fill('Desktop task'); await preview.locator('#save-task').click(); await preview.locator('#task-dialog[open]').waitFor({ state: 'hidden' }); await preview.locator('.task h3').filter({ hasText: 'Desktop task' }).waitFor(); await screenshot('kanban-desktop-light.png');
-  await command('SteamHarness: 登录'); const account = await frameFor('#login-app'); await account.locator('#server-url').fill(server.connection.serverUrl); await account.locator('#login-email').fill(server.profile.email); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click(); await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: server.profile.displayName }).waitFor();
+
   await page.getByRole('tab', { name: '\u770b\u677f\u793a\u4f8b', exact: true }).click(); frame = await frameFor('#kanban-title'); await ready(frame); preview = frame.frameLocator('#kanban-preview'); await frame.locator('#web-account').filter({ hasText: server.profile.displayName }).waitFor(); assert.ok(server.authenticatedRequests >= 2);
   await frame.locator('#usage').click(); const usage = frame.locator('.conversation-dialog[open]');
   await usage.locator('.usage-balance strong').filter({ hasText: '$10.00' }).waitFor();

@@ -16,6 +16,7 @@ Core Agent 内置 [i-have-adhd](https://github.com/ayghri/i-have-adhd) 沟通技
 ```ts
 const agent = await workflow.createAgent({
   databasePath?: string,
+  storage?: AgentStorageFactory,
   workdir?: string,
   systemPrompt?: string,
   provider?: string,
@@ -74,6 +75,8 @@ const agent = await workflow.createAgent({
 | `extraTools` | `AgentTool[]` | 内置工具之外再加的工具，见下方「自带工具」。 |
 | `models` / `resolvedModel` | pi 类型 | 需要复用自建 provider 集合或直接指定模型时使用。 |
 
+通过 Server 与 PostgreSQL 保存 Agent 记录时，注入 [`createServerAgentStorage`](/core-api/runtime-storage)。
+
 ## 持久会话控制
 
 `session: {}` 启用 Harness 会话协议；`run()` 期间可调用 `runtime.control(command)`，通过 `session` 事件读取 `AgentSessionSnapshot`。未运行时返回 `AGENT_NOT_READY`。普通编程式调用会等待后台工作结束；需要多轮常驻资源的工作流宿主使用 [createAgentNode](./create-agent-node.mdx) 的 host lease。
@@ -101,7 +104,7 @@ const agent = await workflow.createAgent({
 | `promote` | `inputId` 为待立即发送输入的 requestId；在同一事务内将队列项转为 steer 并保存回执，保留原身份和图片，在下一工具边界接入本轮。已消费返回 `already_placed` / `settled`，不会重发。 |
 | `compact` | 可选 `instructions`；创建后台压缩任务，可与活动任务协调。 |
 | `reset` | 可选 `handoff`；在输入边界进入新上下文世代，保留旧正文与任务计划。 |
-| `fork` | 已提交 `entryId`；同一 SQLite 内新建独立 conversation、provider 身份和输入队列，不复制活动任务或审批。回执包含 `forkId`。 |
+| `fork` | 已提交 `entryId`；同一持久会话内新建独立 conversation、provider 身份和输入队列，不复制活动任务或审批。回执包含 `forkId`。 |
 | `delete` | 取消并隐藏子会话；主会话及底层存储由宿主删除。 |
 | `configure` | `expectedVersion` 与可选 `model: { provider, modelId }` / `effort`；CAS 更新已注册模型，下一请求生效，子模型仍受白名单约束。 |
 | `plan` | `expectedVersion`、`items: { id, text, status }[]`；状态为 pending / in_progress / completed，CAS 更新事务计划。 |
@@ -131,9 +134,9 @@ const agent = await workflow.createAgent({
 
 session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ task, background?, model?: { provider, modelId } })`。显式 `toolDefinitions` / executor `tools` 列表须声明这些工具及所需 nativeTools 的权限；便捷 executor 默认补 update_plan/subagent。后台工作结束、前台回答完成和客户端连接状态相互独立。
 
-没有活动执行 owner 时，宿主可调用 `forkAgentConversation({ agentStoreDir, conversationId, command: { type: "fork", requestId, entryId, targetId? } })`。`conversationId` 是原 workflow 会话 ID，`targetId` 是可选的内部数字会话 ID。该 API 要求会话目录恰有一个 SQLite 数据库并取得独占锁，复用活动 `fork` 的文档策略和持久回执，只分叉已提交历史，不加载项目或校验 AI 凭据，不恢复待执行任务。有活动 owner 时仍通过其控制通道发送 `fork`，避免竞争存储所有权。
+服务端仓储的宿主使用 `forkStoredAgentConversation({ persistence, conversationId, command })`，无活动 owner 时只分叉已提交历史，不加载模型或重跑任务；活动 owner 通过控制通道执行 `fork`。`isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 将回执的 forkId 复制成独立根会话，保留历史文档检查点，不复制任务、审批、输入队列或用量。源 owner 活动时仍可读取一致快照；停止、删除和模型选择各自独立。宿主需另行复制附件，可用 replacements 更新文件引用。导入、导出与取消 API 见[平台运行存储](/core-api/runtime-storage)。
 
-宿主可通过 `isolateAgentConversation({ agentStoreDir, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 把内部 conversation 复制到另一个 workflow 会话的独立根 SQLite。先用 `fork` 选定截止位置，再传回执的 `forkId` 作为 `targetId`。该操作只读取源库的一致快照，即使源 owner 活动也不会执行源任务；目标仅包含可见历史和按 fork 策略保留的文档，保留历史 `asOf` 检查点，不导入任务、输入队列、审批、provider 身份或用量。重复目标与来源复用既有结果，不覆盖目标的新消息；不同来源及已有普通会话拒绝覆盖。宿主复制托管文件后可用 `replacements: [{ from, to }]` 更新历史中的文件 ID 和路径。无活动 owner 时可用 `retireSource: true` 停止并隐藏旧内部分支；有 owner 时通过原控制通道对该分支执行 `delete`。CLI Web 与 Studio 用此 API 将用户分支作为独立新对话管理。
+显式使用 databasePath 的实例仍可调用 SQLite 专用 forkAgentConversation / isolateAgentConversation；这些文件路径 API 不用于 CLI/Studio 默认仓储。
 
 ## 扩展执行与恢复
 
@@ -183,7 +186,7 @@ Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tab
 
 Windows 深层目录中的 Agent SQLite 会话自动使用长路径支持，创建、重开、所有权锁及离线备份与导入均保留原存储位置，无需缩短宿主数据目录。
 
-运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
+运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, failure?: AbortSignal, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
 
 `steamharness/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
 
@@ -313,7 +316,7 @@ try {
 
 提供 `databasePath` 后，Harness 持续提交模型轮次、工具意图、结果和任务检查点；重新打开同一文件并使用原 `requestId` 可以恢复。已提交的工具结果直接复用。结果未知的工具默认 `replay: "never"`，恢复时向模型返回中断错误，不自动重复副作用；只有确认可安全重复的工具声明 `replay: "safe"`。内置读取和检索工具声明 safe，写入、编辑和 shell 默认 never。`requestId` 去重不能替代外部服务的业务幂等。
 
-`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有 SQLite 历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须使用 SQLite 才能恢复。会话节点自动选择独立 SQLite 文件，参见 [createAgentNode](./create-agent-node.mdx)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
+`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有持久历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须注入服务端仓储或显式 SQLite 才能恢复。会话节点默认选择独立 Server PostgreSQL 会话，参见 [createAgentNode](./create-agent-node.mdx)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
 
 进程在流式回答中断后，恢复会把已提交的正文和推理片段纳入续写上下文，持久保存续写提示；反复中断仍从已提交片段继续。没有提交完整意图的工具调用会被丢弃，不执行也不显示为已开始。
 

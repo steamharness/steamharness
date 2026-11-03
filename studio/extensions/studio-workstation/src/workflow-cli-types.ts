@@ -1,7 +1,6 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { StudioUserSettings } from './user-settings';
 import type { Connection } from './workflow-auth-client';
-import type { ResourceRequest } from './workflow-resources-types';
 import type { HostDatabaseRequest } from './workflow-databases-types';
 import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
@@ -56,7 +55,6 @@ export interface Launcher {
   updateAnalysisProjects?(projects: Project[]): void;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, resourceProjects?: string[]): Promise<WebSession>;
   cliEntry(projectDir: string): Promise<string>;
-  resource?(project: Project, input: ResourceRequest, signal: AbortSignal): Promise<unknown>;
   database?(input: HostDatabaseRequest, signal: AbortSignal): Promise<any>;
   dispose(): void;
 }

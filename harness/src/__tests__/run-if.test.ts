@@ -5,7 +5,6 @@ import { analyzeProjectScriptSource } from "../executor/rules";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  type KVContext,
 } from "../index";
 import { runIf } from "../workflow/index";
 import type { NodeExecutionHookFinishEvent, RunContext } from "../types/index";
@@ -133,7 +132,7 @@ test("workflow structure keeps nested runIf inside its branch", () => {
 function createTestProjectContext(options: {
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
 } = {}): RunContext {
-  const kv = createMemoryKVContext();
+  const kv = {};
 
   return {
     config: {},
@@ -144,38 +143,5 @@ function createTestProjectContext(options: {
     nodeHooks: {
       onNodeFinish: options.onFinish,
     },
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async deleteValue(key: string) {
-        return values.delete(`${prefix}:${key}`);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    deleteValue: project.deleteValue,
-    updateValue: project.updateValue,
-    conversation: createNamespace("conversation"),
   };
 }

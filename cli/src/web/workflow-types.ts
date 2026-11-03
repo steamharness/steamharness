@@ -88,7 +88,8 @@ export interface Project extends Parameters {
   entries: import("@steamharness/project-manifest").ProjectEntry[];
   defaultEntry: string;
   entryRoot: string;
-  databases: import("@steamharness/database-spaces").DatabaseRequirement[];
+  databases: string[];
+  knowledgeBases?: import("steamharness").KnowledgeBaseRequirement[];
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   aggregateProjectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;
@@ -223,7 +224,7 @@ export interface Runtime {
   uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;
   readFile(project: Project, id: string): Promise<{ reference: Attachment; path: string }>;
   deleteFiles(project: Project, conversationId: string, ids: string[]): Promise<void>;
-  readResource(project: Project, conversationId: string, kind: 'kv' | 'knowledge', target: Record<string, string>): Promise<unknown>;
+  readResource(project: Project, conversationId: string, kind: 'knowledge', target: Record<string, string>): Promise<unknown>;
   deleteConversation(project: Project, conversationId: string): Promise<void>;
   cancelConversation(project: Project, conversationId: string): Promise<void>;
   cancel(runId?: string): void;

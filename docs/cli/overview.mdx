@@ -44,4 +44,4 @@ pnpm exec steamharness workspace publish hello --release-log "初始发布"
 
 ## 数据库与入口
 
-所有本地命令从聚合根读取 entries。使用 `--entry` 选择入口；`check` 默认检查全部入口。数据库通过显式 alias 访问，必须先在 local 或 server 宿主申请、审批与绑定。CLI Web、Studio 共用用户级本地注册表。详见 [CLI](/cli/steamharness) 和 [数据库空间](/concepts/data-storage)。
+所有本地命令从聚合根读取 entries。使用 `--entry` 选择入口；`check` 默认检查全部入口。业务关系库通过生成的描述符访问，先在 Server 创建资源、授权、迁移并绑定入口；知识库使用独立的 knowledgeBases 声明和绑定。CLI Web、Studio 共用用户级本地注册表。详见 [CLI](/cli/steamharness) 和 [项目数据存储](/concepts/data-storage)。

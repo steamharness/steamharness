@@ -2,7 +2,7 @@
 import { translateDynamicKey } from "@steamharness/i18n";
 import type { AsyncState, DetailState, DetailTab } from "../../state";
 import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
-import type { InvitationRole, KVEntryDetail, KVEntrySummary, ProjectInvitation, Summary, ApiResponse } from "../../types";
+import type { InvitationRole, ProjectInvitation, Summary, ApiResponse } from "../../types";
 
 export interface DetailPageProps {
   project: Summary;

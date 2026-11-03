@@ -17,9 +17,8 @@ parent input
 ```
 
 The nested `openai-agents` call uses `conversationMode: "shared-readonly"` and
-`kvMode: "isolated"`. It can read recent parent conversation messages, but it
 does not append messages, set the title, or write `openaiAgents.runCount/facts/history`
-into the parent workflow KV namespace. Its default hosted/native/sample tools are disabled:
+into the parent conversation state. Its default hosted/native/sample tools are disabled:
 
 - web search
 - image generation

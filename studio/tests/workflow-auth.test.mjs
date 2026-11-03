@@ -365,13 +365,12 @@ test('system AI usage and server resource cards use the active account and dev A
   const aiServerUrl = 'https://ai.workflow.test';
   const connection = { serverUrl, accessToken: token, aiServerUrl, aiAccessToken: 'ai-token' };
   await client.systemAiUsage(connection);
-  await client.resource(connection, 'kv', { projectId: 'project', scope: 'conversation', conversationId: 'session', key: 'a key' });
-  await client.resource(connection, 'knowledge', { projectId: 'project', documentId: 'document' });
+  await assert.rejects(client.resource(connection, 'kv', { projectId: 'project' }), /Unsupported resource/);
+  await client.resource(connection, 'knowledge', { projectId: 'project', entryId: 'main', knowledgeBase: 'docs', documentId: 'document' });
   const file = await client.resource(connection, 'file', { projectId: 'project', filePath: 'notes.md' });
   assert.equal(file.content, 'Notes');
   assert.deepEqual(calls.map((call) => call.url), [
-    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/projects/project/kv/entry?scope=conversation&conversationId=session&key=a+key`,
-    `${serverUrl}/api/projects/project/knowledge-documents/document`, `${serverUrl}/api/projects/project/files?target=latest&includeBinary=true`,
+    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/projects/project/entries/main/resources/read`, `${serverUrl}/api/projects/project/files?target=latest&includeBinary=true`,
   ]);
   assert.equal(calls[0].options.headers.Authorization, 'Bearer ai-token');
   assert.ok(calls.slice(1).every((call) => call.options.headers.Authorization === `Bearer ${token}` && call.options.redirect === 'error'));

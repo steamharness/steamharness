@@ -4,7 +4,6 @@ import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  type KVContext,
 } from "steamharness";
 import type { RunContext } from "steamharness/types/context";
 import {
@@ -61,7 +60,7 @@ describe("claude-agent knowledge_documents tool", () => {
       action: "create",
       documentId: "agent-runbook",
       title: "Agent Runbook",
-      markdown: "# Agent Runbook\n\nUse PersistentValue for knowledge documents.\n\nSearchable line.",
+      markdown: "# Agent Runbook\n\nUse Knowledge for knowledge documents.\n\nSearchable line.",
     }));
     expect(createResult.action).toBe("create");
     expect(createResult.document.id).toBe("agent-runbook");
@@ -90,14 +89,14 @@ describe("claude-agent knowledge_documents tool", () => {
       matches: Array<{ line: string }>;
     }>(await handler({
       action: "search",
-      query: "PersistentValue",
+      query: "Knowledge",
       documentId: "agent-runbook",
       beforeLines: 1,
       afterLines: 1,
       pageSize: 5,
     }));
     expect(searchResult.totalMatches).toBe(1);
-    expect(searchResult.matches[0]?.line).toContain("PersistentValue");
+    expect(searchResult.matches[0]?.line).toContain("Knowledge");
 
     const linesResult = parseToolResult<{
       action: "read_lines";
@@ -153,49 +152,5 @@ function createToolContext(): RunContext {
     ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    let pending = Promise.resolve();
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-      async withLock<T>(operation: () => Promise<T> | T): Promise<T> {
-        const previous = pending;
-        let release!: () => void;
-        pending = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        await previous;
-        try {
-          return await operation();
-        } finally {
-          release();
-        }
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    updateValue: project.updateValue,
-    withLock: project.withLock,
-    conversation: createNamespace("conversation"),
   };
 }

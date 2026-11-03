@@ -7,7 +7,7 @@ const categories: [string, RegExp][] = [
   ['Shell commands', /^bash$/],
   ['Agent tools', /^(update_plan|subagent|tool_search|codemode|ask_user)$/],
   ['Knowledge', /^(kb_|workflow-knowledge_|knowledge_documents$)/],
-  ['Data storage', /^(kv_|db_|workflow-kv_|kv_store$)/],
+  ['Data storage', /^(db_|database_)/],
   ['Studio', /^workflow-studio_/],
   ['Resource cards', /^workflow-ui_/],
 ];

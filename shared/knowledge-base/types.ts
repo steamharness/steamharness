@@ -5,6 +5,7 @@ export type KnowledgeImageSrcResolver = (
 ) => Promise<string | null | undefined> | string | null | undefined;
 
 export interface KnowledgeDocumentSummary {
+  revision?: number;
   id: string;
   title: string;
   markdownPreview: string;
@@ -13,6 +14,7 @@ export interface KnowledgeDocumentSummary {
 }
 
 export interface KnowledgeDocument {
+  revision?: number;
   id: string;
   title: string;
   markdown: string;
@@ -70,6 +72,7 @@ export interface KnowledgeResult<T> {
 }
 
 export interface KnowledgeRequestOptions {
+  expectedRevision?: number;
   signal?: AbortSignal;
 }
 
@@ -95,7 +98,7 @@ export interface KnowledgeRepository {
   ): Promise<KnowledgeResult<KnowledgeDocumentSummary | KnowledgeDocument>>;
   updateDocument(
     documentId: string,
-    input: { title: string; markdown: string },
+    input: { title: string; markdown: string; expectedRevision?: number },
     options?: KnowledgeRequestOptions,
   ): Promise<KnowledgeResult<KnowledgeDocumentSummary | KnowledgeDocument>>;
   deleteDocument(

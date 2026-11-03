@@ -32,7 +32,7 @@ export async function startAggregateWebServer(options: WebOptions) {
     failures.delete(entryId);
     const pending = (async () => {
       try {
-        const runtime = await startEntryWebServer({ ...options, host, projectDir: directory, entryId,
+        const runtime = await startEntryWebServer({ ...options, runtimePersistence: options.runtimePersistenceForEntry?.(entryId) ?? options.runtimePersistence, host, projectDir: directory, entryId,
           mount: { origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset } }, credentials);
         if (closing) await runtime.close(); else entries.set(entryId, runtime);
       } catch (error) { failures.set(entryId, error instanceof Error ? error.message : String(error)); }
@@ -94,7 +94,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     const runtime = current(); if (runtime) return runtime.project;
     const entry = selectProjectEntry(manifest,manifest.entries.some(item => item.entryId === selectedId) ? selectedId : undefined);
     return {id:manifest.projectId,entryId:entry.entryId,name:entry.name,aggregateName:manifest.name,entries:manifest.entries,defaultEntry:manifest.defaultEntry,
-      uri:directory,folderPath:directory,entryRoot:path.resolve(directory,entry.root),projectType:entry.type,databases:entry.databases,fields:[],entrypoints:[]};
+      uri:directory,folderPath:directory,entryRoot:path.resolve(directory,entry.root),projectType:entry.type,databases:entry.databases,knowledgeBases:entry.knowledgeBases??[],fields:[],entrypoints:[]};
   };
   return {
     origin, url:`${origin}/entries/${selectedId}/#session=${credentials.capability}`,

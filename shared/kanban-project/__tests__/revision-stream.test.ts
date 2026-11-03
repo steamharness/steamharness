@@ -37,6 +37,16 @@ describe("Kanban database-space revision stream", () => {
     }), {})).rejects.toThrow(/invalid/);
   });
 
+  it("preserves independent knowledge revision kinds and rejects unknown kinds", async () => {
+    const onSnapshot = vi.fn(), onRevision = vi.fn(), encoder = new TextEncoder();
+    const stream = (value: string) => new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(encoder.encode(value)); controller.close(); } });
+    const knowledge = { alias: "docs", revision: "1", kind: "knowledgeBases" };
+    await consumeKanbanDatabaseRevisionStream(stream(`event: snapshot\ndata: ${JSON.stringify({ resolvedTarget: "1", revisions: [knowledge] })}\n\nevent: revision\ndata: ${JSON.stringify(knowledge)}\n\n`), { onSnapshot, onRevision });
+    expect(onSnapshot).toHaveBeenCalledWith({ resolvedTarget: "1", revisions: [knowledge] });
+    expect(onRevision).toHaveBeenCalledWith(knowledge);
+    await expect(consumeKanbanDatabaseRevisionStream(stream(`event: revision\ndata: ${JSON.stringify({ ...knowledge, kind: "unknown" })}\n\n`), {})).rejects.toThrow(/kind.*invalid/);
+  });
+
   it("dispatches the final event when the stream closes without an empty line", async () => {
     const encoder = new TextEncoder();
     const onRevision = vi.fn();

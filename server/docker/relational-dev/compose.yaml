@@ -1,0 +1,23 @@
+name: steamharness-relational-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: steamharness-relational-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18125:5432"
+    environment:
+      POSTGRES_DB: steamharness_platform
+      POSTGRES_USER: steamharness_dev
+      POSTGRES_PASSWORD: ${STEAMHARNESS_SERVER_DEV_DATABASE_PASSWORD:?Run pnpm database:dev up first}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steamharness_dev -d steamharness_platform"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

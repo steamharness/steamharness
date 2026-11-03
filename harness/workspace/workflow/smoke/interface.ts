@@ -37,7 +37,7 @@ export interface SmokeOutputPayload extends RunOutputPayload {
   conversationId?: string;
   conversationMessages: number;
   previousMessage?: string;
-  kvLastMessage?: string;
+  lastMessage?: string;
 }
 
 export type SmokeOutput = ExecutorResult<SmokeOutputPayload>;

@@ -1,3 +1,5 @@
+import type { AgentStorageFactory } from "../agent/storage";
+import { testAgentStorage } from "./runtime-test-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -8,13 +10,11 @@ import * as ai from "@earendil-works/pi-ai";
 import { createRegistry, defineExtension, defineTask, GenerationTask, Harness, hook, MemoryStorage, ToolTask } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { DurableAgent } from "../agent/durable-agent";
-import { agentConversationDirectory, cancelAgentConversation, exportAgentDatabase, importAgentDatabase, openAgentStorage } from "../agent/storage";
 import type { AgentSessionOptions, AgentSessionSnapshot } from "../agent/session-types";
 import type { AgentTool } from "../agent/types";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { createMcpToolCatalog } from "../agent/mcp/catalog";
 import { AgentExtensionResources, mergeAgentRegistries } from "../agent/extensions";
-import type { AgentStorageFactory } from "../agent/storage";
 
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
 function latch() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
@@ -26,7 +26,7 @@ function agent(session: AgentSessionOptions, databasePath?: string, storage?: Ag
   const provider = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 1000 }] });
   const models = ai.createModels(); models.setProvider(provider.provider);
   const lease = latch();
-  const instance = new DurableAgent({ models, databasePath, storage, session, sessionLease: lease.promise, initialState: {
+  const instance = new DurableAgent({ models, storage: storage ?? (databasePath ? testAgentStorage(databasePath) : undefined), session, sessionLease: lease.promise, initialState: {
     systemPrompt: "Extension test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
@@ -470,7 +470,7 @@ test("environment identity mismatches close the resource and reopening cannot ch
   const next = agent({ environment: { id: "another-host", label: "Other", open: () => environment } }, file);
   await assert.rejects(() => next.instance.prompt("Reopen"), /environment identity changed/);
   await next.instance.close();
-  const owner = await openAgentStorage(file); await owner.storage.close(BACKGROUND_CONTEXT); owner.release();
+  const owner = await testAgentStorage(file).open(); await owner.storage.close(BACKGROUND_CONTEXT); await owner.release?.();
 });
 
 test("predeclared catalogs connect only on use, retry connection failures and close a late connection once", async t => {
@@ -515,56 +515,4 @@ test("custom storage closes before releasing its owner even when initialization 
     }
     await instance.close(); assert.deepEqual(order, ["close", "release"]);
   }
-});
-
-test("offline cancellation uses the supplied custom task definition for abort cleanup", async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), "agent-offline-abort-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  let cleaned = 0; const entered = latch();
-  const definition = defineTask<null, { phase: "sleep" }, null>({
-    name: "cleanup.timer", version: 1, initial: () => ({ phase: "sleep" }),
-    phases: { sleep: async (_task, api, ctx) => { entered.resolve(); await api.sleep(Date.now() + 60_000, ctx); } },
-    abort: async (_task, api, ctx) => { cleaned++; await api.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
-  });
-  const registry = createRegistry(); registry.install(defineExtension({ name: "cleanup", tasks: [definition] }));
-  const file = path.join(agentConversationDirectory(directory, "custom"), "session.sqlite");
-  const { storage, release } = await openAgentStorage(file);
-  const harness = await Harness.open(storage, { registry, models: ai.createModels() }, BACKGROUND_CONTEXT);
-  try {
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    await root.commit(tx => tx.createTask(definition, null, { conversationId: root.id, ownership: { kind: "conversation" }, background: true }), BACKGROUND_CONTEXT);
-    harness.resume(); await entered.promise;
-  } finally { await harness.close(BACKGROUND_CONTEXT); release(); }
-  assert.equal(cleaned, 0);
-  await cancelAgentConversation({ agentStoreDir: directory, conversationId: "custom", registry });
-  assert.equal(cleaned, 1);
-});
-
-for (const layout of ["shallow", "deep"] as const) test(`SQLite backup includes committed state, refuses a live owner and imports only into new paths (${layout})`, async t => {
-  const root = await mkdtemp(path.join(tmpdir(), "agent-backup-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const directory = layout === "deep" ? path.join(root, ...Array.from({ length: 8 }, () => "nested directory with spaces and 中文")) : root;
-  const file = path.join(directory, "source.sqlite"), copy = path.join(directory, "backup.sqlite"), restored = path.join(directory, "restored.sqlite");
-  const { instance, provider, lease, snapshot } = agent({}, file); provider.setResponses([ai.fauxAssistantMessage("Persisted")]);
-  const run = instance.prompt("Hello"); await until(() => snapshot()?.turns.some(turn => turn.status === "done"));
-  await assert.rejects(() => openAgentStorage(file), /owner/);
-  await assert.rejects(() => openAgentStorage(path.toNamespacedPath(file)), /owner/);
-  await assert.rejects(() => exportAgentDatabase({ databasePath: file, destination: copy }), /owner/);
-  lease.resolve(); await run; await instance.close();
-  const reserved = path.join(directory, "reserved.sqlite"), destinationOwner = new DatabaseSync(path.toNamespacedPath(`${reserved}.owner`));
-  destinationOwner.exec("BEGIN EXCLUSIVE");
-  try {
-    await assert.rejects(() => exportAgentDatabase({ databasePath: file, destination: reserved }), /owner/);
-    await assert.rejects(() => readFile(reserved), { code: "ENOENT" });
-  } finally { destinationOwner.close(); }
-  await exportAgentDatabase({ databasePath: file, destination: copy });
-  await assert.rejects(() => exportAgentDatabase({ databasePath: file, destination: copy }), /EEXIST/);
-  await importAgentDatabase({ source: copy, databasePath: restored });
-  await assert.rejects(() => importAgentDatabase({ source: copy, databasePath: restored }), /EEXIST/);
-  const invalid = path.join(directory, "invalid.sqlite"); await writeFile(invalid, "not sqlite");
-  await assert.rejects(() => exportAgentDatabase({ databasePath: invalid, destination: path.join(directory, "invalid-copy.sqlite") }));
-  assert.ok(!(await readdir(directory)).some(file => file.endsWith(".tmp")));
-  const reopened = agent({}, restored), replay = reopened.instance.prompt("Hello");
-  try {
-    await until(() => reopened.snapshot()?.turns.some(turn => turn.status === "done")); assert.equal(reopened.provider.state.callCount, 0);
-    const opened = await openAgentStorage(copy); await opened.storage.close(BACKGROUND_CONTEXT); opened.release();
-  } finally { reopened.lease.resolve(); await replay; await reopened.instance.close(); }
 });

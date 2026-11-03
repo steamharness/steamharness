@@ -1,7 +1,7 @@
 import { STATUSES } from "./board-state.js";
 
 export const BOARD_STORAGE_VERSION = 1;
-export const BOARD_STORAGE_KEY_PREFIX = "kanban.board-state.v1:";
+export const BOARD_STORAGE_KEY_PREFIX = "";
 
 export function createBoardStorageKey(configurationId) {
   const normalized = String(configurationId ?? "").trim();
@@ -29,7 +29,7 @@ export function restoreBoardState(value, fallbackState) {
 }
 
 export function createBoardStorageController({
-  kv,
+  repository,
   delay = 300,
   onStatus = () => undefined,
   schedule = (callback, wait) => setTimeout(callback, wait),
@@ -40,16 +40,10 @@ export function createBoardStorageController({
   let pendingSave;
   let pendingHandle;
   const failedSaves = new Map();
-  const temporaryStates = new Map();
   const latestSaveVersions = new Map();
   let saveQueue = Promise.resolve();
   let saveVersion = 0;
   let readBlocked = true;
-  let temporary = false;
-
-  function temporaryStatus() {
-    onStatus({ state: "unavailable", message: "临时模式：绑定数据库后可保存任务，刷新页面会丢失当前修改" });
-  }
 
   async function load(configurationId, fallbackState) {
     await flush().catch(() => undefined);
@@ -57,13 +51,6 @@ export function createBoardStorageController({
     generation = loadGeneration;
     currentKey = createBoardStorageKey(configurationId);
     readBlocked = true;
-    temporary = false;
-    if (!kv) {
-      readBlocked = false;
-      temporary = true;
-      temporaryStatus();
-      return { applied: true, state: temporaryStates.get(currentKey) ?? fallbackState, stored: false };
-    }
     const failedSave = failedSaves.get(currentKey);
     if (failedSave) {
       readBlocked = false;
@@ -77,7 +64,8 @@ export function createBoardStorageController({
     }
     onStatus({ state: "loading", message: "正在加载" });
     try {
-      const stored = await kv.getValue(currentKey);
+      if (!repository) throw new Error('Connect the task database first.');
+      const stored = await repository.load(currentKey);
       if (loadGeneration !== generation) return { applied: false };
       if (stored != null && !isStoredBoardState(stored)) throw new Error("保存的任务格式无效");
       const state = restoreBoardState(stored, fallbackState);
@@ -86,12 +74,6 @@ export function createBoardStorageController({
       return { applied: true, state, stored: stored != null };
     } catch (error) {
       if (loadGeneration !== generation) return { applied: false };
-      if (error?.code === "DATABASE_UNBOUND") {
-        readBlocked = false;
-        temporary = true;
-        temporaryStatus();
-        return { applied: true, state: temporaryStates.get(currentKey) ?? fallbackState, stored: false };
-      }
       onStatus({ state: "error", message: "加载失败，可重试" });
       return { applied: true, state: fallbackState, stored: false, loadFailed: true };
     }
@@ -99,11 +81,7 @@ export function createBoardStorageController({
 
   function scheduleSave(state) {
     if (readBlocked) return;
-    if (temporary) {
-      temporaryStates.set(currentKey, structuredClone(state));
-      temporaryStatus();
-      return;
-    }
+
     if (pendingHandle !== undefined) cancel(pendingHandle);
     pendingSave = createSaveRecord(state);
     onStatus({ state: "saving", message: "保存中" });
@@ -117,10 +95,7 @@ export function createBoardStorageController({
 
   function save(state) {
     if (readBlocked) return Promise.reject(new Error("看板尚未成功加载，未覆盖已有数据"));
-    if (temporary) {
-      scheduleSave(state);
-      return Promise.resolve();
-    }
+
     return enqueueSave(createSaveRecord(state));
   }
 
@@ -163,7 +138,7 @@ export function createBoardStorageController({
     const operation = saveQueue.then(async () => {
       onStatus({ state: "saving", message: "保存中" });
       try {
-        await kv.setValue(record.key, record.value);
+        await repository.save(record.key, record.value);
         if (latestSaveVersions.get(record.key) === record.version) {
           failedSaves.delete(record.key);
         }

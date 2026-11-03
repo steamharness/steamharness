@@ -1,11 +1,11 @@
 ---
 title: "Project management"
-description: "Manage aggregate entries, membership, versions and independent database spaces."
+description: "Manage aggregate entries, membership, versions and independent data resources."
 ---
 
 # Project management
 
-Project managers use Server Web to manage members, invitations, source access, and independent database spaces. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
+Project managers use Server Web to manage members, invitations, source access, and independent data resources. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
 
 The aggregate entry list displays each entry’s `projectCard` icon, foreground and background. These properties live in entry declarations and travel with source uploads and version snapshots. Entries have no independent versions; the aggregate owns the root version.
 
@@ -23,12 +23,12 @@ Accounts are ordinary users or system administrators. Business access is assigne
 
 | Role | Cumulative capabilities |
 | --- | --- |
-| `guest` | Read projects, published versions, KV, Knowledge, project files and previews; download published source to run locally. |
-| `developer` | Edit drafts, upload, publish and write Server KV, Knowledge and project files. |
+| `guest` | Read projects, published versions, authorized knowledge resources, project files and previews; download published source to run locally. |
+| `developer` | Edit drafts, upload, publish and write Server authorized knowledge resources and project files. |
 | `maintainer` | Manage project information, icons, visibility and official configurations; manage guests and developers. |
 | `owner` | Assign every role, manage owners, delete projects and transfer ownership. |
 
-Cookie and API key requests use current account status and memberships. Revocation, disabling an account or making a public project private affects subsequent requests immediately, including previews. Guests may use local data when running downloaded projects; Server writes fail with a permission error. Personal configurations remain available within published field rules.
+Cookie and API key requests use current account status and memberships. Revocation, disabling an account or making a public project private affects subsequent requests immediately, including previews. Local execution still requires grants for the database or knowledge base being accessed; project membership does not directly grant resource access. Personal configurations remain available within published field rules.
 
 ## Groups and subgroups
 
@@ -58,9 +58,9 @@ Uploads only extract, statically validate and save files. Server never installs 
 
 A developer upload cannot modify management metadata or ownership. Guests download published versions; draft reads require developer access. Archives exclude KV, PersistentValue, SQLite, environment files and CLI credentials.
 
-## Entries and database spaces
+## Entries and data resources
 
-All aggregate entries share a project version, source archive and installation unit. Type filters match any registered type; configuration is entry-scoped. Databases are independent resources. System administrators approve new spaces; space owners or administrators approve sharing. Every access checks the project role, entry identity and host grant. Project deletion preserves spaces. Root config.json centralizes alias/databaseId values; package entries declare only the aliases they use, with STEAMHARNESS_PROJECT_CONFIG environment overrides and support for multiple and shared databases. KV listing applies the active host grant before pagination and counting; client prefixes may only narrow it. Requests are independent of manifests and provide the consumer, target and desired permissions. Approval returns a databaseId; permissions and credentials stay on the host.
+All aggregate entries share a project version, source archive and installation unit; configurations are entry-scoped. Accounts explicitly create, grant, migrate and bind relational resources. Knowledge bases use independent knowledgeBases declarations and root alias-to-UUID mappings, with STEAMHARNESS_PROJECT_CONFIG deployment overrides. Membership protects project source and configuration; data access checks the relevant account resource grant and effective binding. Binding grants no access; deleting a project retains independent resources.
 
 ## System administration and audit
 
@@ -92,8 +92,10 @@ Projects declaring `profilePolicy` filter configurations using actual project an
 
 Personal configurations for v2 projects default to the latest published template. Source-draft access does not expose unpublished author fields or defaults. Maintainers, owners and system administrators retain official draft management. Role-controlled configurations must have a published template before developers use them.
 
-The database workspace provides project, server and all-visible filters, search and server pagination in its directory. Open databases in separate data tabs, then switch or close them independently. KV uses a key list and JSON detail editor; knowledge and attachments are available in the same data tab. Switching databases or data types or closing a tab asks before discarding edits. A separate requests and permissions page provides reviews, narrowing, revocation and credential rotation.
+The database catalog separates relational and knowledge resources with search and server pagination. Relational details show applied models, fields, fingerprints and paginated rows, with JSON insert/update/delete. Updates and deletes require a complete stable key and current row version. Knowledge details provide document lists, search, revision-aware editing and attachments. Resource pages manage account read/write grants and entry bindings. Navigation protects unsaved drafts; conflicts retain edits. Table DateTime values use ISO strings with a timezone and UTC semantics, and mapped enums use authored names. See the [Database API](/en/core-api/database) for encoding details.
 
-The attachments tab manages images and other files. Content lives in Server's configured private object storage; PostgreSQL retains metadata and a digest. Server backups and migrations must retain both the database and object storage directory. Existing inline attachments move on first read, preserving file IDs and logical revisions; the whole collection is not migrated at once.
+Knowledge attachment contents use Server private file storage; PostgreSQL retains metadata, size and SHA-256. Backups must retain both the database and file storage directory. Legacy KV attachments are not imported, and there is no dual write or local fallback.
 
-**Used by this project** deduplicates the database IDs currently saved in its entries. Historical grants do not keep removed references in this view. Project readers can see referenced database names and IDs that are authorized by the host or already visible to them. An ID alone does not expose another private database; data management still requires the space owner or host administrator. Drafts opened within project details also receive navigation and page-close protection. Discarded KV drafts do not return when switching back. Attachment preparation disables duplicate uploads, and closing the data tab before file reading completes cancels the upload.
+Studio and CLI Web deduplicate references by resource kind and UUID and open Server Web resource pages without putting account tokens in URLs. Visible KV editing and the local/remote KV switch have been removed. Account changes abort old requests and clear the catalog; changed bindings or grants invalidate old clients. Attachment preparation disables duplicate uploads, and closing the page cancels late results.
+
+SteamHarness Database projects can include generated Node/Browser assets in `.steamharness/generated/database`. Server verifies the inventory, definition and model fingerprints, and artifact SHA-256 without executing `steamharness.database.ts` or generated clients or installing dependencies. Other local `.steamharness` runtime data remains excluded. Regenerate changed models locally before upload. See [SteamHarness Database](/en/core-api/database).

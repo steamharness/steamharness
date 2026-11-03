@@ -165,11 +165,9 @@ test('Server startup preserves unsupported project rows, snapshots and storage',
     await raw.query('insert into projects(id,name) values($1,$2)', [id, 'Retained project']);
     await raw.query(`insert into project_versions(project_id,version,project_name,created_at,source_hash,source_object_path)
       values($1,'1.0.0','Retained project',now(),'hash','source.tgz')`, [id]);
-    await raw.query(`insert into project_storage(storage_kind,scope,project_id,key,value) values('kv','project',$1,'retained','true')`, [id]);
     await db.init();
     assert.equal((await raw.query('select project_type from projects where id=$1', [id])).rows[0].project_type, 'workflow');
     assert.equal((await raw.query('select count(*)::int as total from project_versions where project_id=$1', [id])).rows[0].total, 1);
-    assert.equal((await raw.query('select value from project_storage where project_id=$1', [id])).rows[0].value, true);
     assert.deepEqual(await db.listProjects(), []);
     assert.equal(await db.getProject(id), undefined);
     const entries = JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]);
@@ -191,4 +189,18 @@ test('Server startup preserves unsupported project rows, snapshots and storage',
   } finally {
     await db.close(); await raw.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end();
   }
+});
+
+
+test('fresh platform initialization never creates the retired KV tables', { skip: !databaseUrl }, async t => {
+  const schema = `bootstrap_${randomUUID().replaceAll('-', '')}`;
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  await admin.query(`create schema ${schema}`);
+  const url = new URL(databaseUrl!); url.searchParams.set('options', `-c search_path=${schema}`);
+  const repository = new DatabaseRepository(url.toString());
+  t.after(async () => { await repository.close(); await admin.query(`drop schema ${schema} cascade`); await admin.end(); });
+  await repository.init(); await repository.init();
+  const names = (await admin.query('select table_name from information_schema.tables where table_schema=$1', [schema])).rows.map(row => row.table_name);
+  assert.ok(names.includes('projects'));
+  for (const name of ['project_storage', 'project_storage_revisions', 'database_spaces', 'database_space_values']) assert.ok(!names.includes(name), name);
 });

@@ -1,0 +1,11 @@
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -27,8 +27,6 @@
+ 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
+ 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
+ 	{ id: 'databases', icon: 'database', view: 'studio.databases' },
+-	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+-	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+ 	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
+ 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },

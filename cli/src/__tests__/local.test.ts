@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { it } from "vitest";
 import * as steamHarness from "steamharness";
-import { createLocalProjectKVStore, HarnessError } from "steamharness";
+import { HarnessError } from "steamharness";
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "steamharness";
 import {
   formatParamResolverFailure,

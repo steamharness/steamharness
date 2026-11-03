@@ -10,7 +10,8 @@
       "type": "workflow",
       "root": ".",
       "entry": "index.ts",
-      "databases": [
+      "databases": [],
+      "knowledgeBases": [
         "data"
       ]
     },
@@ -20,7 +21,8 @@
       "type": "workflow",
       "root": ".",
       "entry": "index.ts",
-      "databases": [
+      "databases": [],
+      "knowledgeBases": [
         "data"
       ]
     }

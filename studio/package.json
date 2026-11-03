@@ -44,7 +44,6 @@
     "test:workflow-desktop-ui": "node tests/workflow-desktop-ui.mjs",
     "test:kanban-ui": "node tests/kanban-ui.mjs",
     "test:kanban-desktop-ui": "node tests/kanban-desktop-ui.mjs",
-    "test:resources-ui": "node tests/resources-desktop-ui.mjs",
     "test:resource-cards-ui": "node tests/resource-cards-desktop-ui.mjs",
     "test:trace-ui": "node tests/trace-desktop-ui.mjs",
     "test:trace-agent-ui": "node tests/trace-agent-ui.mjs",
@@ -78,8 +77,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "@steamharness/project-info": "file:../shared/project-info",
     "@steamharness/workflow-ids": "file:../shared/workflow-ids",
-    "@steamharness/project-manifest": "file:../shared/project-manifest",
-    "@steamharness/database-spaces": "file:../shared/database-spaces"
+    "@steamharness/project-manifest": "file:../shared/project-manifest"
   },
   "devDependencies": {
     "tsx": "4.23.0",

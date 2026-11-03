@@ -1,3 +1,4 @@
+import { testAgentStorage } from "./runtime-test-storage";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -149,7 +150,7 @@ for (const api of apis) {
     assert.equal(result.content.some(block => block.type === "toolCall"), false);
   });
 
-  test(`${api} durable runtime emits search and sources and restores provider history from SQLite`, async t => {
+  test(`${api} durable runtime emits search and sources and restores provider history from temporary repository`, async t => {
     const directory = await mkdtemp(path.join(tmpdir(), "agent-search-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const requests: Json[] = [];
@@ -166,7 +167,7 @@ for (const api of apis) {
     assert.ok(address && typeof address === "object");
     const options = { provider: "search-test", model: "search-model", apiKey: "offline-key", apiKind: api,
       baseUrl: `http://127.0.0.1:${address.port}`, modelAttributes: attributes, effort: "off" as const,
-      workdir: directory, databasePath: path.join(directory, "agent.sqlite"), compaction: { ...DEFAULT_AGENT_COMPACTION_SETTINGS, enabled: false } };
+      workdir: directory, storage: testAgentStorage(path.join(directory, "agent")), compaction: { ...DEFAULT_AGENT_COMPACTION_SETTINGS, enabled: false } };
     const first = await createAgentRuntime(options);
     t.after(() => first.close());
     const emitted: AgentStreamEvent[] = [];

@@ -93,7 +93,7 @@ Conversation 模式下，默认 composer 会固定映射到 `--message`；旧的
   `createSdkMcpServer` and passed via `query()`'s `mcpServers` option, wrapping
   the steamharness knowledge helpers (`list` / `get` / `create` / `edit` /
   `delete` / `search` / `read_lines`) so the agent reads and writes
-  PersistentValue-backed knowledge documents in the same way the rest of the
+  Server-backed knowledge documents in the same way the rest of the
   repo does. Toggle with `--knowledge-tools` / `--no-knowledge-tools`
   (default: enabled).
 - Partial message streaming bridged into `workflow.createOutputNode({ stream,

@@ -180,7 +180,7 @@ When source changes to an unverified template, configuration reads and writes re
 - `POST /api/projects/:id/configurations` accepts `publication.save` (`revision` plus `publication`, including its own `revision`, fields, profiles and `defaultConfigurationId`) and `publication.preview`. Draft conflicts return HTTP 409.
 - `GET /api/projects/:id/configurations/template?target=1.0.0` reads published templates only.
 - `POST /api/projects/:id/configurations/files?target=1.0.0&key=background&fileName=map.png&mimeType=image/png` uploads personal attachments using the specified version's permissions; `GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` reads authorized attachments only.
-- `POST /api/projects/:id/publish` takes `expectedSourceHash`, `expectedVersion` and `expectedConfigurationRevision`, the publication draft revision.
+- `POST /api/projects/:id/publish` takes `expectedSourceHash`, `expectedVersion` and `expectedConfigurationRevisions`, mapping each `entryId` to its publication draft revision as a non-negative JSON safe integer, for example `{ "users": 0, "board": 3 }`.
 
 Studio Control `get_configurations` returns permissions; `preview: true` requests a recipient preview. `manage_configurations` supports `publication.save`. Both work with the panel closed. Official changes require online Server storage and maintainer or owner authorization. Read-only mode rejects writes.
 

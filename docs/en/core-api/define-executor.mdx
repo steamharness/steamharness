@@ -231,7 +231,7 @@ createInput({ paramValues }) {
 },
 ```
 
-`resolveParams` is executed during initialization and when the value of any Form parameter in main, Advanced, and Quick changes. The change of the main input content will only be triggered when at least one parameter is set to `resolveOnInput: true`, avoiding irrelevant remote evaluation caused by ordinary message input. It should remain free of write side effects and idempotence, and does not perform writing to files, writing to KV, or modifying external state; read-only dynamic directories should be passed in the `abortSignal` provided by the callback. `visible` / `disabled` in the patch does not implicitly empty existing values; `value: null` is explicitly returned when emptying is required. When initializing the return value patch in Raw mode, the host only updates the corresponding declared parameters, leaving the other Raw parameters and their values.
+`resolveParams` is executed during initialization and when the value of any Form parameter in main, Advanced, and Quick changes. The change of the main input content will only be triggered when at least one parameter is set to `resolveOnInput: true`, avoiding irrelevant remote evaluation caused by ordinary message input. It should remain free of write side effects and idempotence, and does not perform writing to files, writing to database tables, or modifying external state; read-only dynamic directories should be passed in the `abortSignal` provided by the callback. `visible` / `disabled` in the patch does not implicitly empty existing values; `value: null` is explicitly returned when emptying is required. When initializing the return value patch in Raw mode, the host only updates the corresponding declared parameters, leaving the other Raw parameters and their values.
 
 `resolvedOptions` is used to dynamically replace enumeration: returning an array will completely replace the static `options` of the parameter, returning `null` to restore the static option, and omitting it will keep the current dynamic option. `value` in the array must be a non-empty unique string, and `label` and `description` must be strings. When replacing options, the old option state will be cleared. The host will uniformly apply dynamic options to Quick and Advanced, and distinguish between loading, empty and error. conversation the host is re-evaluated by conversation ID, asynchronous responses that have expired do not overwrite the current session.
 
@@ -349,7 +349,7 @@ Without a Durable session, `conversation.inputQueue: { enabled: true }` lets CLI
 - After the current run completes, fails, or is canceled, the host clears the active run flag for that session; subsequent new inputs revert to normal send and do not continue to the wait queue.
 - Queue items support bootstrapping, editing, deleting, and dragging sort; bootstrapping interrupts the current run before immediately executing the target queue item.
 
-After `tokenUsage.enabled` is enabled,runtime writes the token usage to KV and the run aggregation to report. Aggregations contain `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, `cachedInputTokens`, `cacheCreationTokens`, and `calls`. If `display` is omitted, the default value is `enabled`. CLI Web only display badges when `display === true` and data is available. Badges display the total amount by default, and hover/focus displays Input, Output, Reasoning, Cache read, Cache write, and Calls respectively.
+After `tokenUsage.enabled` is enabled,runtime writes token usage to platform relational tables and the run aggregation to report. Aggregations contain `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, `cachedInputTokens`, `cacheCreationTokens`, and `calls`. If `display` is omitted, the default value is `enabled`. CLI Web only display badges when `display === true` and data is available. Badges display the total amount by default, and hover/focus displays Input, Output, Reasoning, Cache read, Cache write, and Calls respectively.
 
 ## Tool permissions
 
@@ -404,7 +404,7 @@ export const executor = steamharness.defineExecutor<Input, Output>({
 |`paramValues` is a formal structured value|`createInput` can read parameter values directly;`args` continues to be used in scenarios that require full CLI parameters or unknown parameters.|
 |Workflow The running configuration belongs to entrypoint|The top-level old field gives a migration error and no longer retains the compatible alias.|
 |`tools` must be statically declared|CLI Web can only show the selected entry or Conversation executor statically analyzed tools; the tool name must be stable.|
-|`tokenUsage.enabled` Off by default|If it is not configured, KV will not be written and the usage will not be displayed. When closed `context.tokenUsage.report()` is no-op.|
+|`tokenUsage.enabled` Off by default|If it is not configured, platform usage records will not be written and the usage will not be displayed. When closed `context.tokenUsage.report()` is no-op.|
 |`registry` for single node debugging|Workflow searches only the registry of the selected portal; nodes that are not registered cannot be run individually through debug API.|
 
 ## Built-in Core Agent parameters

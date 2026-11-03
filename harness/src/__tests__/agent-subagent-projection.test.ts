@@ -1,3 +1,4 @@
+import { testAgentStorage } from "./runtime-test-storage";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -21,7 +22,7 @@ for (const named of [false, true]) test(`${named ? 'named' : 'anonymous'} delega
   function create() {
     const faux = ai.fauxProvider({ models: [{ id: 'test', contextWindow: 100000, maxTokens: 100 }] });
     const models = ai.createModels(); models.setProvider(faux.provider); const lease = latch();
-    const instance = new DurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, initialState: {
+    const instance = new DurableAgent({ models, storage: databasePath ? testAgentStorage(databasePath) : undefined, session: options, sessionLease: lease.promise, initialState: {
       systemPrompt: 'Parent', model: models.getModel('faux', 'test')!, thinkingLevel: 'off', messages: [], tools: [],
     } });
     let snapshot: AgentSessionSnapshot | undefined;

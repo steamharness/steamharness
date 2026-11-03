@@ -14,7 +14,6 @@ export const server = {
   databaseBindingRequired: "A database binding and consumer identity are required.",
   databaseRevisionReadRequired: "Database revisions require read access.",
   databaseUseKnowledgeApi: "Use the knowledge API.",
-  databaseKvReadRequired: "KV read access is required.",
   databaseGrantRevoked: "A revoked grant cannot be rotated.",
   projectIdServerAssigned: "Project IDs are assigned by the Server. Create a new application to obtain a new ID.",
   configurationPublicationRequired: "Publish the project configuration template before using role-controlled configurations.",

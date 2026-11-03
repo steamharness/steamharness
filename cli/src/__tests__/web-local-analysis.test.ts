@@ -1,7 +1,9 @@
+import { createMemoryRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from 'steamharness/runtime-storage';
+import { encodeSession } from '../web/conversation-history';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -26,9 +28,27 @@ async function fixture(kind: 'workflow'|'conversation'|'kanban' = 'workflow') {
   const manifest = { id: reference.id, name: 'Default', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',databases:[] as object[]}], projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' } }  };
   await writeProjectFixture(path.join(folderPath, 'package.json'), JSON.stringify(manifest));await writeFile(path.join(folderPath,'index.ts'),'export {};');await writeFile(path.join(folderPath,'index.html'),'<html></html>');
   const storageDir = path.join(root, 'data'), directory = webProjectDataDirectory(storageDir, reference.id,"main"); await mkdir(directory, { recursive: true });
-  const snapshot = (now?: number) => readLocalStudioAnalysis({ storageDir, projects: [reference], locale: 'zh-cn', now });
-  const history = (runs: object[]) => writeFile(path.join(directory, 'runs.json'), JSON.stringify({ version: 1, runs, drafts: {} }));
-  return { root, folderPath, reference, manifest, storageDir, directory, snapshot, history };
+  const backend = createMemoryRuntimePersistence();
+  const persistence = () => backend;
+  const snapshot = (now?: number) => readLocalStudioAnalysis({ storageDir, projects: [reference], locale: 'zh-cn', now, persistenceForProject: persistence });
+  const revisions = new Map<string, RuntimeHistoryRecord>();
+  const history = async (runs: Record<string, unknown>[]) => {
+    const lease = await backend.acquire('workflow');
+    try {
+      for (const previous of await backend.list('run')) if (!runs.some(run => run.id === previous.key)) { await lease.delete(previous); revisions.set(previous.key, { ...previous, revision: previous.revision + 1 }); }
+      for (const run of runs) {
+        const key = String(run.id), previous = revisions.get(key);
+        revisions.set(key, await lease.write({ ...emptyRuntimeRecord('run', key, 'workflow'), revision: previous?.revision ?? 0, state: run }));
+      }
+    } finally { await lease.close(); }
+  };
+  const conversations = async (sessions: ConversationSession[]) => {
+    for (const session of sessions) {
+      const lease = await backend.acquire(session.id);
+      try { await lease.write(encodeSession(session, 0)); } finally { await lease.close(); }
+    }
+  };
+  return { root, folderPath, reference, manifest, storageDir, directory, snapshot, history, conversations, persistence, backend };
 }
 
 describe('local Studio analysis', () => {
@@ -68,7 +88,7 @@ describe('local Studio analysis', () => {
     await f.history([]);
     expect((await f.snapshot()).projects[0].runs).toEqual([]);
   });
-  it('publishes terminal changes owned by this service before history persistence finishes', async () => {
+  it('uses committed terminal history while live activity remains a temporary projection', async () => {
     const f = await fixture(); await f.history([]);
     let runs: LocalRunSummary[] = [];
     const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'workflow' }, () => ({ runs, queued: 0 }), () => {});
@@ -76,9 +96,10 @@ describe('local Studio analysis', () => {
     runs = [{ id: 'owned', title: 'New run', status: 'running' }]; await writer.publish();
     expect((await f.snapshot()).projects[0].runs[0].status).toBe('running');
     runs[0].status = 'success'; await writer.publish();
+    expect((await f.snapshot()).projects[0].runs).toEqual([]);
+    await f.history([{ ...runs[0] }]);
     expect((await f.snapshot()).projects[0].runs[0].status).toBe('success');
     await f.history([]);
-    const modified = new Date(Date.now() + 1000); await utimes(path.join(f.directory, 'runs.json'), modified, modified);
     expect((await f.snapshot()).projects[0].runs).toEqual([]);
   });
   it('counts a persisted queued input once across multiple service leases', async () => {
@@ -92,13 +113,13 @@ describe('local Studio analysis', () => {
   it('uses the current project type when a folder retains history from another type', async () => {
     const f = await fixture('conversation'); await f.history([{ id: 'old-workflow', title: 'Old workflow', status: 'success' }]);
     await writeFile(path.join(f.directory, 'project.json'), JSON.stringify({ version: 1, projectId: f.reference.id, entryId:'main', projectType: 'conversation' }));
-    await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify({ sessions: [{ id: 'chat', title: 'Chat', messages: [
-      { id: 'answer', role: 'assistant', status: 'success', createdAt: 10 },
-    ] }] }));
+    await f.conversations([{ id: 'chat', title: 'Chat', messages: [
+      { id: 'answer', role: 'assistant', content: '', status: 'success', createdAt: 10 },
+    ] }]);
     const conversation = (await f.snapshot()).projects[0]; expect(conversation.projectType).toBe('conversation');
     expect(conversation.runs.map(run => run.id)).toEqual(['answer']);
     f.manifest.entries[0]!.type='kanban';f.manifest.entries[0]!.entry='index.html';await writeProjectFixture(path.join(f.folderPath,'package.json'),JSON.stringify(f.manifest));
-    const board = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...f.reference, projectType: 'kanban' }] });
+    const board = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...f.reference, projectType: 'kanban' }] });
     expect(board.projects[0].runs).toEqual([]);
     await writeFile(path.join(f.directory, 'runs.json'), 'invalid old history');
     expect((await f.snapshot()).projects[0].availability).toBe('available');
@@ -106,14 +127,14 @@ describe('local Studio analysis', () => {
   it('preserves conversation session context when live summaries replace persisted turns', async () => {
     const f = await fixture('conversation');
     const sessions: ConversationSession[] = [{ id: 'chat', title: 'Chat', messages: [{ id: 'answer', role: 'assistant', content: '', status: 'running' }] }];
-    await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify({ sessions }));
+    await f.conversations(sessions);
     const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'conversation' }, () => ({ runs: summarizeLocalRuns(undefined, sessions), queued: 0 }), () => {});
     cleanup.push(writer.close); await writer.publish();
     expect((await f.snapshot()).projects[0].runs[0]).toMatchObject({ id: 'answer', status: 'running', sessionId: 'chat' });
   });
   it('prefers the current workspace reference over an imported alias of the same real folder', async () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [
       { ...f.reference, folderPath: link, uri: pathToFileURL(link).href, inWorkspace: false },
       { ...f.reference, inWorkspace: true, projectType: 'workflow' },
     ] });
@@ -137,26 +158,26 @@ describe('local Studio analysis', () => {
   it('deduplicates real directories and includes local runs for entries using a Server database', async () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
     const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing', inWorkspace: true }];
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects }); expect(value.projects).toHaveLength(2); expect(value.projects.find(project => project.inWorkspace)?.availability).toBe('missing');
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects }); expect(value.projects).toHaveLength(2); expect(value.projects.find(project => project.inWorkspace)?.availability).toBe('missing');
     await writeFile(path.join(f.folderPath, 'config.json'), JSON.stringify({version:1,databases:{data:'00000000-0000-4000-8000-000000000001'}}));
     expect((await f.snapshot()).projects).toHaveLength(1);
   });
   it('ignores deleted imported folders while retaining readable history and reporting missing workspace projects', async () => {
     const f = await fixture(); await f.history([{ id: 'local-run', status: 'success' }]);
     const deleted = { ...f.reference, folderPath: path.join(f.root, 'deleted-worktree'), uri: 'file:///deleted-worktree', inWorkspace: false };
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [deleted, f.reference] });
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [deleted, f.reference] });
     expect(value.projects).toHaveLength(1);
     expect(value.projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
     await rm(f.folderPath, { recursive: true });
     expect((await f.snapshot()).projects).toEqual([]);
-    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...f.reference, inWorkspace: true }] });
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...f.reference, inWorkspace: true }] });
     expect(current.projects).toHaveLength(1);
     expect(current.projects[0].availability).toBe('missing');
   });
   it('retains imported folder permission failures', async () => {
     const f = await fixture();
     vi.mocked(fs.realpath).mockRejectedValueOnce(Object.assign(new Error('Access denied'), { code: 'EACCES' }));
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir,
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence,
       projects: [{ ...f.reference, inWorkspace: false }] });
     expect(value.projects).toHaveLength(1);
     expect(value.projects[0].availability).toBe('unreadable');
@@ -166,17 +187,17 @@ describe('local Studio analysis', () => {
     await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest,
       entries: [{ ...f.manifest.entries[0], root: 'child' }] }));
     const child = { ...f.reference, id: '00000000-0000-4000-8000-000000000001', folderPath: path.join(f.folderPath, 'child'), entryId: undefined };
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [child, { ...f.reference, inWorkspace: true }] });
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [child, { ...f.reference, inWorkspace: true }] });
     expect(value.projects).toHaveLength(1);
     expect(value.projects[0]).toMatchObject({ id: f.reference.id, entryId: 'main', availability: 'available', runs: [{ id: 'aggregate-run' }] });
-    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...child, inWorkspace: true }] });
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...child, inWorkspace: true }] });
     expect(current.projects[0].availability).toBe('unreadable');
   });
   it('ignores imports without a project manifest but still reports a missing manifest in the current workspace', async () => {
     const f = await fixture(); await rm(path.join(f.folderPath, 'steamharness.json'));
     await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify({ id: f.reference.id, steamHarness: { projectType: 'workflow' } }));
     expect((await f.snapshot()).projects).toEqual([]);
-    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...f.reference, inWorkspace: true }] });
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...f.reference, inWorkspace: true }] });
     expect(current.projects[0].availability).toBe('missing');
   });
   it('reads local history from declarations without resolving deployment database bindings', async () => {
@@ -194,15 +215,13 @@ describe('local Studio analysis', () => {
       expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
     }
   });
-  it('reports corrupt histories and changed UUIDs as unavailable instead of empty successes', async () => {
+  it('reports storage errors and changed UUIDs as unavailable without reading old JSON', async () => {
     const f = await fixture(); await writeFile(path.join(f.directory, 'runs.json'), 'broken');
-    expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
-    await f.history([{}]); expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
-    for (const value of ['null', '0', 'false', '[]']) {
-      await writeFile(path.join(f.directory, 'runs.json'), value);
-      expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
-    }
-    await f.history([]); await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest, id: 'different' }));
+    await f.history([{ id: 'committed', status: 'success' }]);
+    expect((await f.snapshot()).projects[0].runs).toMatchObject([{ id: 'committed' }]);
+    const list = vi.spyOn(f.backend, 'list').mockRejectedValueOnce(new Error('Database unavailable'));
+    expect((await f.snapshot()).projects[0].availability).toBe('unreadable'); list.mockRestore();
+    await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest, id: 'different' }));
     expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
   });
   it('counts conversation assistant turns once and keeps their session context', async () => {
@@ -215,12 +234,12 @@ describe('local Studio analysis', () => {
     const f = await fixture(); await f.history([{ id: 'unverified', status: 'future-status', createdAt: 1e30 }]);
     expect((await f.snapshot()).projects[0].runs[0]).toMatchObject({ id: 'unverified', status: 'unknown', createdAt: undefined });
   });
-  it('rejects malformed conversation histories instead of reporting fabricated zero counts', async () => {
-    const f = await fixture();
-    for (const value of [null, false, { sessions: [{ id: 'chat', title: 'Chat', messages: [null] }] }, { sessions: [{ messages: [] }] }]) {
-      await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify(value));
-      expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
-    }
+  it('requires an account for stored history and ignores old conversation files', async () => {
+    const f = await fixture('conversation');
+    await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify({ sessions: [{ id: 'old', title: 'Old', messages: [] }] }));
+    expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [] });
+    const signedOut = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [f.reference] });
+    expect(signedOut.projects[0]).toMatchObject({ availability: 'unreadable', runs: [] });
   });
   it('uses only the authenticated read-only loopback operation and never falls back to Server', async () => {
     await expect(requestStudioAnalysis({})).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');

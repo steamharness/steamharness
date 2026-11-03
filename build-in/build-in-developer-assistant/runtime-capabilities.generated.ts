@@ -2,10 +2,10 @@
 export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):
 - EntriesContext: list(), get(entryId).
 - EntryContext: registration, listEntrypoints(), runEntrypoint(entrypointId, args, options).
-- DatabasesContext: list(), get(alias).
-- DatabaseContext: listValues(input), kv, knowledge, getBinding(), getRevision(), subscribe(listener, options), transaction(operation).
-- DatabaseKnowledgeContext: listDocuments(input), getDocument(documentId), createDocument(input), editDocument(input), deleteDocument(documentId), searchDocuments(input), files, readDocumentLines(input).
+- RelationalDatabasesContext: connect(descriptor).
+- KnowledgeBasesContext: list(), get(alias).
+- KnowledgeBaseContext: listDocuments(input), getDocument(id), createDocument(input), editDocument(input), deleteDocument(id, expectedRevision), searchDocuments(input), readDocumentLines(input), getRevision(), files.
 - context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.
-- context.databases.get(alias) resolves a project alias to its databaseId; root config.json only stores alias-to-ID mappings, package entries list the aliases they use, STEAMHARNESS_PROJECT_CONFIG overrides deployment values, and hosts maintain all permissions.
-- Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.
+- context.databases.connect(descriptor) connects a generated Node model client. Browser descriptors connect through window.steamHarnessKanban.databases.connect(descriptor) and expose structured rows/insert/update/delete. Server owns account, project, entry and alias bindings; there is no local business storage fallback.
+- context.knowledgeBases.get(alias) uses independent knowledgeBases declarations and config mappings. Documents and attachments use the Server repository, with account grants and entry bindings checked on every access. There is no local knowledge fallback.
 `;

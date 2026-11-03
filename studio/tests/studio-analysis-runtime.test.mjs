@@ -36,7 +36,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     export async function readLocalStudioAnalysis(options) {
       const hold = deferred; deferred = undefined;
       if (hold) { hold.started(); await hold.wait; }
-      return { version: 1, projects: options.projects, storageDir: options.storageDir, locale: options.locale };
+      return { version: 1, projects: options.projects, storageDir: options.storageDir, locale: options.locale, userId: options.userId };
     }
   `);
   await writeFile(path.join(cli, 'index.js'), `
@@ -79,8 +79,9 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
+  let userId = 'analysis-user';
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
-    globalState: { get: () => imports } }, { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
+    globalState: { get: () => imports } }, { getConnection: () => undefined, getState: () => ({ user: { userId } }), onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
   runtime.updateAnalysisProjects([current]);
   const project = await runtime.inspectAnalysis(); assert.equal(project.builtin, 'analysis'); assert.equal(project.projectType, 'kanban');
@@ -94,6 +95,9 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   assert.equal(result.value.storageDir, path.join(storage, 'workflow/web')); assert.equal(result.value.locale, 'zh-cn');
   assert.equal((await fetch(`${origin}/mutate`)).status, 400);
   const reader = await import(pathToFileURL(path.join(cli, 'web/local-analysis.mjs')).href);
+  const heldAccount = reader.holdNextRead(), accountQuery = fetch(`${origin}/analysis`).then(response => response.json());
+  await heldAccount.ready; userId = 'another-analysis-user'; heldAccount.release();
+  assert.equal((await accountQuery).value.userId, userId, 'A pending read must not publish the previous account history.');
   const heldWorkspace = reader.holdNextRead(), workspaceQuery = fetch(`${origin}/analysis`).then(response => response.json());
   await heldWorkspace.ready;
   runtime.updateAnalysisProjects([]); imports = [];

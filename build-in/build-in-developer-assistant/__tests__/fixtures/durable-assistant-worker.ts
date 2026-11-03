@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import {
-  createLocalProjectKVStore, createProjectKVContext, createProjectConversationContext,
-  createProjectToolPermissionContext, createProjectTokenUsageContext, TOKEN_USAGE_TOTAL_KEY,
+  createProjectConversationContext, createProjectToolPermissionContext, createProjectTokenUsageContext,
   type RunContext, type ConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
   type UserInputResolved,
 } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot } from "steamharness/agent";
+import { createServerRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from "steamharness/runtime-storage";
 
 const [directory, scenario, phase] = process.argv.slice(2) as [string, string, string];
 const faux = ai.fauxProvider({ models: [{ id: "fixture", contextWindow: 100_000, maxTokens: 1_000 }],
@@ -48,9 +48,32 @@ async function until(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (!check()) { if (Date.now() > deadline) throw new Error("Assistant session did not settle."); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
-const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir: path.join(directory, "kv") }), projectId, conversationId });
-const conversation = createProjectConversationContext({ enabled: true, projectName, conversationId, kv });
-const tokenUsage = createProjectTokenUsageContext({ kv, projectId, conversationId, runId, definition: executor.tokenUsage });
+const persistence = createServerRuntimePersistence({ serverUrl: process.env.STEAMHARNESS_SERVER_URL!, token: process.env.STEAMHARNESS_SERVER_ADMIN_KEY!,
+  workspace: { kind: "assistant", projectId, entryId: "main", localKey: directory } });
+async function afterPreviousOwner<T>(open: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + 5000;
+  while (true) {
+    try { return await open(); }
+    catch (error) { if ((error as { code?: string }).code !== "RUNTIME_STORAGE_OWNER_CONFLICT" || Date.now() > deadline) throw error; }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
+const agentStorage = persistence.agentStorage.bind(persistence);
+persistence.agentStorage = (...args) => {
+  const factory = agentStorage(...args); return { ...factory, open: () => afterPreviousOwner(() => factory.open()) };
+};
+const lease = await afterPreviousOwner(() => persistence.acquire(`core:${conversationId}`));
+let record: RuntimeHistoryRecord = (await persistence.list("state")).find(item => item.key === conversationId) ?? emptyRuntimeRecord("state", conversationId, `core:${conversationId}`);
+const readState = (initial: import("steamharness").ConversationState) => record.revision === 0 ? structuredClone(initial)
+  : { ...record.state, messages: record.messages.map(item => item.value), values: Object.fromEntries(record.values.map(item => [item.id, item.value.value])) } as unknown as typeof initial;
+const conversation = createProjectConversationContext({ enabled: true, projectName, conversationId, storage: {
+  read: async initial => readState(initial), update: async (initial, change) => {
+    const next = change(readState(initial)), { messages, values, ...state } = next;
+    record = await lease.write({ ...record, state, messages: messages.map(message => ({ id: message.id, value: message as unknown as Record<string, unknown> })),
+      values: Object.entries(values).map(([id, value]) => ({ id, value: { value } })) }); return next;
+  },
+} });
+const tokenUsage = createProjectTokenUsageContext({ store: entry => lease.usage(entry), projectId, conversationId, runId, definition: executor.tokenUsage });
 let decisions: UserInputResolved[] = [];
 try { decisions = JSON.parse(await readFile(path.join(directory, "decisions.json"), "utf8")); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -59,8 +82,8 @@ const userInput = {
   requestInput: async () => undefined,
 };
 const context = {
-  metadata: { project: projectName, runId, agentStoreDir: path.join(directory, "agents") },
-  providers: {}, storage: { local: { kv, persistentValue: kv }, server: { kv, persistentValue: kv } },
+  metadata: { project: projectName, runId, runtimePersistence: persistence },
+  providers: {},
   conversation, tokenUsage, userInput,
   toolPermissions: createProjectToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], projectName, runId, userInput }),
   nodeHooks: {
@@ -246,12 +269,14 @@ try {
     host!.close();
   }
   const output = await running;
+  const usageEntries = await fetch(`${process.env.STEAMHARNESS_SERVER_URL}/fixture/usage`).then(response => response.json()) as import("steamharness").TokenUsageEntry[];
+  const usage = usageEntries.reduce((total, entry) => ({ calls: total.calls + 1, totalTokens: total.totalTokens + entry.totalTokens }), { calls: 0, totalTokens: 0 });
   const result = { type: "done", output, calls: faux.state.callCount,
-    conversation: await conversation.getValue(), usage: await kv.getValue(TOKEN_USAGE_TOTAL_KEY), snapshot: sessionSnapshot, childTools };
+    conversation: await conversation.getValue(), usage, snapshot: sessionSnapshot, childTools };
   // Skill pages make this fixture larger than the IPC channel's high-water
   // mark. Flush the message before disconnecting the worker.
   await new Promise<void>((resolve, reject) => process.send!(result, error => error ? reject(error) : resolve()));
 } catch (pause) {
   if ((pause as { type?: string }).type !== "user_input_required") throw pause;
   process.send?.({ type: "waiting", request: (pause as { metadata?: { request?: unknown } }).metadata?.request, calls: faux.state.callCount, snapshot: sessionSnapshot });
-} finally { clearInterval(keepAlive); host?.close(); process.disconnect?.(); }
+} finally { clearInterval(keepAlive); host?.close(); await persistence.close(); process.disconnect?.(); }

@@ -18,7 +18,7 @@ interface ControllerOptions {
   canDrain?(): boolean;
   configurationRevision?(): number;
   userSettings?(): UserSettings;
-  independent?(session: ConversationSession): () => void;
+  independent?(session: ConversationSession): (() => void) | Promise<() => void>;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
@@ -96,6 +96,11 @@ export class ConversationController {
     const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
     this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
   }
+  replace(saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }): void {
+    if (this.tasks.size) throw new Error('Stop executions before replacing runtime history.');
+    const restored = new ConversationController(this.project, this.runtime, saved, this.options);
+    this.sessions.splice(0, this.sessions.length, ...restored.sessions); this.activeId = restored.activeId;
+  }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
   get running(): boolean { return sessionRunning(this.current); }
   get hasRuns(): boolean { return this.tasks.size > 0; }
@@ -140,7 +145,10 @@ export class ConversationController {
       const answer = entry.messages.find(message => message.role === 'assistant' && message.status === 'running' && message.recovering && !message.cancelRequested);
       if (!answer) {
         const anchor = this.agentAnchor(entry);
-        const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id && session.agentCommands?.length);
+        // Stored forks run through the history API. Resuming an executor while
+        // its receipt is pending would race that API for the same Agent lease.
+        const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id
+          && session.agentCommands?.some(({ command }) => command.type !== 'fork'));
         const activeAgent = entry.agent && (entry.agent.tasks.length || entry.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed'));
         if (anchor && (activeAgent || pendingCommands) && (!this.options.canRun || this.options.canRun(entry))) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
         continue;
@@ -579,7 +587,7 @@ export class ConversationController {
       delete entry.agentOwnerId; delete entry.agentConversationId; delete entry.agent;
       delete entry.agentParameters; delete entry.agentInputs; delete entry.agentCommands; delete entry.agentInterrupted;
       let release: (() => void) | undefined;
-      try { release = this.options.independent?.(entry); }
+      try { release = await this.options.independent?.(entry); }
       catch (error) { Object.assign(entry, previous); throw error; }
       // Never replay source controls or send a copied queue just by opening a branch.
       if (entry.queuedInputs?.length) {

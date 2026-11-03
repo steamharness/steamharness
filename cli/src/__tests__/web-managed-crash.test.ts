@@ -9,11 +9,13 @@ import path from 'node:path';
 import { ConversationController } from '../web/conversation-controller';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+import { runtimeStorageService } from './runtime-storage-service';
 
 it('recovers a killed worker inside managed child execution without replaying its committed write', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'managed-crash-'));
+  const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
   const applicationId = crypto.randomUUID(), diagnostics: string[] = [];
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined, { userSettings: () => ({ agent: { permissionPolicy: 'auto' } }) });
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => connection, { userSettings: () => ({ agent: { permissionPolicy: 'auto' } }) });
   let controller: ConversationController | undefined, killed = false, childWaiting = false, childCalls = 0;
   const model = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -92,6 +94,7 @@ it('recovers a killed worker inside managed child execution without replaying it
     await controller.agentCommand(owner.id, { type: 'subagent', action: 'get', taskId: work.taskId, requestId: 'inspect-after-crash' });
   } finally {
     controller?.dispose(); runtime.dispose(); await controller?.idle();
+    await connection.close();
     await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);

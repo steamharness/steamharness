@@ -53,6 +53,7 @@ export class KanbanController {
     const declaration = resolveProjectEntrySync(this.project.folderPath, this.project.entryId);
     this.project.entryRoot = declaration.rootDir;
     this.project.databases = declaration.registration.databases;
+    this.project.knowledgeBases = declaration.registration.knowledgeBases ?? [];
     this.project.kanban = { artifactDir: '.', entry: declaration.registration.entry };
     this.newPreview();
     if (checkConnections) await this.hooks.projectChanged?.();
@@ -117,8 +118,8 @@ export class KanbanController {
     if (this.disposed || !this.runtime.kanbanBridge) return;
     const generation = this.generation;
     const revisions: KanbanDatabaseRevision[] = []; const errors: string[] = [];
-    for (const requirement of this.project.databases) {
-      try { revisions.push({ alias: requirement.alias, revision: String(await this.runtime.kanbanBridge(this.project, { requestId: `revision:${requirement.alias}`, operation: 'database.revision', input: { database: requirement.alias } })) }); }
+    for (const requirement of this.project.knowledgeBases ?? []) {
+      try { revisions.push({ kind: 'knowledgeBases', alias: requirement.alias, revision: String(await this.runtime.kanbanBridge(this.project, { requestId: `knowledge-revision:${requirement.alias}`, operation: 'knowledge.revision', input: { knowledgeBase: requirement.alias } })) }); }
       catch { errors.push(requirement.alias); }
     }
     if (generation !== this.generation || this.disposed) return;

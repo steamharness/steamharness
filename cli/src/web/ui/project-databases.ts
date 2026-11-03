@@ -1,4 +1,4 @@
-import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from '@steamharness/database-spaces';
+import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from '@steamharness/project-manifest';
 import type { DatabaseManagementState } from '../database-management';
 import type { Project } from '../workflow-types';
 import { t } from '../localization';
@@ -20,6 +20,7 @@ export class ProjectDatabases {
   private error?: HTMLElement;
   private project?: Project;
   private state?: DatabaseManagementState;
+  private kind: "databases" | "knowledge-bases" = "databases";
   private pending?: Pending;
   private connected = true;
 
@@ -104,36 +105,42 @@ export class ProjectDatabases {
       header.insertAdjacentHTML('beforeend', iconHtml('database'));
       const name = text('div', '', 'database-name'); name.append(text('h4', requirement.space?.name ?? requirement.alias), text('span', requirement.alias, 'database-muted')); header.append(name);
       const actions = text('div', '', 'database-actions');
-      actions.append(iconButton('go-to-file', t('Browse data in host'), () => void this.run({ alias: requirement.alias }, 'database-open')));
-      if (!this.state.environmentOverrides.includes(requirement.alias)) actions.append(iconButton('edit', t('Change database'), () => this.bindingForm(requirement.alias, requirement.databaseId)));
+      if (this.state.serverUrl) {
+        const link = document.createElement('a'); link.textContent = t('Manage resources in Server');
+        const url = new URL(this.state.serverUrl); url.pathname = `${url.pathname.replace(/\/$/, '')}/databases/${encodeURIComponent((requirement.kind === 'knowledge-bases' ? 'knowledge:' : '') + requirement.databaseId)}`; link.href = url.toString(); link.target = '_blank'; link.rel = 'noopener noreferrer'; actions.append(link);
+      }
+      if (!this.state.environmentOverrides.includes(requirement.alias)) actions.append(iconButton('edit', t('Change database'), () => this.bindingForm(requirement.alias, requirement.databaseId, requirement.kind)));
       actions.append(iconButton('copy', t('Copy database ID'), () => { void this.bridge.postMessage({ type: 'copy', text: requirement.databaseId }); }));
       header.append(actions); card.append(header);
       const metadata = text('div', '', 'database-metadata');
       const status = text('span', t(requirement.status === 'bound' ? 'Connected' : 'Needs attention'), 'database-badge'); status.dataset.status = requirement.status === 'bound' ? 'connected' : 'attention'; metadata.append(status);
-      if (requirement.space) metadata.append(text('span', t(requirement.space.host === 'local' ? 'This computer' : 'Server'), 'database-muted'));
+      if (requirement.space) metadata.append(text('span', t('Server'), 'database-muted'));
       card.append(metadata, text('code', requirement.databaseId, 'database-id'));
       if (requirement.error) card.append(text('p', requirement.error, 'database-error'));
       if (this.state.environmentOverrides.includes(requirement.alias)) card.append(text('p', t('This database reference is set by the environment.'), 'database-muted'));
       const usage = text('div', '', 'database-entry-usage');
-      for (const entry of this.state.entries.filter(entry => entry.databases.some(database => database.alias === requirement.alias))) {
+      for (const entry of this.state.entries.filter(entry => requirement.kind === 'databases' ? entry.databases.includes(requirement.alias) : (entry.knowledgeBases ?? []).some(database => database.alias === requirement.alias))) {
         const badge = text('span', entry.name, 'database-entry'); badge.dataset.current = String(entry.entryId === this.project.entryId); usage.append(badge);
       }
       card.append(usage); this.content.append(card);
     }
-    this.content.append(text('p', t('Request and approve database access in Studio or Server Web. CLI approval commands are also available.'), 'database-muted'));
+    this.content.append(text('p', t('Create resources and manage account access in Server Web. Bind entry aliases here or with CLI commands.'), 'database-muted'));
   }
-  private bindingForm(alias = '', databaseId = '') {
+  private bindingForm(alias = '', databaseId = '', kind: 'databases' | 'knowledge-bases' = 'databases') {
     if (!this.content) return;
     this.content.querySelector('.database-form')?.remove();
     const form = document.createElement('form'); form.className = 'database-form';
     const input = (label: string, value: string) => {
       const field = document.createElement('label'); field.append(text('span', label)); const control = document.createElement('input'); control.value = value; control.setAttribute('aria-label', label); control.required = true; field.append(control); form.append(field); return control;
     };
+    const kindLabel = document.createElement('label'), kindSelect = document.createElement('select'); kindLabel.textContent = t('Resource type');
+    for (const [value, label] of [['databases', t('Relational databases')], ['knowledge-bases', t('Knowledge bases')]]) { const option = document.createElement('option'); option.value = value; option.textContent = label; kindSelect.append(option); }
+    kindSelect.value = kind; kindSelect.disabled = !!alias; kindLabel.append(kindSelect); form.append(kindLabel);
     const name = input(t('Database alias'), alias); name.readOnly = !!alias; name.pattern = DATABASE_IDENTIFIER_PATTERN.source;
     const id = input(t('Database ID'), databaseId); id.pattern = DATABASE_UUID_PATTERN.source;
     const actions = text('div', '', 'database-actions'); const save = iconButton('check', t('Save database reference'), () => {}); save.type = 'submit';
     actions.append(save, iconButton('close', t('Cancel'), () => form.remove())); form.append(actions);
-    form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void this.run({ action: 'bind', alias: name.value.trim(), databaseId: id.value.trim() }); };
+    form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void this.run({ action: 'bind', kind: kindSelect.value, alias: name.value.trim(), databaseId: id.value.trim() }); };
     this.content.prepend(form); (alias ? id : name).focus();
   }
 }

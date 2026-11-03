@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createLocalProjectConfigurationStore } from 'steamharness';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { createWebRuntime } from '../web/runtime';
-import { startEntryWebServer } from '../web/server';
+import { startEntryWebServer } from './web-test-storage';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
 const folders: string[] = [];

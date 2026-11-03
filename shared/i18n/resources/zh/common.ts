@@ -702,8 +702,6 @@ export const common: typeof Encommon = {
         deleteKnowledge: { running: "正在删除知识库文档", success: "知识库文档已删除", failed: "删除知识库文档失败" },
         readKnowledge: { running: "正在读取知识库文档", success: "知识库文档已读取", failed: "读取知识库文档失败" },
         listKnowledge: { running: "正在列出知识库文档", success: "知识库文档已列出", failed: "列出知识库文档失败" },
-        updateKv: { running: "正在更新 KV 值", success: "KV 值已更新", failed: "更新 KV 值失败" },
-        readKv: { running: "正在读取 KV 值", success: "KV 值已读取", failed: "读取 KV 值失败" },
         createConfiguration: { running: "正在创建项目配置", success: "项目配置已创建", failed: "创建项目配置失败" },
         updateConfiguration: { running: "正在更新项目配置", success: "项目配置已更新", failed: "更新项目配置失败" },
         deleteConfiguration: { running: "正在删除项目配置", success: "项目配置已删除", failed: "删除项目配置失败" },

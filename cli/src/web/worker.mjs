@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { readFile, writeFile, readdir, rm, stat, mkdir, link, mkdtemp, copyFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { setTimeout as wait } from 'node:timers/promises';
 import { register } from 'tsx/esm/api';
 import { resolve } from 'import-meta-resolve';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ import { createWorkerTransport } from './worker-transport.mjs';
 let ts;
 let assistantScopeDirectory;
 let agentHost;
+let runtimePersistence;
 let ownerDisconnected = false;
 let shutdownTimer;
 let handleAgentControl;
@@ -32,7 +34,7 @@ console.log = console.error;
 const controller = new AbortController();
 const shutdown = (suspend = false) => {
   // Uncooperative project tools must not keep a dead owner's worker, sockets
-  // or SQLite lock alive forever. Normal cleanup gets a bounded grace period.
+  // or execution lease alive forever. Normal cleanup gets a bounded grace period.
   shutdownTimer ??= setTimeout(() => process.exit(1), 5_000).unref();
   if (suspend && agentHost) agentHost.suspend();
   else { agentHost?.close(); controller.abort(new Error(suspend ? 'Owner disconnected.' : 'Stopped.')); }
@@ -109,8 +111,6 @@ try {
   register({ tsconfig: await stat(tsconfig).then(() => tsconfig, () => false) });
   const {  inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
-  createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext,
-  listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
 } = await import(coreUrl);
   const core = await import(coreUrl);
   // IPC callbacks execute outside the async scope that registered the listener.
@@ -135,7 +135,7 @@ try {
           id: manifest.projectId,
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
-          entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases,
+          entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [],
           runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
@@ -180,7 +180,37 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR = assistant.workdir;
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
-    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), agentStoreDir: path.join(dataDir, 'agents') } };
+    const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
+      localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+    const { createServerRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
+    const connection = core.databaseConnectionFromEnv();
+    if (connection) runtimePersistence = createServerRuntimePersistence({ ...connection, workspace: runtimeWorkspace, resolveProject: true });
+    if (runtimePersistence && request.method === 'run' && request.resumeAgent) {
+      const deadline = Date.now() + 35_000;
+      const acquire = async operation => {
+        while (true) {
+          controller.signal.throwIfAborted();
+          try { return await operation(); }
+          catch (error) {
+            if (error.code !== 'RUNTIME_STORAGE_OWNER_CONFLICT' || Date.now() >= deadline) throw error;
+            await wait(250, undefined, { signal: controller.signal });
+          }
+        }
+      };
+      // A killed worker cannot release its leases. Wait for expiry without
+      // sharing ownership tokens or replaying any project/model operation.
+      const persistence = runtimePersistence;
+      runtimePersistence = { ...persistence,
+        acquire: (...args) => acquire(() => persistence.acquire(...args)),
+        agentStorage: (...args) => {
+          const factory = persistence.agentStorage(...args);
+          return { ...factory, open: () => acquire(() => factory.open()) };
+        },
+      };
+    }
+    const storage = { host: 'local', local: { runtimeWorkspace, runtimePersistence } };
+    const requireRuntimePersistence = () => { if (!runtimePersistence) throw new Error('Sign in to SteamHarness Server to access conversation history.'); return runtimePersistence; };
+
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
     const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
@@ -252,7 +282,7 @@ try {
             try { return await agent.controlAgentSession(request.conversationId, prepared); }
             catch (error) {
               if (error.code !== 'AGENT_NOT_READY') throw error;
-              if (prepared.type === 'fork') return agent.forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: prepared });
+              if (prepared.type === 'fork') return agent.forkStoredAgentConversation({ persistence: requireRuntimePersistence(), conversationId: request.conversationId, command: prepared });
               if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
               if (runFinished) throw Object.assign(new Error(runFailure ?? 'The workflow ended without an active agent session.'), { code: 'AGENT_SESSION_ENDED' });
               await new Promise(resolve => setTimeout(resolve, 25));
@@ -331,23 +361,21 @@ try {
       await send('result', { deleted: true });
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
-      if (typeof target.database !== 'string') throw new Error('A declared database alias is required.');
+      if (request.kind !== 'knowledge' || typeof target.knowledgeBase !== 'string') throw new Error('A declared resource alias is required.');
       const registration = core.selectProjectEntry(await core.readProjectManifestFromDirectory(projectDir), request.project.entryId);
-      const local = core.createLocalDatabaseResolver();
       const connection = core.databaseConnectionFromEnv();
-      const remote = connection && core.createRemoteDatabaseResolver(connection);
-      const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
-      const database = databases.get(target.database);
-      if (request.kind === 'knowledge') await send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
-      else if (target.key) await send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
-      else throw new Error('A database key is required.');
+      if (request.kind === 'knowledge') {
+        const bases = core.createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.knowledgeBases ?? [], host: connection ? core.createServerKnowledgeBaseHost(connection) : undefined });
+        const base = bases.get(target.knowledgeBase);
+        await send('result', target.documentId ? await base.getDocument(target.documentId) ?? null : await base.listDocuments({ pageSize: 100 }));
+      } else { throw new Error('Unsupported resource kind.'); }
     } else if (request.method === 'fork-conversation') {
-      const { forkAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      if (typeof forkAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
-      await send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
+      const { forkStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof forkStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
+      await send('result', await forkStoredAgentConversation({ persistence: requireRuntimePersistence(), conversationId: request.conversationId, command: request.command }));
     } else if (request.method === 'isolate-conversation') {
-      const { isolateAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      if (typeof isolateAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
+      const { isolateStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof isolateStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
       const replacements = [], files = [];
       const includedFiles = new Set(request.fileIds ?? []);
       // Copies have deterministic identities so a lost receipt can be retried.
@@ -369,30 +397,19 @@ try {
         if (source.reference.path) replacements.push({ from: source.reference.path, to: previewPath });
         replacements.push({ from: id, to: newId });
       }
-      await isolateAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), sourceConversationId: request.sourceConversationId,
+      await isolateStoredAgentConversation({ persistence: requireRuntimePersistence(), sourceConversationId: request.sourceConversationId,
         conversationId: request.conversationId, targetId: request.targetId, replacements, retireSource: request.retireSource === true });
       await send('result', { replacements, files });
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
-      const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });
+      const { cancelStoredAgentConversation, deleteStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      await (request.method === 'delete-conversation' ? deleteStoredAgentConversation : cancelStoredAgentConversation)({ persistence: requireRuntimePersistence(), conversationId: request.conversationId });
       if (request.method === 'cancel-conversation') { await send('result', { cancelled: true }); }
       else {
-      for (const [storageKind, rootDir] of [['kv', path.join(dataDir, 'kv')], ['persistent_value', path.join(dataDir, 'values')]]) {
-        const entries = [];
-        let cursor;
-        do {
-          const page = await listLocalProjectKVEntries({ rootDir, storageKind, projectId: `${request.project.id}:${request.project.entryId}`, scope: 'conversation', conversationId: request.conversationId, pageSize: 100, cursor });
-          entries.push(...page.items); cursor = page.nextCursor;
-        } while (cursor);
-        for (const entry of entries) { await deleteLocalProjectKVEntry({ ...entry, rootDir }); }
-      }
       for (const directory of await readdir(filesDir).catch(() => [])) {
         if (!/^wf_[a-f0-9]{32}$/.test(directory)) { continue; }
         const file = await readManagedFile(directory).catch(() => undefined);
         if (file?.reference.conversationId === request.conversationId) { await rm(path.join(filesDir, directory), { recursive: true, force: true }); }
       }
-      const agentDirectory = path.join(dataDir, 'agents', createHash('sha256').update(request.conversationId).digest('hex'));
-      await rm(agentDirectory, { recursive: true, force: true });
       await send('result', { deleted: true });
       }
     } else { throw new Error('Unknown runtime method.'); }
@@ -407,6 +424,7 @@ try {
   // Flush those replies before closing IPC, so callers get the real failure.
   while (activeAgentControls.size) await Promise.all([...activeAgentControls]);
   agentHost?.close();
+  await runtimePersistence?.close();
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }
   // Cleanup has joined the durable scheduler and released its storage owner.
   // A disconnected worker has no further jobs; an unfinished HTTP body must

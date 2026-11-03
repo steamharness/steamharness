@@ -24,7 +24,7 @@ describe('Kanban runtime diagnostic evidence', () => {
   });
   it('bounds history and never retains KV keys, values or file payloads', () => {
     const diagnostics = new KanbanDiagnostics();
-    for (let i = 0; i < 60; i++) diagnostics.record({ requestId: String(i), operation: 'kv.setValue', input: { database: 'data', key: 'sensitive', value: 'secret' } }, String(i), Date.now(), []);
+    for (let i = 0; i < 60; i++) diagnostics.record({ requestId: String(i), operation: 'database.query', input: { database: 'data', request: { operation: 'insert', data: { sensitive: 'secret' } } } }, String(i), Date.now(), []);
     expect(diagnostics.snapshot()).toHaveLength(50);
     expect(diagnostics.snapshot()[0]!.configurationId).toBe('10');
     expect(JSON.stringify(diagnostics.snapshot())).not.toMatch(/sensitive|secret/);

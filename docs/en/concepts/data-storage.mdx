@@ -1,122 +1,67 @@
 ---
-title: "Project data storage"
-description: "Independent database spaces"
+title: "Project storage"
+description: "Relational resources, independent knowledge bases and runtime storage"
 ---
 
-# Independent database spaces
+# Project storage
 
-A database is an independent resource of a local or server host. One `spaceId` contains KV, knowledge documents, indexes, attachments and revisions. Multiple projects and entries may receive access. Deleting a project does not delete its spaces.
+SteamHarness manages business models, knowledge content and runtime history separately. Persistent access is authorized by Server. Server and PostgreSQL may run locally: service connectivity is required, internet access is not.
 
-## Record database references
+| Data | Storage and isolation | Project API |
+| --- | --- | --- |
+| Custom business models | Independent PostgreSQL database and roles for each explicitly created resource | `context.databases.connect(descriptor)` |
+| Knowledge documents, chunks, indexes and attachment metadata | Shared platform tables isolated by knowledge UUID and account grants | `context.knowledgeBases.get(alias)` |
+| Conversations, messages, runs, queues, usage and Agent state | Shared platform tables isolated by account and runtime space | Host runtime storage |
+| Knowledge attachment contents | Private Server file storage; SQL retains metadata and checksums | `knowledge.files` |
 
-The aggregate root `config.json` stores deployment configuration. `databases` maps each unique alias to an approved database ID and contains no `entries`. Each `steamharness.json` entry lists the aliases it uses in a `databases` string array. The host manages permissions and credentials. Package entries accept alias strings only; old `{alias, databaseId}` objects and `host`, `permissions`, and `bindingRef` declarations are rejected.
+Creating a project or conversation does not create a physical database. Projects A and B can request separate resources and define different `User` tables. Sharing requires explicit binding to the same resource and authorization. Knowledge bases do not require a project-defined schema.
+
+## Business databases
+
+Declare aliases in `steamharness.database.ts` and models in `database/<alias>/steamharness.schema`. CLI generates typed Node/Browser descriptors. Use `steamharness database` for creation, grants, migrations and binding. Relational bindings are stored on Server by account, project, entry and alias, independently of legacy `config.databases`. Connecting does not create or migrate resources.
+
+```ts
+import { main } from "./.steamharness/generated/database/node/index.js";
+const db = await context.databases.connect(main);
+await db.user.create({ data: { id: "alice", name: "Alice" } });
+```
+
+See [SteamHarness Database](/en/core-api/database).
+
+## Knowledge declarations
+
+```sh
+steamharness knowledge create "Docs"
+steamharness knowledge bind . --entry main --alias docs --knowledge-base <UUID>
+```
+
+An entry declares `"knowledgeBases": ["docs"]` in `steamharness.json`. Root `config.json` stores deployment IDs:
 
 ```json
 {
   "version": 1,
-  "databases": {
-    "data": "00000000-0000-4000-8000-000000000001",
-    "archive": "00000000-0000-4000-8000-000000000002"
+  "knowledgeBases": {
+    "docs": "00000000-0000-4000-8000-000000000001"
   }
 }
 ```
 
-Each entry references its required aliases in `steamharness.json`:
-
-`steamharness.json`
-
-```json
-{
-  "defaultEntry": "agent",
-  "entries": [
-    {
-      "entryId": "agent",
-      "root": "agent"
-    },
-    {
-      "entryId": "database",
-      "root": "database"
-    }
-  ],
-  "id": "00000000-0000-4000-8000-000000000001",
-  "name": "Example",
-  "version": "1.0.0"
-}
-```
-
-`agent/steamharness.json`
-
-```json
-{
-  "type": "conversation",
-  "name": "Agent",
-  "entry": "index.ts",
-  "databases": [
-    "data",
-    "archive"
-  ]
-}
-```
-
-`database/steamharness.json`
-
-```json
-{
-  "type": "workflow",
-  "name": "Database",
-  "entry": "index.ts",
-  "databases": [
-    "data"
-  ]
-}
-```
-
-Replace example UUIDs with IDs approved by your host. Use one alias for each database, share it between entries, and associate multiple databases with an entry when needed. Application code uses `context.databases.get("data")`. To migrate every consumer, change `databases.data` once in `config.json`; subsequent executions resolve the new ID.
-
-The `STEAMHARNESS_PROJECT_CONFIG` environment variable accepts a JSON object, such as `{"databases":{"data":"00000000-0000-4000-8000-000000000003"}}`. It overrides database IDs by alias, taking precedence over the file. A complete configuration can also be provided without a file. Unknown aliases, invalid UUIDs, and duplicate database IDs fail explicitly. Configuration does not execute project code or automatically load `.env`. Inject the variable when starting the host. Uploads, archives, and Store distributions preserve authored `config.json` values without writing the machine's environment overrides into source.
-
-Host grants independently control `kv.read/write` and `knowledge.read/write`, using `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. KV listing applies the granted key range before pagination and counting. Client-supplied key prefixes may only narrow that range.
-
-## Request and approval
-
-1. Open **Databases** in the Studio sidebar or Steam tools and use the plus icon to request access. Server Web provides a request action in its database directory and a **Requests and permissions** page. CLI `databases` commands continue to support requests and reviews.
-2. Select the local or server host, consuming project and entry, alias, new or existing database, and read/write scopes. A submitted request is `pending`; no space is created and data access remains unavailable.
-3. The local host user reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
-4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. No manifest reference is required before requesting access.
-5. In CLI Web, open **Project information → Databases**, select the link icon and enter the alias and approved ID. Saving updates root `config.json` and adds the alias to the entry's owning `steamharness.json`; it does not create a database or grant access. CLI Web displays the name, ID, connection status, host and sharing entries. Requests, reviews and grant maintenance belong to host interfaces or CLI commands.
-
-CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists its catalog and data in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
-
-## Browse data
-
-The Studio directory defaults to **Used by this project**, with local, server and all filters and name, ID or alias search. A database shared by multiple entries appears once with its consuming entries. Open a database, KV or knowledge child in an independent editor tab using the same paginated list and detail editor as the bottom resources panel. Opening the same target again reveals its tab. Host management can inspect retained local data; navigation from a project entry still enforces that entry grant.
-
-The bottom KV and knowledge panels select databases directly, deduplicating references across projects and entries by ID and displaying host-managed names. Different databases with the same name include their IDs. The database determines its local or server location, shown by an icon without a separate host selector. Name updates and switches to entries sharing the same database preserve the current content and unsaved drafts.
-
-Open project data tabs validate the alias against the database ID and host they opened. After migrating an ID through `config.json` or an environment override, close the old tab and reopen the database. Drafts from old tabs cannot write into the replacement database. Account changes cancel host requests and reviews that have not been submitted.
-
-Server Web uses a directory and database tabs, with server pagination, project filtering, search, KV list and detail editing, knowledge, attachments and a separate requests and permissions page. It manages server databases and does not read local SQLite.
-
-CLI Web's browse icon opens the corresponding Studio data tab. A standalone Web session reports that data preview is unavailable; use Studio or Server Web to browse.
-
-## Use and share
+Replace the example UUID with the created resource ID. Entries may share an alias, and an entry may declare multiple knowledge bases. `STEAMHARNESS_PROJECT_CONFIG` accepts JSON such as `{"knowledgeBases":{"docs":"00000000-0000-4000-8000-000000000002"}}` to override IDs by alias. It does not load `.env`; distribution retains the original file without writing environment values into source. Missing or duplicate aliases and invalid IDs fail explicitly.
 
 ```ts
-const database = context.databases.get("data");
-await database.transaction(async db => {
-  await db.kv.setValue("settings:theme", "dark");
-  await db.knowledge.createDocument({
-    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
-  });
-});
-const theme = await database.kv.getValue("settings:theme");
-const document = await database.knowledge.getDocument("guide");
+const knowledge = context.knowledgeBases.get("docs");
+const doc = await knowledge.createDocument({ title: "Guide", markdown: "# Guide" });
+await knowledge.editDocument({ id: doc.id, markdown: "# Updated", expectedRevision: doc.revision });
 ```
 
-Project and entry IDs authorize access and record its source; the space addresses data. Ordinary KV cannot read knowledge-reserved keys. Attachments require knowledge permissions. Every operation, transaction, CAS, lock and revision subscription rechecks authorization.
+Server checks account grants and consumer bindings. Registered projects additionally require membership capabilities and matching entry declarations. After changing an ID, establish a matching Server binding and reopen the entry. Old clients cannot write a draft to a replacement resource. Grant changes and revocation invalidate clients too. `knowledge unbind` removes the Server binding while retaining the declaration for later rebinding. See [Knowledge API](/en/core-api/knowledge-documents).
 
-Two projects with approved bindings to the same space share keys, knowledge documents and attachments. Conversation KV remains isolated by project, entry and conversation identity. Knowledge indexes commit together with document mutations.
+## Management
 
-## Unavailable references
+Server Web offers relational and knowledge catalogs with server pagination, search and resource creation. Resource pages manage account grants and project entry bindings. Relational pages show applied models, fingerprints and table data; knowledge pages manage documents and attachments. Row mutations require a complete stable key and current row version. Conflicts retain drafts; navigation protects unsaved edits.
 
-Unknown IDs and unavailable or revoked grants expose errors and host management actions. Other entries remain manageable and runnable. Uploads, archives and Store distributions preserve alias-to-ID references. A reference carries no credentials or permissions; the host always validates the caller, project and entry.
+Studio's database view and CLI Web's project database panel show resource references and open the corresponding Server Web page without putting account tokens in links. These interfaces no longer expose KV editing or a local/remote KV switch. Legacy KV runtime and local storage APIs are removed without compatibility or automatic migration.
+
+## Persistent history and failures
+
+Platform runtime storage owns history independently of business and knowledge resource grants and lifecycles. Deleting a project does not automatically delete independent resources. Disconnection, revocation and storage failures fail explicitly without switching to local KV, JSON or SQLite history or clearing valid sign-in. See [runtime storage](/en/core-api/runtime-storage).

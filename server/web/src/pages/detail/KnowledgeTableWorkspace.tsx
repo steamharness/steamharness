@@ -96,7 +96,7 @@ export function KnowledgeTableWorkspace({ repository, readOnly, refreshToken = 0
         <form className="flex w-full items-center gap-2 sm:max-w-md" onSubmit={event => { event.preventDefault(); if (!loading) search(query); }}>
           <SearchField className="min-w-0 flex-1" aria-label={t("searchKnowledgeDocument")} placeholder={t("searchDocumentPlaceholder")} value={query} onChange={event => setQuery(event.target.value)} />
           <IconActionButton variant="outline" label={t("searchKnowledgeDocument")} disabled={loading} type="submit"><Search /></IconActionButton>
-          {(query || searching) && <IconActionButton label={tServer("projectKvClear")} disabled={loading} onClick={() => { setQuery(""); search(""); }}><X /></IconActionButton>}
+          {(query || searching) && <IconActionButton label={tServer("commonClear")} disabled={loading} onClick={() => { setQuery(""); search(""); }}><X /></IconActionButton>}
         </form>
         {!readOnly && <Button size="sm" onClick={() => setSelection({})}><Plus data-icon="inline-start" />{t("newDocument")}</Button>}
       </div>

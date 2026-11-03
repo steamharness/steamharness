@@ -1,4 +1,5 @@
-import { runApprovedProject as runLocalProjectWithReport } from "../test-databases";
+import { createMemoryRuntimePersistence } from "steamharness/runtime-storage";
+import { createExampleKnowledgeBases, runApprovedProject as runLocalProjectWithReport } from "../test-databases";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +13,6 @@ import {
   type ExecutionReport,
   type ExecutionStorageOptions,
   type FileReference,
-  type KVStore,
   type RuntimeEvent,
   type StructureReport,
   type UserInputContext,
@@ -300,22 +300,15 @@ describe("workspace workflow offline runtime smoke", () => {
 });
 
 describe("conversation knowledge persistence", () => {
-  it("writes a conversation transcript into PersistentValue-backed knowledge documents", async () => {
-    const persistentValueStore = createMemoryKVStore();
+  it("writes a conversation transcript through the independent knowledge context", async () => {
+    const knowledgeBases = createExampleKnowledgeBases();
     const report = await runLocalProjectWithReport({
       projectDir: projectDirectory("conversation-knowledge"),
       projectName: "conversation-knowledge",
       args: ["--message", "记录真实写入", "--title", "Persistent Conversation"],
       conversationId: "persistent-conversation-thread",
-      storage: {
-        host: "local",
-        local: {
-          kvStoreDir: await createTempDir("conversation-knowledge-real-kv-"),
-          persistentValueStore,
-        },
-      },
       maxNodeExecutions: 20,
-    }, persistentValueStore);
+    }, undefined, knowledgeBases);
 
     expect(report.status).toBe("success");
     expect(report.result.ok).toBe(true);
@@ -325,40 +318,9 @@ describe("conversation knowledge persistence", () => {
 
     const output = readOutputObject((report.result.data as { output: unknown }).output);
     const documentId = String(output.documentId);
-    const documentKey = [...persistentValueStore.values.keys()].find(key => key.endsWith(`:knowledge.document.${documentId}`))!;
-    const projectStoragePrefix = documentKey.slice(0, documentKey.indexOf(":knowledge.document."));
-    expect(projectStoragePrefix).not.toContain("2162c99c-4e8a-4ef6-9ba0-e368d36bf198");
-    const index = persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.documents`);
-    const headPageId = (index as { headPageId?: unknown })?.headPageId;
-    const page = typeof headPageId === "string"
-      ? persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.documents.page.${headPageId}`)
-      : undefined;
-    const locator = persistentValueStore.values.get(
-      `${projectStoragePrefix}:knowledge.documents.locator.${documentId}`,
-    );
-    const document = persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.document.${documentId}`);
-
-    // Verifies the real non-dry-run path writes the conversation transcript
-    // through the injected PersistentValue store and bounded v2 index records.
+    const document = await knowledgeBases.get("data").getDocument(documentId);
     expect(output.knowledgeWritten).toBe(true);
-    expect(index).toMatchObject({
-      version: 2,
-      total: 1,
-      nextSequence: 1,
-      headPageId: expect.any(String),
-    });
-    expect(page).toMatchObject({
-      version: 2,
-      entries: [expect.objectContaining({
-        sequence: 1,
-        summary: expect.objectContaining({ id: documentId, title: "Persistent Conversation" }),
-      })],
-    });
-    expect(locator).toMatchObject({
-      version: 2,
-      pageId: headPageId,
-      sequence: 1,
-    });
+    expect((await knowledgeBases.get("data").listDocuments()).total).toBe(1);
     expect(document).toMatchObject({
       id: documentId,
       title: "Persistent Conversation",
@@ -860,53 +822,6 @@ function createFixtureRuntimeEventRecorder(projectName: ProjectName) {
   };
 }
 
-function createMemoryKVStore(): KVStore & {
-  values: Map<string, unknown>;
-} {
-  const values = new Map<string, unknown>();
-  const namespaceTails = new Map<string, Promise<void>>();
-  function createKey(input: {
-    storageKind: string;
-    scope: string;
-    projectId: string;
-    conversationId?: string;
-    key: string;
-  }): string {
-    return [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
-  }
-
-  return {
-    values,
-    async getValue(input) {
-      return values.get(createKey(input));
-    },
-    async setValue(input) {
-      values.set(createKey(input), input.value);
-    },
-    async updateValue(input, updater) {
-      const key = createKey(input);
-      const next = updater(values.get(key));
-      values.set(key, next);
-      return next;
-    },
-    async withNamespaceLock(input, operation) {
-      const namespace = [input.storageKind, input.scope, input.projectId, input.conversationId ?? ""].join(":");
-      const previous = namespaceTails.get(namespace) ?? Promise.resolve();
-      let release!: () => void;
-      const completion = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      namespaceTails.set(namespace, completion);
-      await previous;
-      try {
-        return await operation();
-      } finally {
-        release();
-      }
-    },
-  };
-}
-
 function summarizeStructure(report: StructureReport) {
   // keep structure snapshots stable across Windows and POSIX hosts.
   const projectFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
@@ -1060,7 +975,7 @@ async function createFixtureStorage(
 ): Promise<ExecutionStorageOptions> {
   return {
     host: "local",
-    local: { kvStoreDir: await createTempDir(`${projectName}-kv-`) },
+    local: { runtimePersistence: createMemoryRuntimePersistence() },
   };
 }
 

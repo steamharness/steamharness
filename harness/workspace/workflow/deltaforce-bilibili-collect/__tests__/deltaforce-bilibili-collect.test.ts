@@ -1,4 +1,4 @@
-import { runApprovedProject as runLocalProjectWithReport } from "../../../test-databases";
+import { createExampleKnowledgeBases, runApprovedProject as runLocalProjectWithReport } from "../../../test-databases";
 /**
  * Tests for the M3-driven deltaforce-bilibili-collect steamharness.
  *
@@ -332,8 +332,8 @@ describe("deltaforce-bilibili-collect helpers", () => {
 });
 
 describe("deltaforce-bilibili-collect workflow runtime", () => {
-  it("writes knowledge through PersistentValue on mocked real runs", async () => {
-    const persistentValueStore = createMemoryKVStore();
+  it("writes knowledge through the independent resource on mocked real runs", async () => {
+    const knowledgeBases = createExampleKnowledgeBases();
     const report = await runWithMockConfiguration({
       args: [
         "--video-url",
@@ -343,7 +343,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Mock M3 Real Run",
       ],
-      persistentValueStore,
+      knowledgeBases,
       values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_DRY_RUN: "1",
@@ -368,7 +368,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     expect(output.items[1]?.collapsed).toBeUndefined();
     expect(String(output.items[1]?.content)).toContain("这是一段离线 fixture 描述。");
     const documentId = String(output.documentId);
-    const stored = [...persistentValueStore.records.entries()].find(([key]) => key.endsWith(`:knowledge.document.${documentId}`))?.[1];
+    const stored = await knowledgeBases.get("data").getDocument(documentId);
     expect(stored).toBeDefined();
     expect(stored).toMatchObject({
       id: documentId,
@@ -380,7 +380,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   it("uses dry-run mode without network and skips knowledge write", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const persistentValueStore = createMemoryKVStore();
+    const knowledgeBases = createExampleKnowledgeBases();
     const report = await runWithMockConfiguration({
       args: [
         "--dry-run",
@@ -389,7 +389,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Dry Run Preview",
       ],
-      persistentValueStore,
+      knowledgeBases,
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -400,11 +400,11 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     expect(output.knowledgeWritten).toBe(false);
     expect(output.dryRun).toBe(true);
     expect(output.fileId).toBe("dry-run");
-    expect(persistentValueStore.records.size).toBe(0);
+    expect((await knowledgeBases.get("data").listDocuments()).total).toBe(0);
   });
 
   it("exercises the real minimax client with a stubbed global fetch", async () => {
-    const persistentValueStore = createMemoryKVStore();
+    const knowledgeBases = createExampleKnowledgeBases();
     const fetchMock = createMinimaxFetchMock({
       uploadFileId: "remote-file-1",
       transcript: "远端 MiniMax M3 输出 fixture。",
@@ -419,7 +419,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Remote M3 Run",
       ],
-      persistentValueStore,
+      knowledgeBases,
       values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_API_KEY: "test-key",
@@ -436,12 +436,12 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     expect(output.knowledgeWritten).toBe(true);
     expect(output.fileId).toBe("remote-file-1");
     expect(output.transcriptLength).toBeGreaterThan(0);
-    const stored = [...persistentValueStore.records.entries()].find(([key]) => key.endsWith(`:knowledge.document.${output.documentId}`))?.[1];
+    const stored = await knowledgeBases.get("data").getDocument(String(output.documentId));
     expect(stored?.markdown).toContain("远端 MiniMax M3 输出 fixture。");
   });
 
   it("streams in-progress output chunks between collection steps", async () => {
-    const persistentValueStore = createMemoryKVStore();
+    const knowledgeBases = createExampleKnowledgeBases();
     const chunks: string[] = [];
     const report = await runWithMockConfiguration({
       args: [
@@ -452,7 +452,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Streaming Progress Run",
       ],
-      persistentValueStore,
+      knowledgeBases,
       values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_DRY_RUN: "1",
@@ -486,7 +486,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   });
 
   it("reuses mm_file and skips bilibili download/upload", async () => {
-    const persistentValueStore = createMemoryKVStore();
+    const knowledgeBases = createExampleKnowledgeBases();
     const fetchMock = createMinimaxFetchMock({
       uploadFileId: "should-not-be-used",
       transcript: "复用 mm_file 的理解结果。",
@@ -501,7 +501,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Reuse Existing MiniMax File",
       ],
-      persistentValueStore,
+      knowledgeBases,
       values: {
         MINIMAX_API_KEY: "test-key",
       },
@@ -533,7 +533,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   });
 
   it("keeps streamed progress and appends the final transcript as plain text output", async () => {
-    const persistentValueStore = createMemoryKVStore();
+    const knowledgeBases = createExampleKnowledgeBases();
     const report = await runWithMockConfiguration({
       args: [
         "--dry-run",
@@ -544,7 +544,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "--document-title",
         "Plain Text Output",
       ],
-      persistentValueStore,
+      knowledgeBases,
     });
 
     if (report.status !== "success" || !report.result.ok) {
@@ -571,7 +571,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
 
 async function runWithMockConfiguration(options: {
   args: string[];
-  persistentValueStore?: KVStore;
+  knowledgeBases?: ReturnType<typeof createExampleKnowledgeBases>;
   values?: Record<string, string>;
   onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
 }) {
@@ -585,14 +585,12 @@ async function runWithMockConfiguration(options: {
       storage: {
         host: "local",
         local: {
-          kvStoreDir,
-          persistentValueStore: options.persistentValueStore,
         },
       },
       fileStore: createMemoryFileStore(),
       maxNodeExecutions: 20,
       onRuntimeEvent: options.onRuntimeEvent,
-    }, options.persistentValueStore);
+    }, undefined, options.knowledgeBases);
   } finally {
     await rm(kvStoreDir, { recursive: true, force: true });
   }

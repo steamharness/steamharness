@@ -4,15 +4,15 @@ interface Output { errCode: number; errMessage: string; value: unknown }
 const project = steamharness.defineProject<Input, Output>({
   name: "database-space-demo",
   async run(input, context) {
-    const database = context.databases.get("data");
-    if (input.action === "write") await database.transaction(async db => {
-      await db.kv.setValue("example", input.value);
-      if (await db.knowledge.getDocument("example")) await db.knowledge.editDocument({ id: "example", markdown: input.value });
-      else await db.knowledge.createDocument({ id: "example", title: "Shared example", markdown: input.value });
-    });
+    const knowledge = context.knowledgeBases.get("data");
+    if (input.action === "write") {
+      const previous = await knowledge.getDocument("example");
+      if (previous) await knowledge.editDocument({ id: "example", markdown: input.value, expectedRevision: previous.revision });
+      else await knowledge.createDocument({ id: "example", title: "Shared example", markdown: input.value });
+    }
     const value = input.action === "call"
       ? await context.entries.get("reader").runEntrypoint("main", ["--action", "read"])
-      : { kv: await database.kv.getValue("example"), document: await database.knowledge.getDocument("example") };
+      : await knowledge.getDocument("example");
     return { errCode: 0, errMessage: "", value };
   },
 });

@@ -10,9 +10,7 @@
       "name": "@steamharness/smoke-workflow",
       "root": ".",
       "entry": "index.ts",
-      "databases": [
-        "data"
-      ]
+      "databases": []
     }
   ],
   "defaultEntry": "main"

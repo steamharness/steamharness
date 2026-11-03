@@ -33,7 +33,7 @@ workflow.defineProject<Input, Output>(
 | 名称 | 说明 |
 | --- | --- |
 | `input` | 业务输入，Workflow 来自所选入口的 `createInput(context)`，Conversation 来自 `executor.createInput(context)`。 |
-| `context` | runtime 注入的 `RunContext`，包含 providers、KV、conversation、files、metadata、nodeHooks 和 abortSignal。 |
+| `context` | runtime 注入的 `RunContext`，包含 providers、数据库、conversation、files、metadata、nodeHooks 和 abortSignal。 |
 
 ## 返回值
 

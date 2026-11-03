@@ -31,6 +31,23 @@ pnpm start
 
 不要提交真实 `.env`、数据库连接串或服务密钥。`*.env.example` 只维护变量结构和占位值。
 
+## 独立的本地关系数据库
+
+调试平台 Agent 存储时，在源码检出的 Server 目录运行：
+
+```sh
+corepack pnpm database:dev up
+corepack pnpm database:dev server
+```
+
+第一条命令启动独立的 `postgres:17-alpine` 容器 `steamharness-relational-postgres`，只绑定 `127.0.0.1:18125`，平台库名为 `steamharness_platform`；第二条在 `127.0.0.1:18126` 启动本地 Server。运行数据使用 `.data/relational-dev`，不加载普通开发 `.env`，连接目标固定为此本机数据库。
+
+首次启动在 `docker/relational-dev/.env` 生成随机数据库密码、认证密钥和初始化管理员密码，文件由 Git 忽略。初始化账号为 `admin@relational.local`，密码从该本机文件读取；不要复制到源码、文档或命令输出。既有数据库容器和数据卷不受影响。
+
+`corepack pnpm database:dev status` 查看容器状态，`corepack pnpm database:dev down` 停止此环境并保留数据卷。退出 Server 使用 Ctrl+C。`corepack pnpm test:runtime-storage` 另起临时 PostgreSQL 17 容器执行完整存储契约与 HTTP 测试，结束后自动清理。
+
+平台记录写入共享的 `steamharness_runtime` schema，不按项目创建 PostgreSQL database。Core 接入见 [Agent 服务端存储](/core-api/runtime-storage)。
+
 ## 持久化配置
 
 至少为以下内容准备备份和写入权限：
@@ -47,7 +64,7 @@ pnpm start
 | `STEAMHARNESS_API_PUBLIC_BASE_URL` | API 的公开 HTTP(S) origin。 |
 | `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | 文档站点地址。 |
 
-Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、KV 和知识库数据都应纳入备份策略。
+Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、平台历史、业务库和知识库数据都应纳入备份策略。
 
 ## 管理员名称与共享账号
 
@@ -72,3 +89,9 @@ Alpha 和正式版使用独立的运行目录、进程、日志和端口。两�
 发布流水线只从受保护 ref 读取生产变量，并校验构建版本和静态资源。恢复操作不删除数据卷、不提交运行时配置，也不把密钥写入 artifact。
 
 健康信息中的 `deployment.server` 与 `deployment.serverWeb` 可携带独立的 `deploymentId`。相同产品版本多次部署时，用该标识和 `commitSha` 区分实际来源；`currentRelease.docsUrl` 指向本次部署的同语言日志，旧发布元数据继续使用版本日志地址。
+
+`corepack pnpm test:relational-databases` 会另起临时 PostgreSQL 17 容器，验证独立业务库、读写隔离、撤销连接、迁移回滚及账号鉴权下的真实 CLI 链路，结束后自动清理。业务资源每个 UUID 对应独立 database；平台 Agent 记录仍使用平台库的共享关系表。
+
+本地环境自动设置 `STEAMHARNESS_SERVER_DATABASE_ADMIN_URL`。启用资源管理时，该变量指向专用于建库的 PostgreSQL 超级用户连接；不设置时关系库管理返回 `DATABASE_UNAVAILABLE`。此身份只在 Server 中使用，不发送给项目或 Browser。初始化会撤销控制库、postgres、template1 的 PUBLIC CONNECT/TEMPORARY；其他可连接库若仍向 PUBLIC 开放，平台会拒绝签发业务身份。因此应使用独立 PostgreSQL 实例，例如上述 Docker 环境。
+
+Node 入口通过账号 API Key 获取绑定资源的临时 SQL 身份，需同时连通此 Server 与 PostgreSQL；连接池和凭据由宿主保留。`database bind` 在宿主按账号、项目、入口和别名存映射，源码包不携带映射。绑定不授予资源权限；重新绑定、解除绑定和授权撤销会终止现有 SQL 会话。Browser 通过宿主代理调用受限表 API，每次校验绑定、访问版本与 schemaHash；旧 KV 路径已移除。

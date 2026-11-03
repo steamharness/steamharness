@@ -1,5 +1,7 @@
 import { normalizeProjectManifest } from "@steamharness/project-manifest";
-import { createDatabaseSpaceRouter } from './database-spaces';
+import { createRuntimeStorageRouter } from './runtime-storage';
+import { createDatabaseRouter } from './databases';
+import { createKnowledgeBaseRouter } from './knowledge-bases';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
@@ -374,45 +376,6 @@ function readOptionalIntegerInRange(
   return parsed;
 }
 
-function readOptionalKVScope(value: unknown): "project" | "conversation" | undefined {
-  const scope = readOptionalString(value, "scope");
-  if (scope === undefined || scope === "all") {
-    return undefined;
-  }
-  if (scope === "project" || scope === "conversation") {
-    return scope;
-  }
-
-  throw new HttpError(400, 400, `Invalid KV scope "${scope}".`);
-}
-
-function readRequiredProjectKVScope(value: unknown): "project" | "conversation" {
-  const scope = readOptionalKVScope(value);
-  if (scope === undefined) {
-    throw new HttpError(400, 400, "scope must be project or conversation.");
-  }
-  return scope;
-}
-
-function readOptionalKVValueType(value: unknown) {
-  const valueType = readOptionalString(value, "valueType");
-  if (valueType === undefined || valueType === "all") {
-    return undefined;
-  }
-  if (
-    valueType === "null" ||
-    valueType === "array" ||
-    valueType === "object" ||
-    valueType === "string" ||
-    valueType === "number" ||
-    valueType === "boolean"
-  ) {
-    return valueType;
-  }
-
-  throw new HttpError(400, 400, `Invalid KV valueType "${valueType}".`);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -509,7 +472,9 @@ export function createApiRouter(
 ): Router {
   const router = Router();
   router.use(createGroupRouter(storage));
-  router.use(createDatabaseSpaceRouter(storage));
+  router.use(createRuntimeStorageRouter(storage));
+  router.use(createDatabaseRouter(storage));
+  router.use(createKnowledgeBaseRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
@@ -698,18 +663,10 @@ export function createApiRouter(
   router.post('/projects/:name/entries/:entryId/resources/read', authenticate, json, asyncHandler(async(req,res)=>{
     await requireProjectReadAccess(req,storage);
     const body=readRequiredRecord(req.body,'body');
-    if(Object.keys(body).some(key=>!['kind','database','key','scope','conversationId','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported database resource fields.');
-    const kind=requireString(body['kind'],'kind');
-    if(!['kv','knowledge'].includes(kind))throw new HttpError(400,400,'Unsupported database resource kind.');
-    const conversationId=readOptionalString(body['conversationId'],'conversationId');
-    const databases=await storage.entryDatabases(req.params.name,req.params.entryId,requestActor(req),'draft',conversationId);
-    const database=databases.get(requireString(body['database'],'database'));
-    let data:unknown;
-    if(kind==='knowledge')data=body['documentId']?await database.knowledge.getDocument(requireString(body['documentId'],'documentId')):await database.knowledge.listDocuments({pageSize:100});
-    else {
-      if(body['scope']!==undefined&&!['project','conversation'].includes(String(body['scope'])))throw new HttpError(400,400,'Invalid database resource scope.');
-      data=await(body['scope']==='conversation'?database.kv.conversation:database.kv).getValue(requireString(body['key'],'key'));
-    }
+    if(Object.keys(body).some(key=>!['kind','knowledgeBase','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported knowledge resource fields.');
+    if(body['kind']!=='knowledge')throw new HttpError(400,400,'Unsupported resource kind.');
+    const base=(await storage.entryKnowledgeBases(req.params.name,req.params.entryId,requestActor(req))).get(requireString(body['knowledgeBase'],'knowledgeBase'));
+    const data=body['documentId']?await base.getDocument(requireString(body['documentId'],'documentId')):await base.listDocuments({pageSize:100});
     res.json(ok(data??null));
   }));
 
@@ -720,7 +677,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const body = isRecord(req.body) ? req.body : {};
       const call = readKanbanBridgeCall(body["call"]);
-      const readOperation = ["runtime.getLocale", "files.readFile", "kv.getValue", "database.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
+      const readOperation = (call.operation === "database.resolve" || call.operation === "database.query" && (call.input.request as {operation?: string})?.operation === "rows") || ["runtime.getLocale", "files.readFile", "knowledge.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
       await requireProjectReadAccess(req, storage);
       if (!readOperation) await requireProjectStorageWriteAccess(req, storage);
       const target = body["target"] === undefined ? "draft" : await readableTarget(req, storage, body["target"]);
@@ -1392,8 +1349,9 @@ function readConfigurationRevisions(input: unknown): Record<string, number> | un
   const value = readRequiredRecord(input, "expectedConfigurationRevisions");
   return Object.fromEntries(Object.entries(value).map(([entryId, revision]) => {
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new HttpError(400, 400, "Invalid entryId.");
-    const parsed = readOptionalNonNegativeInteger(revision, `expectedConfigurationRevisions.${entryId}`);
-    if (parsed === undefined) throw new HttpError(400, 400, "Configuration revisions must be non-negative integers.");
-    return [entryId, parsed];
+    if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+      throw new HttpError(400, 400, `expectedConfigurationRevisions.${entryId} must be a non-negative integer.`);
+    }
+    return [entryId, revision];
   }));
 }

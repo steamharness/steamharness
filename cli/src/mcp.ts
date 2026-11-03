@@ -29,8 +29,6 @@ export interface McpCliOptions {
   projectDir: string;
   dataDir: string;
   fileStoreDir: string;
-  kvStoreDir: string;
-  persistentValueStoreDir: string;
   fileCreateStoreDir: string;
   desktopConfigDir?: string;
   cliAuthDir?: string;
@@ -99,8 +97,6 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
   assertProjectDirectory(projectDir);
   let dataDir = path.join(os.homedir(), ".steamharness");
   let fileStoreDir: string | undefined;
-  let kvStoreDir: string | undefined;
-  let persistentValueStoreDir: string | undefined;
   let fileCreateStoreDir: string | undefined;
   let desktopConfigDir: string | undefined;
   let cliAuthDir: string | undefined;
@@ -116,10 +112,6 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     switch (option) {
       case "--data-dir": dataDir = resolveAbsoluteOption(value, option); break;
       case "--file-store-dir": fileStoreDir = resolveAbsoluteOption(value, option); break;
-      case "--kv-store-dir": kvStoreDir = resolveAbsoluteOption(value, option); break;
-      case "--persistent-value-store-dir":
-        persistentValueStoreDir = resolveAbsoluteOption(value, option);
-        break;
       case "--file-create-store-dir": fileCreateStoreDir = resolveAbsoluteOption(value, option); break;
       case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
       case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
@@ -133,8 +125,6 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     projectDir,
     dataDir,
     fileStoreDir: fileStoreDir ?? path.join(dataDir, "workflow-files"),
-    kvStoreDir: kvStoreDir ?? path.join(dataDir, "workflow-kv"),
-    persistentValueStoreDir: persistentValueStoreDir ?? path.join(dataDir, "workflow-persistent-values"),
     fileCreateStoreDir: fileCreateStoreDir ?? path.join(dataDir, "workflow-created-files"),
     desktopConfigDir,
     cliAuthDir,
@@ -452,8 +442,6 @@ export class McpCliRunner implements McpRunner {
           ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
           : {}),
         ...(this.options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: this.options.cliAuthDir } : {}),
-        STEAMHARNESS_KV_STORE_DIR: this.options.kvStoreDir,
-        STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR: this.options.persistentValueStoreDir,
         STEAMHARNESS_FILE_STORE_DIR: this.options.fileStoreDir,
         STEAMHARNESS_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
         STEAMHARNESS_DESKTOP_RUNTIME_EVENTS: "0",

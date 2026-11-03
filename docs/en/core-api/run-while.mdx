@@ -28,7 +28,7 @@ workflow.runWhile<State>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `State` |Initial cycle state.|
-| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, databases, files, abortSignal.|
 | `options.name` | `string` |Diagram and the loop node titles displayed in the Trace. Default `Run while`.|
 | `options.condition` | `function` |Execute before start of each round; continue loop when return `true`. The third argument is the iteration starting at `0`.|
 | `options.run` | `function` |The body of the loop executed after the condition is hit, returning to the next round.|

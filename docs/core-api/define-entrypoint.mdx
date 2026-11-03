@@ -43,7 +43,7 @@ interface EntrypointGroupDefinition {
 | `tools` | `ToolPermissionDefinition[]` | 该入口允许调用的工具和默认审批策略。 |
 | `tokenUsage` | `TokenUsageDefinition` | 该入口的 token 用量统计配置。 |
 | `registry` | `NodeRegistryEntry[]` | 该入口可单独调试的节点。 |
-| `createContext` | `(context) => Partial<RunContext>` | 为该入口增补 providers、metadata 和 hooks。KV、PersistentValue、conversation 和 files 仍由 runtime 注入。 |
+| `createContext` | `(context) => Partial<RunContext>` | 为该入口增补 providers、metadata 和 hooks。databases、conversation 和 files 仍由 runtime 注入。 |
 
 `createInput`、`resolveParams`、registry entry 的 `createInput` 和 `createContext` 都会收到 `ExecutorContext`。Workflow 入口运行时，`entrypointId` 和 `entrypointTitle` 为当前所选入口；runtime 也会把这两个字段写入 `RunContext.metadata`、runtime event 和最终 report。
 

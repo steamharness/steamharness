@@ -3,7 +3,7 @@ import { t } from './localization';
 import type { Project } from './workflow-types';
 
 const toolTitles = {
-  databases: 'Databases', kv: 'KV Storage', knowledge: 'Knowledge Base', info: 'Project Information',
+  databases: 'Databases', info: 'Project Information',
   assistant: 'Assistant', versions: 'Versions', trace: 'Run Trace',
 } as const;
 export type InstanceTool = keyof typeof toolTitles;

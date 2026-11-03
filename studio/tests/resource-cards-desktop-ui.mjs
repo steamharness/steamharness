@@ -1,7 +1,11 @@
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
-import { approveLocalFixtureDatabase, fixtureDatabaseHost } from './approved-database-fixture.mjs';
+import { fixtureDatabaseHost } from './approved-database-fixture.mjs';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { register } from 'tsx/esm/api';
+register();
+const { runtimeStorageService } = await import('../../cli/src/__tests__/runtime-storage-service.ts');
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -36,6 +40,8 @@ for (const language of languages) {
   await writeFile(settingsPath, JSON.stringify(settings('Light Modern')));
   const catalog = JSON.parse(await readFile(path.join(root, 'extensions/studio-workstation', language === 'en' ? 'package.nls.json' : 'package.nls.zh-cn.json'), 'utf8'));
   const projects = [];
+  const remote = fixtureDatabaseHost();
+  const runtime = runtimeStorageService();
   const storageDir = path.join(dataDir, 'User/globalStorage/studio.studio-workstation/workflow/web');
   for (const type of ['conversation', 'kanban']) {
     const original = type === 'conversation' ? conversationSource : path.join(root, 'examples', type), folder = path.join(directory, type);
@@ -44,53 +50,66 @@ for (const language of languages) {
     await mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });
     await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
     await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
-    const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
+    if (type === 'kanban') await symlink(await realpath(path.join(original, 'node_modules/esbuild')), path.join(folder, 'node_modules/esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
+    const manifest = JSON.parse(await readFile(path.join(folder, 'steamharness.json'), 'utf8'));
     const data = path.join(storageDir,'projects',manifest.id,'entries',manifest.defaultEntry);
-    const database = await approveLocalFixtureDatabase(core,folder,manifest,path.join(directory,'databases'));
-    const kv = database.kv;
-    const document = await database.knowledge.createDocument({title:`${type} guide`,markdown:`# ${type} guide\n\nExact resource content.\n\n- Accessible preview`});
-    projects.push({ folder, manifest, data, kv, document });
+    const entry = manifest.entries.find(entry => entry.entryId === manifest.defaultEntry);
+    entry.knowledgeBases = ['docs'];
+    const knowledge = remote.create(manifest.id, entry.entryId, 'docs');
+    await writeFile(path.join(folder, 'config.json'), JSON.stringify({ version: 1, knowledgeBases: { docs: knowledge.requirement.databaseId } }));
+    await writeFile(path.join(folder, 'steamharness.json'), JSON.stringify(manifest));
+    let table;
+    if (type === 'kanban') {
+      await promisify(execFile)(process.execPath, [path.join(cli, 'dist/index.js'), 'database', 'generate', folder]);
+      await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: folder });
+      const { data: descriptor } = await import(pathToFileURL(path.join(folder, '.steamharness/generated/database/browser/index.js')).href);
+      table = remote.create(manifest.id, entry.entryId, 'data', { schemaHash: descriptor.schemaHash }).database;
+    }
+    remote.registerProject(manifest);
+    await mkdir(data, { recursive: true });
+    const document = await knowledge.database.knowledge.createDocument({ title: `${type} guide`, markdown: `# ${type} guide\n\nExact resource content.\n\n- Accessible preview` });
+    projects.push({ folder, manifest, data, table, document });
   }
   const [conversation, board] = projects;
   const serverProjectId = conversation.manifest.id;
   const serverDocumentId = 'shared-guide';
-  const remote = fixtureDatabaseHost(core);
   const remoteEntry = conversation.manifest.defaultEntry;
   const shared = remote.create(serverProjectId,remoteEntry);
   const denied = remote.create(serverProjectId,remoteEntry,'denied');
   await shared.database.knowledge.createDocument({id:serverDocumentId,title:'Shared server guide',markdown:'# Shared server guide\n\nShared space permission verified.'});
-  remote.revoke(denied.authorization.grant.grantId);
-  conversation.manifest.entries[0].databases.push(shared.requirement,denied.requirement);
-  await writeProjectFixture(path.join(conversation.folder,'package.json'),JSON.stringify(conversation.manifest));
-  await conversation.kv.setValue('card.value', { enabled: true, count: 7 });
-  await board.kv.setValue('studio-kanban:tasks', [{ id: 'preview-task', title: 'Saved map marker', description: 'Card preview evidence',
-    status: 'todo', priority: 'high', label: 'design' }]);
+  remote.revoke(denied.binding.id);
+  conversation.manifest.entries[0].knowledgeBases.push('shared', 'denied');
+  const config = JSON.parse(await readFile(path.join(conversation.folder, 'config.json'), 'utf8'));
+  config.knowledgeBases.shared = shared.requirement.databaseId; config.knowledgeBases.denied = denied.requirement.databaseId;
+  await writeFile(path.join(conversation.folder, 'config.json'), JSON.stringify(config));
+  await writeFile(path.join(conversation.folder, 'steamharness.json'), JSON.stringify(conversation.manifest));
+  board.table.seed([{ id: 'preview-task', title: 'Saved map marker', description: 'Card preview evidence',
+    status: 'todo', priority: 'high', label: 'design' }], 'named-map');
   const configuration = { id: 'named-map', name: 'Saved configuration', values: { title: 'Saved map', priority: 'all', labels: '["design"]', showCompleted: 'true' } };
   await writeFile(path.join(board.data, 'kanban.json'), JSON.stringify({ version: 1, revision: 0, configurations: [configuration], activeConfigurationId: configuration.id }));
   await writeFile(path.join(conversation.folder, 'result.txt'), 'Card source file');
   const tool = (id, kind, target, title, extra = {}) => ({ id, contentType: 'json', collapsed: true,
     metadata: { kind: 'agent-part', partType: 'tool' }, content: { tool: kind === 'knowledge' ? 'kb_get_document' : 'resource_tool', status: 'success',
-      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target:{entryId:target.projectId===board.manifest.id?board.manifest.defaultEntry:conversation.manifest.defaultEntry,database:target.source==='server'?'shared':'data',...target}, ...extra } } } } });
+      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target:{entryId:target.projectId===board.manifest.id?board.manifest.defaultEntry:conversation.manifest.defaultEntry,knowledgeBase:target.source==='server'?'shared':'docs',...target}, ...extra } } } } });
   const longTitle = 'Shared knowledge guide: ' + 'resource title with complete readable content '.repeat(5);
   const items = [
     tool('local-doc', 'knowledge', { source: 'local', projectId: conversation.manifest.id, documentId: conversation.document.id }, 'Local guide'),
     tool('server-doc', 'knowledge', { source: 'server', projectId: serverProjectId, documentId: serverDocumentId }, longTitle),
     { ...tool('server-list', 'knowledge', { source: 'server', projectId: serverProjectId }), content: {
       tool: 'kb_list_documents', status: 'success', input: { pageSize: 20 },
-      output: { details: { resourceCard: { kind: 'knowledge', operation: 'read', target: { source:'server',projectId:serverProjectId,entryId:remoteEntry,database:'shared' } } } },
+      output: { details: { resourceCard: { kind: 'knowledge', operation: 'read', target: { source:'server',projectId:serverProjectId,entryId:remoteEntry,knowledgeBase:'shared' } } } },
     } },
-    tool('local-kv', 'kv', { source: 'local', projectId: conversation.manifest.id, key: 'card.value', scope: 'project' }, 'card.value'),
     tool('foreign-local', 'knowledge', { source: 'local', projectId: board.manifest.id, documentId: board.document.id }, 'Imported project guide'),
     tool('map', 'kanban', { source: 'local', projectId: board.manifest.id, configurationId: 'named-map' }, 'Temporary map',
       { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary card map' } } }),
     tool('project', 'project', { source: 'local', projectId: board.manifest.id }, 'Open board project'),
-    tool('blocked', 'knowledge', { source: 'server', projectId:serverProjectId,entryId:remoteEntry,database:'denied',documentId:'private' }, 'Restricted guide'),
+    tool('blocked', 'knowledge', { source: 'server', projectId:serverProjectId,entryId:remoteEntry,knowledgeBase:'denied',documentId:'private' }, 'Restricted guide'),
     { id: 'main-answer', contentType: 'markdown', content: '## Main answer\n\nThe answer stays in the conversation.', metadata: { finishReason: 'stop', usage: { totalTokens: 3 } } },
   ];
   const session = { id: 'card-session', title: 'Resource cards', createdAt: Date.now(), updatedAt: Date.now(), parameterValues: {},
     queuedInputs: [], draft: { text: '', attachments: [] }, messages: [{ id: 'card-message', role: 'assistant', content: '', status: 'success', items }] };
   await mkdir(conversation.data, { recursive: true });
-  await writeFile(path.join(conversation.data, 'conversations.json'), JSON.stringify({ activeId: session.id, sessions: [session] }));
+
   const workspace = path.join(directory, 'cards.code-workspace');
   await writeFile(workspace, JSON.stringify({ folders: projects.map(project => ({ path: project.folder })) }));
   const requests = [];
@@ -104,18 +123,26 @@ for (const language of languages) {
     if (address.pathname === '/api/auth/me') { success({ profile: { userId: 'card-user', email: 'cards@example.com', displayName: 'Card Test' },
       principal: { apiKeyId: 'card-key', expiresAt: '2030-01-01T00:00:00Z' } }); return; }
     if (address.pathname === '/api/auth/logout') { request.resume(); success({}); return; }
+    if(await runtime.handle(request,response))return;
     if(await remote.handle(request,response))return;
     response.writeHead(404); response.end('{}');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const serverUrl = `http://127.0.0.1:${server.address().port}`;
+  const runtimeCore = await import(resolve('steamharness/runtime-storage', pathToFileURL(path.join(conversationSource, 'package.json')).href));
+  const persistence = runtimeCore.createServerRuntimePersistence({ serverUrl, token: 'offline-card-identity', resolveProject: true,
+    workspace: { kind: 'local', projectId: conversation.manifest.id, entryId: conversation.manifest.defaultEntry, localKey: createHash('sha256').update(conversation.folder).digest('hex') } });
+  const lease = await persistence.acquire(session.id);
+  const { messages, queuedInputs, ...state } = session;
+  await lease.write({ ...runtimeCore.emptyRuntimeRecord('conversation', session.id), state, messages: messages.map(message => ({ id: message.id, value: message })) });
+  await lease.close(); await persistence.close();
   const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve));
   const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
   const log = await open(path.join(proofDir, `${language}.log`), 'w');
   const desktop = await desktopLocaleLaunch(language, directory);
   const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
     `--locale=${language}`, '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_DATABASES_DIR:path.join(directory,'databases'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: 'offline-card-identity' }, stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   let browser, page;
   const proof = { language, cliVersion, projectId: conversation.manifest.id, serverProjectId, checks: [], screenshots: [], errors: [] };
@@ -160,10 +187,14 @@ for (const language of languages) {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     for (let attempt = 0; attempt < 100; attempt++) { page = browser.contexts()[0].pages().find(candidate => candidate.url().includes('workbench')); if (page) { break; } await pause(100); }
     assert.ok(page); page.setDefaultTimeout(20_000); page.on('pageerror', error => proof.errors.push(error.message)); await page.setViewportSize({ width: 1440, height: 1000 });
+    await command(`SteamHarness: ${catalog['context.signIn']}`);
+    const account = await frameFor('#login-app'); await account.locator('#server-url').fill(serverUrl);
+    await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
+    await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
     await command(`Workflow: ${catalog['command.openProjectDemo']}`);
     let conversationFrame = await frameFor('body[data-surface=editor] #message');
-    await conversationFrame.locator('.resource-card').nth(7).waitFor();
-    assert.equal(await conversationFrame.locator('.resource-card').count(), 8);
+    await conversationFrame.locator('.resource-card').nth(6).waitFor();
+    assert.equal(await conversationFrame.locator('.resource-card').count(), 7);
     assert.equal(await conversationFrame.locator('.agent-activity-item').count(), 0);
     assert.equal(await conversationFrame.locator('.message-output > .message-content h2').innerText(), 'Main answer');
     await layout(conversationFrame); await screenshot('cards-light');
@@ -174,8 +205,6 @@ for (const language of languages) {
     };
     await card('local-doc').locator('[data-action=inline]').click();
     await card('local-doc').frameLocator('iframe').locator('.markdown h1').filter({ hasText: 'conversation guide' }).waitFor();
-    await card('local-kv').locator('[data-action=inline]').click();
-    await card('local-kv').frameLocator('iframe').locator('pre').filter({ hasText: '"count": 7' }).waitFor();
     await card('foreign-local').locator('[data-action=inline]').click();
     await card('foreign-local').frameLocator('iframe').locator('.markdown h1').filter({ hasText: 'kanban guide' }).waitFor();
     await card('local-doc').locator('.codicon-info').click();
@@ -188,10 +217,6 @@ for (const language of languages) {
     assert.equal(JSON.parse(await readFile(path.join(board.data, 'kanban.json'), 'utf8')).configurations[0].values.title, 'Saved map');
     await card('map').scrollIntoViewIfNeeded(); await screenshot('kanban-inline');
     proof.checks.push('the actual Kanban artifact renders tasks using the named configuration and temporary parameters without overwriting saved configuration');
-    await command(`SteamHarness: ${catalog['context.signIn']}`);
-    const account = await frameFor('#login-app'); await account.locator('#server-url').fill(serverUrl);
-    await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
-    await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
     await page.getByRole('tab', { name: conversation.manifest.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     await card('server-doc').locator('[data-action=inline]').click();
@@ -201,30 +226,10 @@ for (const language of languages) {
     await card('blocked').locator('[data-action=inline]').click();
     await card('blocked').locator('.resource-inline[role=alert]').filter({ hasText: 'Permission denied.' }).waitFor();
     await screenshot('server-preview');
-    await card('server-list').locator('.resource-target').click();
-    const knowledge = await frameFor('body[data-resource-kind=knowledge]');
-    await knowledge.locator('.resource-row').filter({ hasText: 'Shared server guide' }).waitFor();
-    await card('server-doc').locator('.resource-target').click();
-    await knowledge.locator('#resource-detail .markdown-body h1').filter({ hasText: 'Shared server guide' }).waitFor();
-    assert.equal(await knowledge.locator('#resources-app').getAttribute('data-source'), 'server');
-    assert.equal(await knowledge.locator('#resource-source').count(), 0);
-    assert.equal(await knowledge.locator('#resource-new').isVisible(), false);
-    assert.equal(await knowledge.locator('#detail-delete').count(), 0);
-    await knowledge.locator('#resource-search').fill('Foreign'); await knowledge.locator('.resource-row').filter({ hasText: 'permission verified' }).waitFor();
-    proof.checks.push('automatic cards without explicit cardId open the authorized foreign Server knowledge list and exact read-only document; inline preview, search and permission denial work');
-    await card('foreign-local').locator('.resource-target').click();
-    await knowledge.locator('#resource-detail .markdown-body h1').filter({ hasText: 'kanban guide' }).waitFor();
-    assert.equal(await knowledge.locator('#resource-new').isVisible(), false);
-    assert.equal(await knowledge.locator('#detail-delete').count(), 0);
-    await card('local-doc').locator('.resource-target').click();
-    await knowledge.locator('#resource-detail .markdown-body h1').filter({ hasText: 'conversation guide' }).waitFor();
-    assert.equal(await knowledge.locator('#resource-new').isVisible(), true);
-    assert.equal(await knowledge.locator('#detail-delete').count(), 1);
-    proof.checks.push('cards for other already opened local projects stay read-only; returning to the owner project restores its native edit controls');
     await command('View: Toggle Panel');
     await writeFile(settingsPath, JSON.stringify({ ...JSON.parse(await readFile(settingsPath, 'utf8')), 'workbench.colorTheme': 'Dark Modern' }));
     await conversationFrame.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
-    for (const id of ['local-doc', 'local-kv', 'foreign-local', 'map', 'server-doc', 'server-list']) {
+    for (const id of ['local-doc', 'foreign-local', 'map', 'server-doc', 'server-list']) {
       await card(id).frameLocator('.resource-inline > iframe').locator('html[data-theme=dark]').waitFor();
     }
     await page.setViewportSize({ width: 650, height: 850 }); await layout(conversationFrame);
@@ -263,7 +268,7 @@ for (const language of languages) {
     await screenshot('signed-out-preview');
     proof.checks.push('signing out invalidates an already rendered Server preview and clears the previous account content');
     proof.checks.push('sign-in feedback and actions remain readable without overlap in the narrow Assistant sidebar');
-    assert.ok(requests.some(address => address.includes('/api/database-spaces/')));
+    assert.ok(requests.some(address => address.includes('/api/knowledge-bases/') || address.includes('/resources/read')));
     assert.deepEqual(proof.errors, []);
     await writeFile(path.join(proofDir, `${language}-proof.json`), `${JSON.stringify(proof, null, 2)}\n`); console.log(JSON.stringify(proof));
   } catch (error) {

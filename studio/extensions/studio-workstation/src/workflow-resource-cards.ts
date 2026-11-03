@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { t } from './localization';
 
 export interface ResourceCardTarget {
-  id: string; kind: 'kv' | 'knowledge' | 'project' | 'browser' | 'file' | 'kanban'; title: string;
+  id: string; kind: 'knowledge' | 'project' | 'browser' | 'file' | 'kanban'; title: string;
   target: Record<string, string>; preview?: boolean;
 }
 export interface ResourceCardResult { id: string; url: string; action: 'open' | 'window' | 'project'; card: ResourceCardTarget; project?: import('./workflow-types').Project }

@@ -2,6 +2,20 @@
 
 - Documented full-session snapshot collection, worker crash recovery and main-Agent child management in the generator API reference, preserving paused user queues and safe retry boundaries.
 
+- Document reserved model names, UTC dates, mapped enums and document version preservation for independent conversations in generation guidance.
+
+- Changed: generator and repair guidance use relational models, Server bindings and independent knowledge bases. Board templates remove local KV and temporary write modes, retain failed drafts and keep the original page connection.
+
+- Updated generation rules and tool contracts for independent knowledgeBases, versioned documents and private attachments, distinguishing relational Server bindings from knowledge deployment mappings.
+
+- Document platform relational storage as the default conversation, run history and Agent backend, including online requirements, isolation and snapshot APIs.
+
+- Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; browsers use restricted table queries.
+
+- Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
+
+- Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries.
+
 - Updated the generator API reference with unlimited subagent concurrency and safe retries for proven unsent requests while preserving authorization barriers.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.

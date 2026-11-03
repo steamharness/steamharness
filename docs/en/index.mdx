@@ -28,11 +28,11 @@ A Workflow describes a runnable task chain with nodes and executors: inputs, LLM
 Conversation is an Agent project organized around conversation turns, tool calls, and session data. It uses the same Core Runtime, but its entry point is a message or conversation rather than a single task chain.
 
 - Typical uses: assistants, support/operations assistants, Agents that need ongoing context.
-- Start with [KV and conversations](/en/concepts/kv-and-conversation) and [Core API](/en/core-api/overview).
+- Start with [Databases and conversations](/en/concepts/database-and-conversation) and [Core API](/en/core-api/overview).
 
 ### Kanban
 
-Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It loads `index.html`, does not execute the Runtime API, and needs no executor. A restricted bridge lets the page read project KV and knowledge documents.
+Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It loads `index.html`, does not execute the Runtime API, and needs no executor. A restricted bridge lets the page query bound relational models and read authorized knowledge documents.
 
 - Typical uses: boards, maps, dashboards, visual interfaces embedded in conversations or project details.
 - Start with [Kanban HTML projects](/en/concepts/kanban).
@@ -44,7 +44,7 @@ SteamHarness separates **execution** from **management**:
 | Location | Executes project code | Purpose |
 | --- | --- | --- |
 | Studio / local CLI | Yes | Run and debug locally, inspect traces |
-| Server | No | Stores source, versions, members, KV, knowledge, and project files |
+| Server | No | Stores source, versions, members, relational data, knowledge, and project files |
 | Server Web console | No | Manage projects, members, and data in the browser |
 | Store | No | Browse, download, and publish version archives |
 
@@ -56,7 +56,7 @@ The Server does not install project dependencies, build, or load uploaded projec
 | --- | --- | --- |
 | Studio | VS Code OSS-based workstation to open and run local projects, inspect traces, and manage versions and accounts | [Using Studio](/en/guides/studio/overview) |
 | Local CLI | Check project structure, run projects, open the web workspace | [Local CLI](/en/cli/steamharness) |
-| Server and Server Web | Manage project source, versions, members, knowledge, KV, and accounts | [Server Web console](/en/guides/server/overview) |
+| Server and Server Web | Manage project source, versions, members, knowledge, relational databases, and accounts | [Server Web console](/en/guides/server/overview) |
 | Workspace CLI | Sign in to a Server, upload/download source, publish and switch versions | [Workspace CLI](/en/cli/server-workspace) |
 | Store | Browse, download, and publish project versions | [Store overview](https://docs.steamharness.yuhe.space/en/enhanced/store/overview) |
 | System AI (Enhanced) | Shared models, personal defaults, provider preference, usage, and orders | [System AI guide](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison) |
@@ -64,9 +64,9 @@ The Server does not install project dependencies, build, or load uploaded projec
 
 ## Project data and configuration
 
-Entries declare database aliases, root config.json maps aliases to approved IDs, and hosts maintain permissions. After approval, `context.databases.get(alias)` exposes KV, knowledge and transactions. Multiple projects and entries can share one space while conversation KV stays isolated.
+Entries declare relational database aliases. Define business models in `steamharness.database.ts` and `steamharness.schema`, generate descriptors, and use `context.databases.connect(descriptor)`. Server manages bindings by account, project, entry and alias. Knowledge uses independent `knowledgeBases` declarations and configuration. Platform histories use shared PostgreSQL tables with account and project isolation.
 
-Configurations, snapshots, conversations and drafts are scoped by `projectId + entryId`. Configuration edits apply on the next run. See [Database spaces](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration) and [KV and conversations](/en/concepts/kv-and-conversation).
+Configurations, snapshots, conversations and drafts are scoped by `projectId + entryId`. Configuration edits apply on the next run. See [Data storage](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration) and [Databases and conversations](/en/concepts/database-and-conversation).
 
 ## Accounts, permissions, and collaboration
 
@@ -74,8 +74,8 @@ The Server uses accounts and fixed project roles:
 
 | Role | What it can do |
 | --- | --- |
-| `guest` | View the project, released versions, KV, knowledge, files, and previews; download released source and run locally |
-| `developer` | Edit drafts, upload and publish versions, and modify server KV, knowledge, and project files |
+| `guest` | View the project, released versions, knowledge, files, and previews; download released source and run locally |
+| `developer` | Edit drafts, upload and publish versions, and modify server relational data, knowledge, and project files |
 | `maintainer` | Manage project information, public state, official configuration, guests, and developers |
 | `owner` | Assign all roles, manage owners, delete the project, and transfer ownership |
 

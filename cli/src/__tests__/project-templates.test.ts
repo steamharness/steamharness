@@ -7,6 +7,11 @@ import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplate
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
+import { generateDatabases } from '../database-generation';
+import { runtimeStorageService } from './runtime-storage-service';
 
 const folders: string[] = [];
 const versions = { harness: '0.2.4-20260929001', cli: '0.2.4-20261013009.codex-studio-integration' };
@@ -32,6 +37,8 @@ describe('project templates', () => {
   });
 
   it('generates every template with unique identity, portable dependencies and runnable local entrypoints', async () => {
+    const connection = await runtimeStorageService().start();
+    try {
     const parentDirectory = await parent(), ids = new Set<string>();
     for (const template of await listProjectTemplates()) {
       const created = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory, versions });
@@ -44,7 +51,7 @@ describe('project templates', () => {
       if (template.projectType === 'kanban') expect(npm.scripts).not.toHaveProperty('run:json');
       else expect(npm.scripts['run:json']).toBe('steamharness json .');
       expect(manifest).toMatchObject({ id: created.id,
-        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:[]}] });
+        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:template.id.startsWith('kanban-') && template.id !== 'kanban-starter' ? ['data'] : []}] });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       const card = manifest.projectCard;
       expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
@@ -52,7 +59,14 @@ describe('project templates', () => {
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
       await prepareProjectTemplateRuntime(created.directory);
-      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => {});
+      if (manifest.entries[0].databases.length) {
+        await generateDatabases(created.directory);
+        const esbuildRoot = path.dirname(createRequire(import.meta.url).resolve('esbuild/package.json'));
+        await symlink(esbuildRoot, path.join(created.directory, 'node_modules/esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
+        await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: created.directory });
+        expect(await readFile(path.join(created.directory, 'dist/board.js'), 'utf8')).toContain('database');
+      }
+      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection);
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
@@ -73,6 +87,7 @@ describe('project templates', () => {
       } finally { runtime.dispose(); }
     }
     expect(ids.size).toBe(7);
+    } finally { await connection.close(); }
   }, 60_000);
 
   it('preserves authored template sources when preparing the installed runtime', async () => {

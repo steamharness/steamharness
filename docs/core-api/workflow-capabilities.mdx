@@ -1,6 +1,6 @@
 ---
 title: "工作流能力工具"
-description: "把项目与知识库、KV、宿主配置和 Conversation 资源卡片接起来的内置工具。"
+description: "把项目与知识库、数据库、宿主配置和 Conversation 资源卡片接起来的内置工具。"
 ---
 
 # 工作流能力工具
@@ -10,7 +10,6 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 | 能力 | MCP 服务 id | 工具 id |
 | --- | --- | --- |
 | 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
-| KV | `workflow-kv` | `workflow-kv_kv_store` |
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
 工具 id 是稳定的：宿主按它授权、审批和恢复，所以不要改名。
@@ -47,19 +46,15 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds();
 
 ## 参数校验
 
-每个能力都发布一份 JSON Schema，并同样在实现里校验：MCP 客户端并不受 schema 约束，agent SDK 也把它当类型断言，所以长度上限只写在 schema 里等于没写。知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，KV `key` ≤ 500；超出以 `input_validation` 失败。
+每个能力都发布一份 JSON Schema，并同样在实现里校验：MCP 客户端并不受 schema 约束，agent SDK 也把它当类型断言，所以长度上限只写在 schema 里等于没写。知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80；超出以 `input_validation` 失败。
 
 ## 大结果续读
 
-KV 的 `get`、知识库的 `list/get/search/read_lines` 采用相同的结果分页协议；原生工具、MCP 和直接 action API 保持一致。小结果沿用原结构；超过 40 000 UTF-8 字节时返回 `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`，整个序列化分页信封也不超过此上限。
+知识库的 `list/get/search/read_lines` 采用相同的结果分页协议；原生工具、MCP 和直接 action API 保持一致。小结果沿用原结构；超过 40 000 UTF-8 字节时返回 `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`，整个序列化分页信封也不超过此上限。
 
 保留原读取参数，增加 `resultOffset: nextOffset` 和上一页的 `resultHash`，按顺序拼接 `content`，最后解析 JSON。`resultOffset` 是 UTF-16 字符偏移；可用 `resultLimit`（正整数，最多 200000）缩小页长。结果发生变化时哈希校验拒绝拼接，须从 `resultOffset: 0` 开始并省略哈希重新读取。条目游标 `cursor` 与结果字符偏移分别使用，不能混用。
 
 写入动作拒绝结果分页参数，避免续读变成重复写入。知识库 create/edit 在要求回显正文时最多返回 4000 字符；知识库 `maxMarkdownLength` 必须为 100–20000 的整数，`includeMarkdown` 必须是布尔值；无效值在写入前拒绝。
-
-## KV 保留键
-
-`kv_store` 与运行时共用同一个命名空间，因此它拒绝写入运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（包含 `agent.pendingPlanApproval` 等待确认状态）。Agent 执行历史由独立 Durable SQLite 保存，见 [createAgentNode](./create-agent-node.mdx)。被拒绝时返回 `input_validation`，不会静默覆盖记账或运行状态。
 
 ## 宿主配置
 
@@ -67,9 +62,9 @@ KV 的 `get`、知识库的 `list/get/search/read_lines` 采用相同的结果�
 
 ## Conversation 资源卡片
 
-Core 知识库和 KV 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID 或 KV 键，打开时重新校验权限。
+Core 知识库 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID，打开时重新校验权限。
 
-使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和实际数据库 `database` alias；可包含 `spaceId`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和对应别名：知识库使用 `knowledgeBase`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
 
 ```ts
 return {
@@ -79,13 +74,13 @@ return {
       kind: "knowledge",
       operation: "read",
       title: document.title,
-      target: { source: "server", projectId: context.projectId, entryId: context.entryId, database: "data", documentId: document.id },
+      target: { source: "server", projectId: context.projectId, entryId: context.entryId, knowledgeBase: "docs", documentId: document.id },
     },
   },
 };
 ```
 
-`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 KV/知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，KV 使用 `scope`、`key` 和必要时的 `conversationId`，知识库文档使用 `documentId`。宿主在打开时重新校验目标权限。
+`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，知识库文档使用独立的 `knowledgeBase` 别名及 `documentId`。宿主在打开时重新校验目标权限。
 
 ```json
 {
@@ -99,7 +94,7 @@ return {
 }
 ```
 
-文件卡片示例：`{"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}`。文件路径字段固定为 `filePath`，工具 schema 列出各类目标允许的字段。文件、KV、知识库卡片省略 `preview`；显式 `false` 会被忽略，`true` 仍被拒绝。未知目标字段的运行时错误会点名字段并列出合法字段，便于修正后重试。
+文件卡片示例：`{"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}`。文件路径字段固定为 `filePath`，工具 schema 列出各类目标允许的字段。文件、数据库、知识库卡片省略 `preview`；显式 `false` 会被忽略，`true` 仍被拒绝。未知目标字段的运行时错误会点名字段并列出合法字段，便于修正后重试。
 
 `kanban.mode: "preview"` 为预览提供临时原生 JSON 覆盖值。保存请使用 Studio Control `manage_configurations`，显式指定存储位置、项目、配置 ID 与 revision。历史回放不写配置。
 
@@ -125,4 +120,4 @@ const node = steamharness.createAgentNode({
 
 工具必须在 executor 的 `tools` 里声明（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。
 
-KV 与知识库工具参数必须指定 `database` alias；宿主按该入口的声明与有效授权校验，不再有默认项目数据库。资源卡片和 Kanban 方法目标同时传递 `projectId + entryId`。
+知识库工具参数必须指定 `knowledgeBase` alias；宿主按该入口的声明与有效授权校验，不再有默认项目数据库。资源卡片和 Kanban 方法目标同时传递 `projectId + entryId`。

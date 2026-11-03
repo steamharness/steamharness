@@ -1,4 +1,5 @@
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
+import { runtimeStorageService } from './runtime-storage-service';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -10,7 +11,7 @@ import { createServer } from 'node:http';
 import { inspectWebProject } from '../web/assistant-project';
 import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
@@ -112,11 +113,11 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
       const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
       const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
       const text = await readFile(path.join(workdir, 'user.txt'), 'utf8');
-      let serverStorageAllowed = false;
-      try { await context.databases.get("data").kv.getValue('should-stay-local'); serverStorageAllowed = true; } catch {}
+      let serverStorageAllowed = false, serverStorageError;
+      try { await context.databases.connect({ kind: "steamharness.database", version: 1, alias: "data", provider: "postgresql", schemaHash: "0".repeat(64), target: "node", metadata: { models: [], enums: [] }, loadEngine: () => { throw new Error("must not create a client"); } }); serverStorageAllowed = true; } catch (error) { serverStorageError = error.code; }
       return { errCode: 0, errMessage: '', host: process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST,
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
-        text, workspace, serverStorageAllowed,
+        text, workspace, serverStorageAllowed, serverStorageError,
         projectAccount: process.env.STEAMHARNESS_SERVER_ADMIN_KEY === 'assistant-project-fixture',
         aiAccount: process.env.STEAMHARNESS_AI_API_KEY === 'assistant-ai-fixture' };
     } });
@@ -124,7 +125,11 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
       tools: [{ name: 'skill', enabled: true, autoApprove: true }], createInput() { return {}; } });
   `);
   const remoteRequests: string[] = [];
-  const server = createServer((request, response) => { remoteRequests.push(request.url!); response.writeHead(404); response.end(); });
+  const storageService = runtimeStorageService();
+  const server = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
+    remoteRequests.push(request.url!); request.resume(); response.writeHead(403, { 'content-type': 'application/json' }); response.end(JSON.stringify({ errCode: 403, errMessage: 'Bind this entry first.', data: { code: 'DATABASE_UNBOUND' } }));
+  });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'assistant-project-fixture',
     aiServerUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, aiAccessToken: 'assistant-ai-fixture' };
@@ -137,7 +142,7 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
     expect(report.status, JSON.stringify(report)).toBe('success');
     expect(report.output?.items?.[0].content).toMatchObject({ host: 'vscode', text: 'Independent workspace contents',
-      serverStorageAllowed: false, projectAccount: true, aiAccount: true,
+      serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND', projectAccount: true, aiAccount: true,
       listed: { skills: [expect.objectContaining({ name: 'fixture-skill' })] },
       read: { skill: 'fixture-skill', content: expect.stringContaining('Read the independent workspace.') },
       workspace: { primaryTarget: { kind: 'folder', folderId: 'file:///workspace' }, roots: [expect.objectContaining({ rootPath: workdir, role: 'primary' })] },
@@ -147,11 +152,11 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
     const second: Project = { ...project, assistant: { workdir: secondWorkdir, roots: [{ uri: 'file:///second-workspace', folderPath: secondWorkdir, name: 'Second workspace' }] } };
     const secondReport = await runtime.run({ project: second, conversationId: 'assistant-test', runId: 'second-workspace', args: [] }, () => {});
     expect(secondReport.status).toBe('success');
-    expect(secondReport.output?.items?.[0].content).toMatchObject({ text: 'Second workspace preference', serverStorageAllowed: false });
+    expect(secondReport.output?.items?.[0].content).toMatchObject({ text: 'Second workspace preference', serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND' });
     const resumed = await runtime.run({ project, conversationId: 'assistant-test', runId: 'first-workspace-again', args: [] }, () => {});
     expect(resumed.status).toBe('success');
-    expect(resumed.output?.items?.[0].content).toMatchObject({ serverStorageAllowed: false });
-    expect(remoteRequests).toEqual([]);
+    expect(resumed.output?.items?.[0].content).toMatchObject({ serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND' });
+    expect(remoteRequests).toEqual(Array(3).fill('/api/databases/connections'));
   } finally {
     runtime.dispose();
     await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });

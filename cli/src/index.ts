@@ -17,6 +17,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const prepared = prepareCliInvocation(argv);
   argv = prepared.argv;
 
+  if (argv[0] === "knowledge") return (await import("./knowledge-management")).manageKnowledgeBases(argv.slice(1));
+  if (argv[0] === "database" || argv[0] === "db") return (await import("./database")).main(argv.slice(1));
+
   if (argv[0] === "configuration") return (await import("./configuration")).main(argv.slice(1));
 
   if (argv[0] === "web") {
@@ -52,7 +55,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 function formatHelp(): string {
-  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness configuration [project-directory] < request.json  ${i18n.language.startsWith('zh') ? '读取或管理项目配置' : 'Read or manage project configurations'}\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
+  const databaseHelp = i18n.language.startsWith("zh") ? "数据库定义、代码生成、资源与迁移管理" : "Define, generate, provision and migrate databases";
+  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness database <command> [options]  ${databaseHelp}\n  steamharness knowledge <command> [options]  ${i18n.language.startsWith("zh") ? "知识库资源、授权与绑定管理" : "Knowledge resources, grants and bindings"}\n\n  steamharness configuration [project-directory] < request.json  ${i18n.language.startsWith('zh') ? '读取或管理项目配置' : 'Read or manage project configurations'}\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
 }
 
 /**

@@ -34,7 +34,6 @@ import { getProjectDisplayName } from "./utils/project-presentation";
 
 // keeps all server/web server-backed table pagination at 20 rows.
 const RUN_PAGE_SIZE = 20;
-const KV_PAGE_SIZE = 20;
 const AUDIT_PAGE_SIZE = 20;
 
 type PendingKnowledgeNavigation = {

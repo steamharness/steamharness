@@ -30,23 +30,23 @@ test("source configuration resolves aliases while version snapshots retain autho
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
   const first = "00000000-0000-4000-8000-000000000001", second = "00000000-0000-4000-8000-000000000002";
   const archive = "00000000-0000-4000-8000-000000000003";
-  const config = (id: string) => ({ version: 1, databases: { data: id, archive } });
+  const config = (id: string) => ({ version: 1, knowledgeBases: { data: id, archive } });
   const previous = process.env.STEAMHARNESS_PROJECT_CONFIG;
   delete process.env.STEAMHARNESS_PROJECT_CONFIG;
   try {
     const pkg = packageJson("1.0.0");
-    Object.assign(pkg.entries[0]!, {databases: ["data"]});
-    pkg.entries.push({ ...pkg.entries[0]!, entryId: "archive-reader", name: "Archive reader", databases: [] });
-    Object.assign(pkg.entries[1]!, { databases: ["archive"] });
+    Object.assign(pkg.entries[0]!, {knowledgeBases: ["data"]});
+    pkg.entries.push({ ...pkg.entries[0]!, entryId: "archive-reader", name: "Archive reader" });
+    Object.assign(pkg.entries[1]!, { knowledgeBases: ["archive"] });
     await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
       { path: "package.json", content: JSON.stringify(pkg) },
       { path: "config.json", content: JSON.stringify(config(first)) },
       { path: "index.ts", content: "throw new Error('configuration must stay static');" },
     ]) });
-    assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main"), [{ alias: "data", databaseId: first }]);
-    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ databases: { data: second, unused: "00000000-0000-4000-8000-000000000004" } });
-    assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main"), [{ alias: "data", databaseId: second }]);
-    assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "archive-reader"), [{ alias: "archive", databaseId: archive }]);
+    assert.deepEqual(await storage.entryKnowledgeBaseRequirements(projectId, "main"), [{ alias: "data", knowledgeBaseId: first }]);
+    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ knowledgeBases: { data: second, unused: "00000000-0000-4000-8000-000000000004" } });
+    assert.deepEqual(await storage.entryKnowledgeBaseRequirements(projectId, "main"), [{ alias: "data", knowledgeBaseId: second }]);
+    assert.deepEqual(await storage.entryKnowledgeBaseRequirements(projectId, "archive-reader"), [{ alias: "archive", knowledgeBaseId: archive }]);
     process.env.STEAMHARNESS_PROJECT_CONFIG = "{";
     await storage.publish({ projectName: projectId, expectedVersion: "1.0.0", releaseLog: "Configured snapshot" });
     const published = await storage.getDownloadableSourceFiles({ projectName: projectId, target: "1.0.0" });
@@ -54,8 +54,8 @@ test("source configuration resolves aliases while version snapshots retain autho
     delete process.env.STEAMHARNESS_PROJECT_CONFIG;
     const draft = await storage.getFiles({ projectName: projectId, target: "draft" });
     await storage.saveDraftFiles({ projectName: projectId, files: draft.files.map(file => file.path === "config.json" ? { ...file, content: JSON.stringify(config(second)) } : file) });
-    assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main"), [{ alias: "data", databaseId: second }]);
-    assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main", "1.0.0"), [{ alias: "data", databaseId: first }]);
+    assert.deepEqual(await storage.entryKnowledgeBaseRequirements(projectId, "main"), [{ alias: "data", knowledgeBaseId: second }]);
+    assert.deepEqual(await storage.entryKnowledgeBaseRequirements(projectId, "main", "1.0.0"), [{ alias: "data", knowledgeBaseId: first }]);
   } finally {
     if (previous === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = previous;
     await rm(root, { recursive: true, force: true });

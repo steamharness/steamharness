@@ -509,7 +509,16 @@ test(
       );
       assert.equal((await request("eve", `/projects/${projectId}/kv`)).status,404);
       assert.equal((await request("eve", `/projects/${projectId}/draft/files`,"PUT",{files:[]})).status,403);
-      assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`,"POST",{entryId:"main",call:{requestId:"bad",operation:"kv.setValue",input:{database:"data",key:"x",value:1}}})).status,403);
+      assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`, "POST", {
+        entryId: "main",
+        call: {
+          requestId: "unauthorized-write", operation: "database.query",
+          input: { database: "data", schemaHash: "a".repeat(64), binding: {}, request: { operation: "insert", model: "Task", data: { title: "Denied" } } },
+        },
+      })).status, 403);
+      assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`, "POST", {
+        entryId: "main", call: { requestId: "retired-api", operation: "kv.setValue", input: { database: "data", key: "x", value: 1 } },
+      })).status, 400);
       assert.equal(
         (await request("eve", `/projects/${projectId}/files`, "POST", {}))
           .status,

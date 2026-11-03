@@ -4,6 +4,22 @@
 
 - [Added] Durable snapshots expose subagent execution spans and usage, plus conversation totals including owned subagents. Failed, stopped and hidden children retain their spend; retries, reopening and independent forks do not double-count it.
 
+- Fixed independent conversation copies losing document version changes and replacement identities when their JSON content stayed equal, preserving checkpoints for later forks.
+
+- Changed: remove KV, PersistentValue, local KV and legacy database-space APIs. Business data uses generated model descriptors, Browser clients use the host table proxy, and conversations and run records use Server runtime tables.
+
+- Added independent knowledgeBases APIs and account bindings. Relational platform tables retain documents, chunks and indexes; private file storage holds attachments, with revision conflicts and revocation-aware retained handles.
+
+- Conversation state, usage and default Agent sessions now use Server PostgreSQL. Added versioned session snapshots, fork/isolation/cancellation helpers and execution abort on lease loss, without legacy KV/SQLite migration.
+
+- Added typed relational queries, aggregation and transactions through `context.databases.connect(descriptor)` for Node entries, with per-operation binding/access/model checks, lease renewal and run cleanup.
+
+- Added public database resource, account grant, migration plan and history types with a shared model engine version.
+
+- Add SteamHarness Database definitions for single or multiple schemas, model metadata, and typed Node/Browser descriptors. Core supplies engine dependencies without application-authored PrismaClient imports.
+
+- Added Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints, also available to custom hosts.
+
 - Added explicit `null` for unlimited total or per-role subagent concurrency, preserving default FIFO limits. Proven unsent tool failures can retry from business receipts; access denials, cancellation and unknown side effects remain retry barriers.
 
 - Durable Agent turn snapshots now expose persisted execution timestamps so hosts can restore elapsed time when opening subagent conversations and history.

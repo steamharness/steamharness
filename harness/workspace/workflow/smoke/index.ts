@@ -55,15 +55,15 @@ const outputNode = steamharness.createOutputNode<SmokeInput, SmokeOutputPayload>
         content: input.message,
         metadata: { previous },
       });
-      await context.databases.get("data").kv.conversation.setValue("smoke.lastMessage", input.message);
+      await context.conversation.setValue("smoke.lastMessage", input.message);
     }
   },
   async format(stream, input, context) {
     const state = context.conversation.enabled
       ? await context.conversation.getValue()
       : undefined;
-    const kvLastMessage = context.conversation.enabled
-      ? await context.databases.get("data").kv.conversation.getValue("smoke.lastMessage")
+    const lastMessage = context.conversation.enabled
+      ? state?.values["smoke.lastMessage"]
       : undefined;
 
     return {
@@ -76,7 +76,7 @@ const outputNode = steamharness.createOutputNode<SmokeInput, SmokeOutputPayload>
       conversationId: state?.conversationId,
       conversationMessages: state?.messages.length ?? 0,
       previousMessage: state?.messages.at(-2)?.content,
-      kvLastMessage: typeof kvLastMessage === "string" ? kvLastMessage : undefined,
+      lastMessage: typeof lastMessage === "string" ? lastMessage : undefined,
     };
   },
 });

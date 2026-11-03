@@ -1,81 +1,82 @@
-import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
-const permissions = {kv:{read:{mode:'all'},write:{mode:'all'}},knowledge:{read:{mode:'all'},write:{mode:'all'}}};
-
-/** Test host explicitly approves a fresh space; example manifests remain unbound. */
-export async function approveLocalFixtureDatabase(core, folder, manifest, directory) {
-  const entry = manifest.entries.find(item => item.entryId === manifest.defaultEntry);
-  const registry = new core.LocalDatabaseRegistry(directory);
-  const request = registry.request({projectId:manifest.id,entryId:entry.entryId,alias:'data',permissions,target:{kind:'create',name:'UI fixture'}});
-  const {databaseId} = registry.review(request.requestId,{approve:true});
-  const requirements = [{alias:'data',databaseId}];
-  entry.databases = ['data'];
-  await writeFile(path.join(folder,'config.json'),JSON.stringify({version:1,databases:{data:databaseId}}));
-  await writeProjectFixture(path.join(folder,'package.json'),JSON.stringify(manifest));
-  return core.createDatabasesContext({projectId:manifest.id,entryId:entry.entryId,requirements,resolver:core.createLocalDatabaseResolver(registry)}).get('data');
-}
-
-/** A test-only remote data host, using the same approved catalog and SDK namespaces. */
-export function fixtureDatabaseHost(core) {
-  const state={spaces:[],requests:[],grants:[],bindings:[]};
-  const actor={userId:'fixture-host',isSystemAdmin:true};
-  const catalog=new core.DatabaseCatalog('server',state,randomUUID,()=>new Date().toISOString());
-  const records=new Map();let revision=0;
-  const key=input=>JSON.stringify([input.projectId,input.storageKind,input.scope,input.conversationId??'',input.key]);
-  const current=input=>{const row=records.get(key(input));return row?{exists:true,value:structuredClone(row.value),revision:row.revision}:{exists:false};};
-  const store={
-    async getValue(input){return current(input).value;},
-    async setValue(input){records.set(key(input),{input,value:structuredClone(input.value),revision:String(++revision)});},
-    async deleteValue(input){const removed=records.delete(key(input));if(removed)revision++;return removed;},
-    async updateValue(input,update){const value=update(await this.getValue(input));await this.setValue({...input,value});return value;},
-    async withNamespaceLock(_input,operation){return operation();},
-    async withNamespaceReadLock(_input,operation){return operation();},
-    async listValues(input){const items=[...records.values()].filter(row=>row.input.projectId===input.projectId&&row.input.storageKind===input.storageKind&&row.input.scope===input.scope&&(!input.conversationId||row.input.conversationId===input.conversationId)&&(!input.keyPrefix||row.input.key.startsWith(input.keyPrefix))).map(row=>({...row.input,value:row.value,revision:row.revision}));return {items,total:items.length,hasMore:false};},
+/** In-memory HTTP reference host for explicit UI tests, never a production backend. */
+export function fixtureDatabaseHost() {
+  const resources = new Map(), bindings = new Map(), projects = new Map();
+  const identity = ({ projectId, entryId, alias }) => JSON.stringify([projectId, entryId, alias]);
+  const fail = (code, status = 403) => { throw Object.assign(new Error(code), { code, status }); };
+  const resolve = input => {
+    const resource = bindings.get(identity(input));
+    if (!resource || resource.revoked) fail('DATABASE_ACCESS_DENIED');
+    if (input.schemaHash && resource.schemaHash !== input.schemaHash) fail('DATABASE_SCHEMA_MISMATCH', 409);
+    return resource;
   };
+  function create(projectId, entryId, alias = 'shared', options = {}) {
+    const id = randomUUID(), binding = { id: randomUUID(), revision: 1, databaseId: id, projectId, entryId, alias, mode: 'write', accessRevision: 1 };
+    const resource = { id, binding, schemaHash: options.schemaHash, rows: new Map(), documents: new Map(), files: new Map(), revision: 0 };
+    const knowledge = {
+      async createDocument(input) {
+        const document = { ...input, id: input.id ?? randomUUID(), revision: 1, createdAt: Date.now(), updatedAt: Date.now() };
+        resource.documents.set(document.id, document); resource.revision++; return document;
+      },
+      async getDocument(id) { return resource.documents.get(id); },
+    };
+    const database = { knowledge, rows: resource.rows,
+      seed(tasks, configurationId = 'default') { for (const [index, task] of tasks.entries()) resource.rows.set(task.id, { values: { configurationId, createdAt: new Date(index).toISOString(), ...task }, rowVersion: '1' }); },
+    };
+    resources.set(id, resource); bindings.set(identity(binding), resource);
+    return { requirement: { alias, databaseId: id }, binding, database };
+  }
   return {
-    create(projectId,entryId,alias='shared'){
-      const request=catalog.request({projectId,entryId,alias,permissions,target:{kind:'create',name:'Shared UI fixture'}},actor);
-      const approved=catalog.review(request.requestId,{approve:true},actor);
-      const requirement={alias,databaseId:approved.databaseId};
-      const authorization=catalog.resolve(requirement.databaseId,{projectId,entryId});
-      const database=core.createDatabasesContext({projectId,entryId,requirements:[requirement],resolver:{resolve:()=>({authorization,store})}}).get(alias);
-      return {requirement,database,authorization};
-    },
-    revoke(grantId){catalog.revoke(grantId,actor);},
-    async handle(request,response){
-      const url=new URL(request.url,'http://fixture');
-      if(!url.pathname.startsWith('/api/database-spaces/'))return false;
+    create,
+    registerProject(manifest) { projects.set(manifest.id, manifest); },
+    revoke(id) { const resource = [...resources.values()].find(value => value.binding.id === id); if (resource) resource.revoked = true; },
+    async handle(request, response) {
+      const url = new URL(request.url, 'http://fixture'), parts = url.pathname.split('/').filter(Boolean);
+      if (!['databases', 'knowledge-bases', 'projects'].includes(parts[1])) return false;
+      const send = data => response.end(JSON.stringify({ errCode: 0, errMessage: '', data }));
       try {
-        const parts=url.pathname.split('/').filter(Boolean);
-        if(parts[3]==='authorization'){
-          const authorization=catalog.resolve(parts[2],{projectId:url.searchParams.get('projectId'),entryId:url.searchParams.get('entryId')});
-          if(!authorization||authorization.grant.revokedAt)throw new Error('Database authorization is no longer valid.');
-          response.end(JSON.stringify({errCode:0,data:authorization}));return true;
+        let call = {};
+        if (request.method === 'POST') { const chunks = []; for await (const chunk of request) chunks.push(chunk); call = JSON.parse(Buffer.concat(chunks).toString()); }
+        if (parts[1] === 'projects') {
+          const project = projects.get(parts[2]); if (!project) fail('PROJECT_NOT_FOUND', 404);
+          if (parts.length === 3) { send(project); return true; }
+          const resource = resolve({ projectId: project.id, entryId: parts[4], alias: call.knowledgeBase });
+          const content = call.documentId ? resource.documents.get(call.documentId) : { items: [...resource.documents.values()], total: resource.documents.size };
+          send(content ?? null); return true;
         }
-        const chunks=[];for await(const chunk of request)chunks.push(chunk);
-        const call=JSON.parse(Buffer.concat(chunks).toString());
-        const authorization=catalog.authorization(call.bindingRef);
-        if(!authorization||authorization.grant.revokedAt)throw new Error('Database authorization is no longer valid.');
-        const address=entry=>({...entry,projectId:entry.spaceId});
-        let data;
-        if(call.operation==='get')data=current(address(call.entry));
-        else if(call.operation==='set'){await store.setValue({...address(call.entry),value:call.value});data={};}
-        else if(call.operation==='delete')data={removed:await store.deleteValue(address(call.entry))};
-        else if(call.operation==='revision')data={revision:String(revision)};
-        else if(call.operation==='list')data=await store.listValues({...address(call.entry),...call});
-        else if(call.operation==='compare-and-set'){
-          const before=current(address(call.entry));const applied=(before.revision??null)===call.expectedRevision;
-          if(applied)await store.setValue({...address(call.entry),value:call.value});data={applied};
-        }else if(call.operation==='transaction'){
-          const applied=call.entries.every(item=>(current(address(item.entry)).revision??null)===item.expectedRevision);
-          if(applied)for(const item of call.entries){if(item.mutation?.operation==='set')await store.setValue({...address(item.entry),value:item.mutation.value});else if(item.mutation?.operation==='delete')await store.deleteValue(address(item.entry));}
-          data={applied};
-        }else throw new Error('Unsupported database fixture operation.');
-        response.end(JSON.stringify({errCode:0,data}));
-      }catch(error){response.writeHead(403);response.end(JSON.stringify({errCode:403,errMessage:error.message}));}
+        if (parts[1] === 'databases') {
+          if (parts[2] === 'bindings' && parts[3] === 'resolve') { send(resolve(call).binding); return true; }
+          const resource = resolve(call.consumer);
+          const consumer = call.consumer;
+          if (resource.id !== parts[2] || consumer.binding.id !== resource.binding.id || consumer.binding.revision !== resource.binding.revision || consumer.accessRevision !== resource.binding.accessRevision) fail('DATABASE_BINDING_CHANGED', 409);
+          const input = call.request;
+          if (input.operation === 'rows') {
+            const items = [...resource.rows.values()].filter(row => Object.entries(input.where ?? {}).every(([key, value]) => row.values[key] === value));
+            const page = input.page ?? 1, pageSize = input.pageSize ?? 100;
+            send({ items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize });
+          } else if (input.operation === 'insert') {
+            const values = { description: '', priority: 'normal', label: 'development', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...input.data };
+            if (resource.rows.has(values.id)) fail('DATABASE_ROW_CONFLICT', 409);
+            const row = { values, rowVersion: '1' }; resource.rows.set(values.id, row); send(row);
+          } else {
+            const previous = resource.rows.get(input.key.id);
+            if (!previous || previous.rowVersion !== input.rowVersion) fail('DATABASE_ROW_CONFLICT', 409);
+            if (input.operation === 'delete') { resource.rows.delete(input.key.id); send({ deleted: true }); }
+            else if (input.operation === 'update') { const row = { values: { ...previous.values, ...input.data }, rowVersion: String(Number(previous.rowVersion) + 1) }; resource.rows.set(input.key.id, row); send(row); }
+            else fail('DATABASE_INVALID_REQUEST', 400);
+          }
+        } else if (parts[2] === 'bindings') {
+          const resource = resolve(call);
+          send({ id: resource.binding.id, revision: 1, knowledgeBaseId: resource.id, mode: 'write', accessRevision: 1 });
+        } else {
+          const resource = resolve(call); if (parts[2] !== resource.id || call.binding.id !== resource.binding.id) fail('KNOWLEDGE_ACCESS_DENIED');
+          if (call.operation === 'knowledge.getDocument') send(resource.documents.get(call.input.documentId) ?? null);
+          else if (call.operation === 'knowledge.listDocuments') send({ items: [...resource.documents.values()], total: resource.documents.size, page: 1, pageSize: 100 });
+          else if (call.operation === 'knowledge.revision') send({ revision: String(resource.revision) });
+          else fail('KNOWLEDGE_INVALID_REQUEST', 400);
+        }
+      } catch (error) { response.statusCode = error.status ?? 400; response.end(JSON.stringify({ errCode: response.statusCode, errMessage: error.message, data: { code: error.code } })); }
       return true;
     },
   };

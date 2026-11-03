@@ -31,6 +31,23 @@ pnpm start
 
 Never commit real `.env` files, database connection strings, or service keys. `*.env.example` files contain variable names and placeholders only.
 
+## Isolated local relational database
+
+To develop platform Agent storage, run from a source checkout's Server directory:
+
+```sh
+corepack pnpm database:dev up
+corepack pnpm database:dev server
+```
+
+The first command starts a separate `postgres:17-alpine` container, `steamharness-relational-postgres`, bound only to `127.0.0.1:18125` with the `steamharness_platform` database. The second starts Server on `127.0.0.1:18126`, using `.data/relational-dev`. It skips ordinary development env files and fixes the database target to this local instance.
+
+The first run creates random database, authentication and bootstrap administrator secrets in the Git-ignored `docker/relational-dev/.env`. The bootstrap account is `admin@relational.local`; read its password from that local file and keep it out of source, documentation and command output. Existing database containers and volumes are unaffected.
+
+Use `corepack pnpm database:dev status` to inspect this container and `corepack pnpm database:dev down` to stop it while preserving its volume. Stop Server with Ctrl+C. `corepack pnpm test:runtime-storage` uses a separate temporary PostgreSQL 17 container for complete storage conformance and HTTP tests, then removes the container.
+
+Platform records share the `steamharness_runtime` schema without a PostgreSQL database per project. See [Agent Server storage](/en/core-api/runtime-storage) for Core integration.
+
 ## Persistent configuration
 
 Prepare backups and write access for at least:
@@ -47,7 +64,7 @@ Prepare backups and write access for at least:
 | `STEAMHARNESS_API_PUBLIC_BASE_URL` | Public HTTP(S) origin for the API. |
 | `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | Documentation site URL. |
 
-Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, KV data, and knowledge data according to the deployment policy.
+Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, platform history, business databases and knowledge data according to the deployment policy.
 
 ## Administrator names and shared accounts
 
@@ -72,3 +89,9 @@ Alpha and stable use separate runtime directories, processes, logs, and ports. U
 Release jobs read production variables only from protected refs and verify build versions and static assets. Recovery does not remove data volumes, commit runtime configuration, or place secrets in artifacts.
 
 The `deployment.server` and `deployment.serverWeb` health records may include a separate `deploymentId`. Use it with `commitSha` to distinguish deployments of the same product version. `currentRelease.docsUrl` links to localized deployment notes; older metadata keeps version-based links.
+
+`corepack pnpm test:relational-databases` starts a disposable PostgreSQL 17 container to verify independent business databases, read/write isolation, connection revocation, migration rollback and account-authenticated CLI operations, then removes it. Each business resource UUID maps to an independent database. Platform Agent records continue to use shared relational tables in the platform database.
+
+The local environment sets `STEAMHARNESS_SERVER_DATABASE_ADMIN_URL` automatically. To enable resource administration elsewhere, set it to a PostgreSQL superuser connection dedicated to provisioning. When unset, management returns `DATABASE_UNAVAILABLE`. This identity stays inside Server. Initialization revokes PUBLIC CONNECT/TEMPORARY on the control database, postgres and template1. If another connectable database still permits PUBLIC connections, business credential issuance is refused. Use a dedicated PostgreSQL instance such as the Docker environment above.
+
+Node entries obtain temporary SQL identities for bound resources with an account API key and need connectivity to both Server and PostgreSQL. Keep pools and credentials inside the host. `database bind` stores account/project/entry/alias mappings on the host, outside source packages. Binding does not grant resource access. Rebinding, unbinding and access revocation terminate affected SQL sessions. Browser descriptors use the authenticated table proxy, checking the binding, access revision and schemaHash on each call. Legacy KV paths are removed.

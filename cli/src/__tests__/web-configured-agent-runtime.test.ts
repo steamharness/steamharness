@@ -1,3 +1,5 @@
+import { createServerRuntimePersistence } from 'steamharness/runtime-storage';
+import { runtimeStorageService } from './runtime-storage-service';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -15,7 +17,10 @@ it('loads user models through the host and worker without project configuration,
   const directory = await mkdtemp(path.join(os.tmpdir(), 'user-model-runtime-'));
   const applicationId = crypto.randomUUID(), calls: { model: string; token?: string }[] = [];
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
+  const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
+    if (request.method === 'GET') { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'fixture-user', email: 'fixture@example.test', displayName: 'Fixture' } } })); return; }
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({ model: body.model, token: request.headers.authorization });
     response.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -36,7 +41,7 @@ it('loads user models through the host and worker without project configuration,
     const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
       id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
     }] } };
-    app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', userSettings: settings } });
+    app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
@@ -59,7 +64,8 @@ it('loads user models through the host and worker without project configuration,
     const view = JSON.stringify(await post({ type: 'ready' }));
     const exported = JSON.stringify(await post({ type: 'session-action', action: 'export', id: app.controller.current.id }));
     await app.controller.persist();
-    const history = await readFile(path.join(await projectDataDirectory(path.join(directory, 'data'), await realpath(directory), applicationId, 'main'), 'conversations.json'), 'utf8');
+    const backend = createServerRuntimePersistence({ serverUrl: origin, token: 'fixture-account', resolveProject: true, workspace: { kind: 'local', projectId: applicationId, entryId: 'main', localKey: createHash('sha256').update(await realpath(directory)).digest('hex') } });
+    const history = JSON.stringify(await backend.list('conversation')); await backend.close();
     for (const secret of ['test-only-first-key', 'test-only-next-key']) {
       expect(view).not.toContain(secret); expect(exported).not.toContain(secret); expect(history).not.toContain(secret);
     }
@@ -84,7 +90,9 @@ it('runs saved system and third-party models through the real Web worker with re
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
   let generation = 0, subscribed = true;
   const catalogRequests: string[] = [], calls: { path: string; model: string; token: string; body: any }[] = [];
+  const storageService = runtimeStorageService({ account: () => 'fixture-user' });
   const upstream = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
     if (request.url === `/api/projects/${applicationId}`) {
       response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ errCode: 0, data: { id: applicationId } })); return;
     }
@@ -202,12 +210,12 @@ it('runs saved system and third-party models through the real Web worker with re
     expect(catalogRequests.slice(switchedAt)).toEqual(['Bearer next-ai-identity', 'Bearer next-ai-identity']);
     expect(calls.at(-1)?.token).toBe(`Bearer responses-${generation}`);
 
-    await app.setHostConnection(undefined);
+    await app.setHostConnection({ serverUrl: origin, accessToken: 'next-project-identity' });
     const offlineAt = catalogRequests.length;
     state = app.configurations!.state;
     const updated = [{ ...models[2], model: 'third-next-model', apiKey: 'third-next-identity' }, ...models.slice(0, 2)];
     await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: updated } } });
-    await post({ type: 'send', text: 'Updated configuration without system sign-in', params: { model: 'deleted-entry' }, attachments: [] });
+    await post({ type: 'send', text: 'Updated configuration without system AI sign-in', params: { model: 'deleted-entry' }, attachments: [] });
     await app.controller!.idle();
     expect(app.controller!.current.messages.at(-1)?.status).toBe('success');
     expect(app.controller!.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
@@ -233,7 +241,9 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const calls: { model: string; body: any; token: string }[] = [];
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
+  const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
     response.setHeader('content-type', 'application/json');
     if (request.url === `/api/projects/${applicationId}`) {
       response.end(JSON.stringify({ errCode: 0, data: { id: applicationId } })); return;

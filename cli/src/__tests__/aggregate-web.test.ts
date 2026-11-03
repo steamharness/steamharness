@@ -4,11 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startWebServer } from '../web/server';
-import { LocalDatabaseRegistry } from 'steamharness';
+import { startWebServer } from './web-test-storage';
 import type { Project, Report, Runtime } from '../web/workflow-types';
 
-const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
   for (const app of apps.splice(0)) await app.close();
@@ -23,11 +21,11 @@ async function fixture(database = false) {
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const entries = ([['agent', 'conversation'], ['assistant', 'conversation'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
-    databases: database && entryId === 'agent' ? [{ alias: 'data', databaseId: randomUUID() }] : [],
+    databases: database && entryId === 'agent' ? ['data'] : [],
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases.map(database=>database.alias)})), defaultEntry: 'agent'  };
+  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases})), defaultEntry: 'agent'  };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
-  if(database) await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:entries[0]!.databases[0]!.databaseId}}));
+  await writeFile(path.join(directory, 'config.json'), JSON.stringify({ version: 1 }));
   for (const entry of entries) {
     await mkdir(path.join(directory, entry.root), {recursive:true});
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
@@ -80,18 +78,15 @@ it('keeps parallel entries running while navigating and cancels only the request
   f.active.get('assistant')!.finish({ status: 'success', output: { items: [] } });
 });
 
-it('keeps host catalogs, approvals and data out of CLI Web while retaining explicit alias binding', async () => {
-  const f = await fixture(true);
-  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data']) {
-    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local' })).ok).toBe(false);
+it('requires Server resource management and rejects local and legacy bindings without changing project config', async () => {
+  const f = await fixture(true), config = await readFile(path.join(f.directory, 'config.json'), 'utf8');
+  await f.call('agent', { type: 'draft', text: 'Keep this draft', attachments: [] });
+  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data', 'bind']) {
+    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local', databaseId: randomUUID() })).ok).toBe(false);
   }
-  const registry = new LocalDatabaseRegistry();
-  const request = registry.request({ projectId: (await f.state('agent')).project.id, entryId: 'agent', alias: 'data', permissions, target: { kind: 'create', name: 'Approved by host' } });
-  const approval = registry.review(request.requestId, { approve: true });
-  const result = await f.call('agent', { type: 'databases', action: 'bind', alias: 'data', databaseId: approval.databaseId });
-  expect(result.value.requirements[0]).toMatchObject({ status: 'bound', space: { name: 'Approved by host' } });
-  expect(result.value).not.toHaveProperty('local'); expect(result.value).not.toHaveProperty('server');
-  expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(approval.databaseId);
+  expect((await f.post('agent', { type: 'databases', action: 'get' })).ok).toBe(false);
+  expect(await readFile(path.join(f.directory, 'config.json'), 'utf8')).toBe(config);
+  expect(JSON.stringify(await f.state('agent'))).toContain('Keep this draft');
 });
 
 it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {

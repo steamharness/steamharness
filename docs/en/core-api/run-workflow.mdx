@@ -20,7 +20,6 @@ workflow.runProject<Input, Output>(
     name?: string;
     metadata?: Partial<NodeMetadata>;
     conversationMode?: "shared" | "shared-readonly";
-    kvMode?: "shared" | "isolated";
     outputVisibility?: "visible" | "hidden";
     emitNode?: boolean;
     maxDepth?: number;
@@ -40,7 +39,6 @@ workflow.runProject<Input, Output>(
 | `options.name` | `string` | Display title for the child-workflow call in the parent trace. |
 | `options.metadata` | `Partial<NodeMetadata>` | Overrides trace-node metadata. The default type is `workflow`. |
 | `options.conversationMode` | `"shared" \| "shared-readonly"` | How the child workflow uses the parent conversation. Defaults to `shared`. |
-| `options.kvMode` | `"shared" \| "isolated"` | How the child workflow uses parent KV. Defaults to `shared`; `isolated` prefixes project and conversation KV keys with the child workflow name. |
 | `options.outputVisibility` | `"visible" \| "hidden"` | Whether child-workflow output enters the parent's visible output. Defaults to `visible`. |
 | `options.emitNode` | `boolean` | Whether to add a `run-workflow` wrapper node to the parent trace. Defaults to `true`; top-level executor entries do not use this wrapper path. |
 | `options.maxDepth` | `number` | Maximum nested `runProject` depth. Defaults to `16` to prevent recursive or cyclic calls. |
@@ -55,7 +53,7 @@ Workflows may nest `runProject()` calls, but the default total depth is limited 
 
 `conversationMode: "shared-readonly"` gives a child workflow a read-only snapshot of the parent conversation. `appendMessage`, `setValue`, and `setTitle` do not write back to the parent session. Let the parent workflow append user and assistant transcripts and set the title when you need to avoid duplicate writes.
 
-`conversationMode` controls only `context.conversation`. `kvMode: "isolated"` prefixes ordinary KV under each database alias with the child workflow name; it does not change knowledge spaces or authorization. Use `context.entries.get(entryId)` for registered entry calls, which load target configuration and authorize again.
+`conversationMode` controls only conversation state. Business resource isolation follows the entry binding. Registered entry calls use `context.entries.get(entryId)`, loading target configuration and authorizing again.
 
 ## Execution records and output
 
@@ -65,7 +63,6 @@ The runtime adds a `run-workflow` wrapper node to the parent trace by default. `
 {
   "projectName": "openai-agents",
   "conversationMode": "shared-readonly",
-  "kvMode": "isolated",
   "outputVisibility": "hidden",
   "outputBridge": true
 }
@@ -99,7 +96,6 @@ const agentOutput = await workflow.runProject(
   {
     name: "OpenAI Agents core",
     conversationMode: "shared-readonly",
-    kvMode: "isolated",
     outputVisibility: "hidden",
   },
 );
@@ -122,7 +118,6 @@ const outputNode = workflow.createOutputNode({
 
     const childRun = workflow.runProject(childProject, input, context, {
       conversationMode: "shared-readonly",
-      kvMode: "isolated",
       outputVisibility: "hidden",
       onOutputChunk(chunk) {
         queue.push(chunk);

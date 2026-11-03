@@ -4,7 +4,7 @@
  *  phase four replaced the old screenshot/subtitle flow with a single
  * pass through MiniMax M3 video understanding; the workflow hands the model a
  * `mm_file://{file_id}` reference and stores the streamed description as a
- * PersistentValue-backed knowledge document.
+ * PostgreSQL-backed knowledge document.
  */
 
 import { rm } from "node:fs/promises";

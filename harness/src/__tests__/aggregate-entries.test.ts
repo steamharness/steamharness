@@ -7,7 +7,6 @@ import path from "node:path";
 import test from "node:test";
 import { inspectAggregateProjectStructure, inspectLocalProjectStructure, runLocalProjectWithReport } from "../executor/index";
 import { createLocalProjectConfigurationStore } from "../configuration";
-import { LocalDatabaseRegistry, createLocalDatabaseResolver } from "../databases/index";
 import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { createEntriesContext } from "../entries/index";
 
@@ -71,43 +70,5 @@ test("entry configuration identities differ and nested calls load target configu
     assert.equal(report.result.ok, true, JSON.stringify(report.result));
     assert.deepEqual(calls, ["two:read:alice"]);
     if (report.result.ok) assert.deepEqual({ ...(report.result.data as any).output, items: undefined }, { errCode: 0, errMessage: "", entryId: "two", label: "two", actor: { userId: "alice", isSystemAdmin: false }, items: undefined });
-  } finally { await rm(directory, { recursive: true, force: true }); }
-});
-
-test("entry operations use target grants while rechecking the caller and inherited tool restrictions", async () => {
-  const { directory, projectId } = await fixture();
-  try {
-    const registry = new LocalDatabaseRegistry(path.join(directory, "registry"));
-    const all = { mode: "all" as const };
-    const permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
-    const request = registry.request({ projectId, entryId: "two", alias: "cache", target: { kind: "create", name: "Target cache" }, permissions });
-    const approval = registry.review(request.requestId, { approve: true });
-    await writeFile(path.join(directory, "config.json"), JSON.stringify({ version: 1, databases: { cache: approval.databaseId } }));
-    const pkg = JSON.parse(await readFile(path.join(directory, "steamharness.json"), "utf8"));
-    pkg.entries.find((entry: {entryId: string}) => entry.entryId === "two").databases = ["cache"];
-    await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(pkg));
-    await writeFile(path.join(directory, "two.ts"), `const flow = steamharness.defineProject({ name: "Cache", async run(_input, context) {
-      await context.databases.get("cache").kv.setValue("cached", context.actor.userId);
-      return { errCode: 0, errMessage: "", actor: context.actor, value: await context.databases.get("cache").kv.getValue("cached") };
-    }});
-    export const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "read", entrypoints: [steamharness.defineEntrypoint({ id: "read", title: "Cache", workflow: flow, createInput() { return {}; } })] });`);
-    const options = { projectDir: directory, entryId: "one", args: ["nested"], actor: { userId: "alice", isSystemAdmin: false }, databaseResolver: createLocalDatabaseResolver(registry) };
-    const success = await runLocalProjectWithReport(options);
-    assert.equal(success.status, "success", JSON.stringify(success.result));
-    if (success.result.ok) assert.equal((success.result.data as any).output.value, "alice");
-    const denied = await runLocalProjectWithReport({ ...options, authorizeEntry(_entryId, _operation, actor) { assert.equal(actor.userId, "alice"); throw new Error("Caller has no operation access"); } });
-    assert.equal(denied.status, "failed");
-    assert.match(JSON.stringify(denied.result), /Caller has no operation access/);
-    const toolDenied = await runLocalProjectWithReport({ ...options, inheritedToolPermissions: createProjectToolPermissionContext({ definitions: [{ name: "entry:two:read", enabled: false }], projectName: "Caller", runId: "one" }) });
-    assert.equal(toolDenied.status, "failed");
-    assert.match(JSON.stringify(toolDenied.result), /caller disabled/);
-    registry.narrow(registry.authorization(approval.bindingRef!)!.grant.grantId, { ...permissions, kv: { read: all, write: { mode: "none" } } });
-    const narrowed = await runLocalProjectWithReport(options);
-    assert.equal(narrowed.status, "failed");
-    assert.match(JSON.stringify(narrowed.result), /does not allow/);
-    registry.revoke(registry.authorization(approval.bindingRef!)!.grant.grantId);
-    const revoked = await runLocalProjectWithReport(options);
-    assert.equal(revoked.status, "failed");
-    assert.match(JSON.stringify(revoked.result), /host authorization/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -150,7 +150,7 @@ it('lets slow file reads finish after 30 seconds and keeps their original bridge
     kanban: { url: '/entries/main/kanban/first/index.html', nonce: 'first', configuration: { id: 'map', name: 'Map', params: {} } } } });
   const frame = document.querySelector('iframe')!, post = vi.spyOn(frame.contentWindow!, 'postMessage');
   listeners.get('message')!({ source: frame.contentWindow, data: { type: KANBAN_BRIDGE_REQUEST_MESSAGE, nonce: 'first', requestId: 'file-read',
-    operation: 'files.readFile', input: { database: 'data', fileId: 'wf_ab12' } } });
+    operation: 'files.readFile', input: { knowledgeBase: 'data', fileId: 'wf_ab12' } } });
   const requestId = f.last().requestId;
   await vi.advanceTimersByTimeAsync(31_000);
   expect(post.mock.calls.some(([message]) => message.requestId === 'file-read')).toBe(false);

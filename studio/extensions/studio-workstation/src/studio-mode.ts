@@ -46,7 +46,6 @@ export class StudioModeController {
       login: t('Sign In'), loginHint: t('Sign in to SteamHarness'),
       editorEmpty: t('Open a file from Explorer or Quick Open to start editing.'), openFile: t('Open File'),
       databases: t('Databases'), databasesHint: t('Browse local and server databases'),
-      kv: t('KV Storage'), kvHint: t('Browse and edit project data'),
       knowledge: t('Knowledge Base'), knowledgeHint: t('Manage documents and knowledge'),
       info: t('Project Information'), infoHint: t('View project details and configuration'),
       assistant: t('Assistant'), assistantHint: t('Work with your coding assistant'),

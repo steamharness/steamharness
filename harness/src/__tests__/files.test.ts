@@ -9,8 +9,7 @@ import {
   createServerProjectFileStore,
   createProjectFileStore,
   createFileInputNode,
-  createProjectKVContext,
-  createLocalProjectKVStore,
+
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   parseProjectFileReferences,
@@ -21,7 +20,7 @@ test("video paths and managed references retain MIME type and bytes through file
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-video-files-"));
   try {
     const store = createProjectFileStore({});
-    const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "media-test" });
+    const kv = {};
     const context = {
       files: store, config: {}, providers: {}, ...createTestResources(),
       conversation: createDisabledProjectConversationContext(), tokenUsage: createDisabledProjectTokenUsageContext(),

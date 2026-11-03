@@ -1,3 +1,4 @@
+import { createMemoryRuntimePersistence } from "../runtime-storage/memory";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -16,7 +17,6 @@ import {
   normalizeProjectParamDeclarations,
   type ParamDeclaration,
   type ParamDefinition,
-  type KVStore,
 } from "../index";
 
 const params = [
@@ -393,11 +393,7 @@ test("parameter resolution without database access works offline and ignores pro
     inputMode: "form" as const,
     trigger: { kind: "init" as const },
   };
-  const store: KVStore = {
-    async getValue() { return undefined; },
-    async setValue() {},
-    async deleteValue() { return false; },
-  };
+
 
   try {
     assert.deepEqual(await resolveLocalProjectParams({projectDir,request}),{params:{value:{value:"server"}}});
@@ -417,8 +413,7 @@ test("parameter resolution without database access works offline and ignores pro
       storage: {
         host: "server",
         server: {
-          kvStore: store,
-          persistentValueStore: store,
+          runtimePersistence: createMemoryRuntimePersistence(),
         },
       },
     }), {

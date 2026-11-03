@@ -13,6 +13,10 @@ KANBAN_TEMPLATE_FILES = (
     "index.html",
     "board-state.js",
     "board-storage.js",
+    "task-repository.js",
+    "build.mjs",
+    "steamharness.database.ts",
+    "database/steamharness.schema",
     "README.md",
     "tests/board-state.test.mjs",
     "tests/board-storage.test.mjs",
@@ -171,7 +175,8 @@ def package_json(name: str, project_type: str) -> str:
     return json.dumps({
         "name": f"@steamharness/{name}-{package_suffix}",
         "version": "0.1.0", "private": True, "type": "module",
-        "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version},
+        "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version, **({"esbuild": "0.28.2"} if project_type == "kanban" else {})},
+        "scripts": {"dev": "steamharness web .", **({"build": "steamharness database generate && node build.mjs"} if project_type == "kanban" else {})},
     }, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -181,8 +186,8 @@ def project_json(name: str, project_type: str, description: str) -> str:
         "id": str(uuid4()), "name": name, "version": "0.1.0", "description": description,
         "defaultEntry": "main", "entries": [{
             "entryId": "main", "type": project_type, "name": name, "root": ".",
-            "entry": "index.html" if project_type == "kanban" else "index.ts",
-            "configuration": "configuration.json", "databases": [],
+            "entry": "dist/index.html" if project_type == "kanban" else "index.ts",
+            "configuration": "configuration.json", "databases": ["data"] if project_type == "kanban" else [],
         }],
         "projectCard": {"icon": icon, "iconBackgroundColor": icon_background},
     }, ensure_ascii=False, indent=2) + "\n"

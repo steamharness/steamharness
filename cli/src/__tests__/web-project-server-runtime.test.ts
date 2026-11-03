@@ -7,10 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+import { runtimeStorageService } from './runtime-storage-service';
 
 it.each(['workflow', 'conversation'] as const)('retains structured remote storage errors through the actual %s worker report', async kind => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'server-guidance-runtime-')), id = crypto.randomUUID();
-  const server = createServer((request, response) => {
+  const storageService = runtimeStorageService();
+  const server = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/auth/me') response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'test-user' } } }));
     else { response.writeHead(404); response.end(JSON.stringify({ errCode: 404, errMessage: 'Project or group does not exist.' })); }
@@ -23,10 +26,10 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id, name: 'storage-error-fixture', type: 'module', version: '1.0.0', devDependencies: { steamharness: version },  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:'index.ts',databases:["data"]}] }));
-    await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1,databases:{data:crypto.randomUUID()}}));
+    await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1}));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'storage-error', async run(input, context) {
-        await context.databases.get('data').kv.getValue('missing-key'); return { errCode: 0, errMessage: '' };
+        await context.databases.connect({ kind: 'steamharness.database', version: 1, target: 'node', provider: 'postgresql', alias: 'data', schemaHash: 'a'.repeat(64), metadata: { models: [] }, loadEngine: async () => { throw new Error('Engine must not load before authorization'); } }); return { errCode: 0, errMessage: '' };
       } });
       export const executor = steamharness.defineExecutor(${kind === 'workflow' ? `{ projectType: 'workflow', defaultEntrypoint: 'main',
         entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow, params: [], createInput() { return {}; } })] }`
@@ -35,7 +38,8 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const report = await runtime.run({ project: { ...inspected.projects[0], uri: '' }, runId: 'failed-run', conversationId: 'fixture', args: [] }, () => undefined);
     expect(report.status).toBe('failed');
-    expect(report.error?.metadata, JSON.stringify(report)).toMatchObject({ code: 'DATABASE_ACCESS_FAILED',entryId:'main',database:'data', serverUrl: connection.serverUrl, projectId: id, status: 404 });
+    expect(JSON.stringify(report)).toContain('Database host rejected access');
+    expect(JSON.stringify(report)).not.toContain('Engine must not load');
     expect(JSON.stringify(report)).not.toContain('fixture-private-token');
   } finally {
     runtime.dispose(); await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });

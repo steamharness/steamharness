@@ -1,15 +1,5 @@
-import {
-  createKnowledgeDocument,
-  deleteKnowledgeDocument,
-  editKnowledgeDocument,
-  getKnowledgeDocument,
-  listKnowledgeDocuments,
-  readKnowledgeDocumentLines,
-  searchKnowledgeDocuments,
-} from "../../knowledge/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
 import { pageInteger, pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, splitsSurrogate,
   validateResultPageArgs, type ResultPageArgs } from "../result-pages";
@@ -31,9 +21,10 @@ const KNOWLEDGE_ACTIONS: readonly KnowledgeAction[] = [
 ];
 
 interface KnowledgeToolArgs extends ResultPageArgs {
-  database: string;
+  knowledgeBase: string;
   action: KnowledgeAction;
   documentId?: string;
+  expectedRevision?: number;
   title?: string;
   markdown?: string;
   query?: string;
@@ -48,7 +39,7 @@ interface KnowledgeToolArgs extends ResultPageArgs {
 }
 
 export async function runKnowledgeAction(
-  context: Pick<NodeContext, "databases">,
+  context: Pick<NodeContext, "knowledgeBases">,
   args: KnowledgeToolArgs,
 ): Promise<unknown> {
   const readOnly = ["get", "list", "search", "read_lines"].includes(args.action);
@@ -60,7 +51,7 @@ export async function runKnowledgeAction(
 }
 
 async function runKnowledgeActionResult(
-  context: Pick<NodeContext, "databases">,
+  context: Pick<NodeContext, "knowledgeBases">,
   args: KnowledgeToolArgs,
 ): Promise<unknown> {
   if (!KNOWLEDGE_ACTIONS.includes(args.action)) {
@@ -71,15 +62,15 @@ async function runKnowledgeActionResult(
     });
   }
 
-  const storage = selectDatabase(context, args.database);
+  if (args.expectedRevision !== undefined) pageInteger(args.expectedRevision, 1, "expectedRevision", 1, 2147483647);
+  const storage = context.knowledgeBases.get(requireString(args.knowledgeBase, "knowledgeBase", args.action));
   switch (args.action) {
     case "list": {
-      const documents = await listKnowledgeDocuments(storage);
-      return { action: "list" as const, count: documents.length, documents };
+      const page = await storage.listDocuments({ pageSize: args.pageSize, cursor: args.cursor });
+      return { action: "list" as const, count: page.total, documents: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor };
     }
     case "get": {
-      const document = await getKnowledgeDocument(
-        storage,
+      const document = await storage.getDocument(
         requireString(args.documentId, "documentId", args.action),
       );
       return {
@@ -94,7 +85,7 @@ async function runKnowledgeActionResult(
       };
     }
     case "create": {
-      const document = await createKnowledgeDocument(storage, {
+      const document = await storage.createDocument( {
         id: optionalBoundedString(args.documentId, "documentId", args.action),
         title: requireString(args.title, "title", args.action),
         markdown: requireString(args.markdown, "markdown", args.action),
@@ -110,10 +101,11 @@ async function runKnowledgeActionResult(
     case "edit": {
       const title = optionalBoundedString(args.title, "title", args.action);
       const markdown = optionalBoundedString(args.markdown, "markdown", args.action);
-      const document = await editKnowledgeDocument(storage, {
+      const document = await storage.editDocument( {
         id: requireString(args.documentId, "documentId", args.action),
         ...(title === undefined ? {} : { title }),
         ...(markdown === undefined ? {} : { markdown }),
+        ...(args.expectedRevision === undefined ? {} : { expectedRevision: args.expectedRevision }),
       });
       return {
         action: "edit" as const,
@@ -126,9 +118,8 @@ async function runKnowledgeActionResult(
     case "delete":
       return {
         action: "delete" as const,
-        ...(await deleteKnowledgeDocument(
-          storage,
-          requireString(args.documentId, "documentId", args.action),
+        ...(await storage.deleteDocument(
+          requireString(args.documentId, "documentId", args.action), args.expectedRevision,
         )),
       };
     case "search": {
@@ -136,7 +127,7 @@ async function runKnowledgeActionResult(
       const cursor = optionalBoundedString(args.cursor, "cursor", args.action);
       return {
         action: "search" as const,
-        ...(await searchKnowledgeDocuments(storage, {
+        ...(await storage.searchDocuments( {
           query: requireString(args.query, "query", args.action),
           ...(documentId === undefined ? {} : { documentId }),
           beforeLines: args.beforeLines,
@@ -149,7 +140,7 @@ async function runKnowledgeActionResult(
     case "read_lines":
       return {
         action: "read_lines" as const,
-        ...(await readKnowledgeDocumentLines(storage, {
+        ...(await storage.readDocumentLines( {
           documentId: requireString(args.documentId, "documentId", args.action),
           startLine: requireNumber(args.startLine, "startLine", args.action),
           endLine: requireNumber(args.endLine, "endLine", args.action),
@@ -159,12 +150,13 @@ async function runKnowledgeActionResult(
 }
 
 function summarizeDocument(
-  document: { id: string; title: string; markdown: string; createdAt: string; updatedAt: string },
+  document: { id: string; title: string; markdown: string; createdAt: string; updatedAt: string; revision?: number },
   options: { includeMarkdown: boolean; maxMarkdownLength?: number },
 ) {
   const maxMarkdownLength = options.maxMarkdownLength ?? 8_000;
   return {
     id: document.id,
+    ...(document.revision === undefined ? {} : { revision: document.revision }),
     title: document.title,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
@@ -192,7 +184,7 @@ function truncateMarkdown(value: string, maxLength: number): string {
 const MAX_IDENTIFIER_CHARS = 200;
 const MAX_MARKDOWN_CHARS = 200_000;
 const MAX_QUERY_CHARS = 500;
-const MAX_CURSOR_CHARS = 80;
+const MAX_CURSOR_CHARS = 4096;
 
 const STRING_BOUNDS: Readonly<Record<string, number>> = {
   documentId: MAX_IDENTIFIER_CHARS,
@@ -266,27 +258,28 @@ export const KNOWLEDGE_CAPABILITY: Capability = {
   inputSchema: {
     type: "object",
     properties: {
-      database: { type: "string", minLength: 1, description: "The declared database alias." },
+      knowledgeBase: { type: "string", minLength: 1, description: "The declared knowledge base alias." },
       action: {
         type: "string",
         enum: [...KNOWLEDGE_ACTIONS],
         description: "What to do with the document store.",
       },
       documentId: { type: "string", minLength: 1, maxLength: 200 },
+      expectedRevision: { type: "integer", minimum: 1, maximum: 2147483647, description: "The document revision read before editing or deleting." },
       title: { type: "string", minLength: 1, maxLength: 200 },
       markdown: { type: "string", maxLength: 200_000 },
       query: { type: "string", minLength: 1, maxLength: 500 },
       beforeLines: { type: "integer", minimum: 0, maximum: 50 },
       afterLines: { type: "integer", minimum: 0, maximum: 50 },
       pageSize: { type: "integer", minimum: 1, maximum: 1000 },
-      cursor: { type: "string", minLength: 1, maxLength: 80 },
+      cursor: { type: "string", minLength: 1, maxLength: 4096 },
       startLine: { type: "integer", minimum: 1 },
       endLine: { type: "integer", minimum: 1 },
       includeMarkdown: { type: "boolean", description: "Include the body, truncated." },
       maxMarkdownLength: { type: "integer", minimum: 100, maximum: 20_000 },
       ...RESULT_PAGE_PROPERTIES,
     },
-    required: ["database", "action"],
+    required: ["knowledgeBase", "action"],
   },
   async run(context, args) {
     return runKnowledgeAction(context, args as unknown as KnowledgeToolArgs);

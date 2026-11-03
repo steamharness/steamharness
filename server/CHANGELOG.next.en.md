@@ -1,5 +1,24 @@
 # Unreleased
 
+- Fixed concurrent table requests and Browser binding resolution by waiting for database locks before execution. Authorization and models are revalidated after waiting, and stale row edits remain rejected.
+- Fixed aggregate publication accepting JSON numeric configuration revisions for each entry, including the initial revision 0, restoring CLI and Studio upload/publication flows.
+
+- Fixed table data consistency for UTC dates, mapped enums and lists. Database privileges and per-step authorization protect migration history, and usage statistics preserve metadata containing special Unicode.
+
+- Changed: remove legacy KV, database-space and project KV endpoints. Browser table queries validate the account, binding, access revision and model fingerprint on every call; rebinding and revocation invalidate existing clients.
+
+- Added relational knowledge storage, account grants, versioned bindings, document CAS, Unicode substring search and private attachment collection. Restricted model/row management preserves BigInt/Decimal precision and rejects stale row edits.
+
+- Added platform history, ordered message/queue records, run usage and versioned Agent snapshots with account/entry isolation, revision conflicts, deletion tombstones, project identity resolution and active-session snapshot reads.
+
+- Added entry-scoped relational bindings, account API key-only SQL leases and per-operation authorization. Rebinding, access changes and cancellation revoke SQL identities and prevent stale clients from switching resources.
+
+- Added an account-authenticated independent PostgreSQL database catalog, recoverable provisioning, read/write roles and connection revocation, with shadow validation, transactional migrations, immutable history and restart recovery.
+
+- Added static inventory, source fingerprint, and hash verification for SteamHarness Database generated assets in uploads and snapshots. Other local runtime data stays excluded; Server does not execute database definitions.
+
+- Added relational Agent storage and account-authenticated APIs for unpublished local workspaces, exclusive leases and safe retries, plus an isolated PostgreSQL 17 Docker development environment.
+
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed Kanban database reads contending for a space-wide exclusive lock and delaying annotations and revision checks behind large attachments. Images and other attachments now use private file storage with metadata and a digest in PostgreSQL; legacy attachments move on first read while retaining references and revisions.

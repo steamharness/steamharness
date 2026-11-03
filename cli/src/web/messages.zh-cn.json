@@ -110,8 +110,6 @@
   "Entrypoints granted": "入口调用授权",
   "Knowledge read granted": "知识库读取授权",
   "Knowledge write granted": "知识库写入授权",
-  "KV read granted": "KV 读取授权",
-  "KV write granted": "KV 写入授权",
   "Limit reached": "额度已用尽",
   "Loading usage...": "正在加载用量...",
   "Local": "本地",
@@ -972,5 +970,11 @@
   "The request result is unknown. This task has not been verified as complete.": "调用结果尚未确认，当前任务未通过完成核验。",
   "Task status: {0} · {1}": "任务状态：{0} · {1}",
   "Follow main model": "跟随主模型",
-  "Unavailable model: {0}": "模型不可用：{0}"
+  "Unavailable model: {0}": "模型不可用：{0}",
+  "Manage resources in Server": "在 Server 中管理资源",
+  "Resource type": "资源类型",
+  "Relational databases": "关系型数据库",
+  "Knowledge bases": "知识库",
+  "Sign in to SteamHarness Server to manage database resources.": "登录 SteamHarness Server 以管理数据库资源。",
+  "Create resources and manage account access in Server Web. Bind entry aliases here or with CLI commands.": "在 Server Web 创建资源并管理账号权限，在此处或通过 CLI 命令绑定入口别名。"
 }

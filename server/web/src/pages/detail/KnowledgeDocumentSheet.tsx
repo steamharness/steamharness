@@ -78,7 +78,7 @@ export function KnowledgeDocumentSheet({ documentId, repository, readOnly, refre
     const input = { title: draft.title.trim(), markdown: draft.markdown };
     try {
       const result = document
-        ? await repository.updateDocument(document.id, input, { signal: controller.signal })
+        ? await repository.updateDocument(document.id, { ...input, expectedRevision: document.revision }, { signal: controller.signal })
         : await repository.createDocument(input, { signal: controller.signal });
       if (controller.signal.aborted) return;
       if (!isKnowledgeSuccess(result)) throw new Error(result.errMessage || t("knowledgeOperationFailed"));
@@ -102,7 +102,7 @@ export function KnowledgeDocumentSheet({ documentId, repository, readOnly, refre
     setDeleting(true);
     setError(null);
     try {
-      const result = await repository.deleteDocument(document.id, { signal: controller.signal });
+      const result = await repository.deleteDocument(document.id, { expectedRevision: document.revision, signal: controller.signal });
       if (controller.signal.aborted) return;
       if (!isKnowledgeSuccess(result)) throw new Error(result.errMessage || t("knowledgeOperationFailed"));
       onChanged();

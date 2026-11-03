@@ -1,122 +1,67 @@
 ---
 title: "项目数据存储"
-description: "独立数据库空间"
+description: "关系库、独立知识库和平台运行存储"
 ---
 
-# 独立数据库空间
+# 项目数据存储
 
-数据库是 local 或 server 宿主的独立资源。一个 `spaceId` 同时承载 KV、知识库、索引、附件与修订号，可由多个项目和入口获批访问。删除项目不会删除空间。
+SteamHarness 将业务模型、知识内容和运行历史分别管理，持久访问统一通过 Server 授权。Server 和 PostgreSQL 可以在本机运行；需要服务连通，不要求互联网。
 
-## 记录数据库引用
+| 数据 | 存储和隔离 | 项目 API |
+| --- | --- | --- |
+| 自定义业务模型 | 每个显式申请的资源拥有独立 PostgreSQL database 和权限角色 | `context.databases.connect(descriptor)` |
+| 知识文档、分块、搜索索引、附件元数据 | 平台共享关系表，按知识库 UUID 及账号授权隔离 | `context.knowledgeBases.get(alias)` |
+| Conversation、消息、Run、队列、Usage、Agent 状态 | 平台共享关系表，按账号和运行空间隔离 | 宿主运行存储 |
+| 知识附件正文 | Server 私有文件存储，SQL 保存元数据和校验和 | `knowledge.files` |
 
-项目根目录的 `config.json` 集中维护部署配置，`databases` 只保存唯一的别名到数据库 ID 映射，不包含 `entries`。`steamharness.json` 的各入口仅通过 `databases` 字符串数组声明使用的别名。权限和凭据由宿主管理。旧的 `{alias, databaseId}` 对象数组以及 `host`、`permissions`、`bindingRef` 声明不再接受。
+新建项目或对话不会自动创建 PostgreSQL database。A、B 项目分别申请业务资源后，可定义结构不同的 `User` 表；共享必须显式绑定到同一资源并获得授权。知识库独立于业务库，不需要项目定义系统知识表。
+
+## 业务数据库
+
+在 `steamharness.database.ts` 声明多个别名，在 `database/<alias>/steamharness.schema` 定义模型；CLI 生成 Node/Browser 描述符和类型。创建、授权、迁移、绑定由 `steamharness database` 管理。关系库绑定按账号、项目、入口和别名保存在 Server，不写入旧 `config.databases` 映射。连接不自动建库或迁移。
+
+```ts
+import { main } from "./.steamharness/generated/database/node/index.js";
+const db = await context.databases.connect(main);
+await db.user.create({ data: { id: "alice", name: "Alice" } });
+```
+
+参见 [SteamHarness Database](/core-api/database)。
+
+## 知识库声明
+
+```sh
+steamharness knowledge create "Docs"
+steamharness knowledge bind . --entry main --alias docs --knowledge-base <UUID>
+```
+
+入口 `steamharness.json` 声明 `"knowledgeBases": ["docs"]`；项目根 `config.json` 保存部署映射：
 
 ```json
 {
   "version": 1,
-  "databases": {
-    "data": "00000000-0000-4000-8000-000000000001",
-    "archive": "00000000-0000-4000-8000-000000000002"
+  "knowledgeBases": {
+    "docs": "00000000-0000-4000-8000-000000000001"
   }
 }
 ```
 
-各入口在 `steamharness.json` 中引用所需别名：
-
-`steamharness.json`
-
-```json
-{
-  "defaultEntry": "agent",
-  "entries": [
-    {
-      "entryId": "agent",
-      "root": "agent"
-    },
-    {
-      "entryId": "database",
-      "root": "database"
-    }
-  ],
-  "id": "00000000-0000-4000-8000-000000000001",
-  "name": "Example",
-  "version": "1.0.0"
-}
-```
-
-`agent/steamharness.json`
-
-```json
-{
-  "type": "conversation",
-  "name": "Agent",
-  "entry": "index.ts",
-  "databases": [
-    "data",
-    "archive"
-  ]
-}
-```
-
-`database/steamharness.json`
-
-```json
-{
-  "type": "workflow",
-  "name": "Database",
-  "entry": "index.ts",
-  "databases": [
-    "data"
-  ]
-}
-```
-
-示例 UUID 必须替换为宿主批准的真实 ID。一个数据库使用一个别名，多个入口引用同一别名；一个入口可以关联多个数据库。业务代码仍使用 `context.databases.get("data")`。迁移时只修改 `config.json` 中 `databases.data` 一处，所有引用它的入口在下一次执行时采用新 ID。
-
-环境变量 `STEAMHARNESS_PROJECT_CONFIG` 接受 JSON 对象，例如 `{"databases":{"data":"00000000-0000-4000-8000-000000000003"}}`。它按别名覆盖数据库 ID，优先于文件；也可提供完整配置，无需文件。缺失别名、无效 UUID 或重复 ID会明确报错，不回退到其他数据库。配置不执行项目代码，也不会自动读取 `.env`。宿主启动时注入环境变量；上传、打包及 Store 发行保留原始 `config.json`，不会把运行机器的环境覆盖值写进源码。
-
-宿主授权分别控制 `kv.read/write` 与 `knowledge.read/write`，每条规则为 `{"mode":"none"}`、`{"mode":"all"}` 或 `{"mode":"prefixes","prefixes":["public:"]}`。KV 列表在分页和计数前应用获批的键范围；客户端传入的键前缀只能进一步收窄范围。
-
-## 申请与审批
-
-1. 在 Studio 左侧“数据库”或 Steam 工具中的“数据库”打开宿主目录，通过加号提交申请；Server Web 在“数据库空间”目录提供申请入口和“申请与权限”页面。CLI 的 `databases` 命令仍支持申请和审批。
-2. 选择本地或服务器宿主、消费项目和入口，填写别名，选择创建新数据库或访问已有数据库，并设置读写范围。提交后状态为 `pending`，此时不能访问数据，也不会创建空间。
-3. 本地申请由本机宿主使用者批准；Server 的新空间由系统管理员批准，申请人成为空间负责人；共享访问由空间负责人或系统管理员批准。
-4. 审批者可拒绝并填写原因，也可收窄权限后批准。批准返回 `databaseId`，并在宿主维护项目、入口对应的授权。申请前不需要在清单声明数据库。
-5. 在 CLI Web 的“项目信息 → 数据库”中使用关联图标，填写别名与获批 ID。保存会更新根 `config.json` 的共享映射，并在当前入口实际所属的 `steamharness.json` 中添加别名；保存引用不创建数据库或授予权限。CLI Web 只展示名称、ID、连接状态、宿主及共享入口，申请、审批和授权维护通过宿主界面或 CLI 命令完成。
-
-CLI Web 与 Studio 使用同一用户级 SQLite 注册表，空间数据目录按 `spaceId` 隔离。Server 使用 PostgreSQL 保存目录与数据。普通项目成员角色仍限制调用者的数据访问，空间授权不能提升用户角色。
-
-## 浏览数据
-
-Studio 数据库目录默认展示“本项目使用的”，也可筛选本地、服务器、全部数据库，并按名称、ID 或别名搜索。多个入口共用同一数据库时只显示一个数据库节点，节点列出使用入口。点击数据库、KV 或知识库，在独立编辑标签页复用底部资源面板的列表、分页、搜索与详情编辑；重复打开同一目标会定位已有标签。宿主管理目录允许本机使用者管理留存的本地数据；从项目入口打开时仍遵循该入口授权。
-
-底部 KV 与知识库面板直接选择数据库，按 ID 合并多个项目或入口的重复引用，并展示宿主维护的数据库名称；同名的不同数据库附带 ID 区分。本地或服务器位置由数据库确定，只显示位置图标，无需再次选择宿主。名称更新或切换到共享同一数据库的入口时保留当前内容与未保存草稿。
-
-打开的项目数据标签会校验别名当前指向的 ID 与宿主。修改 `config.json` 或环境覆盖完成迁移后，请关闭旧标签并重新打开，旧标签中的草稿不能写入新数据库。切换账号会取消尚未提交的宿主申请和审批。
-
-Server Web 以左侧目录和右侧数据库标签组织数据，支持服务器分页、项目关联筛选、搜索、KV 列表与详情、知识库、附件及独立的申请与权限页面。它只管理服务器数据库，不读取本地 SQLite。
-
-CLI Web 的浏览图标跳转至 Studio 对应数据标签；普通 Web 运行方式显示“暂不支持数据预览”，可前往 Studio 或 Server Web 浏览。
-
-## 使用与共享
+替换示例 UUID 为创建结果。多个入口可复用同一别名，一个入口可声明多个知识库。`STEAMHARNESS_PROJECT_CONFIG` 接受 JSON，例如 `{"knowledgeBases":{"docs":"00000000-0000-4000-8000-000000000002"}}`，按别名覆盖文件值；不自动读取 `.env`，分发保留原文件，不把环境值写回源码。未知、缺失、重复别名或无效 UUID 明确失败。
 
 ```ts
-const database = context.databases.get("data");
-await database.transaction(async db => {
-  await db.kv.setValue("settings:theme", "dark");
-  await db.knowledge.createDocument({
-    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
-  });
-});
-const theme = await database.kv.getValue("settings:theme");
-const document = await database.knowledge.getDocument("guide");
+const knowledge = context.knowledgeBases.get("docs");
+const doc = await knowledge.createDocument({ title: "Guide", markdown: "# Guide" });
+await knowledge.editDocument({ id: doc.id, markdown: "# Updated", expectedRevision: doc.revision });
 ```
 
-项目与入口身份用于鉴权和记录写入来源，数据按空间寻址。普通 KV 不能访问知识库的保留键。知识库附件也需要有效知识库权限。每次操作、事务、CAS、锁和修订订阅都重新检查授权。
+Server 同时校验账号授权和消费方绑定；已注册项目额外校验项目成员与入口声明。修改 ID 后须在 Server 建立匹配绑定并重新打开入口；旧客户端不能将草稿写入另一个资源。撤权及授权版本变化同样失效旧客户端。`knowledge unbind` 删除 Server 绑定，保留项目声明供之后重新绑定。参见 [知识库 API](/core-api/knowledge-documents)。
 
-两个项目通过各自申请绑定到同一空间后，可以共享相同键、知识库与附件；会话 KV 继续以项目、入口和会话身份隔离。索引修改与知识文档一起提交。
+## 管理入口
 
-## 引用不可用
+Server Web 的“数据库”提供关系库与知识库目录，支持服务端分页、搜索和创建。资源页面管理账号授权及项目入口绑定；关系库显示已应用模型、指纹和表数据，知识库管理文档与附件。编辑表行需要完整稳定键和当前行版本，冲突时保留草稿；未保存草稿受导航保护。
 
-未知 ID、未获批或撤销的授权会显示错误与宿主管理入口。其他入口仍可管理和运行。上传、打包与 Store 发行保留别名到 ID 的引用。引用不携带权限或凭据，宿主始终校验调用者、项目和入口授权。
+Studio 数据库视图和 CLI Web 项目数据库面板展示资源引用，并打开对应 Server Web 页面，链接不含账号 token。管理入口不提供 KV 编辑或本地/远程 KV 切换。旧 KV 与本地 KV API 已删除，不保留兼容入口或自动迁移。
+
+## 持久历史与故障
+
+对话历史使用平台运行存储，与业务库或知识库的授权和生命周期分别管理。删除项目不会自动删除独立资源。断连、撤权或服务故障会明确失败，不切换本地 KV、JSON 或 SQLite 历史，也不清除有效登录状态。参见 [平台运行存储](/core-api/runtime-storage)。

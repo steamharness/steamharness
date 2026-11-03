@@ -1,48 +1,18 @@
 # conversation-knowledge
 
-Conversation application that mirrors each conversation into one project
-knowledge-base markdown document.
+Conversation application that stores its transcript in Server conversation tables and mirrors it into a knowledge-base markdown document.
 
-For a real local write, give the conversation state and knowledge base separate
-local roots:
+Start a local Docker PostgreSQL and the local Server, sign in with the CLI, create a knowledge base, and configure the authorized ID under `knowledgeBases.data` in root `config.json`. The entry declares `knowledgeBases: ["data"]`. Server does not execute project code; run it locally:
 
 ```bash
 steamharness structure .
-STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
-STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-  steamharness json . --conversation-id demo-thread -- --message "记录今天的结论"
+steamharness json . --conversation-id demo-thread -- --message "记录今天的结论"
 ```
 
-`--dry-run` is still available when only a markdown preview is needed; it does
-not write a knowledge document to either local or server storage.
+`--dry-run` previews markdown without changing the knowledge document. Persistent conversation history still requires a reachable Server. The same conversation ID updates the same document; authorization is checked for every operation. No local KV or PersistentValue backend is supported.
 
-On the server, publish the workflow and run it through the server API so a
-document is created or updated in PostgreSQL with a stable conversation id.
-`$STEAMHARNESS_ID` is the UUID bound to the server project, not the workflow
-display name:
-
-```bash
-curl -X POST "$STEAMHARNESS_SERVER_URL/api/projects/$STEAMHARNESS_ID/run" \
-  -H "Authorization: Bearer $STEAMHARNESS_SERVER_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "draft",
-    "conversation_id": "demo-thread",
-    "args": ["--message", "记录今天的结论", "--title", "Demo conversation"]
-  }'
-```
-
-Each run appends a user message and a deterministic assistant acknowledgement to
-`context.conversation`, then rewrites the knowledge document with the full
-conversation transcript. The document id is derived from the conversation id, so
-subsequent runs with the same conversation id update the same markdown document.
-The local and server documents are intentionally separate, even when they use
-the same conversation id; no automatic synchronization is performed.
-
-第二阶段开始，这个示例的默认 composer 固定映射到 `--message`；`--title`
-和 `--dry-run` 继续作为辅助参数保留在 Advanced options / CLI 里。
-
+The composer maps to `--message`; `--title` and `--dry-run` remain auxiliary parameters.
 
 ## Project configuration
 
-Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Project env files are not loaded.

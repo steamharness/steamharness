@@ -1,43 +1,10 @@
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { AuditEventPage, KVEntryPage } from "../../types";
+import type { AuditEventPage } from "../../types";
 import { AuditPage } from "../AuditPage";
-import { KVInspectorPage } from "../ProjectKVPage";
 
 describe("server/web feature parity", () => {
-
-  it("adds KV run filters and opens JSON details in a dialog", async () => {
-    const onFiltersChange = vi.fn();
-    const onLoadEntry = vi.fn(async (entry: KVEntryPage["items"][number]) => ({
-      errCode: 0,
-      errMessage: "",
-      data: { ...entry, value: { nested: true } },
-    } as const));
-    renderWithTheme(
-      <KVInspectorPage
-        kvPage={createKVPage()}
-        filters={{ query: "", scope: "all", valueType: "all", conversationId: "", runId: "" }}
-        pageIndex={0}
-        pageSize={20}
-        onFiltersChange={onFiltersChange}
-        onRefresh={vi.fn()}
-        onPageChange={vi.fn()}
-        onLoadEntry={onLoadEntry}
-      />,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText("runId"), { target: { value: "run-1" } });
-    expect(onFiltersChange).toHaveBeenCalledWith({ query: "", scope: "all", valueType: "all", conversationId: "", runId: "run-1" });
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 KV 详情" }));
-    const detailDialog = screen.getByRole("dialog", { name: "KV 详情" });
-    expect(detailDialog).toBeTruthy();
-    expect(within(detailDialog).getAllByText("project").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("run-1").length).toBeGreaterThan(0);
-    expect(onLoadEntry).toHaveBeenCalledWith(expect.objectContaining({ key: "settings.demo" }));
-    expect(await screen.findByText(/"nested": true/)).toBeTruthy();
-  });
 
   it("shows audit page filters, details and empty state", () => {
     const onFiltersChange = vi.fn();
@@ -150,25 +117,5 @@ function createAuditPage(): AuditEventPage {
     ],
     hasMore: false,
     total: 1,
-  };
-}
-
-function createKVPage(overrides: Partial<KVEntryPage["items"][number]> = {}): KVEntryPage {
-  return {
-    total: 1,
-    hasMore: false,
-    items: [{
-      storageKind: "kv",
-      scope: "project",
-      key: "settings.demo",
-      valueType: "object",
-      valueSizeBytes: 42,
-      valuePreview: "{\"nested\":true}",
-      projectId: "demo",
-      updatedAt: "2026-05-26T00:00:00.000Z",
-      lastProjectId: "demo",
-      lastRunId: "run-1",
-      ...overrides,
-    }],
   };
 }

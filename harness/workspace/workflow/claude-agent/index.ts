@@ -443,7 +443,7 @@ export const executor = steamharness.defineExecutor<ClaudeAgentInput, ClaudeAgen
     {
       name: "mcp__steamharness-knowledge-documents__knowledge_documents",
       label: "Knowledge Documents",
-      description: "Manage PersistentValue-backed project markdown knowledge documents through the Claude MCP tool.",
+      description: "Manage PostgreSQL-backed project markdown knowledge documents through the Claude MCP tool.",
       enabled: true,
       autoApprove: true,
     },
@@ -506,7 +506,7 @@ export const executor = steamharness.defineExecutor<ClaudeAgentInput, ClaudeAgen
           flag: "--knowledge-tools",
           type: "boolean",
           required: false,
-          description: "Expose the workflow's PersistentValue-backed knowledge_documents tool (list / get / create / edit / delete / search / read_lines) to the agent. Enabled by default.",
+          description: "Expose the workflow's PostgreSQL-backed knowledge_documents tool (list / get / create / edit / delete / search / read_lines) to the agent. Enabled by default.",
           defaultValue: "true",
         }
       ],

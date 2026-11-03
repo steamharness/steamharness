@@ -5,12 +5,26 @@ import type { NodeContext } from "../types/context";
 
 const context = {projectId:"11111111-1111-4111-8111-111111111111",entryId:"main"} as NodeContext;
 
+test("knowledge cards require their independent knowledgeBase alias", async () => {
+  const args = { action: "upsert" as const, cardId: "guide", kind: "knowledge" as const,
+    target: { source: "current", knowledgeBase: "docs", documentId: "guide" } };
+  assert.deepEqual(await runPresentationCardAction(context, args), {
+    ...args, target: { ...args.target, projectId: context.projectId, entryId: context.entryId },
+  });
+  await assert.rejects(() => runPresentationCardAction(context, {
+    ...args, target: { source: "current", database: "docs", documentId: "guide" },
+  }), /invalid field "database"/u);
+  await assert.rejects(() => runPresentationCardAction(context, {
+    ...args, target: { source: "current", documentId: "guide" },
+  }), /knowledgeBase alias/u);
+});
+
 test("Kanban cards accept an independent named configuration target", async () => {
   const args = { action: "upsert" as const, cardId: "configuration-one", kind: "kanban" as const,
     target: { projectId:context.projectId,entryId:context.entryId,source: "current", configurationId: "configuration-one" }, preview: true };
   assert.deepEqual(await runPresentationCardAction(context, args), args);
   await assert.rejects(() => runPresentationCardAction(context, {
-    ...args, kind: "kv", target: { ...args.target, scope: "project", key: "map" },
+    ...args, kind: "knowledge", target: { ...args.target, scope: "project", key: "map" },
   }), /invalid field/u);
 });
 

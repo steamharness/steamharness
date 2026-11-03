@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises';
 const require = createRequire(import.meta.url);
 const compile = async entry => (await build({ entryPoints: [`extensions/studio-workstation/${entry}.ts`], bundle: true,
   platform: 'node', format: 'cjs', external: ['vscode'], write: false })).outputFiles[0].text;
-const [client, server, policy] = await Promise.all(['webview/context-menu', 'src/webview-context-menu', 'webview/resource-context'].map(compile));
+const [client, server] = await Promise.all(['webview/context-menu', 'src/webview-context-menu'].map(compile));
 const load = (source, globals = {}) => {
   const module = { exports: {} };
   runInNewContext(source, { module, exports: module.exports, require, crypto: globalThis.crypto, ...globals });
@@ -143,36 +143,6 @@ test('native commands route to the matching live webview, copy once and unregist
   await command(reloadedInput); assert.equal(second.messages.length, 3);
   await second.receive(reply); assert.equal(copied.length, 2);
   second.dispose(); await command(reloadedInput); assert.equal(second.messages.length, 3);
-});
-
-test('KV and Knowledge actions follow data source, authentication, readonly previews, editing and pending mutations', () => {
-  const { resourceMenuActions } = load(policy);
-  const actions = extra => Array.from(resourceMenuActions({ kind: 'kv', source: 'local', readOnly: false, authenticated: false,
-    saving: false, hasProject: true, target: 'row', editing: false, ...extra }));
-  assert.deepEqual(actions(), ['open', 'edit', 'copyKey', 'copyContent', 'delete']);
-  assert.deepEqual(actions({ kind: 'knowledge' }), ['open', 'edit', 'copyId', 'copyContent', 'delete']);
-  assert.deepEqual(actions({ source: 'server' }), ['open', 'copyKey', 'copyContent']);
-  assert.deepEqual(actions({ source: 'server', authenticated: true }), ['open', 'edit', 'copyKey', 'copyContent', 'delete']);
-  assert.deepEqual(actions({ source: 'server', authenticated: true, kind: 'knowledge' }), ['open', 'edit', 'copyId', 'copyContent', 'delete']);
-  assert.deepEqual(actions({ readOnly: true }), ['open', 'copyKey', 'copyContent']);
-  assert.deepEqual(actions({ saving: true }), ['copyKey', 'copyContent']);
-  assert.deepEqual(actions({ target: 'detail', editing: true }), []);
-  assert.deepEqual(actions({ target: 'list' }), ['newKey', 'refresh']);
-  assert.deepEqual(actions({ target: 'list', kind: 'knowledge' }), ['newDocument', 'refresh']);
-  assert.deepEqual(actions({ target: 'list', source: 'server', authenticated: true }), ['newKey', 'refresh']);
-  assert.deepEqual(actions({ target: 'list', readOnly: true }), ['refresh']);
-  assert.deepEqual(actions({ target: 'list', saving: true }), []);
-  assert.deepEqual(actions({ hasProject: false }), []);
-});
-
-test('Knowledge search hits identify the underlying document for unsaved-change protection and deletion', () => {
-  const { sameResource } = load(policy);
-  const hit = { id: 'document:2', documentId: 'document' }, otherHit = { id: 'document:10', documentId: 'document' };
-  assert.equal(sameResource('knowledge', hit, otherHit), true);
-  assert.equal(sameResource('knowledge', hit, { id: 'document', documentId: 'document' }), true);
-  assert.equal(sameResource('knowledge', hit, { id: 'other-document' }), false);
-  assert.equal(sameResource('knowledge', hit, undefined), false);
-  assert.equal(sameResource('kv', { id: '["project","","key"]' }, { id: '["conversation","session","key"]' }), false);
 });
 
 test('every native object action is hidden from the palette and has English and Chinese menu text', async () => {

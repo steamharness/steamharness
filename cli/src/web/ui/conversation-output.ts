@@ -422,7 +422,7 @@ export class ConversationOutput {
     const root = document.createElement('section'); root.className = 'resource-card'; root.dataset.cardId = card.id;
     const row = document.createElement('div'); row.className = 'resource-card-row';
     const button = document.createElement('button'); button.className = 'resource-target'; button.title = t('Open resource');
-    button.innerHTML = `${iconHtml(card.kind === 'browser' ? 'globe' : card.kind === 'file' ? 'file' : card.kind === 'kv' ? 'database' : card.kind === 'knowledge' ? 'book' : card.kind === 'kanban' ? 'layout' : 'folder')}<span class="resource-title">${escapeHtml(card.title)}</span>`;
+    button.innerHTML = `${iconHtml(card.kind === 'browser' ? 'globe' : card.kind === 'file' ? 'file' : card.kind === 'knowledge' ? 'book' : card.kind === 'kanban' ? 'layout' : 'folder')}<span class="resource-title">${escapeHtml(card.title)}</span>`;
     button.addEventListener('click', () => this.options.resource(card, 'open'));
     const preview = document.createElement('div'); preview.className = 'resource-inline'; preview.hidden = true;
     const toggle = iconButton('eye', t('Show in conversation'), () => {

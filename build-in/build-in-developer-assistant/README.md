@@ -14,6 +14,6 @@ Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主�
 
 Studio 内置小助手使用固定的系统分发身份，所有用户均无需创建个人服务器项目或重新申请 ID。应用检查成功后自动隐藏提示。普通项目不能通过填写相同 ID 或声明内置项目来跳过注册；服务器 AI 仍按当前账号授权。
 
-小助手自身的 Knowledge 和 KV 与被协助项目的数据分离。工具不提供本运行作用域的 Knowledge 与 KV，避免把小助手存储误当成用户项目的数据。会话历史保存在宿主用户数据目录。业务数据库必须声明需求，经宿主显式审批并绑定后访问。
+小助手自身的 Knowledge 和业务数据 与被协助项目的数据分离。工具不提供本运行作用域的 Knowledge 与业务数据，避免把小助手存储误当成用户项目的数据。会话历史保存在宿主用户数据目录。业务数据库必须声明需求，经宿主显式审批并绑定后访问。
 
 本项目位于 monorepo 的 `build-in/build-in-developer-assistant`，harness 与 CLI 通过 `link:../../harness`、`link:../../cli` 使用。Studio 构建时从 `build-in/build-in-developer-assistant` 读取内置小助手源码，开发依赖可从本仓解析。修改后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。Studio 的集成说明见其 `docs/workflow-workstation.md`。

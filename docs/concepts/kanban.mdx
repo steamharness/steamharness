@@ -13,7 +13,7 @@ Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示�
 
 构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
-Studio 提供最小看板、基础任务看板和参数化任务看板，入口均为 `index.html`。看板支持 `dev` 和 `inspect` 脚本，不提供执行 Workflow 的 `run:json` 脚本。任务看板以 `data` 别名访问获批数据库；未绑定时可临时编辑，刷新会丢失修改，页面会明确提示。绑定后，不同命名配置的任务分开保存。
+Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 dist/index.html，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
 
 ## 配置与展示
 
@@ -26,15 +26,18 @@ Studio 提供最小看板、基础任务看板和参数化任务看板，入口�
 ## 数据 Bridge
 
 ```js
-const database = window.steamHarnessKanban.databases.get("data");
-const markers = await database.kv.getValue("map:markers");
-await database.kv.setValue("map:markers", markers ?? []);
-const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
+import { data } from "./.steamharness/generated/database/browser/index.js";
+const api = window.steamHarnessKanban;
+const database = await api.databases.connect(data);
+const configurationId = api.getConfiguration().id || "default";
+const page = await database.task.rows({ where: { configurationId } });
+const row = await database.task.insert({ id: crypto.randomUUID(), configurationId, title: "Review", status: "todo" });
+await database.task.update({ key: { id: row.values.id }, rowVersion: row.rowVersion, data: { status: "done" } });
 ```
 
-必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `database.knowledge` 访问，附件通过 `database.files.createFile/readFile/deleteFile` 访问。
+必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `window.steamHarnessKanban.knowledgeBases.get("docs")` 访问，附件通过 `window.steamHarnessKanban.knowledgeBases.get("docs").files.createFile/readFile/deleteFile` 访问。
 
-Server 将附件内容保存到私有文件存储，数据库只保存元数据和摘要。普通 KV、版本和列表读取不会等待附件传输结束；写入、CAS 和多键事务仍保留并发校验。旧内联附件首次读取时兼容转存，现有文件引用无需修改。
+Server 将知识附件保存在私有文件存储，PostgreSQL 保存元数据与摘要。关系表更新和删除通过 rowVersion 检查并发版本。读写失败明确显示，写入失败保留已保存记录与用户草稿。
 
 ## 页面方法
 
@@ -53,4 +56,6 @@ Studio 中的快捷键以页面处理为先：在 `keydown` 处理函数中调�
 
 CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；Server Web 提供经过鉴权的静态预览。预览使用沙箱、受约束的相对资源路径和短期能力凭据；`studio.getLocalAnalysis()` 仅由支持的本地 Studio 宿主提供。
 
-发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库空间](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。
+发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库资源](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。
+
+知识库必须独立声明 `knowledgeBases: ["docs"]`，根配置映射 `knowledgeBases.docs`，并建立 Server 绑定。可在 `knowledgeBases.get("docs").subscribe(...)` 订阅不透明修订号；同名业务库 alias 的更新不会触发此订阅。

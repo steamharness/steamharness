@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import type { Project } from './workflow-types';
-import type { ResourceRequest } from './workflow-resources-types';
 import type { HostDatabaseRequest } from './workflow-databases-types';
 import { sanitizeProjectEnvironment, AuthError, type Connection } from './workflow-auth-client';
 import { sanitizeConnectionForSurface } from './workflow-cli-process';
@@ -8,7 +7,7 @@ import { t } from './localization';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 
 export function requestProjectResource(options: {
-  project: Project; input: ResourceRequest | HostDatabaseRequest; worker: string; storageDir: string;
+  project: Project; input: HostDatabaseRequest; worker: string; storageDir: string;
   nodePath: string; connection?: Connection; signal: AbortSignal; runtime?: NodeRuntime;
 }): Promise<unknown> {
   return new Promise((resolve, reject) => {

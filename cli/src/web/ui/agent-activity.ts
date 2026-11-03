@@ -52,7 +52,6 @@ function toolAction(toolName: string, input: Record<string, unknown>): Pick<Agen
     const action = first(input, 'action');
     return { kind: 'knowledge', icon: 'book', action: action === 'search' ? t("Search knowledge") : ['create', 'update', 'delete'].includes(action ?? '') ? t("Update knowledge") : t("Read knowledge"), target: first(input, 'title', 'documentId', 'query') };
   }
-  if (tool.includes('kv_store')) { return { kind: 'storage', icon: 'database', action: ['set', 'delete'].includes(String(input.action)) ? t("Update data") : t("Read data"), target: first(input, 'key', 'scope') }; }
   return { kind: 'tool', icon: 'tools', action: t("Call tool"), target: toolName };
 }
 

@@ -200,7 +200,7 @@ export const executor = steamharness.defineExecutor<PiAgentInput, PiAgentOutputP
     {
       name: "knowledge_documents",
       label: "Knowledge Documents",
-      description: "Manage PersistentValue-backed project markdown knowledge documents.",
+      description: "Manage PostgreSQL-backed project markdown knowledge documents.",
       enabled: true,
       autoApprove: true,
     },
@@ -268,7 +268,7 @@ export const executor = steamharness.defineExecutor<PiAgentInput, PiAgentOutputP
           flag: "--knowledge-tools",
           type: "boolean",
           required: false,
-          description: "Expose the workflow's PersistentValue-backed knowledge_documents tool. Enabled by default; pass --no-knowledge-tools to disable it.",
+          description: "Expose the workflow's PostgreSQL-backed knowledge_documents tool. Enabled by default; pass --no-knowledge-tools to disable it.",
           defaultValue: "true",
         },
         {

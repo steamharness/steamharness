@@ -203,10 +203,9 @@ describe("developer assistant workflow", () => {
     expect(prompt).not.toContain("workflow-desktop");
     expect(prompt).not.toContain("create_cloud_app");
     expect(prompt).not.toContain("open_dock_tool");
-    expect(prompt).toContain("inherit this run's storage environment");
-    expect(prompt).toContain("STEAMHARNESS_KV_STORE_DIR, STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR and STEAMHARNESS_FILE_STORE_DIR");
-    expect(prompt).toContain("project-local scratch directories");
-    expect(prompt).toContain("never delete or repair a store directory");
+    expect(prompt).toContain("dedicated Server test identity, project, entry and conversation");
+    expect(prompt).toContain("isolated test resources and project-local file caches");
+    expect(prompt).toContain("Never delete or repair host storage");
   });
 
   it("loads as a project against the injected runtime", async () => {
@@ -251,11 +250,11 @@ describe("developer assistant workflow", () => {
     expect(generatorSkill).toContain("数据库绑定尚未完成");
     expect(repairReference).toContain("必需知识门禁");
     expect(repairReference).toContain("旧版 CLI 返回 `0` 也不能覆盖直接发现的合同错误");
-    expect(repairReference).toContain("context.databases.get(alias)");
+    expect(repairReference).toContain("context.databases.connect(descriptor)");
     expect(repairReference).toContain("不要把字段机械改名");
-    expect(repairReference).toContain("config.json 集中记录 alias 与 databaseId");
+    expect(repairReference).toContain("config.json 不存关系数据库 ID");
     expect(repairReference).toContain("代码工作区授权");
-    expect(repairReference).toContain("KV 权限");
+    expect(repairReference).toContain("Server 数据资源授权");
   });
 
   it("documents how each parameter action renders", async () => {

@@ -16,6 +16,7 @@ Core Agent includes the [i-have-adhd](https://github.com/ayghri/i-have-adhd) com
 ```ts
 const agent = await workflow.createAgent({
   databasePath?: string,
+  storage?: AgentStorageFactory,
   workdir?: string,
   systemPrompt?: string,
   provider?: string,
@@ -96,7 +97,7 @@ Every command has a stable `requestId` and optional numeric `targetId` from the 
 | `promote` | `inputId` is a queued input's requestId. Atomically change it to steer and save the receipt, retaining its identity and images for the next tool boundary. Consumed inputs return `already_placed` / `settled` and are never resent. |
 | `compact` | Optional `instructions`; create a background compaction task coordinated with active work. |
 | `reset` | Optional `handoff`; start a new context epoch at an input boundary, retaining visible history and the task plan. |
-| `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same SQLite store. Active tasks and approvals are not copied. The receipt contains `forkId`. |
+| `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same persistent session. Active tasks and approvals are not copied. The receipt contains `forkId`. |
 | `delete` | Cancel and hide a child conversation. The host deletes the main session and its store. |
 | `configure` | `expectedVersion`, optional `model: { provider, modelId }` / `effort`; CAS update a registered model for the next request. Child model restrictions still apply. |
 | `plan` | `expectedVersion`, `items: { id, text, status }[]`, where status is pending / in_progress / completed; CAS update the transactional plan. |
@@ -126,9 +127,9 @@ Tool tasks expose `arguments` in both active and completed history: the argument
 
 Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, model?: { provider, modelId } })`. Explicit `toolDefinitions` / executor `tools` lists must declare their permissions along with any native tools; the convenience executor adds update_plan/subagent by default. Foreground completion, background execution, and client connectivity are independent states.
 
-When no execution owner is active, hosts can call `forkAgentConversation({ agentStoreDir, conversationId, command: { type: "fork", requestId, entryId, targetId? } })`. `conversationId` is the original workflow conversation ID; `targetId` optionally selects an internal numeric conversation ID. The API requires exactly one SQLite database in that session directory and acquires its exclusive owner lock. It shares the live `fork` document policies and durable receipts, copying committed history without loading the project, validating AI credentials or resuming pending tasks. With an active owner, send `fork` through its control channel to preserve exclusive storage ownership.
+Server-backed hosts use `forkStoredAgentConversation({ persistence, conversationId, command })` to fork committed history without loading a model or resuming tasks when no owner is active. Active owners receive fork through the control channel. `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` copies the receipt's forkId into an independent root session, preserving historical document checkpoints without tasks, approvals, queued inputs or usage. Consistent source snapshots can be read while the owner is active. Stop, deletion and model choices remain independent. Copy attachments separately and rewrite file references with replacements. See [platform runtime storage](/en/core-api/runtime-storage) for import, export and cancellation APIs.
 
-Hosts can use `isolateAgentConversation({ agentStoreDir, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` to copy an internal conversation into the independent root SQLite of another workflow conversation. First use `fork` to select the cutoff, then pass the receipt's `forkId` as `targetId`. Isolation reads a consistent source snapshot even with an active owner, without executing source tasks. It imports visible history and documents retained by fork policy, including historical `asOf` checkpoints, without tasks, input queues, approvals, provider identity or usage. Repeating the same destination and source reuses the result without overwriting new destination messages. Different sources and existing ordinary conversations are rejected. After copying managed files, hosts can rewrite historical file IDs and paths through `replacements: [{ from, to }]`. Without an active owner, `retireSource: true` stops and hides the old internal branch; with an owner, send `delete` for that branch through its control channel. CLI Web and Studio use this API to manage user branches as independent new conversations.
+Explicit databasePath instances retain the SQLite-specific forkAgentConversation / isolateAgentConversation helpers. These file-path APIs are not used by the CLI/Studio default repository.
 
 ## Extension Execution And Recovery
 
@@ -176,11 +177,13 @@ The host supplies `AgentExecutionEnv` with the declared stable id and target cwd
 
 Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
 
+For account-private PostgreSQL persistence through Server, inject [`createServerAgentStorage`](/en/core-api/runtime-storage).
+
 ### Storage And Backups
 
 Agent SQLite sessions automatically support long Windows paths for creation, reopening, owner locks, offline backups and imports. Existing storage locations are preserved; hosts do not need to shorten their data directories.
 
-`storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
+`storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, failure?: AbortSignal, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
 
 `exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `steamharness/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
 
@@ -310,7 +313,7 @@ None of the three prompts for a built-in tool: the policy decides which tools ex
 
 With `databasePath`, the Harness continuously commits generations, tool intents, results, and task checkpoints. Reopen the same file and reuse `requestId` to recover. Committed tool results are reused. A tool with an unknown outcome defaults to `replay: "never"`: recovery reports an interrupted tool result without repeating its effects. Declare `replay: "safe"` only when repeating the operation is safe. Built-in read/search tools are safe; write, edit, and shell tools default to never. Submission deduplication does not replace business idempotency in external services.
 
-`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing SQLite history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires SQLite. Conversation nodes select isolated SQLite files automatically; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
+`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing persistent history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires injected Server storage or explicit SQLite. Conversation nodes select isolated Server PostgreSQL sessions by default; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
 
 After a process interruption during streaming, recovery includes committed text and reasoning in the continuation context and durably records its continuation prompt. Further interruptions continue from those committed fragments. Incomplete tool calls without committed intents are discarded and never executed or shown as started.
 

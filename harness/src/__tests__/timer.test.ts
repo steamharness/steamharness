@@ -10,7 +10,6 @@ import {
 } from "../index";
 import { analyzeProjectScriptSource } from "../executor/rules";
 import { createProjectRuntime } from "../executor/runtime";
-import type { KVContext } from "../kv/index";
 import { runNode } from "../workflow/index";
 import type { RunContext } from "../types/index";
 
@@ -125,7 +124,7 @@ test("workflow structure recognizes timer node and endTimer API call", () => {
 });
 
 function createTestProjectContext(timers: RunContext["timers"]): RunContext {
-  const kv = createMemoryKVContext();
+  const kv = {};
   return {
     config: {},
     providers: {},
@@ -133,38 +132,5 @@ function createTestProjectContext(timers: RunContext["timers"]): RunContext {
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     timers,
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async deleteValue(key: string) {
-        return values.delete(`${prefix}:${key}`);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    deleteValue: project.deleteValue,
-    updateValue: project.updateValue,
-    conversation: createNamespace("conversation"),
   };
 }

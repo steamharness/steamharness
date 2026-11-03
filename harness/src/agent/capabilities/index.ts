@@ -1,5 +1,5 @@
 // Workflow capabilities: the tools a project's agent reaches its surroundings
-// with — its knowledge store, its KV and its host.
+// with — its knowledge store, its databases and its host.
 //
 // Each capability is described once, as a JSON Schema plus a run function, and
 // rendered twice from that description: as an agent tool, and as an MCP server
@@ -16,7 +16,6 @@ export {
   type CapabilityContext,
 } from "./assemble";
 
-export { selectDatabase } from "./databases";
 export {
   KANBAN_METHODS_MCP_SERVER_ID, KANBAN_METHODS_MCP_TOOL_NAME, KANBAN_METHODS_MCP_TOOL_ID,
   KANBAN_METHODS_CAPABILITY, readKanbanMethodsBridgeConfig, runKanbanMethodsAction,
@@ -32,13 +31,6 @@ export {
   runKnowledgeAction,
 } from "./knowledge";
 
-export {
-  KV_MCP_SERVER_ID,
-  KV_MCP_TOOL_ID,
-  KV_MCP_TOOL_NAME,
-  KV_CAPABILITY,
-  runKvAction,
-} from "./kv";
 
 export { readHostConfigurationBridgeConfig } from "./host-configuration";
 

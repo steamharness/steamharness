@@ -125,6 +125,8 @@
       updateTask,
     } from "./board-state.js";
     import { createBoardStorageController } from "./board-storage.js";
+    import { createTaskRepository } from "./task-repository.js";
+    import { data } from "./.steamharness/generated/database/browser/index.js";
 
     const fallback = {
       title: "{{name}}",
@@ -150,7 +152,7 @@
     let boardLoading = true;
     let boardReadOnly = true;
     const storage = createBoardStorageController({
-      kv: window.steamHarnessKanban?.databases.get("data").kv,
+      repository: createTaskRepository(() => window.steamHarnessKanban.databases.connect(data)),
       onStatus(status) {
         storageStatus.dataset.state = status.state;
         storageStatusText.textContent = status.message;

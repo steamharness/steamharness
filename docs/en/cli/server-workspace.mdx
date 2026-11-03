@@ -28,4 +28,4 @@ Use the client creation flow to request a Server identity. `upload --create` exp
 `upload --file` accepts an archive. `--no-wait` returns a preparation job; `preparation` reads its static preparation result. `file-upload/file-download/file-delete` manage business files. `--server` and `--token` override saved authentication. Never put credentials in the manifest.
 
 
-Configuration templates, profiles, snapshots and attachments are entry-scoped. Use CLI Web, Studio or Server Web to request independent database spaces and bind them. Downloads require fresh approval.
+Configuration templates, profiles, snapshots and attachments are entry-scoped. Create, grant, migrate and bind relational resources in Server Web or CLI database commands. Downloaded projects do not carry account bindings; check the current account's resource grants and entry bindings before use. Knowledge bases use knowledgeBases configuration and authorization.

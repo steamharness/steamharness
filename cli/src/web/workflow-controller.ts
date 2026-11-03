@@ -36,6 +36,12 @@ export class Controller {
     if (!this.workspace.runs.some(record => record.id === this.workspace.selectedId)) { delete this.workspace.selectedId; }
   }
 
+  replace(saved: Partial<WorkspaceContract>): void {
+    if (this.task) throw new Error('Stop executions before replacing workflow history.');
+    const restored = new Controller(this.project, this.runtime, saved, this.options);
+    for (const key of Object.keys(this.workspace)) delete (this.workspace as unknown as Record<string, unknown>)[key];
+    Object.assign(this.workspace, restored.workspace);
+  }
   get runs(): RunRecord[] { return this.workspace.runs; }
   get current(): RunRecord | undefined { return this.runs.find(record => record.id === this.workspace.selectedId); }
   get running(): boolean { return !!this.workspace.occupiedId; }

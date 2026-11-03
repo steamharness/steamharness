@@ -20,7 +20,6 @@ workflow.runProject<Input, Output>(
     name?: string;
     metadata?: Partial<NodeMetadata>;
     conversationMode?: "shared" | "shared-readonly";
-    kvMode?: "shared" | "isolated";
     outputVisibility?: "visible" | "hidden";
     emitNode?: boolean;
     maxDepth?: number;
@@ -40,7 +39,6 @@ workflow.runProject<Input, Output>(
 | `options.name` | `string` | 父 trace 中显示的子 workflow 调用标题。 |
 | `options.metadata` | `Partial<NodeMetadata>` | 覆盖 trace 节点元信息，默认 type 为 `workflow`。 |
 | `options.conversationMode` | `"shared" \| "shared-readonly"` | 子 workflow 如何使用父会话。默认 `shared`。 |
-| `options.kvMode` | `"shared" \| "isolated"` | 子 workflow 如何使用父 KV。默认 `shared`；`isolated` 会给 project/conversation KV key 加子 workflow 前缀。 |
 | `options.outputVisibility` | `"visible" \| "hidden"` | 子 workflow output 是否进入父级可见 outputs。默认 `visible`。 |
 | `options.emitNode` | `boolean` | 是否在父 trace 中增加 `run-workflow` 包裹节点。默认 `true`；顶层 executor 入口不走该插桩路径。 |
 | `options.maxDepth` | `number` | 嵌套 `runProject` 最大深度。默认 `16`，用于防止递归或环路调用。 |
@@ -55,7 +53,7 @@ workflow.runProject<Input, Output>(
 
 `conversationMode: "shared-readonly"` 会让子 workflow 读取父会话快照，但 `appendMessage`、`setValue` 和 `setTitle` 不会写回父会话。推荐由父 workflow 统一追加 user/assistant transcript 和设置标题，避免父子 workflow 重复写入消息。
 
-`conversationMode` 只控制 `context.conversation`。`kvMode: "isolated"` 会在每个数据库 alias 的普通 KV 上加子 workflow 名称前缀，不改变知识库空间或授权。注册入口之间的调用使用 `context.entries.get(entryId)`，由宿主加载目标配置并重新鉴权。
+`conversationMode` 只控制会话状态，业务资源隔离由入口绑定决定。注册入口之间使用 `context.entries.get(entryId)` 调用，由宿主加载目标配置并重新鉴权。
 
 ## 执行记录与输出
 
@@ -65,7 +63,6 @@ runtime 默认会在父 trace 中增加一个 `run-workflow` 包裹节点，`nam
 {
   "projectName": "openai-agents",
   "conversationMode": "shared-readonly",
-  "kvMode": "isolated",
   "outputVisibility": "hidden",
   "outputBridge": true
 }
@@ -104,7 +101,6 @@ const agentOutput = await workflow.runProject(
   {
     name: "OpenAI Agents core",
     conversationMode: "shared-readonly",
-    kvMode: "isolated",
     outputVisibility: "hidden",
   },
 );
@@ -127,7 +123,6 @@ const outputNode = workflow.createOutputNode({
 
     const childRun = workflow.runProject(childProject, input, context, {
       conversationMode: "shared-readonly",
-      kvMode: "isolated",
       outputVisibility: "hidden",
       onOutputChunk(chunk) {
         queue.push(chunk);

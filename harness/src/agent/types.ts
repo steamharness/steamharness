@@ -413,8 +413,7 @@ export interface AgentRuntimeOptions {
   /** Enable durable session control, task projections, and background work. */
   session?: AgentSessionOptions;
   /** SQLite file for this isolated agent session. Omit only for an ephemeral programmatic agent. */
-  databasePath?: string;
-  /** Host-owned exclusive storage factory; mutually exclusive with databasePath. */
+  /** Host-owned exclusive storage factory. */
   storage?: import("./storage").AgentStorageFactory;
   /** Directory tools resolve relative paths against. Defaults to `process.cwd()`. */
   workdir?: string;

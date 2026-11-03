@@ -1,10 +1,28 @@
 # Unreleased
 
+- Fixed worker crash recovery with relational storage by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.
+
 - [Fixed] Worker output now waits for transport completion, preventing full snapshots from accumulating behind a slow host. Unexpected worker crashes under a live host resume the same child tasks and checkpoints up to three times while preserving settled replies. Stop or reopening after a forced host exit still pauses managed work and user queues; background completion cannot release queued input.
 
 - [Improved] Subagent rows show elapsed time and token usage on the right, with status in icons and details. The latest response shows conversation usage including owned subagents, updates during background work, freezes elapsed time on settlement or disconnection, and preserves totals on reopen.
 
 - Fixed subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress. Child conversations show the same task receipt as the parent so a finished reply is not mistaken for completed work. Cancellation, independent forks and other conversations retain their own state.
+
+- Fixed database validation accepting conflicting or reserved model client names that could not be connected after generation.
+
+- Changed: task-board templates use generated Browser descriptors and Task rows scoped by configuration, with optimistic row versions. Unbound boards block edits, failed writes retain drafts, and stale pages cannot write to rebound resources.
+
+- Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.
+
+- Added knowledge resource/grant/binding and document/attachment commands, plus database data for applied model rows. Catalogs support pagination and search; Web panels open Server resource pages without KV editing or local/remote switches.
+
+- Conversation, Workflow and assistant history now use platform relational tables with account/entry-isolated messages, queues, drafts, runs and usage. Server leases coordinate windows and crash recovery without legacy JSON/SQLite reads or offline fallback.
+
+- Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.
+
+- Added database provisioning, inspection, retry and read/write grant commands, plus versioned migrations with SQL, model snapshots and checksums. Applied-history changes, schema drift and unaccepted destructive migrations are rejected.
+
+- Add database (db) init/validate/generate for steamharness.database.ts and steamharness.schema, including typed dual-target artifacts. Packaging generates assets automatically; upload/download verify static inventories while excluding other local runtime data.
 
 - Run project startup checks silently in the background. Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.
 

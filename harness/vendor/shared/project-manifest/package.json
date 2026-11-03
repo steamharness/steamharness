@@ -10,7 +10,6 @@
     "./node": "./node.ts"
   },
   "dependencies": {
-    "@steamharness/project-types": "workspace:*",
-    "@steamharness/database-spaces": "workspace:*"
+    "@steamharness/project-types": "workspace:*"
   }
 }

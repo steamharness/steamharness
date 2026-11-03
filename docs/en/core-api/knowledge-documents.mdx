@@ -1,36 +1,66 @@
 ---
 title: "Knowledge Documents"
-description: "Database knowledge API"
+description: "Independent knowledge bases, revisions and private attachments"
 ---
 
-# Database knowledge API
+# Knowledge Documents
 
-Use `context.databases.get(alias).knowledge` to access an approved space's Markdown knowledge documents. Knowledge and KV share a space identity with separate permissions. Ordinary KV cannot read or modify document, index or attachment keys.
+Use `context.knowledgeBases.get(alias)` for a Server-managed knowledge base. Documents, chunks, search indexes and attachment metadata use shared platform PostgreSQL tables isolated by resource ID. Private file storage holds attachment contents. No business schema or physical database per project is required.
 
-```ts
-const knowledge = context.databases.get("data").knowledge;
-await knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
-await knowledge.editDocument({ id: "guide", markdown: "# Updated guide" });
-const page = await knowledge.listDocuments({ pageSize: 20 });
-const document = await knowledge.getDocument("guide");
-const matches = await knowledge.searchDocuments({ query: "guide", pageSize: 20 });
-const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
-await knowledge.deleteDocument("guide");
+## Create and bind
+
+Sign in with `steamharness workspace login`, then create and bind a resource:
+
+```sh
+steamharness knowledge create "Project docs"
+steamharness knowledge bind . --entry main --alias docs --knowledge-base <UUID>
+steamharness knowledge bindings . --entry main
 ```
 
-Documents contain `id`, `title`, `markdown`, `createdAt` and `updatedAt`. Lists return summaries and pagination cursors; read bodies on demand. Search and line reads preserve line numbers. Document and search index mutations commit in the same space transaction; host locks and CAS keep concurrent updates consistent.
+The bind command records an account/project/entry/alias binding on Server, adds `"knowledgeBases": ["docs"]` to the entry declaration and stores `"knowledgeBases": {"docs": "<UUID>"}` in root `config.json`. `STEAMHARNESS_PROJECT_CONFIG` can override IDs by knowledge alias. Configuration contains no credentials and grants no access. See [project storage](/en/concepts/data-storage).
+
+## Documents and concurrent changes
+
+```ts
+const knowledge = context.knowledgeBases.get("docs");
+const created = await knowledge.createDocument({
+  id: "guide", title: "Guide", markdown: "# Guide\nHello 世界",
+});
+const current = await knowledge.getDocument(created.id);
+if (current) {
+  await knowledge.editDocument({
+    id: current.id, markdown: "# Updated guide", expectedRevision: current.revision,
+  });
+}
+const page = await knowledge.listDocuments({ pageSize: 20 });
+if (page.nextCursor) {
+  const next = await knowledge.listDocuments({ pageSize: 20, cursor: page.nextCursor });
+}
+const matches = await knowledge.searchDocuments({ query: "世界", pageSize: 20 });
+const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
+```
+
+Documents contain `id`, `title`, `markdown`, `revision`, `createdAt` and `updatedAt`. Lists return summaries, `total`, `hasMore` and optional `nextCursor`, ordered by most recent write. Pass opaque cursors back unchanged. Search matches literal substrings without case sensitivity, including Chinese, and retains 1-based line numbers and context. Search cursors are tied to query parameters and the resource revision; restart a search after content or attachments change. Documents and chunk indexes commit in one SQL transaction.
+
+Pass the revision you read as `expectedRevision` when editing, or use `deleteDocument(id, expectedRevision)`. A mismatch returns a conflict: retain the draft, read again and resolve the change. Omitting the parameter changes the current version directly. Deleting a missing document returns `{ id, deleted: false }`; a stale expected revision returns a conflict.
+
+Titles allow 512 characters, Markdown allows 4 MiB characters, and IDs allow 256 characters without NUL. List pages contain 1–100 items. Search pages and match limits allow up to 1000, with at most 100 context lines on either side. Line reads allow 1000 lines per call. Hosts can poll `getRevision()` for updates.
 
 ## Attachments
 
 ```ts
-const files = knowledge.files;
-const image = await files.createFile({ name: "image.png", mimeType: "image/png", buffer });
-const resolved = await files.readFile(image.id);
-await files.deleteFile(image.id);
+const image = await knowledge.files.createFile({ name: "image.png", mimeType: "image/png", buffer });
+const resolved = await knowledge.files.readFile(image.id);
+const bytes = await resolved.readBuffer();
+await knowledge.files.deleteFile(image.id);
 ```
 
-References include `storage: "database"` and `spaceId`. Create, read, delete and subsequent reads through retained handles check knowledge permissions. Each attachment is limited to 50 MiB. Other approved projects can read the same attachment. Deleting a project preserves space content.
+Files allow at most 50 MiB. References retain `storage: "database"` and `spaceId` (the knowledge base UUID). HTTP uses Base64; SQL stores only metadata and checksums, while contents use private file storage. Durable upload/delete intents let background collection recover failed uploads and deleted objects. Reads verify size and SHA-256.
 
-## Failures and recovery
+`readFile()` downloads once. Subsequent `readBuffer()` and `readBase64()` calls reuse the content but recheck the current binding and read authorization each time. Revocation invalidates retained handles. Configuration attachments and project-hosted files have separate read permissions and APIs.
 
-Unbound, pending, incorrectly hosted, revoked or insufficient grants fail without falling back to KV or another host. The UI exposes request, rebind and recovery actions. See [Independent database spaces](/en/concepts/data-storage).
+## Authorization and failures
+
+Owners manage account `read` / `write` grants. A binding cannot exceed the account grant. Registered projects also require project membership capabilities and an entry resource declaration. Changed grants, bindings or access versions invalidate old clients; reopen the entry. An administrative key cannot replace account identity.
+
+Persistent access requires reachable Server and PostgreSQL instances. Both may run locally without internet access. Missing sign-in, declarations, bindings, grants or storage fail explicitly without falling back to local KV. There is no transaction spanning knowledge bases, business databases and runtime storage.

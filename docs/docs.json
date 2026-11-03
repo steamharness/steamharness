@@ -85,7 +85,7 @@
                   "concepts/payloads-and-errors",
                   "concepts/project-configuration",
                   "concepts/data-storage",
-                  "concepts/kv-and-conversation",
+                  "concepts/database-and-conversation",
                   "concepts/files",
                   "concepts/llm-provider"
                 ]
@@ -112,6 +112,8 @@
                   "core-api/create-question-classifier-node",
                   "core-api/user-settings",
                   "core-api/create-agent",
+                  "core-api/runtime-storage",
+                  "core-api/database",
                   "core-api/create-agent-node",
                   "core-api/define-agent-conversation-executor",
                   "core-api/connect-mcp-server",
@@ -354,7 +356,7 @@
                   "en/concepts/payloads-and-errors",
                   "en/concepts/project-configuration",
                   "en/concepts/data-storage",
-                  "en/concepts/kv-and-conversation",
+                  "en/concepts/database-and-conversation",
                   "en/concepts/files",
                   "en/concepts/llm-provider"
                 ]
@@ -381,6 +383,8 @@
                   "en/core-api/create-question-classifier-node",
                   "en/core-api/user-settings",
                   "en/core-api/create-agent",
+                  "en/core-api/runtime-storage",
+                  "en/core-api/database",
                   "en/core-api/create-agent-node",
                   "en/core-api/define-agent-conversation-executor",
                   "en/core-api/connect-mcp-server",

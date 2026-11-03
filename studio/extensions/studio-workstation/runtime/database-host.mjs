@@ -1,58 +1,30 @@
-/** Trusted Studio host operations. This module is never loaded by a project RPC. */
-export async function runDatabaseHostRequest(request, core) {
-  const input = request.input;
-  const registry = new core.LocalDatabaseRegistry();
-  const connection = request.connection && { serverUrl: request.connection.serverUrl, token: request.connection.accessToken };
-  const remote = (endpoint, body) => {
-    if (!connection) throw new Error('Sign in to the selected database host.');
-    return core.databaseHostRequest(connection, endpoint, body);
-  };
-  if (input.action === 'catalog') {
-    const result = { local: registry.read() };
-    if (connection) {
-      try { result.server = await remote(''); }
-      catch (error) { result.serverError = error.message; }
-    }
-    return result;
+/** Trusted Studio host operations. SQL credentials never enter webviews. */
+export async function runDatabaseHostRequest(request) {
+  if (!request.connection?.accessToken) throw new Error('Sign in to SteamHarness Server to manage database resources.');
+  if (!request.input || typeof request.input !== 'object') throw new Error('Invalid database management request.');
+  const url = new URL(request.connection.serverUrl);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Invalid Server address.');
+  if (request.input.action === 'bindings') {
+    const { projectId, entryId } = request.input;
+    if (typeof projectId !== 'string' || !/^[0-9a-f-]{36}$/.test(projectId) || typeof entryId !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new Error('Invalid project entry.');
+    const response = await fetch(`${request.connection.serverUrl.replace(/\/$/, '')}/api/databases/bindings?projectId=${projectId}&entryId=${entryId}`, { headers: { Authorization: `Bearer ${request.connection.accessToken}` }, redirect: 'error', signal: AbortSignal.timeout(30_000) });
+    const result = await response.json(); if (!response.ok || result.errCode !== 0) throw new Error('Database bindings are unavailable.');
+    return { bindings: result.data };
   }
-  if (!['local', 'server'].includes(input.host)) throw new Error('Select a database host.');
-  if (input.action === 'resource') {
-    const resource = input.input;
-    if (!resource || !['kv', 'knowledge'].includes(resource.kind) || !['list', 'get', 'save', 'delete'].includes(resource.action)) throw new Error('Invalid resource operation.');
-    const namespace = resource.scope === 'conversation' ? resource.conversationId : undefined;
-    const local = input.host === 'local' && core.createLocalDatabaseManagementContext(input.spaceId, { registry, conversationNamespace: namespace });
-    const call = (operation, args) => local ? core.executeDatabaseOperation(local, operation, args)
-      : remote(`/${encodeURIComponent(input.spaceId)}/manage`, { operation, input: { ...args, ...(namespace ? { namespace: `conversation:${namespace}` } : {}) } });
-    if (resource.kind === 'kv') {
-      if (resource.action === 'list') {
-        const page = await call('kv.listValues', { ...resource, pageSize: 30 });
-        return { ...page, source: input.host, sources: [input.host], items: page.items.map(item => ({ ...item, id: JSON.stringify([item.scope, item.conversationId ?? '', item.key]), title: item.key, preview: JSON.stringify(item.value) })) };
-      }
-      if (typeof resource.key !== 'string' || !resource.key.trim()) throw new Error('A KV key is required.');
-      if (resource.action === 'delete') return { removed: await call('kv.deleteValue', resource) };
-      if (resource.action === 'save') await call('kv.setValue', resource);
-      const entry = await call('kv.getEntry', resource);
-      return !entry.exists ? null : { key: resource.key, value: entry.value, scope: resource.scope ?? 'project', conversationId: resource.conversationId };
+  if (request.input.action !== 'catalog') throw new Error('Manage database resources, models, table data and account access in Server Web.');
+  const resources = [];
+  for (const kind of ['databases', 'knowledge-bases']) {
+    let page = 1;
+    for (;;) {
+      const response = await fetch(`${request.connection.serverUrl.replace(/\/$/, '')}/api/${kind}?page=${page}&pageSize=100`, {
+        headers: { Authorization: `Bearer ${request.connection.accessToken}` }, redirect: 'error', signal: AbortSignal.timeout(30_000),
+      });
+      const result = await response.json();
+      if (!response.ok || result.errCode !== 0) throw new Error(result.errMessage || 'Database catalog is unavailable.');
+      resources.push(...result.data.items.map(resource => ({ ...resource, kind })));
+      if (page * 100 >= result.data.total) break;
+      if (++page > 100) throw new Error('Too many resources. Filter them in Server Web.');
     }
-    if (resource.action === 'list') {
-      if (resource.query?.trim()) {
-        const page = await call('knowledge.searchDocuments', { query: resource.query, cursor: resource.cursor, pageSize: 30 });
-        return { items: page.matches.map(match => ({ ...match, id: `${match.documentId}:${match.lineNumber}`, preview: match.line })), total: page.totalMatches, hasMore: page.hasMore, nextCursor: page.nextCursor, source: input.host, sources: [input.host], search: true };
-      }
-      const page = await call('knowledge.listDocuments', { cursor: resource.cursor, pageSize: 30 });
-      return { ...page, source: input.host, sources: [input.host], items: page.items.map(item => ({ ...item, documentId: item.id, preview: item.markdownPreview })) };
-    }
-    if (resource.action === 'get') return call('knowledge.getDocument', resource);
-    if (resource.action === 'delete') return { removed: await call('knowledge.deleteDocument', resource) };
-    return call(resource.create ? 'knowledge.createDocument' : 'knowledge.editDocument', resource);
   }
-  if (input.action === 'request') return input.host === 'local' ? registry.request(input.request) : remote('/requests', input.request);
-  if (input.action === 'review') {
-    if (typeof input.approve !== 'boolean') throw new Error('An explicit approval or rejection is required.');
-    const decision = { approve: input.approve, permissions: input.permissions, reason: input.reason };
-    return input.host === 'local' ? registry.review(input.requestId, decision) : remote(`/requests/${encodeURIComponent(input.requestId)}/review`, decision);
-  }
-  if (!['revoke', 'rotate', 'narrow'].includes(input.action)) throw new Error('Unknown database management action.');
-  if (input.host === 'server') return remote(`/grants/${encodeURIComponent(input.grantId)}/${input.action}`, { permissions: input.permissions });
-  return input.action === 'revoke' ? registry.revoke(input.grantId) : input.action === 'rotate' ? registry.rotate(input.grantId) : registry.narrow(input.grantId, input.permissions);
+  return { resources };
 }

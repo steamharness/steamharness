@@ -56,8 +56,8 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
     row(`window:${entry.entryId}:type`, t('Project type'), t(typeNames[entry.type])),
     row(`window:${entry.entryId}:path`, t('Local path'), `${entry.root}/${entry.entry}`),
   ], false), avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) }));
-  const databases = project.databases.map(database => group(`database:${database.alias}`, database.alias, 'database', [
-    row(`database:${database.alias}:id`, t('Database ID'), database.databaseId),
+  const databases = project.databases.map(database => group(`database:${database}`, database, 'database', [
+    row(`database:${database}:alias`, t('Database'), database),
   ], false));
 
   const platforms = [row('platform-mode', t("Platform mode"), platform.mode === 'specific' ? t("Specific platforms")

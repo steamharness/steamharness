@@ -6,7 +6,6 @@ import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
-import { ResourceViews } from './workflow-resources-view';
 import { DatabaseViews } from './workflow-databases-view';
 import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
@@ -145,7 +144,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (disposed) { return; }
     projectWindows.update(provider.projects, activeProject());
     const target = currentProject();
-    resources.update(provider.projects, target);
     databases.update(provider.projects, target);
     trace.update(provider.projects, target);
     versions.update(provider.projects, target);
@@ -407,7 +405,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
       const disposal = preview.onDidDispose(() => { clearTimeout(timer); listener.dispose(); disposal.dispose(); reject(new Error(t('Unable to open the resource.'))); });
     }) : Promise.resolve();
-    preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : card.kind === 'kv' ? 'database' : 'preview');
+    preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : 'preview');
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];
@@ -421,7 +419,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const assistant = new AssistantViewProvider(context, launcher, output,
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
   const mode = new StudioModeController(context, output);
-  const resources = new ResourceViews(context, launcher, account, output);
   const databases = new DatabaseViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
@@ -472,10 +469,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (kind === 'databases') {
       const instance = new DatabaseViews(context, launcher, account, output, false, subscriptions);
       return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolveWebviewView(view) };
-    }
-    if (kind === 'kv' || kind === 'knowledge') {
-      const resources = new ResourceViews(context, launcher, account, output, false, subscriptions);
-      return { update: (projects, preferred) => resources.update(projects, preferred), resolve: view => resources.resolve(kind, view) };
     }
     if (kind === 'trace') {
       const instance = new TraceView(context, openProject, output, trace, subscriptions);

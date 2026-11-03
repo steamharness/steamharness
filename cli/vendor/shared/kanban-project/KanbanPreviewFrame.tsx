@@ -75,6 +75,7 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
         type: KANBAN_DATABASE_REVISION_MESSAGE,
         nonce: props.previewNonce,
         alias: revision.alias,
+        ...(revision.kind ? { kind: revision.kind } : {}),
         revision: revision.revision,
       }, "*");
     }

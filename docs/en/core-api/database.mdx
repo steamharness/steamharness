@@ -1,0 +1,191 @@
+---
+title: "SteamHarness Database"
+description: "Declare multiple relational databases, validate models, and generate typed Node and Browser descriptors."
+---
+
+# SteamHarness Database
+
+`steamharness/database` defines project databases and their types. Models use Prisma schema syntax, with public files named `steamharness.database.ts` and `steamharness.schema`. Applications do not author a `PrismaClient`, datasource, or generator.
+
+## Single and multiple databases
+
+Create `steamharness.database.ts` in the directory that uses the databases:
+
+```ts
+import { defineDatabases } from "steamharness/database";
+
+export default defineDatabases({
+  main: { schema: "./database/main/steamharness.schema" },
+  audit: { schema: "./database/audit/steamharness.schema" },
+  archive: { schema: "./database/main/steamharness.schema" },
+});
+```
+
+For one database, use `defineDatabase({ schema: "./database/main/steamharness.schema" })`; its alias is `main`. Aliases start with a lowercase letter and contain up to 63 lowercase letters, digits, or underscores. Reserved words and `databases` are unavailable. Paths are relative to the definition file, use `/`, stay inside the project, and cannot traverse symlinks.
+
+Aliases identify local declarations without resource IDs, connection addresses, or grants. Multiple aliases may share a schema and generated implementation while retaining separate descriptors. Reusing `main` in another project or entry does not identify the same resource.
+
+Model files contain models, enums, relations, and constraints only. For example, `database/main/steamharness.schema`:
+
+```prisma
+model User {
+  id    String @id @default(uuid())
+  email String @unique
+  posts Post[]
+}
+
+model Post {
+  id       Int    @id @default(autoincrement())
+  title    String
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  @@unique([authorId, title])
+}
+```
+
+`audit` may define a different `User`, such as `id Int`, `actor String`, and `event String`. Each alias module exports its own types. The current target is PostgreSQL, with validation and generation pinned to Prisma 7.10.1. Custom datasource and generator blocks are rejected. Model names must remain unique after lowercasing their first letter and cannot produce `constructor`, `prototype`, `__proto__`, `then` or `transaction`. For example, `User` and `user` cannot coexist in one database, and `Transaction` requires another name.
+
+## Validate and generate
+
+```sh
+pnpm exec steamharness database init .
+pnpm exec steamharness database validate .
+pnpm exec steamharness database generate .
+```
+
+Use `db` as a short alias for `database`. `init` creates a single-database template without overwriting definitions. It adds a `database:generate` package script, generation hooks for existing `dev` and `build` scripts, and a Git ignore rule. Projects with existing definitions can run `validate` and `generate` directly.
+
+Commands execute the local definition file and validate models through WASM without connecting to a database. Schema diagnostics refer to the authored model file and line. A failed generation preserves the previous complete output; a successful generation removes obsolete aliases. Concurrent generation fails explicitly. After a forced process termination, remove a remaining `database.lock` only after confirming that generation is no longer running.
+
+## Generated types
+
+Outputs live in `.steamharness/generated/database`:
+
+| Path | Content |
+| --- | --- |
+| `node/index.js`, `node/index.ts` | Node descriptors and alias index; client implementations load on demand. |
+| `browser/index.js`, `browser/index.ts` | Browser descriptors without Node drivers, connection configuration, or client constructors. |
+| `node/<alias>`, `browser/<alias>` | The database's `Client`, models, query input types, and enums. |
+| `metadata/`, `schemas/`, `engines/` | Model metadata, internal standard schemas, generated implementations, and required runtime assets. |
+| `manifest.json` | Definition and model fingerprints, file inventory, and SHA-256 hashes. |
+
+Type checking resolves adjacent `.ts` files. Runtime imports use matching `.js` files without a TypeScript loader. Maintain definitions and models; do not edit or commit generated outputs.
+
+```ts
+import type { DatabaseClient } from "steamharness/database";
+import { main, audit } from "./.steamharness/generated/database/node/index.js";
+import type { User } from "./.steamharness/generated/database/node/main.js";
+
+function listUsers(db: DatabaseClient<typeof main>) {
+  return db.user.findMany({
+    select: { email: true, posts: { select: { title: true } } },
+  });
+}
+
+function listAudit(db: DatabaseClient<typeof audit>) {
+  return db.user.findMany({ where: { event: "login" } });
+}
+```
+
+Models are also available as `Models.User` and `UserModel`, and enums as `Enums.Status`, avoiding collisions with wrapper types. Relation filters, `select`, `include`, compound unique keys, and results preserve model type inference. `Client` exposes model operations and the type of `transaction(callback)`. Connection lifecycle, raw SQL, and extensions are outside the project client. Import `Decimal`, `DbNull`, `JsonNull`, and `AnyNull` from `steamharness/database` or an alias module. Browser code uses the same model types and imports descriptors from `browser/index.js`.
+
+Descriptors contain `alias`, `target`, `provider`, `schemaHash`, and `metadata`; they do not open connections. Use the management commands below to provision resources and migrate them.
+
+## Provision independent databases and grant access
+
+A resource UUID identifies one independent PostgreSQL database with separate migration, read and write roles in the same instance. Projects A and B can each provision a resource and define a different `User` table. Their schemas and data are isolated. Opening a project or creating a conversation does not provision a database. Reusing a model file across aliases does not share a resource automatically.
+
+Sign in to the target Server account with `steamharness workspace login`. These commands use the saved account API key; `--server` and `--token` override it. `STEAMHARNESS_SERVER_URL` and `STEAMHARNESS_SERVER_ADMIN_KEY` are also supported. A system administrator key without an account identity is insufficient.
+
+```sh
+pnpm exec steamharness database create orders --server http://127.0.0.1:18126
+pnpm exec steamharness database list --server http://127.0.0.1:18126
+pnpm exec steamharness database inspect <database-id> --server http://127.0.0.1:18126
+pnpm exec steamharness database grant <database-id> --user <account-id> --mode read --server http://127.0.0.1:18126
+pnpm exec steamharness database revoke <database-id> --user <account-id> --server http://127.0.0.1:18126
+```
+
+The creator owns the resource and its migrations. Shared accounts receive `read` or `write` access and cannot manage grants or migrations. Revoking or narrowing access invalidates issued identities and terminates their existing connections. Resource responses contain no database URLs, passwords or administration credentials, and list only resources the current account owns or can access.
+
+Creation records retain `requested / provisioning / ready / failed` status and the failing stage. Supply a stable `--request-id <uuid>` to retrieve the same request after response loss. The same account and request ID never create a second resource. Resume failed provisioning with `database retry <database-id>`. Incomplete provisioning produces a nonzero CLI exit code.
+
+## Generate and deploy migrations
+
+Pass the resource ID as a command option, outside the model and definition. `--alias` selects a project model declaration and defaults to `main`:
+
+```sh
+pnpm exec steamharness database migrate dev . --database <database-id> --alias main --name init --draft --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate deploy . --database <database-id> --alias main --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate status --database <database-id> --server http://127.0.0.1:18126
+```
+
+`migrate dev` compares applied history with the current models, saves a migration and refreshes generated assets. Without `--draft`, it also deploys. `migrate deploy` applies existing migrations only. Deploy pending migrations before generating another change. Commit the `migrations/<17-digit-timestamp>_<name>/` directories beside the model file. Each contains `migration.sql`, a `steamharness.schema` snapshot and a `steamharness.migration.json` checksum manifest. Aliases reusing one model file share its migration files.
+
+Server replays history in a temporary shadow database and verifies each model snapshot, then commits each target migration and its history in one transaction. Applied history cannot be omitted, reordered or edited. Live schema drift blocks further migrations. Failed SQL rolls back while previously committed migrations remain. After fixing data conditions, retry the same history. Repeated deploys skip committed steps, and restarts recover from database-local history. The platform administrator owns migration history; the migration identity cannot edit, delete or forge records and may only insert the history row authorized for the current deployment step.
+
+Dropping tables or columns and some column rewrites require SQL review and explicit `--accept-data-loss`. SQL supports model tables, enums, indexes and data changes. The platform owns transaction control, privileges, procedural code restrictions and internal migration history. Migrations revoke existing business connections; a failed or interrupted migration must be successfully retried before new connections can be issued.
+
+Resource, binding and native-host connection HTTP APIs live under `/api/databases`.
+
+## Bind an entry and query through Core
+
+Deploy model migrations before binding a resource to an entry:
+
+```sh
+pnpm exec steamharness database bind . --entry main --alias main --database <database-id> --server http://127.0.0.1:18126
+pnpm exec steamharness database bindings . --entry main --server http://127.0.0.1:18126
+pnpm exec steamharness database unbind . --entry main --alias main --server http://127.0.0.1:18126
+```
+
+The directory is the aggregate project root containing `steamharness.json`. `--entry` defaults to `defaultEntry`. `bind` generates and validates models in the selected entry's `root`; `--alias` defaults to `main`. Two entries can bind the same alias to different resources, and two projects can define different `User` models. Tables and data are shared only when explicitly binding the same resource UUID.
+
+The host stores bindings by signed-in account and `projectId + entryId + alias`, without changing project files. Declare aliases in steamharness.database.ts and list them as strings in the entry's steamharness.json databases array. Resource IDs are stored only in Server bindings; config.json.databases is unsupported. Each account, Server and entry needs its own bindings. A binding selects an already accessible resource and cannot grant access. The default mode inherits account access; `--mode read` can narrow it but cannot elevate permissions.
+
+Connect a generated descriptor from a Node workflow's context:
+
+```ts
+import { main } from "./.steamharness/generated/database/node/index.js";
+import type { RunContext } from "steamharness";
+
+export async function createUser(context: RunContext) {
+  const db = await context.databases.connect(main);
+  return db.transaction(async tx => {
+    const user = await tx.user.create({ data: { email: "alice@example.test" } });
+    await tx.post.create({ data: { title: "Hello", authorId: user.id } });
+    return user;
+  });
+}
+```
+
+Queries and results retain model inference. Clients expose model CRUD, relation queries, aggregation and `transaction(callback)`. Raw SQL, engine extensions and connection lifecycle methods are unavailable. Exceptions, query errors, authorization changes and cancellation roll transactions back. A transaction object expires when its callback finishes. Each client uses at most 2 pooled connections. SQL statements and transactions have a 30-second limit; transaction connection waits have a 5-second limit. Keep user input and long external requests outside transactions.
+
+Every model operation and transaction commit revalidates the host binding, account access and model fingerprint. Missing bindings return `DATABASE_UNBOUND`; mismatched deployed models return `DATABASE_SCHEMA_MISMATCH`. Rebinding or unbinding terminates old connections. Existing clients return `DATABASE_BINDING_CHANGED`; explicitly call `connect()` again. Revoking or narrowing access terminates affected SQL sessions. Revoked clients never automatically acquire new permissions. Query failures use `DATABASE_QUERY_FAILED`; known constraint errors include `queryCode`, such as `P2002`, without connection URLs or engine invocations in reports.
+
+SQL identities normally expire after 5 minutes and renew lazily on subsequent operations while retaining their original binding identity. Sent queries and transactions are never automatically replayed. Core releases run connections on success, failure, input waits and cancellation. Network failures stop operations without falling back to local KV; expiry cleanup reclaims temporary identities when release cannot reach Server. Relational access requires the local Server and PostgreSQL to be reachable.
+
+Custom Node hosts can import `createRemoteRelationalDatabaseHost` and `createDatabaseConnector` from `steamharness`, supplying an account API key and project/entry identity. Always `await connector.close()` at the end. Keep account and temporary SQL credentials inside the trusted host, outside project parameters, model inputs and Browser code. SQL credential HTTP endpoints accept account Bearer API keys only and reject Cookie sessions and browser Origin headers.
+
+## Browser table client
+
+Import a descriptor from the generated `browser/index.js`, bundle it, and call `window.steamHarnessKanban.databases.connect(descriptor)`. Each model exposes `rows({where, orderBy, page, pageSize})`, `insert(data)`, `update({key, rowVersion, data})`, and `delete({key, rowVersion})`. Rows return `{values, rowVersion}` and paginated reads return `{items, total, page, pageSize}`. This interface provides no Browser transactions, raw SQL, or Node relation operations.
+
+Declare the alias in the entry's `databases`, deploy migrations, and bind the resource first. The trusted host retains credentials and validates the binding, account grants, and schema fingerprint on every request. Changed bindings and grants invalidate retained clients; row conflicts require a fresh read while preserving the draft.
+
+Multiple table requests for the same binding or resource may be submitted concurrently. Before executing SQL, Server queues on binding and resource locks, waiting up to 5 seconds per lock before returning `DATABASE_BUSY`. Binding identity, access revision, and the model fingerprint are checked again after acquiring the locks. Waiting never replays an executed write; stale updates are still rejected through `rowVersion`.
+
+Task templates generate descriptors before building `dist/index.html` and store `Task` rows filtered by configurationId. Unbound resources and failed reads disable editing with an explicit error. Legacy KV, PersistentValue, local KV, and KV tools are removed without compatibility or automatic migration.
+
+## Build and distribute
+
+Custom builds should run `database generate` before TypeScript or frontend compilation. `workspace pack` generates definitions found at the aggregate root and registered entry directories, then includes source, models, and the complete generated subtree. `.gitignore` only controls Git. Do not exclude required database files through `.steamharnessignore`.
+
+Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `.steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
+
+This API defines project business models. [Platform runtime storage](/en/core-api/runtime-storage) independently manages conversations, execution history and Agent records. Declaring business models does not convert existing KV data.
+
+## Server Web table management
+
+The catalog supports server pagination, search and explicit creation. Resource details manage account grants, entry bindings, applied models and rows; Studio and CLI Web browsing opens this page. Row reads support pagination, literal text search and scalar equality. Updates and deletes require a complete stable key and rowVersion. Reload models when schemaHash changes. Conflicts retain drafts.
+
+JSON transports BigInt and Decimal as lossless strings. DateTime input requires an ISO string with a timezone, and reads and writes use UTC; native dates return UTC midnight, while time-only types use 1970-01-01 as their date. Enums use authored names, with database values from @map converted by Server. Bytes use Base64; lists and JSON retain their structure, and omitted lists without defaults are inserted as empty arrays. Database defaults and @updatedAt are applied automatically; model-client defaults such as cuid()/uuid() must be supplied explicitly for management SQL inserts. This structured table API shares the Browser client boundary and does not expose relation writes, raw SQL or Browser transactions. Knowledge uses the separate [Knowledge API](/en/core-api/knowledge-documents).

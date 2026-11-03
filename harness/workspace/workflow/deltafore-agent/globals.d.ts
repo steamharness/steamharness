@@ -198,7 +198,6 @@ declare const steamharness: {
       name?: string;
       metadata?: Record<string, unknown>;
       conversationMode?: "shared" | "shared-readonly";
-      kvMode?: "shared" | "isolated";
       outputVisibility?: "visible" | "hidden";
       emitNode?: boolean;
       maxDepth?: number;

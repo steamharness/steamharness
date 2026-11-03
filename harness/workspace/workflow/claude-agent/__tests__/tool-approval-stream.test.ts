@@ -5,7 +5,6 @@ import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   createProjectToolPermissionContext,
-  type KVContext,
   type UserInputResolved,
   type UserInputRequest,
 } from "steamharness";
@@ -247,31 +246,5 @@ function createNodeContext(
       project: "claude-agent",
       runId: "run-test",
     },
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-  const project = createNamespace("project");
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    updateValue: project.updateValue,
-    conversation: createNamespace("conversation"),
   };
 }

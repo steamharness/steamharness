@@ -13,6 +13,10 @@
     "./node": {
       "types": "./node.ts",
       "import": "./node.ts"
+    },
+    "./database-artifacts": {
+      "types": "./database-artifacts.ts",
+      "import": "./database-artifacts.ts"
     }
   },
   "dependencies": {

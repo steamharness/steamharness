@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import pg from 'pg';
+import { KnowledgeBaseRepository } from '../knowledge-bases';
+import { LocalStorage } from '../local-storage';
+import { createKnowledgeBasesContext } from 'steamharness';
+
+const connectionString = process.env.STEAMHARNESS_TEST_RELATIONAL_DATABASE_URL;
+test('relational knowledge, live authorization, search, CAS and private files survive repository restart', { skip: !connectionString, timeout: 90_000 }, async t => {
+  const schema = `knowledge_test_${randomUUID().replaceAll('-', '')}`, root = await mkdtemp(path.join(tmpdir(), 'knowledge-test-'));
+  const objects = new LocalStorage({ root, publicBaseUrl: 'http://127.0.0.1/' });
+  let repository = new KnowledgeBaseRepository(connectionString, objects, schema);
+  const admin = new pg.Pool({ connectionString });
+  t.after(async () => { await repository.close(); await admin.query(`drop schema if exists "${schema}" cascade`); await admin.end(); await rm(root, { recursive: true, force: true }); });
+  await repository.init();
+  const input = { name: 'Docs', requestId: randomUUID() };
+  const base = await repository.create('owner', input), other = await repository.create('owner', { name: 'Isolated', requestId: randomUUID() });
+  assert.equal((await repository.create('owner', input)).id, base.id);
+  await assert.rejects(repository.create('stranger', input), { statusCode: 409 });
+  const run = (operation: string, input: Record<string, unknown> = {}) => repository.operation('owner', base.id, operation, input);
+  const identity = { projectId: randomUUID(), entryId: 'main', alias: 'docs', knowledgeBaseId: base.id };
+  await assert.rejects(repository.resolveBinding('owner', identity), { statusCode: 403 });
+  await repository.bind('owner', identity);
+  const context = createKnowledgeBasesContext({ projectId: identity.projectId, entryId: identity.entryId, requirements: [{ alias: 'docs', knowledgeBaseId: base.id }], host: {
+    resolve: request => repository.resolveBinding('owner', request), operation: (identity, binding, operation, input) => repository.operation('owner', base.id, operation, input as any, { identity, binding }),
+  } }).get('docs');
+  await t.test('documents have relational chunks, isolated IDs, pagination and Unicode literal search', async () => {
+    const doc = await context.createDocument({ id: 'guide', title: 'Guide', markdown: '第一行\nHello 世界\n100%_literal\\path\nhello again' });
+    assert.equal(doc.revision, 1);
+    await context.createDocument({ id: 'second', title: 'Second', markdown: 'hello third' });
+    assert.equal(await repository.operation('owner', other.id, 'knowledge.getDocument', { documentId: 'guide' }), null);
+    const page = await context.listDocuments({ pageSize: 1 }); assert.equal(page.items.length, 1); assert.equal(page.total, 2); assert.ok(page.nextCursor);
+    const next = await context.listDocuments({ pageSize: 1, cursor: page.nextCursor }); assert.equal(next.items[0]?.id, 'guide'); assert.equal(next.hasMore, false);
+    const search = await context.searchDocuments({ query: 'HELLO', pageSize: 1, beforeLines: 1, afterLines: 1 });
+    assert.equal(search.totalMatches, 3); assert.ok(search.nextCursor);
+    assert.equal((await context.searchDocuments({ query: '%_literal\\', pageSize: 10 })).totalMatches, 1);
+    assert.equal((await context.searchDocuments({ query: '世界' })).totalMatches, 1);
+    assert.equal((await context.readDocumentLines({ documentId: 'guide', startLine: 2, endLine: 3 })).lines.length, 2);
+    const edit = await context.editDocument({ id: 'guide', markdown: 'changed 世界', expectedRevision: 1 }); assert.equal(edit.revision, 2);
+    await assert.rejects(context.editDocument({ id: 'guide', markdown: 'lost update', expectedRevision: 1 }), { statusCode: 409 });
+    await assert.rejects(context.searchDocuments({ query: 'HELLO', pageSize: 1, beforeLines: 1, afterLines: 1, cursor: search.nextCursor }), { statusCode: 409 });
+    const chunks = await admin.query(`select count(*)::int as count from "${schema}".chunks where base_id=$1 and document_id='guide'`, [base.id]); assert.equal(chunks.rows[0].count, 1);
+    await assert.rejects(context.createDocument({ title: 'NUL', markdown: 'bad\0text' }), { statusCode: 400 });
+    await assert.rejects(run('knowledge.listDocuments', { cursor: Buffer.from('null').toString('base64url') }), { statusCode: 400 });
+  });
+  await t.test('read-only accounts cannot write, owners control grants and stale clients fail after rebinding', async () => {
+    await repository.grant('owner', base.id, 'reader', 'read');
+    const binding = await repository.bind('reader', { ...identity, mode: 'read' }); assert.equal(binding.mode, 'read');
+    const consumer = { identity, binding };
+    assert.ok(await repository.operation('reader', base.id, 'knowledge.getDocument', { documentId: 'guide' }, consumer));
+    await assert.rejects(repository.operation('reader', base.id, 'knowledge.createDocument', { title: 'bad', markdown: '' }, consumer), { statusCode: 403 });
+    await assert.rejects(repository.grants('reader', base.id), { statusCode: 403 });
+    await repository.grant('owner', base.id, 'reader', 'write');
+    await assert.rejects(repository.operation('reader', base.id, 'knowledge.getDocument', { documentId: 'guide' }, consumer), { statusCode: 403 });
+    await repository.grant('owner', base.id, 'reader', 'read', true);
+    await assert.rejects(repository.resolveBinding('reader', identity), { statusCode: 403 });
+    await repository.bind('owner', { ...identity, knowledgeBaseId: other.id });
+    await assert.rejects(context.createDocument({ title: 'late', markdown: '' }));
+  });
+  await t.test('attachment bytes live outside SQL, deleted files and failed uploads are collected', async () => {
+    const file = await run('files.createFile', { name: 'map.png', mimeType: 'image/png', base64: Buffer.from('private bytes').toString('base64') });
+    const metadata = (await admin.query(`select * from "${schema}".attachments where base_id=$1 and id=$2`, [base.id, file.id])).rows[0];
+    assert.equal(Object.hasOwn(metadata, 'base64'), false); assert.equal(Object.hasOwn(metadata, 'content'), false);
+    assert.equal(Buffer.from((await run('files.readFile', { fileId: file.id })).base64, 'base64').toString(), 'private bytes');
+    const objectPath = `knowledge-bases/${base.id}/${file.id}/${metadata.sha256}`;
+    await objects.assertPrivateObject(objectPath);
+    await run('files.deleteFile', { fileId: file.id }); await assert.rejects(objects.assertPrivateObject(objectPath));
+    const path = 'knowledge-bases/orphan/test'; await objects.uploadPrivateBuffer(path, Buffer.from('orphan'));
+    await admin.query(`insert into "${schema}".objects(path,state,created_at) values($1,'pending',clock_timestamp()-interval '2 hours')`, [path]);
+    await repository.collectGarbage(); await assert.rejects(objects.assertPrivateObject(path));
+    await assert.rejects(run('files.createFile', { name: '../bad', base64: '' }), { statusCode: 400 });
+    await assert.rejects(run('files.createFile', { name: 'bad', base64: '!bad' }), { statusCode: 400 });
+  });
+  await repository.close(); repository = new KnowledgeBaseRepository(connectionString, objects, schema); await repository.init();
+  assert.equal((await repository.operation('owner', base.id, 'knowledge.getDocument', { documentId: 'guide' })).markdown, 'changed 世界');
+});

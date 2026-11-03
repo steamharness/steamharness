@@ -12,7 +12,7 @@ streaming output node, so App/Web runs can show plain progress text after parsin
 download, upload, M3 understanding, knowledge write, and final result creation.
 The workflow continues to write through `workflow.createKnowledgeDocument` /
 `editKnowledgeDocument`, so it doubles as a real smoke test for the
-PersistentValue knowledge pipeline.
+Server knowledge pipeline.
 
 ## Run
 

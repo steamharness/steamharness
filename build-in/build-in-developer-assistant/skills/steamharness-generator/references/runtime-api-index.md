@@ -6,7 +6,7 @@
 **判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：
 那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。
 
-## 聚合入口与数据库（`context.entries` / `context.databases`）
+## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）
 
 ### 聚合入口目录（`EntriesContext`）
 
@@ -19,34 +19,29 @@
 - `listEntrypoints()`
 - `runEntrypoint(entrypointId, args, options)`
 
-### 数据库目录（`DatabasesContext`）
+### 关系型数据库连接（`RelationalDatabasesContext`）
+
+- `connect(descriptor)`
+
+### 知识库目录（`KnowledgeBasesContext`）
 
 - `list()`
 - `get(alias)`
 
-### 独立数据库空间（`DatabaseContext`）
-
-- `listValues(input)`
-- `kv`
-- `knowledge`
-- `getBinding()`
-- `getRevision()`
-- `subscribe(listener, options)`
-- `transaction(operation)`
-
-### 知识库与附件（`DatabaseKnowledgeContext`）
+### 知识库与附件（`KnowledgeBaseContext`）
 
 - `listDocuments(input)`
-- `getDocument(documentId)`
+- `getDocument(id)`
 - `createDocument(input)`
 - `editDocument(input)`
-- `deleteDocument(documentId)`
+- `deleteDocument(id, expectedRevision)`
 - `searchDocuments(input)`
-- `files`
 - `readDocumentLines(input)`
+- `getRevision()`
+- `files`
 
-数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 steamharness.json 中仅声明使用的数据库别名；父项目显式登记子目录后才加载其配置，STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。
-会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
+数据库在 steamharness.database.ts 与 steamharness.schema 中定义，入口 databases 声明别名，context.databases.connect(descriptor) 连接生成客户端。databaseId 绑定由 Server 按账号、projectId、entryId、alias 管理，绑定不授予权限。每次操作重新校验授权。
+会话运行存储按账号、projectId + entryId + conversationId 隔离，与业务关系表独立。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
 
 ## 运行时成员（`steamharness.*`）
 
@@ -76,7 +71,6 @@
 - `steamharness.createFileInputNode(...)`
 - `steamharness.addOutputItem(...)`
 - `steamharness.createDetailsOutputNode(...)`
-- `steamharness.createKnowledgeDocument(...)`
 - `steamharness.createInputNode(...)`
 - `steamharness.createLLMNode(...)`
 - `steamharness.createLLMProviderFromConfig(...)`
@@ -95,15 +89,12 @@
 - `steamharness.createToolApprovalGate(...)`
 - `steamharness.createProjectCapabilityServer(...)`
 - `steamharness.createProjectCapabilityTools(...)`
-- `steamharness.deleteKnowledgeDocument(...)`
 - `steamharness.defineEntrypoint(...)`
 - `steamharness.defineExecutor(...)`
 - `steamharness.defineProject(...)`
-- `steamharness.editKnowledgeDocument(...)`
 - `steamharness.endTimer(...)`
 - `steamharness.getConfig(...)`
 - `steamharness.getProjectConfiguration(...)`
-- `steamharness.getKnowledgeDocument(...)`
 - `steamharness.getRuntimeLocale(...)`
 - `steamharness.getRuntimePlatform(...)`
 - `steamharness.getLLMProvider(...)`
@@ -118,14 +109,11 @@
 - `steamharness.runNode(...)`
 - `steamharness.runSkillAction(...)`
 - `steamharness.runProjectCapabilityAction(...)`
-- `steamharness.listKnowledgeDocuments(...)`
 - `steamharness.listProjectCapabilityToolIds(...)`
 - `steamharness.normalizeMcpServers(...)`
-- `steamharness.readKnowledgeDocumentLines(...)`
 - `steamharness.runStreamNode(...)`
 - `steamharness.runWhile(...)`
 - `steamharness.runProject(...)`
-- `steamharness.searchKnowledgeDocuments(...)`
 - `steamharness.HarnessError(...)`
 
 每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。

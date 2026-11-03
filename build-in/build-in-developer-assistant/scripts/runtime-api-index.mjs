@@ -45,9 +45,9 @@ const END_MARKER = "<!-- runtime-api-index:end -->";
 const RESOURCE_INTERFACES = [
   { file: "entries/index.ts", name: "EntriesContext", title: "聚合入口目录" },
   { file: "entries/index.ts", name: "EntryContext", title: "Workflow 入口" },
-  { file: "databases/index.ts", name: "DatabasesContext", title: "数据库目录" },
-  { file: "databases/index.ts", name: "DatabaseContext", title: "独立数据库空间" },
-  { file: "databases/index.ts", name: "DatabaseKnowledgeContext", title: "知识库与附件" },
+  { file: "database/index.ts", name: "RelationalDatabasesContext", title: "关系型数据库连接" },
+  { file: "knowledge-bases/index.ts", name: "KnowledgeBasesContext", title: "知识库目录" },
+  { file: "knowledge-bases/index.ts", name: "KnowledgeBaseContext", title: "知识库与附件" },
 ];
 
 export async function readRuntimeApiIndex() {
@@ -133,7 +133,7 @@ export async function renderRuntimeApiIndex() {
     "**判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：",
     "那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。",
     "",
-    "## 聚合入口与数据库（`context.entries` / `context.databases`）",
+    "## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）",
     "",
   ];
 
@@ -146,8 +146,8 @@ export async function renderRuntimeApiIndex() {
   }
 
   lines.push(
-    "数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 steamharness.json 中仅声明使用的数据库别名；父项目显式登记子目录后才加载其配置，STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。",
-    "会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
+    "数据库在 steamharness.database.ts 与 steamharness.schema 中定义，入口 databases 声明别名，context.databases.connect(descriptor) 连接生成客户端。databaseId 绑定由 Server 按账号、projectId、entryId、alias 管理，绑定不授予权限。每次操作重新校验授权。",
+    "会话运行存储按账号、projectId + entryId + conversationId 隔离，与业务关系表独立。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
     "",
     "## 运行时成员（`steamharness.*`）",
     "",
@@ -171,8 +171,8 @@ export async function renderRuntimeCapabilities() {
     "export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):",
     ...resourceContexts.map(context => `- ${context.name}: ${context.members.map(member => member.signature).join(", ")}.`),
     "- context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.",
-    "- context.databases.get(alias) resolves a project alias to its databaseId; root config.json only stores alias-to-ID mappings, package entries list the aliases they use, STEAMHARNESS_PROJECT_CONFIG overrides deployment values, and hosts maintain all permissions.",
-    "- Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.",
+    "- context.databases.connect(descriptor) connects a generated Node model client. Browser descriptors connect through window.steamHarnessKanban.databases.connect(descriptor) and expose structured rows/insert/update/delete. Server owns account, project, entry and alias bindings; there is no local business storage fallback.",
+    "- context.knowledgeBases.get(alias) uses independent knowledgeBases declarations and config mappings. Documents and attachments use the Server repository, with account grants and entry bindings checked on every access. There is no local knowledge fallback.",
     "`;", "",
   ].join("\n");
 }

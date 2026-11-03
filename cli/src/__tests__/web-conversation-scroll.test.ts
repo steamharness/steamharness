@@ -13,10 +13,10 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function card(id: string, kind: 'knowledge' | 'kv'): OutputItem {
+function card(id: string, kind: 'knowledge'): OutputItem {
   return { id, metadata: { kind: 'agent-part', partType: 'tool' }, content: {
     tool: 'db_status', status: 'success', output: { details: { resourceCard: { kind,
-      title: id, target: { source: 'local', projectId: 'scroll-test',entryId:'main',database:'data', ...(kind === 'kv' ? { key: id } : { documentId: id }) },
+      title: id, target: { source: 'local', projectId: 'scroll-test', entryId: 'main', knowledgeBase: 'docs', documentId: id },
     } } },
   } };
 }
@@ -68,7 +68,7 @@ it('keeps batched resource cards and asynchronous layout changes visible until t
   expect(top).toBe(600);
   height = 700; clamp();
   height = 1600;
-  message.items = [card('document', 'knowledge'), card('index', 'kv')];
+  message.items = [card('document', 'knowledge'), card('index', 'knowledge')];
   emit();
   transcript.dispatchEvent(new Event('scroll'));
   resize(); frame();

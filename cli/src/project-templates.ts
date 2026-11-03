@@ -68,7 +68,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
   for (const template of templates) {
     if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'conversation', 'kanban'].includes(template.projectType)
       || !['starter', 'example'].includes(template.kind) || !Array.isArray(template.files) || !template.files.every(safeRelative)
-      || !template.files.includes(template.entryFile) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
+      || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
       || ['en', 'zh-CN'].some(locale => !template.name?.[locale as 'en'] || !template.description?.[locale as 'en'])) {
       throw new ProjectTemplateError('invalid-template', 'Invalid project template catalog.');
     }
@@ -98,12 +98,13 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const manifest = {
     name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .',
+      ...(template.files.includes('build.mjs') ? { build: 'steamharness database generate && node build.mjs' } : {}),
       ...(template.projectType === 'kanban' ? {} : { 'run:json': 'steamharness json .' }) },
-    devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
+    devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli, ...(template.files.includes('build.mjs') ? { esbuild: '0.28.2' } : {}) },
   };
   const projectManifest = {
     id: "", name, version: "0.1.0",
-      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json', databases: [] }],
+      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json', databases: template.files.includes('steamharness.database.ts') ? ['data'] : [] }],
       defaultEntry: 'main',
       projectCard,
       projectInfo,
@@ -136,7 +137,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, 'steamharness.json'), `${JSON.stringify(projectManifest, null, 2)}\n`, { flag: 'wx' });
-    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.steamharness/generated/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     if (!files.some(file => file.filename === 'configuration.json')) await writeFile(path.join(directory,'configuration.json'), JSON.stringify({version:1,fields:[]},null,2)+'\n',{flag:'wx'});
     for (const file of files) {

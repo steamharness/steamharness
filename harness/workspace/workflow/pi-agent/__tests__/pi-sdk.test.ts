@@ -13,7 +13,6 @@ import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   createProjectToolPermissionContext,
-  type KVContext,
 } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { RunContext } from "steamharness/types/context";

@@ -1,36 +1,66 @@
 ---
 title: "Knowledge Documents"
-description: "数据库知识库 API"
+description: "独立知识库、版本控制与私有附件"
 ---
 
-# 数据库知识库 API
+# Knowledge Documents
 
-通过 `context.databases.get(alias).knowledge` 访问获批空间的 Markdown 知识库。知识库与 KV 共享空间身份，分别授权。普通 KV 不能读取、改写知识库的文档、索引或附件键。
+通过 `context.knowledgeBases.get(alias)` 使用 Server 管理的独立知识库。文档、分块、搜索索引和附件元数据保存在平台 PostgreSQL 共享表，按知识库 ID 隔离；附件正文保存在私有文件存储。知识库无需业务 schema，也不会为每个项目新建物理数据库。
 
-```ts
-const knowledge = context.databases.get("data").knowledge;
-await knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
-await knowledge.editDocument({ id: "guide", markdown: "# Updated guide" });
-const page = await knowledge.listDocuments({ pageSize: 20 });
-const document = await knowledge.getDocument("guide");
-const matches = await knowledge.searchDocuments({ query: "guide", pageSize: 20 });
-const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
-await knowledge.deleteDocument("guide");
+## 申请与绑定
+
+先登录 `steamharness workspace login`，再创建资源并绑定入口：
+
+```sh
+steamharness knowledge create "Project docs"
+steamharness knowledge bind . --entry main --alias docs --knowledge-base <UUID>
+steamharness knowledge bindings . --entry main
 ```
 
-文档包含 `id`、`title`、`markdown`、`createdAt`、`updatedAt`；列表返回摘要和分页游标，正文按需读取。搜索和行读取保留文档行号。修改文档与搜索索引在空间事务中提交；并发修改通过宿主锁与 CAS 保持一致。
+绑定命令维护 Server 上的账号、项目、入口及别名绑定，并在项目声明中加入 `"knowledgeBases": ["docs"]`、在根 `config.json` 中保存 `"knowledgeBases": {"docs": "<UUID>"}`。`STEAMHARNESS_PROJECT_CONFIG` 可按知识别名覆盖 ID。配置不含凭据，也不授予访问权。参见 [项目数据存储](/concepts/data-storage)。
+
+## 文档与并发修改
+
+```ts
+const knowledge = context.knowledgeBases.get("docs");
+const created = await knowledge.createDocument({
+  id: "guide", title: "Guide", markdown: "# Guide\nHello 世界",
+});
+const current = await knowledge.getDocument(created.id);
+if (current) {
+  await knowledge.editDocument({
+    id: current.id, markdown: "# Updated guide", expectedRevision: current.revision,
+  });
+}
+const page = await knowledge.listDocuments({ pageSize: 20 });
+if (page.nextCursor) {
+  const next = await knowledge.listDocuments({ pageSize: 20, cursor: page.nextCursor });
+}
+const matches = await knowledge.searchDocuments({ query: "世界", pageSize: 20 });
+const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
+```
+
+文档包含 `id`、`title`、`markdown`、`revision`、`createdAt`、`updatedAt`。列表返回摘要、`total`、`hasMore` 和可选 `nextCursor`，按最近写入顺序分页。游标不透明，只能原样回传。搜索是忽略大小写的字面子串匹配，保留 1-based 行号及上下文，支持中文；搜索游标绑定查询参数和资源修订号，文档或附件变化后应重新搜索。文档和分块索引在同一 SQL 事务中提交。
+
+编辑时传入读到的 `expectedRevision`；删除使用 `deleteDocument(id, expectedRevision)`。版本不符返回冲突并保留调用方草稿，应重新读取后由用户处理。省略该参数表示直接修改当前版本。删除不存在的文档返回 `{ id, deleted: false }`；带过期版本的删除返回冲突。
+
+标题最多 512 字符，正文最多 4 MiB 字符，ID 最多 256 字符且不能含 NUL。列表每页 1–100 项；搜索每页和最大匹配数上限 1000，前后上下文各最多 100 行；按行读取每次最多 1000 行。`getRevision()` 返回资源修订号，用于宿主刷新。
 
 ## 附件
 
 ```ts
-const files = knowledge.files;
-const image = await files.createFile({ name: "image.png", mimeType: "image/png", buffer });
-const resolved = await files.readFile(image.id);
-await files.deleteFile(image.id);
+const image = await knowledge.files.createFile({ name: "image.png", mimeType: "image/png", buffer });
+const resolved = await knowledge.files.readFile(image.id);
+const bytes = await resolved.readBuffer();
+await knowledge.files.deleteFile(image.id);
 ```
 
-附件引用包含 `storage: "database"` 和 `spaceId`。读取、创建、删除及保留句柄的后续读取都会检查知识库授权。单个附件最多 50 MiB。获得同一空间授权的其他项目可读取附件；删除项目不删除空间内容。
+单文件最多 50 MiB。引用保留 `storage: "database"` 和 `spaceId`（知识库 UUID）。HTTP 传输使用 Base64，SQL 只保存元数据和校验和，正文写入私有文件存储；上传与删除意图持久化，失败上传及删除对象由后台回收。读取会校验大小和 SHA-256。
 
-## 失败与恢复
+`readFile()` 下载一次，保留句柄后调用 `readBuffer()`、`readBase64()` 等会复用内容，但每次重新检查当前绑定和读取授权；撤权后旧句柄也不可继续使用。配置附件和项目托管文件使用各自的读取权限，不能互换接口。
 
-未绑定、待审批、宿主不匹配、授权撤销或权限范围不足会失败，不能回退到普通 KV 或其他宿主。界面提供申请、重新绑定或恢复入口。参见 [独立数据库空间](/concepts/data-storage)。
+## 授权与失败
+
+知识库所有者管理账号 `read` / `write` 授权。绑定权限不能超过账号授权，已注册项目还检查项目成员权限和入口资源声明。授权、绑定或访问版本变化后，旧客户端拒绝继续操作，应重新打开入口。账号管理密钥不能代替账号身份。
+
+持久访问需要 Server 和 PostgreSQL 可达；可全部部署在本机，无需互联网。未登录、缺少声明、未绑定、撤权、存储故障都会明确失败，不会切到本地 KV。跨知识库、业务库与系统存储不提供联合事务。

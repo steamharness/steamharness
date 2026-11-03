@@ -101,12 +101,12 @@ describe("steamharness-generator contract", () => {
     const prompt = await readFile(path.join(root, "assistant-prompt.ts"), "utf8");
     expect(rules).toContain("context.files");
     expect(rules).toContain("不属于全局成员清单");
-    expect(rules).toContain("database.knowledge.files");
+    expect(rules).toContain("knowledge.files");
     expect(rules).toContain("file-upload");
     expect(rules).toContain("file-download");
     expect(prompt).toContain("Binary uploads are distinct from project source publication");
     expect(prompt).toContain("verify the downloaded bytes");
-    expect(prompt).toContain("never chunk binary images into KV");
+    expect(prompt).toContain("never chunk binary images into database rows");
   });
   it("routes API tasks to real references and exported Core types", { timeout: 15_000 }, async () => {
     const taskMap = await readFile(path.join(skillRoot, "references", "task-map.md"), "utf8");
@@ -129,7 +129,7 @@ describe("steamharness-generator contract", () => {
       "EntrypointDefinition", "ExecutorDefinition", "ConversationExecutorDefinition",
       "ExecutorContext", "ParamDeclaration", "ParamResolverContext",
       "ParamResolveResult", "RunOutputPayload", "OutputItem",
-      "RunContext", "DatabaseContext", "AgentInput",
+      "RunContext", "AgentInput",
       "AgentOutputPayload", "AgentNodeOptions", "AgentProjectOptions", "RuntimeApi",
     ]) {
       expect(taskMap).toContain(name);
@@ -189,7 +189,7 @@ describe("steamharness-generator contract", () => {
   it("documents local-run storage isolation and exact-version resolution", async () => {
     const corpus = await readSkillCorpus();
     for (const token of [
-      "LocalDatabaseRegistry", "createLocalDatabaseResolver", "databaseId", "dist-tags", "--entry",
+      "context.databases.connect", "steamharness.database.ts", "databaseId", "dist-tags", "--entry",
     ]) {
       expect(corpus, `skills/steamharness-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
     }

@@ -14,7 +14,6 @@ export * from "./files/index";
 export * from "./files/remote";
 export * from "./conversation/index";
 export * from "./executor/types";
-export * from "./kv/index";
 export * from "./knowledge/index";
 export * from "./token-usage/index";
 export * from "./timer/index";
@@ -31,7 +30,11 @@ export * from "./user-settings";
 export * from "./types/index";
 export * from "./workflow/index";
 
-export * from "./databases/index";
+export { createDatabaseConnector, closeDatabaseConnections } from "./database/runtime";
+export * from "./database/connection";
+export * from "./database/host";
+export { bindProjectKnowledgeBase } from "./knowledge-bases/bindings";
+export * from "./knowledge-bases/index";
 export * from "./entries/index";
 
 export { readProjectManifest, selectProjectEntry, projectManifestForDistribution } from "@steamharness/project-manifest";

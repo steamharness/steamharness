@@ -224,6 +224,36 @@ describe('Conversation execution lifecycle', () => {
     expect(restored.current.messages[0].items).toHaveLength(1);
   });
 
+  it('keeps history-only forks out of executor recovery while creation or replay is awaiting confirmation', async () => {
+    const { controller, runtime } = fixture();
+    controller.project.conversation = { durable: { enabled: true }, recovery: { enabled: true } };
+    controller.current.messages.push({ id: 'answer', runId: 'run', role: 'assistant', status: 'success', content: 'Saved answer', args: ['--message', 'Hello'] });
+    runtime.agentControl = vi.fn();
+    const command = { type: 'fork', requestId: 'stored-fork', entryId: 7 } as const;
+    const receipt = { requestId: command.requestId, status: 'accepted', conversationId: 1, forkId: 2 } as const;
+    let complete!: (value: typeof receipt) => void;
+    runtime.forkAgentConversation = vi.fn(() => new Promise<typeof receipt>(resolve => { complete = resolve; }));
+    const pending = controller.agentCommand(controller.current.id, command);
+    try {
+      await vi.waitFor(() => expect(runtime.forkAgentConversation).toHaveBeenCalledOnce());
+      controller.recover();
+      expect(controller.current.activeRunId).toBeUndefined();
+      expect(runtime.run).not.toHaveBeenCalled();
+      complete(receipt); await expect(pending).resolves.toEqual(receipt);
+      vi.mocked(runtime.forkAgentConversation).mockImplementation(async () => {
+        controller.recover();
+        expect(controller.current.activeRunId).toBeUndefined();
+        return receipt;
+      });
+      await expect(controller.agentCommand(controller.current.id, command)).resolves.toEqual(receipt);
+      expect(runtime.run).not.toHaveBeenCalled();
+      expect(runtime.agentControl).not.toHaveBeenCalled();
+      expect(controller.current.agentCommands).toEqual([]);
+    } finally {
+      complete?.(receipt); await pending.catch(() => undefined); controller.dispose(); await controller.idle();
+    }
+  });
+
   it('pauses recovery for Server setup and retries the original run only when explicitly requested', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { recovery: { enabled: true } };

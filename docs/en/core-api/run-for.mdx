@@ -31,7 +31,7 @@ workflow.runFor<State, Item>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `State` |Initial cycle state.|
-| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, databases, files, abortSignal.|
 | `options.name` | `string` |Diagram and the cycle node title displayed in Trace. Default `Run for`.|
 | `options.items` | `Iterable` / `AsyncIterable` |A cycle term is generated based on the initial state. Supports synchronous and asynchronous iterable, and also supports return Promise.|
 | `options.run` | `function` |The loop body of each item. Receives the current state, item, index and context starting from `0`, and returns the next round state.|

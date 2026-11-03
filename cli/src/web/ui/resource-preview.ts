@@ -66,7 +66,7 @@ function inject(): void {
 addEventListener('workflow-keyboard-host-change', inject);
 function render(next: ResourcePreviewData): void {
   data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;
-  selection = ['kv', 'knowledge'].includes(next.card.kind) ? next.card.target : undefined;
+  selection = next.card.kind === 'knowledge' ? next.card.target : undefined;
   app.querySelector('header a')?.remove();
   app.dataset.format = next.format;
   app.querySelector('h1')!.textContent = next.card.title;
@@ -95,11 +95,11 @@ function render(next: ResourcePreviewData): void {
   }
   const value = next.content as any;
   const items = Array.isArray(value) ? value : value?.items ?? value?.documents;
-  if (Array.isArray(items) && ['kv', 'knowledge'].includes(next.card.kind)) {
+  if (Array.isArray(items) && next.card.kind === 'knowledge') {
     const list = document.createElement('div'); list.className = 'resource-preview-list';
     for (const item of items) {
       const button = document.createElement('button'); button.type = 'button';
-      button.textContent = item.title ?? item.key ?? item.id; button.onclick = () => void load({ documentId: item.documentId ?? item.id, key: item.key, scope: item.scope, conversationId: item.conversationId }); list.append(button);
+      button.textContent = item.title ?? item.id; button.onclick = () => void load({ documentId: item.documentId ?? item.id }); list.append(button);
     }
     if (!items.length) { list.textContent = t('No resources'); } content.append(list);
   } else if (next.format === 'markdown') { const article = document.createElement('article'); article.className = 'markdown'; article.innerHTML = markdownHtml(typeof value === 'string' ? value : value.markdown); content.append(article); }

@@ -231,7 +231,7 @@ createInput({ paramValues }) {
 },
 ```
 
-`resolveParams` 会在初始化以及 main、Advanced、Quick 中任意 Form 参数值变化时执行。主输入内容变化只有在至少一个参数设置 `resolveOnInput: true` 时才会触发，避免普通消息输入造成无关的远程求值。它应保持无写入副作用和幂等，不执行写文件、写 KV 或修改外部状态；只读动态目录应传入回调提供的 `abortSignal`。补丁中的 `visible` / `disabled` 不会隐式清空已有值；需要清空时显式返回 `value: null`。初始化在 Raw 模式返回值补丁时，宿主只更新对应已声明参数，保留其它 Raw 参数及其值。
+`resolveParams` 会在初始化以及 main、Advanced、Quick 中任意 Form 参数值变化时执行。主输入内容变化只有在至少一个参数设置 `resolveOnInput: true` 时才会触发，避免普通消息输入造成无关的远程求值。它应保持无写入副作用和幂等，不执行写文件、写数据库 或修改外部状态；只读动态目录应传入回调提供的 `abortSignal`。补丁中的 `visible` / `disabled` 不会隐式清空已有值；需要清空时显式返回 `value: null`。初始化在 Raw 模式返回值补丁时，宿主只更新对应已声明参数，保留其它 Raw 参数及其值。
 
 `resolvedOptions` 用于动态替换枚举：返回数组会完整替换参数的静态 `options`，返回 `null` 恢复静态选项，省略则保留当前动态选项。数组中的 `value` 必须是非空唯一字符串，`label` 和 `description` 必须是字符串。替换选项时旧 option 状态会清除；宿主会统一把动态选项应用到 Quick 与 Advanced，并区分 loading、empty、error。conversation 宿主按 conversation ID 重新求值，已经过期的异步响应不会覆盖当前会话。
 
@@ -350,7 +350,7 @@ createInput({ args }) {
 - 当前 run 完成、失败或取消后，宿主会清理该会话的 active 运行标记；后续新输入恢复为普通发送，不会继续进入等待队列。
 - 队列项支持引导、编辑、删除和拖动排序；引导会先中断当前运行，再立即执行目标队列项。
 
-开启 `tokenUsage.enabled` 后，runtime 会把 token 用量写入 KV，并把本次 run 聚合写入运行 report。聚合包含 `inputTokens`、`outputTokens`、`totalTokens`、`reasoningTokens`、`cachedInputTokens`、`cacheCreationTokens` 和 `calls`。`display` 省略时默认等于 `enabled`，CLI Web 只在 `display === true` 且有数据时展示 badge；badge 默认显示总量，hover/focus 分别展示 Input、Output、Reasoning、Cache read、Cache write 和 Calls。
+开启 `tokenUsage.enabled` 后，runtime 会把 token 用量写入平台关系表，并把本次 run 聚合写入运行 report。聚合包含 `inputTokens`、`outputTokens`、`totalTokens`、`reasoningTokens`、`cachedInputTokens`、`cacheCreationTokens` 和 `calls`。`display` 省略时默认等于 `enabled`，CLI Web 只在 `display === true` 且有数据时展示 badge；badge 默认显示总量，hover/focus 分别展示 Input、Output、Reasoning、Cache read、Cache write 和 Calls。
 
 ## 工具权限
 
@@ -405,7 +405,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
 | `paramValues` 是正式结构化值 | `createInput` 可直接读取参数值；`args` 继续用于需要完整 CLI 参数或未知参数的场景。 |
 | Workflow 运行配置属于 entrypoint | 顶层旧字段会给出迁移错误，不再保留兼容别名。 |
 | `tools` 必须静态声明 | CLI Web 只能展示所选入口或 Conversation executor 静态分析到的工具；工具名必须稳定。 |
-| `tokenUsage.enabled` 默认关闭 | 未配置时不会写 KV，也不会展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
+| `tokenUsage.enabled` 默认关闭 | 未配置时不会写数据库，也不会展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
 | `registry` 用于单节点调试 | Workflow 只搜索所选入口的 registry；没有注册的节点不能通过 debug API 单独运行。 |
 
 ## Core Agent 内置参数

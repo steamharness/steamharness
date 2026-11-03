@@ -1,3 +1,4 @@
+import { seedTestSessions, readTestSessions, temporaryRuntimePersistence } from "./web-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseWebArgs } from '../web';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
@@ -129,7 +130,7 @@ describe('steamharness web', () => {
         turns: [{ requestId: 'completed', conversationId: 1, prompt: 'Hello', mode: 'followUp', status: 'done', epoch: 0, entryId: 1, answerId: 2,
           items: [{ id: 'answer', title: 'Output', content: 'Completed answer', contentType: 'markdown' }] }] } };
     const historyPath = path.join(directory, 'data', 'projects', app.project.id, 'entries', app.project.entryId, 'conversations.json');
-    await writeFile(historyPath, JSON.stringify({ sessions: [...app.controller!.sessions, imported], activeId: app.controller!.activeId, selectionVersion: 1 }));
+    await seedTestSessions(path.join(directory, 'data'), [imported], false);
     const response = await post({ type: 'ready' });
     expect(response.status).toBe(200);
     const state = (await response.json()).messages.find((message: any) => message.type === 'state');
@@ -137,9 +138,9 @@ describe('steamharness web', () => {
     expect(app.controller!.sessions.find(session => session.id === imported.id)?.messages[0]).toMatchObject({ status: 'success', recovering: false });
     const acquired = await post({ type: 'draft', sessionId: imported.id, text: 'Next draft', attachments: [] });
     expect(acquired.status).toBe(200);
-    const saved = JSON.parse(await readFile(historyPath, 'utf8')).sessions.find((session: any) => session.id === imported.id);
-    expect(saved.messages[0]).toMatchObject({ status: 'success', recovering: false, content: 'Completed answer' });
-    expect(saved.queuePaused).toBe(true); expect(saved.queuedInputs).toEqual(imported.queuedInputs);
+    const saved = (await readTestSessions(path.join(directory, 'data'))).sessions.find((session: any) => session.id === imported.id);
+    expect(saved!.messages[0]).toMatchObject({ status: 'success', recovering: false, content: 'Completed answer' });
+    expect(saved!.queuePaused).toBe(true); expect(saved!.queuedInputs).toEqual(imported.queuedInputs);
     expect(runtime.run).not.toHaveBeenCalled();
   });
 
@@ -255,9 +256,9 @@ describe('steamharness web', () => {
       finishLeft({ status: 'success' }); finishRight({ status: 'success' });
       await Promise.all([one.controller!.idle(), two.controller!.idle()]);
       const key = path.join('projects', one.project.id, 'entries', one.project.entryId);
-      const history = JSON.parse(await readFile(path.join(directory, 'data', key, 'conversations.json'), 'utf8'));
-      expect(history.sessions.find((session: any) => session.id === original).messages[0].content).toBe('Left runs');
-      expect(history.sessions.find((session: any) => session.id === other).messages[0].content).toBe('Right runs');
+      const history = (await readTestSessions(path.join(directory, 'data')));
+      expect(history.sessions.find((session: any) => session.id === original)!.messages[0].content).toBe('Left runs');
+      expect(history.sessions.find((session: any) => session.id === other)!.messages[0].content).toBe('Right runs');
       await streams[0].cancel();
       await one.close();
       expect((await post(two, right, { type: 'select', id: original })).status).toBe(200);
@@ -300,10 +301,10 @@ describe('steamharness web', () => {
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token' });
   });
 
-  it('validates project database overrides before passing them to workers', () => {
+  it('validates knowledge base overrides and rejects removed database mappings before passing them to workers', () => {
     const databaseId = randomUUID();
-    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: databaseId } }) }))
-      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, databases: { data: databaseId } }) });
+    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: databaseId } }) }))
+      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, knowledgeBases: { data: databaseId } }) });
     for (const value of ['invalid JSON', JSON.stringify({ databases: { data: 'not-a-uuid' } }), JSON.stringify({ apiKey: 'not-project-configuration' })]) {
       expect(() => sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: value })).toThrow();
     }
@@ -495,7 +496,7 @@ describe('steamharness web', () => {
     expect(runtime.run).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['stale', 'missing', 'deleted'] as const)('opens the most recently active conversation from legacy history with a %s selection', async selection => {
+  it.each(['stale', 'missing', 'deleted'] as const)('opens the most recently active conversation from Server history with a %s selection', async selection => {
     const { directory, app, runtime } = await fixture();
     const template = app.controller!.current;
     await app.close();
@@ -505,7 +506,10 @@ describe('steamharness web', () => {
     }));
     const key = path.join('projects', app.project.id, 'entries', app.project.entryId);
     const historyPath = path.join(directory, 'data', key, 'conversations.json');
-    await writeFile(historyPath, JSON.stringify({ sessions, activeId: selection === 'stale' ? sessions[0].id : selection === 'deleted' ? crypto.randomUUID() : undefined }));
+    await seedTestSessions(path.join(directory, 'data'), sessions as ConversationSession[]);
+    const backend = temporaryRuntimePersistence(path.join(directory, 'data'));
+    const metadata = (await backend.list('workflow')).find(record => record.key === 'conversation-selection');
+    if (metadata) { const lease = await backend.acquire(metadata.scope); try { await lease.write({ ...metadata, state: selection === 'missing' ? {} : { activeId: selection === 'stale' ? 123 : crypto.randomUUID() } }); } finally { await lease.close(); } }
     const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
     expect(next.controller!.activeId).toBe(sessions[2].id);
     const token = new URLSearchParams(new URL(next.url).hash.slice(1)).get('session');
@@ -516,7 +520,7 @@ describe('steamharness web', () => {
     expect(state.activeId).toBe(sessions[2].id);
     expect(state.sessions).toEqual(sessions);
     await next.close();
-    expect(JSON.parse(await readFile(historyPath, 'utf8'))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
+    expect((await readTestSessions(path.join(directory, 'data')))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
     expect(runtime.run).not.toHaveBeenCalled();
   });
 
@@ -1273,7 +1277,7 @@ describe('steamharness web', () => {
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
@@ -1283,7 +1287,8 @@ describe('steamharness web', () => {
         assistantEnvironmentEmpty: !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST
       }; } });
       export const executor = steamharness.defineExecutor({
-        projectType: 'conversation', workflow: flow,
+        projectType: 'workflow', defaultEntrypoint: 'main',
+        entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow,
         params: [
           { kind: 'auxiliary', id: 'formatting', label: 'Project formatting', fields: [
             { name: 'compact', flag: '--compact', type: 'boolean', label: 'Compact output', defaultValue: 'true' }
@@ -1291,8 +1296,10 @@ describe('steamharness web', () => {
           { kind: 'quick', id: 'audience-menu', label: 'Project audience', summary: ['audience'], fields: [
             { name: 'audience', flag: '--audience', type: 'string', control: 'select', label: 'Audience', options: [] }
           ] },
-          { kind: 'mode', name: 'delivery', flag: '--delivery', label: 'Delivery', defaultValue: 'draft', options: [
-            { value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }
+          { kind: 'auxiliary', id: 'delivery-panel', label: 'Delivery', fields: [
+            { name: 'delivery', flag: '--delivery', type: 'string', control: 'select', label: 'Delivery', defaultValue: 'draft', options: [
+              { value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }
+            ] }
           ] },
           { kind: 'auxiliary', id: 'brief-panel', label: 'Project brief', fields: [
             { name: 'brief', flag: '--brief', type: 'string', label: 'Project brief', control: 'textarea', defaultValue: 'Explain the project' }
@@ -1303,6 +1310,7 @@ describe('steamharness web', () => {
           options: { operators: { disabled: true } }
         } } }; },
         createInput() { return {}; }
+        })]
       });
     `);
     vi.stubEnv('TSX_TSCONFIG_PATH', path.join(directory, 'missing.json'));
@@ -1318,20 +1326,21 @@ describe('steamharness web', () => {
       const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
       expect((inspected.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
       const project = { ...inspected.projects[0], uri: '' };
-      expect(project.fields.map(field => field.name)).toEqual(['compact', 'audience', 'delivery', 'brief']);
-      expect(project.fields).toEqual(expect.arrayContaining([
+      const entrypoint = project.entrypoints![0];
+      expect(entrypoint.fields.map(field => field.name)).toEqual(['compact', 'audience', 'delivery', 'brief']);
+      expect(entrypoint.fields).toEqual(expect.arrayContaining([
         expect.objectContaining({ name: 'compact', defaultValue: 'true' }),
         expect.objectContaining({ name: 'delivery', defaultValue: 'draft' }),
         expect.objectContaining({ name: 'brief', control: 'textarea', defaultValue: 'Explain the project' }),
       ]));
-      expect(project.paramLayout).toEqual({ actions: [
+      expect(entrypoint.paramLayout).toEqual({ actions: [
         { kind: 'auxiliary', id: 'formatting', label: 'Project formatting', params: ['compact'] },
         { kind: 'quick', id: 'audience-menu', label: 'Project audience', summary: ['audience'], params: ['audience'] },
-        { kind: 'mode', name: 'delivery' },
+        { kind: 'auxiliary', id: 'delivery-panel', label: 'Delivery', params: ['delivery'] },
         { kind: 'auxiliary', id: 'brief-panel', label: 'Project brief', params: ['brief'] },
       ] });
-      expect(project.paramResolver).toEqual({ enabled: true });
-      expect(await runtime.resolveParams(project, { args: [], draftText: '', inputMode: 'form', trigger: { kind: 'init' } })).toMatchObject({
+      expect(entrypoint.paramResolver).toEqual({ enabled: true });
+      expect(await runtime.resolveParams(project, { args: [], draftText: '', inputMode: 'form', trigger: { kind: 'init' } }, 'main')).toMatchObject({
         params: { audience: {
           value: 'developers', resolvedOptions: [{ value: 'developers', label: 'Developers' }, { value: 'operators', label: 'Operators' }],
           options: { operators: { disabled: true } },

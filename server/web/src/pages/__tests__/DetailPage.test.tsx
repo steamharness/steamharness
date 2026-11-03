@@ -36,13 +36,11 @@ it('loads configuration for the selected entry and follows a new entry URL',asyn
  view.rerender(<DetailPage {...props({activeTab:'configurations',entryId:'entry-0'})}/>);
  await waitFor(()=>expect(service).toHaveBeenLastCalledWith('demo',{action:'get'},'draft','entry-0'));
 });
-it('opens entry database bindings without requesting project-owned data',async()=>{
- const bindings=vi.spyOn(apiClient,'entryDatabaseBindings').mockResolvedValue({errCode:0,errMessage:'',data:[]});
- const catalog=vi.spyOn(apiClient,'databasePage').mockResolvedValue({errCode:0,errMessage:'',data:{items:[],total:0,page:1,pageSize:20}});
+it('opens a server resource catalog without requesting legacy project data',async()=>{
+ const catalog=vi.spyOn(apiClient,'resourceRequest').mockResolvedValue({errCode:0,errMessage:'',data:{items:[],total:0,page:1,pageSize:20}});
  render(<DetailPage {...props({activeTab:'databases'})}/>);
- await waitFor(()=>expect(catalog).toHaveBeenCalledWith('spaces',1,'','demo'));
- expect(bindings).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Requests and permissions'}));
- await waitFor(()=>expect(bindings).toHaveBeenCalledWith('demo','entry-0'));
- expect((await screen.findAllByText('No matching resources.')).length).toBeGreaterThan(0);
+ await waitFor(()=>expect(catalog).toHaveBeenCalledWith('databases','?page=1&pageSize=20&search=',undefined,'GET',expect.any(AbortSignal)));
+ expect(apiClient).not.toHaveProperty('entryDatabaseBindings');
+ expect(screen.getByRole('tab',{name:'Relational databases'})).toBeTruthy();
+ expect(screen.getByRole('tab',{name:'Knowledge bases'})).toBeTruthy();
 });

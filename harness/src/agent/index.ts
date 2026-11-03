@@ -12,8 +12,7 @@ export {
 } from "./runtime";
 
 export { createAgentNode, createNodeAgentHost } from "./node";
-export { cancelAgentConversation, forkAgentConversation, exportAgentDatabase, importAgentDatabase, type AgentStorageFactory } from "./storage";
-export { isolateAgentConversation } from "./isolate";
+export type { AgentStorageFactory } from "./storage";
 export type { AgentExecutionEnvironment, AgentToolCatalog } from "./extensions";
 export { createRegistry as createAgentRegistry, defineTask as defineAgentTask, defineDoc as defineAgentDoc,
   defineExtension as defineAgentExtension, hook as agentHook, ToolTask as AgentToolTask, GenerationTask as AgentGenerationTask } from "@earendil-works/pi-durable";
@@ -213,3 +212,4 @@ export { parseAgentModelAttributes } from "./model-attributes";
 
 /** The factory callers use: creates a runnable agent from plain options. */
 export { createAgentRuntime as createAgent } from "./runtime";
+export { exportAgentSession, importAgentSession, forkStoredAgentConversation, isolateStoredAgentConversation, cancelStoredAgentConversation, deleteStoredAgentConversation } from "./stored-session";

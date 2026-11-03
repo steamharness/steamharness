@@ -33,7 +33,7 @@ Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开
 
 参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。使用系统 AI 的项目需要有效的 SteamHarness Server 登录，或项目自身所需的服务配置。
 
-底部 **KV**、**知识库** 面板读取项目 CLI 使用的存储。对话中的资源卡片可定位到这些面板，也支持对话内和独立窗口预览有权限的跨项目资源，见 [项目资源面板](resource-panel.md)。Workflow 和 Conversation 的 **轨迹** 面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
+数据库工具列出当前 Server 的关系资源与知识库，并打开 Server Web 管理页面。对话资源卡片支持已授权的知识与看板预览，见 [数据库与资源管理](resource-panel.md)。Workflow 和 Conversation 的轨迹面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
 
 Studio 小助手使用独立应用及其 Core/CLI 依赖，工具工作目录采用 VS Code 当前打开的文件夹。多文件夹工作区跟随活动文件所属的根目录，其余已打开的文件夹作为关联根；聚焦小助手或工作区外的文件时保留当前目录。切换文件夹前停止并保存旧会话，历史按文件夹分别保存；未打开文件夹时显示打开文件夹入口。Permission 默认 Auto approve，可访问进程有权限的所有本地目录；Studio 和 CLI Web 保留内置项目声明的默认值，已有会话沿用保存的权限选择。Workspace / Read only 保留登记工作区的目录限制，提示词与控制工具均跟随本轮选择。
 

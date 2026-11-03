@@ -15,7 +15,9 @@ import {
 async function createCoreSource(files) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "runtime-api-index-"));
   await mkdir(path.join(dir, "entries"), { recursive: true });
-  await mkdir(path.join(dir, "databases"), { recursive: true });
+  await mkdir(path.join(dir, "database"), { recursive: true });
+  await mkdir(path.join(dir, "knowledge-bases"), { recursive: true });
+  await writeFile(path.join(dir, "knowledge-bases/index.ts"), "export interface KnowledgeBasesContext { get(alias: string): void }; export interface KnowledgeBaseContext { getDocument(id: string): void }", "utf8");
   for (const [relative, contents] of Object.entries(files)) {
     await writeFile(path.join(dir, relative), contents, "utf8");
   }
@@ -36,11 +38,12 @@ describe("the runtime API index", () => {
 
   it("lists independent entry and database capabilities", async () => {
     const { resourceContexts } = await readRuntimeApiIndex();
-    const storage = resourceContexts.find((context) => context.name === "DatabaseContext");
+    const storage = resourceContexts.find((context) => context.name === "RelationalDatabasesContext");
     const signatures = storage.members.map((member) => member.signature);
 
-    expect(signatures).toContain("kv");
-    expect(signatures).toContain("knowledge");
+    expect(signatures).toEqual(["connect(descriptor)"]);
+    expect(signatures).not.toContain("knowledge");
+    expect(resourceContexts.find(context => context.name === "KnowledgeBaseContext").members.map(member => member.signature)).toContain("getDocument(id)");
     expect(resourceContexts.find(context => context.name === "EntryContext").members.map(member => member.signature)).toContain("runEntrypoint(entrypointId, args, options)");
     // The line the surface must not cross: a relation is not a way to read the
     // target's conversation, and it is not a way to reach a third project.
@@ -53,7 +56,7 @@ describe("the runtime API index", () => {
 
     expect(index).toContain("这里没有列出的能力就是没有");
     expect(index).toContain("databaseId");
-    expect(index).toContain("会话 KV");
+    expect(index).toContain("会话运行存储");
   });
 
   // A member the reader cannot name would vanish from both artifacts while the
@@ -71,10 +74,9 @@ describe("the runtime API index", () => {
   it("refuses a context member it cannot name", async () => {
     const coreSource = await createCoreSource({
       "entries/index.ts": "export interface EntriesContext { list(): void }; export interface EntryContext { run(): void }",
-      "databases/index.ts": [
-        "export interface DatabaseContext { kv: string; [key: string]: unknown }",
-        "export interface DatabaseKnowledgeContext { getDocument(id: string): void }",
-        "export interface DatabasesContext { run(id: string): void }",
+      "database/index.ts": [
+        "export interface RelationalDatabasesContext { kv: string; [key: string]: unknown }",
+
       ].join("\n"),
     });
 
@@ -84,10 +86,10 @@ describe("the runtime API index", () => {
   it("refuses a context that publishes no members", async () => {
     const coreSource = await createCoreSource({
       "entries/index.ts": "export interface EntriesContext { list(): void }; export interface EntryContext { run(): void }",
-      "databases/index.ts": [
-        "export interface DatabaseContext { kv: string }",
-        "export interface DatabaseKnowledgeContext {}",
-        "export interface DatabasesContext { run(id: string): void }",
+      "knowledge-bases/index.ts": "export interface KnowledgeBasesContext { get(alias: string): void }; export interface KnowledgeBaseContext {}",
+      "database/index.ts": [
+        "export interface RelationalDatabasesContext { kv: string }",
+
       ].join("\n"),
     });
 

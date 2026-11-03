@@ -50,7 +50,7 @@ function fixture(t, options = {}) {
 test('each tool creates independent retained panels and closes only its own controller', async t => {
   const f = fixture(t), projects = [{ uri: 'file:///first' }, { uri: 'file:///second' }];
   f.manager.update(projects, projects[0]);
-  for (const kind of ['databases', 'kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
+  for (const kind of ['databases', 'info', 'assistant', 'versions', 'trace']) {
     f.manager.update(projects, projects[0]);
     await f.commands.get('studio.createToolInstance')(kind); await f.manager.open(kind);
     const [first, second] = f.instances.slice(-2), [a, b] = f.panels.slice(-2);
@@ -64,17 +64,17 @@ test('each tool creates independent retained panels and closes only its own cont
     await f.manager.open(kind); assert.equal(f.panels.at(-1).title.endsWith(' 4'), true);
     assert.equal(b.disposed, undefined);
   }
-  await f.manager.open('unrecognized'); assert.equal(f.panels.length, 21); assert.equal(f.serializers.size, 7);
+  await f.manager.open('unrecognized'); assert.equal(f.panels.length, 15); assert.equal(f.serializers.size, 5);
 });
 
 test('restored panels keep their project URI through delayed discovery and reserve their instance number', async t => {
-  const f = fixture(t), restored = f.panel('studio.tool.kv', 'KV Storage 8');
+  const f = fixture(t), restored = f.panel('studio.tool.databases', 'Databases 8');
   await f.serializers.get(restored.viewType).deserializeWebviewPanel(restored, { projectUri: 'file:///second' });
   assert.equal(f.instances[0].restored, true);
   const projects = [{ uri: 'file:///first' }, { uri: 'file:///second' }];
   f.manager.update(projects, projects[0]);
   assert.equal(f.instances[0].updates.at(-1)[1], projects[1]);
-  await f.manager.open('kv'); assert.equal(f.panels.at(-1).title, 'KV Storage 9');
+  await f.manager.open('databases'); assert.equal(f.panels.at(-1).title, 'Databases 9');
 });
 
 test('deserialization without saved state still restores rather than creating another tool session', async t => {
@@ -87,7 +87,7 @@ test('deserialization without saved state still restores rather than creating an
 test('closing a tool during asynchronous initialization never resolves or leaks the retired panel', async t => {
   let finish;
   const f = fixture(t, { update: () => new Promise(resolve => { finish = resolve; }) });
-  const opening = f.manager.open('knowledge'); f.panels[0].dispose(); finish(); await opening;
+  const opening = f.manager.open('databases'); f.panels[0].dispose(); finish(); await opening;
   assert.equal(f.instances[0].disposed, true); assert.equal(f.instances[0].view, undefined);
 });
 

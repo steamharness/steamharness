@@ -67,7 +67,7 @@ The workflow stores user prompts, assistant summaries, and input image file
 reference metadata in conversation history. Follow-up turns resolve recent
 input image references and pass them to the image edit call, capped by a local
 safety limit of 16 images. It does not store generated image base64 or input
-image base64 in conversation KV, so generated outputs are not reused as image
+image base64 in conversation state, so generated outputs are not reused as image
 inputs unless they are uploaded again or saved as managed files by a future
 workflow version.
 
