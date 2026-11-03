@@ -1,4 +1,4 @@
-import { createServerRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
+import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
@@ -168,7 +168,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const activityDirectory = path.join(storageDir, key);
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();
-  let runtimePersistence = options.runtimePersistence;
+  const runtimePersistence = options.runtimePersistence ?? createLocalRuntimePersistence({ directory: path.join(activityDirectory, 'runtime') });
   let storageIdentity = '';
   let storageEpoch = 0;
   let storageReset = Promise.resolve();
@@ -322,7 +322,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
-      if (!storageReady || !conversationHistory) return Promise.reject(new Error(storageError ?? 'Sign in to persist conversation history.'));
+      if (!storageReady || !conversationHistory) return Promise.reject(new Error(storageError ?? 'Conversation history is not ready.'));
       pendingSave = conversationHistory.save(sessions, activeId); return pendingSave;
     },
   });
@@ -353,7 +353,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     changed: broadcast, legacy: saved.sessions,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
-      if (!storageReady || !workflowHistory) return Promise.reject(new Error(storageError ?? 'Sign in to persist workflow history.'));
+      if (!storageReady || !workflowHistory) return Promise.reject(new Error(storageError ?? 'Workflow history is not ready.'));
       pendingSave = workflowHistory.save(workspace); return pendingSave;
     },
   }) : undefined;
@@ -378,29 +378,22 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     storageReady = Boolean(options.runtimePersistence); storageIdentity = ''; storageError = undefined;
     const resetting = storageReset.then(async () => {
       await conversationHistory?.reset(); await workflowHistory?.reset(); await ownership?.reset();
-      if (!options.runtimePersistence) { await runtimePersistence?.close(); runtimePersistence = undefined; }
-      if (options.runtimePersistence) {
-        conversationController?.replace(await conversationHistory?.read() ?? {});
-        projectController?.replace(await workflowHistory?.read() ?? {});
-      } else { conversationController?.replace({}); projectController?.replace({}); }
+      conversationController?.replace(await conversationHistory?.read() ?? {});
+      projectController?.replace(await workflowHistory?.read() ?? {});
       selections.clear();
     });
     storageReset = resetting.catch(() => undefined); return resetting;
   };
   const initializeRuntimeStorage = (): Promise<void> => {
-    if (isKanban || !connection || !account.user) return Promise.resolve();
-    const identity = `${connection.serverUrl}\n${account.user.userId}`;
+    if (isKanban) return Promise.resolve();
+    const identity = `local:${activityDirectory}`;
     if (storageIdentity === identity && storageReady) return Promise.resolve();
     const epoch = storageEpoch;
     if (storageInitialization?.epoch === epoch) return storageInitialization.promise;
     if (conversationController?.hasRuns || projectController?.runs.some(run => run.status === 'running')) return Promise.resolve();
-    const candidate = connection;
     const initializing = (async () => {
     await storageReset;
     if (epoch !== storageEpoch) return;
-    runtimePersistence ??= createServerRuntimePersistence({ serverUrl: candidate.serverUrl, token: candidate.accessToken, resolveProject: true,
-      workspace: { kind: project.assistant ? 'assistant' : 'local', projectId: project.id, entryId: project.entryId,
-        localKey: createHash('sha256').update(project.assistant?.workdir ?? projectDir).digest('hex') } });
     try {
       const history = await conversationHistory?.read();
       const runs = await workflowHistory?.read();
@@ -408,7 +401,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (history) { saved = history; conversationController?.replace(history); }
       if (runs) projectController?.replace(runs);
       storageIdentity = identity; storageReady = true; storageError = undefined;
-      conversationController?.recover();
     } catch (error) {
       if (epoch !== storageEpoch) return;
       storageReady = false; storageError = String((error as Error).message);
@@ -437,7 +429,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const background = !force && identity === authIdentity && account.status === 'authenticated' && !expired;
     if (!force && identity === authIdentity) {
       if (authCheckPending) { return; }
-      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { if (connection) await initializeRuntimeStorage(); return; }
+      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { await initializeRuntimeStorage(); return; }
     }
     const epoch = ++authEpoch;
     authCheck?.abort();
@@ -503,14 +495,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (epoch === authEpoch) { authCheckPending = false; }
       }
     } else { connection = undefined; }
-    if (connection) await initializeRuntimeStorage();
+    await initializeRuntimeStorage();
     if (!background || !connection) projectServer?.authenticationChanged(account);
     broadcast();
   };
-  if (options.runtimePersistence) {
-    const history = await conversationHistory?.read(); if (history) { saved = history; conversationController?.replace(history); }
-    const runs = await workflowHistory?.read(); if (runs) projectController?.replace(runs);
-  }
+  await initializeRuntimeStorage();
   await refreshAuth();
   const selectedSession = controller?.sessions.find(session => session.id === saved.activeId) ?? controller?.current;
   const previousReport = isProject ? projectController?.runs[0]?.report : selectedSession?.messages.at(-1)?.report;
@@ -1004,7 +993,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   catch (error) { projectCreation.close(); projectServer?.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = options.mount?.origin ?? `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(activityDirectory, project, () => ({
-    identity: storageIdentity, runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
+    identity: connection && account.user ? `${connection.serverUrl}\n${account.user.userId}` : '', runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
     queued: (conversationController?.sessions ?? []).reduce((total, session) => total + (session.queuedInputs?.length ?? 0), 0),
     queuedInputIds: (conversationController?.sessions ?? []).flatMap(session => (session.queuedInputs ?? []).map(input => input.id)),
   }), message => process.stderr.write(`${message}\n`));

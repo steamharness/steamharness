@@ -90,19 +90,18 @@ test('isolated conversations preserve document versions and incarnations when th
   } finally { await opened.release?.(); }
 });
 
-test('durable conversation execution requires storage before business code runs', async t => {
+test('durable conversations use local persistence without requiring a Server connection', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-required-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Requires storage', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
   await writeFile(path.join(directory, 'index.ts'), `
-    const workflow = steamharness.defineProject({ name: 'Must not run', run() { throw new Error('Business code ran before storage was ready'); } });
+    const workflow = steamharness.defineProject({ name: 'Offline conversation', run() { return { errCode: 0, errMessage: '' }; } });
     export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow, createInput() { return {}; } });
   `);
   const report = await runLocalProjectWithReport({ projectDir: directory, env: {} });
-  assert.equal(report.status, 'failed');
-  assert.equal(report.error?.metadata?.code, 'RUNTIME_STORAGE_ACCESS_DENIED');
-  assert.match(report.error?.message ?? '', /Sign in/);
+  assert.equal(report.status, 'success');
+  assert.equal(report.error, undefined);
 });
 
 test('losing the runtime history lease aborts an executing conversation', { timeout: 10_000 }, async t => {

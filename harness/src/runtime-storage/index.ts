@@ -1,5 +1,7 @@
 export * from "./contract";
 export * from "./history";
+export { createLocalRuntimePersistence, type LocalRuntimePersistenceOptions } from "./local";
+export { copyRuntimePersistence } from "./backup";
 export { createMemoryRuntimePersistence, SnapshotMemoryStorage } from "./memory";
 export { createServerAgentStorage, ServerAgentStorage, type ServerAgentStorageOptions } from "./server";
 

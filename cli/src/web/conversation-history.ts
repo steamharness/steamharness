@@ -7,7 +7,7 @@ import type { ConversationOwnership } from './conversation-ownership';
 interface History { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value, userSettingsJsonReplacer)).digest('hex');
 
-/** Memory projection of Server history. Every changed session is fenced and versioned. */
+/** Memory projection of persisted history. Every changed session is fenced and versioned. */
 export class ConversationHistory {
   private records = new Map<string, RuntimeHistoryRecord>();
   private versions = new Map<string, string>();
@@ -20,7 +20,7 @@ export class ConversationHistory {
     await this.pending;
     this.records.clear(); this.versions.clear(); this.stamp = '';
   }
-  private backend(): RuntimePersistence { const backend = this.persistence(); if (!backend) throw new Error('Sign in to persist conversation history.'); return backend; }
+  private backend(): RuntimePersistence { const backend = this.persistence(); if (!backend) throw new Error('Conversation history is not ready.'); return backend; }
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.pending.then(operation, operation); this.pending = next.catch(() => undefined); return next;
   }

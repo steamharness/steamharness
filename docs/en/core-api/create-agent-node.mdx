@@ -65,8 +65,8 @@ Every [createAgent](./create-agent.mdx) option, plus:
 | `outputItemId` | `string` | Id of the output item the answer belongs to. The OpenAI/Responses adapters find the answer by id, so it must equal `conversation.openai.outputItemId`; when it is left out the id is derived from the conversation, which no adapter can name in advance. |
 | `skills` | `{ directories: readonly string[] }` | Skill roots, relative to the entry root. Core creates a permission-checked `skill` tool each run. Core Agent project declarations also provide a read-only host catalog. See [Skill roots and host previews](./define-agent-conversation-executor.mdx#skill-roots-and-host-previews). |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | Builds the tools that go alongside the built-ins before each run. A factory rather than a list because those tools close over the run's `NodeContext` — its storage, its approval gate, its user input. To start something with a lifetime — a stdio MCP child, say — return `{ tools, close?() }`; `close` runs when the turn ends, errors included. |
-| `sessionKey` | `string` | Server session isolation key within a project and conversation. Falls back to `sessionId`, then `agent`. Use a different key for each agent node. |
-| `databasePath` | `string` | Explicit Durable SQLite file for an optional local programmatic backend. CLI/Studio use Server by default. |
+| `sessionKey` | `string` | Storage isolation key within a project and conversation. Falls back to `sessionId`, then `agent`. Use a different key for each agent node. |
+| `databasePath` | `string` | Explicit Durable SQLite file. CLI/Studio manage local runtime storage by default without this option. |
 | `historyLimit` | `number` | Cap on recorded node executions. Defaults to 50. |
 
 ## Output (`AgentOutputPayload`)
@@ -87,9 +87,9 @@ These fields come from the input the turn **actually used** (a turn may carry it
 
 ## The transcript
 
-The Pi Durable Harness owns Agent execution history. Conversation nodes use Server PostgreSQL sessions by account, project, entry, conversationId and sessionKey, preserving messages, tool intents and results, approval waits and usage. Ordinary runs close after each turn; hosts enabling `session` can retain the owner, tools and AI bridge. Platform Conversation state and usage also use relational tables. Platform sign-in and connectivity are required; see [platform runtime storage](/en/core-api/runtime-storage).
+The Pi Durable Harness owns Agent execution history. Conversation nodes select local SQLite sessions by project, entry, conversationId and sessionKey, preserving messages, tool intents and results, approval waits and usage. Ordinary runs close after each turn; hosts enabling `session` can retain the owner, tools and AI bridge. Conversation state and usage also persist locally without a Server login or connection for storage. Inject Server storage explicitly or back up on demand in the background; see [runtime storage](/en/core-api/runtime-storage).
 
-- Each Server session has one execution owner. Normal close releases its lease; SIGKILL requires lease expiry before takeover. A higher fence rejects stale writers. Preserve working directories and attachments alongside the database.
+- Each session has one execution owner. Local file locks release on close or process exit. With explicit Server storage, SIGKILL requires lease expiry before takeover and a higher fence rejects stale writers. Preserve working directories and attachments alongside the database.
 - A stable `requestId` is derived from the original `runId`. Recovery reconstructs output without repeating committed results, Conversation messages or billed usage.
 - Calls with unknown results after a crash are repeated only with `replay: "safe"`. The default is `never`; built-in write, edit and bash tools return an interruption error for model inspection. External side effects still require application idempotency.
 - Storage or projection failures stop execution. Old KV transcripts are not read or migrated, and failures never fall back to execution without history.
@@ -106,7 +106,7 @@ To reconnect an existing durable Agent, use `createAgentSessionHost(conversation
 
 Use the external workflow conversationId as scopeId and snapshot numeric `targetId` values to address children. Snapshots arrive as auxiliary `metadata.kind: "agent-session"` output, never as answer text. See [createAgent](./create-agent.mdx) for queues, plans, parent/child usage, and configuration controls. Explicit permission lists must declare `update_plan` and, when delegation is enabled, `subagent`. Child agents retain parent tool, model allowlist, and approval restrictions.
 
-Extension execution uses `session.registry` for tasks and hooks. `createTools` may return `{ tools, catalogs, close? }` with `session.toolSearch: {}` for authorized lazy catalogs. Declare `tool_search` in explicit tool permissions; also declare `codemode` when opting into `session.codeMode`. Nested calls retain their existing permissions. `session.environment` selects a stable execution target, and `storage` explicitly replaces the default Server repository. See [extension execution and recovery](./create-agent.mdx#extension-execution-and-recovery) for lifecycle and backup constraints.
+Extension execution uses `session.registry` for tasks and hooks. `createTools` may return `{ tools, catalogs, close? }` with `session.toolSearch: {}` for authorized lazy catalogs. Declare `tool_search` in explicit tool permissions; also declare `codemode` when opting into `session.codeMode`. Nested calls retain their existing permissions. `session.environment` selects a stable execution target, and `storage` explicitly replaces the default local repository. See [extension execution and recovery](./create-agent.mdx#extension-execution-and-recovery) for lifecycle and backup constraints.
 
 ## Output items
 

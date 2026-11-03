@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Runtime history and Agent checkpoints default to local SQLite, removing per-operation network waits from first response. Added `createLocalRuntimePersistence` and explicit background snapshot copying with `copyRuntimePersistence`, preserving opt-in Server storage and existing data.
+
 - [Fixed] Relational transactions wait up to 30 seconds for a pooled connection instead of 5 seconds, and temporary SQL identities renew before expiry to avoid acquisition and commit authorization failures with remote databases. Sent transactions are never automatically replayed.
 
 - [Fixed] Durable Agents retain only the latest complete session snapshot, coalesce pending views and serialize publication for slow consumers, preventing stale snapshots from exhausting memory during long multi-agent runs. Streaming nodes can customize in-memory collection with `accumulateChunk`; chunk hooks still receive every original event.
@@ -8,11 +10,11 @@
 
 - Fixed independent conversation copies losing document version changes and replacement identities when their JSON content stayed equal, preserving checkpoints for later forks.
 
-- Changed: remove KV, PersistentValue, local KV and legacy database-space APIs. Business data uses generated model descriptors, Browser clients use the host table proxy, and conversations and run records use Server runtime tables.
+- Changed: remove KV, PersistentValue, local KV and legacy database-space APIs. Business data uses generated model descriptors, Browser clients use the host table proxy, and conversations and run records default to local SQLite with optional explicit Server storage.
 
 - Added independent knowledgeBases APIs and account bindings. Relational platform tables retain documents, chunks and indexes; private file storage holds attachments, with revision conflicts and revocation-aware retained handles.
 
-- Conversation state, usage and default Agent sessions now use Server PostgreSQL. Added versioned session snapshots, fork/isolation/cancellation helpers and execution abort on lease loss, without legacy KV/SQLite migration.
+- Conversation state, usage and default Agent sessions persist locally. Added versioned session snapshots and fork/isolation/cancellation helpers. Explicit Server storage still aborts execution on lease loss, without automatic legacy KV/SQLite migration.
 
 - Added typed relational queries, aggregation and transactions through `context.databases.connect(descriptor)` for Node entries, with per-operation binding/access/model checks, lease renewal and run cleanup.
 

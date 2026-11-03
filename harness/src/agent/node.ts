@@ -655,7 +655,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const persistence = context.metadata?.["runtimePersistence"] as import("../runtime-storage/history").RuntimePersistence | undefined;
     const durable = context.conversation?.enabled && input.hostInput === undefined;
     if (durable && !this.options.storage && !persistence) {
-      throw new Error("Durable conversations require Server runtime persistence or an explicit temporary storage factory.");
+      throw new Error("Durable conversations require runtime persistence or an explicit storage factory.");
     }
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,

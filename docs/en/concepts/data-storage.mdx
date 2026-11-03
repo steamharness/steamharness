@@ -5,13 +5,13 @@ description: "Relational resources, independent knowledge bases and runtime stor
 
 # Project storage
 
-SteamHarness manages business models, knowledge content and runtime history separately. Persistent access is authorized by Server. Server and PostgreSQL may run locally: service connectivity is required, internet access is not.
+SteamHarness separates business models, knowledge content and runtime history. Server authorizes business and knowledge resources; runtime history defaults to host-local SQLite without a Server connection for storage.
 
 | Data | Storage and isolation | Project API |
 | --- | --- | --- |
 | Custom business models | Independent PostgreSQL database and roles for each explicitly created resource | `context.databases.connect(descriptor)` |
 | Knowledge documents, chunks, indexes and attachment metadata | Shared platform tables isolated by knowledge UUID and account grants | `context.knowledgeBases.get(alias)` |
-| Conversations, messages, runs, queues, usage and Agent state | Shared platform tables isolated by account and runtime space | Host runtime storage |
+| Conversations, messages, runs, queues, usage and Agent state | Host-local SQLite by project, entry and session; cloud backup on demand | Host runtime storage |
 | Knowledge attachment contents | Private Server file storage; SQL retains metadata and checksums | `knowledge.files` |
 
 Creating a project or conversation does not create a physical database. Projects A and B can request separate resources and define different `User` tables. Sharing requires explicit binding to the same resource and authorization. Knowledge bases do not require a project-defined schema.
@@ -64,4 +64,4 @@ Studio's database view and CLI Web's project database panel show resource refere
 
 ## Persistent history and failures
 
-Platform runtime storage owns history independently of business and knowledge resource grants and lifecycles. Deleting a project does not automatically delete independent resources. Disconnection, revocation and storage failures fail explicitly without switching to local KV, JSON or SQLite history or clearing valid sign-in. See [runtime storage](/en/core-api/runtime-storage).
+Runtime history defaults to local persistence independently of business and knowledge grants and lifecycles. Events reach the view while history persists locally; on-demand backup runs in the background. System AI or business-resource failures can affect those operations without blocking saved-history reads. Explicit Server storage fails on disconnection, revocation or lease loss. Existing cloud and legacy local records are preserved without automatic overwrite. Deleting a project does not automatically delete independent resources. See [runtime storage](/en/core-api/runtime-storage).

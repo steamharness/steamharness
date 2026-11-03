@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【修复】默认运行历史与 Agent 检查点使用本地 SQLite，移除首字路径上的远程逐条读写；提供 `createLocalRuntimePersistence` 和按需后台快照复制 `copyRuntimePersistence`，保留显式 Server 仓储与既有数据。
+
 - 【修复】关系库事务等待连接的上限由 5 秒调整为 30 秒，并在临时 SQL 身份临近过期时提前续期，避免远程数据库下并发事务排队或事务提交前授权过期导致失败；已发送的事务仍不自动重放。
 
 - 【修复】持久 Agent 只保留最新完整会话快照，合并慢消费者的待发快照并串行发布，避免多 Agent 长时间运行时历史快照积累耗尽内存。流式节点可用 `accumulateChunk` 自定义内存收集，原始 chunk hooks 保持完整。
@@ -8,11 +10,11 @@
 
 - 【修复】独立复制对话时保留内容相同的文档版本变化与删除后重建身份，确保后续历史分支读取正确检查点。
 
-- 【变更】完全移除 KV、PersistentValue、本地 KV 与旧数据库空间 API；业务数据使用生成的模型描述符，Browser 通过宿主访问关系表，对话与运行记录使用 Server 平台关系表。
+- 【变更】完全移除 KV、PersistentValue、本地 KV 与旧数据库空间 API；业务数据使用生成的模型描述符，Browser 通过宿主访问关系表，对话与运行记录默认使用本地 SQLite，可显式选择 Server 仓储。
 
 - 【新增】独立 knowledgeBases API 和 Server 账号绑定，知识文档、分块与索引使用平台关系表，附件正文保存在私有文件存储；支持文档版本冲突检测和撤权后失效的文件句柄。
 
-- 【变更】Conversation 状态、用量与默认 Agent 会话使用 Server PostgreSQL；新增版本化会话快照及分叉、独立化和取消接口，租约失效中止执行，不迁移旧 KV/SQLite。
+- 【变更】Conversation 状态、用量与默认 Agent 会话使用本地持久化；新增版本化会话快照及分叉、独立化和取消接口。显式 Server 仓储仍在租约失效时中止执行，旧 KV/SQLite 不自动迁移。
 
 - 【新增】Node 入口通过 `context.databases.connect(descriptor)` 使用类型化关系查询、聚合与事务；逐次检查宿主绑定、授权和模型指纹，自动续期并在执行结束或取消时释放连接。
 

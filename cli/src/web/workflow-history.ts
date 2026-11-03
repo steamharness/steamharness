@@ -8,7 +8,7 @@ export class WorkflowHistory {
   private pending: Promise<unknown> = Promise.resolve();
   private epoch = 0;
   constructor(private readonly persistence: () => RuntimePersistence | undefined, private readonly lost?: (error: Error) => void) {}
-  private backend() { const backend = this.persistence(); if (!backend) throw new Error('Sign in to persist workflow history.'); return backend; }
+  private backend() { const backend = this.persistence(); if (!backend) throw new Error('Workflow history is not ready.'); return backend; }
   read(): Promise<WorkspaceContract> {
     const next = this.pending.then(() => this.load());
     this.pending = next.catch(() => undefined); return next;

@@ -1,6 +1,6 @@
 # Unreleased
 
-- Conversation, Workflow and assistant sessions now use the current platform account’s relational storage and Server leases. Analysis reads database history; connectivity loss stops execution while retaining sign-in, without legacy local-history migration.
+- [Fixed] Conversation, Workflow and assistant history default to local SQLite with file locks, and analysis reads local history. Bundled runtime storage avoids per-operation remote waits before replies. System AI and business resources keep separate authorization; cloud storage is explicit or used for on-demand background backup, preserving existing data.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 

@@ -134,7 +134,7 @@ const agent = await workflow.createAgent({
 
 session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ task, background?, model?: { provider, modelId } })`。显式 `toolDefinitions` / executor `tools` 列表须声明这些工具及所需 nativeTools 的权限；便捷 executor 默认补 update_plan/subagent。后台工作结束、前台回答完成和客户端连接状态相互独立。
 
-服务端仓储的宿主使用 `forkStoredAgentConversation({ persistence, conversationId, command })`，无活动 owner 时只分叉已提交历史，不加载模型或重跑任务；活动 owner 通过控制通道执行 `fork`。`isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 将回执的 forkId 复制成独立根会话，保留历史文档检查点，不复制任务、审批、输入队列或用量。源 owner 活动时仍可读取一致快照；停止、删除和模型选择各自独立。宿主需另行复制附件，可用 replacements 更新文件引用。导入、导出与取消 API 见[平台运行存储](/core-api/runtime-storage)。
+使用本地或 Server 仓储的宿主通过 `forkStoredAgentConversation({ persistence, conversationId, command })`，无活动 owner 时只分叉已提交历史，不加载模型或重跑任务；活动 owner 通过控制通道执行 `fork`。`isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 将回执的 forkId 复制成独立根会话，保留历史文档检查点，不复制任务、审批、输入队列或用量。源 owner 活动时仍可读取一致快照；停止、删除和模型选择各自独立。宿主需另行复制附件，可用 replacements 更新文件引用。导入、导出与取消 API 见[平台运行存储](/core-api/runtime-storage)。
 
 显式使用 databasePath 的实例仍可调用 SQLite 专用 forkAgentConversation / isolateAgentConversation；这些文件路径 API 不用于 CLI/Studio 默认仓储。
 
@@ -316,7 +316,7 @@ try {
 
 提供 `databasePath` 后，Harness 持续提交模型轮次、工具意图、结果和任务检查点；重新打开同一文件并使用原 `requestId` 可以恢复。已提交的工具结果直接复用。结果未知的工具默认 `replay: "never"`，恢复时向模型返回中断错误，不自动重复副作用；只有确认可安全重复的工具声明 `replay: "safe"`。内置读取和检索工具声明 safe，写入、编辑和 shell 默认 never。`requestId` 去重不能替代外部服务的业务幂等。
 
-`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有持久历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须注入服务端仓储或显式 SQLite 才能恢复。会话节点默认选择独立 Server PostgreSQL 会话，参见 [createAgentNode](./create-agent-node.mdx)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
+`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有持久历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须注入本地或 Server 仓储，或显式 SQLite 才能恢复。会话节点默认选择独立本地 SQLite 会话，参见 [createAgentNode](./create-agent-node.mdx)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
 
 进程在流式回答中断后，恢复会把已提交的正文和推理片段纳入续写上下文，持久保存续写提示；反复中断仍从已提交片段继续。没有提交完整意图的工具调用会被丢弃，不执行也不显示为已开始。
 

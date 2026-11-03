@@ -1,21 +1,39 @@
 ---
 title: "平台运行存储"
-description: "使用 SteamHarness Server 和 PostgreSQL 保存对话、运行历史、队列、用量与 Agent 检查点。"
+description: "本地持久化对话与 Agent 检查点，并按需异步备份到 SteamHarness Server。"
 ---
 
 # 平台运行存储
 
-`steamharness/runtime-storage` 提供 `createServerAgentStorage`，把 Agent 的持久记录保存到 Server 的 PostgreSQL。Agent 仍在 CLI、Studio 或自己的 Node.js 进程执行；Server 只鉴权并读写数据，不接收可执行的项目代码。
+`steamharness/runtime-storage` 提供本地 SQLite 和显式选择的 Server PostgreSQL 存储。Agent 仍在 CLI、Studio 或自己的 Node.js 进程执行；Server 只鉴权并读写数据，不接收可执行的项目代码。
 
 ## 默认存储与隔离
 
-CLI Web、Studio 的 Conversation、Workflow 历史和助手会话默认保存到当前账号的 Server PostgreSQL。消息、队列、草稿、参数、Run、事件、用量和 Agent 检查点使用平台关系表；不再读取或写入旧 `conversations.json`、`runs.json` 或默认 Agent SQLite，也不迁移旧数据。
+CLI Web、Studio 的 Conversation、Workflow 历史和助手会话默认保存到宿主管理的本地 SQLite，包括消息、队列、草稿、参数、Run、事件、用量和 Agent 检查点。按项目和入口隔离；助手还按工作目录隔离。执行检查点先在本地事务中提交，正文直接展示，展示历史合并保存，不等待云端写入。
 
-这些操作需要平台账号登录和可用的 Server。第三方模型仍可独立配置，但保存持久对话需要平台连接；系统 AI 授权与存储账号是两项独立能力。断网时保留登录状态；存储不可用或权限失效时停止对应执行并报告存储错误，凭据撤销则标记登录过期，不自动建立本地数据库。
+本地持久化不需要平台登录或数据库连接。系统 AI、业务关系数据库、知识库和受保护配置仍独立校验账号与授权。本地写入失败会报告错误，不降级为临时内存执行。现有云端记录和旧 JSON/SQLite 文件不会删除或自动覆盖；需要迁移时显式导入。
 
-已注册项目按账号、项目和入口隔离；本地项目通过 `workspaces/resolve` 查找真实项目：项目存在时必须通过成员权限检查，只有项目不存在时才使用账号私有的本地工作区。403 不降级为本地工作区。助手工作区另行隔离。创建项目、入口或会话只增加共享表中的记录，不创建 PostgreSQL database。
+显式选择 Server 仓储时，按账号、项目和入口隔离；`workspaces/resolve` 对已注册项目检查成员权限，只有项目不存在时才使用账号私有的工作区，403 不降级。创建会话只增加共享表中的记录，不创建 PostgreSQL database。
 
-工作区文件、附件和临时活动通知仍由宿主管理，备份时需一并保存。业务关系表使用 [SteamHarness Database](/core-api/database)；业务关系库、知识库和配置存储不属于这个平台历史接口。
+工作区文件、附件和临时活动通知由宿主管理，备份时需一并保存。业务关系表继续使用 [SteamHarness Database](/core-api/database)，不受运行历史存储位置影响。
+
+## 本地存储与按需备份
+
+```ts
+import { createLocalRuntimePersistence, createServerRuntimePersistence, copyRuntimePersistence } from "steamharness/runtime-storage";
+
+const local = createLocalRuntimePersistence({ directory: "/host-owned/project-runtime" });
+const storage = local.agentStorage("conversation-id", "main");
+// 显式备份时，为目标选择新的、空闲的工作区；不接入模型调用链路。
+const cloud = createServerRuntimePersistence({ serverUrl, token, workspace: backupWorkspace });
+void copyRuntimePersistence({ source: local, target: cloud })
+  .catch(error => reportBackupFailure(error))
+  .finally(() => cloud.close());
+```
+
+`copyRuntimePersistence` 复制历史和对应 Agent 检查点到空目标，不覆盖已有记录；也可把 source/target 反过来恢复到新的本地目录。备份包含调用时读取的记录，后续本地执行继续独立提交；这不是自动持续同步，也不复制独立的用量收据表、附件或凭据；历史与 Agent 检查点中已有的用量投影随记录保留。宿主应在会话空闲时发起一致的整组备份，并等待备份完成后再关闭源仓储。
+
+本地 `history.sqlite` 保存宿主历史和用量，`agents/` 保存原生 Pi Durable SQLite，`owners/` 使用操作系统文件锁防止同一会话在多个进程中执行。不同会话可并行；进程退出即释放锁，不等待云端租约。本地导出的提交日志与原生状态在同一个事务中保存。
 
 ## 连接与重开
 
@@ -73,7 +91,7 @@ const agent = await createAgent({
 
 `createServerRuntimePersistence({ serverUrl, token, workspace, resolveProject: true })` 创建宿主仓储。`list(kind)` 读取 `conversation / run / workflow / state` 历史；`acquire(scope, onLost)` 取得执行租约，返回 `write(record)`、`delete(identity)`、`usage(entry)`、`assertOwned()` 和 `close()`。记录包含版本与有序消息、队列、事件和值；写入必须匹配 scope 和 revision。删除保留版本墓碑，旧窗口不能重新保存已删除记录。
 
-Core executor 自动注入相同仓储到 Conversation 状态和 Token 用量，Agent 节点按 conversationId 与 sessionKey 选择服务端会话。持久 Conversation 在执行业务代码前检查存储。直接调用没有 Conversation 或持久用量的普通 Core Workflow 可离线执行；CLI/Studio 的运行历史仍要求在线存储。可信宿主可在 `storage.local.runtimePersistence` 或 `storage.server.runtimePersistence` 显式注入仓储；测试可用 `createMemoryRuntimePersistence()`，它不是网络失败后的降级后端。
+Core executor 默认在项目根目录的 `.workflow/runtime/` 下按项目与入口保存本地状态；CLI/Studio 使用宿主数据目录。Agent 节点按 conversationId 与 sessionKey 选择独立存储。可信宿主可在 `storage.local.runtimePersistence` 或 `storage.server.runtimePersistence` 注入本地或 Server 仓储；测试可用 `createMemoryRuntimePersistence()`，它不是失败后的降级后端。
 
 `steamharness/agent` 提供以下存储操作，均传入 `persistence`：
 
@@ -86,14 +104,14 @@ Core executor 自动注入相同仓储到 Conversation 状态和 Token 用量，
 | `cancelStoredAgentConversation({ persistence, conversationId })` | 没有活动 owner 时取消已保存的执行树。 |
 | `deleteStoredAgentConversation({ persistence, conversationId })` | 取消并删除 Agent 会话与 Conversation 状态。 |
 
-存储快照的格式为 `{ format: "steamharness.agent-session", version: 1, nextId, commits }`，保留提交顺序、历史文档与已保留的 ID；它与页面上的 AgentSessionSnapshot 状态投影不同。分叉不依赖系统 AI，但需要访问数据库。活动 owner 的 Stop、后台任务和队列暂停规则保持一致；失去租约或续租失败会中止本地执行。崩溃恢复等待旧租约过期，以原 runId 和 requestId 接回已提交记录；失败不自动推进待发消息。
+存储快照的格式为 `{ format: "steamharness.agent-session", version: 1, nextId, commits }`，保留提交顺序、历史文档与已保留的 ID；它与页面上的 AgentSessionSnapshot 状态投影不同。分叉不依赖系统 AI。活动 owner 的 Stop、后台任务和队列暂停规则保持一致；崩溃恢复以原 runId 和 requestId 接回已提交记录，失败不自动推进待发消息。显式选择云端仓储时仍需等待旧租约过期。
 
 ## 数据与备份
 
 Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本迁移和专用关系表：工作区、历史及有序子记录、用量、会话、对话、条目、任务、输入、文档版本、提交日志与幂等回执。创建工作区不会创建新的 PostgreSQL database。记录身份、状态与检索条件使用独立列和索引；不透明 JSON 载荷使用文本保存，以完整保留合法 JSON 的特殊键及 Unicode。用量时间戳使用独立关系列进行排序与汇总，不解析元数据。
 
-备份包含整个 PostgreSQL 数据库，并按项目需要备份附件和工作区文件。SQLite 专用的导入、导出、分叉和取消工具仅适用于显式选择 databasePath 的编程式实例；默认宿主使用上述仓储 API。在线会话控制仍通过活动 owner 执行。
+本地与 Server 仓储都支持上述快照和按需备份 API。备份运行数据目录或 PostgreSQL 时，还需保存附件和工作区文件；在线会话控制仍通过活动 owner 执行。
 
-独立编程式 `createAgent()` 不传 storage 或 databasePath 时仍是临时内存实例；需要长期保存时显式注入 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
+独立编程式 `createAgent()` 不传 storage 或 databasePath 时仍是临时内存实例；需要长期保存时显式注入本地仓储的 `agentStorage(...)` 或 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
 
 本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](/openapi/steamharness.openapi.yaml)。

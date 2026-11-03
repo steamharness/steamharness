@@ -5,13 +5,13 @@ description: "关系库、独立知识库和平台运行存储"
 
 # 项目数据存储
 
-SteamHarness 将业务模型、知识内容和运行历史分别管理，持久访问统一通过 Server 授权。Server 和 PostgreSQL 可以在本机运行；需要服务连通，不要求互联网。
+SteamHarness 将业务模型、知识内容和运行历史分别管理。业务库和知识库通过 Server 授权；运行历史默认保存在宿主本地 SQLite，无需为历史存储连接 Server。
 
 | 数据 | 存储和隔离 | 项目 API |
 | --- | --- | --- |
 | 自定义业务模型 | 每个显式申请的资源拥有独立 PostgreSQL database 和权限角色 | `context.databases.connect(descriptor)` |
 | 知识文档、分块、搜索索引、附件元数据 | 平台共享关系表，按知识库 UUID 及账号授权隔离 | `context.knowledgeBases.get(alias)` |
-| Conversation、消息、Run、队列、Usage、Agent 状态 | 平台共享关系表，按账号和运行空间隔离 | 宿主运行存储 |
+| Conversation、消息、Run、队列、Usage、Agent 状态 | 宿主本地 SQLite，按项目、入口和会话隔离；云端按需备份 | 宿主运行存储 |
 | 知识附件正文 | Server 私有文件存储，SQL 保存元数据和校验和 | `knowledge.files` |
 
 新建项目或对话不会自动创建 PostgreSQL database。A、B 项目分别申请业务资源后，可定义结构不同的 `User` 表；共享必须显式绑定到同一资源并获得授权。知识库独立于业务库，不需要项目定义系统知识表。
@@ -64,4 +64,4 @@ Studio 数据库视图和 CLI Web 项目数据库面板展示资源引用，并�
 
 ## 持久历史与故障
 
-对话历史使用平台运行存储，与业务库或知识库的授权和生命周期分别管理。删除项目不会自动删除独立资源。断连、撤权或服务故障会明确失败，不切换本地 KV、JSON 或 SQLite 历史，也不清除有效登录状态。参见 [平台运行存储](/core-api/runtime-storage)。
+对话历史默认使用本地运行存储，与业务库或知识库的授权和生命周期分别管理。运行事件先供视图消费，历史在本地持久化；按需备份在后台执行。系统 AI 或业务资源断连可能影响对应操作，不影响已保存历史的读取。显式选择 Server 仓储时，断连、撤权和租约丢失明确失败。已有云端及旧本地记录不删除或自动覆盖。删除项目不会自动删除独立资源。参见[运行存储](/core-api/runtime-storage)。

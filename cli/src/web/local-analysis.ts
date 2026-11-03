@@ -1,7 +1,7 @@
 import type { ProjectDeclaration, ProjectEntryDeclaration } from '@steamharness/project-manifest';
 import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { createHash, randomUUID } from 'node:crypto';
-import { createServerRuntimePersistence, type RuntimePersistence } from 'steamharness/runtime-storage';
+import { createLocalRuntimePersistence, type RuntimePersistence } from 'steamharness/runtime-storage';
 import { decodeSession } from './conversation-history';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -141,12 +141,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       project.projectType = type;
       let storedRuns: RunRecord[] | undefined, storedSessions: ConversationSession[] | undefined;
       if (type !== 'kanban') {
-        const backend = options.persistenceForProject?.(reference) ?? (options.connection && createServerRuntimePersistence({
-          serverUrl: options.connection.serverUrl, token: options.connection.accessToken, resolveProject: true,
-          workspace: { kind: 'local', projectId: reference.id, entryId: registration.entryId,
-            localKey: createHash('sha256').update(directory).digest('hex') },
-        }));
-        if (!backend) throw new Error('Sign in to read runtime history.');
+        const backend = options.persistenceForProject?.(reference) ?? createLocalRuntimePersistence({ directory: path.join(root, 'runtime') });
         try {
           if (type === 'conversation') storedSessions = (await backend.list('conversation')).map(decodeSession);
           else storedRuns = (await backend.list('run')).map(record => ({ ...record.state, items: [], events: [] } as unknown as RunRecord));

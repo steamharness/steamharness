@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { register } from 'tsx/esm/api';
 import ts from 'typescript';
 import { assistantWorkspaceManifest } from './assistant-workspace.mjs';
+import { createLocalRuntimePersistence } from './runtime-storage.mjs';
 import {
   inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
@@ -20,6 +21,7 @@ process.on('SIGTERM', () => controller.abort(new Error('Stopped.')));
 process.on('SIGINT', () => controller.abort(new Error('Stopped.')));
 register({ tsconfig: new URL('./tsconfig.json', import.meta.url).pathname });
 let assistantScopeDirectory;
+let runtimePersistence;
 
 async function requiresSystemAi(directory) {
   const skipped = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'test', 'tests', '__tests__', 'fixtures']);
@@ -85,8 +87,9 @@ try {
     }
     send('result', { projects, errors });
   } else if (request.project?.folderPath) {
-    const projectKey = createHash('sha256').update(request.project.assistant ? `assistant:${request.project.assistant.workdir}` : request.project.folderPath).digest('hex').slice(0, 24);
-    const dataDir = path.join(request.storageDir, projectKey);
+    const projectKey = createHash('sha256').update(`assistant:${request.project.id}:${request.project.assistant?.workdir}`).digest('hex').slice(0, 24);
+    const dataDir = request.project.assistant ? path.join(request.storageDir, projectKey)
+      : path.join(request.storageDir, 'projects', request.project.id.toLowerCase(), 'entries', request.project.entryId);
     if (request.project.assistant) {
       const manifest = assistantWorkspaceManifest(request.project.assistant);
       await mkdir(dataDir, { recursive: true });
@@ -98,7 +101,8 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId, localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
-    const storage = { host: 'local', local: { runtimeWorkspace } };
+    runtimePersistence = createLocalRuntimePersistence({ directory: path.join(dataDir, 'runtime') });
+    const storage = { host: 'local', local: { runtimeWorkspace, runtimePersistence } };
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
     const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
@@ -195,5 +199,6 @@ try {
   write(`__STUDIO_STEAMHARNESS__${JSON.stringify({ kind: 'error', error: error.message, status: error.metadata?.status })}\n`);
   process.exitCode = 1;
 } finally {
+  await runtimePersistence?.close();
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }
 }

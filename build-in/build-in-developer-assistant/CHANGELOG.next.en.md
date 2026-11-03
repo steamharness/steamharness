@@ -8,7 +8,7 @@
 
 - Updated generation rules and tool contracts for independent knowledgeBases, versioned documents and private attachments, distinguishing relational Server bindings from knowledge deployment mappings.
 
-- Document platform relational storage as the default conversation, run history and Agent backend, including online requirements, isolation and snapshot APIs.
+- Document local SQLite as the default conversation, run history and Agent backend, with explicit cloud storage or on-demand background snapshot backup and separate system AI and business-resource authorization.
 
 - Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; browsers use restricted table queries.
 

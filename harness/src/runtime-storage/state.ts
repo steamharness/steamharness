@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import type { ConversationState, ConversationStateStorage } from "../conversation";
-import { databaseConnectionFromEnv } from "../database/connection";
 import type { TokenUsageEntry } from "../token-usage";
-import { RuntimeStorageError, type RuntimeHistoryRecord, type RuntimeWorkspaceInput } from "./contract";
-import { createServerRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryLease, type RuntimePersistence } from "./history";
+import { type RuntimeHistoryRecord, type RuntimeWorkspaceInput } from "./contract";
+import { emptyRuntimeRecord, type RuntimeHistoryLease, type RuntimePersistence } from "./history";
+import { createLocalRuntimePersistence } from "./local";
 
 export function createRuntimeStateStorage(options: {
   projectId: string; entryId: string; rootDir: string; runId: string; conversationId?: string;
@@ -13,16 +14,12 @@ export function createRuntimeStateStorage(options: {
   let backend = options.persistence;
   const resolve = () => {
     if (backend) return backend;
-    const connection = databaseConnectionFromEnv(options.env);
-    if (!connection) throw new RuntimeStorageError("RUNTIME_STORAGE_ACCESS_DENIED", "Sign in to SteamHarness Server to persist conversations and execution history.");
-    return backend = createServerRuntimePersistence({ ...connection, resolveProject: true, workspace: options.workspace ?? {
-      kind: "local", projectId: options.projectId, entryId: options.entryId,
-      localKey: createHash("sha256").update(options.rootDir).digest("hex"),
-    } });
+    const identity = createHash("sha256").update(JSON.stringify([options.projectId, options.entryId])).digest("hex");
+    return backend = createLocalRuntimePersistence({ directory: path.join(options.rootDir, ".workflow", "runtime", identity) });
   };
   const persistence: RuntimePersistence = {
     list: kind => resolve().list(kind), acquire: (scope, onLost) => resolve().acquire(scope, onLost),
-    agentStorage: (conversationId, sessionKey) => ({ label: "SteamHarness PostgreSQL", open: () => resolve().agentStorage(conversationId, sessionKey).open() }),
+    agentStorage: (conversationId, sessionKey) => resolve().agentStorage(conversationId, sessionKey),
     agentSessions: id => resolve().agentSessions(id), exportSession: key => resolve().exportSession(key),
     importSession: (key, snapshot) => resolve().importSession(key, snapshot), close: async () => { if (!options.persistence) await backend?.close(); },
     deleteSession: key => resolve().deleteSession(key),

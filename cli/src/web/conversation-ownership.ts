@@ -4,7 +4,7 @@ import { t } from './localization';
 export interface ConversationAccess { readOnly: boolean; reason?: 'opened' | 'running' }
 interface Owner { lease: RuntimeHistoryLease; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
 
-/** Server leases and fencing protect execution across processes, hosts and restarts. */
+/** Persistence owners protect execution across windows, processes and restarts. */
 export class ConversationOwnership {
   private readonly owners = new Map<string, Owner>();
   private readonly pending = new Map<string, Promise<Owner | undefined>>();

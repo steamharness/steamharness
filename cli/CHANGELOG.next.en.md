@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default without login or remote database waits for history. Streaming is preserved, login changes retain local history, and analysis reads the same local records.
+
 - Fixed worker crash recovery with relational storage by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.
 
 - [Fixed] Worker output now waits for transport completion, preventing full snapshots from accumulating behind a slow host. Unexpected worker crashes under a live host resume the same child tasks and checkpoints up to three times while preserving settled replies. Stop or reopening after a forced host exit still pauses managed work and user queues; background completion cannot release queued input.
@@ -16,7 +18,7 @@
 
 - Added knowledge resource/grant/binding and document/attachment commands, plus database data for applied model rows. Catalogs support pagination and search; Web panels open Server resource pages without KV editing or local/remote switches.
 
-- Conversation, Workflow and assistant history now use platform relational tables with account/entry-isolated messages, queues, drafts, runs and usage. Server leases coordinate windows and crash recovery without legacy JSON/SQLite reads or offline fallback.
+- Conversation, Workflow and assistant history default to local SQLite isolated by project and entry. Local file locks coordinate windows and crash recovery. Server storage remains explicit; existing cloud and legacy local records are not automatically migrated or overwritten.
 
 - Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.
 

@@ -1,4 +1,4 @@
-import { createMemoryRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from 'steamharness/runtime-storage';
+import { createLocalRuntimePersistence, createMemoryRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from 'steamharness/runtime-storage';
 import { encodeSession } from '../web/conversation-history';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -234,12 +234,19 @@ describe('local Studio analysis', () => {
     const f = await fixture(); await f.history([{ id: 'unverified', status: 'future-status', createdAt: 1e30 }]);
     expect((await f.snapshot()).projects[0].runs[0]).toMatchObject({ id: 'unverified', status: 'unknown', createdAt: undefined });
   });
-  it('requires an account for stored history and ignores old conversation files', async () => {
+  it('reads default local history without an account and ignores old conversation files', async () => {
     const f = await fixture('conversation');
     await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify({ sessions: [{ id: 'old', title: 'Old', messages: [] }] }));
     expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [] });
+    const local = createLocalRuntimePersistence({ directory: path.join(f.directory, 'runtime') });
+    try {
+      const lease = await local.acquire('offline');
+      try { await lease.write(encodeSession({ id: 'offline', title: 'Local', messages: [{ id: 'reply', role: 'assistant', status: 'success', content: 'Private local reply' }] }, 0)); }
+      finally { await lease.close(); }
+    } finally { await local.close(); }
     const signedOut = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [f.reference] });
-    expect(signedOut.projects[0]).toMatchObject({ availability: 'unreadable', runs: [] });
+    expect(signedOut.projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'reply', title: 'Local', status: 'success', sessionId: 'offline' }] });
+    expect(JSON.stringify(signedOut)).not.toContain('Private local reply');
   });
   it('uses only the authenticated read-only loopback operation and never falls back to Server', async () => {
     await expect(requestStudioAnalysis({})).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');

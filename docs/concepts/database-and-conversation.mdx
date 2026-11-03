@@ -35,8 +35,8 @@ const result = await context.entries.get("jobs")
 
 ## Conversation 与运行存储
 
-会话、消息、输入队列、草稿、Run、用量与 Agent 检查点保存在 Server 的平台关系表，按账号、项目、入口和 conversationId 隔离。同一套平台表承载多个项目，无需每个项目另建历史数据库，也不需要业务库权限。
+会话、消息、输入队列、草稿、Run、用量与 Agent 检查点默认保存在宿主本地 SQLite，按项目、入口和 conversationId 隔离。运行历史不需要业务库权限，也不会为每个会话创建远程数据库。
 
 `context.conversation.getValue/setValue/setTitle/appendMessage` 操作当前会话；这些方法与业务模型客户端独立。配置修改从下一次执行生效，恢复审批必须匹配当前项目和入口。
 
-持久历史要求登录和在线连接；本地开发可连接本机 Server 与 Docker PostgreSQL，无需远程数据库。断连明确失败，保留登录和已提交记录。旧 KV、PersistentValue、默认本地 KV 与旧历史不再读取、迁移或双写。文件缓存、项目源码、配置和显式 SQLite 工具按各自用途保留，不作为历史故障的回退存储。详见 [平台运行存储](/core-api/runtime-storage)。
+本地持久历史不要求平台登录或网络连接；系统 AI 和业务资源仍按各自权限校验。可信宿主可显式选择 Server 仓储，或用 `copyRuntimePersistence` 在会话空闲时后台复制到空云端目标。它是按需快照备份，不是持续同步；附件与工作区文件独立备份。已有云端和旧本地记录保留，不自动读取、迁移或双写；不重新引入 KV 或 PersistentValue。详见[运行存储](/core-api/runtime-storage)。

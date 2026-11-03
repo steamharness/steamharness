@@ -24,6 +24,7 @@ export async function buildProjectRuntime(directory) {
     logOverride: { 'impossible-typeof': 'silent' },
   };
   await esbuild.build({ ...options, entryPoints: [harnessEntry], outfile: path.join(runtime, 'harness.mjs') });
+  await esbuild.build({ ...options, entryPoints: [path.join(path.dirname(harnessEntry), 'runtime-storage.js')], outfile: path.join(runtime, 'runtime-storage.mjs') });
   // Preserve CLI module boundaries: several modules have their own entry guards.
   await fs.cp(path.join(cliDirectory, 'dist'), path.join(runtime, 'cli/dist'), { recursive: true });
   await fs.copyFile(path.join(cliDirectory, 'dist/index.js'), path.join(runtime, 'cli/dist/index.mjs'));
@@ -31,9 +32,10 @@ export async function buildProjectRuntime(directory) {
   await fs.mkdir(cliHarness, { recursive: true });
   await fs.writeFile(path.join(cliHarness, 'package.json'), JSON.stringify({
     name: 'steamharness', version: harnessManifest.version, type: 'module',
-    exports: { '.': './index.mjs', './runtime-api': './index.mjs' },
+    exports: { '.': './index.mjs', './runtime-api': './index.mjs', './runtime-storage': './runtime-storage.mjs' },
   }, null, 2) + '\n');
   await fs.writeFile(path.join(cliHarness, 'index.mjs'), 'export * from "../../../harness.mjs";\n');
+  await fs.writeFile(path.join(cliHarness, 'runtime-storage.mjs'), 'export * from "../../../runtime-storage.mjs";\n');
   await fs.copyFile(path.join(directory, 'runtime/worker.mjs'), path.join(runtime, 'worker.mjs'));
   await esbuild.build({ ...options, entryPoints: [path.join(directory, 'src/assistant-workspace.ts')], outfile: path.join(runtime, 'assistant-workspace.mjs') });
   const assistantSource = await builtinProjectDirectory('developer-assistant');

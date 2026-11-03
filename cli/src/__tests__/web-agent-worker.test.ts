@@ -329,7 +329,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
       return snapshot?.turns.some(turn => turn.status === 'done');
     }, { timeout: 15_000 }).toBe(true);
     const ownerId = snapshot!.ownerId;
-    expect(snapshot!.resources).toMatchObject({ codeMode: true, environment: { remote: false }, storage: 'SteamHarness PostgreSQL' });
+    expect(snapshot!.resources).toMatchObject({ codeMode: true, environment: { remote: false }, storage: 'SteamHarness local SQLite' });
     expect(snapshot!.resources!.extensions).toContainEqual(expect.objectContaining({ name: 'ipc-extension', tasks: [{ name: 'ipc.timer', version: 1 }] }));
     const task = { type: 'task' as const, requestId: 'ipc-timer', name: 'ipc.timer', input: { wakeAt: Date.now() + 500 }, background: true };
     const taskReceipt = await runtime.agentControl!('ipc-run', task, 'ipc-session');

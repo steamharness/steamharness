@@ -182,9 +182,8 @@ try {
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
       localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
-    const { createServerRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
-    const connection = core.databaseConnectionFromEnv();
-    if (connection) runtimePersistence = createServerRuntimePersistence({ ...connection, workspace: runtimeWorkspace, resolveProject: true });
+    const { createLocalRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
+    runtimePersistence = createLocalRuntimePersistence({ directory: path.join(dataDir, 'runtime') });
     if (runtimePersistence && request.method === 'run' && request.resumeAgent) {
       const deadline = Date.now() + 35_000;
       const acquire = async operation => {
@@ -197,8 +196,7 @@ try {
           }
         }
       };
-      // A killed worker cannot release its leases. Wait for expiry without
-      // sharing ownership tokens or replaying any project/model operation.
+      // The previous worker may still be releasing its local execution lock.
       const persistence = runtimePersistence;
       runtimePersistence = { ...persistence,
         acquire: (...args) => acquire(() => persistence.acquire(...args)),
@@ -209,7 +207,7 @@ try {
       };
     }
     const storage = { host: 'local', local: { runtimeWorkspace, runtimePersistence } };
-    const requireRuntimePersistence = () => { if (!runtimePersistence) throw new Error('Sign in to SteamHarness Server to access conversation history.'); return runtimePersistence; };
+    const requireRuntimePersistence = () => runtimePersistence;
 
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];

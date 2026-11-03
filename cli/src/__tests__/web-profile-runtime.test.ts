@@ -49,7 +49,7 @@ it('enforces verified profiles through the real child worker, including downgrad
     connection=undefined;
     await expect(runtime.run({...request,runId:'logged-out'},()=>{})).rejects.toThrow(/not available/);
     const offline=await runtime.run({project,conversationId:'session',runId:'offline-ask',args:[]},()=>{});
-    expect(offline.status).toBe('failed');expect(offline.error?.metadata?.code).toBe('RUNTIME_STORAGE_ACCESS_DENIED');
+    expect(offline.status).toBe('success');expect(offline.output?.items?.[0].content).toBe('ask');
     await expect(runtime.run({project,conversationId:'session',runId:'pre-policy',args:[],resumeConfiguration:true},()=>{})).rejects.toThrow(/no verified configuration snapshot/);
   }finally{
     runtime.dispose();await new Promise<void>(resolve=>{server.close(()=>resolve());server.closeAllConnections();});
