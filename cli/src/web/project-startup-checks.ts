@@ -8,7 +8,14 @@ export function projectStartupInspector(project: Project, verify: (alias:string,
     const checks: ProjectServerCheck[] = await Promise.all([...project.databases.map(alias => ({alias,kind:'databases' as const})), ...(project.knowledgeBases ?? []).map(item => ({...item,kind:'knowledge-bases' as const}))].map(async database => {
       let issue: ProjectServerCheck['issue'];
       try { const authorization = await verify(database.alias, database.kind) as { space?: { host?: string } } | undefined; server ||= authorization?.space?.host === 'server'; }
-      catch (error) { server ||= (error as { metadata?: { host?: string } }).metadata?.host === 'server'; issue = {kind:'setup-required',projectId:project.id,entryId:project.entryId,database:database.alias}; }
+      catch (error) {
+        const status = (error as { status?: number }).status;
+        server ||= (error as { metadata?: { host?: string } }).metadata?.host === 'server';
+        const kind = status === 401 ? 'sign-in-required' : status === 403 ? 'access-denied'
+          : status !== undefined && (status >= 500 || status === 408 || status === 429) ? 'connection-unavailable' : 'setup-required';
+        issue = {kind,serverUrl:connection?.serverUrl,projectId:project.id,entryId:project.entryId,
+          ...(kind === 'setup-required' ? {database:database.alias} : {})};
+      }
       return {id:`${database.kind}:${database.alias}`,projectId:project.id,entryId:project.entryId,database:database.alias,stage:'database',status:issue?'action-required':'passed',issue} satisfies ProjectServerCheck;
     }));
     if (signal.aborted) return checks;

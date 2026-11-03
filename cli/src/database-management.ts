@@ -40,9 +40,9 @@ export async function databaseManagementRequest<T>(options: Pick<DatabaseManagem
   const response = await fetch(`${options.server.replace(/\/$/, "")}/api/${namespace}${endpoint}`, {
     method, redirect: "error", headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(timeoutMs),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const result = await response.json() as { errCode?: number; errMessage?: string; data?: T & { code?: string } };
-  if (!response.ok || result.errCode !== 0) throw new Error(`${result.data?.code ? result.data.code + ": " : ""}${result.errMessage ?? `Database request failed (${response.status}).`}`);
+  }).catch(error => { throw Object.assign(error, { status: 503 }); });
+  const result = await response.json().catch(error => { throw Object.assign(error, { status: response.ok ? 503 : response.status }); }) as { errCode?: number; errMessage?: string; data?: T & { code?: string } };
+  if (!response.ok || result.errCode !== 0) throw Object.assign(new Error(`${result.data?.code ? result.data.code + ": " : ""}${result.errMessage ?? `Database request failed (${response.status}).`}`), { status: response.status, code: result.data?.code });
   return result.data as T;
 }
 

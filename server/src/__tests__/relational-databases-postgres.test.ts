@@ -129,6 +129,27 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     });
     assert.equal((await repository.history('owner', a.id)).length, 1);
   });
+  await t.test("native authorization permits concurrent readers and still fences binding changes", async () => {
+    const identity = { projectId: randomUUID(), entryId: 'agent', alias: 'data' };
+    const binding = await repository.bind('owner', { ...identity, databaseId: a.id, schemaHash: first.schemaHash });
+    const lease = await repository.openConnection('owner', { ...identity, schemaHash: first.schemaHash });
+    const request = { ...identity, binding, schemaHash: first.schemaHash };
+    const reader = await admin.connect();
+    try {
+      // Keep another reader active throughout the requests. Authorization must
+      // share both locks, rather than exhaust a retry budget under contention.
+      const keys = [JSON.stringify([`"${catalog}"`, 'owner', identity.projectId, identity.entryId, identity.alias]),
+        `steamharness:database:"${catalog}":${a.id}`];
+      for (const key of keys) await reader.query('select pg_advisory_lock_shared(hashtextextended($1,0))', [key]);
+      await Promise.all(Array.from({ length: 8 }, () => repository.authorizeConnection('owner', lease.credential.id, request)));
+      await assert.rejects(repository.unbind('owner', identity), { code: 'DATABASE_BUSY' });
+    } finally {
+      await reader.query('select pg_advisory_unlock_all()'); reader.release();
+      await repository.closeConnection('owner', lease.credential.id);
+    }
+    await repository.unbind('owner', identity);
+    await assert.rejects(repository.authorizeConnection('owner', lease.credential.id, request), { code: 'DATABASE_BINDING_CHANGED' });
+  });
   await t.test("table management preserves scalar values, validates models and rejects stale edits", async () => {
     const c = await create("owner", "Managed table");
     const schema = `model Record {

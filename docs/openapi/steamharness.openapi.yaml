@@ -431,7 +431,7 @@ paths:
     post:
       tags: [Relational Databases]
       summary: Revalidate a connection before a query or transaction commit
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding. Authorization uses shared binding and resource locks so concurrent checks can proceed together; binding changes and migrations retain exclusive locks. Each lock waits up to five seconds before returning DATABASE_BUSY, and the binding is revalidated after the locks are acquired.
       security:
         - BearerAuth: []
       parameters:

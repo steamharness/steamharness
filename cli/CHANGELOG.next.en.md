@@ -1,5 +1,9 @@
 # Unreleased
 
+- [Fixed] Configuration attachment uploads remain valid during background account checks. The host still rejects stale results after the account changes or authentication is lost.
+
+- [Fixed] Database and knowledge startup checks preserve Server transport and authorization errors. Temporary outages trigger automatic checks, and login or permission failures no longer incorrectly request rebinding.
+
 - [Fixed] AI model catalogues are cached for 30 seconds and resource display data for 5 seconds. Each resource kind loads its bindings once, concurrent reads are merged, and manual refreshes and edits invalidate display data. Execution checks stay online, independent startup checks run concurrently, and management UI requests time out after 15 seconds.
 
 - [Fixed] Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default without login or remote database waits for history. Streaming is preserved, login changes retain local history, and analysis reads the same local records.

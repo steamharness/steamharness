@@ -77,3 +77,28 @@ it('checks independent aliases concurrently while keeping declaration order', as
   finish.get('docs')!(); finish.get('second')!(); finish.get('first')!();
   expect((await pending).map(check => check.database)).toEqual(['first', 'second', 'docs']);
 });
+
+it('recovers knowledge binding checks after a temporary Server outage without replaying work', async () => {
+  vi.useFakeTimers();
+  const project = { id, entryId: 'main', databases: [], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: crypto.randomUUID() }] } as unknown as Project;
+  const verify = vi.fn().mockRejectedValueOnce(Object.assign(new Error('fetch failed'), { status: 503 })).mockResolvedValue({});
+  const monitor = new ProjectServerConnection(id, () => ({ serverUrl: 'https://server.test', accessToken: 'test' }), vi.fn(), { inspect: projectStartupInspector(project, verify) });
+  try {
+    await monitor.refresh();
+    expect(monitor.state.issue).toMatchObject({ kind: 'connection-unavailable' });
+    expect(monitor.state.issue?.database).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await monitor.settled();
+    expect(monitor.ready).toBe(true);
+    expect(monitor.state.issue).toBeUndefined();
+    expect(verify).toHaveBeenCalledTimes(2);
+  } finally { monitor.close(); vi.useRealTimers(); }
+});
+
+it.each([[401, 'sign-in-required'], [403, 'access-denied']] as const)('reports Server %s without claiming the alias needs rebinding', async (status, kind) => {
+  const project = { id, entryId: 'main', databases: ['data'], knowledgeBases: [] } as unknown as Project;
+  const verify = vi.fn().mockRejectedValue(Object.assign(new Error('Access unavailable'), { status }));
+  const checks = await projectStartupInspector(project, verify)(undefined, new AbortController().signal, vi.fn(), { kind: 'sign-in-required' });
+  expect(checks[0].issue).toMatchObject({ kind });
+  expect(checks[0].issue?.database).toBeUndefined();
+});

@@ -58,6 +58,33 @@ it('keeps uploads on the verified local template version and checks local author
   expect((await post({...message,revision:changed.revision})).ok).toBe(false);
   expect(uploaded).toHaveBeenCalledOnce();
 });
+it.each(['background refresh', 'account change'] as const)('handles %s during a configuration attachment upload', async change => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  const { app, directory, post } = await fixture({ noParams: true });
+  await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file', accept: ['image/png'] }] }));
+  const original = fetch, profiles = vi.fn();
+  let finish!: (response: Response) => void;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    if (!String(url).startsWith('https://configuration-files.test')) return original(url, options);
+    if (String(url).includes('/files?')) return new Promise(resolve => { finish = resolve; });
+    if (String(url).endsWith('/auth/me')) profiles();
+    return Promise.resolve(Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } }));
+  });
+  await app.setHostConnection({ serverUrl: 'https://configuration-files.test', accessToken: 'original-account-token' });
+  const current = (await post({ type: 'ready' }).then(response => response.json())).messages[0].configurations;
+  const pending = post({ type: 'project-configuration-upload', key: 'image', id: current.activeConfigurationId, revision: current.revision,
+    file: { name: 'map.png', mimeType: 'image/png', data: 'cG5n' } });
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  if (change === 'background refresh') {
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(profiles).toHaveBeenCalledTimes(2));
+  } else await app.setHostConnection({ serverUrl: 'https://configuration-files.test', accessToken: 'another-account-token' });
+  finish(Response.json({ errCode: 0, data: [{ id: 'wf_ab12', name: 'map.png', mimeType: 'image/png', size: 3, storage: 'server', projectId: id }] }));
+  const response = await pending, result = await response.json();
+  expect(response.ok).toBe(change === 'background refresh');
+  if (change === 'background refresh') expect(result.messages[0].type).toBe('project-configuration-upload-result');
+  else expect(result.message).toContain('Account changed');
+});
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(root,'registry'));

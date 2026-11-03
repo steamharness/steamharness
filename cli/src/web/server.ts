@@ -602,14 +602,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return [{ type: 'project-skills-result', requestId: message.requestId, value }];
     }
     if (message.type === 'project-configuration-upload') {
-      const current = await configurations.refresh(), epoch = authEpoch;
+      const current = await configurations.refresh(), revision = authRevision;
       if (message.revision !== current.revision) throw new Error('Configuration changed. Refresh before saving your draft.');
       if (!current.configurations.some(item => item.id === message.id)) throw new Error('Configuration no longer exists.');
       const field = current.fields.find(item => item.name === message.key);
       if (field?.type !== 'file') throw new Error('Invalid configuration file field.');
       if(!configurationCapability(current,field).editable)throw new Error('Configuration is locked by the author.');
       const reference = await uploadConfigurationFile(project.id, field, message.file, connection, { entryId: project.entryId, target: current.template?.projectVersion });
-      if (epoch !== authEpoch) throw new Error('Account changed. Select the file again.');
+      if (revision !== authRevision) throw new Error('Account changed. Select the file again.');
       return [{type:'project-configuration-upload-result',requestId:message.requestId,value:reference}];
     }
     if (message.type === 'resource-data') {

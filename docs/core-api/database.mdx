@@ -166,6 +166,8 @@ export async function createUser(context: RunContext) {
 
 自定义 Node 宿主可从 `steamharness` 导入 `createRemoteRelationalDatabaseHost` 和 `createDatabaseConnector`，提供账号 API Key、项目和入口身份；结束时必须 `await connector.close()`。账号密钥和临时 SQL 凭据只在可信宿主保留，不传入项目参数、模型输入或 Browser。签发 SQL 凭据的 HTTP 接口仅接受账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。
 
+原生连接的并发鉴权共享绑定和资源读锁；重绑、迁移和撤权仍使用排他锁。鉴权等待管理操作释放锁后重新校验，单次锁等待最多 5 秒，超时返回 `DATABASE_BUSY`，不会重放业务查询。
+
 ## Browser 表客户端
 
 静态页面从生成的 `browser/index.js` 导入描述符，构建时打包，通过宿主连接：

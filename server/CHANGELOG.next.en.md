@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed native database authorization using shared read locks so concurrent queries do not fail on binding contention. Rebinding, migrations and revocation retain exclusive locks.
+
 - Fixed concurrent table requests and Browser binding resolution by waiting for database locks before execution. Authorization and models are revalidated after waiting, and stale row edits remain rejected.
 - Fixed aggregate publication accepting JSON numeric configuration revisions for each entry, including the initial revision 0, restoring CLI and Studio upload/publication flows.
 

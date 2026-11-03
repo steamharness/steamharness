@@ -28,27 +28,28 @@ function consumerIdentity(value: DatabaseConsumerIdentity): DatabaseConsumerIden
 }
 interface ConnectionRequest extends DatabaseConsumerIdentity { schemaHash: string; binding?: DatabaseBindingIdentity }
 
-async function advisoryLock<T>(pool: pg.Pool, key: string, message: string, work: () => Promise<T>, wait: boolean): Promise<T> {
+async function advisoryLock<T>(pool: pg.Pool, key: string, message: string, work: () => Promise<T>, wait: boolean, shared = false): Promise<T> {
   const client = await pool.connect();
+  const suffix = shared ? "_shared" : "";
   let locked = false, previousTimeout: string | undefined, releaseError: Error | undefined;
   try {
     if (wait) {
       previousTimeout = (await client.query("select current_setting('lock_timeout') as timeout")).rows[0].timeout;
       await client.query("select set_config('lock_timeout','5s',false)");
       try {
-        await client.query("select pg_advisory_lock(hashtextextended($1,0))", [key]);
+        await client.query(`select pg_advisory_lock${suffix}(hashtextextended($1,0))`, [key]);
         locked = true;
       } catch (error) {
         if ((error as { code?: string }).code !== '55P03') throw error;
       }
     } else {
-      locked = (await client.query("select pg_try_advisory_lock(hashtextextended($1,0)) as locked", [key])).rows[0].locked;
+      locked = (await client.query(`select pg_try_advisory_lock${suffix}(hashtextextended($1,0)) as locked`, [key])).rows[0].locked;
     }
     if (!locked) throw new DatabaseResourceError('DATABASE_BUSY', message);
     return await work();
   } finally {
     try {
-      if (locked) await client.query("select pg_advisory_unlock(hashtextextended($1,0))", [key]);
+      if (locked) await client.query(`select pg_advisory_unlock${suffix}(hashtextextended($1,0))`, [key]);
       if (previousTimeout !== undefined) await client.query("select set_config('lock_timeout',$1,false)", [previousTimeout]);
     } catch (error) { releaseError = error as Error; throw error; }
     finally { client.release(releaseError); }
@@ -160,9 +161,9 @@ export class RelationalDatabaseRepository {
     if (resource.status !== "ready") throw new DatabaseResourceError("DATABASE_NOT_READY", "Database provisioning is not complete.");
     return resource;
   }
-  private async lock<T>(id: string, work: () => Promise<T>, wait = false): Promise<T> {
+  private async lock<T>(id: string, work: () => Promise<T>, wait = false, shared = false): Promise<T> {
     return advisoryLock(this.lockPool, `steamharness:database:${this.catalog}:${uuid(id)}`,
-      "Another database management operation is running. Retry shortly.", work, wait);
+      "Another database management operation is running. Retry shortly.", work, wait, shared);
   }
   private async provision(id: string, actor: string): Promise<void> {
     await this.lock(id, async () => {
@@ -228,11 +229,11 @@ export class RelationalDatabaseRepository {
     }
   }
 
-  private async bindingLock<T>(actor: string, input: DatabaseConsumerIdentity, work: (identity: DatabaseConsumerIdentity) => Promise<T>, wait = false): Promise<T> {
+  private async bindingLock<T>(actor: string, input: DatabaseConsumerIdentity, work: (identity: DatabaseConsumerIdentity) => Promise<T>, wait = false, shared = false): Promise<T> {
     const identity = consumerIdentity(input);
     const key = JSON.stringify([this.catalog, userId(actor), identity.projectId, identity.entryId, identity.alias]);
     return advisoryLock(this.bindingLockPool, key,
-      "Another operation is changing this database binding. Retry shortly.", () => work(identity), wait);
+      "Another operation is changing this database binding. Retry shortly.", () => work(identity), wait, shared);
   }
   private async findBinding(actor: string, identity: DatabaseConsumerIdentity): Promise<DatabaseBinding | undefined> {
     const result = await this.pool.query(`select * from ${this.catalog}.bindings where user_id=$1 and project_id=$2 and entry_id=$3 and alias=$4`, [actor, identity.projectId, identity.entryId, identity.alias]);
@@ -307,14 +308,16 @@ export class RelationalDatabaseRepository {
     });
   }
   async authorizeConnection(actor: string, credentialId: string, input: ConnectionRequest): Promise<void> {
+    // Authorization only reads access state. Readers may overlap, while binding
+    // changes, migrations and revocation retain their exclusive locks.
     await this.bindingLock(actor, input, async () => {
       const binding = await this.checkedBinding(actor, input);
       await this.lock(binding.databaseId, async () => {
         await this.access(actor, binding.databaseId, binding.mode, input.schemaHash);
         const credential = await this.pool.query(`select id from ${this.catalog}.credentials where id=$1 and user_id=$2 and binding_id=$3 and database_id=$4 and not revoking and expires_at>clock_timestamp()`, [uuid(credentialId), actor, binding.id, binding.databaseId]);
         if (!credential.rowCount) throw new DatabaseResourceError("DATABASE_CONNECTION_EXPIRED", "This database connection expired or was revoked. Open a new client.");
-      });
-    });
+      }, true, true);
+    }, true, true);
   }
   async closeConnection(actor: string, credentialId: string): Promise<void> {
     const rows = await this.pool.query(`select database_id from ${this.catalog}.credentials where id=$1 and user_id=$2 and binding_id is not null`, [uuid(credentialId), userId(actor)]);

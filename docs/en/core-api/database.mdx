@@ -166,6 +166,8 @@ SQL identities normally expire after 5 minutes and renew before subsequent opera
 
 Custom Node hosts can import `createRemoteRelationalDatabaseHost` and `createDatabaseConnector` from `steamharness`, supplying an account API key and project/entry identity. Always `await connector.close()` at the end. Keep account and temporary SQL credentials inside the trusted host, outside project parameters, model inputs and Browser code. SQL credential HTTP endpoints accept account Bearer API keys only and reject Cookie sessions and browser Origin headers.
 
+Native connection authorization shares binding and resource read locks across concurrent requests. Rebinding, migrations and revocation retain exclusive locks. Authorization waits up to 5 seconds per lock and revalidates access after acquisition; a timeout returns `DATABASE_BUSY` without replaying business queries.
+
 ## Browser table client
 
 Import a descriptor from the generated `browser/index.js`, bundle it, and call `window.steamHarnessKanban.databases.connect(descriptor)`. Each model exposes `rows({where, orderBy, page, pageSize})`, `insert(data)`, `update({key, rowVersion, data})`, and `delete({key, rowVersion})`. Rows return `{values, rowVersion}` and paginated reads return `{items, total, page, pageSize}`. This interface provides no Browser transactions, raw SQL, or Node relation operations.
