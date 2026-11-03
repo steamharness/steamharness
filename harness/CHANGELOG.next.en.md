@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix durable Agent trace timing: reasoning and text items retain the model request span, including time to first token, and tool items use persisted task spans across reopen.
+
 - [Fixed] System AI catalogues use a 30-second, connection-scoped memory cache and shared refreshes. Explicit refresh remains available; expiring credentials refresh online and denied refreshes cannot reuse old tokens. Managed files use conditional requests, and knowledge attachments reuse bounded snapshots after online access checks.
 
 - [Fixed] Runtime history and Agent checkpoints default to local SQLite, removing per-operation network waits from first response. Added `createLocalRuntimePersistence` and explicit background snapshot copying with `copyRuntimePersistence`, preserving opt-in Server storage and existing data.

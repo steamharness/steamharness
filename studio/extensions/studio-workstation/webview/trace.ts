@@ -1,7 +1,7 @@
 import { t, locale } from './localization';
 import './resources.css';
 import './trace.css';
-import { traceRows, filterTraceRows, traceDuration, type TraceRow, type TraceLane } from './trace-model';
+import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, type TraceRow, type TraceLane } from './trace-model';
 import type { TracePanelState, TraceTarget } from '../src/workflow-trace-types';
 import { TraceAgentView, type AgentTab } from './trace-agent';
 import { agentSession } from './trace-agent-model';
@@ -114,11 +114,12 @@ function timeline(filtered: TraceRow[]): void {
   const entries = filtered.filter(row => row.lane !== 'log' && row.lane !== 'error'); target.hidden = mode === 'errors' || !entries.length;
   if (target.hidden) return;
   const timed = entries.filter(row => row.start !== undefined);
-  const start = Math.min(...timed.map(row => row.start!));
-  const end = Math.max(...timed.map(row => row.end ?? (row.status === 'running' ? Date.now() : row.start!)));
-  const span = Math.max(1, end - start), turns = Math.max(1, ...entries.map(row => row.turn));
+  const now = Date.now(), range = traceRange(state?.snapshot, state?.selection ?? {}, state?.run, now);
+  const start = Math.min(...timed.map(row => row.start!), ...(range ? [range.start] : []));
+  const end = Math.max(...timed.map(row => traceRowEnd(row, now)!), ...(range ? [range.end] : []));
+  const duration = end - start, span = Math.max(1, duration), turns = Math.max(1, ...entries.map(row => row.turn));
   const axis = document.createElement('div'); axis.className = 'trace-axis';
-  const ticks = mode === 'duration' ? timed.length ? ['0', traceDuration(span / 2), traceDuration(span)] : []
+  const ticks = mode === 'duration' ? duration > 0 ? ['0', traceDuration(duration / 2), traceDuration(duration)] : []
     : mode === 'rounds' ? ['1', t("Turns"), String(turns)] : ['1', t("Calls"), String(entries.length)];
   for (const tick of ticks) { const label = document.createElement('span'); label.textContent = tick; axis.append(label); } target.append(axis);
   for (const lane of ['input', 'model', 'tool', 'node', 'output'] as TraceLane[]) {
@@ -131,7 +132,7 @@ function timeline(filtered: TraceRow[]): void {
       if (mode === 'duration' && row.start === undefined) { continue; }
       const roundEntries = entries.filter(entry => entry.turn === row.turn && entry.lane === lane);
       const position = mode === 'duration' ? (row.start! - start) / span * 100 : mode === 'rounds' ? (row.turn - 1 + roundEntries.indexOf(row) / roundEntries.length) / turns * 100 : index / entries.length * 100;
-      const width = mode === 'duration' ? ((row.end ?? (row.status === 'running' ? Date.now() : row.start!)) - row.start!) / span * 100
+      const width = mode === 'duration' ? (traceRowEnd(row, now)! - row.start!) / span * 100
         : mode === 'rounds' ? 85 / turns / roundEntries.length : 85 / entries.length;
       const bar = document.createElement('button'); bar.className = `trace-bar status-${row.status ?? 'success'}`; bar.dataset.rowId = row.id;
       bar.style.left = `${Math.max(0, Math.min(99.4, position))}%`; bar.style.width = `${Math.min(100 - Math.min(99.4, position), Math.max(.6, width))}%`;

@@ -797,6 +797,7 @@ export class DurableAgent {
 
   private streamModel(...args: Parameters<Models["streamSimple"]>): ReturnType<Models["streamSimple"]> {
     if (this.fatalFailure !== undefined) throw this.fatalFailure;
+    const startedAt = Date.now();
     const stream = createAssistantMessageEventStream();
     const requestId = this.activeRequest;
     const recordId = this.options.session ? this.modelAttempts.get(args[2]?.sessionId ?? "") ?? `aux:${randomUUID()}` : this.attemptId;
@@ -819,8 +820,8 @@ export class DurableAgent {
               message = event.type === "done" ? event.message : event.error;
               break;
             }
-            partial = event.partial;
-            stream.push(event);
+            partial = { ...event.partial, projectTiming: { startedAt } } as AssistantMessage;
+            stream.push({ ...event, partial });
           }
           // Read an already supplied result, but never wait on end() alone.
           message ??= await Promise.race([source.result(), Promise.resolve(undefined)])
@@ -830,6 +831,9 @@ export class DurableAgent {
           // observer failures below remain fatal and must not be retried.
           message ??= interrupted(cause);
         }
+        // Persist the response span with the transcript, before usage/storage
+        // work and tool execution. Task lifetimes also include the tool round.
+        message = { ...message, projectTiming: { startedAt, endedAt: Date.now() } } as AssistantMessage;
         const usage = json(message.usage);
         await this.root!.commit(async tx => {
           (await tx.doc(RunDoc, this.root!.id, requestId, null)).usage[recordId] = usage;

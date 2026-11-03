@@ -43,6 +43,34 @@ test("restored failed responses never display unexecuted tool calls as running",
   assert.equal(items.filter(item => item.metadata?.partType === "tool").length, 0);
 });
 
+test("session trace items preserve model spans and match persisted tools by assistant entry as well as call ID", () => {
+  const response = (startedAt: number, endedAt: number) => ({ ...ai.fauxAssistantMessage([
+    { type: "thinking", thinking: "Inspect the database" }, ai.fauxText("Checking"),
+    { ...ai.fauxToolCall("db_status", {}), id: "reused-call" },
+  ], { stopReason: "toolUse" }), projectTiming: { startedAt, endedAt } });
+  const entries = [
+    { id: 1, kind: "pi.assistant", model: [response(1000, 20_000)] },
+    { id: 2, kind: "pi.toolResult", model: [{ role: "toolResult", toolCallId: "reused-call", content: [ai.fauxText("42 documents")], isError: false }] },
+    { id: 3, kind: "pi.assistant", model: [response(21_000, 52_000)] },
+  ] as unknown as Parameters<typeof projectSessionEntries>[0];
+  const tasks = [
+    { id: 11, kind: "pi.tool", input: { kind: "model", assistant: 1, callId: "reused-call" }, startedAt: 20_000, endedAt: 21_000 },
+    { id: 12, kind: "pi.tool", input: { kind: "model", assistant: 3, callId: "reused-call" }, startedAt: 52_000 },
+  ] as unknown as Parameters<typeof projectSessionEntries>[3];
+  const items = projectSessionEntries(entries, undefined, "trace", tasks);
+  const timing = (item: typeof items[number]) => [item.metadata?.startedAt, item.metadata?.endedAt];
+  assert.deepEqual(items.filter(item => item.metadata?.partType === "reasoning").map(timing), [[1000, 20_000], [21_000, 52_000]]);
+  assert.deepEqual(items.filter(item => item.metadata?.partType === "text").map(timing), [[1000, 20_000], [21_000, 52_000]]);
+  const tools = items.filter(item => item.metadata?.partType === "tool");
+  assert.deepEqual(tools.map(timing), [[20_000, 21_000], [52_000, undefined]]);
+  assert.equal(tools[0]!.metadata?.status, "success");
+  assert.equal(tools[1]!.metadata?.status, "running");
+  const partial = projectSessionEntries([], response(1000, 2000), "live")[0]!;
+  assert.equal(partial.metadata?.status, "running");
+  const legacy = projectSessionEntries([{ id: 1, model: [ai.fauxAssistantMessage("Old answer")] }] as unknown as Parameters<typeof projectSessionEntries>[0], undefined, "legacy")[0]!;
+  assert.deepEqual(timing(legacy), [undefined, undefined]);
+});
+
 for (const boundary of ["create", "iterate", "result"] as const) {
   for (const partial of boundary === "create" ? [false] : [false, true]) {
     test(`durable ${boundary} exceptions recover after tools without replaying them (partial=${partial})`, { timeout: 5000 }, async t => {
@@ -604,6 +632,8 @@ test("Temporary repository reopens configuration, plans and command receipts wit
   await until(() => first.snapshot()?.turns.some(turn => turn.status === "done"));
   const timing = { startedAt: first.snapshot().turns[0]!.startedAt, endedAt: first.snapshot().turns[0]!.endedAt };
   assert.ok(typeof timing.startedAt === "number" && typeof timing.endedAt === "number" && timing.endedAt >= timing.startedAt);
+  const itemTiming = first.snapshot().turns[0]!.items[0]!.metadata!;
+  assert.ok(typeof itemTiming.startedAt === "number" && typeof itemTiming.endedAt === "number" && itemTiming.endedAt >= itemTiming.startedAt);
   await first.instance.control({ type: "configure", requestId: "config", expectedVersion: 0, effort: "high" });
   const plan = { type: "plan" as const, requestId: "plan", expectedVersion: 0, items: [{ id: "a", text: "Keep this", status: "completed" as const }] };
   await first.instance.control(plan);
@@ -621,6 +651,7 @@ test("Temporary repository reopens configuration, plans and command receipts wit
   assert.deepEqual(await second.instance.control(forkCommand), fork);
   assert.equal(second.faux.state.callCount, 0);
   assert.deepEqual({ startedAt: second.snapshot().turns[0]!.startedAt, endedAt: second.snapshot().turns[0]!.endedAt }, timing);
+  assert.deepEqual(second.snapshot().turns[0]!.items[0]!.metadata, itemTiming);
   assert.ok(second.snapshot().receipts.some(receipt => receipt.requestId === "config"));
   const remove = { type: "delete" as const, requestId: "delete", targetId: fork.forkId };
   await second.instance.control(remove); await second.instance.control(remove);

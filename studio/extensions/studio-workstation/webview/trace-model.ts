@@ -21,6 +21,25 @@ export function traceDuration(value?: number): string {
   if (value < 60_000) { return `${(value / 1000).toFixed(1)} s`; }
   return `${Math.floor(value / 60_000)} m ${Math.round(value % 60_000 / 1000)} s`;
 }
+// The run span remains authoritative when legacy items have no timing data.
+export function traceRange(snapshot: TraceSnapshot | undefined, selection: TraceSelection, selectedRun?: TraceRun, now = Date.now()): { start: number; end: number } | undefined {
+  if (!snapshot) return;
+  const runs = snapshot.project.projectType === 'workflow'
+    ? [selectedRun ?? (selection.runId ? [snapshot.run, snapshot.occupiedRun].find(run => run?.id === selection.runId) : snapshot.run ?? snapshot.occupiedRun)]
+    : snapshot.sessions?.find(session => session.id === (selection.sessionId ?? snapshot.activeId))?.messages
+      .filter(message => message.role === 'assistant' && (selection.messageId ? message.id === selection.messageId : !selection.runId || message.runId === selection.runId)) ?? [];
+  const spans = runs.flatMap(run => {
+    const start = traceTime(run?.createdAt);
+    const duration = run?.durationMs;
+    const end = start !== undefined && typeof duration === 'number' && Number.isFinite(duration) ? start + Math.max(0, duration)
+      : run?.status === 'running' ? now : undefined;
+    return start !== undefined && end !== undefined ? [{ start, end: Math.max(start, end) }] : [];
+  });
+  if (spans.length) return { start: Math.min(...spans.map(span => span.start)), end: Math.max(...spans.map(span => span.end)) };
+}
+export function traceRowEnd(row: TraceRow, now = Date.now()): number | undefined {
+  return row.end ?? (row.start === undefined ? undefined : row.durationMs !== undefined ? row.start + Math.max(0, row.durationMs) : row.status === 'running' ? now : row.start);
+}
 function valueText(value: unknown): string {
   const content = record(value);
   return content.type === 'text' && typeof content.text === 'string' ? content.text : activityValueText(value);

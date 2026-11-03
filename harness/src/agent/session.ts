@@ -964,7 +964,7 @@ export class DurableAgentSession {
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
           ...(failure ? { reason: "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),
-          ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId),
+          ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId, allTasks),
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }
       for (const entry of entries) if (entry.kind.startsWith("project.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
@@ -1028,10 +1028,21 @@ function aggregateUsage(usages: readonly Usage[]): TokenUsageAggregate {
 }
 
 /** Reuse the existing output contract: answers stay flat; reasoning and tools stay details. */
-export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string): RunOutputItemInput[] {
+export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string,
+  tasks: readonly TaskRecord<JsonValue, JsonValue, JsonValue>[] = []): RunOutputItemInput[] {
   const items: RunOutputItemInput[] = [];
   const calls = new Map<string, RunOutputItemInput>();
-  const append = (message: AssistantMessage, id: string) => {
+  const toolTasks = new Map(tasks.flatMap(task => {
+    const input = object(task.input);
+    return input.kind === "model" && typeof input.callId === "string" ? [[`${input.assistant}:${input.callId}`, task] as const] : [];
+  }));
+  const span = (value: unknown): Record<string, number> => {
+    const timing = object(value);
+    return Object.fromEntries(["startedAt", "endedAt"].flatMap(key => typeof timing[key] === "number" && Number.isFinite(timing[key]) ? [[key, timing[key]]] : []));
+  };
+  const append = (message: AssistantMessage, id: string, live = false) => {
+    const timing = span((message as AssistantMessage & { projectTiming?: unknown }).projectTiming);
+    const status = live ? "running" : message.stopReason === "error" ? "failed" : message.stopReason === "aborted" ? "aborted" : "success";
     const search = (message as AgentSearchMessage).projectWebSearch;
     for (const activity of search?.searches ?? []) items.push({ id: `agent-session-${scope}-${id}-search-${activity.id}`,
       title: "Web search", content: { tool: "web_search", input: activity.query ? { query: activity.query } : {},
@@ -1039,10 +1050,10 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: activity.status } });
     for (const [index, block] of message.content.entries()) {
       const itemId = `agent-session-${scope}-${id}-${index}`;
-      if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text" } });
-      else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning" } });
+      if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text", status, ...timing } });
+      else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning", status, ...timing } });
       else if (block.type === "toolCall" && message.stopReason !== "error" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
-        const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running" } };
+        const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running", ...span(toolTasks.get(`${id}:${block.id}`)) } };
         calls.set(block.id, item); items.push(item);
       }
     }
@@ -1066,6 +1077,6 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       }
     }
   }
-  if (partial) append(partial, "partial");
+  if (partial) append(partial, "partial", true);
   return items;
 }
