@@ -13,6 +13,7 @@ interface Engine {
 interface ConnectionState {
   lease: DatabaseConnectionLease;
   engine: Engine;
+  renewAt: number;
   active: number;
   retired: boolean;
   releasing?: Promise<void>;
@@ -110,12 +111,16 @@ async function openClient(descriptor: NodeDatabaseDescriptor, host: RelationalDa
       if (accessRevision !== undefined && lease.credential.revision !== accessRevision) throw new DatabaseResourceError("DATABASE_CONNECTION_EXPIRED", "Database authorization changed. Open a new client explicitly.");
       const module = await descriptor.loadEngine() as { PrismaClient: new (options: unknown) => Engine };
       const { PrismaPg } = await import("@prisma/adapter-pg");
-      engine = new module.PrismaClient({ adapter: new PrismaPg({ connectionString: lease.credential.connectionString, max: 2, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000, statement_timeout: 30_000 }) });
+      engine = new module.PrismaClient({ adapter: new PrismaPg({ connectionString: lease.credential.connectionString, max: 2, connectionTimeoutMillis: 30_000, idleTimeoutMillis: 30_000, statement_timeout: 30_000 }) });
       await engine.$connect();
       check();
       binding ??= { id: lease.binding.id, revision: lease.binding.revision };
       accessRevision ??= lease.credential.revision;
-      const state: ConnectionState = { lease, engine, active: 0, retired: false };
+      // Leave room for authorization, pool acquisition and a complete transaction.
+      // Short-lived custom hosts renew halfway through their remaining lifetime.
+      const expiresAt = Date.parse(lease.credential.expiresAt);
+      const renewAt = expiresAt - Math.min(90_000, (expiresAt - Date.now()) / 2);
+      const state: ConnectionState = { lease, engine, renewAt, active: 0, retired: false };
       states.add(state); return state;
     } catch (error) {
       await engine?.$disconnect().catch(() => undefined);
@@ -130,7 +135,7 @@ async function openClient(descriptor: NodeDatabaseDescriptor, host: RelationalDa
     const previous = current;
     const state = await previous;
     check();
-    if (Date.parse(state.lease.credential.expiresAt) <= Date.now() + 1000) {
+    if (state.renewAt <= Date.now()) {
       if (current === previous) {
         state.retired = true;
         current = acquire().catch(error => { current = undefined; throw error; });
@@ -194,7 +199,7 @@ async function openClient(descriptor: NodeDatabaseDescriptor, host: RelationalDa
               await authorize(state);
               return result;
             } catch (error) { callbackError = error; throw error; }
-          }, { maxWait: 5000, timeout: 30_000 });
+          }, { maxWait: 30_000, timeout: 30_000 });
         } catch (error) {
           if (error === callbackError || error instanceof DatabaseResourceError) throw error;
           throw new DatabaseResourceError("DATABASE_QUERY_FAILED", "Database transaction failed. The transaction was not replayed.");

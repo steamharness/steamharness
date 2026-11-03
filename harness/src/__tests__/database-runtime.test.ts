@@ -6,8 +6,11 @@ import { createRemoteRelationalDatabaseHost, type RelationalDatabaseHost, type D
 
 interface Model { findMany(): Promise<string[]>; create(input: { data: { name: string } }): Promise<string> }
 interface Client { user: Model; transaction<T>(work: (tx: { user: Model }) => Promise<T>): Promise<T> }
-function fixture() {
+function fixture(options: { pooled?: boolean; onQueued?: () => void; enforceExpiry?: boolean } = {}) {
   const rows: string[] = [], released: string[] = [];
+  const expirations = new Map<string, number>();
+  let activeTransactions = 0;
+  const waiting: Array<() => void> = [];
   let opens = 0, checks = 0, disconnects = 0, revision = 1, accessRevision = 1, denied = false;
   let mode: "read" | "write" = "write";
   let ttl = 60_000;
@@ -19,10 +22,21 @@ function fixture() {
     };
     async $connect() {}
     async $disconnect() { disconnects++; }
-    async $transaction<T>(work: (engine: Engine) => Promise<T>) {
+    async $transaction<T>(work: (engine: Engine) => Promise<T>, settings: { maxWait: number }) {
+      if (options.pooled && activeTransactions >= 2) await new Promise<void>((resolve, reject) => {
+        const ready = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => {
+          waiting.splice(waiting.indexOf(ready), 1);
+          reject(Object.assign(new Error("Connection acquisition timed out."), { code: "P2028" }));
+        }, settings.maxWait);
+        waiting.push(ready);
+        options.onQueued?.();
+      });
+      activeTransactions++;
       const before = [...rows];
       try { return await work(this); }
       catch (error) { rows.splice(0, rows.length, ...before); throw error; }
+      finally { activeTransactions--; waiting.shift()?.(); }
     }
   }
   const descriptor: NodeDatabaseDescriptor<"main", Client> = {
@@ -34,6 +48,7 @@ function fixture() {
     async open(input) {
       if (input.binding && input.binding.revision !== revision) throw new DatabaseResourceError("DATABASE_BINDING_CHANGED", "Changed.");
       opens++;
+      expirations.set(String(opens), Date.now() + ttl);
       return { binding: { ...input, id: "binding", databaseId: "resource", mode, revision }, credential: {
         id: String(opens), databaseId: "resource", mode, revision: accessRevision, schemaHash: descriptor.schemaHash, expiresAt: new Date(Date.now() + ttl).toISOString(), connectionString: "postgresql://SECRET/password",
       } };
@@ -41,6 +56,7 @@ function fixture() {
     async authorize(input) {
       checks++;
       if (denied) throw new DatabaseResourceError("DATABASE_ACCESS_DENIED", "Revoked.");
+      if (options.enforceExpiry && (expirations.get(input.credentialId) ?? 0) <= Date.now()) throw new DatabaseResourceError("DATABASE_CONNECTION_EXPIRED", "Expired.");
       if (input.binding?.revision !== revision) throw new DatabaseResourceError("DATABASE_BINDING_CHANGED", "Changed.");
     },
     async release(id) { released.push(id); },
@@ -73,6 +89,30 @@ test("model facades hide engine APIs, protect failed transactions and expire ret
   assert.deepEqual(f.released, ["1"]); assert.equal(f.stats().disconnects, 1);
 });
 
+test("concurrent transactions wait for busy connections without replaying callbacks", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let release!: () => void, queued!: () => void, waiting = 0, callbacks = 0;
+  const occupied = new Promise<void>(resolve => { release = resolve; });
+  const allQueued = new Promise<void>(resolve => { queued = resolve; });
+  const f = fixture({ pooled: true, onQueued: () => { if (++waiting === 6) queued(); } });
+  const connector = createDatabaseConnector({ projectId: "project", entryId: "entry", host: f.host });
+  try {
+    const db = await connector.connect(f.descriptor);
+    const completed = Promise.allSettled(Array.from({ length: 8 }, (_, index) => db.transaction(async tx => {
+      callbacks++;
+      await occupied;
+      return tx.user.create({ data: { name: String(index) } });
+    })));
+    await allQueued;
+    t.mock.timers.tick(12_000);
+    release();
+    const results = await completed;
+    assert.equal(results.filter(result => result.status === "fulfilled").length, 8);
+    assert.equal(callbacks, 8);
+    assert.deepEqual([...f.rows].sort(), ["0", "1", "2", "3", "4", "5", "6", "7"]);
+  } finally { release(); await connector.close(); }
+});
+
 test("bindings are pinned, reconnect is explicit, read grants and revocation stop model access", async () => {
   const f = fixture(), connector = createDatabaseConnector({ projectId: "project", entryId: "entry", host: f.host });
   try {
@@ -103,6 +143,26 @@ test("expired leases renew the same binding and release old connections without 
     assert.deepEqual(f.rows, ["once"]);
   } finally { await connector.close(); }
   assert.equal(f.stats().disconnects, 2); assert.deepEqual([...f.released].sort(), ["1", "2"]);
+});
+
+test("near-expiry leases renew before a transaction so authorization can finish without replay", async t => {
+  let now = Date.now(), callbacks = 0;
+  t.mock.method(Date, "now", () => now);
+  const f = fixture({ enforceExpiry: true });
+  const connector = createDatabaseConnector({ projectId: "project", entryId: "entry", host: f.host });
+  try {
+    const db = await connector.connect(f.descriptor);
+    now += 55_000;
+    await db.transaction(async tx => {
+      callbacks++;
+      await tx.user.create({ data: { name: "once" } });
+      now += 10_000;
+    });
+    assert.equal(callbacks, 1);
+    assert.equal(f.stats().opens, 2);
+    assert.deepEqual(f.rows, ["once"]);
+  } finally { await connector.close(); }
+  assert.deepEqual([...f.released].sort(), ["1", "2"]);
 });
 
 test("missing hosts, browser targets, unsafe metadata and closed connectors fail before loading engines", async () => {

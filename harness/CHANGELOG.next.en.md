@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Relational transactions wait up to 30 seconds for a pooled connection instead of 5 seconds, and temporary SQL identities renew before expiry to avoid acquisition and commit authorization failures with remote databases. Sent transactions are never automatically replayed.
+
 - [Fixed] Durable Agents retain only the latest complete session snapshot, coalesce pending views and serialize publication for slow consumers, preventing stale snapshots from exhausting memory during long multi-agent runs. Streaming nodes can customize in-memory collection with `accumulateChunk`; chunk hooks still receive every original event.
 
 - [Added] Durable snapshots expose subagent execution spans and usage, plus conversation totals including owned subagents. Failed, stopped and hidden children retain their spend; retries, reopening and independent forks do not double-count it.

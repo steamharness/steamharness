@@ -158,11 +158,11 @@ export async function createUser(context: RunContext) {
 }
 ```
 
-返回值保留模型的查询与结果推断。客户端只提供模型 CRUD、关系查询、聚合和 `transaction(callback)`；没有原始 SQL、引擎扩展或关闭连接方法。事务回调抛错、查询失败、授权变化或取消时回滚；回调结束后不能继续使用该事务对象。连接池每个客户端最多 2 条连接，单条 SQL 和事务限时 30 秒，事务等候连接最多 5 秒。不要在事务中等待用户输入或长时间调用外部服务。
+返回值保留模型的查询与结果推断。客户端只提供模型 CRUD、关系查询、聚合和 `transaction(callback)`；没有原始 SQL、引擎扩展或关闭连接方法。事务回调抛错、查询失败、授权变化或取消时回滚；回调结束后不能继续使用该事务对象。连接池每个客户端最多 2 条连接，单条 SQL 和事务限时 30 秒，事务等候连接最多 30 秒。不要在事务中等待用户输入或长时间调用外部服务。
 
 每次模型操作与事务提交前都重新校验宿主绑定、账号授权和模型指纹。缺少绑定返回 `DATABASE_UNBOUND`；模型与已部署迁移不一致返回 `DATABASE_SCHEMA_MISMATCH`。变更或解除绑定会终止旧连接，旧客户端返回 `DATABASE_BINDING_CHANGED`，必须显式重新 `connect()`。撤销或收窄账号授权会终止对应 SQL 会话；已撤销的客户端不会自动重新获取权限。查询错误使用 `DATABASE_QUERY_FAILED`，约束等已知错误附带 `queryCode`，例如 `P2002`，不会把连接串或底层调用内容写入报告。
 
-默认 SQL 身份有效期为 5 分钟，到期前在后续操作时续期，保留原绑定身份；不会自动重放已发送的查询或事务。Core 在执行成功、失败、等待输入或取消时释放运行持有的连接；网络中断时停止操作，不回退本地 KV；未能通知 Server 释放的临时身份由过期清理回收。使用关系库需要连通本地 Server 和本地 PostgreSQL。
+默认 SQL 身份有效期为 5 分钟，剩余不足 90 秒时在后续操作前续期，为授权、连接排队和事务提交预留时间，并保留原绑定身份；自定义宿主签发的短租约最多提前剩余有效期的一半续期。不会自动重放已发送的查询或事务。Core 在执行成功、失败、等待输入或取消时释放运行持有的连接；网络中断时停止操作，不回退本地 KV；未能通知 Server 释放的临时身份由过期清理回收。使用关系库需要连通所配置的 Server 和 PostgreSQL；本地开发的 Server 也可以连接远程 PostgreSQL。
 
 自定义 Node 宿主可从 `steamharness` 导入 `createRemoteRelationalDatabaseHost` 和 `createDatabaseConnector`，提供账号 API Key、项目和入口身份；结束时必须 `await connector.close()`。账号密钥和临时 SQL 凭据只在可信宿主保留，不传入项目参数、模型输入或 Browser。签发 SQL 凭据的 HTTP 接口仅接受账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。
 
