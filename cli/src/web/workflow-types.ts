@@ -121,7 +121,7 @@ export interface Project extends Parameters {
     };
     attachments?: { images?: boolean; videos?: boolean; files?: boolean };
     inputQueue?: { enabled?: boolean };
-    recovery?: { enabled: true };
+    recovery?: { enabled: true; startup?: "automatic" | "manual" };
     durable?: { enabled: true };
   };
 }
@@ -192,6 +192,9 @@ export interface Report {
 }
 
 export interface Run {
+  /** Local host cancellation; never serialized to project workers. */
+  abortSignal?: AbortSignal;
+  entryCall?: import('steamharness').EntryCallSource;
   userSettings?: import('steamharness').UserSettings;
   /** Reattach the durable owner without resubmitting a historical input. */
   resumeAgent?: boolean;
@@ -211,13 +214,14 @@ export interface Run {
 }
 
 export interface Runtime {
+  subscribeConversation?(entryId: string, conversationId: string, listener: (snapshot: import('steamharness').EntryConversationSnapshot) => void): () => void;
   listSkills?(project: Project, entrypointId?: string): Promise<import('steamharness').AgentSkillGuide[]>;
   readSkill?(project: Project, skillId: string, entrypointId?: string): Promise<import('steamharness').AgentSkillPreview>;
   agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;
   forkAgentConversation?(project: Project, conversationId: string, command: Extract<AgentSessionCommand, { type: 'fork' }>): Promise<AgentSessionReceipt>;
   isolateAgentConversation?(project: Project, sourceConversationId: string, conversationId: string, targetId: number, retireSource: boolean, fileIds: string[]): Promise<{ replacements: { from: string; to: string }[]; files: Attachment[] }>;
   available: boolean;
-  kanbanBridge?(project: Project, call: KanbanBridgeCall): Promise<unknown>;
+  kanbanBridge?(project: Project, call: KanbanBridgeCall, signal?: AbortSignal): Promise<unknown>;
   inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   resolveParams(project: Project, request: ParamRequest, entrypointId?: string): Promise<{ params?: Record<string, ParamState> }>;
   run(request: Run, onEvent: (event: Record<string, unknown>) => void): Promise<Report>;
@@ -267,7 +271,7 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
@@ -289,6 +293,7 @@ export interface ConversationSession {
   queuedInputs?: ConversationQueuedInput[];
   /** Preserved across restarts; only a successful run resumes automatic sending. */
   queuePaused?: boolean;
+  recoveryPaused?: boolean;
   agentInterrupted?: boolean;
   draft?: { text: string; attachments: Attachment[]; references?: PathReference[]; editingQueueId?: string };
   titleLocked?: boolean;
@@ -312,7 +317,7 @@ export function messageSettled(message: ConversationMessage): boolean {
 }
 
 export function sessionRunning(session: ConversationSession): boolean {
-  if (session.agentInterrupted) return false;
+  if (session.agentInterrupted || session.recoveryPaused) return false;
   if (!session.agent) return !!session.activeRunId;
   const id = session.agentConversationId ?? session.agent.conversationId;
   const context = session.agent.contexts.find(context => context.conversationId === id);

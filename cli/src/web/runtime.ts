@@ -12,6 +12,7 @@ import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agen
 import { createSecretStreamRedactor } from './runtime-log';
 import { PROJECT_CONFIG_ENV, readProjectConfig } from '@steamharness/project-manifest';
 import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
+import type { AggregateEntryCall } from './entry-conversations';
 
 export interface WebConnection {
   serverUrl: string;
@@ -31,7 +32,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
-  options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined } = {}): Runtime {
+  options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown> } = {}): Runtime {
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
@@ -50,6 +51,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void): Promise<T> => new Promise((resolve, reject) => {
     if (disposed) { reject(new Error('Web runtime has stopped.')); return; }
     const auth = connection();
+    const actor = options.actor?.() ?? { isSystemAdmin: false };
     const runtimeAuth: WebConnection | undefined = options.allowSystemAi === false && auth
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
@@ -83,6 +85,26 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       else void configurations((request.project as Project)?.entryId).then(store=>store.snapshot({configuration,required:false})).then(send,reject);
     }));
     child.on('message', (message: any) => {
+      if (message?.type === 'entry-runtime' && typeof message.id === 'string') {
+        const call = message.call;
+        const current = request.project as Project | undefined;
+        const perform = async () => {
+          if (!options.entryRuntime || !current || !call || typeof call.entryId !== 'string'
+            || !['list', 'submit', 'snapshot', 'resolveInput', 'cancel', 'resumeQueue'].includes(call.action)
+            || !call.input || typeof call.input !== 'object' || Array.isArray(call.input)) throw new Error('Conversation entry control is unavailable.');
+          const abortSignal = runCancellation.get(String(request.runId))?.signal;
+          abortSignal?.throwIfAborted();
+          if (disposed || !child.connected) throw new Error("The entry caller disconnected.");
+          // The parent derives provenance from the admitted worker, never its payload.
+          return options.entryRuntime({ entryId: call.entryId, action: call.action, input: call.input,
+            sourceEntryId: current.entryId, projectId: current.id, actor, abortSignal,
+            sourceRunId: typeof request.runId === 'string' ? request.runId : undefined,
+            sourceConversationId: typeof request.conversationId === 'string' ? request.conversationId : undefined });
+        };
+        void perform().then(value => { if (child.connected) child.send({ type: 'entry-runtime-result', id: message.id, value }); },
+          error => { if (child.connected) child.send({ type: 'entry-runtime-result', id: message.id, error: String(error.message) }); });
+        return;
+      }
       if (message?.type !== 'agent-receipt' || typeof message.id !== 'string') return;
       const waiter = pending.get(message.id); if (!waiter) return; pending.delete(message.id);
       if (message.error) waiter.reject(Object.assign(new Error(String(message.error)), { code: message.code }));
@@ -140,7 +162,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor: options.actor?.() }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor }));
   });
   const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal): Promise<Report> => {
     // A replacement host can start before its orphaned worker finishes cleanup.
@@ -175,13 +197,20 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     run: async (request, onEvent) => {
       const runId = String(request.runId), cancellation = new AbortController();
       runCancellation.set(runId, cancellation);
+      const { abortSignal, ...serializable } = request;
+      const stop = () => { cancellation.abort(abortSignal?.reason);
+        const child = active.get(runId);
+        if (child) { child.kill('SIGTERM'); const timer = setTimeout(() => { if (children.has(child)) child.kill('SIGKILL'); }, 5_000); timer.unref(); }
+      };
+      abortSignal?.addEventListener('abort', stop, { once: true });
       try {
-        if(!request.configurationSelection)return await invokeRun({...request},onEvent,cancellation.signal);
+        abortSignal?.throwIfAborted();
+        if(!request.configurationSelection)return await invokeRun({...serializable},onEvent,cancellation.signal);
         const selection=request.configurationSelection;
         const configuration=await (await configurations(request.project.entryId)).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
         if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
-        return await invokeRun({...request,configuration},onEvent,cancellation.signal);
-      } finally { if (runCancellation.get(runId) === cancellation) runCancellation.delete(runId); }
+        return await invokeRun({...serializable,configuration},onEvent,cancellation.signal);
+      } finally { abortSignal?.removeEventListener('abort', stop); if (runCancellation.get(runId) === cancellation) runCancellation.delete(runId); }
     },
     uploadFiles: (project, conversationId, files) => invoke({ method: 'upload', project, conversationId, files }),
     readFile: (project, id) => invoke({ method: 'file', project, id }),

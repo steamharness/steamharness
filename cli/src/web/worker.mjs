@@ -16,6 +16,23 @@ let shutdownTimer;
 let handleAgentControl;
 const pendingAgentControls = [];
 const activeAgentControls = new Set();
+const pendingEntryCalls = new Map();
+const entryConversationHost = { invoke: (entryId, action, input, identity) => new Promise((resolve, reject) => {
+  const signal = identity.abortSignal ?? controller.signal;
+  if (!process.connected || ownerDisconnected) { reject(new Error('Conversation entry control requires a local execution host.')); return; }
+  if (signal.aborted) { reject(signal.reason); return; }
+  const id = crypto.randomUUID();
+  const finish = (error, value) => {
+    if (!pendingEntryCalls.delete(id)) return;
+    clearTimeout(timer); signal.removeEventListener('abort', aborted);
+    error ? reject(error) : resolve(value);
+  };
+  const aborted = () => finish(signal.reason ?? new Error('Entry call stopped.'));
+  const timer = setTimeout(() => finish(new Error('Entry runtime request timed out.')), 15_000);
+  pendingEntryCalls.set(id, { finish });
+  signal.addEventListener('abort', aborted, { once: true });
+  process.send({ type: 'entry-runtime', id, call: { entryId, action, input } }, error => { if (error) finish(error); });
+}) };
 const dispatchAgentControl = message => {
   const pending = handleAgentControl(message);
   activeAgentControls.add(pending);
@@ -35,6 +52,7 @@ const controller = new AbortController();
 const shutdown = (suspend = false) => {
   // Uncooperative project tools must not keep a dead owner's worker, sockets
   // or execution lease alive forever. Normal cleanup gets a bounded grace period.
+  for (const waiting of [...pendingEntryCalls.values()]) waiting.finish(new Error('The entry caller disconnected.'));
   shutdownTimer ??= setTimeout(() => process.exit(1), 5_000).unref();
   if (suspend && agentHost) agentHost.suspend();
   else { agentHost?.close(); controller.abort(new Error(suspend ? 'Owner disconnected.' : 'Stopped.')); }
@@ -49,6 +67,11 @@ process.on('disconnect', disconnectOwner);
 // Controls can arrive while stdin, Core or configuration is still loading.
 // Keep them from the first IPC listener until the session handler is installed.
 process.on('message', message => {
+  if (message?.type === 'entry-runtime-result') {
+    const waiting = pendingEntryCalls.get(message.id);
+    waiting?.finish(message.error ? new Error(message.error) : undefined, message.value);
+    return;
+  }
   if (message?.type === 'shutdown') disconnectOwner();
   else if (message?.type === 'agent-control') {
     if (handleAgentControl) dispatchAgentControl(message);
@@ -296,6 +319,8 @@ try {
         for (const message of pendingAgentControls.splice(0)) dispatchAgentControl(message);
       }
       const running = runLocalProjectWithReport({
+        entryConversationHost,
+        entryCall: request.entryCall,
         configuration,
         configurationRunId: request.configurationRunId,
         projectDir: request.project.folderPath,

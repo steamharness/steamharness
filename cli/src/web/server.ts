@@ -44,9 +44,14 @@ import { projectStartupInspector } from './project-startup-checks';
 import { ProjectServerCreation } from './project-server-create';
 import { DatabaseManagement } from './database-management';
 import { projectDataDirectory } from './project-data-directory';
+import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
+import type { EntryConversationSnapshot } from 'steamharness';
 
 type Message = Record<string, any>;
-export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration }
+export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void;
+  invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
+  subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
+}; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration }
 
 export { startAggregateWebServer as startWebServer } from "./aggregate-server";
 
@@ -76,6 +81,8 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
+    invokeEntry: (call: AggregateEntryCall) => current.invokeEntry(call),
+    subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => current.subscribeConversation(id, listener),
     setHostUserSettings: async (value: UserSettings) => {
       const settings = parseUserSettings(value);
       host = { ...host, surface: host?.surface ?? 'editor', userSettings: settings };
@@ -97,6 +104,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const projectDir = await realpath(path.resolve(options.projectDir));
   const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
   const clients = new Set<ServerResponse>();
+  const entryObservers = new Set<() => void>();
+  let conversationRevision = 0;
   let connection: WebConnection | undefined;
   let account: AccountState = { status: 'signed-out', serverUrl: defaultServerUrl(), revision: 0 };
   let signedOut = false;
@@ -122,8 +131,24 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let projectCheckRevision = 0;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings });
-  const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings, entryRuntime: call => {
+    if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
+    return options.mount.invokeEntry(call);
+  } });
+  const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose' | 'kanbanBridge' | 'subscribeConversation'> = {
+    subscribeConversation: (entryId, id, listener) => {
+      if (!options.mount?.subscribeConversation) throw new Error('Conversation entry control requires an aggregate host.');
+      return options.mount.subscribeConversation(options.entryId!, entryId, id, listener);
+    },
+    kanbanBridge: async (source, call, abortSignal) => {
+      if (call.operation === 'entries.runEntrypoint' || call.operation === 'conversations.snapshot') {
+        if (!options.mount?.invokeEntry || source.id !== project.id || source.folderPath !== project.folderPath) throw Object.assign(new Error('A local aggregate execution host is required.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
+        return options.mount.invokeEntry({ entryId: String(call.input.entryId),
+          projectId: source.id, actor: { userId: account.user?.userId, isSystemAdmin: false }, abortSignal,
+          action: call.operation === 'entries.runEntrypoint' ? 'workflow' : 'snapshot', input: call.input, sourceEntryId: source.entryId });
+      }
+      return executor.kanbanBridge!(source, call);
+    },
     run: async (request, emit) => {
       const runConnection = connection;
       const abort = new AbortController(); waitingRuns.set(abort, request.runId);
@@ -261,6 +286,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (broadcastTimer) { return; }
     broadcastTimer = setTimeout(() => {
       broadcastTimer = undefined;
+      conversationRevision++;
+      for (const listener of entryObservers) listener();
       if (ownership && conversationController) ownership.update(conversationController.executingIds, new Set(conversationController.sessions.filter(sessionRunning).map(session => session.id)));
       activity?.changed();
       const writable = [...clients].filter(client => {
@@ -327,6 +354,19 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
   });
   const controller = conversationController!;
+  const projectConversation = (session: ConversationSession) => redactProjectData(conversationProjection(project.entryId, session, serverInstanceId, conversationRevision), [...sensitiveTokens]) as EntryConversationSnapshot;
+  const entryConversations = controller ? new EntryConversations(controller, projectConversation, async (session, text, submitted) => {
+    const auth = authRevision, configuration = parameterRevision;
+    const params = { ...session.parameterValues?.[''], ...submitted };
+    const parameters = projectParameters(project);
+    const resolved = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: text, args: projectParamArgs(parameters.fields, params), inputMode: 'form', trigger: { kind: 'init' } }) : { params: {} };
+    for (const [name, patch] of Object.entries(resolved.params ?? {})) {
+      if (patch.value === null) delete params[name]; else if (patch.value !== undefined) params[name] = patch.value;
+    }
+    const configurationSelection = await configurations.selection();
+    if (auth !== authRevision || configuration !== parameterRevision) throw new Error('The entry configuration or identity changed.');
+    return { params, states: resolved.params, configurationSelection };
+  }) : undefined;
   const refreshHistory = async () => {
     const epoch = storageEpoch;
     const acquired = ownership?.takeAcquired() ?? new Set<string>();
@@ -1017,6 +1057,40 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let closing: Promise<void> | undefined;
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
+    invokeEntry: async (call: AggregateEntryCall): Promise<unknown> => {
+      call.abortSignal?.throwIfAborted();
+      if (call.projectId !== project.id || call.actor.userId !== account.user?.userId) throw new Error('The entry caller identity changed.');
+      if (!storageReady) throw new Error(storageError ?? 'Runtime storage is unavailable.');
+      if (projectServer?.blocking) await projectServer.assertReady();
+      call.abortSignal?.throwIfAborted();
+      if (call.action === 'workflow') {
+        if (project.projectType !== 'workflow') throw new Error('The target is not a Workflow.');
+        const operation = String(call.input.entrypointId);
+        if (!project.entrypoints.some(entry => entry.id === operation)) throw new Error('Unknown Workflow operation.');
+        const args = call.input.args;
+        if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) throw new Error('Invalid Workflow arguments.');
+        const runId = globalThis.crypto.randomUUID();
+        const report = await runtime.run({ project, abortSignal: call.abortSignal, runId, conversationId: runId, args, entrypointId: operation,
+          entryCall: { entryId: call.sourceEntryId, conversationId: call.sourceConversationId, runId: call.sourceRunId } }, () => {});
+        if (report.status !== 'success') throw new Error(report.error?.message ?? report.result?.error?.message ?? 'Workflow operation failed.');
+        const data = report.result?.data as { output?: unknown } | undefined;
+        return data?.output ?? data ?? report.output;
+      }
+      if (!entryConversations) throw new Error('The target is not a Conversation.');
+      if (call.action === 'list' || call.action === 'snapshot') return entryConversations.invoke(call.action, call.input, call.abortSignal);
+      const id = call.input.conversationId;
+      if (typeof id !== 'string' || !id.trim() || id.length > 200) throw new Error('Invalid conversation id.');
+      await ownership?.assertWritable(id);
+      const release = await ownership?.hold(id);
+      try { return await entryConversations.invoke(call.action, call.input, call.abortSignal); }
+      finally { release?.(); }
+    },
+    subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => {
+      if (!controller || !storageReady || projectServer?.blocking && !projectServer.ready) throw new Error('Conversation runtime is unavailable.');
+      const notify = () => { const session = controller.sessions.find(session => session.id === id); if (session) listener(projectConversation(session)); };
+      entryObservers.add(notify); notify();
+      return () => { entryObservers.delete(notify); };
+    },
     get running() { return projectController?.runs.some(run => run.status === "running") || conversationController?.sessions.some(sessionRunning) || false; },
     origin, url: `${origin}${options.mount?.basePath ?? ""}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
     setHostUserSettings: async (value: UserSettings) => {
@@ -1040,6 +1114,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await refreshAuth(true);
     },
     close: () => closing ??= (async () => {
+      entryObservers.clear();
       projectCreation.close(); projectServer?.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);

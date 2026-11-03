@@ -255,7 +255,7 @@ export interface ConversationDefinition {
     enabled?: boolean;
   };
   /** Host may restart this workflow with the original run ID and resolved inputs. */
-  recovery?: { enabled: true };
+  recovery?: { enabled: true; startup?: "automatic" | "manual" };
   /** Host keeps one durable agent owner and uses its session control protocol. */
   durable?: { enabled: true };
   openai?: {

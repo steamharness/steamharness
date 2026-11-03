@@ -113,3 +113,5 @@ Conversation、Workflow 与助手历史默认持久化到宿主本地 SQLite，�
 `steamharness knowledge` 提供 `create / list / grants / grant / revoke / bind / unbind / bindings / operation`。绑定使用 `--knowledge-base <UUID>`、`--alias <alias>`、`--entry <entry>`，缺省 alias 为 main。`list --page 2 --page-size 20 --search Docs` 在服务端分页和过滤。`operation <UUID> knowledge.listDocuments < input.json` 接受 JSON 标准输入，操作请求不自动重放；附件正文传输上限 50 MiB。
 
 `steamharness database data <UUID> < request.json` 管理已应用模型的表数据，operation 为 `models / rows / insert / update / delete`。先读取 models 的 schemaHash，后续请求传该值；更新和删除还需要当前 rowVersion 和完整稳定 key。请求输入上限 4 MiB。BigInt、Decimal 使用十进制字符串，DateTime 使用带时区的 ISO 并按 UTC 读写，Bytes 使用 Base64；枚举使用声明值，未提供且无默认值的列表写为空数组。`database list` 也支持上述分页参数。详见 [知识库 API](/core-api/knowledge-documents) 与 [数据库 API](/core-api/database)。
+
+Kanban 可通过聚合宿主调用已登记 Workflow 和订阅原生 Conversation，详见 [Kanban](/concepts/kanban) 与 [入口会话控制](/concepts/database-and-conversation#本地-conversation-入口控制)。宿主复用各入口原生控制器、执行 owner 与队列；Studio 的同一聚合项目共享此宿主。

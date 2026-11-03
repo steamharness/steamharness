@@ -81,6 +81,9 @@ export interface KanbanFileReference {
 }
 
 export interface KanbanBrowserApi {
+  entries: { get(entryId: string): { runEntrypoint(entrypointId: string, args?: readonly string[], options?: { requestId?: string }): Promise<unknown> } };
+  conversations: { snapshot(entryId: string, conversationId: string): Promise<unknown>;
+    subscribe(target: { entryId: string; conversationId: string }, listener: (snapshot: unknown) => void, onError?: (error: Error) => void): () => void };
   getConfiguration(): KanbanInjectedConfiguration;
   getPresentation(): KanbanPresentation;
   getRuntimeLocale(): Promise<KanbanRuntimeLocale>;
@@ -112,6 +115,10 @@ export type KanbanJsonValue =
   | { [key: string]: KanbanJsonValue };
 
 export type KanbanBridgeOperation =
+  | "entries.runEntrypoint"
+  | "conversations.snapshot"
+  | "conversations.subscribe"
+  | "conversations.unsubscribe"
   | "runtime.getLocale"
   | "studio.getLocalAnalysis"
   | "files.createFile"
@@ -140,6 +147,7 @@ export interface KanbanBridgeError {
 }
 
 const KANBAN_BRIDGE_SAFE_ERRORS = {
+  ENTRY_RUNTIME_UNAVAILABLE: "Open this project in a local SteamHarness CLI or Studio execution host.",
   KANBAN_BRIDGE_INVALID_REQUEST: "The Kanban bridge request is invalid.",
   KANBAN_BRIDGE_BUSY: "Too many Kanban bridge requests are pending.",
   KANBAN_BRIDGE_TIMEOUT: "Kanban bridge request timed out.",
@@ -161,6 +169,10 @@ const MAX_KNOWLEDGE_CONTEXT_LINES = 50;
 const MAX_KNOWLEDGE_LINE_RANGE = 1_000;
 
 const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[]> = {
+  "entries.runEntrypoint": ["entryId", "entrypointId", "args", "requestId"],
+  "conversations.snapshot": ["entryId", "conversationId"],
+  "conversations.subscribe": ["entryId", "conversationId", "subscriptionId"],
+  "conversations.unsubscribe": ["subscriptionId"],
   "runtime.getLocale": [],
   "studio.getLocalAnalysis": [],
   "files.createFile": ["name", "mimeType", "base64"],
@@ -411,6 +423,8 @@ const safeErrorMessages=${safeErrorMessages};
 const pending=new Map();
 const databaseRevisions=new Map();
 const databaseRevisionListeners=new Map();
+const conversationListeners=new Map();
+const clearConversations=()=>{for(const stop of [...conversationListeners.values()].map(value=>value.stop))stop();};
 const clone=()=>JSON.parse(JSON.stringify(current));
 const createError=(message,code)=>{const error=new Error(message);if(code)Object.defineProperty(error,"code",{value:code,enumerable:true});return error;};
 const invalidRequest=()=>createError("The Kanban bridge request is invalid.","KANBAN_BRIDGE_INVALID_REQUEST");
@@ -466,10 +480,26 @@ const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
   knowledgeContexts.set(knowledgeBase,context);return context;
 }});
 ${createKanbanMethodsBridgeScript(nonce)}
-Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
+const entries=Object.freeze({get:(entryId)=>Object.freeze({runEntrypoint:(entrypointId,args=[],options={})=>request("entries.runEntrypoint",{entryId,entrypointId,args,requestId:options.requestId||Date.now().toString(36)+"-operation-"+(++sequence)})})});
+const conversations=Object.freeze({snapshot:(entryId,conversationId)=>request("conversations.snapshot",{entryId,conversationId}),subscribe:(target,listener,onError)=>{
+  if(typeof listener!=="function")throw invalidRequest();
+  const subscriptionId="conversation-"+Date.now().toString(36)+"-"+(++sequence);
+  let closed=false;
+  const stop=()=>{if(closed)return;closed=true;conversationListeners.delete(subscriptionId);request("conversations.unsubscribe",{subscriptionId}).catch(()=>{});};
+  conversationListeners.set(subscriptionId,{listener,stop,entryId:target.entryId,conversationId:target.conversationId});
+  request("conversations.subscribe",{entryId:target.entryId,conversationId:target.conversationId,subscriptionId}).catch(error=>{if(!closed){stop();if(typeof onError==="function")onError(error);}});
+  return stop;
+}});
+window.addEventListener("pagehide",clearConversations);
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(handleKanbanMethodMessage(event.data))return;
+  if(event.data.type==="steamharness:kanban-conversation"){
+    const target=conversationListeners.get(event.data.subscriptionId);
+    if(target&&event.data.snapshot?.entryId===target.entryId&&event.data.snapshot?.conversationId===target.conversationId)Promise.resolve().then(()=>{if(conversationListeners.get(event.data.subscriptionId)===target)target.listener(event.data.snapshot);}).catch(()=>{});
+    return;
+  }
   if(event.data.type===${presentationMessage}){
     const mode=event.data.presentation?.mode;
     if(!["fullscreen","phone","tablet","card"].includes(mode)||presentation.mode===mode)return;
@@ -480,7 +510,7 @@ window.addEventListener("message",function(event){
   if(event.data.type==="steamharness:kanban-configuration"){
     // Hosts resend configuration after ready; identical snapshots must not acknowledge each other forever.
     if(JSON.stringify(event.data.configuration)===JSON.stringify(current))return;
-    if(event.data.configuration?.id!==current.id)resetKanbanMethods();
+    if(event.data.configuration?.id!==current.id){resetKanbanMethods();clearConversations();}
     current=event.data.configuration;
     window.dispatchEvent(new CustomEvent(${eventName},{detail:clone()}));
     ready();
@@ -673,12 +703,28 @@ function validateKanbanBridgeInput(
 ): void {
   const allowedFields = new Set(KANBAN_BRIDGE_INPUT_FIELDS[operation]);
   const aliasField = operation.startsWith("knowledge.") || operation.startsWith("files.") ? "knowledgeBase" : "database";
-  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && (typeof input[aliasField] !== "string" || !DATABASE_ALIAS_PATTERN.test(input[aliasField] as string))) throw new Error("A declared resource alias is required.");
+  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && !operation.startsWith("entries.") && !operation.startsWith("conversations.") && (typeof input[aliasField] !== "string" || !DATABASE_ALIAS_PATTERN.test(input[aliasField] as string))) throw new Error("A declared resource alias is required.");
   if (input.expectedRevision !== undefined) readPositiveInteger(input.expectedRevision, "bridge.input.expectedRevision");
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
   switch (operation) {
+    case "entries.runEntrypoint":
+    case "conversations.snapshot":
+    case "conversations.subscribe":
+    case "conversations.unsubscribe": {
+      if (JSON.stringify(input).length > 262_144) throw new Error('Entry request is too large.');
+      if (operation !== 'conversations.unsubscribe' && (typeof input.entryId !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(input.entryId))) throw new Error('Invalid target entry.');
+      if (operation === 'entries.runEntrypoint') {
+        if (typeof input.entrypointId !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.-]{0,99}$/.test(input.entrypointId)) throw new Error('Invalid Workflow operation.');
+        if (!Array.isArray(input.args) || input.args.length > 256 || !input.args.every(arg => typeof arg === 'string')) throw new Error('Invalid Workflow arguments.');
+        if (readNonEmptyString(input.requestId, 'requestId').length > 200) throw new Error('Invalid operation requestId.');
+      } else {
+        if (operation !== 'conversations.unsubscribe' && readNonEmptyString(input.conversationId, 'conversationId').length > 200) throw new Error('Invalid conversation ID.');
+        if (operation !== 'conversations.snapshot' && readNonEmptyString(input.subscriptionId, 'subscriptionId').length > 100) throw new Error('Invalid subscription ID.');
+      }
+      return;
+    }
     case "runtime.getLocale":
     case "studio.getLocalAnalysis":
       return;
@@ -782,7 +828,7 @@ function validateKanbanBridgeInput(
 }
 
 function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation {
-  return value === "runtime.getLocale" ||
+  return value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
     value === "studio.getLocalAnalysis" ||
     value === "files.createFile" ||
     value === "files.readFile" ||

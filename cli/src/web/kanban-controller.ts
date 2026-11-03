@@ -29,6 +29,8 @@ export class KanbanController {
   private generation = 0;
   private readonly requests = new Set<AbortController>();
   private readonly diagnostics = new KanbanDiagnostics();
+  private readonly conversationSubscriptions = new Map<string, () => void>();
+  private clearConversationSubscriptions() { for (const stop of this.conversationSubscriptions.values()) stop(); this.conversationSubscriptions.clear(); }
   readonly methods: KanbanMethodHub;
   constructor(readonly project: Project, private readonly runtime: Runtime, private readonly storageDir: string, private readonly hooks: Hooks) {
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
@@ -59,7 +61,7 @@ export class KanbanController {
     if (checkConnections) await this.hooks.projectChanged?.();
     this.hooks.changed();
   }
-  private newPreview() { this.generation++; this.methods.clear(); this.diagnostics.clear(); this.preview = new KanbanPreview(this.project.entryRoot, this.project.kanban!, () => this.configuration()); }
+  private newPreview() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); this.preview = new KanbanPreview(this.project.entryRoot, this.project.kanban!, () => this.configuration()); }
   async handle(message: Message): Promise<Message[]> {
     if (message.type === 'kanban-diagnostics') {
       const generation = this.generation;
@@ -84,6 +86,19 @@ export class KanbanController {
   }
   async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1]): Promise<unknown> {
     if (this.disposed) throw new Error('Kanban has closed.');
+    if (call.operation === 'conversations.unsubscribe') {
+      const id = String(call.input.subscriptionId); this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id); return { unsubscribed: true };
+    }
+    if (call.operation === 'conversations.subscribe') {
+      if (!this.runtime.subscribeConversation) throw Object.assign(new Error('Local execution host unavailable.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
+      const id = String(call.input.subscriptionId), nonce = this.preview.nonce;
+      this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id);
+      if (this.conversationSubscriptions.size >= 16) throw new Error('Too many conversation subscriptions.');
+      const stop = this.runtime.subscribeConversation(String(call.input.entryId), String(call.input.conversationId), snapshot => {
+        if (!this.disposed && nonce === this.preview.nonce) this.hooks.emit({ type: 'kanban-conversation', nonce, subscriptionId: id, snapshot });
+      });
+      this.conversationSubscriptions.set(id, stop); return { subscribed: true };
+    }
     if (call.operation === 'runtime.getLocale') return getCurrentLocale();
     const generation = this.generation;
     const configurationId = this.configuration().id, started = Date.now(), attempts: KanbanReadAttempt[] = [];
@@ -102,7 +117,7 @@ export class KanbanController {
       }
       if (result === undefined) {
         attempts.push({ source: call.operation === 'studio.getLocalAnalysis' ? 'host' : 'database' });
-        result = call.operation === 'studio.getLocalAnalysis' ? await requestStudioAnalysis(process.env, abort.signal) : await this.runtime.kanbanBridge!(this.project, call);
+        result = call.operation === 'studio.getLocalAnalysis' ? await requestStudioAnalysis(process.env, abort.signal) : await this.runtime.kanbanBridge!(this.project, call, abort.signal);
       }
       if (generation !== this.generation || this.disposed) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
       this.diagnostics.finish(diagnostic);
@@ -112,7 +127,7 @@ export class KanbanController {
       throw error;
     } finally { this.requests.delete(abort); }
   }
-  authenticationChanged() { this.generation++; this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.databaseRevisions = []; this.databaseWarning = ''; this.serverDataIssue = undefined; }
+  authenticationChanged() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.databaseRevisions = []; this.databaseWarning = ''; this.serverDataIssue = undefined; }
   projectChecksChanged() { this.hooks.changed(); }
   private async updateRevisions() {
     if (this.disposed || !this.runtime.kanbanBridge) return;
@@ -126,5 +141,5 @@ export class KanbanController {
     const warning = errors.length ? `Database access requires attention: ${errors.join(', ')}` : '';
     if (JSON.stringify(revisions) !== JSON.stringify(this.databaseRevisions) || warning !== this.databaseWarning) { this.databaseRevisions = revisions; this.databaseWarning = warning; this.hooks.changed(); }
   }
-  async close() { this.disposed = true; this.watcher?.close(); clearTimeout(this.timer); clearInterval(this.poll); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
+  async close() { this.disposed = true; this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); clearInterval(this.poll); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
 }

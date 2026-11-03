@@ -40,3 +40,23 @@ const result = await context.entries.get("jobs")
 `context.conversation.getValue/setValue/setTitle/appendMessage` 操作当前会话；这些方法与业务模型客户端独立。配置修改从下一次执行生效，恢复审批必须匹配当前项目和入口。
 
 本地持久历史不要求平台登录或网络连接；系统 AI 和业务资源仍按各自权限校验。可信宿主可显式选择 Server 仓储，或用 `copyRuntimePersistence` 在会话空闲时后台复制到空云端目标。它是按需快照备份，不是持续同步；附件与工作区文件独立备份。已有云端和旧本地记录保留，不自动读取、迁移或双写；不重新引入 KV 或 PersistentValue。详见[运行存储](/core-api/runtime-storage)。
+
+## 本地 Conversation 入口控制
+
+CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Conversation，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
+
+```ts
+const bot = context.entries.conversations.get("assistant");
+const receipt = await bot.submit({
+  conversationId: "support-room", requestId: "stable-request-id", text: "整理待办",
+});
+const snapshot = await bot.snapshot(receipt.conversationId);
+// 其它操作：list()、resolveInput({ conversationId, messageId, requestId, values })、
+// cancel({ conversationId, requestId })、resumeQueue({ conversationId, requestId })。
+```
+
+`submit` 在输入持久化后返回 `{ conversationId, requestId, messageId, status }`，不等待模型；相同会话与请求 ID 的相同内容不会重复执行，不同内容会失败。省略参数时复用该会话的参数与宿主模型默认值。失败、停止或重开保留队列，显式调用 `resumeQueue` 后继续。项目可用 `conversation.recovery: { enabled: true, startup: "manual" }` 要求重开后的未完成轮次也等待恢复；默认 `automatic` 保持原恢复行为。
+
+快照含 `ownerId`、递增 `revision`、消息、待确认请求、运行状态和 FIFO 队列位置。消费者拒绝旧 revision，并在 owner 更换后丢弃退休 owner 的结果。宿主凭据、用户设置和运行参数不会进入此投影。业务共享聊天可以保存投影与回执，执行历史仍以 Core 为准。
+
+`context.entries.caller` 是可信直接调用来源 `{ entryId, conversationId?, runId? }`；由宿主或 Core 设置，不从业务参数读取。Bot 身份应从此来源及受控会话关联识别。调用保留用户、项目、权限和取消信号，并再次验证目标授权。单独命令运行或 Server 静态预览没有执行宿主，返回 `ENTRY_RUNTIME_UNAVAILABLE`；Server 不执行项目代码。

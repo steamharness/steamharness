@@ -1875,7 +1875,7 @@ function analyzeSourceFile(
     const collapseIntermediate = readConversationPresentationProperty(conversationProperty.initializer);
     const recoveryProperty = findStaticPropertyAssignment(conversationProperty.initializer, "recovery");
     const recovery = readCoreAgentOptions(objectArg) || recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
-      && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
+      && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const, ...(recoveryProperty && ts.isObjectLiteralExpression(recoveryProperty.initializer) && readStringProperty(recoveryProperty.initializer, "startup") === "manual" ? { startup: "manual" as const } : {}) } : undefined;
     const durableProperty = findStaticPropertyAssignment(conversationProperty.initializer, "durable");
     const durable = readCoreAgentOptions(objectArg)?.session || durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)
       && readBooleanProperty(durableProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;

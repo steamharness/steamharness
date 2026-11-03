@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban can invoke aggregate Workflows and subscribe to native Conversation streams, reusing execution owners and persisted FIFO queues with optional manual recovery after restart.
+
 - [Fixed] Configuration attachment uploads remain valid during background account checks. The host still rejects stale results after the account changes or authentication is lost.
 
 - [Fixed] Database and knowledge startup checks preserve Server transport and authorization errors. Temporary outages trigger automatic checks, and login or permission failures no longer incorrectly request rebinding.

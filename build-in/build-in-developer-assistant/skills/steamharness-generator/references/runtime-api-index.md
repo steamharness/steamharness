@@ -10,6 +10,8 @@
 
 ### 聚合入口目录（`EntriesContext`）
 
+- `caller`
+- `conversations`
 - `list()`
 - `get(entryId)`
 

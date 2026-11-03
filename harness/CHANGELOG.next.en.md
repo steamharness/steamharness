@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed: Suspending a durable Agent interrupts its enclosing project instead of reporting a partial reply as successful; reopening continues from the original checkpoint.
+
+- Add aggregate Conversation entry control and trusted call provenance, preserving user, permissions, and cancellation; support durable receipts, snapshots, approvals, stop, and explicit recovery.
+
 - Fix durable Agent trace timing: reasoning and text items retain the model request span, including time to first token, and tool items use persisted task spans across reopen.
 
 - [Fixed] System AI catalogues use a 30-second, connection-scoped memory cache and shared refreshes. Explicit refresh remains available; expiring credentials refresh online and denied refreshes cannot reuse old tokens. Managed files use conditional requests, and knowledge attachments reuse bounded snapshots after online access checks.

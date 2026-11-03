@@ -115,3 +115,25 @@ it('keeps saved cross-entry Kanban and image card URLs inside their owning aggre
     expect(unmounted.status).toBe(404); expect(await unmounted.text()).toBe('Unknown project entry.');
   }
 });
+
+it('routes nonce-bound Kanban operations to the aggregate Workflow and streams the native Conversation identity', async () => {
+  const f=await fixture();
+  const board=await f.state('board'), native=await f.state('agent');
+  const nonce=board.kanban.preview.nonce, conversationId=native.activeId;
+  const original=vi.mocked(f.runtime.run).getMockImplementation()!;
+  vi.mocked(f.runtime.run).mockImplementation(async (request,emit) => request.project.entryId==='workflow'
+    ? {status:'success',result:{ok:true,data:{output:{errCode:0,errMessage:'',data:'receipt'}}}} as Report
+    : original(request,emit));
+  // Read the same controller selected by the native Conversation page.
+  const bridge=(operation:string,input:Record<string,unknown>)=>f.call('board',{type:'kanban-bridge',nonce,requestId:randomUUID(),call:{requestId:randomUUID(),operation,input}});
+  const reply=await bridge('entries.runEntrypoint',{entryId:'workflow',entrypointId:'operation',args:[],requestId:'api-call'});
+  expect(reply).toMatchObject({type:'kanban-bridge-result',ok:true,value:{data:'receipt'}});
+  expect(vi.mocked(f.runtime.run).mock.calls.at(-1)![0]).toMatchObject({entryCall:{entryId:'board'},project:{entryId:'workflow'}});
+  await f.call('agent',{type:'send',text:'native text',params:{},attachments:[],requestId:randomUUID()});
+  await vi.waitFor(()=>expect(f.active.has('agent')).toBe(true));
+  const read=await bridge('conversations.snapshot',{entryId:'agent',conversationId});
+  expect(read).toMatchObject({ok:true,value:{entryId:'agent',conversationId,running:true,messages:[{role:'user',content:'native text'},{role:'assistant',requestId:f.active.get('agent')!.runId}]}});
+  const invalid=await f.call('board',{type:'kanban-bridge',nonce:'old',requestId:randomUUID(),call:{requestId:'old',operation:'conversations.snapshot',input:{entryId:'agent',conversationId}}});
+  expect(invalid.ok).toBe(false);
+  f.active.get('agent')!.finish({status:'success',output:{items:[]}});
+});

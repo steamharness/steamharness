@@ -87,6 +87,7 @@ export class ConversationController {
               && turn.conversationId === (message.sessionConversationId ?? entry.agentConversationId ?? agent.conversationId)
               && (turn.status === 'placed' || turn.status === 'queued')))) {
             message.recovering = true; message.error = undefined;
+            if (project.conversation?.recovery?.startup === "manual") { entry.recoveryPaused = true; entry.queuePaused = true; }
           }
           else { message.status = message.pendingInput ? 'waiting_for_input' : 'aborted'; message.error = t("Run interrupted"); }
         }
@@ -135,7 +136,7 @@ export class ConversationController {
   recover(): void {
     if (!this.project.conversation?.recovery?.enabled || this.disposed) return;
     for (const entry of this.sessions) {
-      if (entry.agentOwnerId) continue;
+      if (entry.agentOwnerId || entry.recoveryPaused) continue;
       if (entry.agentInterrupted) continue;
       if (entry.activeRunId) continue;
       if (entry.messages.some(message => message.cancelRequested)) {
@@ -329,7 +330,8 @@ export class ConversationController {
       if (!preserveDraft) entry.draft = { text: '', attachments: [] };
       this.changed(); await this.persist(); return;
     }
-    const waiting = entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering);
+    const waiting = entry.recoveryPaused || this.project.conversation?.recovery?.startup === 'manual' && entry.queuePaused
+      || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering);
     if (entry.activeRunId || waiting || entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry))) {
       if (!this.project.conversation?.inputQueue?.enabled) { throw new Error(t("The current session is running.")); }
       if (editingId) {
@@ -999,7 +1001,7 @@ export class ConversationController {
     // Root cancellation must mark the run synchronously, before late chunks
     // or completion events can land in the same turn of the event loop.
     if (entry.agentOwnerId || this.isolating.has(entry.id)) await this.ensureIndependentFork(entry);
-    entry.queuePaused = true;
+    entry.queuePaused = true; entry.recoveryPaused = false;
     let controlError: unknown;
     if (this.project.conversation?.durable?.enabled && entry.agent && !entry.messages.some(message => message.pendingInput)) {
       const owner = this.owner(entry);
@@ -1079,6 +1081,7 @@ export class ConversationController {
   }
   async runQueued(entry = this.current): Promise<void> {
     await this.ensureIndependentFork(entry);
+    if (entry.recoveryPaused) { entry.recoveryPaused = false; this.recover(); }
     if (this.owner(entry).agentInterrupted) await this.agentCommand(entry.id, { type: 'snapshot', requestId: globalThis.crypto.randomUUID() });
     this.drain(entry, true); await this.persist();
   }
@@ -1121,7 +1124,7 @@ export class ConversationController {
     if (answer?.recovering && !entry.activeRunId && !answer.cancelRequested) {
       const anchor = this.project.conversation?.durable?.enabled ? this.agentAnchor(this.owner(entry)) : undefined;
       if (anchor) anchor.recoveryAttempts = 0;
-      answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
+      entry.recoveryPaused = false; answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
     }
     const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user');
     if (!user || entry.activeRunId && !entry.agent) { return; }

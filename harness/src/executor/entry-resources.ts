@@ -21,7 +21,7 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
       host: options.knowledgeBaseHost ?? (connection ? createServerKnowledgeBaseHost({ ...connection, signal: options.abortSignal }) : undefined) }),
     databases: createDatabaseConnector({ projectId: declaration.projectId, entryId: declaration.entryId,
       host: options.relationalDatabaseHost ?? (connection ? createRemoteRelationalDatabaseHost(connection) : undefined), signal: options.abortSignal }),
-    entries: createEntriesContext(declaration.manifest, { actor: options.actor ?? { isSystemAdmin: false }, projectId: declaration.projectId, sourceEntryId: declaration.entryId, get abortSignal() { return context().abortSignal; }, get toolPermissions() { return context().toolPermissions; } }, {
+    entries: createEntriesContext(declaration.manifest, { actor: options.actor ?? { isSystemAdmin: false }, projectId: declaration.projectId, sourceEntryId: declaration.entryId, get sourceConversationId() { return context().conversation.conversationId; }, get sourceRunId() { return String(context().metadata?.runId ?? ''); }, get abortSignal() { return context().abortSignal; }, get toolPermissions() { return context().toolPermissions; } }, {
       async list(entryId, identity) {
         await options.authorizeEntry?.(entryId, undefined, identity.actor);
         const { inspectLocalProjectStructure } = await import("./index");
@@ -38,12 +38,16 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
         const { runLocalProjectWithReport } = await import("./index");
         // An operation uses its own entry grants. The caller never receives a database handle;
         // its actor, host credentials, cancellation and tool restrictions remain in force.
-        const report = await entryCallDepth.run(depth + 1, () => runLocalProjectWithReport({ ...options, projectDir: declaration.projectDir, entryId, entrypointId, args: [...args], configuration: undefined, configurationRunId: undefined, runId: undefined, conversationId: undefined, hostInput: undefined, actor: identity.actor, abortSignal: identity.abortSignal, inheritedToolPermissions: identity.toolPermissions, onRuntimeEvent: undefined, onDefinedNodes: undefined }));
+        const report = await entryCallDepth.run(depth + 1, () => runLocalProjectWithReport({ ...options, entryCall: { entryId: identity.sourceEntryId, conversationId: identity.sourceConversationId, runId: identity.sourceRunId }, projectDir: declaration.projectDir, entryId, entrypointId, args: [...args], configuration: undefined, configurationRunId: undefined, runId: undefined, conversationId: undefined, hostInput: undefined, actor: identity.actor, abortSignal: identity.abortSignal, inheritedToolPermissions: identity.toolPermissions, onRuntimeEvent: undefined, onDefinedNodes: undefined }));
         if (report.status !== "success") throw new Error(`Entry "${entryId}" operation "${entrypointId}" failed: ${JSON.stringify(report.result)}`);
         if (!report.result.ok) throw new Error(report.result.error.message);
         const { readEntrypointOutput } = await import("../workflow/index");
         return readEntrypointOutput(report.result.data);
       },
-    }),
+    }, options.entryConversationHost && { async invoke(entryId, action, input, identity) {
+      await options.authorizeEntry?.(entryId, action, identity.actor);
+      identity.abortSignal?.throwIfAborted();
+      return options.entryConversationHost!.invoke(entryId, action, input, identity);
+    } }, options.entryCall),
   };
 }

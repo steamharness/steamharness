@@ -439,3 +439,28 @@ describe("Kanban preview capability refresh", () => {
     cancel();
   });
 });
+
+it('binds aggregate operations and streaming subscriptions to the current iframe/configuration', async () => {
+  const listeners: Array<(event:MessageEvent)=>void>=[], outgoing:any[]=[];
+  const parent={postMessage:(message:unknown)=>outgoing.push(message)};
+  const pageWindow={parent,setTimeout:()=>1,clearTimeout(){},dispatchEvent(){},addEventListener(type:string,listener:any){if(type==='message')listeners.push(listener);}} as unknown as Window & {steamHarnessKanban:KanbanBrowserApi};
+  const send=(data:any,source=parent)=>listeners.forEach(listener=>listener({source,data} as unknown as MessageEvent));
+  new Function('window','document',createKanbanBridgeScript({id:'one',name:'One',params:{}},'nonce').replace(/^<script[^>]*>/,'').replace(/<\/script>$/,''))(pageWindow,{readyState:'complete'});
+  const pending=pageWindow.steamHarnessKanban.entries.get('api').runEntrypoint('state',['--payload','{}']);
+  const request=outgoing.at(-1);
+  expect(request).toMatchObject({operation:'entries.runEntrypoint',input:{entryId:'api',entrypointId:'state',args:['--payload','{}']}});
+  send({type:'steamharness:kanban-bridge-response',nonce:'nonce',requestId:request.requestId,ok:true,value:{receipt:true}});
+  await expect(pending).resolves.toEqual({receipt:true});
+  const receive=vi.fn(),stop=pageWindow.steamHarnessKanban.conversations.subscribe({entryId:'bot',conversationId:'private'},receive);
+  const sub=outgoing.at(-1),snapshot={entryId:'bot',conversationId:'private',ownerId:'owner',revision:1};
+  send({type:'steamharness:kanban-conversation',nonce:'old',subscriptionId:sub.input.subscriptionId,snapshot});
+  expect(receive).not.toHaveBeenCalled();
+  send({type:'steamharness:kanban-conversation',nonce:'nonce',subscriptionId:sub.input.subscriptionId,snapshot});
+  await Promise.resolve();
+  expect(receive).toHaveBeenCalledTimes(1);
+  send({type:'steamharness:kanban-configuration',nonce:'nonce',configuration:{id:'two',name:'Two',params:{}}});
+  send({type:'steamharness:kanban-conversation',nonce:'nonce',subscriptionId:sub.input.subscriptionId,snapshot});
+  await Promise.resolve();
+  expect(receive).toHaveBeenCalledTimes(1);stop();
+  expect(()=>parseKanbanBridgeCall({requestId:'bad',operation:'entries.runEntrypoint',input:{entryId:'api',entrypointId:'state',args:[],requestId:'r',actor:{userId:'spoof'}}})).toThrow();
+});

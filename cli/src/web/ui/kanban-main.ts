@@ -212,6 +212,10 @@ window.addEventListener('message', event => {
       .finally(() => methodCalls.delete(message.requestId)); return;
   }
   if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); return; }
+  if (message.type === 'kanban-conversation') {
+    if (state?.preview.nonce === message.nonce) frame.contentWindow?.postMessage({ ...message, type: 'steamharness:kanban-conversation' }, '*');
+    return;
+  }
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
   if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.close(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') {

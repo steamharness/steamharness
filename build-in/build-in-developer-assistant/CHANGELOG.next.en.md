@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document multi-Bot aggregate workbenches, Conversation control, trusted provenance, and subscription generations in the generator skill.
+
 - Documented account-scoped system AI catalogue caching, explicit refresh and expiry/revocation handling in the generator API reference.
 
 - Documented full-session snapshot collection, worker crash recovery and main-Agent child management in the generator API reference, preserving paused user queues and safe retry boundaries.

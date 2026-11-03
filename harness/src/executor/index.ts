@@ -129,6 +129,8 @@ import {
 } from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceProjectOptions {
+  entryConversationHost?: import('../entries/index').EntryConversationHost;
+  entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
   actor?: AccessActor;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */
@@ -164,6 +166,8 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  entryConversationHost?: import('../entries/index').EntryConversationHost;
+  entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
   actor?: AccessActor;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */

@@ -59,3 +59,11 @@ CLI Web uses `/entries/map/`; Studio opens entries as independent tabs. Server W
 Publish the aggregate as one unit. Requirements travel with the package; bindings and credentials do not. See [Database spaces](/en/concepts/data-storage) and [Packaging](/en/cli/workspace/pack).
 
 Knowledge requires an independent `knowledgeBases: ["docs"]` declaration, a root `knowledgeBases.docs` configuration mapping and a Server binding. Subscribe with `knowledgeBases.get("docs").subscribe(...)`; changes to a relational alias with the same name do not trigger this subscription.
+
+## Aggregate Workflow calls and Conversation subscriptions
+
+In local CLI Web or Studio, call a registered Workflow with `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])`. The page cannot select a user or project identity. Keep business writes and message routing in that Workflow.
+
+`conversations.snapshot(entryId, conversationId)` reads the native projection. `conversations.subscribe({ entryId, conversationId }, listener, onError)` delivers streaming output, queues, approvals, and run state over the existing SSE / IPC channel and returns an unsubscribe function. Up to 16 subscriptions are allowed. Configuration, identity, and iframe generation changes retire subscriptions. Reconnect by reading and subscribing again. Match `requestId` to determine completion; do not assume the last message belongs to the current request.
+
+Server static previews return `409` with safe code `ENTRY_RUNTIME_UNAVAILABLE` for execution operations. Show guidance to open the project in local CLI Web / Studio. Read-only resource previews in conversations retain their existing data access boundary.

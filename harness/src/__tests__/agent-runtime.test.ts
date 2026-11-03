@@ -1820,3 +1820,26 @@ test("empty failures use the persisted provider retry budget without continuatio
     assert.match(events.message, /terminated/);
   });
 });
+
+test("owner suspension interrupts the Workflow output while preserving the pending Agent turn", async () => {
+  const { pi, ai } = await createFauxRuntime([]);
+  let suspend!: () => void, started!: () => void;
+  const sessionSuspend = new Promise<void>(resolve => { suspend = resolve; });
+  const streaming = new Promise<void>(resolve => { started = resolve; });
+  pi.models.streamSimple = (_model, _context, options) => {
+    const stream = ai.createAssistantMessageEventStream();
+    const partial = ai.fauxAssistantMessage("partial", { stopReason: "pending" });
+    stream.push({ type: "text_delta", contentIndex: 0, delta: "partial", partial });
+    options!.signal!.addEventListener("abort", () => {
+      stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted" } });
+      stream.end();
+    }, { once: true });
+    started(); return stream;
+  };
+  const runtime = await createAgentRuntime({ models: pi.models, provider: "faux", model: "faux-1", sessionSuspend });
+  const output: AgentStreamEvent[] = [];
+  const running = (async () => { for await (const event of runtime.run({ errCode: 0, errMessage: "", prompt: "resume this", requestId: "stable" })) output.push(event); })();
+  const rejected = assert.rejects(running, (error: unknown) => error instanceof HarnessError && error.type === "stream_interrupted");
+  try { await streaming; suspend(); await rejected; }
+  finally { suspend(); await runtime.close(); }
+});

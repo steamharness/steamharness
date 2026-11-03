@@ -10,6 +10,7 @@ export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {
 export async function invokeServerKanbanBridge(storage: Storage, projectId: string, call: KanbanBridgeCall, options: { entryId: string; actor: AccessActor; target?: string; runtimeLocale?: RuntimeLocale }): Promise<unknown> {
   const { operation, input } = readKanbanBridgeCall(call);
   if (operation === "runtime.getLocale") return options.runtimeLocale ?? "en";
+  if (operation.startsWith('entries.') || operation.startsWith('conversations.')) throw new HttpError(409, 409, 'Open this project in CLI Web or Studio to execute Workflow operations and connect conversations.', { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
   if (operation.startsWith('knowledge.') || operation.startsWith('files.')) {
     const bases = await storage.entryKnowledgeBases(projectId, options.entryId, options.actor, options.target);
     return executeKnowledgeBaseOperation(bases.get(String(input.knowledgeBase)), operation, input);

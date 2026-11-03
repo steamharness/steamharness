@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static Kanban explicitly rejects Workflow execution and Conversation control with guidance to use local CLI Web or Studio.
+
 - Fixed native database authorization using shared read locks so concurrent queries do not fail on binding contention. Rebinding, migrations and revocation retain exclusive locks.
 
 - Fixed concurrent table requests and Browser binding resolution by waiting for database locks before execution. Authorization and models are revalidated after waiting, and stale row edits remain rejected.

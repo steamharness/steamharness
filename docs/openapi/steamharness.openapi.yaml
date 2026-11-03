@@ -2219,6 +2219,7 @@ paths:
       description: Use entryId for the registered Kanban entry. Data and attachment calls require input.database and
         current project and space authorization. target selects a static declaration version; draft data
         access can use a registered entry before source upload. No project execution occurs.
+        Local entries.* and conversations.* operations return 409 with metadata.code ENTRY_RUNTIME_UNAVAILABLE; use CLI Web or Studio.
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -7178,6 +7179,10 @@ components:
           type: string
           enum:
             - runtime.getLocale
+            - entries.runEntrypoint
+            - conversations.snapshot
+            - conversations.subscribe
+            - conversations.unsubscribe
             - files.createFile
             - files.readFile
             - files.deleteFile

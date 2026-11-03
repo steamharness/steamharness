@@ -49,3 +49,18 @@ test('Kanban locale does not access storage and removed or undeclared operations
   assert.equal(await invokeServerKanbanBridge({} as Storage,'demo',{requestId:'locale',operation:'runtime.getLocale',input:{}},options),'en');
   for(const operation of ['relatedProject.kv.getValue','exec','kv.getValue'])assert.throws(()=>readKanbanBridgeCall({requestId:'bad',operation,input:{key:'board'}}),/invalid/);
 });
+
+test('Server static Kanban explicitly rejects local execution and Conversation subscriptions', async()=>{
+  for(const [operation,input] of [
+    ['entries.runEntrypoint',{entryId:'api',entrypointId:'state',args:[],requestId:'operation'}],
+    ['conversations.snapshot',{entryId:'bot',conversationId:'private'}],
+    ['conversations.subscribe',{entryId:'bot',conversationId:'private',subscriptionId:'sub'}],
+    ['conversations.unsubscribe',{subscriptionId:'sub'}],
+  ] as const) {
+    const call=readKanbanBridgeCall({requestId:'test',operation,input});
+    await assert.rejects(invokeServerKanbanBridge({} as Storage,'demo',call,options),error=>{
+      assert.equal((error as any).statusCode,409);
+      assert.equal((error as any).data?.code,'ENTRY_RUNTIME_UNAVAILABLE');return true;
+    });
+  }
+});

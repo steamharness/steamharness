@@ -192,6 +192,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   private contextWindow: number | undefined;
   private contextMeasurement: { usage: AgentContextUsage; estimated: number } | undefined;
   private publishContextUsage: (() => void) | undefined;
+  private suspended = false;
 
   constructor(
     private pi: PiRuntime,
@@ -201,6 +202,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     private readonly userSettings?: UserSettings,
   ) {
     this.options = options;
+    void options.sessionSuspend?.then(() => { this.suspended = true; });
     this.connection = readConnection(options);
     this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy));
     this.externalTools = [...(options.extraTools ?? []), ...(options.externalTools ?? [])];
@@ -302,6 +304,12 @@ class ProjectAgentRuntime implements AgentRuntime {
     }
 
     yield* this.runPrompt(parsed, agent, input, host);
+    // Parking preserves unfinished tasks. It must not commit an output node or
+    // let a wrapping Workflow publish a partial answer as a completed turn.
+    if (this.suspended) throw new HarnessError({
+      type: "stream_interrupted", message: "The agent execution owner disconnected.",
+      metadata: { code: "STEAMHARNESS_WORKER_INTERRUPTED" },
+    });
   }
 
   /**

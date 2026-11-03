@@ -7,6 +7,7 @@ import { readProjectManifestFromDirectory } from '@steamharness/project-manifest
 import { startEntryWebServer, type WebOptions } from './server';
 import type { Project } from './workflow-types';
 import { t } from './localization';
+import type { AggregateEntryCall } from './entry-conversations';
 
 type EntryHost = Awaited<ReturnType<typeof startEntryWebServer>>;
 const escape = (value: string) => value.replace(/[&<>"']/g, value => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[value]!));
@@ -20,6 +21,17 @@ export async function startAggregateWebServer(options: WebOptions) {
   const credentials = { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };
   const entries = new Map<string, EntryHost>(), failures = new Map<string, string>();
   const starting = new Map<string, Promise<void>>();
+  const invokeEntry = async (call: AggregateEntryCall): Promise<unknown> => {
+    if (closing || resetting) throw new Error('The aggregate execution host changed.');
+    call.abortSignal?.throwIfAborted();
+    if (call.projectId !== manifest.projectId) throw new Error("The aggregate project identity changed.");
+    selectProjectEntry(manifest, call.sourceEntryId);
+    const target = selectProjectEntry(manifest, call.entryId);
+    if (target.type !== (call.action === 'workflow' ? 'workflow' : 'conversation')) throw new Error('The entry does not support this operation.');
+    const runtime = entries.get(call.entryId);
+    if (!runtime) throw new Error('The target entry is unavailable.');
+    return runtime.invokeEntry(call);
+  };
   let origin = '', closing = false, resetting: Promise<void> | undefined;
   let host = options.host;
   const catalog = () => ({ projectId: manifest.projectId, name: manifest.name, defaultEntry: manifest.defaultEntry, entries: manifest.entries.map(entry => {
@@ -33,7 +45,15 @@ export async function startAggregateWebServer(options: WebOptions) {
     const pending = (async () => {
       try {
         const runtime = await startEntryWebServer({ ...options, runtimePersistence: options.runtimePersistenceForEntry?.(entryId) ?? options.runtimePersistence, host, projectDir: directory, entryId,
-          mount: { origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset } }, credentials);
+          mount: { origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset, invokeEntry,
+            subscribeConversation(sourceEntryId, targetId, conversationId, listener) {
+              selectProjectEntry(manifest, sourceEntryId);
+              if (closing || resetting || selectProjectEntry(manifest, targetId).type !== 'conversation') throw new Error('The conversation entry is unavailable.');
+              const target = entries.get(targetId);
+              if (!target) throw new Error('The conversation entry is unavailable.');
+              return target.subscribeConversation(conversationId, listener);
+            },
+          } }, credentials);
         if (closing) await runtime.close(); else entries.set(entryId, runtime);
       } catch (error) { failures.set(entryId, error instanceof Error ? error.message : String(error)); }
     })().finally(() => starting.delete(entryId));
@@ -98,6 +118,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
   };
   return {
     origin, url:`${origin}/entries/${selectedId}/#session=${credentials.capability}`,
+    invokeEntry,
     get manifest() { return manifest; }, get project() { return project(); },
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },
     get projectController() { return current()?.projectController; }, get kanbanController() { return current()?.kanbanController; },

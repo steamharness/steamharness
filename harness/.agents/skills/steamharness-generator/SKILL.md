@@ -231,3 +231,7 @@ Kanban scaffold 额外包含 `board-state.js`、`board-storage.js` 和 `tests/*.
 ## 隔离检查与精确版本
 
 测试数据库使用本机 Docker PostgreSQL 与本机 Server，分配专用资源、账号、项目和入口。不得复用宿主实际资源或删除其数据。通过 --entry 选择运行入口；会话使用独立 conversationId/sessionKey。安装依赖时查询所选通道并固定可用的精确版本。
+
+## 多 Bot 聚合工作台
+
+Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Conversation 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。详细接口与隔离要求见 API 参考。

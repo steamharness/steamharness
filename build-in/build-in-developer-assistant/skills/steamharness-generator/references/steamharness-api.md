@@ -1472,3 +1472,31 @@ Native tool 用 `steamharness.readAgentWorkContext(api, ctx)` 获取获授权的
 
 - **运行历史仓储。** 默认 `createLocalRuntimePersistence({ directory })` 提供 list(kind)、acquire(scope,onLost)、agentStorage、agentSessions、exportSession、importSession、deleteSession、close；history kind 为 conversation/run/workflow/state，带 revision 与消息、队列、事件和值子记录，删除保留墓碑。本地使用 SQLite 事务与按会话独占文件锁，进程退出自动释放；可信宿主可通过 storage.local.runtimePersistence 或 storage.server.runtimePersistence 注入仓储。显式云端使用 `createServerRuntimePersistence({serverUrl,token,workspace,resolveProject:true})`，仍逐次鉴权并在撤权/租约失效时停止，不静默换后端。测试可显式用 createMemoryRuntimePersistence。按需备份用 `copyRuntimePersistence({ source, target })`，宿主可后台执行并报告失败；源会话须空闲，目标为空，不阻塞本地写入；这是一次性快照复制，不是连续同步，不复制附件和工作区文件。CLI/Studio 不为历史持久化要求联网。
 - **运行存储快照。** 从 steamharness/agent 导入 exportAgentSession({persistence,conversationId}) / importAgentSession({persistence,conversationId,sessionKey,snapshot})，格式为 steamharness.agent-session version 1，保留 commit 顺序、文档历史、ID watermark；活动源 owner 可只读导出，导入要求新会话。forkStoredAgentConversation、isolateStoredAgentConversation、cancelStoredAgentConversation、deleteStoredAgentConversation 替代默认宿主的文件路径助手，不加载模型或迁移旧文件；源活动时 fork 命令仍交给 owner。文件与附件独立保存和备份。
+
+## 本地 Conversation 入口控制
+
+CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Conversation，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
+
+```ts
+const bot = context.entries.conversations.get("assistant");
+const receipt = await bot.submit({
+  conversationId: "support-room", requestId: "stable-request-id", text: "整理待办",
+});
+const snapshot = await bot.snapshot(receipt.conversationId);
+// 其它操作：list()、resolveInput({ conversationId, messageId, requestId, values })、
+// cancel({ conversationId, requestId })、resumeQueue({ conversationId, requestId })。
+```
+
+`submit` 在输入持久化后返回 `{ conversationId, requestId, messageId, status }`，不等待模型；相同会话与请求 ID 的相同内容不会重复执行，不同内容会失败。省略参数时复用该会话的参数与宿主模型默认值。失败、停止或重开保留队列，显式调用 `resumeQueue` 后继续。项目可用 `conversation.recovery: { enabled: true, startup: "manual" }` 要求重开后的未完成轮次也等待恢复；默认 `automatic` 保持原恢复行为。
+
+快照含 `ownerId`、递增 `revision`、消息、待确认请求、运行状态和 FIFO 队列位置。消费者拒绝旧 revision，并在 owner 更换后丢弃退休 owner 的结果。宿主凭据、用户设置和运行参数不会进入此投影。业务共享聊天可以保存投影与回执，执行历史仍以 Core 为准。
+
+`context.entries.caller` 是可信直接调用来源 `{ entryId, conversationId?, runId? }`；由宿主或 Core 设置，不从业务参数读取。Bot 身份应从此来源及受控会话关联识别。调用保留用户、项目、权限和取消信号，并再次验证目标授权。单独命令运行或 Server 静态预览没有执行宿主，返回 `ENTRY_RUNTIME_UNAVAILABLE`；Server 不执行项目代码。
+
+## 调用聚合内 Workflow 与订阅会话
+
+在本地 CLI Web 或 Studio 中，页面通过 `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])` 调用已登记 Workflow 的操作。页面不能指定用户或项目身份；数据写入与消息路由可以统一放在该 Workflow 中。
+
+`conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
+
+Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNTIME_UNAVAILABLE`，页面应提示使用本地 CLI Web / Studio。对话中的只读资源预览保持原数据访问边界。

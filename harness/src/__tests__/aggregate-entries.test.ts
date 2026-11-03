@@ -72,3 +72,21 @@ test("entry configuration identities differ and nested calls load target configu
     if (report.result.ok) assert.deepEqual({ ...(report.result.data as any).output, items: undefined }, { errCode: 0, errMessage: "", entryId: "two", label: "two", actor: { userId: "alice", isSystemAdmin: false }, items: undefined });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('Conversation entry control preserves trusted provenance, permissions and cancellation', async () => {
+  const manifest = { projectId:'aggregate',name:'test',defaultEntry:'chat',entries:[{entryId:'chat',type:'conversation' as const,name:'chat',root:'.',entry:'chat.ts',databases:[]}] };
+  const abort = new AbortController(), calls: unknown[]=[];
+  const identity={actor:{userId:'alice',isSystemAdmin:false},projectId:'aggregate',sourceEntryId:'api',sourceConversationId:'caller',sourceRunId:'turn',abortSignal:abort.signal};
+  const entries=createEntriesContext(manifest,identity,{list:async()=>[],run:async()=>{}},{invoke:async(entry,action,input,actor)=>{calls.push({entry,action,input,actor});return {conversationId:'target',requestId:'r',messageId:'r',status:'accepted'};}},{entryId:'board'});
+  assert.equal(entries.caller?.entryId,'board');assert.ok(Object.isFrozen(entries.caller));
+  await entries.conversations.get('chat').submit({conversationId:'target',requestId:'r',text:'hello'});
+  assert.deepEqual((calls[0] as any).actor,identity);
+  assert.throws(()=>entries.get('chat'),/Workflow/);
+  abort.abort(new Error('caller stopped'));
+  await assert.rejects(entries.conversations.get('chat').snapshot('target'),/caller stopped/);
+  assert.equal(calls.length,1);
+  const unavailable=createEntriesContext(manifest,{...identity,abortSignal:undefined},{list:async()=>[],run:async()=>{}});
+  await assert.rejects(unavailable.conversations.get('chat').list(),{code:'ENTRY_RUNTIME_UNAVAILABLE'});
+  const disabled=createEntriesContext(manifest,{...identity,abortSignal:undefined,toolPermissions:{getTool:()=>({enabled:false})} as any},{list:async()=>[],run:async()=>{}},{invoke:async()=>{throw new Error('must not execute');}});
+  await assert.rejects(disabled.conversations.get('chat').list(),/disabled/);
+});

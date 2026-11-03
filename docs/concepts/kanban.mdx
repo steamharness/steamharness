@@ -59,3 +59,11 @@ CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；S
 发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库资源](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。
 
 知识库必须独立声明 `knowledgeBases: ["docs"]`，根配置映射 `knowledgeBases.docs`，并建立 Server 绑定。可在 `knowledgeBases.get("docs").subscribe(...)` 订阅不透明修订号；同名业务库 alias 的更新不会触发此订阅。
+
+## 调用聚合内 Workflow 与订阅会话
+
+在本地 CLI Web 或 Studio 中，页面通过 `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])` 调用已登记 Workflow 的操作。页面不能指定用户或项目身份；数据写入与消息路由可以统一放在该 Workflow 中。
+
+`conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
+
+Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNTIME_UNAVAILABLE`，页面应提示使用本地 CLI Web / Studio。对话中的只读资源预览保持原数据访问边界。
