@@ -181,6 +181,8 @@ await db.task.delete({ key: { id: row.values.id }, rowVersion: row.rowVersion })
 
 入口必须声明 `databases: ["data"]` 并完成资源迁移与账号绑定。页面只传描述符、模型和结构化请求；账号密钥、SQL 凭据和数据库连接串保留在可信宿主。每次查询重新检查绑定 ID、版本、账号授权与 schemaHash；旧客户端在绑定或授权变化后失效。Browser 仅提供表级 `rows/insert/update/delete`，不提供 Node 的关系查询或事务。行更新与删除必须携带完整键与 rowVersion，冲突保留草稿并要求重新读取。
 
+同一绑定或同一资源的多个表请求可以并发提交；Server 在执行 SQL 前按绑定和资源锁排队，每次锁等待最多 5 秒，超时返回 `DATABASE_BUSY`。取得锁后重新检查绑定、授权版本与模型指纹。该等待不会重放已执行的写入；更新冲突仍通过 `rowVersion` 拒绝。
+
 看板模板先执行 `database generate` 再构建 `dist/index.html`。任务保存在 `Task` 行中，并按 configurationId 过滤。未绑定、断连或读取失败会显示错误并禁止编辑，不切换临时本地模式。旧 KV、PersistentValue、本地 KV 和 KV 工具已移除，不自动迁移旧数据。
 
 ## 构建与分发

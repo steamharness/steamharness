@@ -1349,8 +1349,9 @@ function readConfigurationRevisions(input: unknown): Record<string, number> | un
   const value = readRequiredRecord(input, "expectedConfigurationRevisions");
   return Object.fromEntries(Object.entries(value).map(([entryId, revision]) => {
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new HttpError(400, 400, "Invalid entryId.");
-    const parsed = readOptionalNonNegativeInteger(revision, `expectedConfigurationRevisions.${entryId}`);
-    if (parsed === undefined) throw new HttpError(400, 400, "Configuration revisions must be non-negative integers.");
-    return [entryId, parsed];
+    if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+      throw new HttpError(400, 400, `expectedConfigurationRevisions.${entryId} must be a non-negative integer.`);
+    }
+    return [entryId, revision];
   }));
 }

@@ -182,7 +182,7 @@ JSON 父路径不发布、子路径单独发布时，子路径仍保留继承的
 - `POST /api/projects/:id/configurations` 支持 `publication.save`（`revision` 加 `publication`，草稿包含自身 `revision`、字段、配置集和 `defaultConfigurationId`）和 `publication.preview`。草稿版本冲突返回 HTTP 409。
 - `GET /api/projects/:id/configurations/template?target=1.0.0` 只读取已发布模板。
 - `POST /api/projects/:id/configurations/files?target=1.0.0&key=background&fileName=map.png&mimeType=image/png` 按指定版本权限上传个人配置附件；`GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` 只读取授权附件。
-- 发布 `POST /api/projects/:id/publish` 时携带 `expectedSourceHash`、`expectedVersion` 和 `expectedConfigurationRevision`；后者是发布草稿版本。
+- 发布 `POST /api/projects/:id/publish` 时携带 `expectedSourceHash`、`expectedVersion` 和 `expectedConfigurationRevisions`；后者按 `entryId` 提交各入口的发布草稿版本，使用 JSON 非负安全整数，例如 `{ "users": 0, "board": 3 }`。
 
 Studio Control 的 `get_configurations` 会返回权限，`preview: true` 返回接收者预览；`manage_configurations` 支持 `publication.save`。这些操作不依赖面板打开，官方修改必须连接原项目的 Server 并联网；只读模式拒绝所有写入。
 

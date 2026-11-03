@@ -181,6 +181,19 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     const resolved = await repository.resolveQueryBinding("owner", { ...identity, schemaHash: initial.schemaHash });
     const consumer = { ...identity, binding, accessRevision: resolved.accessRevision, schemaHash: initial.schemaHash };
     assert.equal((await repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, consumer) as any).mode, 'read');
+    const queries = await Promise.all(Array.from({ length: 6 }, async () => {
+      const current = await repository.resolveQueryBinding('owner', { ...identity, schemaHash: initial.schemaHash });
+      return repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, { ...consumer, accessRevision: current.accessRevision }) as Promise<any>;
+    }));
+    assert.deepEqual(queries.map(result => result.total), [1, 1, 1, 1, 1, 1], 'concurrent reads queue on the same binding');
+    assert.deepEqual((await Promise.all(Array.from({ length: 4 }, () => run({ operation: 'rows', model: 'Record' })))).map(result => result.total), [1, 1, 1, 1], 'unbound table management reads also queue');
+    const contested = await run({ operation: 'insert', model: 'Record', data: { ...data, id: 'contested' } });
+    const edits = await Promise.allSettled(['first edit', 'second edit'].map(title => run({ operation: 'update', model: 'Record', key: { id: 'contested' }, rowVersion: contested.rowVersion, data: { title } })));
+    assert.equal(edits.filter(result => result.status === 'fulfilled').length, 1);
+    const rejected = edits.find(result => result.status === 'rejected') as PromiseRejectedResult;
+    assert.equal(rejected.reason.code, 'DATABASE_QUERY_FAILED', 'the second edit reaches the stale row check instead of failing with DATABASE_BUSY');
+    const winner = edits.find(result => result.status === 'fulfilled') as PromiseFulfilledResult<any>;
+    await run({ operation: 'delete', model: 'Record', key: { id: 'contested' }, rowVersion: winner.value.rowVersion });
     await assert.rejects(repository.data('owner', c.id, { operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }, consumer), { code: 'DATABASE_ACCESS_DENIED' });
     await repository.unbind('owner', identity);
     await assert.rejects(repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, consumer), { code: 'DATABASE_BINDING_CHANGED' });
@@ -192,6 +205,7 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     try {
       await client.query("select pg_advisory_lock(hashtextextended($1,0))", [key]);
       await assert.rejects(repository.issueCredentials("owner", a.id), { code: "DATABASE_BUSY" });
+      await assert.rejects(repository.data('owner', a.id, { operation: 'rows', model: 'User', schemaHash: first.schemaHash }), { code: 'DATABASE_BUSY' }, 'data lock waits remain bounded');
     } finally { await client.query("select pg_advisory_unlock(hashtextextended($1,0))", [key]); client.release(); }
     const unmanaged = `unmanaged_${randomUUID().replaceAll("-", "")}`;
     await admin.query(`create database "${unmanaged}" template template0`);

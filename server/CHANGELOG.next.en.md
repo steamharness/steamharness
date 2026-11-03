@@ -1,5 +1,8 @@
 # Unreleased
 
+- Fixed concurrent table requests and Browser binding resolution by waiting for database locks before execution. Authorization and models are revalidated after waiting, and stale row edits remain rejected.
+- Fixed aggregate publication accepting JSON numeric configuration revisions for each entry, including the initial revision 0, restoring CLI and Studio upload/publication flows.
+
 - Fixed table data consistency for UTC dates, mapped enums and lists. Database privileges and per-step authorization protect migration history, and usage statistics preserve metadata containing special Unicode.
 
 - Changed: remove legacy KV, database-space and project KV endpoints. Browser table queries validate the account, binding, access revision and model fingerprint on every call; rebinding and revocation invalidate existing clients.

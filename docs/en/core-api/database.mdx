@@ -172,6 +172,8 @@ Import a descriptor from the generated `browser/index.js`, bundle it, and call `
 
 Declare the alias in the entry's `databases`, deploy migrations, and bind the resource first. The trusted host retains credentials and validates the binding, account grants, and schema fingerprint on every request. Changed bindings and grants invalidate retained clients; row conflicts require a fresh read while preserving the draft.
 
+Multiple table requests for the same binding or resource may be submitted concurrently. Before executing SQL, Server queues on binding and resource locks, waiting up to 5 seconds per lock before returning `DATABASE_BUSY`. Binding identity, access revision, and the model fingerprint are checked again after acquiring the locks. Waiting never replays an executed write; stale updates are still rejected through `rowVersion`.
+
 Task templates generate descriptors before building `dist/index.html` and store `Task` rows filtered by configurationId. Unbound resources and failed reads disable editing with an explicit error. Legacy KV, PersistentValue, local KV, and KV tools are removed without compatibility or automatic migration.
 
 ## Build and distribute

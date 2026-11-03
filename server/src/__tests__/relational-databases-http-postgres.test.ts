@@ -171,7 +171,7 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   const reader = await readerConnector.connect(descriptor); assert.equal(await reader.user.count(), 2);
   const browserAttempt = await fetch(`${base}/api/databases/connections`, { method: "POST", headers: { Authorization: `Bearer ${ownerToken}`, "Content-Type": "application/json", Origin: "https://browser.example.test" }, body: JSON.stringify({ ...scope, schemaHash: descriptor.schemaHash }) });
   assert.equal(browserAttempt.status, 403);
-  const browserDescriptor = (await import(pathToFileURL(path.join(project, ".steamharness/generated/database/browser/index.js")).href)).main as DatabaseDescriptor<'main', { user: DatabaseTable<any> }, 'browser'>;
+  const browserDescriptor = (await import(pathToFileURL(path.join(project, ".steamharness/generated/database/browser/index.js")).href)).main as DatabaseDescriptor<'main', { user: DatabaseTable<any>; post: DatabaseTable<any> }, 'browser'>;
   const browser = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, scope)).connect(browserDescriptor);
   const browserReader = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: otherToken }, scope)).connect(browserDescriptor);
   assert.equal(Reflect.get(browser.user, 'findMany'), undefined);
@@ -179,6 +179,11 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   assert.equal(read.total, 1); assert.equal(read.items[0].values.count, '9007199254740993');
   assert.equal(read.items[0].values.balance, '12.34'); assert.equal(read.items[0].values.payload, 'AAH/');
   assert.equal((await browserReader.user.rows()).total, 2);
+  const parallelClients = await Promise.all(Array.from({ length: 4 }, () => createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, scope)).connect(browserDescriptor)));
+  assert.deepEqual((await Promise.all(parallelClients.map(client => client.user.rows()))).map(result => result.total), [2, 2, 2, 2], 'independent Browser clients resolve and read one binding concurrently');
+  const otherBrowser = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, { projectId, entryId: 'other' })).connect(browserDescriptor);
+  const concurrentPages = await Promise.all([browser.user.rows(), browser.post.rows(), otherBrowser.user.rows(), browserReader.user.rows()]);
+  assert.deepEqual(concurrentPages.map(result => result.total), [2, 1, 2, 2], 'different models, bindings and accounts can read the same resource together');
   await assert.rejects(browserReader.user.insert({ id: randomUUID(), name: 'denied-browser-write' }), { code: 'DATABASE_ACCESS_DENIED' });
   assert.equal(read.items[0].values.status, 'DISABLED', 'mapped enums use authored values in both clients');
   const instant = '2026-11-03T04:05:06.789Z', offsetInstant = '2026-11-03T12:05:06.789+08:00';

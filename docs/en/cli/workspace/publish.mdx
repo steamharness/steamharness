@@ -11,6 +11,8 @@ pnpm exec steamharness workspace publish <project-id> --release-log "Update entr
 
 One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
 
-Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
+Archives exclude credentials, host runtime data, Git and node_modules while retaining database aliases and model definitions. Server manages relational bindings by account, project, entry and alias; archives contain neither connection credentials nor business data. Request resource access and bind entries again when changing accounts or Servers.
 
 Publication uses the prepared draft root `steamharness.json.version` and creates an immutable snapshot. A version cannot be republished. Entries share one version and source hash. Server handles static data only.
+
+Before publishing, CLI reads each entry's configuration and submits `expectedConfigurationRevisions` keyed by `entryId` (non-negative JSON safe integers, initially 0) together with the source hash. Server rejects publication when source or configuration changes concurrently.

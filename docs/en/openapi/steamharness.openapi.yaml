@@ -264,7 +264,7 @@ paths:
     post:
       tags: [Relational Databases]
       summary: "Manage applied model rows"
-      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01. Enums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. No raw SQL or relation mutation input is accepted."
+      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01. Enums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. Concurrent requests queue before SQL execution, with a 5-second wait per database lock and DATABASE_BUSY on timeout. Executed writes are not replayed. No raw SQL or relation mutation input is accepted."
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -286,7 +286,7 @@ paths:
     post:
       tags: [Relational Databases]
       summary: "Query rows through a pinned consumer binding"
-      description: "Same bounded table operations as data, additionally requiring the current account/project/entry/alias binding. Read bindings cannot write. The generated Browser table client uses this structured protocol; accessRevision invalidates clients after grant changes."
+      description: "Same bounded table operations as data, additionally requiring the current account/project/entry/alias binding. Read bindings cannot write. The generated Browser table client uses this structured protocol; accessRevision invalidates clients after grant changes. Concurrent requests queue on binding and resource locks for up to 5 seconds per lock; DATABASE_BUSY means the wait expired before execution. Binding, access revision and schema are revalidated after waiting; executed writes are never replayed."
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -342,7 +342,7 @@ paths:
         default:
           $ref: "#/components/responses/HarnessError"
   /api/databases/bindings/resolve:
-    post: {"tags":["Relational Databases"],"summary":"Resolve an entry alias for a generated Browser table client","description":"Pins binding identity, mode, schemaHash and account accessRevision. No SQL credential is returned. Rebinding, unbinding, revocation and model changes invalidate old clients.","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"Success.","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
+    post: {"tags":["Relational Databases"],"summary":"Resolve an entry alias for a generated Browser table client","description":"Pins binding identity, mode, schemaHash and account accessRevision. Concurrent resolutions queue for up to 5 seconds per binding or resource lock before returning DATABASE_BUSY. No SQL credential is returned. Rebinding, unbinding, revocation and model changes invalidate old clients.","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"Success.","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
   /api/databases/bindings:
     get:
       tags: [Relational Databases]
@@ -2759,11 +2759,15 @@ paths:
                   description: Prepared source hash, required with configuration publication drafts. Changed source returns 409
                     without creating a version.
                   pattern: ^[a-f0-9]{64}$
-                expectedConfigurationRevision:
-                  type: integer
-                  minimum: 0
-                  description: Required when a publication draft exists. Must match its revision; the referenced personal
-                    configuration revision must also remain unchanged.
+                expectedConfigurationRevisions:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  example: { users: 0, board: 3 }
+                  description: Maps each entryId to its publication draft revision as a non-negative JSON safe integer (initially 0).
+                    Must match each draft revision; the referenced personal configuration revision must also remain unchanged.
       responses:
         "200":
           description: Publish the results.

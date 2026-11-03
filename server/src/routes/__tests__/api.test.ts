@@ -576,10 +576,18 @@ test("publish endpoint forwards exact version and source preconditions", async (
   try {
     const response = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
+      body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevisions: { users: 0, board: 3 } }),
     });
     assert.equal(response.errCode, 0);
-    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevisions:undefined, administrator: false, createdByUserId: "user-1" }]);
+    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevisions: { users: 0, board: 3 }, administrator: false, createdByUserId: "user-1" }]);
+    for (const revision of [-1, 0.5, "0", null, true, [], Number.MAX_SAFE_INTEGER + 1]) {
+      const rejected = await fetchJson(server.url("/api/projects/demo/publish"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedConfigurationRevisions: { users: revision } }),
+      });
+      assert.equal(rejected.errCode, 400);
+      assert.equal(published.length, 1);
+    }
     const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
