@@ -1,5 +1,6 @@
 # Unreleased
 
+- Generator documents local entry discovery and native Conversation mounting, including business submission receipts, session isolation, and view disposal.
 - Generator templates and guidance group entry builds and database generation under the same source root namespace.
 
 - Generator guidance covers reserved entry names, isolated package staging, and complete download validation.

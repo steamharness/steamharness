@@ -53,7 +53,8 @@ function initialize(): void {
   if (app.dataset.initialized === 'true') { return; }
   const vscode = acquireProjectHost({ connectionBanner: false });
   const fileIcons = new FileIcons(message => { void vscode.postMessage(message); });
-  const viewQuery = new URLSearchParams(location.search);
+  const embeddedConversation = document.querySelector<HTMLMetaElement>('meta[name=steamharness-conversation-view]')?.content;
+  const viewQuery = new URLSearchParams(embeddedConversation ? `projectView=embedded&conversationId=${encodeURIComponent(embeddedConversation)}` : location.search);
   const conversationView = viewQuery.has('projectView');
   let initialConversation = conversationView ? viewQuery.get('conversationId') : undefined;
   const createInitialConversation = viewQuery.get('createConversation') === '1';
@@ -630,7 +631,7 @@ function initialize(): void {
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : sendBlocked() ? 'submitting' : 'idle';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
-    attach.hidden = !conversation;
+    attach.hidden = !conversation || !!embeddedConversation;
     attach.disabled = busy() || uploading > 0 || !navigationReady() || !connectionAvailable;
     if (attach.hidden || attach.disabled) fileMenu.close();
     const dropTarget = conversation && connectionAvailable && navigationReady() && !busy() ? dropScope() : undefined;
@@ -1122,7 +1123,7 @@ function initialize(): void {
     else { updateProjectAvatar(view.avatar, state!.project); }
     view.root.classList.toggle('streaming', message.status === 'running' || message.status === 'sending');
     view.root.querySelector<HTMLElement>('.message-actions')!.hidden = message.role === 'assistant' && !messageSettled(message);
-    for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
+    for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message) || !!embeddedConversation && action.classList.contains('export-message');
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
     else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled); }
@@ -1134,7 +1135,7 @@ function initialize(): void {
     if (view.configureModel) view.configureModel.hidden = !configureModel;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content && !message.references?.length;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
-    if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable || serverBlocked(); }
+    if (fork) { fork.hidden = !!embeddedConversation || !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable || serverBlocked(); }
     const signature = JSON.stringify([message.attachments, message.references]);
     if (signature !== view.extrasSignature) {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
@@ -1699,7 +1700,7 @@ function initialize(): void {
     }
     if (message.type === 'sent' && message.requestId && state?.project.projectType === 'conversation' && message.projectUri === state.project.uri) {
       const submission = submissions.get(message.requestId);
-      if (submission?.sessionId === message.sessionId) submissions.accept(message.requestId);
+      if (submission?.sessionId === message.sessionId) submissions.accept(message.requestId, message.receiptId);
       persist(); updateControls(); return;
     }
     if (message.type === 'error' && message.requestType === 'send' && message.requestId && state?.project.projectType === 'conversation') {

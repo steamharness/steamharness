@@ -11,7 +11,7 @@ import { iconHtml, iconButton } from './ui';
 import { narrowMenuDismiss, projectInfoButton } from './toolbar';
 import {
   createKanbanMethodSession, parseKanbanBridgeCall, createKanbanBridgeError,
-  KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
+  KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE, KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
   type KanbanInjectedConfiguration, type KanbanPresentationMode,
 } from '@steamharness/kanban-project';
 import { projectParamValue, type Project, type ParamValues } from '../workflow-types';
@@ -64,11 +64,13 @@ const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
 function persist(): void { host.setState({ mode, sizes }); }
 function menu(_open: boolean): void { app.classList.remove('menu-open'); layoutPreview(); }
 function request(message: Message): Promise<Message> {
-  if (!connected) { return Promise.reject(new Error(t("Connection interrupted."))); }
+  if (!connected) { return Promise.reject(Object.assign(new Error(t("Connection interrupted.")), { code: 'KANBAN_BRIDGE_UNAVAILABLE' })); }
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
-    const timeout = message.type === 'project-server-check' ? 180_000 : message.call?.operation?.startsWith('files.') ? 120_000 : 20_000;
-    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t("The request timed out. Check the current status."))); }, timeout);
+    const timeout = message.type === 'project-server-check' ? 180_000
+      : ['entries.runEntrypoint', 'conversations.viewMessage'].includes(message.call?.operation) ? KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS
+      : message.call?.operation?.startsWith('files.') ? 120_000 : 20_000;
+    const timer = setTimeout(() => { pending.delete(requestId); reject(Object.assign(new Error(t("The request timed out. Check the current status.")), { code: 'KANBAN_BRIDGE_TIMEOUT' })); }, timeout);
     pending.set(requestId, { resolve, reject, timer }); host.postMessage({ projectUri: project?.uri, ...message, requestId });
   });
 }
@@ -212,12 +214,16 @@ window.addEventListener('message', event => {
       .finally(() => methodCalls.delete(message.requestId)); return;
   }
   if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); return; }
+  if (message.type === 'kanban-conversation-view') {
+    if (state?.preview.nonce === message.nonce) frame.contentWindow?.postMessage({ ...message, type: 'steamharness:kanban-conversation-view' }, '*');
+    return;
+  }
   if (message.type === 'kanban-conversation') {
     if (state?.preview.nonce === message.nonce) frame.contentWindow?.postMessage({ ...message, type: 'steamharness:kanban-conversation' }, '*');
     return;
   }
-  if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
-  if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.close(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
+  if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(Object.assign(new Error(message.message), { code: message.connectionError ? 'KANBAN_BRIDGE_UNAVAILABLE' : message.code })) : waiting.resolve(message); }
+  if (message.type === 'connection') { frame.contentWindow?.postMessage({type:'steamharness:kanban-conversation-view-connection',nonce:state?.preview.nonce,status:message.status},'*'); connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.close(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(Object.assign(new Error(t("Connection interrupted.")), { code: 'KANBAN_BRIDGE_UNAVAILABLE' })); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') {
     if (!stateRevisions.accept(message)) return;
     if (message.serverInstanceId !== serverInstanceId) { state = undefined; previewKey = ''; authRevision = -1; }

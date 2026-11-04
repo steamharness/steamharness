@@ -84,6 +84,43 @@ it.each(['en', 'zh-CN'] as const)('connects the real Kanban host without a sideb
   expect(status.hidden).toBe(true); expect(status.dataset.error).toBe('false');
 });
 
+it.each(['entries.runEntrypoint', 'conversations.viewMessage'])('keeps the Workflow receipt window through the Kanban page adapter (%s)', async operation => {
+  const { sources, sendState, fetcher } = await fixture('en');
+  sources[0]!.onopen!(); sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  const posted = vi.spyOn(frame.contentWindow!, 'postMessage');
+  let finish!: () => void;
+  fetcher.mockImplementationOnce((_url, options) => new Promise(resolve => {
+    const message = JSON.parse(options.body);
+    finish = () => resolve({ ok: true, status: 200, json: async () => ({ messages: [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: 'durable receipt' }] }) });
+  }));
+  window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, data: {
+    type: 'steamharness:kanban-bridge-request', nonce: 'first', requestId: 'slow-receipt', operation,
+    input: operation === 'entries.runEntrypoint' ? { entryId: 'api', entrypointId: 'send', args: [], requestId: 'submit' } : { viewId: 'view', message: { type: 'send' } },
+  } }));
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(finish).toBeTypeOf('function');
+  expect(posted.mock.calls.filter(([message]) => message.type === 'steamharness:kanban-bridge-response')).toHaveLength(0);
+  finish(); await vi.advanceTimersByTimeAsync(1);
+  expect(posted).toHaveBeenCalledWith(expect.objectContaining({ type: 'steamharness:kanban-bridge-response', requestId: 'slow-receipt', ok: true, value: 'durable receipt' }), '*');
+});
+
+it('preserves a transport interruption code when a pending native view request is cancelled', async () => {
+  const { sendState, fetcher, sources } = await fixture('en');
+  sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  const posted = vi.spyOn(frame.contentWindow!, 'postMessage');
+  fetcher.mockImplementationOnce(() => new Promise(() => {}));
+  window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, data: {
+    type: 'steamharness:kanban-bridge-request', nonce: 'first', requestId: 'interrupted-native',
+    operation: 'conversations.viewMessage', input: { viewId: 'view', message: { type: 'navigate' } },
+  } }));
+  sources[0]!.onerror!();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(posted).toHaveBeenCalledWith(expect.objectContaining({ type: 'steamharness:kanban-bridge-response',
+    requestId: 'interrupted-native', ok: false, error: expect.objectContaining({ code: 'KANBAN_BRIDGE_UNAVAILABLE' }) }), '*');
+});
+
 it('offers retry when an iframe fails to become ready and recovers on a fresh preview', async () => {
   const { sendState } = await fixture('en'); sendState(1);
   const status = document.getElementById('preview-status')!;

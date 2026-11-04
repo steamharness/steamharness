@@ -7,6 +7,7 @@ import {
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS,
   KANBAN_BRIDGE_REQUEST_MESSAGE,
   KANBAN_BRIDGE_REQUEST_TIMEOUT_MS,
+  KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_BRIDGE_RESPONSE_MESSAGE,
   KANBAN_DATABASE_REVISION_MESSAGE,
   KANBAN_PREVIEW_READY_MESSAGE,
@@ -161,7 +162,7 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
       const requestTimeout = window.setTimeout(() => finish({
         ok: false,
         error: { code: "KANBAN_BRIDGE_TIMEOUT", message: i18n.t("kanbanBridgeTimedOut") },
-      }), KANBAN_BRIDGE_REQUEST_TIMEOUT_MS);
+      }), ["entries.runEntrypoint", "conversations.viewMessage"].includes(call.operation) ? KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS : KANBAN_BRIDGE_REQUEST_TIMEOUT_MS);
       timeouts.add(requestTimeout);
       void Promise.resolve().then(() => handler(call))
         .then((value) => finish({ ok: true, value }))

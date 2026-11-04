@@ -109,3 +109,13 @@ describe('Immediate conversation submission', () => {
     expect(restored.list()).toEqual([]);
   });
 });
+
+it('reconciles a Workflow receipt with its Core input identity without duplicating the preview', () => {
+  const pending = new ConversationSubmissions();
+  pending.add(submission());
+  pending.accept('request', 'durable-receipt');
+  const current = session();
+  current.messages = [{ id: 'durable-receipt', role: 'user', content: 'Inspect file', input: { requestId: 'durable-receipt', text: 'Inspect file', params: {}, attachments: [] } }];
+  expect(pending.project('project', current, true).messages).toHaveLength(1);
+  expect(pending.list()).toEqual([]);
+});

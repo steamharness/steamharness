@@ -214,6 +214,7 @@ export interface Run {
 }
 
 export interface Runtime {
+  openConversationView?: import("./conversation-view").OpenConversationView;
   subscribeConversation?(entryId: string, conversationId: string, listener: (snapshot: import('steamharness').EntryConversationSnapshot) => void): () => void;
   listSkills?(project: Project, entrypointId?: string): Promise<import('steamharness').AgentSkillGuide[]>;
   readSkill?(project: Project, skillId: string, entrypointId?: string): Promise<import('steamharness').AgentSkillPreview>;

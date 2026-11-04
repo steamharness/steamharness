@@ -1,5 +1,6 @@
 # Unreleased
 
+- Kanban can discover local aggregate entries and embed native Conversation chats with streaming, drafts, parameters, queues, approvals, and cancellation. Business Workflows can adapt submissions and durable receipts; each view is bound to one conversation without receiving login credentials. Cancelled requests retain their connection error type without leaving ordinary operation errors after recovery.
 - Exclude AppleDouble filesystem metadata from macOS project packages so database artifact inventories and downloaded sources stay intact.
 
 - Templates, default Kanban entries, uploads, and downloads use build/<entryId>/ under each source root's artifact namespace; frontend builds clean only their own output.

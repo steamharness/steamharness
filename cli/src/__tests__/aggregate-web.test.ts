@@ -204,3 +204,46 @@ it('serves a child Kanban HTML, JavaScript and CSS from aggregate dist over HTTP
   }
   expect((await fetch(new URL('steamharness.json', htmlUrl), { headers })).status).toBe(404);
 });
+
+it('discovers local entries and embeds one existing controller without exposing other sessions or project configuration', async () => {
+  const f = await fixture();
+  const privateKey = 'native-model-secret-for-test';
+  await f.app.setHostUserSettings({ agent: { permissionPolicy: 'read-only', models: [{ id: 'native-model', name: 'Native model', source: 'third-party',
+    apiKind: 'openai-completions', model: 'native-test', apiKey: privateKey, baseUrl: 'http://127.0.0.1:1/v1' }] } });
+  const board = await f.state('board');
+  const bridge = async (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,
+    call: { requestId: randomUUID(), operation, input } });
+  const listed = await bridge('entries.list', {});
+  expect(listed.value.map((entry: any) => entry.entryId)).toEqual(f.entries.map(entry => entry.entryId));
+  const agent = await f.state('agent');
+  const viewId = 'view-isolated', conversationId = 'bot-private-workbench';
+  const opened = await bridge('conversations.openView', { viewId, entryId: 'agent', conversationId, draft: `Native draft ${privateKey}` });
+  expect(opened.ok).toBe(true);
+  expect(opened.value.html).toContain('steamharness-conversation-view');
+  expect(opened.value.html).not.toContain(new URLSearchParams(new URL(f.app.url).hash.slice(1)).get('session'));
+  // A profile check advances the check epoch without changing the identity.
+  await f.call('agent', { type: 'verify' });
+  const ready = await bridge('conversations.viewMessage', { viewId, message: { type: 'ready' } });
+  const snapshot = ready.value.find((message: any) => message.type === 'state');
+  expect(snapshot.activeId).toBe(conversationId);
+  expect(snapshot.sessions).toHaveLength(1);
+  expect(snapshot.sessions[0].draft.text).toContain('Native draft');
+  expect(JSON.stringify(snapshot)).not.toContain(privateKey);
+  expect(snapshot.configurations).toBeUndefined();
+  for (const message of [{ type: 'send', sessionId: agent.activeId, text: 'Forged', params: {} }, { type: 'project-configuration', call: { action: 'save' } }])
+    expect((await bridge('conversations.viewMessage', { viewId, message })).ok).toBe(false);
+  await bridge('conversations.closeView', { viewId });
+  expect((await bridge('conversations.viewMessage', { viewId, message: { type: 'ready' } })).error.code).toBe('KANBAN_BRIDGE_SESSION_INVALID');
+  await bridge('conversations.openView', { viewId, entryId: 'agent', conversationId });
+  const resolved = await bridge('conversations.viewMessage', { viewId, message: { type: 'resolve', params: {} } });
+  expect(resolved.ok).toBe(true);
+  expect(resolved.value.find((message: any) => message.type === 'params')?.error).toBeUndefined();
+  const otherId = 'another-native-view';
+  await bridge('conversations.openView', { viewId: otherId, entryId: 'agent', conversationId });
+  expect((await bridge('conversations.viewMessage', { viewId: otherId, message: { type: 'resolve', params: {} } })).ok).toBe(false);
+  await bridge('conversations.closeView', { viewId: otherId });
+  await bridge('conversations.closeView', { viewId });
+  const native = await f.state('agent');
+  expect(native.sessions.find((session: any) => session.id === conversationId).draft.text).toBe(snapshot.sessions[0].draft.text);
+  expect(native.sessions.some((session: any) => session.id === agent.activeId)).toBe(true);
+});

@@ -48,8 +48,11 @@ import { projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import type { EntryConversationSnapshot } from 'steamharness';
 
+import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
+
 type Message = Record<string, any>;
 export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void;
+  openConversationView?: OpenConversationView;
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
   subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
 }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration }
@@ -82,6 +85,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
+    openConversationView: (...args: Parameters<OpenConversationView>) => current.openConversationView(...args),
     invokeEntry: (call: AggregateEntryCall) => current.invokeEntry(call),
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => current.subscribeConversation(id, listener),
     setHostUserSettings: async (value: UserSettings) => {
@@ -137,12 +141,17 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
   } });
-  const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose' | 'kanbanBridge' | 'subscribeConversation'> = {
+  const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose' | 'kanbanBridge' | 'subscribeConversation' | 'openConversationView'> = {
+    openConversationView: (source, target, emit) => {
+      if (!options.mount?.openConversationView || source.projectId !== project.id || source.entryId !== project.entryId) throw Object.assign(new Error('A local aggregate host is required.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
+      return options.mount.openConversationView({ ...source, userId: account.user?.userId }, target, emit);
+    },
     subscribeConversation: (entryId, id, listener) => {
       if (!options.mount?.subscribeConversation) throw new Error('Conversation entry control requires an aggregate host.');
       return options.mount.subscribeConversation(options.entryId!, entryId, id, listener);
     },
     kanbanBridge: async (source, call, abortSignal) => {
+      if (call.operation === 'entries.list') return (options.mount?.catalog() as { entries?: unknown[] } | undefined)?.entries ?? [];
       if (call.operation === 'entries.runEntrypoint' || call.operation === 'conversations.snapshot') {
         if (!options.mount?.invokeEntry || source.id !== project.id || source.folderPath !== project.folderPath) throw Object.assign(new Error('A local aggregate execution host is required.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
         return options.mount.invokeEntry({ entryId: String(call.input.entryId),
@@ -993,7 +1002,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, 'event: heartbeat\ndata: {}\n\n'); }, 20_000);
           response.once('close', () => {
             clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingStates.delete(response); disconnectKanban?.();
-            if (clientId && ![...clients].some(client => clientIds.get(client) === clientId)) ownership?.disconnect(clientId, broadcast);
+            if (clientId && ![...clients].some(client => clientIds.get(client) === clientId)) { ownership?.disconnect(clientId, broadcast); kanbanController?.disconnectClient(clientId); }
           }); return;
         }
         if (url.pathname === '/api/message' && request.method === 'POST') {
@@ -1093,6 +1102,65 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       }
       finally { release?.(); }
     },
+    openConversationView: (async (source, target, emit) => {
+      if (!controller || !entryConversations || source.projectId !== project.id || source.userId !== account.user?.userId) throw new Error('Conversation runtime is unavailable.');
+      const epoch = authRevision, configuration = parameterRevision, clientId = conversationViewClientId(source.entryId, source.clientId, target.viewId), id = target.conversationId;
+      const lifetime = new AbortController();
+      let closed = false;
+      // Background profile checks advance authEpoch even when identity is unchanged.
+      const check = () => { if (closed || epoch !== authRevision || configuration !== parameterRevision) throw new Error('The conversation view expired. Reopen it.'); };
+      await refreshHistory();
+      check();
+      if (!controller.sessions.some(session => session.id === id)) {
+        await ownership?.assertWritable(id);
+        const release = await ownership?.hold(id);
+        try { check(); await controller.navigate(id, [{ id, create: true, draft: { text: '', attachments: [] } }], false); }
+        finally { release?.(); }
+      }
+      check();
+      const session = controller.sessions.find(session => session.id === id);
+      if (target.draft && session && !session.draft?.text) await controller.updateDraft(id, target.draft, session.draft?.attachments ?? []);
+      check(); rememberSelection(clientId, id);
+      const snapshot = () => {
+        const current = state(clientId);
+        // Project/account configuration is managed by the enclosing host.
+        return { ...current, aggregate: undefined, configurations: undefined,
+          serverData: target.submit ? undefined : current.serverData?.blocking === false ? { ...current.serverData, issue: undefined } : current.serverData,
+          sessions: current.sessions.filter((session: ConversationSession) => session.id === id), activeId: id };
+      };
+      const notify = () => { if (!closed && epoch === authRevision && configuration === parameterRevision) emit([snapshot()]); };
+      entryObservers.add(notify);
+      try {
+        const html = await conversationViewHtml(path.join(cliRoot(), 'dist/web'), target.viewId, id, target.locale ?? locale(), !!target.submit);
+        check();
+        return { html, close: () => { if (closed) return; closed = true; lifetime.abort(); entryObservers.delete(notify); selections.delete(clientId); ownership?.disconnect(clientId, broadcast); },
+          request: async (input: Message): Promise<Message[]> => {
+            check();
+            const message = scopeConversationViewMessage(input, id, project.uri, clientId);
+            if (passiveConversationViewMessage(message.type)) return [];
+            if (message.type === 'ready') return [{ type: 'connection', status: 'connected' }, snapshot()];
+            if (message.type === 'send' && target.submit && !message.editingQueueId) {
+              const adapter = target.submit;
+              if (message.attachments?.length || message.references?.length) throw new Error('This Workflow submission adapter accepts text and parameters.');
+              const result = await options.mount!.invokeEntry!({ projectId: project.id, actor: { userId: source.userId, isSystemAdmin: false }, abortSignal: lifetime.signal,
+                entryId: adapter.entryId, sourceEntryId: source.entryId, action: 'workflow',
+                input: { entrypointId: adapter.entrypointId, args: ['--payload', JSON.stringify({ ...adapter.payload,
+                  conversationId: id, text: message.text, params: message.params, requestId: message.requestId })] } }) as { data?: { errCode?: number; errMessage?: string; data?: { id: string; conversationId: string }[] } };
+              check();
+              if (!result?.data || result.data.errCode !== 0) throw new Error(result?.data?.errMessage || 'The Workflow did not acknowledge the submission.');
+              const receiptId = result.data.data?.find(receipt => receipt.conversationId === id)?.id;
+              if (!receiptId) throw new Error('The Workflow did not return a receipt for this conversation.');
+              return [snapshot(), { type: 'sent', projectUri: project.uri, sessionId: id, requestId: message.requestId, receiptId }];
+            }
+            // Editing a persisted queued input retains its Core identity; Bot context
+            // freezes the edited text when that queued turn actually starts.
+            const replies = await handleMessage(message);
+            check();
+            return replies.map(reply => reply.type === 'state' ? snapshot() : reply);
+          },
+        };
+      } catch (error) { closed = true; lifetime.abort(); entryObservers.delete(notify); selections.delete(clientId); throw error; }
+    }) satisfies OpenConversationView,
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => {
       if (!controller || !storageReady || projectServer?.blocking && !projectServer.ready) throw new Error('Conversation runtime is unavailable.');
       const notify = () => { const session = controller.sessions.find(session => session.id === id); if (session) listener(projectConversation(session)); };

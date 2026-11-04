@@ -235,4 +235,4 @@ Kanban scaffold 额外包含 `board-state.js`、`board-storage.js` 和 `tests/*.
 
 ## 多 Bot 聚合工作台
 
-Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Conversation 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。详细接口与隔离要求见 API 参考。
+Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Conversation 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。首屏通过 `entries.list()` 先发现本地入口，后台加载业务档案。私聊优先使用 `conversations.mount()` 复用原生 Conversation；业务发送使用 submit Workflow 适配，关联真实持久回执，卸载时释放界面。详细接口与隔离要求见 API 参考。

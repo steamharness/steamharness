@@ -81,9 +81,17 @@ export interface KanbanFileReference {
   url?: string;
 }
 
+export interface KanbanConversationViewTarget {
+  entryId: string;
+  conversationId: string;
+  draft?: string;
+  locale?: KanbanRuntimeLocale;
+  submit?: { entryId: string; entrypointId: string; payload: Record<string, KanbanJsonValue> };
+}
+
 export interface KanbanBrowserApi {
-  entries: { get(entryId: string): { runEntrypoint(entrypointId: string, args?: readonly string[], options?: { requestId?: string }): Promise<unknown> } };
-  conversations: { snapshot(entryId: string, conversationId: string): Promise<unknown>;
+  entries: { list(): Promise<{ entryId: string; name: string; type: string; status: string }[]>; get(entryId: string): { runEntrypoint(entrypointId: string, args?: readonly string[], options?: { requestId?: string }): Promise<unknown> } };
+  conversations: { mount(container: HTMLElement, target: KanbanConversationViewTarget): Promise<() => void>; snapshot(entryId: string, conversationId: string): Promise<unknown>;
     subscribe(target: { entryId: string; conversationId: string }, listener: (snapshot: unknown) => void, onError?: (error: Error) => void): () => void };
   getConfiguration(): KanbanInjectedConfiguration;
   getPresentation(): KanbanPresentation;
@@ -116,6 +124,10 @@ export type KanbanJsonValue =
   | { [key: string]: KanbanJsonValue };
 
 export type KanbanBridgeOperation =
+  | "entries.list"
+  | "conversations.openView"
+  | "conversations.viewMessage"
+  | "conversations.closeView"
   | "entries.runEntrypoint"
   | "conversations.snapshot"
   | "conversations.subscribe"
@@ -179,6 +191,10 @@ const MAX_KNOWLEDGE_CONTEXT_LINES = 50;
 const MAX_KNOWLEDGE_LINE_RANGE = 1_000;
 
 const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[]> = {
+  "entries.list": [],
+  "conversations.openView": ["entryId", "conversationId", "viewId", "documentId", "draft", "locale", "submit"],
+  "conversations.viewMessage": ["viewId", "message"],
+  "conversations.closeView": ["viewId"],
   "entries.runEntrypoint": ["entryId", "entrypointId", "args", "requestId"],
   "conversations.snapshot": ["entryId", "conversationId"],
   "conversations.subscribe": ["entryId", "conversationId", "subscriptionId"],
@@ -434,7 +450,8 @@ const pending=new Map();
 const databaseRevisions=new Map();
 const databaseRevisionListeners=new Map();
 const conversationListeners=new Map();
-const clearConversations=()=>{for(const stop of [...conversationListeners.values()].map(value=>value.stop))stop();};
+const conversationViews=new Map();
+const clearConversations=()=>{for(const stop of [...conversationListeners.values()].map(value=>value.stop))stop();for(const view of [...conversationViews.values()])view.stop();};
 const clone=()=>JSON.parse(JSON.stringify(current));
 const createError=(message,code)=>{const error=new Error(message);if(code)Object.defineProperty(error,"code",{value:code,enumerable:true});return error;};
 const invalidRequest=()=>createError("The Kanban bridge request is invalid.","KANBAN_BRIDGE_INVALID_REQUEST");
@@ -457,7 +474,7 @@ const request=(operation,input)=>{
   if(pending.size>=${KANBAN_BRIDGE_MAX_PENDING_REQUESTS})return Promise.reject(createError("Too many Kanban bridge requests are pending.","KANBAN_BRIDGE_BUSY"));
   const requestId=Date.now().toString(36)+"-"+(++sequence).toString(36);
   return new Promise((resolve,reject)=>{
-    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(createError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT"));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:operation==="entries.runEntrypoint"?${KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
+    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(createError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT"));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:(operation==="entries.runEntrypoint"||operation==="conversations.viewMessage")?${KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
     pending.set(requestId,{resolve,reject,timeout});
     try{window.parent.postMessage({type:${requestMessage},nonce:${safeNonce},requestId,operation,input},"*");}
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
@@ -490,14 +507,38 @@ const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
   knowledgeContexts.set(knowledgeBase,context);return context;
 }});
 ${createKanbanMethodsBridgeScript(nonce)}
-const entries=Object.freeze({get:(entryId)=>Object.freeze({runEntrypoint:(entrypointId,args=[],options={})=>request("entries.runEntrypoint",{entryId,entrypointId,args,requestId:options.requestId||Date.now().toString(36)+"-operation-"+(++sequence)})})});
-const conversations=Object.freeze({snapshot:(entryId,conversationId)=>request("conversations.snapshot",{entryId,conversationId}),subscribe:(target,listener,onError)=>{
+const entries=Object.freeze({list:()=>request("entries.list",{}),get:(entryId)=>Object.freeze({runEntrypoint:(entrypointId,args=[],options={})=>request("entries.runEntrypoint",{entryId,entrypointId,args,requestId:options.requestId||Date.now().toString(36)+"-operation-"+(++sequence)})})});
+const conversations=Object.freeze({mount:async(container,target)=>{
+  if(!(container instanceof HTMLElement))throw invalidRequest();
+  const viewId="view-"+Date.now().toString(36)+"-"+(++sequence),frame=document.createElement("iframe");
+  frame.title=(target.locale||document.documentElement.lang)==="zh-CN"?"对话":"Conversation";frame.setAttribute("sandbox","allow-scripts");frame.style.cssText="width:100%;height:100%;border:0;display:block";
+  let closed=false,loaded=false;const backlog=[];
+  const deliver=message=>{if(!closed){if(loaded)frame.contentWindow?.postMessage({type:"steamharness:conversation-message",viewId,message},"*");else backlog.push(message);}};
+  const receive=event=>{
+    if(closed||event.source!==frame.contentWindow||event.data?.viewId!==viewId||event.data.type!=="steamharness:conversation-request")return;
+    if(event.data.message?.type==="view-ready"){loaded=true;for(const message of backlog.splice(0))deliver(message);return;}
+    const message=JSON.parse(JSON.stringify(event.data.message));
+    request("conversations.viewMessage",{viewId,message}).then(messages=>{for(const reply of messages||[])deliver(reply);}).catch(error=>deliver({type:"error",silent:error.code==="KANBAN_BRIDGE_UNAVAILABLE",connectionError:error.code==="KANBAN_BRIDGE_UNAVAILABLE",requestType:message?.type,requestId:message?.requestId,sessionId:target.conversationId,projectUri:message?.projectUri,errorScope:message?.errorScope,message:error.message}));
+  };
+  const theme=()=>deliver({type:"conversation-theme",theme:document.documentElement.dataset.theme||"light"});
+  const stop=()=>{if(closed)return;closed=true;conversationViews.delete(viewId);window.removeEventListener("message",receive);window.removeEventListener("steamharness:kanban-theme-change",theme);frame.remove();request("conversations.closeView",{viewId}).catch(()=>{});};
+  const open=()=>request("conversations.openView",{locale:document.documentElement.lang==="zh-CN"?"zh-CN":"en",...target,viewId,documentId:methodDocumentId});
+  const reconnect=async()=>{try{return await request("conversations.viewMessage",{viewId,message:{type:"ready"}});}catch(error){if(closed||error.code!=="KANBAN_BRIDGE_SESSION_INVALID")throw error;await open();if(closed){request("conversations.closeView",{viewId}).catch(()=>{});return [];}return request("conversations.viewMessage",{viewId,message:{type:"ready"}});}};
+  conversationViews.set(viewId,{deliver,stop,reconnect});window.addEventListener("message",receive);window.addEventListener("steamharness:kanban-theme-change",theme);
+  try{
+    const result=await open();
+    if(closed)return stop;
+    frame.srcdoc=result.html.replaceAll("__STEAMHARNESS_KANBAN_NONCE__",${safeNonce});container.append(frame);theme();
+    return stop;
+  }catch(error){stop();throw error;}
+},snapshot:(entryId,conversationId)=>request("conversations.snapshot",{entryId,conversationId}),subscribe:(target,listener,onError)=>{
   if(typeof listener!=="function")throw invalidRequest();
   const subscriptionId="conversation-"+Date.now().toString(36)+"-"+(++sequence);
   let closed=false;
   const stop=()=>{if(closed)return;closed=true;conversationListeners.delete(subscriptionId);request("conversations.unsubscribe",{subscriptionId}).catch(()=>{});};
-  conversationListeners.set(subscriptionId,{listener,stop,entryId:target.entryId,conversationId:target.conversationId});
-  request("conversations.subscribe",{entryId:target.entryId,conversationId:target.conversationId,subscriptionId}).catch(error=>{if(!closed){stop();if(typeof onError==="function")onError(error);}});
+  const reconnect=()=>request("conversations.subscribe",{entryId:target.entryId,conversationId:target.conversationId,subscriptionId}).catch(error=>{if(!closed&&typeof onError==="function")onError(error);});
+  conversationListeners.set(subscriptionId,{listener,stop,reconnect,entryId:target.entryId,conversationId:target.conversationId});
+  reconnect();
   return stop;
 }});
 window.addEventListener("pagehide",clearConversations);
@@ -505,6 +546,14 @@ Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(handleKanbanMethodMessage(event.data))return;
+  if(event.data.type==="steamharness:kanban-conversation-view-connection"){
+    window.dispatchEvent(new CustomEvent("steamharness:kanban-connection-change",{detail:{status:event.data.status}}));
+    for(const view of conversationViews.values()){view.deliver({type:"connection",status:event.data.status==="connected"?"reconnecting":event.data.status});if(event.data.status==="connected")view.reconnect().then(messages=>{for(const message of messages||[])view.deliver(message);}).catch(error=>view.deliver({type:"error",message:error.message}));}
+    if(event.data.status==="connected")for(const listener of conversationListeners.values())listener.reconnect();return;
+  }
+  if(event.data.type==="steamharness:kanban-conversation-view"){
+    const view=conversationViews.get(event.data.viewId);if(view)for(const message of event.data.messages||[])view.deliver(message);return;
+  }
   if(event.data.type==="steamharness:kanban-conversation"){
     const target=conversationListeners.get(event.data.subscriptionId);
     if(target&&event.data.snapshot?.entryId===target.entryId&&event.data.snapshot?.conversationId===target.conversationId)Promise.resolve().then(()=>{if(conversationListeners.get(event.data.subscriptionId)===target)target.listener(event.data.snapshot);}).catch(()=>{});
@@ -724,6 +773,22 @@ function validateKanbanBridgeInput(
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
   switch (operation) {
+    case "entries.list": return;
+    case "conversations.openView":
+    case "conversations.viewMessage":
+    case "conversations.closeView": {
+      if (JSON.stringify(input).length > 262_144) throw new Error("Conversation view request is too large.");
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(readNonEmptyString(input.viewId, "viewId"))) throw new Error("Invalid view identity.");
+      if (operation === "conversations.openView") {
+        if (input.documentId !== undefined && (typeof input.documentId !== "string" || input.documentId.length > 200)) throw new Error("Invalid view document.");
+        if (typeof input.entryId !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(input.entryId)) throw new Error("Invalid target entry.");
+        if (readNonEmptyString(input.conversationId, "conversationId").length > 200) throw new Error("Invalid conversation identity.");
+        if (input.locale !== undefined && input.locale !== "zh-CN" && input.locale !== "en") throw new Error("Invalid view locale.");
+        if (input.draft !== undefined && (typeof input.draft !== "string" || input.draft.length > 100_000)) throw new Error("Invalid conversation draft.");
+        if (input.submit !== undefined && (!isRecord(input.submit) || Object.keys(input.submit).some(key => !["entryId", "entrypointId", "payload"].includes(key)) || typeof input.submit.entryId !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(input.submit.entryId) || typeof input.submit.entrypointId !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.-]{0,99}$/.test(input.submit.entrypointId) || !isRecord(input.submit.payload) || !isKanbanJsonValue(input.submit.payload))) throw new Error("Invalid Workflow submission adapter.");
+      } else if (operation === "conversations.viewMessage" && (!isRecord(input.message) || !isKanbanJsonValue(input.message))) throw new Error("Invalid conversation message.");
+      return;
+    }
     case "entries.runEntrypoint":
     case "conversations.snapshot":
     case "conversations.subscribe":
@@ -843,7 +908,7 @@ function validateKanbanBridgeInput(
 }
 
 function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation {
-  return value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
+  return value === 'entries.list' || value === 'conversations.openView' || value === 'conversations.viewMessage' || value === 'conversations.closeView' || value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
     value === "studio.getLocalAnalysis" ||
     value === "files.createFile" ||
     value === "files.readFile" ||

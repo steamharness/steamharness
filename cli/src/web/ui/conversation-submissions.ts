@@ -10,6 +10,7 @@ export interface ConversationSubmission {
   mode?: 'followUp' | 'steer';
   phase: 'pending' | 'sending' | 'accepted' | 'failed';
   error?: string;
+  receiptId?: string;
 }
 
 export class ConversationSubmissions {
@@ -61,9 +62,9 @@ export class ConversationSubmissions {
   forMessage(message: ConversationMessage): ConversationSubmission | undefined {
     return this.list().find(entry => this.previews.get(entry.input.id)?.includes(message));
   }
-  accept(id: string): void {
+  accept(id: string, receiptId?: string): void {
     const entry = this.entries.get(id);
-    if (entry && entry.phase !== 'failed') entry.phase = 'accepted';
+    if (entry && entry.phase !== 'failed') { entry.phase = 'accepted'; entry.receiptId = receiptId; }
   }
   fail(id: string, error: string): void {
     const entry = this.entries.get(id);
@@ -86,11 +87,11 @@ export class ConversationSubmissions {
     const messages = session.messages.filter(message => !this.localMessages.has(message));
     let queuedInputs = (session.queuedInputs ?? []).filter(input => !this.localInputs.has(input));
     for (const entry of entries) {
-      const id = entry.input.id;
+      const id = entry.receiptId ?? entry.input.id;
       const confirmed = messages.some(message => message.id === id || message.sessionRequestId === id || message.input?.requestId === id)
         || queuedInputs.some(input => input.id === id || input.requestId === id);
       if (reconcile && confirmed) {
-        this.entries.delete(id); this.previews.delete(id); continue;
+        this.entries.delete(entry.input.id); this.previews.delete(entry.input.id); continue;
       }
       if (entry.queued && entry.phase !== 'failed') {
         queuedInputs = queuedInputs.filter(input => input.id !== entry.replacesId);

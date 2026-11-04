@@ -30,8 +30,15 @@ export class KanbanController {
   private generation = 0;
   private readonly requests = new Set<AbortController>();
   private readonly diagnostics = new KanbanDiagnostics();
+  private readonly viewOwners = new Map<string, { clientId: string; documentId: string }>();
+  private readonly conversationViews = new Map<string, import("./conversation-view").ConversationView>();
   private readonly conversationSubscriptions = new Map<string, () => void>();
-  private clearConversationSubscriptions() { for (const stop of this.conversationSubscriptions.values()) stop(); this.conversationSubscriptions.clear(); }
+  private readonly subscriptionOwners = new Map<string, string>();
+  private clearConversationSubscriptions() { for (const view of this.conversationViews.values()) view.close(); this.conversationViews.clear(); this.viewOwners.clear(); for (const stop of this.conversationSubscriptions.values()) stop(); this.conversationSubscriptions.clear(); this.subscriptionOwners.clear(); }
+  disconnectClient(clientId: string) {
+    for (const [id, owner] of this.viewOwners) if (owner.clientId === clientId) { this.conversationViews.get(id)?.close(); this.conversationViews.delete(id); this.viewOwners.delete(id); }
+    for (const [id, owner] of this.subscriptionOwners) if (owner === clientId) { this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id); this.subscriptionOwners.delete(id); }
+  }
   readonly methods: KanbanMethodHub;
   constructor(readonly project: Project, private readonly runtime: Runtime, private readonly storageDir: string, private readonly hooks: Hooks) {
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
@@ -79,26 +86,54 @@ export class KanbanController {
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
     if (message.type === 'kanban-methods') return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
     if (message.type === 'kanban-bridge') {
-      try { if (message.nonce !== this.preview.nonce) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: await this.bridge(parseKanbanBridgeCall(message.call)) }]; }
+      try { if (message.nonce !== this.preview.nonce) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: await this.bridge(parseKanbanBridgeCall(message.call), message.clientId) }]; }
       catch (error) { return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: createKanbanBridgeError(error) }]; }
     }
     if (message.type === 'kanban-refresh') { await this.refresh(true); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
     throw new Error(`Unsupported Kanban action: ${message.type}`);
   }
-  async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1]): Promise<unknown> {
+  async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1], clientId = 'local'): Promise<unknown> {
     if (this.disposed) throw new Error('Kanban has closed.');
+    if (['conversations.closeView', 'conversations.viewMessage'].includes(call.operation) && this.viewOwners.get(String(call.input.viewId))?.clientId !== clientId) throw Object.assign(new Error('The conversation view expired.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
+    if (call.operation === 'conversations.closeView') {
+      const id = String(call.input.viewId); this.conversationViews.get(id)?.close(); this.conversationViews.delete(id); this.viewOwners.delete(id); return { closed: true };
+    }
+    if (call.operation === 'conversations.viewMessage') {
+      const view = this.conversationViews.get(String(call.input.viewId));
+      if (!view) throw Object.assign(new Error('The conversation view expired.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
+      return view.request(call.input.message as Message);
+    }
+    if (call.operation === 'conversations.openView') {
+      if (!this.runtime.openConversationView) throw Object.assign(new Error('Local execution host unavailable.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
+      const id = String(call.input.viewId), nonce = this.preview.nonce, generation = this.generation;
+      const documentId = String(call.input.documentId ?? clientId);
+      for (const [key, owner] of this.viewOwners) if (owner.clientId === clientId && owner.documentId !== documentId) { this.conversationViews.get(key)?.close(); this.conversationViews.delete(key); this.viewOwners.delete(key); }
+      if (this.viewOwners.has(id) || this.viewOwners.size >= 8) throw new Error('Too many conversation views.');
+      const owner = { clientId, documentId }; this.viewOwners.set(id, owner);
+      try {
+      const view = await this.runtime.openConversationView({ projectId: this.project.id, entryId: this.project.entryId, clientId },
+        call.input as unknown as Parameters<NonNullable<Runtime['openConversationView']>>[1], messages => {
+          if (!this.disposed && generation === this.generation && this.viewOwners.get(id) === owner) this.hooks.emit({ type: 'kanban-conversation-view', nonce, viewId: id, messages });
+        });
+      if (this.disposed || generation !== this.generation || this.viewOwners.get(id) !== owner) { view.close(); throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); }
+      this.conversationViews.set(id, view); return { html: view.html };
+      } catch (error) { if (this.viewOwners.get(id) === owner) this.viewOwners.delete(id); throw error; }
+    }
     if (call.operation === 'conversations.unsubscribe') {
-      const id = String(call.input.subscriptionId); this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id); return { unsubscribed: true };
+      const id = String(call.input.subscriptionId);
+      if (this.subscriptionOwners.has(id) && this.subscriptionOwners.get(id) !== clientId) throw new Error('The conversation subscription expired.');
+      this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id); this.subscriptionOwners.delete(id); return { unsubscribed: true };
     }
     if (call.operation === 'conversations.subscribe') {
       if (!this.runtime.subscribeConversation) throw Object.assign(new Error('Local execution host unavailable.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
       const id = String(call.input.subscriptionId), nonce = this.preview.nonce;
+      if (this.subscriptionOwners.has(id) && this.subscriptionOwners.get(id) !== clientId) throw new Error('The conversation subscription expired.');
       this.conversationSubscriptions.get(id)?.(); this.conversationSubscriptions.delete(id);
       if (this.conversationSubscriptions.size >= 16) throw new Error('Too many conversation subscriptions.');
       const stop = this.runtime.subscribeConversation(String(call.input.entryId), String(call.input.conversationId), snapshot => {
         if (!this.disposed && nonce === this.preview.nonce) this.hooks.emit({ type: 'kanban-conversation', nonce, subscriptionId: id, snapshot });
       });
-      this.conversationSubscriptions.set(id, stop); return { subscribed: true };
+      this.conversationSubscriptions.set(id, stop); this.subscriptionOwners.set(id, clientId); return { subscribed: true };
     }
     if (call.operation === 'runtime.getLocale') return getCurrentLocale();
     const generation = this.generation;

@@ -45,7 +45,14 @@ export async function startAggregateWebServer(options: WebOptions) {
     const pending = (async () => {
       try {
         const runtime = await startEntryWebServer({ ...options, runtimePersistence: options.runtimePersistenceForEntry?.(entryId) ?? options.runtimePersistence, host, projectDir: directory, entryId,
-          mount: { origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset, invokeEntry,
+          mount: { openConversationView: (source, target, emit) => {
+            if (closing || resetting || source.projectId !== manifest.projectId) throw new Error('The aggregate host changed.');
+            selectProjectEntry(manifest, source.entryId);
+            if (selectProjectEntry(manifest, target.entryId).type !== 'conversation') throw new Error('The target is not a Conversation.');
+            const runtime = entries.get(target.entryId);
+            if (!runtime) throw Object.assign(new Error('Conversation entry unavailable.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
+            return runtime.openConversationView(source, target, emit);
+          }, origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset, invokeEntry,
             subscribeConversation(sourceEntryId, targetId, conversationId, listener) {
               selectProjectEntry(manifest, sourceEntryId);
               if (closing || resetting || selectProjectEntry(manifest, targetId).type !== 'conversation') throw new Error('The conversation entry is unavailable.');
