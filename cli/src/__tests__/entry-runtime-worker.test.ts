@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { createWebRuntime } from '../web/runtime';
+import { setTimeout as delay } from 'node:timers/promises';
 import { runtimeStorageService } from './runtime-storage-service';
 import { resolveHarnessRoot } from './harness-source';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
@@ -19,6 +20,7 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     entryRuntime:async call=>{
       calls.push(call);signal=call.abortSignal;
       if(call.input.requestId==='wait')return new Promise((resolve,reject)=>call.abortSignal!.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true}));
+      if(call.input.requestId==='slow')await delay(16_000,undefined,{signal:call.abortSignal});
       return {conversationId:call.input.conversationId,requestId:call.input.requestId,messageId:call.input.requestId,status:'queued'};
     },
   });
@@ -45,7 +47,10 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     expect(calls[0]).toMatchObject({projectId:id,sourceEntryId:'api',sourceConversationId:'api-conversation',sourceRunId:'api-run',actor:{userId:'trusted-user'},action:'submit',entryId:'bot'});
     expect(JSON.stringify(report)).toContain('bot-run');
     waiting=runtime.run({project,conversationId:'cancel-conversation',runId:'cancel-run',args:['--request','wait'],entryCall},()=>{});
-    await expect.poll(()=>calls.length).toBe(2);
+    const slow=await runtime.run({project,conversationId:'slow-conversation',runId:'slow-run',args:['--request','slow'],entryCall},()=>{});
+    expect(slow.status).toBe('success');
+    expect(calls.filter(call=>call.input.requestId==='slow')).toHaveLength(1);
+    await expect.poll(()=>calls.length).toBe(3);
     runtime.cancel('cancel-run');await waiting;waiting=undefined;
     expect(signal?.aborted).toBe(true);
   }finally{
@@ -55,4 +60,4 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     await rm(path.join(os.homedir(),'.steamharness/configurations',`${key}.json.lock.sqlite`),{force:true});
     await rm(directory,{recursive:true,force:true});
   }
-},30000);
+},60000);

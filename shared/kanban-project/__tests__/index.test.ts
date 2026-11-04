@@ -16,6 +16,7 @@ import {
   KANBAN_PREVIEW_CAPABILITY_RETRY_MS,
   scheduleKanbanPreviewCapabilityRefresh,
   KANBAN_FILE_MAX_BYTES,
+  KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_PRESENTATION_CHANGE_EVENT,
   KANBAN_PRESENTATION_MESSAGE,
   type KanbanBrowserApi,
@@ -312,6 +313,17 @@ describe("kanban project contract", () => {
     });
   });
 
+  it("preserves allowlisted failures in Workflow causes without exposing raw reports", () => {
+    const cause = { name: "DatabaseResourceError", code: "DATABASE_SCHEMA_MISMATCH", message: "postgres://private/secret" };
+    expect(createKanbanBridgeError(new Error("Workflow failed at /private", { cause: { cause } }))).toEqual({
+      code: "DATABASE_SCHEMA_MISMATCH", message: "The database schema does not match this project. Deploy the required migrations.",
+    });
+    const circular: Record<string, unknown> = { code: "DATABASE_PRIVATE_DETAIL", message: "private" };
+    circular.cause = circular;
+    expect(createKanbanBridgeError({ safeCause: circular })).toEqual({ code: "KANBAN_BRIDGE_ERROR", message: "Kanban bridge request failed." });
+    expect(createKanbanBridgeError({ safeCause: { cause: { code: "DATABASE_UNBOUND" } } }).code).toBe("DATABASE_UNBOUND");
+  });
+
   it("accepts only nonce-bound parent replies and preserves knowledge revision subscriptions", async () => {
     const listeners: Array<(event: MessageEvent) => void> = [];
     const posted: Array<Record<string, unknown>> = [];
@@ -438,6 +450,29 @@ describe("Kanban preview capability refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(3);
     cancel();
   });
+});
+
+it('keeps slow Workflow receipts pending within a bounded deadline', async () => {
+  vi.useFakeTimers();
+  const listeners: Array<(event: MessageEvent) => void> = [], outgoing: any[] = [];
+  const parent = { postMessage: (message: unknown) => outgoing.push(message) };
+  const pageWindow = { parent, setTimeout, clearTimeout, dispatchEvent() {}, addEventListener(type: string, listener: any) { if (type === 'message') listeners.push(listener); } } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
+  const send = (data: any) => listeners.forEach(listener => listener({ source: parent, data } as unknown as MessageEvent));
+  try {
+    new Function('window', 'document', createKanbanBridgeScript({ id: 'one', name: 'One', params: {} }, 'nonce').replace(/^<script[^>]*>/, '').replace(/<\/script>$/, ''))(pageWindow, { readyState: 'complete' });
+    let finished = false;
+    const pending = pageWindow.steamHarnessKanban.entries.get('api').runEntrypoint('message-send', []).finally(() => { finished = true; });
+    const request = outgoing.at(-1);
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(finished).toBe(false);
+    send({ type: 'steamharness:kanban-bridge-response', nonce: 'nonce', requestId: request.requestId, ok: true, value: { receipt: 'persisted' } });
+    await expect(pending).resolves.toEqual({ receipt: 'persisted' });
+    const late = pageWindow.steamHarnessKanban.entries.get('api').runEntrypoint('state', []);
+    const rejected = expect(late).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS + 1);
+    await rejected;
+    expect(outgoing.filter(message => message.operation === 'entries.runEntrypoint')).toHaveLength(2);
+  } finally { vi.useRealTimers(); }
 });
 
 it('binds aggregate operations and streaming subscriptions to the current iframe/configuration', async () => {

@@ -1,5 +1,9 @@
 # Unreleased
 
+- Updated the Kanban Workflow Bridge with a separate 120-second deadline. Static previews continue to reject execution operations.
+
+- Fixed concurrent native workers opening temporary database connections for one entry without competing for exclusive binding locks. Rebinding, migrations and revocation still fence old connections.
+
 - Fixed asynchronous PostgreSQL disconnects on checked-out and standalone clients crashing the Server. Failed operations still report errors, and pooled requests can establish fresh connections.
 
 - Static Kanban explicitly rejects Workflow execution and Conversation control with guidance to use local CLI Web or Studio.

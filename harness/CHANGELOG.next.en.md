@@ -1,5 +1,9 @@
 # Unreleased
 
+- [Fix] Preserve known public database error codes across node and Workflow reports so hosts can identify missing bindings, contention, and schema mismatches; omit custom codes on arbitrary exceptions.
+
+- Fixed aggregate Workflow calls from Kanban using a separate 120-second Bridge deadline so database authorization and durable receipts can complete.
+
 - Fixed: Suspending a durable Agent interrupts its enclosing project instead of reporting a partial reply as successful; reopening continues from the original checkpoint.
 
 - Add aggregate Conversation entry control and trusted call provenance, preserving user, permissions, and cancellation; support durable receipts, snapshots, approvals, stop, and explicit recovery.

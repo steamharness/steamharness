@@ -1,5 +1,11 @@
 # Unreleased
 
+- [Fix] Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.
+
+- [Fix] Allow 120 seconds for cross-entry Conversation submission, resume, input resolution, and cancellation receipts while retaining cancellation; map nested database failures to safe Kanban guidance.
+
+- Fixed Kanban aggregate Workflow calls preserving the full 120-second receipt window through the Bridge and HTTP transport without automatically replaying writes.
+
 - Kanban can invoke aggregate Workflows and subscribe to native Conversation streams, reusing execution owners and persisted FIFO queues with optional manual recovery after restart.
 
 - [Fixed] Configuration attachment uploads remain valid during background account checks. The host still rejects stale results after the account changes or authentication is lost.

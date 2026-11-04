@@ -1072,7 +1072,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const runId = globalThis.crypto.randomUUID();
         const report = await runtime.run({ project, abortSignal: call.abortSignal, runId, conversationId: runId, args, entrypointId: operation,
           entryCall: { entryId: call.sourceEntryId, conversationId: call.sourceConversationId, runId: call.sourceRunId } }, () => {});
-        if (report.status !== 'success') throw new Error(report.error?.message ?? report.result?.error?.message ?? 'Workflow operation failed.');
+        if (report.status !== 'success') throw new Error(report.error?.message ?? report.result?.error?.message ?? 'Workflow operation failed.',
+          { cause: report.error ?? report.result?.error });
         const data = report.result?.data as { output?: unknown } | undefined;
         return data?.output ?? data ?? report.output;
       }
@@ -1082,7 +1083,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (typeof id !== 'string' || !id.trim() || id.length > 200) throw new Error('Invalid conversation id.');
       await ownership?.assertWritable(id);
       const release = await ownership?.hold(id);
-      try { return await entryConversations.invoke(call.action, call.input, call.abortSignal); }
+      try {
+        // Refresh an acquired owner before creating or preparing a session, as
+        // native controls do. Later polling must preserve this in-flight object.
+        await refreshHistory();
+        return await entryConversations.invoke(call.action, call.input, call.abortSignal);
+      }
       finally { release?.(); }
     },
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => {

@@ -129,10 +129,11 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     });
     assert.equal((await repository.history('owner', a.id)).length, 1);
   });
-  await t.test("native authorization permits concurrent readers and still fences binding changes", async () => {
+  await t.test("native credential issuance and authorization share reader locks and still fence binding changes", async () => {
     const identity = { projectId: randomUUID(), entryId: 'agent', alias: 'data' };
     const binding = await repository.bind('owner', { ...identity, databaseId: a.id, schemaHash: first.schemaHash });
     const lease = await repository.openConnection('owner', { ...identity, schemaHash: first.schemaHash });
+    const leases = [lease];
     const request = { ...identity, binding, schemaHash: first.schemaHash };
     const reader = await admin.connect();
     try {
@@ -141,11 +142,14 @@ test("independent PostgreSQL resources support provisioning, account grants and 
       const keys = [JSON.stringify([`"${catalog}"`, 'owner', identity.projectId, identity.entryId, identity.alias]),
         `steamharness:database:"${catalog}":${a.id}`];
       for (const key of keys) await reader.query('select pg_advisory_lock_shared(hashtextextended($1,0))', [key]);
+      const opened = await Promise.allSettled(Array.from({ length: 3 }, () => repository.openConnection('owner', { ...identity, schemaHash: first.schemaHash })));
+      for (const result of opened) if (result.status === 'fulfilled') leases.push(result.value);
+      for (const result of opened) assert.equal(result.status, 'fulfilled', 'independent native workers may open credentials while readers hold both locks');
       await Promise.all(Array.from({ length: 8 }, () => repository.authorizeConnection('owner', lease.credential.id, request)));
       await assert.rejects(repository.unbind('owner', identity), { code: 'DATABASE_BUSY' });
     } finally {
       await reader.query('select pg_advisory_unlock_all()'); reader.release();
-      await repository.closeConnection('owner', lease.credential.id);
+      for (const connection of leases) await repository.closeConnection('owner', connection.credential.id);
     }
     await repository.unbind('owner', identity);
     await assert.rejects(repository.authorizeConnection('owner', lease.credential.id, request), { code: 'DATABASE_BINDING_CHANGED' });

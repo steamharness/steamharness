@@ -1,3 +1,5 @@
+import type { DatabaseResourceErrorCode } from "../database/resources";
+
 export type ErrorType =
   | "input_validation"
   | "execution_aborted"
@@ -10,6 +12,8 @@ export type ErrorType =
 
 export interface ErrorCause {
   name?: string;
+  /** Public database failure identity survives node/report serialization. */
+  code?: DatabaseResourceErrorCode;
   message: string;
   statusCode?: number;
   url?: string;
@@ -142,6 +146,7 @@ function sanitizeErrorCause(error: unknown): ErrorCause | undefined {
     return {
       name: error.name,
       message: error.message,
+      ...publicDatabaseErrorCode(error),
       statusCode: error.statusCode,
       url: error.url,
       isRetryable: error.isRetryable,
@@ -210,12 +215,26 @@ function extractKnownErrorFields(error: object): Omit<ErrorCause, "message" | "n
   const validation = extractValidation(error);
 
   return {
+    ...publicDatabaseErrorCode(error),
     statusCode: readNumberProperty(error, "statusCode"),
     url: readStringProperty(error, "url"),
     isRetryable: readBooleanProperty(error, "isRetryable"),
     responseBody: summarizeResponseBody(readStringProperty(error, "responseBody")),
     validation,
   };
+}
+
+const publicDatabaseCodes = new Set<DatabaseResourceErrorCode>([
+  "DATABASE_INVALID_REQUEST", "DATABASE_NOT_FOUND", "DATABASE_ACCESS_DENIED",
+  "DATABASE_NOT_READY", "DATABASE_BUSY", "DATABASE_UNAVAILABLE", "DATABASE_PROVISION_FAILED",
+  "DATABASE_UNSAFE_CLUSTER", "DATABASE_HISTORY_CONFLICT", "DATABASE_SCHEMA_DRIFT", "DATABASE_SCHEMA_INVALID",
+  "DATABASE_MIGRATION_FAILED", "DATABASE_DESTRUCTIVE_MIGRATION", "DATABASE_SCHEMA_MISMATCH",
+  "DATABASE_UNBOUND", "DATABASE_BINDING_CHANGED", "DATABASE_CONNECTION_EXPIRED", "DATABASE_CLOSED",
+  "DATABASE_TARGET_UNSUPPORTED", "DATABASE_QUERY_FAILED",
+]);
+function publicDatabaseErrorCode(error: object): { code?: DatabaseResourceErrorCode } {
+  const code = readStringProperty(error, "code") as DatabaseResourceErrorCode | undefined;
+  return readStringProperty(error, "name") === "DatabaseResourceError" && code && publicDatabaseCodes.has(code) ? { code } : {};
 }
 
 const MAX_RESPONSE_BODY_SUMMARY_LENGTH = 200;

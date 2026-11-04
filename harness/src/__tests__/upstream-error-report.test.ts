@@ -7,8 +7,24 @@ import test from "node:test";
 import { runLocalProjectWithReport } from "../index";
 import { serializeProjectError, HarnessError } from "../workflow/errors";
 import { createProjectExecutionReport } from "../executor/report";
+import { DatabaseResourceError } from "../database/resources";
 
 const dashedProviderKey = `sk-${"a".repeat(18)}01`;
+
+test("database failure codes survive node wrapping and serialized report causes", () => {
+  for (const code of ["DATABASE_UNBOUND", "DATABASE_BUSY", "DATABASE_SCHEMA_MISMATCH"] as const) {
+    const error = new HarnessError({ type: "node_execution", message: "API failed.",
+      cause: new DatabaseResourceError(code, "Internal host detail.") });
+    const serialized = JSON.parse(JSON.stringify(serializeProjectError(error)));
+    assert.equal(serialized.cause.code, code);
+    const wrapped = serializeProjectError(new HarnessError({ type: "execution", message: "Workflow failed.", cause: serialized.cause }));
+    assert.equal(wrapped.cause?.code, code);
+  }
+  for (const cause of [Object.assign(new Error("Internal"), { code: "DATABASE_UNBOUND" }),
+    { name: "DatabaseResourceError", code: "DATABASE_PRIVATE_DETAIL", message: "Internal" }]) {
+    assert.equal(serializeProjectError(new HarnessError({ type: "execution", message: "Failed.", cause })).cause?.code, undefined);
+  }
+});
 
 test("reports preserve structured failures alongside the normalized payload", () => {
   const error = serializeProjectError(new HarnessError({ type: "execution", message: "Project unavailable.",

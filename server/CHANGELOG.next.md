@@ -1,5 +1,9 @@
 # Unreleased
 
+- 【修复】同步 Kanban Workflow Bridge 的独立 120 秒调用时限；静态预览继续拒绝执行能力。
+
+- 【修复】同一入口的多个原生 worker 可并发申请数据库临时连接，避免读取和 Bot 协作因连接签发争用绑定排他锁而失败；重绑、迁移和撤权仍阻止旧连接继续使用。
+
 - 【修复】PostgreSQL 借出连接和独立连接异步断开时不再因未处理的错误事件退出服务；失败操作继续报错，连接池可为后续请求建立新连接。
 
 - 静态 Kanban 明确拒绝 Workflow 执行和 Conversation 控制，返回本地 CLI Web / Studio 连接指引。

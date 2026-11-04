@@ -53,7 +53,7 @@ new workflow.HarnessError(options: ErrorOptions)
 | `type` | `ErrorType` | 错误分类。 |
 | `nodeName` | `string \| undefined` | 关联节点。 |
 | `metadata` | `object \| undefined` | 附加调试信息。 |
-| `safeCause` | `ErrorCause \| undefined` | 清洗后的 cause，包含 `name`、`message`、`statusCode`、`url`、`isRetryable`、`responseBody`、嵌套 `cause` 与 `validation`。`responseBody` 是上游 HTTP 响应体摘要：空白折叠、对疑似凭据脱敏、截断到 200 字符；只携带 `Unauthorized` 这类状态短语的调用错误会在运行报告中附加 `response <摘要>`，避免真实原因被状态短语掩盖。 |
+| `safeCause` | `ErrorCause \| undefined` | 清洗后的 cause，包含 `name`、`message`、可选公开数据库 `code`、`statusCode`、`url`、`isRetryable`、`responseBody`、嵌套 `cause` 与 `validation`。`responseBody` 是上游 HTTP 响应体摘要：空白折叠、对疑似凭据脱敏、截断到 200 字符；只携带 `Unauthorized` 这类状态短语的调用错误会在运行报告中附加 `response <摘要>`，避免真实原因被状态短语掩盖。 |
 
 ## 序列化结构
 
@@ -64,6 +64,8 @@ new workflow.HarnessError(options: ErrorOptions)
 | `nodeName` | `string \| undefined` | 关联节点。 |
 | `metadata` | `object \| undefined` | 附加信息。 |
 | `cause` | `ErrorCause \| undefined` | 只保留安全 cause 字段。 |
+
+`ErrorCause.code?: DatabaseResourceErrorCode` 仅保留 `DatabaseResourceError` 的已知公开数据库代码，跨节点包装和 JSON 报告保持有效。任意错误的自定义 `code` 不会传入该字段。此代码与 payload 的数字 `errCode` 独立。
 
 ## 错误码映射
 

@@ -22,6 +22,7 @@ export const KANBAN_BRIDGE_REQUEST_MESSAGE = "steamharness:kanban-bridge-request
 export const KANBAN_BRIDGE_RESPONSE_MESSAGE = "steamharness:kanban-bridge-response";
 export const KANBAN_DATABASE_REVISION_MESSAGE = "steamharness:kanban-database-revision";
 export const KANBAN_BRIDGE_REQUEST_TIMEOUT_MS = 15_000;
+export const KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
 export const KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
 export const KANBAN_FILE_MAX_BYTES = 50 * 1024 * 1024;
 export const KANBAN_BRIDGE_MAX_PENDING_REQUESTS = 16;
@@ -158,6 +159,15 @@ const KANBAN_BRIDGE_SAFE_ERRORS = {
   DATABASE_UNBOUND: "Apply for and bind an relational database.",
   DATABASE_ACCESS_DENIED: "Database access is not granted.",
   DATABASE_ACCESS_FAILED: "Database authorization is unavailable. Check the binding.",
+  DATABASE_BUSY: "The database is busy. Read the latest state before retrying an operation.",
+  DATABASE_UNAVAILABLE: "The database host is unavailable. Check the Server connection.",
+  DATABASE_NOT_READY: "The database is not ready. Complete its provisioning and migration.",
+  DATABASE_NOT_FOUND: "The bound database is unavailable to this account.",
+  DATABASE_SCHEMA_MISMATCH: "The database schema does not match this project. Deploy the required migrations.",
+  DATABASE_BINDING_CHANGED: "The database binding changed. Reconnect explicitly.",
+  DATABASE_CONNECTION_EXPIRED: "The database connection expired or was revoked. Reconnect explicitly.",
+  DATABASE_CLOSED: "The database connection closed. Reconnect explicitly.",
+  DATABASE_QUERY_FAILED: "The database operation failed. Read the latest state before retrying.",
   KANBAN_FILE_UNAVAILABLE: "Kanban file is unavailable in this project.",
   KANBAN_FILE_TOO_LARGE: "Kanban files cannot exceed 50 MiB.",
 } as const;
@@ -447,7 +457,7 @@ const request=(operation,input)=>{
   if(pending.size>=${KANBAN_BRIDGE_MAX_PENDING_REQUESTS})return Promise.reject(createError("Too many Kanban bridge requests are pending.","KANBAN_BRIDGE_BUSY"));
   const requestId=Date.now().toString(36)+"-"+(++sequence).toString(36);
   return new Promise((resolve,reject)=>{
-    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(createError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT"));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
+    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(createError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT"));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:operation==="entries.runEntrypoint"?${KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
     pending.set(requestId,{resolve,reject,timeout});
     try{window.parent.postMessage({type:${requestMessage},nonce:${safeNonce},requestId,operation,input},"*");}
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
@@ -556,8 +566,12 @@ export function parseKanbanBridgeCall(value: unknown): KanbanBridgeCall {
 }
 
 export function createKanbanBridgeError(reason: unknown): KanbanBridgeError {
-  if (isRecord(reason)) {
-    const code = reason["code"];
+  const seen = new Set<unknown>(), causes = [reason];
+  while (causes.length && seen.size < 10) {
+    const cause = causes.shift();
+    if (!isRecord(cause) || seen.has(cause)) continue;
+    seen.add(cause);
+    const code = cause["code"];
     if (
       typeof code === "string" &&
       Object.prototype.hasOwnProperty.call(KANBAN_BRIDGE_SAFE_ERRORS, code)
@@ -567,6 +581,7 @@ export function createKanbanBridgeError(reason: unknown): KanbanBridgeError {
         message: KANBAN_BRIDGE_SAFE_ERRORS[code as keyof typeof KANBAN_BRIDGE_SAFE_ERRORS],
       };
     }
+    causes.push(cause["cause"], cause["safeCause"]);
   }
   return {
     code: "KANBAN_BRIDGE_ERROR",

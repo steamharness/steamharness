@@ -28,7 +28,10 @@ const entryConversationHost = { invoke: (entryId, action, input, identity) => ne
     error ? reject(error) : resolve(value);
   };
   const aborted = () => finish(signal.reason ?? new Error('Entry call stopped.'));
-  const timer = setTimeout(() => finish(new Error('Entry runtime request timed out.')), 15_000);
+  // Admission includes target initialization and persisting its receipt, but never
+  // waits for the model. Match the Workflow bridge budget for these mutations.
+  const timeout = ['submit', 'resumeQueue', 'resolveInput', 'cancel'].includes(action) ? 120_000 : 15_000;
+  const timer = setTimeout(() => finish(new Error('Entry runtime request timed out.')), timeout);
   pendingEntryCalls.set(id, { finish });
   signal.addEventListener('abort', aborted, { once: true });
   process.send({ type: 'entry-runtime', id, call: { entryId, action, input } }, error => { if (error) finish(error); });

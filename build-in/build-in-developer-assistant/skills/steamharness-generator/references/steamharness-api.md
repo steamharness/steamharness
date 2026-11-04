@@ -224,7 +224,7 @@ const file = await knowledge.files.createFile({ name: "map.png", buffer: blob })
 const { buffer } = await knowledge.files.readFile(file.id);
 ```
 
-知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和业务库的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
+知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和业务库的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件和聚合 Workflow 调用超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
 模板与生成器先 generate 再 build，入口为 dist/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
 
@@ -1496,6 +1496,10 @@ const snapshot = await bot.snapshot(receipt.conversationId);
 ## 调用聚合内 Workflow 与订阅会话
 
 在本地 CLI Web 或 Studio 中，页面通过 `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])` 调用已登记 Workflow 的操作。页面不能指定用户或项目身份；数据写入与消息路由可以统一放在该 Workflow 中。
+
+Workflow 调用独立使用 120 秒 Bridge 时限，供数据库授权及持久回执完成；Conversation 的提交、恢复队列、确认输入和停止 IPC 同样允许最多 120 秒，普通只读 IPC 保持 15 秒。回执不等待模型完成，耗时模型工作由持久队列异步执行。超时可能已有副作用，页面应保留请求 ID 并查询回执，不自动重放写入。
+
+数据库错误的已知公开 `code` 会跨节点报告及 Workflow 调用保留。Bridge 仅将白名单代码映射为固定提示（如 `DATABASE_UNBOUND`、`DATABASE_BUSY`、`DATABASE_SCHEMA_MISMATCH`），不向页面暴露底层连接串、SQL、文件路径或任意异常文本。
 
 `conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
 

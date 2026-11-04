@@ -1,5 +1,9 @@
 # Unreleased
 
+- [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines, public database error codes, and receipt checks after timeouts.
+
+- Updated generation guidance for the 120-second aggregate Workflow receipt deadline, retaining request IDs and checking receipts after timeouts without automatically replaying writes.
+
 - Document multi-Bot aggregate workbenches, Conversation control, trusted provenance, and subscription generations in the generator skill.
 
 - Documented account-scoped system AI catalogue caching, explicit refresh and expiry/revocation handling in the generator API reference.

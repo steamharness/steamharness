@@ -92,6 +92,41 @@ it('requires Server resource management and rejects local and legacy bindings wi
 it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {
   const f = await fixture(), state = await f.state('agent'), board = await f.state('board');
   await writeFile(path.join(f.directory, 'card.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+it('returns safe database setup failures from cross-entry Workflow reports', async () => {
+  const f = await fixture(), board = await f.state('board');
+  for (const code of ['DATABASE_UNBOUND', 'DATABASE_BUSY', 'DATABASE_SCHEMA_MISMATCH', 'PRIVATE_INTERNAL_ERROR']) {
+    vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: {
+      type: 'node_execution', message: 'Failed at /private/project',
+      cause: { name: 'DatabaseResourceError', code, message: 'postgres://private/secret' },
+    } } as unknown as Report);
+    const reply = await f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce, requestId: randomUUID(),
+      call: { requestId: randomUUID(), operation: 'entries.runEntrypoint', input: { entryId: 'workflow', entrypointId: 'operation', args: [], requestId: randomUUID() } } });
+    expect(reply).toMatchObject({ ok: false, error: { code: code === 'PRIVATE_INTERNAL_ERROR' ? 'KANBAN_BRIDGE_ERROR' : code } });
+    expect(JSON.stringify(reply)).not.toContain('/private');
+    expect(vi.mocked(f.runtime.run).mock.calls.filter(([request]) => request.project.entryId === 'workflow')).toHaveLength(
+      ['DATABASE_UNBOUND', 'DATABASE_BUSY', 'DATABASE_SCHEMA_MISMATCH', 'PRIVATE_INTERNAL_ERROR'].indexOf(code) + 1);
+  }
+});
+
+it('keeps a newly admitted Conversation stable while native history refreshes during parameter resolution', async () => {
+  const f = await fixture();
+  f.app.project.paramResolver = { enabled: true };
+  type Resolved = Awaited<ReturnType<Runtime['resolveParams']>>;
+  let finish!: (value: Resolved) => void;
+  const preparing = new Promise<Resolved>(resolve => { finish = resolve; });
+  vi.mocked(f.runtime.resolveParams).mockReturnValueOnce(preparing);
+  const submission = f.app.invokeEntry({ projectId: f.app.project.id, entryId: 'agent', sourceEntryId: 'board', actor: { isSystemAdmin: false },
+    action: 'submit', input: { conversationId: 'new-bot-session', requestId: 'new-bot-request', text: 'hello' } });
+  // Attach the rejection handler before forcing the historical refresh.
+  const receipt = expect(submission).resolves.toMatchObject({ requestId: 'new-bot-request', status: 'accepted' });
+  await vi.waitFor(() => expect(f.runtime.resolveParams).toHaveBeenCalled());
+  await f.state('agent');
+  finish({ params: {} });
+  await receipt;
+  await vi.waitFor(() => expect(f.runtime.run).toHaveBeenCalledTimes(1));
+  f.active.get('agent')!.finish({ status: 'success', output: { items: [] } });
+});
+
   const cards = [
     { cardId: 'map', kind: 'kanban', title: 'Saved map', target: { source: 'local', projectId: state.project.id, entryId: 'board', configurationId: board.configurations.activeConfigurationId } },
     { cardId: 'image', kind: 'file', target: { source: 'local', filePath: 'card.svg' } },

@@ -9,6 +9,9 @@ description: "The standard workflow error class for serializable error reporting
 
 When execution fails, `ExecutionReport.error` retains the serializable structured error, while `result.data` provides the standard `errCode`, `errMessage`, and `output`. Hosts read `report.error.metadata` to identify Server project or data-resource authorization failures. Successful reports omit `error`.
 
+
+`ErrorCause.code?: DatabaseResourceErrorCode` retains only known public database codes on `DatabaseResourceError`, including across node wrapping and JSON reports. Custom codes on arbitrary errors are omitted. This code is separate from the numeric payload `errCode`.
+
 ## Signature
 
 ```ts

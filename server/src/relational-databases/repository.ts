@@ -301,11 +301,13 @@ export class RelationalDatabaseRepository {
     }, true);
   }
   async openConnection(actor: string, input: ConnectionRequest) {
+    // Issuing independent credentials reads the binding/access state. Share both
+    // locks with live queries; binding changes and revocation still fence issuance.
     return this.bindingLock(actor, input, async () => {
       const binding = await this.checkedBinding(actor, input);
-      const credential = await this.lock(binding.databaseId, () => this.issueCredentialsUnlocked(actor, binding.databaseId, { mode: binding.mode, expectedSchemaHash: input.schemaHash }, binding.id));
+      const credential = await this.lock(binding.databaseId, () => this.issueCredentialsUnlocked(actor, binding.databaseId, { mode: binding.mode, expectedSchemaHash: input.schemaHash }, binding.id), true, true);
       return { binding, credential };
-    });
+    }, true, true);
   }
   async authorizeConnection(actor: string, credentialId: string, input: ConnectionRequest): Promise<void> {
     // Authorization only reads access state. Readers may overlap, while binding
