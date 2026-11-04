@@ -27,6 +27,7 @@ export interface AuthSession {
 
 export type AuthCookieSession =
   | { kind: "refresh"; refreshToken: string }
+  | { kind: "api_key"; accessToken: string }
   | { kind: "admin_key" };
 
 interface AuthCookieEnvelope {
@@ -63,7 +64,7 @@ export type AuthenticatedPrincipal =
     }
   | {
       kind: "api_key";
-      tokenSource: "bearer";
+      tokenSource: "bearer" | "cookie";
       userId: string;
       profile: UserProfileRecord;
       isSystemAdmin: boolean;
@@ -490,26 +491,7 @@ export class AuthService {
       if (adminKey && bearer === adminKey) {
         return { kind: "admin_key", tokenSource: "bearer", isSystemAdmin: true };
       }
-      const apiKey = await this.accountDb.findApiKeyByToken(bearer);
-      if (apiKey) {
-        if (apiKey.user.status === "disabled") throw new HttpError(403, 403, "Account is disabled.");
-        const touchedApiKey = await this.accountDb.touchApiKey(apiKey.id, {
-          ip: readRequestIp(req),
-          userAgent: req.get("user-agent") ?? undefined,
-          expiresAt: createSlidingApiKeyExpiresAt(apiKey.source),
-        });
-        if (!touchedApiKey) throw new HttpError(401, 401, "Unauthorized.");
-        const refreshedApiKey = { ...apiKey, expiresAt: touchedApiKey.expiresAt ?? apiKey.expiresAt };
-        return {
-          kind: "api_key",
-          tokenSource: "bearer",
-          userId: apiKey.user.userId,
-          profile: apiKey.user,
-          isSystemAdmin: apiKey.user.isSystemAdmin,
-          apiKey: refreshedApiKey,
-        };
-      }
-      throw new HttpError(401, 401, "Unauthorized.");
+      return this.resolveApiKeyPrincipal(req, bearer, "bearer");
     }
     const cookieValue = parseCookieHeader(req.headers.cookie)[STEAMHARNESS_AUTH_COOKIE];
     if (!cookieValue) return undefined;
@@ -517,6 +499,9 @@ export class AuthService {
     if (!cookie) throw new HttpError(401, 401, "Unauthorized.");
     if (cookie.kind === "admin_key") {
       return { kind: "admin_key", tokenSource: "cookie", isSystemAdmin: true };
+    }
+    if (cookie.kind === "api_key") {
+      return this.resolveApiKeyPrincipal(req, cookie.accessToken, "cookie");
     }
     const session = await this.refreshSession(cookie.refreshToken);
     const profile = await this.accountDb.getUserProfileOrThrow(session.user.userId);
@@ -531,6 +516,24 @@ export class AuthService {
     return profile.isSystemAdmin
       ? { kind: "admin_session", ...principalBase, isSystemAdmin: true }
       : { kind: "user_session", ...principalBase, isSystemAdmin: false };
+  }
+
+  /** Browser handoffs retain the original key's identity, permissions and revocation. */
+  async resolveApiKeyPrincipal(req: Request, accessToken: string, tokenSource: "bearer" | "cookie"): Promise<AuthenticatedPrincipal> {
+    const apiKey = await this.accountDb.findApiKeyByToken(accessToken);
+    if (!apiKey) throw new HttpError(401, 401, "Unauthorized.");
+    if (apiKey.user.status === "disabled") throw new HttpError(403, 403, "Account is disabled.");
+    const touchedApiKey = await this.accountDb.touchApiKey(apiKey.id, {
+      ip: readRequestIp(req),
+      userAgent: req.get("user-agent") ?? undefined,
+      expiresAt: createSlidingApiKeyExpiresAt(apiKey.source),
+    });
+    if (!touchedApiKey) throw new HttpError(401, 401, "Unauthorized.");
+    return {
+      kind: "api_key", tokenSource, userId: apiKey.user.userId, profile: apiKey.user,
+      isSystemAdmin: apiKey.user.isSystemAdmin,
+      apiKey: { ...apiKey, expiresAt: touchedApiKey.expiresAt ?? apiKey.expiresAt },
+    };
   }
 
   async createDeviceCode(input: {
@@ -848,8 +851,9 @@ function readAuthPublicBaseUrl(redirectTo?: string): string {
 
 function isProjectAuthCookieSession(value: unknown): value is AuthCookieSession {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const record = value as { kind?: unknown; refreshToken?: unknown };
+  const record = value as { kind?: unknown; refreshToken?: unknown; accessToken?: unknown };
   return record.kind === "admin_key"
+    || (record.kind === "api_key" && typeof record.accessToken === "string" && record.accessToken.trim() !== "")
     || (record.kind === "refresh" && typeof record.refreshToken === "string" && record.refreshToken.trim() !== "");
 }
 

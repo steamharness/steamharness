@@ -178,6 +178,19 @@ export class ServerClient {
     }
   }
 
+  async browserSession(connection: Connection, returnTo: string): Promise<string> {
+    if (normalizeProjectServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
+      throw new AuthError(t("Sign-in credentials do not match the server."), 401);
+    }
+    const result = await this.request<{ code: string }>('/api/auth/browser-session', {
+      accessToken: connection.accessToken, body: { returnTo },
+    });
+    if (typeof result.code !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(result.code)) {
+      throw new AuthError(t("The server returned an invalid response."));
+    }
+    return `${this.serverUrl}/api/auth/browser-session?code=${encodeURIComponent(result.code)}`;
+  }
+
   systemAiUsage(connection: Connection): Promise<SystemAiUsage> {
     if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new AuthError(t('System AI is unavailable.')); }
     const aiClient = new ServerClient(connection.aiServerUrl, this.fetcher);

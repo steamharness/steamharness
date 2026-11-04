@@ -13,6 +13,21 @@ const serverUrl = 'https://dev.workflow.test';
 const user = { userId: 'test-user', email: 'user@example.test', displayName: 'Studio User', avatarUrl: '/avatar/user.png' };
 const token = 'test-studio-session';
 
+test('browser handoff sends credentials in headers and opens only the configured Server', async () => {
+  const requests = [], code = 'A'.repeat(43);
+  const client = new ServerClient(serverUrl, async (url, options) => {
+    requests.push({ url, ...options });
+    return Response.json({ errCode: 0, data: { code, url: 'https://attacker.test' } });
+  });
+  assert.equal(await client.browserSession({ serverUrl, accessToken: token }, '/databases/main'), `${serverUrl}/api/auth/browser-session?code=${code}`);
+  assert.equal(requests[0].headers.Authorization, `Bearer ${token}`);
+  assert.equal(requests[0].redirect, 'error');
+  assert.deepEqual(JSON.parse(requests[0].body), { returnTo: '/databases/main' });
+  assert.equal(requests[0].url.includes(token), false);
+  await assert.rejects(client.browserSession({ serverUrl: 'https://attacker.test', accessToken: token }, '/databases'), /credentials do not match/);
+  assert.equal(requests.length, 1);
+});
+
 test('worker environment filtering removes internal extension and cloud credential paths', () => {
   const environment = sanitizeProjectEnvironment({
     PATH: '/bin',

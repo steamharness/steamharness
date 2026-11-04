@@ -22,7 +22,7 @@ function fixture(t, operation = async input => input.action === 'bindings' ? { b
   const module = { exports: {} };
   runInNewContext(compiled, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, URL, AbortController, setTimeout, clearTimeout, structuredClone });
   const launcher = { inspect: async () => ({ projects: [project()], errors: [] }), database: async (...args) => { calls.push(args); return operation(...args); } };
-  const controller = new module.exports.DatabaseViews({ extensionUri: {}, subscriptions: [] }, launcher, { getConnection: () => connection, onDidChange: fn => { listeners.push(fn); return disposable; }, open() {} }, { appendLine() {} });
+  const controller = new module.exports.DatabaseViews({ extensionUri: {}, subscriptions: [] }, launcher, { getConnection: () => connection, onDidChange: fn => { listeners.push(fn); return disposable; }, openServerPage: async path => opened.push(['authenticated-server', path]), open() {} }, { appendLine() {} });
   t.after(() => controller.dispose());
   const view = { visible: true, webview: { cspSource: 'self', asWebviewUri: uri => uri, postMessage: async message => { messages.push(message); return true; }, onDidReceiveMessage: fn => { receivers.push(fn); return disposable; } }, onDidChangeVisibility: () => disposable, onDidDispose: () => disposable };
   providers.get('studio.databases').resolveWebviewView(view);
@@ -32,7 +32,7 @@ test('lists each resource once, records shared entry use and opens only verified
   const f = fixture(t), current = project(); f.controller.update([current, project('board')], current); await tick();
   assert.equal(f.state().databases.length, 2); assert.equal(f.state().databases[0].usage.length, 2);
   f.send({ type: 'open', key: `knowledge-bases:${id}`, url: 'https://attacker.test' }); await tick();
-  assert.deepEqual(f.opened.at(-1), ['simpleBrowser.show', `https://server.test/databases/knowledge%3A${id}`]);
+  assert.deepEqual(f.opened.at(-1), ['authenticated-server', `/databases/knowledge%3A${id}`]);
   assert.equal(JSON.stringify(f.state()).includes('private-token'), false);
   f.send({ type: 'open', key: 'databases:forged' }); await tick(); assert.equal(f.opened.length, 1);
 });

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Studio database management links to reuse the current account through a short-lived, single-use browser handoff that preserves key permissions and revocation.
+
 - Static validation and previews group entry builds alongside generated databases and accept only the entry's own build directory.
 
 - Static project validation rejects entry names and paths that collide with managed artifact directories or Windows device names.

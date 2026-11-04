@@ -24,6 +24,8 @@ Uploaded packages must register nonempty `steamharness.json.entries` and a valid
 
 Server Web supports password sign-in, device authorization, member invitations, project and group roles, API keys, audit logs, and theme settings. Server validates account, project, and data permissions; credentials appear only in redacted form in the console and audit records.
 
+Opening a database or selecting “Manage resources in Server” while signed in to Studio uses the current Studio account and permissions without another password prompt. A single-use credential valid for one minute establishes browser authentication without putting the long-lived token in the address. Revoking the Studio credential or disabling the account also removes browser access. Database sidebar buttons, filters and helper text follow the current Studio theme.
+
 Account sessions determine sign-in status independently. If the project list fails to load, you remain signed in and the project workspace shows an error with a refresh action. This is not reported as a password or sign-in failure. Release announcement failures also do not block sign-in; signing in again is only required after the account session expires.
 
 

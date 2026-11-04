@@ -175,6 +175,11 @@ export function writeAdminKeySessionCookie(res: Response): void {
   res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`);
 }
 
+export function writeApiKeySessionCookie(res: Response, accessToken: string): void {
+  const encoded = encodeCookieSession({ kind: "api_key", accessToken });
+  res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${res.req.secure ? "; Secure" : ""}`);
+}
+
 export function clearAuthSessionCookie(res: Response): void {
   authContext.authService?.clearAuthCookie(res);
   if (!authContext.authService) {

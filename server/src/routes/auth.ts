@@ -1,11 +1,11 @@
 
 import { Router } from "express";
 import express from "express";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { AccountRepository, UserProfileRecord } from "../account-db";
 import { createApiKeyExpiresAt } from "../api-key-lifetime";
 import { createAuditActor, recordAuditEventForRequest, readRequestIp } from "../audit";
-import { clearAuthSessionCookie, getRequestPrincipal, getProjectAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
+import { clearAuthSessionCookie, getRequestPrincipal, getProjectAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeApiKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
 import { type PermissionKey } from "../permissions";
 import { fail, HttpError, ok } from "../protocol";
 import type { StorageDriver } from "../object-storage";
@@ -74,6 +74,51 @@ export function createAuthRouter(): Router {
   const router = Router();
   const json = jsonBody();
   const rawBody = express.raw({ type: "image/*", limit: 5 * 1024 * 1024 });
+  const browserSessions = new Map<string, { accessToken: string; returnTo: string; expiresAt: number }>();
+
+  router.use("/browser-session", (_req, res, next) => {
+    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    next();
+  });
+
+  router.post("/browser-session", json, requireAuthenticatedPrincipal(), (req, res, next) => {
+    try {
+      const principal = getRequestPrincipal(req);
+      const accessToken = /^Bearer\s+(.+)$/i.exec(req.get("authorization")?.trim() ?? "")?.[1]?.trim();
+      if (principal?.kind !== "api_key" || principal.tokenSource !== "bearer" || !accessToken) {
+        throw new HttpError(403, 403, "Permission denied.");
+      }
+      const returnTo = req.body?.returnTo;
+      const base = "https://browser-session.invalid";
+      const destination = typeof returnTo === "string" && returnTo.length <= 2048 && /^\/(?!\/)/.test(returnTo) && !/[\\\x00-\x20\x7f]/.test(returnTo)
+        ? new URL(returnTo, base) : undefined;
+      if (!destination || destination.origin !== base || destination.pathname.startsWith("//")) {
+        throw new HttpError(400, 400, "Invalid request.");
+      }
+      const attempt = consumeAuthRateLimit({ scope: "browser-session", key: principal.apiKey.id, maxAttempts: 20, retryAfterSeconds: 60 });
+      if (!attempt.ok) { writeRateLimitResponse(res, attempt.retryAfterSeconds); return; }
+      for (const [code, session] of browserSessions) {
+        if (session.expiresAt <= Date.now()) browserSessions.delete(code);
+      }
+      if (browserSessions.size >= 1000) { writeRateLimitResponse(res, 60); return; }
+      const code = randomBytes(32).toString("base64url"), expiresAt = Date.now() + 60_000;
+      browserSessions.set(code, { accessToken, returnTo: destination.pathname + destination.search + destination.hash, expiresAt });
+      res.json(ok({ code, expiresAt: new Date(expiresAt).toISOString() }));
+    } catch (error) { next(error); }
+  });
+
+  router.get("/browser-session", async (req, res, next) => {
+    try {
+      const code = typeof req.query.code === "string" ? req.query.code : "";
+      const session = browserSessions.get(code);
+      browserSessions.delete(code);
+      const authService = getProjectAuthContext().authService;
+      if (!session || session.expiresAt <= Date.now() || !authService) throw new HttpError(401, 401, "Unauthorized.");
+      await authService.resolveApiKeyPrincipal(req, session.accessToken, "cookie");
+      writeApiKeySessionCookie(res, session.accessToken);
+      res.redirect(303, session.returnTo);
+    } catch (error) { next(error); }
+  });
 
   router.get("/session", async (req, res, next) => {
     try {

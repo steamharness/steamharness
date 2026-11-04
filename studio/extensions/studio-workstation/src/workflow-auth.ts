@@ -12,7 +12,7 @@ import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
-  DEFAULT_STEAMHARNESS_SERVER_URL, Account,
+  DEFAULT_STEAMHARNESS_SERVER_URL, Account, AuthError, ServerClient,
   type AccountState, type Connection,
 } from './workflow-auth-client';
 
@@ -169,6 +169,19 @@ export class AccountController implements vscode.Disposable {
   getUserAgentModels() { return this.userModels.models(); }
   registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
+  async openServerPage(path: string): Promise<void> {
+    const connection = this.getConnection();
+    if (!connection) { this.openLogin(); return; }
+    try {
+      const url = await new ServerClient(connection.serverUrl).browserSession(connection, path);
+      const current = this.getConnection();
+      if (current?.serverUrl !== connection.serverUrl || current.accessToken !== connection.accessToken) { return; }
+      await vscode.commands.executeCommand('simpleBrowser.show', url);
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) { await this.account.invalidate(connection); }
+      throw error;
+    }
+  }
   registerSectionProvider(provider: AccountSectionProvider): vscode.Disposable {
     const disposable = this.sections.register(provider);
     this.publishSettings();

@@ -21,13 +21,14 @@ export class DatabaseViews implements vscode.Disposable {
   private disposed = false;
   private connectionKey: string;
   private pending?: Promise<void>;
+  private opening?: Promise<void>;
   private refreshedAt = 0;
   private readonly subscriptions: vscode.Disposable[] = [];
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher, private readonly account: AccountController, private readonly output: vscode.OutputChannel, register = true, subscriptions = context.subscriptions) {
     this.connectionKey = JSON.stringify(account.getConnection());
     this.subscriptions.push(...(register ? [vscode.window.registerWebviewViewProvider('studio.databases', this, { webviewOptions: { retainContextWhenHidden: true } }), vscode.commands.registerCommand('studio.openDatabases', () => vscode.commands.executeCommand('studio.databases.focus')), vscode.commands.registerCommand('studio.refreshDatabases', () => this.refresh())] : []), account.onDidChange(() => {
       const key = JSON.stringify(account.getConnection()); if (key === this.connectionKey) return;
-      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.pending = undefined; this.refreshedAt = 0; this.resources = []; this.bindings = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
+      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.pending = undefined; this.opening = undefined; this.refreshedAt = 0; this.resources = []; this.bindings = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
     })); subscriptions.push(this);
   }
   update(projects: Project[], preferred?: Project) {
@@ -71,7 +72,17 @@ export class DatabaseViews implements vscode.Disposable {
     const url = new URL(connection.serverUrl); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error(t('Invalid Server address.'));
     const resource = id ? `${kind === 'knowledge-bases' ? 'knowledge:' : ''}${id}` : undefined;
     url.pathname = `${url.pathname.replace(/\/$/, '')}/databases${resource ? '/' + encodeURIComponent(resource) : ''}`;
-    await vscode.commands.executeCommand('simpleBrowser.show', url.toString());
+    if (this.opening) return this.opening;
+    const pending = this.account.openServerPage(url.pathname).catch(error => {
+      this.output.appendLine(String(error));
+      const current = this.account.getConnection();
+      if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) {
+        this.error = error instanceof Error ? error.message : String(error); this.publish();
+      }
+      throw error;
+    }).finally(() => { if (this.opening === pending) this.opening = undefined; });
+    this.opening = pending;
+    await pending;
   }
   async openProjectDatabase(project: Project, alias: string) {
     if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));

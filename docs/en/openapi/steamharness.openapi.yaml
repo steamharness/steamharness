@@ -1059,6 +1059,65 @@ paths:
                   - errCode
                   - errMessage
                   - data
+  /api/auth/browser-session:
+    post:
+      tags: [Auth & Accounts]
+      summary: Reuse a native client login in Server Web
+      operationId: createBrowserSession
+      description: Issue a single-use code valid for 60 seconds using an account API key. The destination must be a local absolute path. No new account session or API key is created. The code retains the original account and key permissions; responses are not cached. Limited to 20 requests per key per minute.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [returnTo]
+              properties:
+                returnTo: {type: string, maxLength: 2048, example: /databases}
+      responses:
+        "200":
+          description: Short-lived browser handoff code; never returns the original token.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [errCode, errMessage, data]
+                properties:
+                  errCode: {type: integer, const: 0}
+                  errMessage: {type: string}
+                  data:
+                    type: object
+                    required: [code, expiresAt]
+                    properties:
+                      code: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+                      expiresAt: {type: string, format: date-time}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    get:
+      tags: [Auth & Accounts]
+      summary: Consume a browser handoff and open its destination
+      operationId: consumeBrowserSession
+      description: Consumes the code once, revalidates the original API key and sets a signed HttpOnly SameSite=Lax cookie before redirecting. The original key remains authoritative on every request, including revocation, expiry and disabled accounts. Expired or reused codes fail with 401. Responses use no-store and no-referrer.
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        "303":
+          description: Browser authentication established with the native client's account and key permissions.
+          headers:
+            Location:
+              description: Local destination supplied when the code was issued.
+              schema: {type: string}
+            Set-Cookie:
+              description: Signed HttpOnly authentication cookie; Secure on HTTPS requests.
+              schema: {type: string}
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/auth/session:
     get:
       tags:
