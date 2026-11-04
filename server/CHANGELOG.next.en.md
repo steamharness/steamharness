@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed asynchronous PostgreSQL disconnects on checked-out and standalone clients crashing the Server. Failed operations still report errors, and pooled requests can establish fresh connections.
+
 - Static Kanban explicitly rejects Workflow execution and Conversation control with guidance to use local CLI Web or Studio.
 
 - Fixed native database authorization using shared read locks so concurrent queries do not fail on binding contention. Rebinding, migrations and revocation retain exclusive locks.

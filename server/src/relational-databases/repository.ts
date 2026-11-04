@@ -1,10 +1,10 @@
 import { executeTableData, type TableDataRequest } from "./table-data";
 import { randomUUID } from "node:crypto";
-import pg from "pg";
+import type pg from "pg";
 import { assertDatabaseAlias, DatabaseResourceError, type DatabaseResource, type DatabaseGrant, type DatabaseAccessMode,
   type DatabaseBinding, type DatabaseConsumerIdentity, type DatabaseBindingIdentity,
   type DatabaseMigration, type DatabaseMigrationState, type DatabaseMigrationPlan } from "steamharness/database";
-import { createPostgresPool } from "../postgres";
+import { createPostgresClient, createPostgresPool } from "../postgres";
 import { DatabaseCluster, databaseNames } from "./cluster";
 import { emptyDifference, schemaDifference, validateModel } from "./engine";
 import { BINDINGS_SQL, CATALOG_SQL, DATABASE_CATALOG_SCHEMA, DATABASE_HISTORY_SCHEMA, hash, identifier as q,
@@ -364,7 +364,7 @@ export class RelationalDatabaseRepository {
       const applied = await this.applied(id), schema = applied.at(-1)?.schema;
       if (!schema) throw new DatabaseResourceError('DATABASE_SCHEMA_MISMATCH', 'Apply database models before managing table data.');
       const credential = await this.issueCredentialsUnlocked(actor, id, { mode: write ? 'write' : 'read', expectedSchemaHash: access.resource.schemaHash ?? undefined, ttlMs: 60_000 });
-      const client = new pg.Client({ connectionString: credential.connectionString, connectionTimeoutMillis: 10_000, statement_timeout: 30_000 });
+      const client = createPostgresClient({ label: "database table data", connectionString: credential.connectionString, connectionTimeoutMillis: 10_000, statement_timeout: 30_000 });
       try {
         await client.connect(); await client.query('begin');
         if (!write) await client.query('set transaction read only');

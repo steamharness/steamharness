@@ -1,7 +1,7 @@
-import pg from "pg";
+import type pg from "pg";
 import { randomBytes } from "node:crypto";
 import { DatabaseResourceError, type DatabaseAccessMode, type DatabaseMigration } from "steamharness/database";
-import { createPostgresPool } from "../postgres";
+import { createPostgresClient, createPostgresPool } from "../postgres";
 import { DATABASE_HISTORY_SCHEMA, identifier as q, literal } from "./schema";
 
 export function databaseNames(id: string) {
@@ -145,7 +145,7 @@ export class DatabaseCluster {
     try {
       await this.assertIsolation(names.owner, names.database);
       const url = this.url(names.database, names.owner, password);
-      client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10_000, statement_timeout: 120_000 });
+      client = createPostgresClient({ label: "database migration", connectionString: url, connectionTimeoutMillis: 10_000, statement_timeout: 120_000 });
       await client.connect(); return await work(client, url);
     } finally { await client?.end().catch(() => undefined); await this.disableRole(names.owner); }
   }
@@ -168,13 +168,13 @@ export class DatabaseCluster {
       await this.withAdminDatabase(names.shadow, async admin => { await admin.query(`revoke all on schema public from public; alter schema public owner to ${q(names.shadowOwner)}`); });
       await this.assertIsolation(names.shadowOwner, names.shadow);
       const url = this.url(names.shadow, names.shadowOwner, password);
-      client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10_000, statement_timeout: 120_000 });
+      client = createPostgresClient({ label: "database shadow migration", connectionString: url, connectionTimeoutMillis: 10_000, statement_timeout: 120_000 });
       await client.connect(); return await work(client, url);
     } finally { await client?.end().catch(() => undefined); await this.cleanShadow(id); }
   }
 
   async withAdminDatabase<T>(database: string, work: (client: pg.Client) => Promise<T>): Promise<T> {
-    const client = new pg.Client({ connectionString: this.url(database), connectionTimeoutMillis: 10_000 });
+    const client = createPostgresClient({ label: "database administration", connectionString: this.url(database), connectionTimeoutMillis: 10_000 });
     try { await client.connect(); return await work(client); } finally { await client.end(); }
   }
   url(database: string, user?: string, password?: string): string {
