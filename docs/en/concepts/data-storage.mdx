@@ -16,12 +16,27 @@ SteamHarness separates business models, knowledge content and runtime history. S
 
 Creating a project or conversation does not create a physical database. Projects A and B can request separate resources and define different `User` tables. Sharing requires explicit binding to the same resource and authorization. Knowledge bases do not require a project-defined schema.
 
+## Artifacts and runtime data
+
+Keep every rebuildable output in the aggregate project root's `dist/`, including outputs for child entries:
+
+| Content | Path |
+| --- | --- |
+| Generated code for root database definitions | `dist/steamharness/generated/database/` |
+| Generated code for child database definitions | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
+| Compiled entry code and static pages | `dist/<entryId>/` |
+| Tool caches, test reports, and packages | `dist/cache/`, `dist/reports/`, and `dist/release/` |
+
+Encode the complete `entry.root`: `apps/board` becomes `apps%2Fboard`. Entries sharing a source root share its generated database code. Each builder cleans only its own subdirectory. Keep authored code, configuration, models, and migrations in source directories, and ignore `/dist/` in the root `.gitignore`.
+
+Store sessions, checkpoints, login state, and other persistent data in the host application's data directory or the user directory, outside source and `dist/`. The standalone SDK defaults to `~/.steamharness/runtime/<projectId>/<entryId>/`; CLI Web also requires `--data-dir` to be outside the project. Deleting `dist/` requires regeneration and rebuilding only; external runtime data remains intact. Old paths are not read, migrated, or used as fallbacks. Close the host before moving existing data offline and preserve file permissions.
+
 ## Business databases
 
 Declare aliases in `steamharness.database.ts` and models in `database/<alias>/steamharness.schema`. CLI generates typed Node/Browser descriptors. Use `steamharness database` for creation, grants, migrations and binding. Relational bindings are stored on Server by account, project, entry and alias, independently of legacy `config.databases`. Connecting does not create or migrate resources.
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 const db = await context.databases.connect(main);
 await db.user.create({ data: { id: "alice", name: "Alice" } });
 ```

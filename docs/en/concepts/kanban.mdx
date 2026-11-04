@@ -8,12 +8,14 @@ description: "Kanban entries"
 Kanban is a static HTML entry in an aggregate project and does not export an executor:
 
 ```json
-{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/index.html", "configuration": "configuration.json", "databases": [] }
+{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/map/index.html", "configuration": "configuration.json", "databases": [] }
 ```
+
+`root` identifies the source directory. A Kanban `entry` is relative to the aggregate root and defaults to `dist/<entryId>/index.html` when omitted. Workflow/Conversation modules remain relative to their own `root`. Frontend builders clean only `dist/<entryId>/`, preserving database outputs.
 
 Build on the client before upload. Server validates, stores and serves static files without installing dependencies or executing builds. Relative assets and all registered entry artifacts are retained during packaging and installation.
 
-Studio includes a minimal board, a task board and a parameterized task board, each with `index.html` as its entry. Boards provide `dev` and `inspect` scripts, without the Workflow execution script `run:json`. Task boards use an approved database with the `data` alias. Without a binding, they allow temporary edits and clearly indicate that reloading loses changes. After binding, named configurations keep separate task data.
+Studio includes a minimal board and two task boards. Templates generate database descriptors before building `dist/main/index.html`. Task boards use an approved database with the `data` alias and isolate rows by configurationId. Missing bindings or failed reads disable editing; failed writes preserve drafts.
 
 ## Configuration and presentation
 
@@ -26,7 +28,7 @@ The file bridge allows up to 120 seconds to read large attachments, and its back
 ## Data bridge
 
 ```js
-import { data } from "./.steamharness/generated/database/browser/index.js";
+import { data } from "./dist/steamharness/generated/database/browser/index.js";
 const api = window.steamHarnessKanban;
 const database = await api.databases.connect(data);
 const configurationId = api.getConfiguration().id || "default";

@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { projectEntryFilePath } from "./artifacts";
 import { PROJECT_MANIFEST_FILE, PROJECT_CONFIG_FILE, projectEntryConfigRoots, readProjectDeclaration, resolveProjectDatabases, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
 
 export function readProjectDocumentSync(projectDir: string): Record<string, unknown> {
@@ -71,12 +72,16 @@ export function resolveProjectEntrySync(projectDir: string, entryId?: string, en
   const registration = selectProjectEntry(manifest, entryId);
   return { projectDir: projectRoot, manifest, registration, ...resolveEntryFilesSync(projectRoot, registration) };
 }
-function resolveEntryFilesSync(projectRoot: string, registration: Pick<ProjectEntry, "entryId" | "root" | "entry" | "configuration">): Pick<ResolvedProjectEntry, "rootDir" | "modulePath" | "configurationPath"> {
+function resolveEntryFilesSync(projectRoot: string, registration: Pick<ProjectEntry, "entryId" | "root" | "entry" | "configuration" | "type">): Pick<ResolvedProjectEntry, "rootDir" | "modulePath" | "configurationPath"> {
   const rootDir = realpathSync(path.resolve(projectRoot, registration.root));
   assertWithin(projectRoot, rootDir);
   if (!statSync(rootDir).isDirectory()) throw new Error(`Entry "${registration.entryId}" root is not a directory.`);
   const file = (relative: string) => { const target = realpathSync(path.resolve(rootDir, relative)); assertWithin(rootDir, target); if (!statSync(target).isFile()) throw new Error(`Registered entry path is not a file: ${relative}`); return target; };
-  return { rootDir, modulePath: file(registration.entry), ...(registration.configuration === undefined ? {} : { configurationPath: file(registration.configuration) }) };
+  const moduleRoot = registration.type === "kanban" ? projectRoot : rootDir;
+  const modulePath = realpathSync(path.resolve(projectRoot, projectEntryFilePath(registration)));
+  assertWithin(moduleRoot, modulePath);
+  if (!statSync(modulePath).isFile()) throw new Error(`Registered entry path is not a file: ${registration.entry}`);
+  return { rootDir, modulePath, ...(registration.configuration === undefined ? {} : { configurationPath: file(registration.configuration) }) };
 }
 export async function resolveProjectEntry(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): Promise<ResolvedProjectEntry> {
   const root = await realpath(projectDir);
@@ -88,7 +93,7 @@ export async function resolveRegisteredProjectEntry(projectDir: string, manifest
   const rootDir = await realpath(path.resolve(root, registration.root));
   assertWithin(root, rootDir);
   if (!(await stat(rootDir)).isDirectory()) throw new Error(`Entry "${registration.entryId}" root is not a directory.`);
-  const modulePath = await resolveFile(rootDir, registration.entry);
+  const modulePath = await resolveFile(registration.type === "kanban" ? root : rootDir, registration.entry);
   const configurationPath = registration.configuration === undefined ? undefined : await resolveFile(rootDir, registration.configuration);
   return { projectDir: root, manifest, registration, rootDir, modulePath, ...(configurationPath === undefined ? {} : { configurationPath }) };
 }
@@ -101,4 +106,22 @@ async function resolveFile(root: string, relative: string): Promise<string> {
 function assertWithin(root: string, target: string): void {
   const relative = path.relative(root, target);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error("Registered entry paths must stay inside their declared project root (including symlinks).");
+}
+
+/** Resolve existing ancestors so a data directory cannot re-enter source through a symlink. */
+export function assertProjectDataDirectory(projectDir: string, dataDir: string): void {
+  const projectRoot = realpathSync(projectDir);
+  let ancestor = path.resolve(dataDir);
+  const missing: string[] = [];
+  while (true) {
+    try { ancestor = realpathSync(ancestor); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      missing.unshift(path.basename(ancestor)); ancestor = path.dirname(ancestor);
+    }
+  }
+  const relative = path.relative(projectRoot, path.join(ancestor, ...missing));
+  if (!relative || relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
+    throw new Error("Runtime data must be stored outside the project directory. Choose an application or user data directory.");
+  }
 }

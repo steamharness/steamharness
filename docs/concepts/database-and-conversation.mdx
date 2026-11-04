@@ -12,7 +12,7 @@ description: "业务关系表、知识库与平台会话存储的边界"
 在入口目录的 `steamharness.database.ts` 中定义一个或多个别名，在 `steamharness.schema` 中定义模型。入口的 `databases` 列出使用的别名；Server 按当前账号、项目、入口与别名保存资源绑定。项目配置不保存业务数据库 ID 或凭据。
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 
 const db = await context.databases.connect(main);
 const users = await db.user.findMany({ orderBy: { id: "asc" } });

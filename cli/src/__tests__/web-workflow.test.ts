@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { runtimeStorageService } from './runtime-storage-service';
 import { temporaryRuntimePersistence } from "./web-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
@@ -44,7 +45,7 @@ async function service(legacy?: ConversationSession[]) {
   vi.mocked(executor.inspect).mockResolvedValue({ projects: [descriptor], errors: [] });
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', version: "0.1.0",  entries: project.entries, defaultEntry: 'main'  }));
   await writeFile(path.join(directory, 'index.ts'), 'export {};');
-  const dataDir = path.join(directory, 'data');
+  const dataDir = path.join(testDataDirectory(directory));
   const historyDir = path.join(dataDir, 'projects', project.id, 'entries', project.entryId);
   if (legacy) { await mkdir(historyDir, { recursive: true }); await writeFile(path.join(historyDir, 'conversations.json'), JSON.stringify({ sessions: legacy })); }
   const app = await startWebServer({ projectDir: directory, dataDir, runtime: executor }); services.push(app);
@@ -421,7 +422,7 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
     export const executor = steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',group:{id:'group',title:'Group'},workflow:flow,
       params:[{name:'subject',flag:'--subject',type:'string',defaultValue:'Subject'}],createInput: context => context.paramValues})]});
   `);
-  const executor = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const executor = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => undefined);
   try {
     const inspected = await executor.inspect([directory]); expect(inspected.errors).toEqual([]);
     const descriptor = { ...inspected.projects[0], uri: 'file:///fixture' };
@@ -458,7 +459,7 @@ it('persists nested conversation state on the Server while preserving authored f
     export const executor = steamharness.defineExecutor({projectType:'conversation',workflow:flow,createInput:()=>({})});
   `);
   const connection = await runtimeStorageService().start();
-  const executor = createWebRuntime(directory, path.join(directory, 'data'), () => connection);
+  const executor = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => connection);
   try {
     const inspected = await executor.inspect([directory]);
     expect(inspected.errors).toEqual([]);

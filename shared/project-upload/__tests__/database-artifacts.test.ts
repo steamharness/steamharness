@@ -37,13 +37,18 @@ async function fixture(): Promise<{ root: string; generated: string; manifest: D
 describe("static database artifacts", () => {
   it("copies only verified generated files, without executing definitions or copying host runtime state", async () => {
     const { root } = await fixture();
-    await writeFile(path.join(root, ".steamharness/session.json"), '{"secret":"local"}');
+    await writeFile(path.join(root, "dist/steamharness/session.json"), '{"secret":"local"}');
     const target = await mkdtemp(path.join(os.tmpdir(), "database-static-target-")); directories.push(target);
+    for (const relative of ['cache/vite', 'reports/test', 'release/package', 'tmp/build', 'unregistered/output']) {
+      await mkdir(path.join(root, 'dist', relative), { recursive: true });
+      await writeFile(path.join(root, 'dist', relative, 'private.json'), '{}');
+    }
     const plan = await copyProjectUploadFiles(root, target);
-    expect(plan.files.some(file => file.path === ".steamharness/generated/database/node/main.js")).toBe(true);
+    expect(plan.files.some(file => file.path.endsWith('private.json'))).toBe(false);
+    expect(plan.files.some(file => file.path === "dist/steamharness/generated/database/node/main.js")).toBe(true);
     expect(plan.files.some(file => file.path.endsWith("session.json"))).toBe(false);
     expect((await readDatabaseArtifactFiles(target))?.manifest.databases[0].alias).toBe("main");
-    await writeFile(path.join(root, ".steamharnessignore"), ".steamharness/\n");
+    await writeFile(path.join(root, ".steamharnessignore"), "dist/steamharness/\n");
     await expect(createProjectUploadPlan(root)).rejects.toThrow(/Required upload path/);
     await writeFile(path.join(root, ".steamharnessignore"), "steamharness.schema\n");
     await expect(createProjectUploadPlan(root)).rejects.toThrow(/Required upload path/);
@@ -76,7 +81,7 @@ describe("static database artifacts", () => {
 
   it("rejects traversal, runtime-secret paths, duplicate files and missing targets in manifests", async () => {
     const { manifest } = await fixture();
-    for (const filename of ["../token.json", "node/../../token.json", ".env", "node/.env.json", "node/token.key", ".steamharness/session.json"]) {
+    for (const filename of ["../token.json", "node/../../token.json", ".env", "node/.env.json", "node/token.key", "dist/steamharness/session.json"]) {
       const changed = structuredClone(manifest); changed.files[0].path = filename;
       expect(() => parseDatabaseArtifactManifest(changed)).toThrow();
     }
@@ -84,7 +89,7 @@ describe("static database artifacts", () => {
     expect(() => parseDatabaseArtifactManifest(duplicate)).toThrow();
     const incomplete = structuredClone(manifest); incomplete.files = incomplete.files.filter(file => !file.path.startsWith("browser"));
     expect(() => parseDatabaseArtifactManifest(incomplete)).toThrow(/Incomplete/);
-    expect(isDatabaseArtifactPath("nested/.steamharness/generated/database/node/main.js")).toBe(true);
-    expect(isDatabaseArtifactPath(".steamharness/session.json")).toBe(false);
+    expect(isDatabaseArtifactPath("dist/steamharness/entries/nested/generated/database/node/main.js")).toBe(true);
+    expect(isDatabaseArtifactPath("dist/steamharness/session.json")).toBe(false);
   });
 });

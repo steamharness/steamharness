@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { createLocalRuntimePersistence, createMemoryRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from 'steamharness/runtime-storage';
 import { encodeSession } from '../web/conversation-history';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
@@ -27,7 +28,7 @@ async function fixture(kind: 'workflow'|'conversation'|'kanban' = 'workflow') {
   const reference = { entryId:'main', id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Imported', uri: pathToFileURL(folderPath).href, folderPath };
   const manifest = { id: reference.id, name: 'Default', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',databases:[] as object[]}], projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' } }  };
   await writeProjectFixture(path.join(folderPath, 'package.json'), JSON.stringify(manifest));await writeFile(path.join(folderPath,'index.ts'),'export {};');await writeFile(path.join(folderPath,'index.html'),'<html></html>');
-  const storageDir = path.join(root, 'data'), directory = webProjectDataDirectory(storageDir, reference.id,"main"); await mkdir(directory, { recursive: true });
+  const storageDir = path.join(testDataDirectory(root)), directory = webProjectDataDirectory(storageDir, reference.id,"main"); await mkdir(directory, { recursive: true });
   const backend = createMemoryRuntimePersistence();
   const persistence = () => backend;
   const snapshot = (now?: number) => readLocalStudioAnalysis({ storageDir, projects: [reference], locale: 'zh-cn', now, persistenceForProject: persistence });

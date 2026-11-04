@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -48,7 +49,7 @@ it('persists and reopens offline history through the default host backend withou
     throw new Error(`Unexpected network access: ${url}`);
   });
   const start = async () => {
-    const app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime, host: { surface: 'editor' } });
+    const app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime, host: { surface: 'editor' } });
     services.push(app);
     const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session');
     const auth = await fetch(`${app.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
@@ -68,7 +69,7 @@ it('persists and reopens offline history through the default host backend withou
   expect((await first.post({ type: 'navigate', clientId: randomUUID(), requestId: 1, id: sessionId, updates: [{ id: sessionId, draft: { text: 'Saved offline draft', attachments: [] } }] })).status).toBe(200);
   expect(remoteRequests).toEqual([]);
   await first.app.close(); services.splice(services.indexOf(first.app), 1);
-  const sqlite = path.join(directory, 'data', 'projects', projectId, 'entries', 'main', 'runtime', 'history.sqlite');
+  const sqlite = path.join(testDataDirectory(directory), 'projects', projectId, 'entries', 'main', 'runtime', 'history.sqlite');
   expect((await readFile(sqlite)).subarray(0, 15).toString()).toBe('SQLite format 3');
 
   const second = await start();

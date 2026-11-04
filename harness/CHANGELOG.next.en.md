@@ -1,5 +1,7 @@
 # Unreleased
 
+- Rebuildable outputs use the aggregate root dist, with shared database outputs per source root. Standalone SDK history defaults to ~/.steamharness/runtime/<projectId>/<entryId>/ outside the project.
+
 - [Fix] Preserve known public database error codes across node and Workflow reports so hosts can identify missing bindings, contention, and schema mismatches; omit custom codes on arbitrary exceptions.
 
 - Fixed aggregate Workflow calls from Kanban using a separate 120-second Bridge deadline so database authorization and durable receipts can complete.

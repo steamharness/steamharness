@@ -91,7 +91,7 @@ Commits and ID allocation keep stable request IDs, returning the original result
 
 `createServerRuntimePersistence({ serverUrl, token, workspace, resolveProject: true })` creates the host repository. `list(kind)` reads conversation, run, workflow or state history. `acquire(scope, onLost)` returns a lease with write(record), delete(identity), usage(entry), assertOwned() and close(). Records carry a revision and ordered message, queue, event and value collections. Writes require the matching scope and revision. Deletion retains a version tombstone so stale windows cannot recreate deleted history.
 
-Core executors default to project/entry-specific local stores under .workflow/runtime/ in the project root; CLI/Studio use their host data directory. Agent nodes select independent storage by conversationId and sessionKey. Trusted hosts may inject local or Server repositories through storage.local.runtimePersistence or storage.server.runtimePersistence. Tests may explicitly use createMemoryRuntimePersistence(), which is never a failure fallback.
+Core executors default to local stores under `~/.steamharness/runtime/<projectId>/<entryId>/` in the user directory; CLI/Studio use their host application data directory. Agent nodes select independent storage by conversationId and sessionKey. Trusted hosts may inject local or Server repositories through storage.local.runtimePersistence or storage.server.runtimePersistence. Tests may explicitly use createMemoryRuntimePersistence(), which is never a failure fallback.
 
 The following helpers are exported from steamharness/agent and accept persistence:
 

@@ -13,7 +13,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 4. 需要选择 API、定位公开类型或寻找项目示例时，先读短索引 `references/task-map.md`，再按其指向读取详细契约；要改参数入口或控件（`kind` / `fields` / `control`），先读 `references/param-panels.md`。
 5. 项目不存在时使用 `scripts/create_workflow.py`。所有类型生成 `.steamharnessignore` 与 `configuration.json`；Workflow/Conversation 生成 TypeScript executor，Kanban 生成 HTML、状态与存储模块和测试。`--with-kanban-params` 在声明文件加入示例字段。
 6. 如果项目已存在，先判断它是否处于 Desktop 普通文件夹降级、旧清单迁移或数据库空间未绑定状态；命中任一情况时必须完整读取 `references/project-repair.md`。如果该必需引用缺失、被拒绝或只读取到部分内容，立即停止本次修复并准确报告读取失败与未验证阶段；不得继续编辑、转向无关优化、用旧工具的成功结果代替当前合同校验，或宣称修复完成。引用可用时再按当前授权根目录分阶段完成，不能把局部修复宣称为整体完成。
-8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Conversation 才运行 json/run 或 runtime smoke。持久化运行须登录目标 Server，并使用专用测试账号、项目、入口与会话。测试业务数据使用独立资源；文件缓存使用项目内的一次性目录。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
+8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Conversation 才运行 json/run 或 runtime smoke。运行历史默认保存在宿主应用数据目录；独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`。业务数据验证使用专用账号与独立资源；可重建缓存使用聚合根 `dist/cache/`，报告使用 `dist/reports/`。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
 9. 新增功能时不要把所有功能都加在 `index.ts` 中，合理创建文件和文件夹组织代码。
 
 ## 项目修复边界
@@ -27,7 +27,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 ## 当前 API 规则
 
 - 一个根 steamharness.json.id UUID 注册多个 steamharness.json.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
-- Workflow/Conversation 分别从注册模块加载 executor，按相对导入图静态分析。Kanban 注册构建后的 HTML；路径限制在聚合内。
+- Workflow/Conversation 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认 dist/<entryId>/index.html。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
 - 业务数据库使用 `steamharness.database.ts` 与 `steamharness.schema` 定义，生成描述符后通过 `context.databases.connect(descriptor)` 访问。关系别名声明在入口 databases 字符串数组中；资源 UUID 与绑定只由 Server 按账号、项目、入口、alias 管理。知识库使用 `context.knowledgeBases.get(alias)`，独立声明 knowledgeBases，并映射到根 config.json 的 knowledgeBases。附件通过 `knowledge.files` 操作，`knowledge` 来自 `context.knowledgeBases.get(alias)`。旧 KV、PersistentValue 与本地 KV 已删除。
 - 一个聚合是一个商品、版本和安装单元。发行所有注册入口、依赖清单及静态产物，保留数据库别名和知识库引用；引用不授予权限，安装后由宿主校验身份和授权。普通 npm 依赖按包管理，不生成项目关系与组合发布锁。
@@ -37,7 +37,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 不要在 workflow 源码中从 `"steamharness"` 导入 runtime API。
 - **判断 `steamharness.*` 全局成员是否存在先读 `references/runtime-api-index.md`**：它由 Core 源码生成。`context.files` 与 Kanban 浏览器 Bridge 不属于全局成员清单，文件创建、读取与上传迁移的契约见 `references/steamharness-api.md`，不能因全局清单未列出就判断文件接口不存在。
 - **API 与类型细节只从本 skill 取，不要去项目的 `node_modules` 里翻。** 先用 `references/task-map.md` 按任务定位公开类型、项目示例与详细章节，再读 `references/steamharness-api.md` 中对应契约；运行时成员是否存在以 `references/runtime-api-index.md` 为准。项目源码可从 `steamharness` 或 `steamharness/runtime-api` 使用 `import type` 获取公开类型，但不能导入运行时函数。**不要用 `read` / `grep` / `find` 去读已安装 `steamharness` 的 `dist/*.d.ts` 或打包后的 JS**：那是某个历史版本的构建产物，不是契约，照着它写出来的代码在宿主升级后就会失效，而且这条路会消耗掉大量轮次。bundled 技能不在工作区里，按文件路径 `read` 只会得到 ENOENT——`SKILL.md`、`references/*.md`、`assets/*`、`scripts/*` 一律用 `skill` 工具的 `action: "read"` 读（`path` 省略时读 `SKILL.md`），`action: "list"` 会列出全部文件。
-- Workflow、Conversation 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确固定 `steamharness` 和 `@steamharness/cli` 版本，不能使用 range 或 `workspace:*`。精确声明记录开发基线，但 Core 运行门禁只比较宿主与项目的 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，不比较日期顺序；major 或 minor 变化必须升级宿主。Core `0.2.x` 与数据存储声明从 Desktop `0.1.22` 开始支持；采用 Core `0.2.x` 的内置项目必须把发布索引 `minDesktopVersion` 设为至少 `0.1.22`。CLI 独立发版，不要假定与 Core 同版本。解析精确版本时读取对应通道的 `dist-tags`，不要用 `latest` 代替指定通道。平台会话与运行历史保存到 Server PostgreSQL；旧本地 KV 格式不再读取或迁移。Kanban 不执行 Core runtime，但仍须安装精确依赖、生成数据库描述符并构建静态产物。
+- Workflow、Conversation 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确固定 `steamharness` 和 `@steamharness/cli` 版本，不能使用 range 或 `workspace:*`。精确声明记录开发基线，但 Core 运行门禁只比较宿主与项目的 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，不比较日期顺序；major 或 minor 变化必须升级宿主。Core `0.2.x` 与数据存储声明从 Desktop `0.1.22` 开始支持；采用 Core `0.2.x` 的内置项目必须把发布索引 `minDesktopVersion` 设为至少 `0.1.22`。CLI 独立发版，不要假定与 Core 同版本。解析精确版本时读取对应通道的 `dist-tags`，不要用 `latest` 代替指定通道。平台会话、检查点和运行历史默认保存到宿主应用数据目录或用户目录的本地 SQLite；显式选择时才使用 Server 存储。不得写入源码或 dist；旧路径不再读取或回退。Kanban 不执行 Core runtime，但仍须安装精确依赖、生成数据库描述符并构建静态产物。
 - workflow `package.json` 只保留标准化源码元数据和第三方依赖。不要添加 package 内部的 `start`、`structure` 或 `json` scripts；终端运行应直接调用外层 `steamharness` CLI。
 - workflow `steamharness.json.id` 必须是顶层 UUID，不要再使用目录名、包名或 `steamharness.json.id`。新 scaffold 应直接写入固定 UUID；上传、发布和数据权限边界都以这个顶层 UUID 为准。每个注册入口的 `type` 静态声明 `workflow`、`conversation` 或 `kanban`；Workflow/Conversation 的 executor 类型必须与注册匹配。
 - 在 `interface.ts` 中定义最小本地类型，尤其是 `RunPayload`、`OutputItem`、`RunOutputPayload` 和 `ExecutorResult`，让 workflow 源码保持自包含。
@@ -91,7 +91,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - Kanban 注册项的 `root` 和 `entry` 必须是使用 `/` 语义的安全相对路径，禁止绝对路径、盘符、上级目录和越界链接。`entry` 指向构建产物 `.html`，iframe 资源限定在其产物目录内。
 - Vue、React、Vite 等构建工具由项目开发者维护，SteamHarness Desktop/Server 宿主不会自动安装依赖、运行构建或连接 dev server。使用本 skill 修改框架源码时，小助手或其它开发 agent 属于开发者侧：如果 `package.json` 已定义非 watch 的一次性 `build` 脚本，完成源码修改后必须执行该脚本，使注册的 `root` / `entry` 与源码一致；依赖缺失时按「依赖安装与环境」判断环境并补齐，而不是跳过构建。
 - 执行构建前先读取脚本内容，优先使用 `packageManager` 声明的包管理器，否则按现有 lockfile 选择，并只运行现有的 `<manager> run build`。禁止启动 `dev`、`watch`、`serve`、HMR 或任何长期占用端口的任务；安装的许可条件与边界（只补缺、不改依赖图、不编造构建脚本）以「依赖安装与环境」为准。
-- 构建完成后必须确认 `<root>/<entry>` 存在，再运行 Kanban structure 检查。构建脚本缺失、依赖装不上、脚本实际是 watch 任务或构建失败时，保留真实错误并明确说明预览产物未更新，不能声称预览已经更新；直接修改产物目录内静态文件时不需要额外构建。
+- 构建完成后必须确认聚合根下的 `<entry>` 存在，再运行 Kanban structure 检查。构建脚本缺失、依赖装不上、脚本实际是 watch 任务或构建失败时，保留真实错误并明确说明预览产物未更新，不能声称预览已经更新；直接修改产物目录内静态文件时不需要额外构建。
 - 项目需要单独选择子 Agent 模型时，声明 `control: "agent-model"` 的非敏感单字符串字段，空值跟随、非空保存已有模型条目 ID；用 `session.subagents.modelConfiguration` 绑定并复用现有 AI 模型列表。首版所有子 Agent 共用一个选择，不另建凭据表单或多选。
 - 只允许系统 AI 的项目在 `configuration.json` 显式声明 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`、`allowThirdParty: false`、`defaultValue: []`、`secret: true`），并保留模型字段的发布结构；不要生成自定义 URL/API Key 直连分支。省略限制时仍可添加第三方模型。
 - 底图、初始化文件等文件配置声明 `type: "file"` 和 `accept`，由项目配置面板选择并上传到服务器；不要将文件配置降级为要求用户填写引用的 JSON 文本框。单文件保存服务器元数据对象，多文件保存引用数组，文件内容和本机路径不进入配置。
@@ -104,7 +104,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - `configuration.json` 只承载同一页面的视图或行为配置，例如标题、主题、过滤条件和显示模式。任务、卡片、记录等页面业务数据必须在 HTML 内提供新建、编辑、删除等操作，并通过关系表 API 保存；禁止把业务列表编码成逗号分隔 textarea 或要求用户在配置区维护。
 - 页面通过 `window.steamHarnessKanban.getConfiguration()` 读取 `{ id, name, params }`，并监听 `steamharness:kanban-configuration-change` 的 `CustomEvent.detail` 实时重绘。配置切换时 iframe 不会重新加载；异步读取旧配置数据时使用请求代次，禁止旧响应覆盖新配置。
 - 用户需要 Agent 查询或操作页面时，通过 `window.steamHarnessKanban.methods.register({ name, description, inputSchema, readOnly? }, handler)` 注册业务白名单方法，保存返回的注销函数并在卸载时调用。handler 接收 JSON 对象与 `{ signal, configuration, presentation }`，自行校验业务参数并返回 JSON；检查取消信号，配置 ID 变化后按新配置重新注册。不要依靠全局函数名、模拟按钮或自建消息协议。Desktop 小助手先用 `steamharness-kanban_kanban_methods` 的 `action: "list"` 发现方法和具体实例，再用该实例的 `instanceId`、`configurationId`、`method`、`args` 调用；主区、Dock、对话卡片独立，不能因项目 ID 相同而误控其它预览。超时后先查询状态，禁止自动重试相对缩放、平移或写入。此 capability 需要已启用的 Desktop 本地宿主桥，独立 CLI/Server 和托管 Web 不具备页面连接；详细限制见 API 参考。
-- 页面业务数据先定义模型并执行 database generate，导入 `.steamharness/generated/database/browser/index.js` 描述符，使用 `await window.steamHarnessKanban.databases.connect(data)`；模型 delegate 提供 rows/insert/update/delete，更新与删除携带 rowVersion。Browser API 不暴露 Node ORM、SQL 或连接串。Bridge 固定当前项目和入口；页面不能选择账号、项目、资源路径或授权身份。知识文档使用 knowledgeBases.get(alias)。
+- 页面业务数据先定义模型并执行 database generate，导入 `dist/steamharness/generated/database/browser/index.js` 描述符，使用 `await window.steamHarnessKanban.databases.connect(data)`；模型 delegate 提供 rows/insert/update/delete，更新与删除携带 rowVersion。Browser API 不暴露 Node ORM、SQL 或连接串。Bridge 固定当前项目和入口；页面不能选择账号、项目、资源路径或授权身份。知识文档使用 knowledgeBases.get(alias)。
 - 图片和文件使用 `window.steamHarnessKanban.knowledgeBases.get("data").files.createFile({ name, mimeType?, buffer })`、`readFile(fileId)`、`deleteFile(fileId)`。`buffer` 接受 Blob、ArrayBuffer 或 Uint8Array；read 返回 `{ file, buffer: ArrayBuffer }`，可转 Blob 与临时 object URL 显示，卸载时释放 URL。文件始终写入当前连接服务器的受鉴权存储，与 Workflow/Conversation 的 `context.knowledgeBases.get(alias).files` 使用相同知识资源授权；`context.files` 的配置附件和项目托管文件仍使用独立通道；宿主未连接、未获同 UUID 服务器项目授权或服务器不支持接口时明确失败，不回退本地。单文件上限 50 MiB，文件 Bridge 超时 120 秒；业务行只保存文件引用与标注，禁止把图片分块或 base64 写入数据库行。现有本地图片可用 `steamharness workspace file-upload <项目 UUID> --file <路径>` 上传，`file-download <文件 ID> --output <新文件>` 读回核对原始字节；业务文件上传与项目源码上传、版本发布独立。
 - 命名配置的业务隔离使用模型字段 configurationId，所有列表按当前配置筛选，新建时写入该字段。未绑定、断连或读取失败须显示恢复入口并禁用编辑，不启用临时存储。写入失败保留已保存记录和未提交草稿；冲突重新读取并交由用户处理，不自动覆盖或重放写入。
 - Bridge 调用必须处理 Promise reject。页面同时最多有 16 个请求，普通调用 15 秒、聚合 Workflow 调用 120 秒超时；直接打开 `index.html` 时 Bridge 不存在，仍应提供明确的只读或内存降级，不能因此阻塞首屏。
@@ -152,7 +152,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 # 静态检查不访问业务库；运行检查须使用专用 Server 测试身份。
 steamharness structure <workflow-dir>
 
-STEAMHARNESS_FILE_STORE_DIR=<workflow-dir>/.tmp/files \
+STEAMHARNESS_FILE_STORE_DIR=<user-data-dir>/files \
 steamharness json <workflow-dir> --conversation-id <id> -- --dry-run --payload '<sample-json>'
 
 NODE_PATH=<repo-root>/node_modules pnpm -C <repo-root> exec tsc -p <workflow-dir>/tsconfig.json --typeRoots <repo-root>/node_modules/@types
@@ -210,7 +210,7 @@ python <skill-dir>/scripts/create_workflow.py <kanban-name> --dir <target-dir> \
 
 - `steamharness.json`：项目 UUID、名称、版本、defaultEntry、显式 entries、projectCard、projectInfo；子入口仅在父 entries 登记后生效。
 - `package.json`：npm `name`、`version`、`type`、精确 Core/CLI dev dependency，以及必要时才加入的真实第三方依赖。
-- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Conversation 默认排除构建输出，Kanban 默认保留可能作为静态产物的 `dist/build/out`。
+- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Conversation 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
 - `configuration.json`：为所有业务配置声明字段和安全默认值；无字段时使用空 fields。实际值不进入源码，由面板及 Studio Control 管理。
 - `interface.ts`：本地 `RunPayload`、`ExecutorResult`、输入类型、输出 payload 和输出结果类型。
 - `index.ts`：全局 `steamharness.*` 节点、具名 workflow、带静态 params 的 executor、默认导出。

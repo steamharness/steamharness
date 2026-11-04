@@ -117,7 +117,7 @@
       "steamharness.database.ts": "_shared/steamharness.database.ts",
       "database/steamharness.schema": "_shared/database/steamharness.schema"
     },
-    "entryFile": "dist/index.html"
+    "entryFile": "dist/main/index.html"
   },
   {
     "id": "kanban-parameters",
@@ -148,6 +148,6 @@
       "steamharness.database.ts": "_shared/steamharness.database.ts",
       "database/steamharness.schema": "_shared/database/steamharness.schema"
     },
-    "entryFile": "dist/index.html"
+    "entryFile": "dist/main/index.html"
   }
 ]

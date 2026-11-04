@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import {expect,it} from 'vitest';
 import {once} from 'node:events';
@@ -23,7 +24,7 @@ it('enforces verified profiles through the real child worker, including downgrad
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
   let connection:WebConnection|undefined={serverUrl:origin,accessToken:'fixture-only'};
-  const runtime=createWebRuntime(directory,path.join(directory,'data'),()=>connection);
+  const runtime=createWebRuntime(directory,path.join(testDataDirectory(directory)),()=>connection);
   const root=path.join(os.homedir(),'.steamharness','configurations');
   try{
     await mkdir(path.join(directory,'node_modules'));

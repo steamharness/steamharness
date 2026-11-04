@@ -24,7 +24,7 @@
       "type": "kanban",
       "name": "Studio Analysis",
       "root": ".",
-      "entry": "index.html",
+      "entry": "dist/main/index.html",
       "databases": [],
       "configuration": "configuration.json"
     }

@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { runtimeStorageService } from './runtime-storage-service';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -38,7 +39,7 @@ it('falls back to project models in standalone Web and follows later host capabi
         createInput(context) { return steamharness.createAgentProjectInput(context); }
       });
     `);
-    app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
+    app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });

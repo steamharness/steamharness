@@ -1,6 +1,7 @@
 import { isProjectKind, type ProjectKind } from "@steamharness/project-types";
 import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from "./identity";
 export * from "./identity";
+export * from "./artifacts";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
 import { normalizeProjectInfo, type ProjectInfoContract } from "../project-info/index";
 import { readProjectConfig } from "./config";
@@ -17,7 +18,7 @@ export interface ProjectEntry {
   projectInfo?: ProjectInfoContract;
   /** Directory relative to the aggregate root. */
   root: string;
-  /** Executable module or static HTML, relative to root. */
+  /** Source module relative to root; Kanban HTML relative to the aggregate root. */
   entry: string;
   /** Configuration definition JSON, relative to root. */
   configuration?: string;
@@ -78,7 +79,7 @@ function rootDocument(value: unknown): Record<string, unknown> {
     ids.add(entry.entryId);
     const root = normalizeEntryPath(entry.root, "entries.root", true);
     if (root !== "." && Object.keys(entry).some(key => !["entryId", "root"].includes(key))) throw new Error("Child entry registrations contain only entryId and root; declare entry settings in the child's steamharness.json.");
-    if (root === "." && entry.entry === undefined) throw new Error("Root entries must declare their executable entry inline.");
+    if (root === "." && entry.entry === undefined && entry.type !== "kanban") throw new Error("Root entries must declare their executable entry inline.");
   }
   if (typeof input.defaultEntry !== "string" || !ids.has(input.defaultEntry)) throw new Error(`${PROJECT_MANIFEST_FILE}.defaultEntry must identify a registered entry.`);
   return input;
@@ -147,7 +148,7 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
     ...record(item.projectCard, `${field}.projectCard`),
   });
   const root = normalizeEntryPath(item.root, `${field}.root`, true);
-  const entry = normalizeEntryPath(item.entry, `${field}.entry`);
+  const entry = normalizeEntryPath(item.entry ?? (item.type === "kanban" ? `dist/${item.entryId}/index.html` : undefined), `${field}.entry`);
   if (item.type === "kanban" ? !/\.html$/i.test(entry) : !/\.[cm]?[jt]sx?$/i.test(entry)) throw new Error(`${field}.entry must be ${item.type === "kanban" ? "an HTML artifact" : "an executable module"}.`);
   const configuration = item.configuration === undefined ? undefined : normalizeEntryPath(item.configuration, `${field}.configuration`);
   if (!Array.isArray(item.databases)) throw new Error(`${field}.databases must be an array (use [] for no database access).`);

@@ -10,7 +10,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 关系模型使用 `steamharness/database` 的 `defineDatabase({schema:"./database/main/steamharness.schema"})`（默认别名 main）或 `defineDatabases({main:{schema:"./database/main/steamharness.schema"},audit:{schema:"./database/audit/steamharness.schema"}})`，默认导出到 `steamharness.database.ts`。模型文件统一叫 `steamharness.schema`，只写 Prisma 模型、枚举、关系和约束，不写 datasource、generator、连接 URL、资源 ID 或凭据。生成固定 PostgreSQL / Prisma 7.10.1；多个别名可复用 schema，但各自保留独立描述符。
 
-命令为 `steamharness database init|validate|generate [directory]`，简写 `steamharness db`。init 不覆盖已有定义，为已有 dev/build 脚本加入生成前置步骤。手写定义后，类型检查与构建前先 generate；生成目录 `.steamharness/generated/database` 加入 `.gitignore`，不加入 `.steamharnessignore`。Node 使用 `node/index.js`，Browser 使用 `browser/index.js`。模型与输入类型从对应 `<target>/<alias>.js` 导入，`DatabaseClient<typeof main>` 从 `steamharness/database` 获得该库查询类型。两个库可分别定义不同的 User；不能混用字段。模型名首字母小写后必须唯一，不得为 constructor、prototype、__proto__、then 或 transaction；例如 User/user 不能在同库共存，Transaction 也不可用。
+命令为 `steamharness database init|validate|generate [aggregate-directory] [--entry <entryId>]`，简写 `steamharness db`。init 不覆盖已有定义，为已有 dev/build 脚本加入生成前置步骤。手写定义后，类型检查与构建前先 generate；生成目录 `dist/steamharness/generated/database` 加入 `.gitignore`，不加入 `.steamharnessignore`。Node 使用 `node/index.js`，Browser 使用 `browser/index.js`。模型与输入类型从对应 `<target>/<alias>.js` 导入，`DatabaseClient<typeof main>` 从 `steamharness/database` 获得该库查询类型。两个库可分别定义不同的 User；不能混用字段。模型名首字母小写后必须唯一，不得为 constructor、prototype、__proto__、then 或 transaction；例如 User/user 不能在同库共存，Transaction 也不可用。
 
 Browser 描述符不得加载 Node 客户端、驱动或连接配置。生成产物含 JS 与 TS、模型元数据、标准内部 schema、引擎运行资产及校验清单，不手动维护。workspace pack 自动为根和注册入口生成并带入产物；Server 只校验静态文件，不执行定义。失败保持上一份完整生成，去掉别名后重新生成清理旧产物。
 
@@ -124,7 +124,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 {
   "type": "kanban",
   "name": "Board",
-  "entry": "dist/index.html",
+  "entry": "dist/main/index.html",
   "databases": []
 }
 ```
@@ -208,12 +208,12 @@ Structure 将预设返回给宿主，但导入、打开或发布项目都不会�
 
 ## Kanban 静态入口
 
-在 entries 注册 type: "kanban"，root 指向代码目录，entry 指向已构建 HTML 产物（例如 dist/index.html）。不生成 executor。宿主只消费产物，不安装依赖、执行构建脚本或连接 dev server。HTML/CSS/JS、图片和字体使用产物内相对路径。页面位于 allow-scripts sandbox 和离线 CSP，不能访问 Node、父页面 DOM、公网或顶层导航。
+在 entries 注册 type: "kanban"，root 指向代码目录，entry 指向已构建 HTML 产物（例如 dist/main/index.html）。不生成 executor。宿主只消费产物，不安装依赖、执行构建脚本或连接 dev server。HTML/CSS/JS、图片和字体使用产物内相对路径。页面位于 allow-scripts sandbox 和离线 CSP，不能访问 Node、父页面 DOM、公网或顶层导航。
 
 `window.steamHarnessKanban.getConfiguration()` 读取当前命名配置；监听 `steamharness:kanban-configuration-change`。`getPresentation()` 返回 full/card 展示，监听 `steamharness:kanban-presentation-change`。无参数时使用全幅布局，在手机、平板、低高度卡片中保留草稿与保存状态。
 
 ```ts
-import { data } from "./.steamharness/generated/database/browser/index.js";
+import { data } from "./dist/steamharness/generated/database/browser/index.js";
 const database = await window.steamHarnessKanban.databases.connect(data);
 const configurationId = window.steamHarnessKanban.getConfiguration().id || "default";
 const page = await database.task.rows({ where: { configurationId } });
@@ -226,7 +226,7 @@ const { buffer } = await knowledge.files.readFile(file.id);
 
 知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和业务库的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件和聚合 Workflow 调用超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
-模板与生成器先 generate 再 build，入口为 dist/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
+模板与生成器先 generate 再 build，入口为 dist/main/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
 
 页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
@@ -478,7 +478,7 @@ try {
 
 ## 业务数据库与独立知识库
 
-业务模型在 `steamharness.database.ts` 和 `steamharness.schema` 定义，通过 CLI database generate/migrate 生成并应用。Node 导入 `.steamharness/generated/database/node/index.js` 的描述符后使用 `context.databases.connect(descriptor)`。关系库资源和账号、项目、入口、alias 绑定保存在 Server；不写旧 config.databases。连接不自动建库或迁移，模型不符、撤权和断连明确失败。Browser 导入 browser/index.js 描述符，经宿主提供模型 rows/insert/update/delete；不是 Node ORM，Decimal、BigInt 用字符串、Bytes 用 Base64；DateTime 必须输入带时区的 ISO 字符串并按 UTC 读写，Date 原生类型返回 UTC 零点，Time/Timetz 返回 1970-01-01 日期。映射枚举读写模型声明值，列表未提供且无默认值时写空数组。
+业务模型在 `steamharness.database.ts` 和 `steamharness.schema` 定义，通过 CLI database generate/migrate 生成并应用。Node 导入 `dist/steamharness/generated/database/node/index.js` 的描述符后使用 `context.databases.connect(descriptor)`。关系库资源和账号、项目、入口、alias 绑定保存在 Server；不写旧 config.databases。连接不自动建库或迁移，模型不符、撤权和断连明确失败。Browser 导入 browser/index.js 描述符，经宿主提供模型 rows/insert/update/delete；不是 Node ORM，Decimal、BigInt 用字符串、Bytes 用 Base64；DateTime 必须输入带时区的 ISO 字符串并按 UTC 读写，Date 原生类型返回 UTC 零点，Time/Timetz 返回 1970-01-01 日期。映射枚举读写模型声明值，列表未提供且无默认值时写空数组。
 
 知识库无需项目定义 schema。入口声明 `"knowledgeBases": ["docs"]`，根 `config.json` 使用 `"knowledgeBases": { "docs": "<Server 创建的 UUID>" }`。`STEAMHARNESS_PROJECT_CONFIG` 可按别名覆盖；不自动读取 .env，打包保留文件值。使用 `steamharness knowledge create/bind/grant/revoke` 管理，账号必须先登录 Server。绑定不授予权限。多入口可复用 alias；业务库与知识库的同名 alias 独立。
 
@@ -1504,3 +1504,20 @@ Workflow 调用独立使用 120 秒 Bridge 时限，供数据库授权及持久�
 `conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
 
 Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNTIME_UNAVAILABLE`，页面应提示使用本地 CLI Web / Studio。对话中的只读资源预览保持原数据访问边界。
+
+### 聚合产物目录
+
+所有可重建产物统一写入聚合项目根的 `dist/`，子入口不得另建产物根：
+
+| 内容 | 路径 |
+| --- | --- |
+| 根数据库定义的生成代码 | `dist/steamharness/generated/database/` |
+| 子入口数据库定义的生成代码 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
+| 编译和静态页面 | `dist/<entryId>/` |
+| 工具缓存、测试报告和打包文件 | `dist/cache/`、`dist/reports/`、`dist/release/` |
+
+子入口使用完整 `entry.root` 的 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`；同一源码根的入口共用生成代码。每个构建器只清理自己的子目录，不能清空整个 `dist/`。源码、配置、数据库模型和迁移保留在源码目录，根 `.gitignore` 忽略 `/dist/`。
+
+会话、检查点、登录状态和其他持久数据保存在宿主应用数据目录或用户目录，不能写入源码目录或 `dist/`。独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`；CLI Web 的 `--data-dir` 同样必须在项目外。删除 `dist/` 后重新生成和构建即可恢复产物，外部运行数据不受影响。旧路径不再读取、迁移或回退；迁出已有持久数据时先关闭对应宿主，离线移动并保留权限。
+
+数据库命令始终传聚合根；不带 --entry 时按源码根去重处理全部声明，--entry 选择单个源码根，返回 outputs 数组。Kanban entry 相对聚合根；Workflow/Conversation entry 相对 entry.root。

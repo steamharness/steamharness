@@ -175,7 +175,7 @@ try {
           execution: structure.execution,
           diagnostics: structure.diagnostics,
           defaultEntrypoint: structure.defaultEntrypoint,
-          artifactEntry: structure.kanban ? `${registration.root === "." ? "" : registration.root + "/"}${createKanbanArtifactEntryPath(structure.kanban)}` : undefined,
+          artifactEntry: structure.kanban ? createKanbanArtifactEntryPath(structure.kanban) : undefined,
           kanban: structure.kanban ? { artifactDir: structure.kanban.artifactDir, entry: structure.kanban.entry } : undefined,
           projectInfo: readProjectInfo(registration),
           conversation: structure.conversation,

@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { beforeAll, afterAll } from "vitest";
 import { runtimeStorageService } from "./runtime-storage-service";
 let runtimeConnection: Awaited<ReturnType<ReturnType<typeof runtimeStorageService>["start"]>>;
@@ -25,7 +26,7 @@ it('carries host settings into real workers and IPC tools until a durable sessio
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection, { userSettings: () => settings });
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => runtimeConnection, { userSettings: () => settings });
   let run: Promise<unknown> | undefined, snapshot: AgentSessionSnapshot | undefined;
   const toolSets: string[][] = [];
   const model = createServer(async (request, response) => {
@@ -114,7 +115,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => runtimeConnection);
   let calls = 0, child: ChildProcess | undefined, resumed: Promise<unknown> | undefined;
   let snapshot: AgentSessionSnapshot | undefined;
   const events = (event: Record<string, any>) => {
@@ -143,7 +144,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const project = { ...inspected.projects[0], uri: '' };
-    const request = { method: 'run', project, conversationId: 'disconnect-session', runId: 'disconnect-run', args: ['--message', 'First'], storageDir: path.join(directory, 'data'), runtimeProjectDir: directory };
+    const request = { method: 'run', project, conversationId: 'disconnect-session', runId: 'disconnect-run', args: ['--message', 'First'], storageDir: path.join(testDataDirectory(directory)), runtimeProjectDir: directory };
     child = spawn(process.execPath, [fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: runtimeConnection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: runtimeConnection.accessToken }, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
     let output = '', failure = '', lastMessage: unknown;
     child.stderr!.on('data', chunk => { failure += chunk.toString(); });
@@ -192,7 +193,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => runtimeConnection);
   let child: ChildProcess | undefined;
   try {
     await mkdir(path.join(directory, 'node_modules'));
@@ -242,7 +243,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
       await expect.poll(() => messages.some(message => message.type === 'fixture-worker-listening'), { timeout: 5000 }).toBe(true);
       child.send({ type: 'agent-control', id: 'early-snapshot', scopeId: 'failed-session', command: { type: 'snapshot', requestId: 'waiting-snapshot' } });
       await expect.poll(() => messages.some(message => message.type === 'fixture-control-delivered'), { timeout: 5000 }).toBe(true);
-      child.stdin!.end(JSON.stringify({ method: 'run', ...request, storageDir: path.join(directory, 'data'), runtimeProjectDir: directory }));
+      child.stdin!.end(JSON.stringify({ method: 'run', ...request, storageDir: path.join(testDataDirectory(directory)), runtimeProjectDir: directory }));
       await closed;
       expect(messages.find(message => message.type === 'agent-receipt'), output + diagnostics).toMatchObject({ id: 'early-snapshot', code: 'AGENT_SESSION_ENDED', error: expect.stringContaining('Fixture tool initialization failed') });
     }
@@ -270,7 +271,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     ]) response.write(`data: ${JSON.stringify({ id: 'ipc', object: 'chat.completion.chunk', model: 'ipc-test', ...event })}\n\n`);
     response.end('data: [DONE]\n\n');
   });
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => runtimeConnection);
   let run: Promise<unknown> | undefined;
   try {
     const harnessRoot = await resolveHarnessRoot();

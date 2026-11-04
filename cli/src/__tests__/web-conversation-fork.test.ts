@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { runtimeStorageService } from './runtime-storage-service';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
@@ -59,7 +60,7 @@ it('forks through the page protocol without system AI and resumes only when the 
     `;
     await writeFile(path.join(directory, 'index.ts'), source);
     const connection = { serverUrl: origin, accessToken: 'test-account', aiServerUrl: origin, aiAccessToken: 'test-ai' };
-    const open = (withAi: boolean) => startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', connection: withAi ? connection : { serverUrl: origin, accessToken: 'test-account' },
+    const open = (withAi: boolean) => startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: withAi ? connection : { serverUrl: origin, accessToken: 'test-account' },
       userSettings: { agent: { permissionPolicy: 'auto', models: [{ id: 'selected', name: 'System fixture', source: 'system', credentialId: 'fixture', model: 'fixture-model' }] } } } });
     app = await open(true);
     const post = async (message: object) => {

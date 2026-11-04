@@ -1,3 +1,4 @@
+import { projectEntryFilePath } from "@steamharness/project-manifest";
 import ignore, { type Ignore } from "ignore";
 import { PROJECT_CONFIG_FILE, PROJECT_MANIFEST_FILE, readProjectDeclaration, type ProjectDeclaration } from "@steamharness/project-manifest";
 
@@ -35,15 +36,16 @@ export function resolveProjectUploadRequiredPaths(
   for (const entry of manifest.entries) {
     if (entry.root !== ".") required.add(`${entry.root}/${PROJECT_MANIFEST_FILE}`);
     const prefix = entry.root === "." ? "" : `${entry.root}/`;
-    required.add(`${prefix}${entry.entry}`);
+    required.add(projectEntryFilePath(entry));
     if (entry.configuration) required.add(`${prefix}${entry.configuration}`);
     for (const filename of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "tsconfig.json"]) {
       if (normalizedAvailablePaths.has(`${prefix}${filename}`)) required.add(`${prefix}${filename}`);
     }
-    const artifactDir = entry.type === "kanban" ? `${prefix}${entry.entry.slice(0, entry.entry.lastIndexOf("/") + 1)}` : undefined;
+    const artifactDir = entry.type === "kanban" ? entry.entry.slice(0, entry.entry.lastIndexOf("/") + 1) : undefined;
     for (const file of normalizedAvailablePaths) {
+      if (artifactDir !== undefined && file.startsWith(artifactDir) && !file.endsWith(".map")) required.add(file);
       if (!file.startsWith(prefix)) continue;
-      if (artifactDir !== undefined && file.startsWith(artifactDir) && !file.endsWith(".map") || /\.[cm]?[jt]sx?$/.test(file) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) required.add(file);
+      if (/\.[cm]?[jt]sx?$/.test(file) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) required.add(file);
     }
   }
   return [...required].sort();

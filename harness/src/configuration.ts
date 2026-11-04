@@ -38,16 +38,18 @@ export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapsh
 export function currentConfigurationValues(): ConfigurationValues { return scope.getStore()?.values ?? {}; }
 
 /** Static discovery only: opening configuration never imports or executes project code. */
-export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?: string): boolean {
-  return discoverProjectAgentModels(projectDir, undefined, entryFile);
+export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?: string, aggregateDir = projectDir): boolean {
+  return discoverProjectAgentModels(projectDir, undefined, entryFile, "found", aggregateDir);
 }
 
 type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" = "found"): boolean {
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" = "found", aggregateDir = projectDir): boolean {
+  // Kanban HTML is an artifact outside its source root, never executable Agent source.
+  if (entryFile && /\.html$/i.test(entryFile)) return false;
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
-    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile, aggregateDir).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }
@@ -143,13 +145,13 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
   return scan(projectDir);
 }
 
-function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, settings = getUserSettings()): boolean {
-  return settings.agent.models !== undefined && discoverProjectAgentModels(projectDir, cache, entryFile)
-    && !discoverProjectAgentModels(projectDir, cache, entryFile, "projectModels");
+function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, settings = getUserSettings(), aggregateDir = projectDir): boolean {
+  return settings.agent.models !== undefined && discoverProjectAgentModels(projectDir, cache, entryFile, "found", aggregateDir)
+    && !discoverProjectAgentModels(projectDir, cache, entryFile, "projectModels", aggregateDir);
 }
 
-function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache) {
-  if (!discoverProjectAgentModels(projectDir, cache, entryFile)) return;
+function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, aggregateDir = projectDir) {
+  if (!discoverProjectAgentModels(projectDir, cache, entryFile, "found", aggregateDir)) return;
   if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) definition.fields.unshift({ ...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD), ...definition.agentModelPolicy });
 }
 
@@ -177,8 +179,8 @@ export function readProjectConfigurationDefinition(projectDir: string, entryId?:
   const file = resolved.configurationPath;
   projectDir = resolved.rootDir;
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
-  addAgentConfigurationFields(definition, projectDir, resolved.modulePath);
-  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath) && !definition.fields.some(field => field.control === "agent-model")) {
+  addAgentConfigurationFields(definition, projectDir, resolved.modulePath, undefined, resolved.projectDir);
+  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath, undefined, getUserSettings(), resolved.projectDir) && !definition.fields.some(field => field.control === "agent-model")) {
     definition.agentModelPolicy = configurationAgentModelPolicy(definition);
     definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
   }
@@ -250,7 +252,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
 
   // Run snapshots use the same project and entry identity as configuration profiles.
   const runKey = key;
-  const settingsModelsOnly = () => usesOnlyUserAgentModels(directory, options.entryFile, agentModelSources, options.userSettings?.() ?? getUserSettings());
+  const settingsModelsOnly = () => usesOnlyUserAgentModels(directory, options.entryFile, agentModelSources, options.userSettings?.() ?? getUserSettings(), options.accessProjectDir ?? directory);
   const view = (state: ProjectConfigurationState) => settingsModelsOnly() ? withoutProjectAgentModels(state) : state;
   const snapshotView = (snapshot: ProjectConfigurationSnapshot, state: ProjectConfigurationState): ProjectConfigurationSnapshot => {
     if (!settingsModelsOnly() || state.fields.some(field => field.control === "agent-model")) return snapshot;
@@ -262,7 +264,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    addAgentConfigurationFields(definition, directory, options.entryFile, agentModelSources);
+    addAgentConfigurationFields(definition, directory, options.entryFile, agentModelSources, options.accessProjectDir ?? directory);
     return definition;
   };
   const verifiedTemplate = async (value: ProjectConfigurationTemplate): Promise<boolean> => {

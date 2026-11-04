@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const cli = path.join(root, 'node_modules/@steamharness/cli/dist/index.js');
 const { readLocalStudioAnalysis } = await import(new URL('../node_modules/@steamharness/cli/dist/web/local-analysis.mjs', import.meta.url));
 const data = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-analysis-ui-')));
-const storageDir = path.join(data, 'web'), proofDir = path.join(root, 'test-results'); await mkdir(proofDir, { recursive: true });
+const storageDir = path.join(data, 'web'), proofDir = path.join(root, 'dist/reports/ui'); await mkdir(proofDir, { recursive: true });
 const children = new Set(), services = [];
 const environment = { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '',
   STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: '', STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: '' };

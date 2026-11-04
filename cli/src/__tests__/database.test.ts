@@ -5,10 +5,11 @@ import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { execFileSync } from "node:child_process";
 import { describe, it, expect } from "vitest";
+import { initI18n } from "@steamharness/i18n";
 import { build } from "esbuild";
 import ts from "typescript";
-import { initializeDatabase } from "../database";
-import { generateDatabases, validateDatabases } from "../database-generation";
+import { initializeDatabase, main as databaseMain } from "../database";
+import { generateDatabases, validateDatabases, projectDatabaseSourceRoots } from "../database-generation";
 import { materializeAggregateDownload, stageProjectSource } from "../workspace";
 import { readDatabaseArtifactFiles } from "@steamharness/project-upload/database-artifacts";
 import { resolveHarnessRoot } from "./harness-source";
@@ -59,9 +60,9 @@ describe("SteamHarness Database authoring", () => {
       await client.$disconnect();
       for (const target of ["node", "browser"]) {
         await writeFile(path.join(root, `${target}.ts`), `import type { DatabaseClient } from "steamharness/database";
-import { main, audit, archive } from "./.steamharness/generated/database/${target}/index.js";
-import { Status } from "./.steamharness/generated/database/${target}/main.js";
-import type { Models, ClientModel } from "./.steamharness/generated/database/${target}/main.js";
+import { main, audit, archive } from "./dist/steamharness/generated/database/${target}/index.js";
+import { Status } from "./dist/steamharness/generated/database/${target}/main.js";
+import type { Models, ClientModel } from "./dist/steamharness/generated/database/${target}/main.js";
 declare const customer: Models.Client;
 const customerRecord: ClientModel = customer;
 declare const db: DatabaseClient<typeof main>;
@@ -94,7 +95,7 @@ db.$disconnect;
 `);
         if (target === "browser") await writeFile(path.join(root, 'browser.ts'), `
 import type { DatabaseClient, DatabaseJsonModel } from 'steamharness/database';
-import { main, audit } from './.steamharness/generated/database/browser/index.js';
+import { main, audit } from './dist/steamharness/generated/database/browser/index.js';
 declare const context: { databases: import('steamharness/database').RelationalDatabasesContext };
 const db = await context.databases.connect(main);
 const result = await db.user.rows({ where: { email: 'alice' }, orderBy: { email: 'asc' }, pageSize: 20 });
@@ -112,7 +113,7 @@ const scalars: Scalars = { at: null, total: '9007199254740993', amounts: ['1.25'
 `);
         expect(typecheck(root, `${target}.ts`, target === "browser")).toEqual([]);
         if (target === "node") {
-          await writeFile(path.join(root, "core-context.ts"), `import { main } from "./.steamharness/generated/database/node/index.js";
+          await writeFile(path.join(root, "core-context.ts"), `import { main } from "./dist/steamharness/generated/database/node/index.js";
 declare const context: import("steamharness").RunContext;
 const db = await context.databases.connect(main);
 const rows = await db.user.findMany({select: { email: true }});
@@ -173,7 +174,7 @@ db.$queryRaw;
       await stageProjectSource({ projectDir: root, projectName: "project", stagingRoot: stageRoot });
       const packaged = path.join(stageRoot, "project");
       expect((await readDatabaseArtifactFiles(packaged))?.manifest.databases).toHaveLength(3);
-      expect(await readdir(path.join(packaged, ".steamharness"))).toEqual(["generated"]);
+      expect(await readdir(path.join(packaged, "dist/steamharness"))).toEqual(["generated"]);
       // The Server/static copy must never execute this authored file.
       const files: Array<{ path: string; content: string }> = [];
       async function walk(dir: string, prefix = ""): Promise<void> {
@@ -187,7 +188,7 @@ db.$queryRaw;
       await materializeAggregateDownload({ projectId: "75e1a2fc-a2af-47f2-9acf-0889317b2a05", files }, download);
       await mkdir(path.join(download, "node_modules"));
       await symlink(await resolveHarnessRoot(), path.join(download, "node_modules/steamharness"), process.platform === "win32" ? "junction" : "dir");
-      const result = execFileSync(process.execPath, ["--input-type=module", "-e", 'const {main,audit}=await import("./.steamharness/generated/database/node/index.js"); const engine=await main.loadEngine(); console.log(main.alias,audit.alias,typeof engine.PrismaClient)'], { cwd: download, encoding: "utf8" });
+      const result = execFileSync(process.execPath, ["--input-type=module", "-e", 'const {main,audit}=await import("./dist/steamharness/generated/database/node/index.js"); const engine=await main.loadEngine(); console.log(main.alias,audit.alias,typeof engine.PrismaClient)'], { cwd: download, encoding: "utf8" });
       expect(result.trim()).toBe("main audit function");
       const tampered = files.map(file => file.path.endsWith("browser/main.js") ? { ...file, content: file.content + "// modified\n" } : file);
       await expect(materializeAggregateDownload({ projectId: "75e1a2fc-a2af-47f2-9acf-0889317b2a05", files: tampered }, path.join(stageRoot, "invalid"))).rejects.toThrow(/changed/);
@@ -203,8 +204,27 @@ db.$queryRaw;
       await writeFile(path.join(root, ".gitignore"), "node_modules/\n");
       await initializeDatabase(root);
       expect(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).scripts.prebuild).toBe("steamharness database generate . && echo before");
-      expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(".steamharness/generated/");
+      expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain("/dist/");
       await expect(initializeDatabase(root)).rejects.toThrow(/already exists/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("initializes a selected child Kanban before its static entry has been built", async () => {
+    initI18n({ preference: "en" });
+    const root = await fixture(), child = path.join(root, "apps/board");
+    try {
+      await mkdir(child, { recursive: true });
+      await writeFile(path.join(child, "package.json"), JSON.stringify({ type: "module", scripts: { build: "node build.mjs" } }));
+      await writeFile(path.join(child, "steamharness.json"), JSON.stringify({ type: "kanban", name: "Board" }));
+      const manifest = JSON.parse(await readFile(path.join(root, "steamharness.json"), "utf8"));
+      manifest.entries.push({ entryId: "board", root: "apps/board" });
+      await writeFile(path.join(root, "steamharness.json"), JSON.stringify(manifest));
+      expect(await databaseMain(["init", root, "--entry", "board"])).toBe(0);
+      const pkg = JSON.parse(await readFile(path.join(child, "package.json"), "utf8"));
+      expect(pkg.scripts.prebuild).toBe("steamharness database generate ../.. --entry board");
+      expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain("/dist/");
+      expect(await readFile(path.join(child, "steamharness.database.ts"), "utf8")).toContain("defineDatabase");
+      await expect(readFile(path.join(root, "dist/board/index.html"))).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
@@ -221,18 +241,60 @@ db.$queryRaw;
       await writeFile(path.join(root, "steamharness.json"), JSON.stringify(manifest));
       await stageProjectSource({ projectDir: root, projectName: "aggregate", stagingRoot: stageRoot });
       const project = path.join(stageRoot, "aggregate");
-      const parentArtifacts = await readDatabaseArtifactFiles(project), childArtifacts = await readDatabaseArtifactFiles(path.join(project, "billing"));
+      const parentArtifacts = await readDatabaseArtifactFiles(project), childArtifacts = await readDatabaseArtifactFiles(project, "billing");
       expect(parentArtifacts?.manifest.databases.find(item => item.alias === "main")?.schemaHash).not.toBe(childArtifacts?.manifest.databases[0].schemaHash);
       expect(childArtifacts?.manifest.databases[0].alias).toBe("main");
     } finally { await rm(root, { recursive: true, force: true }); await rm(stageRoot, { recursive: true, force: true }); }
   }, 30_000);
+
+  it("deduplicates nested source roots and protects an existing generation with its own lock", async () => {
+    const root = await fixture();
+    try {
+      const sourceRoot = "apps/billing", child = path.join(root, sourceRoot);
+      await mkdir(child, { recursive: true });
+      await writeFile(path.join(child, "steamharness.json"), JSON.stringify({ type: "workflow", name: "Billing", entry: "index.ts" }));
+      await writeFile(path.join(child, "index.ts"), "export {};\n");
+      await writeFile(path.join(child, "steamharness.schema"), auditSchema);
+      await writeFile(path.join(child, "steamharness.database.ts"), 'import {defineDatabase} from "steamharness/database"; export default defineDatabase({schema:"steamharness.schema"});\n');
+      const manifest = JSON.parse(await readFile(path.join(root, "steamharness.json"), "utf8"));
+      manifest.entries.push({ entryId: "billing", root: sourceRoot }, { entryId: "audit", root: sourceRoot });
+      await writeFile(path.join(root, "steamharness.json"), JSON.stringify(manifest));
+      expect(await projectDatabaseSourceRoots(root)).toEqual([".", sourceRoot]);
+      expect(await projectDatabaseSourceRoots(root, "audit")).toEqual([sourceRoot]);
+      await expect(projectDatabaseSourceRoots(root, "unknown")).rejects.toThrow(/Unknown project entry/);
+      await generateDatabases(root);
+      const childOutput = await generateDatabases(root, sourceRoot);
+      expect(path.relative(root, childOutput.directory).split(path.sep).join("/")).toBe("dist/steamharness/entries/apps%2Fbilling/generated/database");
+      expect((await generateDatabases(root, sourceRoot)).cached).toBe(true);
+      const previous = await readFile(path.join(childOutput.directory, "manifest.json"), "utf8");
+      await writeFile(path.join(child, "steamharness.schema"), auditSchema + "\n");
+      await mkdir(childOutput.directory + ".lock");
+      await expect(generateDatabases(root, sourceRoot)).rejects.toThrow(/already running/);
+      expect(await readFile(path.join(childOutput.directory, "manifest.json"), "utf8")).toBe(previous);
+      expect((await readDatabaseArtifactFiles(root))?.manifest.databases).toHaveLength(3);
+      await rm(childOutput.directory + ".lock", { recursive: true });
+      expect((await generateDatabases(root, sourceRoot)).cached).toBe(false);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("rejects linked source and output roots before accessing external files", async () => {
+    const root = await fixture(), external = await mkdtemp(path.join(os.tmpdir(), "database-linked-source-"));
+    try {
+      await writeFile(path.join(external, "steamharness.database.ts"), 'throw new Error("Must never execute an external definition");');
+      await symlink(external, path.join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+      await expect(generateDatabases(root, "linked")).rejects.toThrow(/regular files and directories/);
+      await symlink(external, path.join(root, "dist"), process.platform === "win32" ? "junction" : "dir");
+      await expect(generateDatabases(root)).rejects.toThrow(/regular directory/);
+      expect(await readdir(external)).toEqual(["steamharness.database.ts"]);
+    } finally { await rm(root, { recursive: true, force: true }); await rm(external, { recursive: true, force: true }); }
+  });
 
   it("supports the published CLI command and its short alias offline", async () => {
     const entry = path.resolve("dist/index.js");
     for (const command of ["database", "db"]) expect(execFileSync(process.execPath, [entry, command, "--help"], { encoding: "utf8" })).toContain("steamharness database generate");
     const root = await fixture();
     try {
-      expect(JSON.parse(execFileSync(process.execPath, [entry, "database", "generate", root], { encoding: "utf8" })).databases).toHaveLength(3);
+      expect(JSON.parse(execFileSync(process.execPath, [entry, "database", "generate", root], { encoding: "utf8" })).outputs[0].databases).toHaveLength(3);
       expect(JSON.parse(execFileSync(process.execPath, [entry, "db", "validate", root], { encoding: "utf8" })).command).toBe("validate");
     } finally { await rm(root, { recursive: true, force: true }); }
   });

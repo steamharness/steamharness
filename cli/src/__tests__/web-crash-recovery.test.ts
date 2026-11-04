@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { runtimeStorageService } from './runtime-storage-service';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -15,7 +16,7 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after its CLI is SIGKILLed during %s without sending its queue after failure', async phase => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-crash-recovery-'));
   const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
-  const applicationId = crypto.randomUUID(), dataDir = path.join(directory, 'data');
+  const applicationId = crypto.randomUUID(), dataDir = path.join(testDataDirectory(directory));
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');

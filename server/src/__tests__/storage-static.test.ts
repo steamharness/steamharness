@@ -1,6 +1,7 @@
 import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ import test from "node:test";
 import { create as createTar, list as listTar } from "tar";
 import { Storage, type PreparationStage } from "../storage";
 import type { ArtifactStorage } from "../persistence";
+import { databaseArtifactDirectory } from "@steamharness/project-manifest";
 
 const projectId = "00000000-0000-4000-8000-000000000091";
 const serverPackage = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
@@ -24,6 +26,47 @@ function packageJson(version: string) {
       },
   };
 }
+
+test("file creation and draft replacement statically verify child database artifacts", async () => {
+  const dataRoot = await mkdtemp(path.join(tmpdir(), "database-static-storage-"));
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const sourceRoot = "apps/billing", generated = databaseArtifactDirectory(sourceRoot);
+  const hash = (content: string) => createHash("sha256").update(content).digest("hex");
+  const definition = "throw new Error('database definitions must never execute on Server');\n";
+  const schema = "model User {\n id Int @id\n}\n", content = "export {};\n";
+  const outputs = ["node", "browser"].flatMap(target => ["index.js", "index.ts", "main.js", "main.ts"]
+    .map(filename => ({ path: `${target}/${filename}`, size: Buffer.byteLength(content), sha256: hash(content) })));
+  const manifest = { kind: "steamharness.database.artifacts", version: 1,
+    generator: { name: "steamharness.database", version: 2, engineVersion: "test" },
+    databases: [{ alias: "main", schema: "steamharness.schema", schemaHash: hash(schema) }],
+    sources: { "steamharness.database.ts": hash(definition), "steamharness.schema": hash(schema) }, files: outputs };
+  const pkg = packageJson("1.0.0");
+  const files = projectFixtureFiles([
+    { path: "package.json", content: JSON.stringify({ ...pkg, entries: [{ ...pkg.entries[0], root: sourceRoot, databases: ["main"] }] }) },
+    { path: `${sourceRoot}/index.ts`, content: "throw new Error('source must stay static');" },
+    { path: `${sourceRoot}/steamharness.database.ts`, content: definition },
+    { path: `${sourceRoot}/steamharness.schema`, content: schema },
+    ...outputs.map(file => ({ path: `${generated}/${file.path}`, content })),
+    { path: `${generated}/manifest.json`, content: JSON.stringify(manifest) },
+  ]);
+  try {
+    await assert.rejects(storage.createProjectFromFiles({ projectName: projectId,
+      files: files.filter(file => file.path !== `${generated}/manifest.json`) }), /Missing database artifacts/);
+    await storage.createProjectFromFiles({ projectName: projectId, files });
+    const before = await storage.getFiles({ projectName: projectId, target: "draft" });
+    for (const changedPath of [`${generated}/node/main.js`, `${sourceRoot}/steamharness.schema`]) {
+      await assert.rejects(storage.saveDraftFiles({ projectName: projectId,
+        files: [{ path: changedPath, content: "tampered" }] }), /changed/);
+      assert.deepEqual(await storage.getFiles({ projectName: projectId, target: "draft" }), before);
+    }
+    await assert.rejects(storage.saveDraftFiles({ projectName: projectId,
+      files: [], removePaths: [`${generated}/browser/main.js`] }), /incomplete/);
+    assert.deepEqual(await storage.getFiles({ projectName: projectId, target: "draft" }), before);
+  } finally {
+    await storage.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
 
 test("source configuration resolves aliases while version snapshots retain authored IDs", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "project-config-storage-"));

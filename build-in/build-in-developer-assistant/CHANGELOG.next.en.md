@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator templates, built-in caches, reports, and archives use aggregate root dist. Generated Kanban entries use dist/main/index.html and runtime data lives in host or user directories.
+
 - [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines, public database error codes, and receipt checks after timeouts.
 
 - Updated generation guidance for the 120-second aggregate Workflow receipt deadline, retaining request IDs and checking receipts after timeouts without automatically replaying writes.

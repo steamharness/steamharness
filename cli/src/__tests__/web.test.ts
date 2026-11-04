@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { seedTestSessions, readTestSessions, temporaryRuntimePersistence } from "./web-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -85,7 +86,7 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
     deleteFiles: vi.fn(async () => {}), readResource: vi.fn(async () => null), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
   };
   await beforeStart?.();
-  const app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime, host }); services.push(app);
+  const app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime, host }); services.push(app);
   const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session');
   const auth = await fetch(`${app.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
   const cookie = auth.headers.get('set-cookie')!.split(';')[0];
@@ -129,8 +130,8 @@ describe('steamharness web', () => {
         tasks: [], history: [], receipts: [], records: [], usage: [], contexts: [], conversations: [{ id: 1, title: 'Main', background: false }],
         turns: [{ requestId: 'completed', conversationId: 1, prompt: 'Hello', mode: 'followUp', status: 'done', epoch: 0, entryId: 1, answerId: 2,
           items: [{ id: 'answer', title: 'Output', content: 'Completed answer', contentType: 'markdown' }] }] } };
-    const historyPath = path.join(directory, 'data', 'projects', app.project.id, 'entries', app.project.entryId, 'conversations.json');
-    await seedTestSessions(path.join(directory, 'data'), [imported], false);
+    const historyPath = path.join(testDataDirectory(directory), 'projects', app.project.id, 'entries', app.project.entryId, 'conversations.json');
+    await seedTestSessions(path.join(testDataDirectory(directory)), [imported], false);
     const response = await post({ type: 'ready' });
     expect(response.status).toBe(200);
     const state = (await response.json()).messages.find((message: any) => message.type === 'state');
@@ -138,7 +139,7 @@ describe('steamharness web', () => {
     expect(app.controller!.sessions.find(session => session.id === imported.id)?.messages[0]).toMatchObject({ status: 'success', recovering: false });
     const acquired = await post({ type: 'draft', sessionId: imported.id, text: 'Next draft', attachments: [] });
     expect(acquired.status).toBe(200);
-    const saved = (await readTestSessions(path.join(directory, 'data'))).sessions.find((session: any) => session.id === imported.id);
+    const saved = (await readTestSessions(path.join(testDataDirectory(directory)))).sessions.find((session: any) => session.id === imported.id);
     expect(saved!.messages[0]).toMatchObject({ status: 'success', recovering: false, content: 'Completed answer' });
     expect(saved!.queuePaused).toBe(true); expect(saved!.queuedInputs).toEqual(imported.queuedInputs);
     expect(runtime.run).not.toHaveBeenCalled();
@@ -229,7 +230,7 @@ describe('steamharness web', () => {
     await replies(await post(one, left, { type: 'ready' }));
     await post(one, left, { type: 'draft', sessionId: original, text: 'Original draft', attachments: [] });
     const second: Runtime = { ...first, run: vi.fn(), dispose: vi.fn() };
-    const two = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime: second }); services.push(two);
+    const two = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime: second }); services.push(two);
     let finishLeft!: (report: Report) => void, finishRight!: (report: Report) => void;
     vi.mocked(first.run).mockImplementation(() => new Promise(resolve => { finishLeft = resolve; }));
     vi.mocked(second.run).mockImplementation(() => new Promise(resolve => { finishRight = resolve; }));
@@ -256,7 +257,7 @@ describe('steamharness web', () => {
       finishLeft({ status: 'success' }); finishRight({ status: 'success' });
       await Promise.all([one.controller!.idle(), two.controller!.idle()]);
       const key = path.join('projects', one.project.id, 'entries', one.project.entryId);
-      const history = (await readTestSessions(path.join(directory, 'data')));
+      const history = (await readTestSessions(path.join(testDataDirectory(directory))));
       expect(history.sessions.find((session: any) => session.id === original)!.messages[0].content).toBe('Left runs');
       expect(history.sessions.find((session: any) => session.id === other)!.messages[0].content).toBe('Right runs');
       await streams[0].cancel();
@@ -490,7 +491,7 @@ describe('steamharness web', () => {
       expect((await post({ type: 'navigate', clientId, requestId: 1, id: second, updates: [] })).status).toBe(200);
     }
     await app.close();
-    const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
+    const next = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime }); services.push(next);
     expect(next.controller!.activeId).toBe(older ? first : second);
     expect(next.controller!.current.messages[0].content).toBe(older ? 'First run' : 'Last run');
     expect(runtime.run).toHaveBeenCalledTimes(2);
@@ -505,12 +506,12 @@ describe('steamharness web', () => {
       messages: [{ role: 'user', content: `Message ${index + 1}`, createdAt: updatedAt }],
     }));
     const key = path.join('projects', app.project.id, 'entries', app.project.entryId);
-    const historyPath = path.join(directory, 'data', key, 'conversations.json');
-    await seedTestSessions(path.join(directory, 'data'), sessions as ConversationSession[]);
-    const backend = temporaryRuntimePersistence(path.join(directory, 'data'));
+    const historyPath = path.join(testDataDirectory(directory), key, 'conversations.json');
+    await seedTestSessions(path.join(testDataDirectory(directory)), sessions as ConversationSession[]);
+    const backend = temporaryRuntimePersistence(path.join(testDataDirectory(directory)));
     const metadata = (await backend.list('workflow')).find(record => record.key === 'conversation-selection');
     if (metadata) { const lease = await backend.acquire(metadata.scope); try { await lease.write({ ...metadata, state: selection === 'missing' ? {} : { activeId: selection === 'stale' ? 123 : crypto.randomUUID() } }); } finally { await lease.close(); } }
-    const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
+    const next = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime }); services.push(next);
     expect(next.controller!.activeId).toBe(sessions[2].id);
     const token = new URLSearchParams(new URL(next.url).hash.slice(1)).get('session');
     const auth = await fetch(`${next.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
@@ -520,7 +521,7 @@ describe('steamharness web', () => {
     expect(state.activeId).toBe(sessions[2].id);
     expect(state.sessions).toEqual(sessions);
     await next.close();
-    expect((await readTestSessions(path.join(directory, 'data')))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
+    expect((await readTestSessions(path.join(testDataDirectory(directory))))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
     expect(runtime.run).not.toHaveBeenCalled();
   });
 
@@ -964,7 +965,7 @@ describe('steamharness web', () => {
     expect(runtime.resolveParams).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ args: ['--model', 'demo'] }), undefined);
     const id = app.controller!.activeId;
     await app.close();
-    const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
+    const next = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime }); services.push(next);
     expect(next.controller!.activeId).toBe(id); expect(next.controller!.current.messages.at(-1)?.content).toBe('Turn 1');
   });
 
@@ -1321,7 +1322,7 @@ describe('steamharness web', () => {
     vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', '/old-workspace');
     vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST', '/old-workspace/workspace.json');
     let activeConnection: { serverUrl: string; accessToken: string; aiServerUrl?: string; aiAccessToken?: string } | undefined;
-    const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => activeConnection);
+    const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => activeConnection);
     try {
       const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
       expect((inspected.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
@@ -1374,7 +1375,7 @@ describe('steamharness web', () => {
     const filename = '\u6587\u4ef6.txt';
     const content = Buffer.alloc(256 * 1024, 'x');
     const request = Buffer.from(JSON.stringify({ method: 'upload', project: { folderPath: directory, id: randomUUID(), entryId: 'main' },
-      storageDir: path.join(directory, 'data'), conversationId: 'pipe-conversation',
+      storageDir: path.join(testDataDirectory(directory)), conversationId: 'pipe-conversation',
       files: [{ name: filename, mimeType: 'text/plain', data: content.toString('base64') }],
     }));
     const split = request.indexOf(Buffer.from(filename)) + 1;

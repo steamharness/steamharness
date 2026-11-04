@@ -85,7 +85,7 @@ export async function manageDatabases(argv: string[]): Promise<void> {
     const consumer = { projectId: declaration.manifest.projectId, entryId: declaration.registration.entryId, alias: options.alias };
     if (command === "bindings") { output(await request(`/bindings?projectId=${encodeURIComponent(consumer.projectId)}&entryId=${encodeURIComponent(consumer.entryId)}`)); return; }
     if (command === "unbind") { await request("/bindings", "DELETE", consumer); output({ unbound: true, ...consumer }); return; }
-    const generated = await generateDatabases(declaration.rootDir);
+    const generated = await generateDatabases(declaration.projectDir, declaration.registration.root);
     const database = generated.databases.find(item => item.alias === options.alias);
     if (!database) throw new Error(`Database alias ${JSON.stringify(options.alias)} is not defined for entry ${JSON.stringify(consumer.entryId)}.`);
     output(await request("/bindings", "POST", { ...consumer, databaseId, schemaHash: database.schemaHash, ...(options.mode ? { mode: options.mode } : {}) }));
@@ -117,7 +117,10 @@ export async function manageDatabases(argv: string[]): Promise<void> {
   if (command !== "migrate" || !["dev", "deploy", "status"].includes(args[0]) || args.length > 2) throw new Error("Use database create/list/inspect/retry/grant/revoke, or migrate dev/deploy/status [directory] --database <id>.");
   const [action, directory = "."] = args, databaseId = id(options.database), endpoint = `/${databaseId}/migrations`;
   if (action === "status") { output(await request(endpoint)); return; }
-  const root = path.resolve(directory), validated = await validateDatabases(root);
+  const projectRoot = path.resolve(directory);
+  const declaration = resolveProjectDeclarationEntrySync(projectRoot, options.entry);
+  const sourceRoot = declaration.registration.root, root = declaration.rootDir;
+  const validated = await validateDatabases(projectRoot, sourceRoot);
   const database = validated.databases.find(item => item.alias === options.alias);
   if (!database) throw new Error(`Database alias ${options.alias} is not defined.`);
   const schema = validated.schemas.get(database.schemaHash)!;
@@ -132,12 +135,12 @@ export async function manageDatabases(argv: string[]): Promise<void> {
       sql: plan.sql, checksum: databaseArtifactHash(plan.sql), schema: schema.source, schemaHash: database.schemaHash };
     const location = await writeDatabaseMigration(root, database.schema, migration);
     migrations = [...migrations, migration];
-    await generateDatabases(root);
+    await generateDatabases(projectRoot, sourceRoot);
     if (options.draft) { output({ databaseId, migration: location, destructive: plan.destructive, applied: false }); return; }
     if (plan.destructive && !options.acceptDataLoss) throw new Error(`Migration saved at ${location}. Review its SQL, then deploy with --accept-data-loss if appropriate.`);
   }
   if (!migrations.length) throw new Error("No migrations exist. Run database migrate dev first.");
   const applied = await request(endpoint + "/deploy", "POST", { migrations, schemaHash: database.schemaHash, acceptDataLoss: options.acceptDataLoss });
-  await generateDatabases(root);
+  await generateDatabases(projectRoot, sourceRoot);
   output({ databaseId, migrations: applied });
 }

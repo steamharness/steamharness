@@ -1,5 +1,7 @@
 # Unreleased
 
+- 可重建产物统一使用聚合根 dist；支持子入口共享数据库生成目录。独立 SDK 运行历史默认保存到用户目录 ~/.steamharness/runtime/<projectId>/<entryId>/，不再写入项目。
+
 - 【修复】节点及 Workflow 错误报告保留已知公开数据库错误码，宿主可识别未绑定、繁忙和结构不匹配；不保留任意异常的自定义代码。
 
 - 【修复】Kanban 聚合 Workflow 调用使用独立的 120 秒 Bridge 时限，避免数据库授权和持久回执被普通请求时限中断。

@@ -276,6 +276,7 @@ async function runWorkspaceProjectWithReportInternal(
       cwd,
       projectName: options.projectName,
       projectDir: projectStorageDeclaration.rootDir,
+      aggregateDir: projectStorageDeclaration.projectDir,
       entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
@@ -494,6 +495,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       cwd,
       projectName: options.projectName,
       projectDir: projectStorageDeclaration.rootDir,
+      aggregateDir: projectStorageDeclaration.projectDir,
       entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
@@ -821,6 +823,7 @@ async function runLocalProjectWithReportInternal(
       cwd: projectDir,
       projectName,
       projectDir: projectStorageDeclaration.rootDir,
+      aggregateDir: projectStorageDeclaration.projectDir,
       entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
@@ -1129,15 +1132,15 @@ export function inspectLocalProjectStructure(options: {
     readSchedulePresetValue({schedulePresets:registration.schedulePresets},"kanban",[]);
     const entry = path.basename(registration.entry);
     const artifactDir = path.posix.dirname(registration.entry);
-    return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: rootDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry } };
+    return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: declaration.projectDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry } };
   }
-  const inspection = inspectProjectStructure({ cwd: rootDir, projectName, projectDir: rootDir, entryFile: modulePath });
+  const inspection = inspectProjectStructure({ cwd: rootDir, projectName, projectDir: rootDir, aggregateDir: declaration.projectDir, entryFile: modulePath });
   if (inspection.diagnostics.violations.length) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" script validation failed.`, metadata: { projectId: manifest.projectId, entryId: registration.entryId, violations: inspection.diagnostics.violations } });
   const projectType = resolveInspectedProjectType(inspection);
   if (projectType !== registration.type) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" is registered as ${registration.type}, but its executor declares ${projectType}.` });
   const schedulePresets = readSchedulePresetValue({ schedulePresets: registration.schedulePresets }, projectType, inspection.entrypoints ?? []);
   return { ...identity, projectType, workflow: inspection.workflow, definitions: inspection.definitions, configuration, diagnostics: inspection.diagnostics,
-    ...(projectType === "workflow" ? { defaultEntrypoint: inspection.defaultEntrypoint, entrypoints: inspection.entrypoints, schedulePresets } : { execution: inspection.execution, params: inspection.params, paramLayout: inspection.paramLayout, paramResolver: inspection.paramResolver, conversation: conversationPresentationDefaults(inspection.conversation, rootDir, modulePath), tokenUsage: inspection.tokenUsage, tools: inspection.tools, registry: inspection.registry }) };
+    ...(projectType === "workflow" ? { defaultEntrypoint: inspection.defaultEntrypoint, entrypoints: inspection.entrypoints, schedulePresets } : { execution: inspection.execution, params: inspection.params, paramLayout: inspection.paramLayout, paramResolver: inspection.paramResolver, conversation: conversationPresentationDefaults(inspection.conversation, rootDir, modulePath, declaration.projectDir), tokenUsage: inspection.tokenUsage, tools: inspection.tools, registry: inspection.registry }) };
 }
 
 export function inspectAggregateProjectStructure(projectDir = ".") {
@@ -1179,8 +1182,8 @@ async function localAgentProjectContract(options: LocalProjectSkillsOptions) {
   return contract ? { contract, rootDir: declaration.rootDir } : undefined;
 }
 
-function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string, entryFile: string): StructureReport["conversation"] {
-  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir, entryFile)
+function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string, entryFile: string, aggregateDir: string): StructureReport["conversation"] {
+  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir, entryFile, aggregateDir)
     ? { ...conversation, collapseIntermediate: true } : conversation;
 }
 

@@ -62,7 +62,7 @@ for (const language of languages) {
     if (type === 'kanban') {
       await promisify(execFile)(process.execPath, [path.join(cli, 'dist/index.js'), 'database', 'generate', folder]);
       await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: folder });
-      const { data: descriptor } = await import(pathToFileURL(path.join(folder, '.steamharness/generated/database/browser/index.js')).href);
+      const { data: descriptor } = await import(pathToFileURL(path.join(folder, 'dist/steamharness/generated/database/browser/index.js')).href);
       table = remote.create(manifest.id, entry.entryId, 'data', { schemaHash: descriptor.schemaHash }).database;
     }
     remote.registerProject(manifest);

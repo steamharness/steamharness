@@ -1,4 +1,4 @@
-import { data } from './.steamharness/generated/database/browser/index.js';
+import { data } from './dist/steamharness/generated/database/browser/index.js';
 const api = window.steamHarnessKanban;
 const zh = (await api.getRuntimeLocale()).toLowerCase().startsWith('zh');
 const words = zh ? { todo: '待办', doing: '进行中', done: '已完成', add: '添加任务', move: '移到下一列', remove: '删除', saved: '已保存', task: '任务' }

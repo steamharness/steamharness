@@ -15,7 +15,7 @@ import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, 
 import path from "node:path";
 import { create as createTar, extract as extractTar, list as listTar, type ReadEntry } from "tar";
 import { Open as openZip } from "unzipper";
-import { copyProjectUploadFiles } from "@steamharness/project-upload/node";
+import { copyProjectUploadFiles, createProjectUploadPlan } from "@steamharness/project-upload/node";
 import { createProjectUploadPortablePathKey } from "@steamharness/project-upload";
 import { isProjectKind, HarnessError, type ProjectKind, type TokenUsageAggregate, type TokenUsageEntry } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
@@ -2774,7 +2774,7 @@ export class Storage {
     const metadata = await this.readPackageMetadataForTarget(projectName, resolved.resolvedTarget);
     const registration = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
-    const artifact = path.posix.join(registration.root, registration.entry);
+    const artifact = registration.entry;
     return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [], target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }
 
@@ -2951,6 +2951,7 @@ async function validateProjectPackage(
       await resolveProjectEntry(sourceDir, entry.entryId, {});
       readProjectConfigurationDefinition(sourceDir, entry.entryId);
     }
+    await createProjectUploadPlan(sourceDir);
   } catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
   return readProjectPackageMetadata(sourceDir, expectedId, undefined, hostCoreVersion);
 }

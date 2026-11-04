@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { ROOT, builtinProjectDirectory, resolveMonorepoRoot, readJSON } from './distribution.mjs';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { buildDocumentPreviews } from './document-preview.mjs';
 import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
 import { publicServiceUrls } from '../../shared/service-urls/index.ts';
@@ -63,10 +65,11 @@ export async function buildExtension({ watch = false } = {}) {
   await copyAssistantTemplate(assistantSource, assistantOutput);
   await fs.rm(path.join(directory, 'dist/studio-control'), { recursive: true, force: true });
   const analysisSource = await builtinProjectDirectory('analysis');
+  await promisify(execFile)(process.execPath, [path.join(analysisSource, 'scripts/build.mjs')], { cwd: analysisSource });
   const analysisOutput = path.join(directory, 'dist/analysis');
   await fs.rm(analysisOutput, { recursive: true, force: true });
   await fs.mkdir(analysisOutput, { recursive: true });
-  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'index.html', 'assets']) {
+  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'dist/main']) {
     await fs.cp(path.join(analysisSource, name), path.join(analysisOutput, name), { recursive: true });
   }
   for (const name of ['runtime', 'workflow-ui.js', 'workflow-ui.css']) {

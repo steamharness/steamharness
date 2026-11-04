@@ -6,7 +6,7 @@ import { resolve as resolveModule } from "import-meta-resolve";
 import { tsImport } from "tsx/esm/api";
 import { DATABASE_ENGINE_VERSION, parseDatabaseDefinitions, type DatabaseMetadata } from "steamharness/database";
 import { readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
-import { DATABASE_ARTIFACT_MANIFEST, DATABASE_DEFINITION_FILE, DATABASE_GENERATED_DIRECTORY,
+import { DATABASE_ARTIFACT_MANIFEST, DATABASE_DEFINITION_FILE, databaseArtifactDirectory,
   assertRegularPath, databaseArtifactHash, readDatabaseArtifactFiles, type DatabaseArtifactManifest } from "@steamharness/project-upload/database-artifacts";
 
 const require = createRequire(import.meta.url);
@@ -39,9 +39,10 @@ export interface DatabaseGenerationResult {
 }
 
 /** Local authoring only. Server validates the static artifact manifest instead. */
-export async function validateDatabases(projectDirectory: string): Promise<ValidatedDatabases> {
-  const root = path.resolve(projectDirectory);
-  await assertRegularPath(root, DATABASE_DEFINITION_FILE);
+export async function validateDatabases(projectDirectory: string, sourceRoot = "."): Promise<ValidatedDatabases> {
+  databaseArtifactDirectory(sourceRoot);
+  const root = path.resolve(projectDirectory, sourceRoot);
+  await assertRegularPath(path.resolve(projectDirectory), path.posix.join(sourceRoot, DATABASE_DEFINITION_FILE));
   const filename = path.join(root, DATABASE_DEFINITION_FILE);
   const module = await tsImport(pathToFileURL(filename).href, { parentURL: import.meta.url, tsconfig: false });
   const definitions = parseDatabaseDefinitions(module.default);
@@ -103,11 +104,12 @@ function metadataFor(dmmf: ValidatedSchema["dmmf"]): DatabaseMetadata {
   };
 }
 
-export async function generateDatabases(projectDirectory: string): Promise<DatabaseGenerationResult> {
-  const root = path.resolve(projectDirectory);
-  const validated = await validateDatabases(root);
-  const directory = path.join(root, DATABASE_GENERATED_DIRECTORY);
-  const current = await readDatabaseArtifactFiles(root).catch(() => undefined);
+export async function generateDatabases(projectDirectory: string, sourceRoot = "."): Promise<DatabaseGenerationResult> {
+  const projectRoot = path.resolve(projectDirectory), root = path.resolve(projectRoot, sourceRoot);
+  const relativeDirectory = databaseArtifactDirectory(sourceRoot);
+  const validated = await validateDatabases(projectRoot, sourceRoot);
+  const directory = path.join(projectRoot, relativeDirectory);
+  const current = await readDatabaseArtifactFiles(projectRoot, sourceRoot).catch(() => undefined);
   if (current && current.manifest.generator.version === 2 && current.manifest.generator.engineVersion === engineVersion
     && JSON.stringify(current.manifest.databases) === JSON.stringify(validated.databases)
     && JSON.stringify(current.manifest.sources) === JSON.stringify(validated.sources)) {
@@ -115,11 +117,11 @@ export async function generateDatabases(projectDirectory: string): Promise<Datab
   }
   // A per-project lock prevents two generators from replacing each other's result.
   const parent = path.dirname(directory);
-  await assertOutputDirectories(root);
+  await assertOutputDirectories(projectRoot, relativeDirectory);
   await mkdir(parent, { recursive: true });
   const lock = `${directory}.lock`;
   try { await mkdir(lock); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Database generation is already running. If an interrupted process left the lock, remove .steamharness/generated/database.lock and retry."); throw error; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`Database generation is already running. If an interrupted process left the lock, remove ${relativeDirectory}.lock and retry.`); throw error; }
   let stage: string | undefined;
   const backup = `${directory}.previous`;
   let backedUp = false;
@@ -153,7 +155,7 @@ export async function generateDatabases(projectDirectory: string): Promise<Datab
     for (const [filename, hash] of Object.entries(validated.sources)) {
       if (databaseArtifactHash(await readFile(path.join(root, filename))) !== hash) throw new Error(`${filename} changed during generation. Retry the command.`);
     }
-    if (await lstat(backup).catch(() => undefined)) throw new Error("A previous database artifact backup exists. Review .steamharness/generated/database.previous before retrying.");
+    if (await lstat(backup).catch(() => undefined)) throw new Error(`A previous database artifact backup exists. Review ${relativeDirectory}.previous before retrying.`);
     if (await lstat(directory).catch(() => undefined)) { await rename(directory, backup); backedUp = true; }
     try { await rename(stage, directory); stage = undefined; }
     catch (error) { if (backedUp) { await rename(backup, directory); backedUp = false; } throw error; }
@@ -231,19 +233,30 @@ async function listFiles(root: string, prefix = ""): Promise<string[]> {
   }
   return files.sort();
 }
-async function assertOutputDirectories(root: string): Promise<void> {
-  for (const relative of [".steamharness", ".steamharness/generated", DATABASE_GENERATED_DIRECTORY]) {
+async function assertOutputDirectories(root: string, directory: string): Promise<void> {
+  const parts = directory.split("/");
+  for (let index = 1; index <= parts.length; index++) {
+    const relative = parts.slice(0, index).join("/");
     const info = await lstat(path.join(root, relative)).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
     if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error(`${relative} must be a regular directory.`);
   }
 }
 
-/** Build each registered entry's local declarations before copying an aggregate package. */
-export async function prepareProjectDatabaseArtifacts(projectDirectory: string): Promise<void> {
-  const roots = new Set([path.resolve(projectDirectory)]);
+/** Source roots are explicit registrations, never guessed from parent folders. */
+export async function projectDatabaseSourceRoots(projectDirectory: string, entryId?: string): Promise<string[]> {
   const declaration = await readProjectDeclarationFromDirectory(projectDirectory);
-  for (const entry of declaration.entries) roots.add(path.resolve(projectDirectory, entry.root));
-  for (const root of roots) {
-    if (await lstat(path.join(root, DATABASE_DEFINITION_FILE)).catch(() => undefined)) await generateDatabases(root);
+  const entries = entryId === undefined ? declaration.entries : declaration.entries.filter(entry => entry.entryId === entryId);
+  if (entryId !== undefined && !entries.length) throw new Error(`Unknown project entry ${JSON.stringify(entryId)}.`);
+  const roots = new Set(entryId === undefined ? [".", ...entries.map(entry => entry.root)] : entries.map(entry => entry.root));
+  const defined: string[] = [];
+  for (const sourceRoot of roots) {
+    if (await lstat(path.join(projectDirectory, sourceRoot, DATABASE_DEFINITION_FILE)).catch(error => { if (error.code === "ENOENT") return undefined; throw error; })) defined.push(sourceRoot);
   }
+  if (entryId !== undefined && !defined.length) throw new Error(`Entry ${JSON.stringify(entryId)} has no database definition.`);
+  return defined;
+}
+
+/** Build each unique definition in an aggregate before copying its package. */
+export async function prepareProjectDatabaseArtifacts(projectDirectory: string): Promise<void> {
+  for (const sourceRoot of await projectDatabaseSourceRoots(projectDirectory)) await generateDatabases(projectDirectory, sourceRoot);
 }

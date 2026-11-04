@@ -96,4 +96,4 @@ v2 项目的个人配置默认采用最新已发布模板；读取源码草稿�
 
 Studio 和 CLI Web 按资源类型与 UUID 合并共享入口引用，打开 Server Web 管理页的链接不含账号 token。已移除可见 KV 编辑和本地/远程 KV 切换。账号变化会取消旧请求并清除目录；绑定或授权变化使旧客户端失效。附件准备期间禁用重复上传，关闭页面会取消迟到结果。
 
-SteamHarness Database 项目可携带 `.steamharness/generated/database` 的 Node/Browser 生成产物。服务端只校验文件清单、定义和模型指纹及产物 SHA-256，不执行 `steamharness.database.ts` 或生成客户端，也不安装依赖。其他 `.steamharness` 本地运行数据继续排除；模型更新后须在本地重新生成再上传。参见 [SteamHarness Database](/core-api/database)。
+SteamHarness Database 项目可携带 `dist/steamharness/generated/database` 的 Node/Browser 生成产物。服务端只校验文件清单、定义和模型指纹及产物 SHA-256，不执行 `steamharness.database.ts` 或生成客户端，也不安装依赖。其他 `.steamharness` 本地运行数据继续排除；模型更新后须在本地重新生成再上传。参见 [SteamHarness Database](/core-api/database)。

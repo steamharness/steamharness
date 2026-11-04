@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { createServerRuntimePersistence } from 'steamharness/runtime-storage';
 import { runtimeStorageService } from './runtime-storage-service';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
@@ -41,7 +42,7 @@ it('loads user models through the host and worker without project configuration,
     const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
       id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
     }] } };
-    app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
+    app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
@@ -157,7 +158,7 @@ it('runs saved system and third-party models through the real Web worker with re
         createInput({ args }) { return steamharness.createAgentProjectInput(args); }, });
       export default agent;
     `);
-    app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', connection: {
+    app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: {
       serverUrl: origin, accessToken: 'project-identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
     } } });
     const token = new URL(app.url).hash.slice('#session='.length);
@@ -290,7 +291,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
         createInput({ args }) { return steamharness.createAgentProjectInput(args); },
       });
     `);
-    const options = { projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor' as const, userSettings: { agent: { permissionPolicy: 'auto' as const, models: [] as import('steamharness').UserAgentModel[] } }, connection: {
+    const options = { projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor' as const, userSettings: { agent: { permissionPolicy: 'auto' as const, models: [] as import('steamharness').UserAgentModel[] } }, connection: {
       serverUrl: origin, accessToken: 'identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
     } } };
     app = await startWebServer(options);

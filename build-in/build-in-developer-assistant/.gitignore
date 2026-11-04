@@ -1,13 +1,7 @@
 node_modules
 .pnpm-store
-dist
 .dev-userdata
-*.tsbuildinfo
 .workflow-dependencies-ready
-test-results
-coverage
-.release/
-.ci-artifacts/
 !.env.example
 !**/.env.example
 !.env.production.example
@@ -15,5 +9,6 @@ coverage
 .env.production
 **/.env.production
 .DS_Store
-.packs
 __pycache__
+
+/dist/

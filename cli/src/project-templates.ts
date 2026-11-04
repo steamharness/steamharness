@@ -68,7 +68,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
   for (const template of templates) {
     if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'conversation', 'kanban'].includes(template.projectType)
       || !['starter', 'example'].includes(template.kind) || !Array.isArray(template.files) || !template.files.every(safeRelative)
-      || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
+      || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/main/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
       || ['en', 'zh-CN'].some(locale => !template.name?.[locale as 'en'] || !template.description?.[locale as 'en'])) {
       throw new ProjectTemplateError('invalid-template', 'Invalid project template catalog.');
     }
@@ -137,8 +137,8 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, 'steamharness.json'), `${JSON.stringify(projectManifest, null, 2)}\n`, { flag: 'wx' });
-    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.steamharness/generated/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
-    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\n/dist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/cache/\ndist/reports/\ndist/release/\ndist/tmp/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     if (!files.some(file => file.filename === 'configuration.json')) await writeFile(path.join(directory,'configuration.json'), JSON.stringify({version:1,fields:[]},null,2)+'\n',{flag:'wx'});
     for (const file of files) {
       request.signal?.throwIfAborted();

@@ -60,6 +60,7 @@ export function shouldPackEntry(projectRoot, candidate) {
   if (EXCLUDED_ENV_FILE_NAMES.has(name) || name === "AGENTS.md") return false;
   const segments = path.relative(projectRoot, candidate).split(path.sep).filter((segment) => segment !== "");
   if (segments.length === 0) return true;
+  if (segments[0] === "dist" && ["cache", "reports", "release", "tmp"].includes(segments[1])) return false;
   if (segments.some((segment) => INFRASTRUCTURE_DIRECTORIES.has(segment))) return false;
   return !(segments.length === 1 && INFRASTRUCTURE_ROOT_ENTRIES.has(name));
 }
@@ -189,7 +190,7 @@ export async function buildReleaseArtifacts(options = {}) {
   if (definition.artifactKind === "universal" && targetGroup !== "mac") {
     throw new Error("Universal built-in projects are built by the mac target group only.");
   }
-  const outputDir = path.resolve(options.outputDir);
+  const outputDir = path.resolve(options.outputDir ?? path.join(definition.root, "dist/release"));
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
   const targets = requiredTargets(definition).filter(([platform]) => (
@@ -244,7 +245,7 @@ export async function assembleRelease(options = {}) {
   const expectedTargets = requiredTargets(definition);
   if (resourcesByTarget.size !== expectedTargets.length) throw new Error("Built-in release targets are incomplete.");
 
-  const outputDir = path.resolve(options.outputDir);
+  const outputDir = path.resolve(options.outputDir ?? path.join(definition.root, "dist/release"));
   const stagingDir = `${outputDir}.stage-${process.pid}-${Date.now()}`;
   await rm(stagingDir, { recursive: true, force: true });
   const projectRoot = path.join(stagingDir, ...channelProjectPath(definition).split("/"));

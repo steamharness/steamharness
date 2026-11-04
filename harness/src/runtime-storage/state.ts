@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import os from "node:os";
+import { projectEntryKey } from "@steamharness/project-manifest";
+import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
 import path from "node:path";
 import type { ConversationState, ConversationStateStorage } from "../conversation";
 import type { TokenUsageEntry } from "../token-usage";
@@ -14,8 +16,10 @@ export function createRuntimeStateStorage(options: {
   let backend = options.persistence;
   const resolve = () => {
     if (backend) return backend;
-    const identity = createHash("sha256").update(JSON.stringify([options.projectId, options.entryId])).digest("hex");
-    return backend = createLocalRuntimePersistence({ directory: path.join(options.rootDir, ".workflow", "runtime", identity) });
+    projectEntryKey(options.projectId, options.entryId);
+    const directory = path.join(os.homedir(), ".steamharness", "runtime", options.projectId.toLowerCase(), options.entryId);
+    assertProjectDataDirectory(options.rootDir, directory);
+    return backend = createLocalRuntimePersistence({ directory });
   };
   const persistence: RuntimePersistence = {
     list: kind => resolve().list(kind), acquire: (scope, onLost) => resolve().acquire(scope, onLost),

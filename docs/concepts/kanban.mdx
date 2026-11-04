@@ -8,12 +8,14 @@ description: "Kanban 入口"
 Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示例：
 
 ```json
-{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/index.html", "configuration": "configuration.json", "databases": [] }
+{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/map/index.html", "configuration": "configuration.json", "databases": [] }
 ```
+
+`root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/<entryId>/index.html`。Workflow/Conversation 的源码入口仍相对各自 `root`。前端只清理 `dist/<entryId>/`，保留数据库生成目录。
 
 构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
-Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 dist/index.html，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
+Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 dist/map/index.html，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
 
 ## 配置与展示
 
@@ -26,7 +28,7 @@ Studio 提供最小看板与两种任务看板。任务看板先生成数据库�
 ## 数据 Bridge
 
 ```js
-import { data } from "./.steamharness/generated/database/browser/index.js";
+import { data } from "./dist/steamharness/generated/database/browser/index.js";
 const api = window.steamHarnessKanban;
 const database = await api.databases.connect(data);
 const configurationId = api.getConfiguration().id || "default";

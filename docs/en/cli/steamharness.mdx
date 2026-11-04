@@ -96,7 +96,10 @@ Fork and child navigation requires a matching request from the current page and 
 pnpm exec steamharness database init .
 pnpm exec steamharness db validate .
 pnpm exec steamharness database generate .
+pnpm exec steamharness database generate . --entry billing
 ```
+
+Directory arguments always select the aggregate project root. Without `--entry`, `validate` and `generate` process the root and all declared entry definitions, deduplicating source roots. `--entry <id>` selects that entry's source root. `init --entry <id>` creates definitions there without requiring a built entry. JSON results contain an `outputs` array with `sourceRoot` and `databases`; generation also returns `directory` and `cached`. Root definitions use `dist/steamharness/generated/database/`; child definitions use `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`.
 
 Resource and migration management also provides `create / list / inspect / retry / grant / revoke` and `migrate dev / deploy / status`. `migrate dev --draft` saves reviewable SQL, a model snapshot and checksums; `deploy` applies existing history only. `--database` selects a resource UUID and `--alias` a model declaration (default main). Management commands require a target Server account login; `--server` and `--token` override the target. See [SteamHarness Database](/en/core-api/database). Bind relational resources with `bind [directory] --database <id> [--entry <id>] [--alias main] [--mode read|write]`, list mappings with `bindings [directory] [--entry <id>]`, and remove them with `unbind [directory] [--entry <id>] [--alias main]`. Server stores bindings by account, project, entry and alias without modifying project files or granting permissions. Node entries query through `context.databases.connect(descriptor)`. Browser entries import generated browser descriptors and use the host table proxy through databases.connect, with rows/insert/update/delete delegates. Legacy KV and local KV APIs are removed.
 

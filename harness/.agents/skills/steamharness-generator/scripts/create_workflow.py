@@ -37,12 +37,10 @@ PROJECT_CARD_DEFAULTS = {
 
 STEAMHARNESS_IGNORE = """.git/
 node_modules/
-dist/
-build/
-out/
-coverage/
-.cache/
-.turbo/
+dist/cache/
+dist/reports/
+dist/release/
+dist/tmp/
 *.log
 *.tmp
 *.tsbuildinfo
@@ -92,7 +90,7 @@ def main() -> None:
 
     if workflow_dir.exists() and any(workflow_dir.iterdir()):
         existing_files = [workflow_dir / name for name in (
-            "package.json", "steamharness.json", "configuration.json", ".steamharnessignore",
+            "package.json", "steamharness.json", "configuration.json", ".steamharnessignore", ".gitignore",
         )]
         existing_files += (
             [workflow_dir / path for path in kanban_template_files(args.with_kanban_params)]
@@ -111,6 +109,7 @@ def main() -> None:
             )
 
     workflow_dir.mkdir(parents=True, exist_ok=True)
+    write_file(workflow_dir / ".gitignore", "node_modules/\n/dist/\n.env\n.env.*\n")
     write_file(workflow_dir / "package.json", package_json(workflow_name, args.project_type))
     write_file(workflow_dir / "steamharness.json", project_json(workflow_name, args.project_type, args.description))
     if args.project_type == "kanban":
@@ -186,7 +185,7 @@ def project_json(name: str, project_type: str, description: str) -> str:
         "id": str(uuid4()), "name": name, "version": "0.1.0", "description": description,
         "defaultEntry": "main", "entries": [{
             "entryId": "main", "type": project_type, "name": name, "root": ".",
-            "entry": "dist/index.html" if project_type == "kanban" else "index.ts",
+            "entry": "dist/main/index.html" if project_type == "kanban" else "index.ts",
             "configuration": "configuration.json", "databases": ["data"] if project_type == "kanban" else [],
         }],
         "projectCard": {"icon": icon, "iconBackgroundColor": icon_background},

@@ -91,7 +91,7 @@ const agent = await createAgent({
 
 `createServerRuntimePersistence({ serverUrl, token, workspace, resolveProject: true })` 创建宿主仓储。`list(kind)` 读取 `conversation / run / workflow / state` 历史；`acquire(scope, onLost)` 取得执行租约，返回 `write(record)`、`delete(identity)`、`usage(entry)`、`assertOwned()` 和 `close()`。记录包含版本与有序消息、队列、事件和值；写入必须匹配 scope 和 revision。删除保留版本墓碑，旧窗口不能重新保存已删除记录。
 
-Core executor 默认在项目根目录的 `.workflow/runtime/` 下按项目与入口保存本地状态；CLI/Studio 使用宿主数据目录。Agent 节点按 conversationId 与 sessionKey 选择独立存储。可信宿主可在 `storage.local.runtimePersistence` 或 `storage.server.runtimePersistence` 注入本地或 Server 仓储；测试可用 `createMemoryRuntimePersistence()`，它不是失败后的降级后端。
+Core executor 默认在用户目录 `~/.steamharness/runtime/<projectId>/<entryId>/` 保存本地状态；CLI/Studio 使用宿主应用数据目录。Agent 节点按 conversationId 与 sessionKey 选择独立存储。可信宿主可在 `storage.local.runtimePersistence` 或 `storage.server.runtimePersistence` 注入本地或 Server 仓储；测试可用 `createMemoryRuntimePersistence()`，它不是失败后的降级后端。
 
 `steamharness/agent` 提供以下存储操作，均传入 `persistence`：
 

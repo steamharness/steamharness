@@ -52,7 +52,10 @@ model Post {
 pnpm exec steamharness database init .
 pnpm exec steamharness database validate .
 pnpm exec steamharness database generate .
+pnpm exec steamharness database generate . --entry billing
 ```
+
+所有生成命令的目录参数均为聚合项目根。`validate`、`generate` 不带 `--entry` 时处理根与所有已声明入口的数据库定义，并按源码根去重；`--entry <id>` 只处理该入口的源码根。`init --entry <id>` 在该源码根创建定义，无需先构建入口。生成和校验的 JSON 返回 `outputs` 数组，每项包含 `sourceRoot`、`databases`；生成还包含 `directory` 和 `cached`。根定义输出到 `dist/steamharness/generated/database/`，子定义输出到 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`。
 
 `database` 可简写为 `db`。`init` 创建单库模板，不覆盖已有定义；为 `package.json` 添加 `database:generate`，为已有 `dev`、`build` 脚本添加生成前置步骤，并将生成目录加入 `.gitignore`。已经手写定义的项目直接执行 `validate`、`generate`。
 
@@ -60,7 +63,7 @@ pnpm exec steamharness database generate .
 
 ## 使用生成类型
 
-生成目录为 `.steamharness/generated/database`：
+生成目录为 `dist/steamharness/generated/database`：
 
 | 路径 | 内容 |
 | --- | --- |
@@ -74,8 +77,8 @@ pnpm exec steamharness database generate .
 
 ```ts
 import type { DatabaseClient } from "steamharness/database";
-import { main, audit } from "./.steamharness/generated/database/node/index.js";
-import type { User } from "./.steamharness/generated/database/node/main.js";
+import { main, audit } from "./dist/steamharness/generated/database/node/index.js";
+import type { User } from "./dist/steamharness/generated/database/node/main.js";
 
 function listUsers(db: DatabaseClient<typeof main>) {
   return db.user.findMany({
@@ -145,7 +148,7 @@ pnpm exec steamharness database unbind . --entry main --alias main --server http
 Node 工作流在运行上下文中连接生成的描述符：
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 import type { RunContext } from "steamharness";
 
 export async function createUser(context: RunContext) {
@@ -173,7 +176,7 @@ export async function createUser(context: RunContext) {
 静态页面从生成的 `browser/index.js` 导入描述符，构建时打包，通过宿主连接：
 
 ```ts
-import { data } from "./.steamharness/generated/database/browser/index.js";
+import { data } from "./dist/steamharness/generated/database/browser/index.js";
 const db = await window.steamHarnessKanban.databases.connect(data);
 const page = await db.task.rows({ where: { configurationId: "default" }, orderBy: { id: "asc" }, page: 1, pageSize: 50 });
 const row = await db.task.insert({ id: crypto.randomUUID(), configurationId: "default", title: "First", status: "todo" });
@@ -191,7 +194,7 @@ await db.task.delete({ key: { id: row.values.id }, rowVersion: row.rowVersion })
 
 自定义构建应先执行 `database generate`，再运行 TypeScript 或前端构建。`workspace pack` 会为聚合根目录和各注册入口目录中的定义自动生成产物，并将源码、模型与完整生成目录一起打包。`.gitignore` 仅控制 Git；不要在 `.steamharnessignore` 中排除这些必需文件。
 
-Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。只有 `.steamharness/generated/database` 可以进入源码包，其余 `.steamharness` 运行数据继续排除。
+Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。只有 `dist/steamharness/generated/database` 可以进入源码包，其余 `.steamharness` 运行数据继续排除。
 
 本入口定义项目业务模型；[平台运行存储](/core-api/runtime-storage) 负责会话、运行历史和 Agent 记录，二者独立管理。声明业务模型不会自动转换现有 KV 数据。
 

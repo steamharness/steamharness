@@ -52,7 +52,10 @@ model Post {
 pnpm exec steamharness database init .
 pnpm exec steamharness database validate .
 pnpm exec steamharness database generate .
+pnpm exec steamharness database generate . --entry billing
 ```
+
+Directory arguments always select the aggregate project root. Without `--entry`, `validate` and `generate` process the root and all declared entry definitions, deduplicating source roots. `--entry <id>` selects that entry's source root. `init --entry <id>` creates definitions there without requiring a built entry. JSON results contain an `outputs` array with `sourceRoot` and `databases`; generation also returns `directory` and `cached`. Root definitions use `dist/steamharness/generated/database/`; child definitions use `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`.
 
 Use `db` as a short alias for `database`. `init` creates a single-database template without overwriting definitions. It adds a `database:generate` package script, generation hooks for existing `dev` and `build` scripts, and a Git ignore rule. Projects with existing definitions can run `validate` and `generate` directly.
 
@@ -60,7 +63,7 @@ Commands execute the local definition file and validate models through WASM with
 
 ## Generated types
 
-Outputs live in `.steamharness/generated/database`:
+Outputs live in `dist/steamharness/generated/database`:
 
 | Path | Content |
 | --- | --- |
@@ -74,8 +77,8 @@ Type checking resolves adjacent `.ts` files. Runtime imports use matching `.js` 
 
 ```ts
 import type { DatabaseClient } from "steamharness/database";
-import { main, audit } from "./.steamharness/generated/database/node/index.js";
-import type { User } from "./.steamharness/generated/database/node/main.js";
+import { main, audit } from "./dist/steamharness/generated/database/node/index.js";
+import type { User } from "./dist/steamharness/generated/database/node/main.js";
 
 function listUsers(db: DatabaseClient<typeof main>) {
   return db.user.findMany({
@@ -145,7 +148,7 @@ The host stores bindings by signed-in account and `projectId + entryId + alias`,
 Connect a generated descriptor from a Node workflow's context:
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 import type { RunContext } from "steamharness";
 
 export async function createUser(context: RunContext) {
@@ -182,7 +185,7 @@ Task templates generate descriptors before building `dist/index.html` and store 
 
 Custom builds should run `database generate` before TypeScript or frontend compilation. `workspace pack` generates definitions found at the aggregate root and registered entry directories, then includes source, models, and the complete generated subtree. `.gitignore` only controls Git. Do not exclude required database files through `.steamharnessignore`.
 
-Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `.steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
+Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `dist/steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
 
 This API defines project business models. [Platform runtime storage](/en/core-api/runtime-storage) independently manages conversations, execution history and Agent records. Declaring business models does not convert existing KV data.
 

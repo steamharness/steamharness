@@ -16,12 +16,27 @@ SteamHarness 将业务模型、知识内容和运行历史分别管理。业务�
 
 新建项目或对话不会自动创建 PostgreSQL database。A、B 项目分别申请业务资源后，可定义结构不同的 `User` 表；共享必须显式绑定到同一资源并获得授权。知识库独立于业务库，不需要项目定义系统知识表。
 
+## 产物与运行数据目录
+
+所有可重建产物统一写入聚合项目根的 `dist/`，子入口不得另建产物根：
+
+| 内容 | 路径 |
+| --- | --- |
+| 根数据库定义的生成代码 | `dist/steamharness/generated/database/` |
+| 子入口数据库定义的生成代码 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
+| 编译和静态页面 | `dist/<entryId>/` |
+| 工具缓存、测试报告和打包文件 | `dist/cache/`、`dist/reports/`、`dist/release/` |
+
+子入口使用完整 `entry.root` 的 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`；同一源码根的入口共用生成代码。每个构建器只清理自己的子目录，不能清空整个 `dist/`。源码、配置、数据库模型和迁移保留在源码目录，根 `.gitignore` 忽略 `/dist/`。
+
+会话、检查点、登录状态和其他持久数据保存在宿主应用数据目录或用户目录，不能写入源码目录或 `dist/`。独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`；CLI Web 的 `--data-dir` 同样必须在项目外。删除 `dist/` 后重新生成和构建即可恢复产物，外部运行数据不受影响。旧路径不再读取、迁移或回退；迁出已有持久数据时先关闭对应宿主，离线移动并保留权限。
+
 ## 业务数据库
 
 在 `steamharness.database.ts` 声明多个别名，在 `database/<alias>/steamharness.schema` 定义模型；CLI 生成 Node/Browser 描述符和类型。创建、授权、迁移、绑定由 `steamharness database` 管理。关系库绑定按账号、项目、入口和别名保存在 Server，不写入旧 `config.databases` 映射。连接不自动建库或迁移。
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 const db = await context.databases.connect(main);
 await db.user.create({ data: { id: "alice", name: "Alice" } });
 ```

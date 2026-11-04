@@ -1,4 +1,4 @@
-import { data } from './.steamharness/generated/database/browser/index.js';
+import { data } from './dist/steamharness/generated/database/browser/index.js';
 const api = window.steamHarnessKanban;
 let generation = 0, configurationId = '';
 let connection;

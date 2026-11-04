@@ -1,6 +1,7 @@
 import { createLocalProjectConfigurationStore, resolveProjectEntrySync, readCachedConfigurationFile } from 'steamharness';
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { watch, type FSWatcher } from 'node:fs';
+import path from 'node:path';
 import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanDatabaseRevision } from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
@@ -42,7 +43,7 @@ export class KanbanController {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();
     try {
-      this.watcher = watch(this.project.entryRoot, { recursive: true }, (_event, filename) => {
+      this.watcher = watch(this.project.folderPath, { recursive: true }, (_event, filename) => {
         const file = String(filename).replaceAll('\\', '/');
         if (!file || file.split('/').some(part => part.startsWith('.') || part === 'node_modules')) return;
         clearTimeout(this.timer); this.timer = setTimeout(() => void this.refresh().catch(error => this.hooks.log(String(error))), 400);
@@ -56,12 +57,12 @@ export class KanbanController {
     this.project.entryRoot = declaration.rootDir;
     this.project.databases = declaration.registration.databases;
     this.project.knowledgeBases = declaration.registration.knowledgeBases ?? [];
-    this.project.kanban = { artifactDir: '.', entry: declaration.registration.entry };
+    this.project.kanban = { artifactDir: path.posix.dirname(declaration.registration.entry), entry: path.posix.basename(declaration.registration.entry) };
     this.newPreview();
     if (checkConnections) await this.hooks.projectChanged?.();
     this.hooks.changed();
   }
-  private newPreview() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); this.preview = new KanbanPreview(this.project.entryRoot, this.project.kanban!, () => this.configuration()); }
+  private newPreview() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); this.preview = new KanbanPreview(this.project.folderPath, this.project.kanban!, () => this.configuration()); }
   async handle(message: Message): Promise<Message[]> {
     if (message.type === 'kanban-diagnostics') {
       const generation = this.generation;

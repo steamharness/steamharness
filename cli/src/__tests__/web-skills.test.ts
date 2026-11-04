@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -49,8 +50,8 @@ it('lists and previews the selected agent through the real worker and authentica
       steamharness.defineEntrypoint({ id: 'plain', title: 'Plain', workflow: plain, createInput() { return {}; } }),
     ] });
   `);
-  const runtime = createWebRuntime(root, path.join(root, 'data'), () => undefined);
-  const app = await startEntryWebServer({ projectDir: root, dataDir: path.join(root, 'data'), runtime });
+  const runtime = createWebRuntime(root, path.join(testDataDirectory(root)), () => undefined);
+  const app = await startEntryWebServer({ projectDir: root, dataDir: path.join(testDataDirectory(root)), runtime });
   try {
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: unknown) => {

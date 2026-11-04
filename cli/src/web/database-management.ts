@@ -85,7 +85,7 @@ export class DatabaseManagement {
       await this.request('knowledge-bases', '/bindings', 'POST', { ...consumer, knowledgeBaseId: message.databaseId });
       await bindProjectKnowledgeBase(this.project.folderPath, this.project.entryId, message.alias, message.databaseId);
     } else {
-      const generated = await generateDatabases(this.project.entryRoot), database = generated.databases.find(item => item.alias === message.alias);
+      const generated = await generateDatabases(this.project.folderPath, path.relative(this.project.folderPath, this.project.entryRoot).split(path.sep).join("/") || "."), database = generated.databases.find(item => item.alias === message.alias);
       if (!database) throw new Error('Define and generate this database alias before binding it.');
       await this.request('databases', '/bindings', 'POST', { ...consumer, databaseId: message.databaseId, schemaHash: database.schemaHash });
     }

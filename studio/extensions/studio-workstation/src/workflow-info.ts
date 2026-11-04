@@ -54,7 +54,7 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
   const entries = project.entries.map(entry => ({ ...group(`window:${entry.entryId}`, entry.name, 'window', [
     row(`window:${entry.entryId}:id`, t('Entry ID'), entry.entryId),
     row(`window:${entry.entryId}:type`, t('Project type'), t(typeNames[entry.type])),
-    row(`window:${entry.entryId}:path`, t('Local path'), `${entry.root}/${entry.entry}`),
+    row(`window:${entry.entryId}:path`, t('Local path'), entry.type === 'kanban' ? entry.entry : `${entry.root}/${entry.entry}`),
   ], false), avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) }));
   const databases = project.databases.map(database => group(`database:${database}`, database, 'database', [
     row(`database:${database}:alias`, t('Database'), database),

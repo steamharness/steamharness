@@ -64,7 +64,7 @@ describe('project templates', () => {
         const esbuildRoot = path.dirname(createRequire(import.meta.url).resolve('esbuild/package.json'));
         await symlink(esbuildRoot, path.join(created.directory, 'node_modules/esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
         await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: created.directory });
-        expect(await readFile(path.join(created.directory, 'dist/board.js'), 'utf8')).toContain('database');
+        expect(await readFile(path.join(created.directory, 'dist/main/board.js'), 'utf8')).toContain('database');
       }
       const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection);
       try {

@@ -13,3 +13,8 @@ coverage/
 src/
 tests/
 dist/**/*.map
+
+dist/cache/
+dist/reports/
+dist/release/
+dist/tmp/

@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it, vi } from 'vitest';
 import { once } from 'node:events';
@@ -15,7 +16,7 @@ it('recovers a killed worker inside managed child execution without replaying it
   const directory = await mkdtemp(path.join(os.tmpdir(), 'managed-crash-'));
   const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
   const applicationId = crypto.randomUUID(), diagnostics: string[] = [];
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => connection, { userSettings: () => ({ agent: { permissionPolicy: 'auto' } }) });
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => connection, { userSettings: () => ({ agent: { permissionPolicy: 'auto' } }) });
   let controller: ConversationController | undefined, killed = false, childWaiting = false, childCalls = 0;
   const model = createServer(async (request, response) => {
     const chunks: Buffer[] = [];

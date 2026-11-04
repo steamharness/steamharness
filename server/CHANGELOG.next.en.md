@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static Kanban previews resolve entry from the aggregate root and validate database artifacts under dist/steamharness by source root. Old generated paths are no longer supported.
+
 - Updated the Kanban Workflow Bridge with a separate 120-second deadline. Static previews continue to reject execution operations.
 
 - Fixed concurrent native workers opening temporary database connections for one entry without competing for exclusive binding locks. Rebinding, migrations and revocation still fence old connections.

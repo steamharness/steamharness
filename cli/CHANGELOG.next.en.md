@@ -2,6 +2,8 @@
 
 - [Fix] Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.
 
+- Database generation accepts an aggregate root and --entry, deduplicates source roots, and returns outputs. Generated code, entry artifacts, caches, reports, and archives use root dist. Kanban entry paths resolve from the aggregate root; upload/download verify the new inventory and runtime data stays outside projects.
+
 - [Fix] Allow 120 seconds for cross-entry Conversation submission, resume, input resolution, and cancellation receipts while retaining cancellation; map nested database failures to safe Kanban guidance.
 
 - Fixed Kanban aggregate Workflow calls preserving the full 120-second receipt window through the Bridge and HTTP transport without automatically replaying writes.

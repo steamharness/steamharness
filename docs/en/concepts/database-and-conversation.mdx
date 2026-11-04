@@ -12,7 +12,7 @@ Business models, knowledge bases, and runtime records have independent resources
 Define aliases in `steamharness.database.ts` and models in `steamharness.schema`. List the aliases in the entry's `databases`. Server stores bindings by account, project, entry, and alias; project configuration contains no business database IDs or credentials.
 
 ```ts
-import { main } from "./.steamharness/generated/database/node/index.js";
+import { main } from "./dist/steamharness/generated/database/node/index.js";
 const db = await context.databases.connect(main);
 const users = await db.user.findMany({ orderBy: { id: "asc" } });
 ```

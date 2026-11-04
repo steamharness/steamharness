@@ -37,7 +37,7 @@ async function fixture(t, configuration = {}) {
       for(const {entryId,root:childRoot,...child} of config.entries){if(childRoot==='.')continue;await fs.mkdir(path.join(root,childRoot),{recursive:true});await fs.writeFile(path.join(root,childRoot,'steamharness.json'),JSON.stringify(child));}
       await fs.writeFile(path.join(root,'index.ts'),"throw new Error('Source must not execute');");
       await fs.writeFile(path.join(root,'image.bin'),Buffer.from([0,1,255]));
-      for(const entry of config.entries){const target=path.join(root,entry.root,entry.entry);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,entry.type==='kanban'?'<html>Board</html>':"throw new Error('Source must not execute');");}
+      for(const entry of config.entries){const target=path.join(root,entry.type==='kanban'?'.':entry.root,entry.entry);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,entry.type==='kanban'?'<html>Board</html>':"throw new Error('Source must not execute');");}
       if (config.delay) { await new Promise(resolve => setTimeout(resolve, 10000)); }
       console.log(JSON.stringify({errCode: 0, data: {projectId:'${id}',path:config.complete===false?undefined:root}}));
     }
@@ -195,11 +195,11 @@ test('version downloads reserve directories atomically and do not reuse another 
 });
 
 test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
- const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/index.html',databases:[]}];
+ const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/board/index.html',databases:[]}];
  const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
  assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'steamharness.json'),'utf8'));
  assert.deepEqual(pkg.entries,entries.map(entry=>entry.root==='.'?entry:{entryId:entry.entryId,root:entry.root}));
- for (const entry of entries.filter(entry=>entry.root!=='.')){const {entryId,root,...child}=entry;assert.deepEqual(JSON.parse(await fs.readFile(path.join(result[0].directory,root,'steamharness.json'),'utf8')),child);}await fs.access(path.join(result[0].directory,'board/dist/index.html'));
+ for (const entry of entries.filter(entry=>entry.root!=='.')){const {entryId,root,...child}=entry;assert.deepEqual(JSON.parse(await fs.readFile(path.join(result[0].directory,root,'steamharness.json'),'utf8')),child);}await fs.access(path.join(result[0].directory,'dist/board/index.html'));
 });
 
 for (const configuration of [{ wrongId: dependencyId }, { complete: false }]) {

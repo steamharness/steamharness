@@ -1,5 +1,5 @@
 import { prepareProjectDatabaseArtifacts } from "./database-generation";
-import { isDatabaseArtifactPath, readDatabaseArtifactFiles } from "@steamharness/project-upload/database-artifacts";
+import { databaseArtifactSourceRoot, isDatabaseArtifactPath, readDatabaseArtifactFiles } from "@steamharness/project-upload/database-artifacts";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
@@ -454,7 +454,7 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
     await mkdir(stage, { recursive: true });
     for (const file of download.files) {
       const relative = normalizeProjectFilePath(file.path), portable = createPortableLocalPathKey(relative);
-      if (seen.has(portable) || relative.split("/").some(part => [".git", "node_modules", ".env", ".data"].includes(part) || part.startsWith(".env.")) || relative.split("/").includes(".steamharness") && !isDatabaseArtifactPath(relative)) throw new Error("Invalid or duplicate download path.");
+      if (seen.has(portable) || relative.split("/").some(part => [".git", "node_modules", ".env", ".data"].includes(part) || part.startsWith(".env.")) || relative.split("/").includes(".steamharness")) throw new Error("Invalid or duplicate download path.");
       seen.add(portable);
       const destination = path.join(stage, ...relative.split("/"));
       await mkdir(path.dirname(destination), { recursive: true }); await writeFile(destination, decodeProjectFileContent(file), { flag: "wx" });
@@ -476,12 +476,16 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
 }
 
 async function verifyDownloadedDatabaseArtifacts(root: string, files: string[]): Promise<void> {
-  const owners = new Set(files.filter(isDatabaseArtifactPath).map(filename => filename.slice(0, filename.indexOf(".steamharness/generated/database/"))));
-  for (const prefix of owners) {
-    const artifacts = await readDatabaseArtifactFiles(path.join(root, prefix));
-    if (!artifacts) throw new Error("Downloaded database artifacts are incomplete.");
-    const expected = new Set(artifacts.files.map(file => prefix + file));
-    for (const file of files.filter(file => file.startsWith(prefix + ".steamharness/generated/database/"))) if (!expected.delete(file)) throw new Error("Invalid downloaded database artifact.");
+  const declaration = await readProjectDeclarationFromDirectory(root);
+  const owners = new Set([".", ...declaration.entries.map(entry => entry.root), ...files.filter(isDatabaseArtifactPath).map(file => databaseArtifactSourceRoot(file)!)]);
+  for (const sourceRoot of owners) {
+    const artifacts = await readDatabaseArtifactFiles(root, sourceRoot);
+    if (!artifacts) {
+      if (files.includes(path.posix.join(sourceRoot, "steamharness.database.ts"))) throw new Error("Downloaded database artifacts are incomplete.");
+      continue;
+    }
+    const expected = new Set(artifacts.files);
+    for (const file of files.filter(file => databaseArtifactSourceRoot(file) === sourceRoot)) if (!expected.delete(file)) throw new Error("Invalid downloaded database artifact.");
     if (expected.size) throw new Error("Downloaded database artifacts are incomplete.");
   }
 }
@@ -545,10 +549,10 @@ async function packProject(
     ? path.join(repoRoot, "workspace", "workflow", projectName)
     : path.resolve(sourcePath);
   await readPackageJsonFile(path.join(projectDir, "steamharness.json"));
-  // Packaged Studio uploads need a writable temporary archive directory.
+  // Hosts can supply their own writable data directory for installed projects.
   const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
     ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
-    : path.join(repoRoot, "workspace", ".packs");
+    : path.join(projectDir, "dist", "release");
   const stagingDir = path.join(packsDir, "tmp", randomUUID(), projectName);
   const archivePath = outputPath
     ? path.resolve(outputPath)

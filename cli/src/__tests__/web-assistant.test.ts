@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { runtimeStorageService } from './runtime-storage-service';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -56,7 +57,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
 
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const dataDir = path.join(directory, 'data');
+  const dataDir = path.join(testDataDirectory(directory));
   const previousKey = createHash('sha256').update(`assistant:${workdir}`).digest('hex').slice(0, 24);
   await mkdir(path.join(dataDir, previousKey), { recursive: true });
   await writeFile(path.join(dataDir, previousKey, 'conversations.json'), JSON.stringify({ activeId: 'old-pi-session', sessions: [{ id: 'old-pi-session', title: 'Old project executor', messages: [], parameterValues: { apiKey: 'old-project-field' } }] }));
@@ -133,7 +134,7 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'assistant-project-fixture',
     aiServerUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, aiAccessToken: 'assistant-ai-fixture' };
-  const runtime = createWebRuntime(runtimeProjectDir, path.join(directory, 'data'), () => connection);
+  const runtime = createWebRuntime(runtimeProjectDir, path.join(testDataDirectory(directory)), () => connection);
   try {
     const inspection = await runtime.inspect([assistantProjectDir]);
     expect(inspection.errors).toEqual([]);

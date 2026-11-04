@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
@@ -52,7 +53,7 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
   'inspects author-provided %s names and storage for %s projects in the Core worker', async (language, projectType) => {
   initI18n({ preference: language });
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-locale-'));
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => undefined);
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await realpath(new URL('../../node_modules/steamharness', import.meta.url)), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');

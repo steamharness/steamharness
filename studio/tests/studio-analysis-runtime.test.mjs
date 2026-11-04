@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -21,7 +22,8 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   await writeFile(path.join(assistant, 'package.json'), JSON.stringify({name:'assistant',type:'module'}));
   await writeFile(path.join(assistant, 'steamharness.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' }));
   const template = path.join(extension, 'dist/analysis');
-  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'index.html', 'assets']) {
+  execFileSync(process.execPath, [fileURLToPath(new URL('../../build-in/build-in-analysis/scripts/build.mjs', import.meta.url))]);
+  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'dist/main']) {
     await cp(new URL(`../../build-in/build-in-analysis/${name}`, import.meta.url), path.join(template, name), { recursive: true });
   }
   const cli = path.join(source.projectDir, 'node_modules/@steamharness/cli/dist'); await mkdir(path.join(cli, 'web'));
@@ -85,8 +87,8 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   t.after(() => runtime.dispose());
   runtime.updateAnalysisProjects([current]);
   const project = await runtime.inspectAnalysis(); assert.equal(project.builtin, 'analysis'); assert.equal(project.projectType, 'kanban');
-  assert.notEqual(project.folderPath, template); assert.equal(await readFile(path.join(project.folderPath, 'index.html'), 'utf8'), await readFile(path.join(template, 'index.html'), 'utf8'));
-  assert.ok((await readFile(path.join(project.folderPath, 'assets/analysis.js'))).length > 1000);
+  assert.notEqual(project.folderPath, template); assert.equal(await readFile(path.join(project.folderPath, 'dist/main/index.html'), 'utf8'), await readFile(path.join(template, 'dist/main/index.html'), 'utf8'));
+  assert.ok((await readFile(path.join(project.folderPath, 'dist/main/assets/analysis.js'))).length > 1000);
   const session = await runtime.start(project, 'editor'); t.after(() => session.close());
   const origin = new URL(session.ready.url).origin;
   const connection = await fetch(`${origin}/connection`).then(response => response.json()); assert.equal(connection.assistant, undefined); assert.equal(connection.mcp, undefined);

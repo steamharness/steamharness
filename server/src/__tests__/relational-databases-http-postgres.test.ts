@@ -110,7 +110,7 @@ test("account-authenticated HTTP, CLI bindings and generated Core clients use is
     { entryId: "main", type: "workflow", name: "Main", root: ".", entry: "index.ts", databases: [] },
     { entryId: "other", type: "workflow", name: "Other", root: ".", entry: "index.ts", databases: [] },
   ] }));
-  await writeFile(path.join(project, "index.ts"), `import { main } from "./.steamharness/generated/database/node/index.js";
+  await writeFile(path.join(project, "index.ts"), `import { main } from "./dist/steamharness/generated/database/node/index.js";
 const flow = steamharness.defineProject({ name: "database-runtime", async run(_input, context) {
   const database = await context.databases.connect(main);
   const record = await database.user.create({ data: { name: "executor" } });
@@ -138,7 +138,7 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   assert.equal((await cli("bindings", project))[0].databaseId, resource.id);
   assert.equal((await cli("bind", project, "--database", resource.id)).revision, binding.revision, "unchanged binds are idempotent");
   assert.equal(await readFile(path.join(project, "config.json"), "utf8").catch(() => null), null, "relational bindings are host-owned");
-  const descriptors = await import(pathToFileURL(path.join(project, ".steamharness/generated/database/node/index.js")).href);
+  const descriptors = await import(pathToFileURL(path.join(project, "dist/steamharness/generated/database/node/index.js")).href);
   interface Models { user: { create(input: any): Promise<any>; findMany(input?: any): Promise<any[]>; count(input?: any): Promise<number>; update(input: any): Promise<any>; deleteMany(input?: any): Promise<any> }; post: { count(): Promise<number> } }
   interface Client extends Models { transaction<T>(work: (tx: Models) => Promise<T>): Promise<T> }
   const descriptor = descriptors.main as NodeDatabaseDescriptor<"main", Client>;
@@ -171,7 +171,7 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   const reader = await readerConnector.connect(descriptor); assert.equal(await reader.user.count(), 2);
   const browserAttempt = await fetch(`${base}/api/databases/connections`, { method: "POST", headers: { Authorization: `Bearer ${ownerToken}`, "Content-Type": "application/json", Origin: "https://browser.example.test" }, body: JSON.stringify({ ...scope, schemaHash: descriptor.schemaHash }) });
   assert.equal(browserAttempt.status, 403);
-  const browserDescriptor = (await import(pathToFileURL(path.join(project, ".steamharness/generated/database/browser/index.js")).href)).main as DatabaseDescriptor<'main', { user: DatabaseTable<any>; post: DatabaseTable<any> }, 'browser'>;
+  const browserDescriptor = (await import(pathToFileURL(path.join(project, "dist/steamharness/generated/database/browser/index.js")).href)).main as DatabaseDescriptor<'main', { user: DatabaseTable<any>; post: DatabaseTable<any> }, 'browser'>;
   const browser = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, scope)).connect(browserDescriptor);
   const browserReader = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: otherToken }, scope)).connect(browserDescriptor);
   assert.equal(Reflect.get(browser.user, 'findMany'), undefined);
@@ -226,7 +226,7 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   await writeFile(path.join(secondProject, "index.ts"), "export {};\n");
   await cli("migrate", "dev", secondProject, "--database", second.id, "--name", "init");
   await cli("bind", secondProject, "--database", second.id);
-  const secondDescriptor = (await import(pathToFileURL(path.join(secondProject, ".steamharness/generated/database/node/index.js")).href)).main as NodeDatabaseDescriptor<"main", Client>;
+  const secondDescriptor = (await import(pathToFileURL(path.join(secondProject, "dist/steamharness/generated/database/node/index.js")).href)).main as NodeDatabaseDescriptor<"main", Client>;
   const secondConnector = createDatabaseConnector({ projectId: secondId, entryId: "main", host }); connectors.push(secondConnector);
   const secondClient = await secondConnector.connect(secondDescriptor);
   const secondRow = await secondClient.user.create({ data: { event: "independent" } }); assert.equal(typeof secondRow.id, "number");

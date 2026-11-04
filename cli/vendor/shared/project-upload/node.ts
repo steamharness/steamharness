@@ -1,5 +1,5 @@
-import { DATABASE_DEFINITION_FILE, DATABASE_GENERATED_DIRECTORY, readDatabaseArtifactFiles } from "./database-artifacts";
-import { projectManifestForDistribution } from "@steamharness/project-manifest";
+import { DATABASE_DEFINITION_FILE, readDatabaseArtifactFiles } from "./database-artifacts";
+import { projectEntryFilePath, projectManifestForDistribution } from "@steamharness/project-manifest";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -50,30 +50,36 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   const ignoredPaths: string[] = [];
   const databaseRequiredPaths = new Set<string>();
 
+  const declaration = await readProjectDeclarationFromDirectory(projectRoot);
+  const sourceRoots = new Set([".", ...declaration.entries.map(entry => entry.root)]);
+  for (const sourceRoot of sourceRoots) {
+    const definition = await lstat(path.join(projectRoot, sourceRoot, DATABASE_DEFINITION_FILE)).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
+    if (!definition) continue;
+    const artifacts = await readDatabaseArtifactFiles(projectRoot, sourceRoot);
+    if (!artifacts) throw new Error(`Missing database artifacts for ${sourceRoot}. Run steamharness database generate ${projectRoot}.`);
+    for (const source of Object.keys(artifacts.manifest.sources)) databaseRequiredPaths.add(path.posix.join(sourceRoot, source));
+    for (const filename of artifacts.files) {
+      const absolutePath = path.join(projectRoot, filename);
+      availableRegularPaths.add(filename);
+      files.push({ path: filename, absolutePath, size: (await lstat(absolutePath)).size });
+      databaseRequiredPaths.add(filename);
+    }
+  }
+  const artifactDirectories = declaration.entries.map(entry => projectEntryFilePath(entry))
+    .filter(filename => filename.startsWith("dist/")).map(filename => path.posix.dirname(filename));
+  const inArtifacts = (relative: string, directory: boolean): boolean => artifactDirectories.some(artifact =>
+    relative === artifact || relative.startsWith(artifact + "/") || directory && artifact.startsWith(relative + "/"));
+
   const walk = async (currentDir: string): Promise<void> => {
     const entries = await readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.name === ".steamharness") {
-        const owner = currentDir;
-        const artifacts = await readDatabaseArtifactFiles(owner);
-        if (artifacts) {
-          for (const source of Object.keys(artifacts.manifest.sources)) databaseRequiredPaths.add(normalizeProjectUploadPath(path.relative(projectRoot, path.join(owner, source))));
-          for (const relative of artifacts.files) {
-            const absolutePath = path.join(owner, relative);
-            const filename = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
-            const info = await lstat(absolutePath);
-            availableRegularPaths.add(filename);
-            files.push({ path: filename, absolutePath, size: info.size });
-          }
-        }
-        continue;
-      }
-      if (entry.name === DATABASE_DEFINITION_FILE && !(await readDatabaseArtifactFiles(currentDir))) {
-        throw new Error(`Missing database artifacts for ${path.relative(projectRoot, currentDir) || "."}. Run steamharness database generate.`);
-      }
-      if ([".git", "node_modules", ".data", ".workflow", ".release", ".steamharness", ".env", ".envrc", ".workflow-kv", ".workflow-persistent-values", ".workflow-schedules", "workflow-auth.json"].includes(entry.name) || entry.name.startsWith(".env.") || /^steamharness\.sqlite(?:-(?:wal|shm))?$/.test(entry.name)) continue;
+      if ([".git", "node_modules", ".local", ".data", ".workflow", ".release", ".steamharness", ".env", ".envrc", ".workflow-kv", ".workflow-persistent-values", ".workflow-schedules", "workflow-auth.json"].includes(entry.name) || entry.name.startsWith(".env.") || /^steamharness\.sqlite(?:-(?:wal|shm))?$/.test(entry.name)) continue;
       const absolutePath = path.join(currentDir, entry.name);
       const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
+      if (relativePath === "dist/steamharness" || relativePath.startsWith("dist/") && !inArtifacts(relativePath, entry.isDirectory())
+        || ["dist/cache", "dist/reports", "dist/release", "dist/tmp"].some(prefix => relativePath === prefix || relativePath.startsWith(prefix + "/"))) {
+        ignoredPaths.push(relativePath + (entry.isDirectory() ? "/" : "")); continue;
+      }
       const portablePath = createProjectUploadPortablePathKey(relativePath);
       const conflictingPath = portablePaths.get(portablePath);
       if (conflictingPath !== undefined && conflictingPath !== relativePath) {
@@ -116,11 +122,11 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   const requiredPaths = resolveProjectUploadRequiredPaths(
     packageJson,
     availableRegularPaths,
-    await readProjectDeclarationFromDirectory(projectRoot),
+    declaration,
   );
   requiredPaths.push(...databaseRequiredPaths);
   for (const file of files) {
-    if (file.path.includes(`${DATABASE_GENERATED_DIRECTORY}/`) || file.path.endsWith("steamharness.schema") || file.path.endsWith(DATABASE_DEFINITION_FILE)) requiredPaths.push(file.path);
+    if (file.path.endsWith("steamharness.schema") || file.path.endsWith(DATABASE_DEFINITION_FILE)) requiredPaths.push(file.path);
   }
   // Validate authored configuration; never export the machine's environment overrides.
   await readProjectManifestFromDirectory(projectRoot, {});

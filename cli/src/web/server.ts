@@ -1,3 +1,4 @@
+import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
@@ -103,6 +104,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
 async function startProjectWebServer(options: WebOptions, credentials: { capability: string; cookie: string }, identityChanged: () => void) {
   const projectDir = await realpath(path.resolve(options.projectDir));
   const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
+  assertProjectDataDirectory(projectDir, storageDir);
   const clients = new Set<ServerResponse>();
   const entryObservers = new Set<() => void>();
   let conversationRevision = 0;

@@ -8,10 +8,10 @@ import { inspectProjectScripts } from "../executor/rules";
 test("entry validation treats generated database engines as dependencies while checking authored sources", async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), "database-entry-sources-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const generated = path.join(root, ".steamharness/generated/database/node"); await mkdir(generated, { recursive: true });
+  const generated = path.join(root, "dist/steamharness/generated/database/node"); await mkdir(generated, { recursive: true });
   await writeFile(path.join(generated, "main.ts"), "export const database = {};\nconst Engine = 1;\nconst Engine = 2;\n");
   await writeFile(path.join(root, "helper.ts"), "export const helper = 1;\n");
-  await writeFile(path.join(root, "index.ts"), `import { database } from "./.steamharness/generated/database/node/main.js";
+  await writeFile(path.join(root, "index.ts"), `import { database } from "./dist/steamharness/generated/database/node/main.js";
 import { helper } from "./helper.js";
 const flow = steamharness.defineProject({ name: "test", async run(_input, context) { return { errCode: 0, errMessage: "" }; } });
 export const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "run", entrypoints: [steamharness.defineEntrypoint({ id: "run", title: "Run", workflow: flow, createInput() { return {}; } })] });

@@ -415,6 +415,7 @@ export interface ScriptInspection {
 }
 
 export interface ValidateProjectScriptsOptions {
+  aggregateDir?: string;
   entryFile?: string;
   cwd: string;
   projectName: string;
@@ -508,7 +509,7 @@ export function validateProjectScripts(
 export function inspectProjectScripts(
   options: ValidateProjectScriptsOptions,
 ): ScriptInspection {
-  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile);
+  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile, options.aggregateDir);
 
   if (scriptPaths.length === 0) {
     return {
@@ -530,7 +531,7 @@ export function inspectProjectScripts(
 export function inspectProjectStructure(
   options: ValidateProjectScriptsOptions,
 ): StructureInspection {
-  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile);
+  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile, options.aggregateDir);
 
   if (scriptPaths.length === 0) {
     return {
@@ -4081,8 +4082,8 @@ function analyzeSourceFile(
   }
 }
 
-function findProjectScriptPaths(projectDir: string, entryFile?: string): string[] {
-  if (entryFile) return projectEntrySources(projectDir, entryFile);
+function findProjectScriptPaths(projectDir: string, entryFile?: string, aggregateDir = projectDir): string[] {
+  if (entryFile) return projectEntrySources(projectDir, entryFile, aggregateDir);
 
   if (!existsSync(projectDir)) {
     return [];
@@ -4103,7 +4104,6 @@ function collectProjectScriptPaths(directory: string, projectRoot = directory): 
     }
 
     const entryPath = path.join(directory, entry);
-    if (path.relative(projectRoot, entryPath) === path.join(".steamharness", "generated", "database")) continue;
     const stat = statSync(entryPath);
 
     if (stat.isDirectory()) {

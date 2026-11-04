@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeProjectUploadPath } from "./index";
+import { databaseArtifactDirectory, databaseArtifactSourceRoot, DATABASE_GENERATED_DIRECTORY } from "@steamharness/project-manifest";
+export { databaseArtifactDirectory, databaseArtifactSourceRoot, DATABASE_GENERATED_DIRECTORY } from "@steamharness/project-manifest";
 
 export const DATABASE_DEFINITION_FILE = "steamharness.database.ts";
-export const DATABASE_GENERATED_DIRECTORY = ".steamharness/generated/database";
 export const DATABASE_ARTIFACT_MANIFEST = "manifest.json";
 
 export interface DatabaseArtifactManifest {
@@ -20,12 +21,11 @@ export function databaseArtifactHash(bytes: string | Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Only this generated subtree may pass through a project's private runtime directory. */
+/** Only canonical, non-hidden files in the managed output tree are database artifacts. */
 export function isDatabaseArtifactPath(filename: string): boolean {
-  const parts = filename.replaceAll("\\", "/").split("/");
-  const index = parts.indexOf(".steamharness");
-  return index >= 0 && parts[index + 1] === "generated" && parts[index + 2] === "database" && parts.length > index + 3
-    && parts.every((part, i) => !!part && part !== "." && part !== ".." && !part.includes(":") && !part.includes("\0") && (i === index || !part.startsWith(".")))
+  const normalized = filename.replaceAll("\\", "/"), parts = normalized.split("/");
+  return databaseArtifactSourceRoot(normalized) !== undefined
+    && parts.every(part => !!part && part !== "." && part !== ".." && !part.includes(":") && !part.includes("\0") && !part.startsWith("."))
     && /\.(?:ts|js|mjs|json|prisma)$/.test(filename);
 }
 
@@ -66,16 +66,18 @@ export function parseDatabaseArtifactManifest(value: unknown): DatabaseArtifactM
 }
 
 /** Server uses this static reader; it never imports the project's executable definition. */
-export async function readDatabaseArtifactFiles(projectDir: string): Promise<{ manifest: DatabaseArtifactManifest; files: string[] } | undefined> {
-  const generated = path.join(projectDir, DATABASE_GENERATED_DIRECTORY);
+export async function readDatabaseArtifactFiles(projectDir: string, sourceRoot = "."): Promise<{ manifest: DatabaseArtifactManifest; files: string[] } | undefined> {
+  const relativeDirectory = databaseArtifactDirectory(sourceRoot);
+  const generated = path.join(projectDir, relativeDirectory);
   const manifestPath = path.join(generated, DATABASE_ARTIFACT_MANIFEST);
   const manifestStat = await lstat(manifestPath).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
   if (!manifestStat) return undefined;
-  await assertRegularPath(projectDir, `${DATABASE_GENERATED_DIRECTORY}/${DATABASE_ARTIFACT_MANIFEST}`);
+  await assertRegularPath(projectDir, `${relativeDirectory}/${DATABASE_ARTIFACT_MANIFEST}`);
   const manifest = parseDatabaseArtifactManifest(JSON.parse(await readFile(manifestPath, "utf8")));
   for (const [filename, hash] of Object.entries(manifest.sources)) {
-    await assertRegularPath(projectDir, filename);
-    if (databaseArtifactHash(await readFile(path.join(projectDir, filename))) !== hash) throw new Error(`Database source ${filename} changed. Run steamharness database generate.`);
+    const source = path.posix.join(sourceRoot, filename);
+    await assertRegularPath(projectDir, source);
+    if (databaseArtifactHash(await readFile(path.join(projectDir, source))) !== hash) throw new Error(`Database source ${source} changed. Run steamharness database generate.`);
   }
   const expected = new Set([...manifest.files.map(file => file.path), DATABASE_ARTIFACT_MANIFEST]);
   const walk = async (directory: string, prefix = ""): Promise<void> => {
@@ -91,7 +93,7 @@ export async function readDatabaseArtifactFiles(projectDir: string): Promise<{ m
     const bytes = await readFile(path.join(generated, file.path));
     if (bytes.length !== file.size || databaseArtifactHash(bytes) !== file.sha256) throw new Error(`Database artifact ${file.path} changed. Run steamharness database generate.`);
   }
-  return { manifest, files: [...manifest.files.map(file => `${DATABASE_GENERATED_DIRECTORY}/${file.path}`), `${DATABASE_GENERATED_DIRECTORY}/${DATABASE_ARTIFACT_MANIFEST}`] };
+  return { manifest, files: [...manifest.files.map(file => `${relativeDirectory}/${file.path}`), `${relativeDirectory}/${DATABASE_ARTIFACT_MANIFEST}`] };
 }
 
 export async function assertRegularPath(root: string, relative: string): Promise<void> {

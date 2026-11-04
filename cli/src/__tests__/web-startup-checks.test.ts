@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
@@ -30,7 +31,7 @@ async function fixture(kind: ProjectKind, database = true) {
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })), resolveParams: vi.fn(async () => ({ params: {} })),
     run: vi.fn(async () => ({ status: 'success' })), kanbanBridge: vi.fn(), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), readResource: vi.fn(),
     deleteFiles: vi.fn(), deleteConversation: vi.fn(), cancelConversation: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
-  const app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'history'), runtime }); apps.push(app);
+  const app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory, 'history')), runtime }); apps.push(app);
   const capability = new URL(app.url).hash.slice('#session='.length);
   const post = (body: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${capability}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const state = () => post({ type: 'ready' }).then(r => r.json()).then(r => r.messages[0]);

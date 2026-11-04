@@ -28,7 +28,7 @@ export async function createKanbanTestServer() {
       const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(folder, 'node_modules/@steamharness/cli/dist/index.js');
       await promisify(execFile)(process.execPath, [cliEntry, 'database', 'generate', folder]);
       await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: folder });
-      const { data } = await import(pathToFileURL(path.join(folder, '.steamharness/generated/database/browser/index.js')).href);
+      const { data } = await import(pathToFileURL(path.join(folder, 'dist/steamharness/generated/database/browser/index.js')).href);
       const entry=pkg.entries.find(entry => entry.entryId === pkg.defaultEntry);
       const approved=databases.create(pkg.id,entry.entryId,'data',{schemaHash:data.schemaHash});
       entry.databases=['data']; databases.registerProject(pkg);

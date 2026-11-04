@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -33,7 +34,7 @@ async function fixture() {
     const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts",databases:[]}],id:applicationId,name:'App',uri:'',folderPath:directory,projectType:kind,fields:[],entrypoints:kind === 'workflow' ? [{id:'main',title:'Main',fields:[]}] : [],
       ...(kind === 'workflow' ? {defaultEntrypoint:'main'} : {}), ...(assistant ? {assistant:{workdir:path.join(root,name,'workspace'),roots:[]}} : {})};
     const runtime: Runtime = {available:true,inspect:vi.fn(async () => ({projects:[project],errors:[]})),resolveParams:vi.fn(async () => ({})),run:vi.fn(async () => ({status:'success'})),uploadFiles:vi.fn(async () => []),readFile:vi.fn(),deleteFiles:vi.fn(),cancelConversation:vi.fn(),deleteConversation:vi.fn(),readResource:vi.fn(),cancel:vi.fn(),dispose:vi.fn()};
-    const app = await startWebServer({projectDir:directory,dataDir:path.join(root,name,'history'),runtime}); apps.push(app);
+    const app = await startWebServer({projectDir:directory,dataDir:testDataDirectory(directory, 'history'),runtime}); apps.push(app);
     const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')!;
     const post = (call: object) => fetch(`${app.origin}/api/message`, {method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({type:'project-configuration',call})});
     // Keep the event stream open: observations below must arrive through polling

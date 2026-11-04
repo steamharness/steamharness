@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -20,7 +21,7 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'fixture-private-token' };
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => connection);
+  const runtime = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => connection);
   try {
     const coreRoot = await resolveHarnessRoot(), version = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
     await mkdir(path.join(directory, 'node_modules'));

@@ -57,7 +57,7 @@ describe("database resource CLI", () => {
       const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: {} }))));
       vi.stubGlobal("fetch", fetcher); vi.spyOn(process.stdout, "write").mockImplementation(() => true);
       await manageDatabases(["bind", root, "--database", id, "--entry", "worker", "--mode", "read", "--token", "test"]);
-      expect(generate).toHaveBeenCalledWith(await realpath(root));
+      expect(generate).toHaveBeenCalledWith(await realpath(root), ".");
       expect(fetcher.mock.calls[0][0]).toMatch(/\/api\/databases\/bindings$/);
       expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ projectId: id, entryId: "worker", alias: "main", databaseId: id, schemaHash: migration.schemaHash, mode: "read" });
       expect(await readFile(path.join(root, "steamharness.json"), "utf8")).toBe(source);

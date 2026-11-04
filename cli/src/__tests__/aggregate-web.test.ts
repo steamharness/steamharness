@@ -16,11 +16,12 @@ afterEach(async () => {
 
 async function fixture(database = false) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
+  const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const entries = ([['agent', 'conversation'], ['assistant', 'conversation'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
-    entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
+    entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/board/index.html' : 'index.ts', configuration: 'configuration.json',
     databases: database && entryId === 'agent' ? ['data'] : [],
   }));
   const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases})), defaultEntry: 'agent'  };
@@ -28,10 +29,16 @@ async function fixture(database = false) {
   await writeFile(path.join(directory, 'config.json'), JSON.stringify({ version: 1 }));
   for (const entry of entries) {
     await mkdir(path.join(directory, entry.root), {recursive:true});
-    await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
+    const filename = path.join(directory, entry.type === 'kanban' ? '.' : entry.root, entry.entry);
+    await mkdir(path.dirname(filename), {recursive:true});
+    await writeFile(filename, entry.type === 'kanban' ? '<!doctype html><html><head><title>Board</title><link rel="stylesheet" href="board.css"></head><body><script type="module" src="board.js"></script></body></html>' : 'export {};');
+    if (entry.type === 'kanban') {
+      await writeFile(path.join(path.dirname(filename), 'board.js'), 'document.body.dataset.loaded = "yes";');
+      await writeFile(path.join(path.dirname(filename), 'board.css'), 'body { color: teal; }');
+    }
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
-  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), databases: entry.databases, folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: '.', entry: entry.entry } } : {}) }));
+  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), databases: entry.databases, folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/board', entry: 'index.html' } } : {}) }));
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
     run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
@@ -39,10 +46,17 @@ async function fixture(database = false) {
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), readResource: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'history'), runtime }); apps.push(app); return app; };
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
-  const call = async (entryId: string, message: object) => { const response = await post(entryId, message), body = await response.json(); expect(response.status, JSON.stringify(body)).toBe(200); return body.messages[0]; };
+  const call = async (entryId: string, message: object) => {
+    const response = await post(entryId, message);
+    if (!response.headers.get('content-type')?.includes('application/json')) {
+      const recovery = await fetch(`${app.origin}/entries/${entryId}/api/retry`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}` } });
+      throw new Error(`Entry fixture failed to start: ${JSON.stringify(await recovery.json())}`);
+    }
+    const body = await response.json(); expect(response.status, JSON.stringify(body)).toBe(200); return body.messages[0];
+  };
   return { directory, entries, runtime, active, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
 }
 
@@ -78,20 +92,6 @@ it('keeps parallel entries running while navigating and cancels only the request
   f.active.get('assistant')!.finish({ status: 'success', output: { items: [] } });
 });
 
-it('requires Server resource management and rejects local and legacy bindings without changing project config', async () => {
-  const f = await fixture(true), config = await readFile(path.join(f.directory, 'config.json'), 'utf8');
-  await f.call('agent', { type: 'draft', text: 'Keep this draft', attachments: [] });
-  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data', 'bind']) {
-    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local', databaseId: randomUUID() })).ok).toBe(false);
-  }
-  expect((await f.post('agent', { type: 'databases', action: 'get' })).ok).toBe(false);
-  expect(await readFile(path.join(f.directory, 'config.json'), 'utf8')).toBe(config);
-  expect(JSON.stringify(await f.state('agent'))).toContain('Keep this draft');
-});
-
-it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {
-  const f = await fixture(), state = await f.state('agent'), board = await f.state('board');
-  await writeFile(path.join(f.directory, 'card.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
 it('returns safe database setup failures from cross-entry Workflow reports', async () => {
   const f = await fixture(), board = await f.state('board');
   for (const code of ['DATABASE_UNBOUND', 'DATABASE_BUSY', 'DATABASE_SCHEMA_MISMATCH', 'PRIVATE_INTERNAL_ERROR']) {
@@ -127,6 +127,20 @@ it('keeps a newly admitted Conversation stable while native history refreshes du
   f.active.get('agent')!.finish({ status: 'success', output: { items: [] } });
 });
 
+it('requires Server resource management and rejects local and legacy bindings without changing project config', async () => {
+  const f = await fixture(true), config = await readFile(path.join(f.directory, 'config.json'), 'utf8');
+  await f.call('agent', { type: 'draft', text: 'Keep this draft', attachments: [] });
+  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data', 'bind']) {
+    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local', databaseId: randomUUID() })).ok).toBe(false);
+  }
+  expect((await f.post('agent', { type: 'databases', action: 'get' })).ok).toBe(false);
+  expect(await readFile(path.join(f.directory, 'config.json'), 'utf8')).toBe(config);
+  expect(JSON.stringify(await f.state('agent'))).toContain('Keep this draft');
+});
+
+it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {
+  const f = await fixture(), state = await f.state('agent'), board = await f.state('board');
+  await writeFile(path.join(f.directory, 'card.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   const cards = [
     { cardId: 'map', kind: 'kanban', title: 'Saved map', target: { source: 'local', projectId: state.project.id, entryId: 'board', configurationId: board.configurations.activeConfigurationId } },
     { cardId: 'image', kind: 'file', target: { source: 'local', filePath: 'card.svg' } },
@@ -171,4 +185,22 @@ it('routes nonce-bound Kanban operations to the aggregate Workflow and streams t
   const invalid=await f.call('board',{type:'kanban-bridge',nonce:'old',requestId:randomUUID(),call:{requestId:'old',operation:'conversations.snapshot',input:{entryId:'agent',conversationId}}});
   expect(invalid.ok).toBe(false);
   f.active.get('agent')!.finish({status:'success',output:{items:[]}});
+});
+
+
+it('serves a child Kanban HTML, JavaScript and CSS from aggregate dist over HTTP', async () => {
+  const f = await fixture(), state = await f.state('board');
+  const headers = { Authorization: `Bearer ${new URLSearchParams(new URL(f.app.url).hash.slice(1)).get('session')}` };
+  const htmlUrl = new URL(state.kanban.preview.url, f.app.origin);
+  const html = await fetch(htmlUrl, { headers });
+  expect(html.status).toBe(200);
+  expect(html.headers.get('content-type')).toContain('text/html');
+  expect(await html.text()).toContain('src="board.js"');
+  for (const [asset, content, mime] of [['board.js', 'dataset.loaded', 'javascript'], ['board.css', 'color: teal', 'text/css']]) {
+    const response = await fetch(new URL(asset, htmlUrl), { headers });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain(mime);
+    expect(await response.text()).toContain(content);
+  }
+  expect((await fetch(new URL('steamharness.json', htmlUrl), { headers })).status).toBe(404);
 });

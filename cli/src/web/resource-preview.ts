@@ -184,7 +184,7 @@ export class ResourcePreviews {
       const configuration = { id: snapshot.id, name: snapshot.name, params: snapshot.values };
       if (!entry.remote) {
         if (!project.kanban) { throw new Error(t('This project does not provide a Kanban preview.')); }
-        entry.local = new KanbanPreview(project.entryRoot, project.kanban, () => configuration);
+        entry.local = new KanbanPreview(project.folderPath, project.kanban, () => configuration);
         data.kanban = { url: this.basePath + entry.local.url, nonce: entry.local.nonce, configuration };
       } else { data.kanban!.configuration = configuration; }
       data.format = 'kanban';

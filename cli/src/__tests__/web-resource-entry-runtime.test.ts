@@ -1,3 +1,4 @@
+import { testDataDirectory } from './test-data-directory';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -33,11 +34,13 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   await writeProjectFixture(path.join(workspace, 'package.json'), JSON.stringify({ id, name: 'Workspace', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'agent', entries: [
       { entryId: 'agent', name: 'Agent', type: 'conversation', root: 'agent', entry: 'index.ts', databases: [] },
-      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/index.html', configuration: 'configuration.json', databases: [] },
+      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/map-2d/index.html', configuration: 'configuration.json', databases: [] },
     ] }));
   await writeFile(path.join(workspace, 'agent/index.ts'), conversationSource);
-  await mkdir(path.join(workspace, 'map-2d/dist'));
-  await writeFile(path.join(workspace, 'map-2d/dist/index.html'), '<!doctype html><html><head></head><body>Sibling map artifact</body></html>');
+  await mkdir(path.join(workspace, 'dist/map-2d'), { recursive: true });
+  await writeFile(path.join(workspace, 'dist/map-2d/index.html'), '<!doctype html><html><head><link rel="stylesheet" href="map.css"></head><body><script type="module" src="map.js"></script>Sibling map artifact</body></html>');
+  await writeFile(path.join(workspace, 'dist/map-2d/map.js'), 'document.body.dataset.map = "loaded";');
+  await writeFile(path.join(workspace, 'dist/map-2d/map.css'), 'body { color: teal; }');
   await writeFile(path.join(workspace, 'map-2d/configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'mapName', type: 'string' }] }));
   await writeProjectFixture(path.join(assistant, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Assistant', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',
@@ -51,8 +54,8 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   await store.dispatch({ action: 'create', revision: state.revision, name: 'Other map' });
   const saved = await store.read();
   const projectDir = surface === 'assistant' ? assistant : workspace, entryId = surface === 'assistant' ? 'main' : 'agent';
-  const runtime = createWebRuntime(projectDir, path.join(root, 'history'), () => undefined, { entryId });
-  const app = await startEntryWebServer({ projectDir, entryId, dataDir: path.join(root, 'history'), runtime,
+  const runtime = createWebRuntime(projectDir, path.join(testDataDirectory(root, 'history')), () => undefined, { entryId });
+  const app = await startEntryWebServer({ projectDir, entryId, dataDir: path.join(testDataDirectory(root, 'history')), runtime,
     host: surface === 'assistant' ? { surface: 'assistant', assistantProjectDir: assistant,
       assistant: { workdir: workspace, roots: [{ uri: 'file:///workspace', folderPath: workspace, name: 'Workspace' }] } }
       : { surface: 'editor' } });
@@ -75,7 +78,16 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
       const data = result.body.messages[0].data;
       expect(data).toMatchObject({ format: 'kanban', project: { id, entryId: 'map-2d', folderPath: workspace, entryRoot: path.join(workspace, 'map-2d') },
         kanban: { configuration: { id: configurationId, params: { mapName: 'Official map' } } } });
-      expect(await (await fetch(new URL(data.kanban.url, app.url))).text()).toContain('Sibling map artifact');
+      const htmlUrl = new URL(data.kanban.url, app.url);
+      const html = await fetch(htmlUrl);
+      expect(html.status).toBe(200);
+      expect(await html.text()).toContain('Sibling map artifact');
+      for (const [filename, content, mime] of [['map.js', 'dataset.map', 'javascript'], ['map.css', 'color: teal', 'text/css']]) {
+        const response = await fetch(new URL(filename, htmlUrl));
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain(mime);
+        expect(await response.text()).toContain(content);
+      }
       app.setHostResourceProjects([]);
     }
     expect(await store.read()).toEqual(saved);
