@@ -117,6 +117,24 @@ it.each(['kanban-bridge', 'resource-bridge'])('preserves the full file read wind
   } finally { timeout.mockRestore(); }
 });
 
+it('preserves a slow Workflow receipt past the ordinary transport deadline without replaying it', async () => {
+  const fixture = await connectionFixture(200);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  const ordinary = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => ms <= 60_000 ? ordinary.signal : new AbortController().signal);
+  let finish!: (response: Response) => void;
+  fixture.fetcher.mockImplementationOnce((_url, options) => new Promise((resolve, reject) => {
+    finish = resolve; options.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
+  }));
+  try {
+    const writing = fixture.connection.request({ type: 'kanban-bridge', call: { operation: 'entries.runEntrypoint', input: { entryId: 'api', entrypointId: 'message-send', args: [] } } });
+    ordinary.abort(); expect(timeout).toHaveBeenCalledWith(125_000);
+    finish(Response.json({ messages: [{ type: 'kanban-bridge-result', ok: true, value: { receipt: 'persisted' } }] }));
+    await expect(writing).resolves.toEqual([{ type: 'kanban-bridge-result', ok: true, value: { receipt: 'persisted' } }]);
+    expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
+  } finally { timeout.mockRestore(); }
+});
+
 it('does not reconnect a departed page from a late session handshake and restores it from browser history', async () => {
   const fixture = await connectionFixture(200);
   let finish!: (response: Response) => void;

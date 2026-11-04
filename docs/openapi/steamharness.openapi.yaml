@@ -411,7 +411,7 @@ paths:
     post:
       tags: [Relational Databases]
       summary: Issue a temporary connection for a bound native entry
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Independent native workers may issue credentials concurrently for the same binding using shared read locks. Every operation validates account access and the current entry binding after a bounded lock wait; binding changes, migrations and revocation retain exclusive locks and may return DATABASE_BUSY.
       security:
         - BearerAuth: []
       requestBody:
