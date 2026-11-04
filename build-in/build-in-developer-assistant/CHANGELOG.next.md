@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator 同步入口保留名称、打包目录隔离与下载完整性校验规则。
+
 - Generator、内置项目缓存、报告和打包产物统一写入聚合根 dist；生成的 Kanban 使用 dist/main/index.html，运行数据放在宿主或用户目录。
 
 - 【修复】项目生成指引同步聚合 Workflow 和 Conversation 的持久回执时限、公开数据库错误码及查询回执后再处理超时的约定。

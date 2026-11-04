@@ -1,5 +1,7 @@
 # Unreleased
 
+- Reject package names containing path traversal and clean staging after failures. Downloads validate required entries and database inventories and reject runtime data or unregistered artifacts. Entry names and paths cannot collide with managed directories or Windows device names.
+
 - [Fix] Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.
 
 - Database generation accepts an aggregate root and --entry, deduplicates source roots, and returns outputs. Generated code, entry artifacts, caches, reports, and archives use root dist. Kanban entry paths resolve from the aggregate root; upload/download verify the new inventory and runtime data stays outside projects.

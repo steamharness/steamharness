@@ -14,3 +14,5 @@ One operation covers every registered entry of one projectId, including code, de
 Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
 
 `--target` accepts `draft`, `latest` or an exact version. Download into one aggregate directory while preserving registered subdirectories. Source access still requires membership or approved access.
+
+Downloads use the same entry and database artifact validation as uploads. Missing entry files, invalid generated inventories, runtime data, and unregistered `dist/` files fail validation. The target project directory appears only after all validation succeeds; failures remove temporary files.

@@ -21,6 +21,8 @@ pnpm exec steamharness mcp . --entry database
 
 `--entry` selects the window entry. `run`, `json`, `structure`, `mcp` and `web` default to `defaultEntry`. `check` inspects all entries unless `--entry` selects one. `--entrypoint` selects an operation inside a Workflow. Keep the two identifiers distinct.
 
+Entry IDs and paths follow the [reserved artifact name rules](/en/concepts/data-storage#artifacts-and-runtime-data), avoiding collisions with caches, reports, generated databases, and Windows device names.
+
 Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects host text without altering business parameters.
 
 ## CLI Web

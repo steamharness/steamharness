@@ -47,3 +47,15 @@ it("defaults each Kanban to its own aggregate artifact directory", () => {
     entries: [{ entryId: "board", root: ".", name: "Board", type: "kanban" }] });
   expect(declaration.entries[0].entry).toBe("dist/board/index.html");
 });
+
+it.each(["steamharness", "cache", "reports", "release", "tmp", "con", "aux", "nul", "prn", "com1", "lpt9"])("rejects entry ID %s before it can collide with managed or nonportable directories", entryId => {
+  const source = { id: "00000000-0000-4000-8000-000000000001", name: "Board", version: "1.0.0", defaultEntry: entryId,
+    entries: [{ entryId, root: ".", name: "Board", type: "kanban" }] };
+  expect(() => readProjectDeclaration(source)).toThrow(/reserved/i);
+});
+
+it.each(["dist/steamharness/index.html", "dist/cache/index.html", "dist/reports/index.html", "dist/release/index.html", "dist/tmp/index.html"])("rejects an explicit entry inside managed directory %s", entry => {
+  const source = { id: "00000000-0000-4000-8000-000000000001", name: "Board", version: "1.0.0", defaultEntry: "board",
+    entries: [{ entryId: "board", root: ".", name: "Board", type: "kanban", entry }] };
+  expect(() => readProjectDeclaration(source)).toThrow(/reserved/i);
+});

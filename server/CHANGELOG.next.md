@@ -1,5 +1,7 @@
 # Unreleased
 
+- 静态项目校验拒绝与受管产物目录或 Windows 设备名冲突的入口名称和路径。
+
 - 静态 Kanban 预览按聚合根解析 entry，并校验 dist/steamharness 下按源码根隔离的数据库产物；不接受旧生成路径。
 
 - 【修复】同步 Kanban Workflow Bridge 的独立 120 秒调用时限；静态预览继续拒绝执行能力。

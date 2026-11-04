@@ -1,5 +1,7 @@
 # Unreleased
 
+- Reject entry names and paths that collide with managed artifact directories or Windows device names, protecting generated databases, caches, and reports during builds.
+
 - Rebuildable outputs use the aggregate root dist, with shared database outputs per source root. Standalone SDK history defaults to ~/.steamharness/runtime/<projectId>/<entryId>/ outside the project.
 
 - [Fix] Preserve known public database error codes across node and Workflow reports so hosts can identify missing bindings, contention, and schema mismatches; omit custom codes on arbitrary exceptions.

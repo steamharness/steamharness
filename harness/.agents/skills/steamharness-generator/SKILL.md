@@ -28,6 +28,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 
 - 一个根 steamharness.json.id UUID 注册多个 steamharness.json.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
 - Workflow/Conversation 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认 dist/<entryId>/index.html。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
+- entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9；显式入口路径也不得进入受管 dist 子目录。打包名称只用单个可移植目录名，源码位置用 --path 指定。下载校验入口与生成清单，拒绝运行数据及未登记产物。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
 - 业务数据库使用 `steamharness.database.ts` 与 `steamharness.schema` 定义，生成描述符后通过 `context.databases.connect(descriptor)` 访问。关系别名声明在入口 databases 字符串数组中；资源 UUID 与绑定只由 Server 按账号、项目、入口、alias 管理。知识库使用 `context.knowledgeBases.get(alias)`，独立声明 knowledgeBases，并映射到根 config.json 的 knowledgeBases。附件通过 `knowledge.files` 操作，`knowledge` 来自 `context.knowledgeBases.get(alias)`。旧 KV、PersistentValue 与本地 KV 已删除。
 - 一个聚合是一个商品、版本和安装单元。发行所有注册入口、依赖清单及静态产物，保留数据库别名和知识库引用；引用不授予权限，安装后由宿主校验身份和授权。普通 npm 依赖按包管理，不生成项目关系与组合发布锁。

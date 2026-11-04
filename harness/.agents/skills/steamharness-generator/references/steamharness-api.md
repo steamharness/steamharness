@@ -1507,6 +1507,8 @@ Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNT
 
 ### 聚合产物目录
 
+entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9。显式入口路径不得进入受管 dist 子目录。workspace pack 的名称必须是单个可移植目录名，源码位置通过 --path 指定；失败和成功仅清理本次临时目录。workspace download 与上传共用入口及数据库产物校验，拒绝缺失入口、运行数据和未登记的 dist 文件，验证通过后才创建目标项目目录。
+
 所有可重建产物统一写入聚合项目根的 `dist/`，子入口不得另建产物根：
 
 | 内容 | 路径 |

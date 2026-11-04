@@ -29,6 +29,8 @@ Keep every rebuildable output in the aggregate project root's `dist/`, including
 
 Encode the complete `entry.root`: `apps/board` becomes `apps%2Fboard`. Entries sharing a source root share its generated database code. Each builder cleans only its own subdirectory. Keep authored code, configuration, models, and migrations in source directories, and ignore `/dist/` in the root `.gitignore`.
 
+An `entryId` cannot use the managed directory names `steamharness`, `cache`, `reports`, `release`, or `tmp`, or Windows device names `con`, `prn`, `aux`, `nul`, `com1`–`com9`, or `lpt1`–`lpt9`. Explicit entry paths also cannot point into the managed `dist/` subdirectories, preventing build cleanup from overwriting other outputs.
+
 Store sessions, checkpoints, login state, and other persistent data in the host application's data directory or the user directory, outside source and `dist/`. The standalone SDK defaults to `~/.steamharness/runtime/<projectId>/<entryId>/`; CLI Web also requires `--data-dir` to be outside the project. Deleting `dist/` requires regeneration and rebuilding only; external runtime data remains intact. Old paths are not read, migrated, or used as fallbacks. Close the host before moving existing data offline and preserve file permissions.
 
 ## Business databases

@@ -8,6 +8,7 @@ import {
   createProjectUploadPortablePathKey,
   createProjectUploadMatcher,
   hasProjectIgnoreRules,
+  isProjectUploadExcludedPath,
   normalizeProjectUploadPath,
   resolveProjectUploadRequiredPaths,
 } from "./index";
@@ -73,9 +74,9 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   const walk = async (currentDir: string): Promise<void> => {
     const entries = await readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
-      if ([".git", "node_modules", ".local", ".data", ".workflow", ".release", ".steamharness", ".env", ".envrc", ".workflow-kv", ".workflow-persistent-values", ".workflow-schedules", "workflow-auth.json"].includes(entry.name) || entry.name.startsWith(".env.") || /^steamharness\.sqlite(?:-(?:wal|shm))?$/.test(entry.name)) continue;
       const absolutePath = path.join(currentDir, entry.name);
       const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
+      if (isProjectUploadExcludedPath(relativePath)) continue;
       if (relativePath === "dist/steamharness" || relativePath.startsWith("dist/") && !inArtifacts(relativePath, entry.isDirectory())
         || ["dist/cache", "dist/reports", "dist/release", "dist/tmp"].some(prefix => relativePath === prefix || relativePath.startsWith(prefix + "/"))) {
         ignoredPaths.push(relativePath + (entry.isDirectory() ? "/" : "")); continue;

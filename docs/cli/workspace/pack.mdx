@@ -15,6 +15,8 @@ pnpm exec steamharness workspace pack <project-id> --path . --output dist/releas
 
 默认输出 `.tgz`；打包是本地操作，不创建远程项目或空间。普通 npm 依赖继续由各包的 package.json 与锁文件管理。
 
+打包名称必须是单个可移植的目录名，不能包含 `/`、`\`、上级路径或 Windows 保留名称；源码位置通过 `--path` 指定。打包成功或失败均只清理本次临时目录，保留其他入口产物。
+
 如果聚合根或注册入口目录包含 `steamharness.database.ts`，打包先生成该目录的 Node/Browser 数据库描述符、模型类型和运行资产，再携带 `dist/steamharness/generated/database` 的完整校验清单。模型及产物是必需文件，`.steamharnessignore` 排除它们时打包明确失败。其余 `.steamharness` 内容不上传。参见 [SteamHarness Database](/core-api/database)。
 
 默认压缩包写入项目根 `dist/release/`。只收录已登记入口所需产物及校验通过的数据库生成清单；`dist/cache/`、`dist/reports/`、`dist/release/`、`dist/tmp/` 不进入上传包。

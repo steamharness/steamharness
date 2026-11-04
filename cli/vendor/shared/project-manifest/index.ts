@@ -1,5 +1,6 @@
 import { isProjectKind, type ProjectKind } from "@steamharness/project-types";
-import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from "./identity";
+import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN, isProjectEntryId, RESERVED_PROJECT_ARTIFACT_NAMES } from "./identity";
+import { projectEntryFilePath } from "./artifacts";
 export * from "./identity";
 export * from "./artifacts";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
@@ -74,7 +75,7 @@ function rootDocument(value: unknown): Record<string, unknown> {
   const ids = new Set<string>();
   for (const raw of input.entries) {
     const entry = record(raw, "entries");
-    if (typeof entry.entryId !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(entry.entryId)) throw new Error("entries.entryId must be an identifier.");
+    if (!isProjectEntryId(entry.entryId)) throw new Error("entries.entryId must be an identifier and cannot use a reserved artifact or filesystem name.");
     if (ids.has(entry.entryId)) throw new Error("entries contains duplicate entryId values.");
     ids.add(entry.entryId);
     const root = normalizeEntryPath(entry.root, "entries.root", true);
@@ -140,7 +141,7 @@ export function resolveProjectDatabases(declaration: ProjectDeclaration, configV
 export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectEntry {
   const item = record(value, field);
   if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
-  if (typeof item.entryId !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(item.entryId)) throw new Error(`${field}.entryId must be an identifier.`);
+  if (!isProjectEntryId(item.entryId)) throw new Error(`${field}.entryId must be an identifier and cannot use a reserved artifact or filesystem name.`);
   if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, conversation, or kanban.`);
   if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 256) throw new Error(`${field}.name is required.`);
   const projectCard = item.projectCard === undefined ? undefined : validateProjectCardMetadata({
@@ -149,6 +150,8 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   });
   const root = normalizeEntryPath(item.root, `${field}.root`, true);
   const entry = normalizeEntryPath(item.entry ?? (item.type === "kanban" ? `dist/${item.entryId}/index.html` : undefined), `${field}.entry`);
+  const [outputRoot, namespace] = projectEntryFilePath({ root, entry, type: item.type }).split("/");
+  if (outputRoot?.toLowerCase() === "dist" && RESERVED_PROJECT_ARTIFACT_NAMES.some(name => name === namespace?.toLowerCase())) throw new Error(`${field}.entry cannot use a reserved artifact directory.`);
   if (item.type === "kanban" ? !/\.html$/i.test(entry) : !/\.[cm]?[jt]sx?$/i.test(entry)) throw new Error(`${field}.entry must be ${item.type === "kanban" ? "an HTML artifact" : "an executable module"}.`);
   const configuration = item.configuration === undefined ? undefined : normalizeEntryPath(item.configuration, `${field}.configuration`);
   if (!Array.isArray(item.databases)) throw new Error(`${field}.databases must be an array (use [] for no database access).`);
@@ -176,7 +179,7 @@ export function selectProjectEntry<T extends { entryId: string }>(manifest: { en
   return entry;
 }
 export function projectEntryKey(projectId: string, entryId: string): string {
-  if (!DATABASE_UUID_PATTERN.test(projectId) || !DATABASE_IDENTIFIER_PATTERN.test(entryId)) throw new Error("Invalid project or entry identity.");
+  if (!DATABASE_UUID_PATTERN.test(projectId) || !isProjectEntryId(entryId)) throw new Error("Invalid project or entry identity.");
   return `${projectId.toLowerCase()}:${entryId}`;
 }
 export function projectManifestTypes(manifest: Pick<ProjectManifest, "entries">): ProjectKind[] {

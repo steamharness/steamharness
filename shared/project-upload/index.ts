@@ -4,6 +4,13 @@ import { PROJECT_CONFIG_FILE, PROJECT_MANIFEST_FILE, readProjectDeclaration, typ
 
 export const STEAMHARNESS_IGNORE_FILE = ".steamharnessignore";
 
+/** Runtime state, credentials, dependencies and Git metadata never travel with project source. */
+export function isProjectUploadExcludedPath(relativePath: string): boolean {
+  return normalizeProjectUploadPath(relativePath).split("/").some(part =>
+    [".git", "node_modules", ".local", ".data", ".workflow", ".release", ".steamharness", ".env", ".envrc", ".workflow-kv", ".workflow-persistent-values", ".workflow-schedules", "workflow-auth.json"].includes(part)
+      || part.startsWith(".env.") || /^steamharness\.sqlite(?:-(?:wal|shm))?$/.test(part));
+}
+
 export interface UploadPathOptions {
   directory?: boolean;
 }

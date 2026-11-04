@@ -1,5 +1,5 @@
 import { prepareProjectDatabaseArtifacts } from "./database-generation";
-import { databaseArtifactSourceRoot, isDatabaseArtifactPath, readDatabaseArtifactFiles } from "@steamharness/project-upload/database-artifacts";
+import { isProjectUploadExcludedPath } from "@steamharness/project-upload";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
@@ -454,13 +454,18 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
     await mkdir(stage, { recursive: true });
     for (const file of download.files) {
       const relative = normalizeProjectFilePath(file.path), portable = createPortableLocalPathKey(relative);
-      if (seen.has(portable) || relative.split("/").some(part => [".git", "node_modules", ".env", ".data"].includes(part) || part.startsWith(".env.")) || relative.split("/").includes(".steamharness")) throw new Error("Invalid or duplicate download path.");
+      if (seen.has(portable) || isProjectUploadExcludedPath(relative)) throw new Error("Invalid or duplicate download path.");
       seen.add(portable);
       const destination = path.join(stage, ...relative.split("/"));
       await mkdir(path.dirname(destination), { recursive: true }); await writeFile(destination, decodeProjectFileContent(file), { flag: "wx" });
     }
     const pkg = await assertDownloadedProjectMetadata(stage, download.projectId);
-    await verifyDownloadedDatabaseArtifacts(stage, download.files.map(file => normalizeProjectFilePath(file.path)));
+    const plan = await createProjectUploadPlan(stage);
+    const included = new Set(plan.files.map(file => file.path));
+    for (const file of download.files) {
+      const filename = normalizeProjectFilePath(file.path);
+      if (filename.startsWith("dist/") && !included.has(filename)) throw new Error("Invalid downloaded project artifact.");
+    }
     const manifest = await readProjectManifestFromDirectory(stage, {});
     for (const entry of manifest.entries) {
       const templateFile = download.files.find(file => file.path === configurationTemplatePath(entry.entryId));
@@ -473,21 +478,6 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
     await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
     await rename(stage, targetDir);
   } finally { await rm(stage, { recursive: true, force: true }); }
-}
-
-async function verifyDownloadedDatabaseArtifacts(root: string, files: string[]): Promise<void> {
-  const declaration = await readProjectDeclarationFromDirectory(root);
-  const owners = new Set([".", ...declaration.entries.map(entry => entry.root), ...files.filter(isDatabaseArtifactPath).map(file => databaseArtifactSourceRoot(file)!)]);
-  for (const sourceRoot of owners) {
-    const artifacts = await readDatabaseArtifactFiles(root, sourceRoot);
-    if (!artifacts) {
-      if (files.includes(path.posix.join(sourceRoot, "steamharness.database.ts"))) throw new Error("Downloaded database artifacts are incomplete.");
-      continue;
-    }
-    const expected = new Set(artifacts.files);
-    for (const file of files.filter(file => databaseArtifactSourceRoot(file) === sourceRoot)) if (!expected.delete(file)) throw new Error("Invalid downloaded database artifact.");
-    if (expected.size) throw new Error("Downloaded database artifacts are incomplete.");
-  }
 }
 
 async function commandPublish(parsed: ParsedArgs): Promise<void> {
@@ -544,6 +534,8 @@ async function packProject(
   outputPath: string | undefined,
   sourcePath: string | undefined,
 ): Promise<string> {
+  if (!projectName || /[\\/\u0000-\u001f:*?"<>|]/.test(projectName) || /[. ]$/.test(projectName)
+    || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(projectName)) throw new Error("Project name must be a single portable directory name.");
   const repoRoot = resolveRepoRoot();
   const projectDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", projectName)
@@ -553,36 +545,25 @@ async function packProject(
   const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
     ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
     : path.join(projectDir, "dist", "release");
-  const stagingDir = path.join(packsDir, "tmp", randomUUID(), projectName);
+  const stagingRoot = path.join(packsDir, "tmp", randomUUID());
+  const stagingDir = path.join(stagingRoot, projectName);
   const archivePath = outputPath
     ? path.resolve(outputPath)
     : path.join(packsDir, `${projectName}-${createTimestamp()}.tgz`);
 
-
-  await rm(path.dirname(stagingDir), { recursive: true, force: true });
-  await mkdir(path.join(stagingDir, "workspace", "workflow"), { recursive: true });
-  await mkdir(path.dirname(archivePath), { recursive: true });
-  // Every registered entry is included in this single aggregate unit.
-  await stageProjectSource({
-    projectDir,
-    projectName,
-    stagingRoot: path.join(stagingDir, "workspace", "workflow"),
-  });
-
-  const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], {
-    cwd: repoRoot,
-  });
-
-  await rm(path.dirname(stagingDir), { recursive: true, force: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(i18n.t("archiveCreateFailed", {
-      ns: "cli",
-      details: result.stderr || result.stdout,
-    }));
+  try {
+    await mkdir(path.join(stagingDir, "workspace", "workflow"), { recursive: true });
+    await mkdir(path.dirname(archivePath), { recursive: true });
+    // Every registered entry is included in this single aggregate unit.
+    await stageProjectSource({ projectDir, projectName, stagingRoot: path.join(stagingDir, "workspace", "workflow") });
+    const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], { cwd: repoRoot });
+    if (result.exitCode !== 0) {
+      throw new Error(i18n.t("archiveCreateFailed", { ns: "cli", details: result.stderr || result.stdout }));
+    }
+    return archivePath;
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true });
   }
-
-  return archivePath;
 }
 
 async function resolveRemoteProjectId(parsed: ParsedArgs): Promise<string> {

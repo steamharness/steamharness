@@ -21,6 +21,8 @@ pnpm exec steamharness mcp . --entry database
 
 `--entry` 选择窗口入口，省略时 `run`、`json`、`structure`、`mcp` 和 `web` 使用 `defaultEntry`。`check` 默认检查所有注册入口，加 `--entry` 只检查指定入口。`--entrypoint` 选择 Workflow 内部操作。两者不能混用。
 
+入口 ID 和路径须遵守[产物目录的保留名称规则](/concepts/data-storage#产物与运行数据目录)，不能与缓存、报告、数据库生成目录或 Windows 设备名冲突。
+
 `--` 后的参数原样传给 Workflow。`--locale zh-CN|en` 控制宿主文案语言，不改变业务参数。
 
 ## CLI Web

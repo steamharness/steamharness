@@ -15,6 +15,8 @@ Archives exclude credentials, host runtime data, Git and node_modules. Authored 
 
 The output is a `.tgz` archive. Packaging is local and creates no remote project or space. Ordinary npm dependencies remain managed by package manifests and lockfiles.
 
+The package name must be a single portable directory name without `/`, `\`, parent traversal, or Windows reserved names. Select the source directory through `--path`. Both successful and failed packaging clean only the current staging directory, preserving other entry outputs.
+
 If the aggregate root or a registered entry directory contains `steamharness.database.ts`, packaging generates that directory’s Node/Browser descriptors, model types, and runtime assets first, then includes the complete `dist/steamharness/generated/database` inventory. Models and generated assets are required; excluding them through `.steamharnessignore` fails explicitly. Other `.steamharness` content stays excluded. See [SteamHarness Database](/en/core-api/database).
 
 Archives default to the project root's `dist/release/`. Packages include registered entry artifacts and verified generated database inventories. `dist/cache/`, `dist/reports/`, `dist/release/`, and `dist/tmp/` are excluded.
