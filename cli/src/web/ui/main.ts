@@ -7,6 +7,7 @@ import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationMentions } from './conversation-mentions';
+import type { KanbanConversationUi } from '@steamharness/kanban-project';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
@@ -89,7 +90,7 @@ function initialize(): void {
   });
   const aggregateToolbar = mountAggregateToolbar(vscode);
 
-  interface State { serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
+  interface State { conversationUi?: KanbanConversationUi; serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -108,6 +109,7 @@ function initialize(): void {
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
 
   let state: State | undefined;
+  let embeddedUi: KanbanConversationUi | undefined;
   let checkingServer = false;
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
@@ -316,10 +318,29 @@ function initialize(): void {
   });
   const conversationMentions = new ConversationMentions(textarea, {
     current: () => state ? { scope: JSON.stringify([formKey, state.serverInstanceId]), project: state.project,
-      enabled: state.project.projectType === 'conversation' && !embeddedConversation, disabled: readOnly() || busy() } : undefined,
+      enabled: state.project.projectType === 'conversation', disabled: readOnly() || busy(), groups: state.conversationUi?.mentions } : undefined,
     load: (type, requestId, query) => state && vscode.postMessage({ type, requestId, query,
       projectUri: state.project.uri, sessionId: state.activeId, entrypointId: entrypoint.value || undefined }),
   });
+
+  if (embeddedConversation) {
+    let scheduled = false, previous = '';
+    const report = () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        const composer = document.querySelector<HTMLElement>('.composer-area')!, menu = document.querySelector<HTMLElement>('#mention-menu');
+        const inputHeight = Math.max(0, (parseFloat(textarea.style.height) || 72) - textarea.getBoundingClientRect().height);
+        const value = { type: 'view-layout', composerHeight: Math.max(40, Math.ceil(composer.getBoundingClientRect().height + inputHeight)),
+          menuHeight: menu && !menu.hidden ? Math.min(360, menu.scrollHeight + 16) : 0 };
+        const signature = JSON.stringify(value);
+        if (signature !== previous) { previous = signature; vscode.postMessage(value); }
+      });
+    };
+    new ResizeObserver(report).observe(document.querySelector('.composer-area')!);
+    new MutationObserver(report).observe(document.querySelector('#mention-menu')!, { attributes: true, attributeFilter: ['hidden'], childList: true });
+  }
 
   function showMenu(open: boolean): void {
     closeSessionMenu();
@@ -621,7 +642,7 @@ function initialize(): void {
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
-    const stop = state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput);
+    const stop = state.conversationUi?.presentation !== 'composer' && state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput);
     updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : sendBlocked() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
     sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
     sendButton.setAttribute('aria-busy', String(pendingStop));
@@ -1193,6 +1214,7 @@ function initialize(): void {
   setInterval(() => { for (const view of messages.values()) { view.output?.tick(); if (view.message.status === 'running') { updateMessageMetadata(view); } } }, 200);
 
   function render(next: State, fromServer = true): void {
+    if (embeddedConversation) next = { ...next, conversationUi: embeddedUi };
     const previous = state;
     if (fromServer) { next = mergeNavigation(next); }
     const submissionCount = submissions.list().length;
@@ -1259,6 +1281,8 @@ function initialize(): void {
       textarea.placeholder = conversation ? t("Write anything") : '["--name", "Studio"]';
       renderedProject = next.project.uri;
     }
+    app.dataset.conversationPresentation = next.conversationUi?.presentation ?? 'conversation';
+    if (conversation) textarea.placeholder = next.conversationUi?.placeholder ?? t('Write anything');
     if (switching) {
       fileMenu.close();
       pendingParameterTrigger = undefined;
@@ -1710,7 +1734,10 @@ function initialize(): void {
     }
     if (message.type === 'sent' && message.requestId && state?.project.projectType === 'conversation' && message.projectUri === state.project.uri) {
       const submission = submissions.get(message.requestId);
-      if (submission?.sessionId === message.sessionId) submissions.accept(message.requestId, message.receiptId);
+      if (submission?.sessionId === message.sessionId) {
+        if (message.external) { submissions.acknowledgeExternal(message.requestId); render(state, false); }
+        else submissions.accept(message.requestId, message.receiptId);
+      }
       persist(); updateControls(); return;
     }
     if (message.type === 'error' && message.requestType === 'send' && message.requestId && state?.project.projectType === 'conversation') {
@@ -1723,6 +1750,11 @@ function initialize(): void {
     if (message.type === 'assistant-command') {
       document.querySelector<HTMLButtonElement>(message.command === 'new' ? '#new' : '#history-toggle')!.click();
       return;
+    }
+    if (message.type === 'conversation-ui' && embeddedConversation) {
+      embeddedUi = message.ui;
+      if (state) render(state, false);
+      conversationMentions.update(); return;
     }
     if (message.type === 'state') {
       if (!stateRevisions.accept(message)) return;

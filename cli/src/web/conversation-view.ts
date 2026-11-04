@@ -20,7 +20,7 @@ export function conversationViewClientId(entryId: string, parentClientId: string
 // Only conversation controls cross the sandbox. Project configuration, account,
 // resource and arbitrary entry operations keep their existing host boundaries.
 const actions = new Set(['ready', 'navigate', 'resolve', 'send', 'stop', 'resume', 'tool-policy', 'agent-command',
-  'command', 'retry', 'project-server-check', 'queue-edit', 'queue-remove', 'queue-promote', 'queue-cancel-edit', 'queue-run', 'queue-reorder', 'trace', 'logs', 'usage']);
+  'command', 'retry', 'project-server-check', 'project-skills', 'project-mention-files', 'view-ui', 'queue-edit', 'queue-remove', 'queue-promote', 'queue-cancel-edit', 'queue-run', 'queue-reorder', 'trace', 'logs', 'usage']);
 const passive = new Set(['trace-active', 'drop-target', 'file-icons', 'aggregate-ready', 'project-configurations-ready']);
 export function scopeConversationViewMessage(message: Record<string, any>, conversationId: string, projectUri: string, clientId: string): Record<string, any> {
   if (!message || typeof message !== 'object' || !actions.has(message.type) && !passive.has(message.type)) throw new Error('This action is unavailable in an embedded conversation.');

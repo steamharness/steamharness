@@ -43,6 +43,7 @@ export class ConversationSubmissions {
 
   list(): ConversationSubmission[] { return [...this.entries.values()]; }
   get(id: string): ConversationSubmission | undefined { return this.entries.get(id); }
+  acknowledgeExternal(id: string): void { this.entries.delete(id); this.previews.delete(id); }
   discardPending(id: string): boolean {
     if (this.entries.get(id)?.phase !== 'pending') return false;
     this.entries.delete(id); this.previews.delete(id);
@@ -98,7 +99,7 @@ export class ConversationSubmissions {
         queuedInputs.push(entry.input);
       } else {
         const position = messages.findIndex(message => (message.createdAt ?? 0) > entry.input.createdAt);
-        messages.splice(position < 0 ? messages.length : position, 0, ...this.previews.get(id)!);
+        messages.splice(position < 0 ? messages.length : position, 0, ...this.previews.get(entry.input.id)!);
       }
     }
     const first = messages.find(message => message.role === 'user');

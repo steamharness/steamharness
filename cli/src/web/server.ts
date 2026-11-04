@@ -1,4 +1,5 @@
 import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
+import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
@@ -1144,7 +1145,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             check();
             const message = scopeConversationViewMessage(input, id, project.uri, clientId);
             if (passiveConversationViewMessage(message.type)) return [];
-            if (message.type === 'ready') return [{ type: 'connection', status: 'connected' }, snapshot()];
+            if (message.type === 'ready') return [{ type: 'connection', status: 'connected' }, { type: 'conversation-ui', ui: target.ui }, snapshot()];
+            if (message.type === 'view-ui') { assertConversationUi(message.ui); target.ui = structuredClone(message.ui); return [{ type: 'conversation-ui', ui: target.ui }]; }
             if (message.type === 'send' && target.submit && !message.editingQueueId) {
               const adapter = target.submit;
               if (message.attachments?.length || message.references?.length) throw new Error('This Workflow submission adapter accepts text and parameters.');
@@ -1154,9 +1156,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
                   conversationId: id, text: message.text, params: message.params, requestId: message.requestId })] } }) as { data?: { errCode?: number; errMessage?: string; data?: { id: string; conversationId: string }[] } };
               check();
               if (!result?.data || result.data.errCode !== 0) throw new Error(result?.data?.errMessage || 'The Workflow did not acknowledge the submission.');
-              const receiptId = result.data.data?.find(receipt => receipt.conversationId === id)?.id;
-              if (!receiptId) throw new Error('The Workflow did not return a receipt for this conversation.');
-              return [snapshot(), { type: 'sent', projectUri: project.uri, sessionId: id, requestId: message.requestId, receiptId }];
+              const receipts = Array.isArray(result.data.data) ? result.data.data : [];
+              if (receipts.some(receipt => typeof receipt?.id !== 'string' || !receipt.id || typeof receipt.conversationId !== 'string' || !receipt.conversationId)) throw new Error('The Workflow returned an invalid durable receipt.');
+              const own = receipts?.find(receipt => receipt.conversationId === id);
+              const receiptId = own?.id ?? receipts?.[0]?.id;
+              if (typeof receiptId !== 'string' || !receiptId) throw new Error('The Workflow did not return a durable receipt.');
+              return [snapshot(), { type: 'sent', projectUri: project.uri, sessionId: id, requestId: message.requestId, receiptId,
+                external: !own || target.ui?.presentation === 'composer' }];
             }
             // Editing a persisted queued input retains its Core identity; Bot context
             // freezes the edited text when that queued turn actually starts.

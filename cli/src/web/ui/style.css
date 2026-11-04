@@ -100,6 +100,13 @@ input[role=switch]:disabled { cursor: default; }
 .param-field textarea { min-height: 72px; border: 1px solid var(--border); background: var(--vscode-input-background); border-radius: 4px; padding: 8px; }
 main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .transcript-area { flex: 1 1 0; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+#app[data-conversation-presentation=composer] .transcript-area,
+#app[data-conversation-presentation=composer] #input-queue { display: none; }
+#app[data-conversation-presentation=composer],
+#app[data-conversation-presentation=composer] main { background: transparent; }
+#app[data-conversation-presentation=composer] main { justify-content: flex-end; }
+html:has(#app[data-conversation-presentation=composer]),body:has(#app[data-conversation-presentation=composer]) { background: transparent; }
+#app[data-conversation-presentation=composer] .composer-area { flex: 0 1 auto; max-height: 100%; padding: 8px 12px 10px; background: var(--vscode-editor-background); }
 .transcript { position: absolute; inset: 0; overflow: auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 18px max(28px, calc((100% - 820px) / 2)) 10px; }
 .transcript-content { display: flow-root; min-height: 100%; }
 .transcript-content:has(> .empty) { height: 100%; }

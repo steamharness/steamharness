@@ -208,3 +208,5 @@ Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI
 - Don't: 用 Tailwind utility 或全局 CSS 在宿主修 shared 内部 icon 尺寸、间距、滚动容器或诊断细节。
 - Don't: 把结构性图标换成 emoji。
 - Do: 样式合同测试可以读取 canonical `theme.css` / `styles.module.css` 源文件，断言稳定 token 与源选择器声明；不得依赖 CSS Modules 编译后的 hash，也不能用源码文本断言替代 computed style/layout、Playwright 或组件行为测试。
+
+- **Project Conversation extensions**: `conversations.mount` accepts declarative `ui.mentions` and project-owned header/transcript/footer DOM slots. Custom transcript mode retains the native composer and its keyboard, IME, draft and reference behavior. Display member identity and actual queued/running/waiting states in the project slots. Update UI options without remounting; keep custom DOM outside the native sandbox and preserve source/session scope.

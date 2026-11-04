@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createKanbanBridgeScript, parseKanbanBridgeCall, type KanbanBrowserApi } from '../index';
+import { assertConversationUi, createKanbanBridgeScript, parseKanbanBridgeCall, type KanbanBrowserApi } from '../index';
 
 describe('embedded Conversation bridge', () => {
+  it('accepts declarative project references and rejects reserved or unbounded UI data', () => {
+    const ui = { presentation: 'composer', mentions: [{ kind: 'bot', label: 'Bot', items: [{ value: 'researcher', label: '研究员' }] }] };
+    expect(() => assertConversationUi(ui)).not.toThrow();
+    for (const bad of [{ ...ui, html: '<script>' }, { mentions: [{ ...ui.mentions[0], kind: 'file' }] },
+      { mentions: [ui.mentions[0], ui.mentions[0]] }, { mentions: [{ ...ui.mentions[0], items: Array(201).fill(ui.mentions[0]!.items[0]) }] },
+      { presentation: 'unknown' }, { presentation: ['conversation'] }, { mentions: [{ ...ui.mentions[0], items: [{ value: 'x', label: 'X', action: 'run' }] }] }])
+      expect(() => assertConversationUi(bad)).toThrow();
+  });
   it('validates bounded target data and rejects caller-selected identities', () => {
     const parse = (operation: string, input: object) => parseKanbanBridgeCall({ requestId: 'request', operation, input });
     const target = { viewId: 'view-1', entryId: 'agent', conversationId: 'private', locale: 'zh-CN' };
@@ -28,7 +36,9 @@ describe('embedded Conversation bridge', () => {
     new Function('window', 'document', script)(pageWindow, document);
     const container = document.createElement('div'); document.body.append(container);
     try {
-      const mounting = pageWindow.steamHarnessKanban.conversations.mount(container, { entryId: 'agent', conversationId: 'private' });
+      const transcript = document.createElement('div'), submitted = vi.fn();
+      const mounting = pageWindow.steamHarnessKanban.conversations.mount(container, { entryId: 'agent', conversationId: 'private', ui: { presentation: 'composer' } },
+        { slots: { transcript }, onSubmitted: submitted });
       const opened = posted.at(-1);
       expect(opened).toMatchObject({ operation: 'conversations.openView', input: { entryId: 'agent', conversationId: 'private', documentId: expect.any(String) } });
       reply(opened, { html: '<html><body>Native</body></html>' });
@@ -36,6 +46,12 @@ describe('embedded Conversation bridge', () => {
       const frame = container.querySelector('iframe')!;
       expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
       const viewId = opened.input.viewId;
+      expect(container.querySelector('[data-conversation-slot=transcript]')).toBe(transcript);
+      expect(container.querySelector('[data-conversation-shell]')?.getAttribute('data-presentation')).toBe('composer');
+      const updating = dispose.update({ presentation: 'conversation' });
+      await Promise.resolve(); await Promise.resolve();
+      const update = posted.at(-1); expect(update.input.message.type).toBe('view-ui'); reply(update, []); await updating;
+      expect(transcript.hidden).toBe(true);
       const envelope = { type: 'steamharness:conversation-request', viewId, message: { type: 'ready' } };
       const count = posted.length;
       send({}, envelope); expect(posted).toHaveLength(count);

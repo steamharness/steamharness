@@ -1,5 +1,6 @@
 # Unreleased
 
+- Embedded Kanban Conversations support project-defined @ choices, dynamic UI updates, and header/transcript/footer slots; projects can reuse the native composer for multi-participant topics and acknowledge deliveries to other conversations.
 - Conversation composers support @ references to the current entry's skills, project files and project entries, with inline highlighting, compact file names and full paths on hover, keyboard selection and preservation in drafts and queued messages.
 - Kanban can discover local aggregate entries and embed native Conversation chats with streaming, drafts, parameters, queues, approvals, and cancellation. Business Workflows can adapt submissions and durable receipts; each view is bound to one conversation without receiving login credentials. Cancelled requests retain their connection error type without leaving ordinary operation errors after recovery.
 - Exclude AppleDouble filesystem metadata from macOS project packages so database artifact inventories and downloaded sources stay intact.

@@ -12,6 +12,17 @@ function submission(queued = false, id = 'request'): ConversationSubmission {
 }
 
 describe('Immediate conversation submission', () => {
+  it('releases an acknowledged project-routed submission without waiting for another conversation snapshot', () => {
+    const pending = new ConversationSubmissions(); pending.add(submission());
+    const displayed = pending.project('project', session(), false);
+    pending.acknowledgeExternal('request');
+    expect(pending.project('project', displayed, false).messages).toEqual([]);
+    expect(pending.busy('project', 'chat')).toBe(false);
+  });
+  it('retains a preview after an adapter returns a different durable request identity', () => {
+    const pending = new ConversationSubmissions(); pending.add(submission()); pending.accept('request', 'delivery');
+    expect(pending.project('project', session(), true).messages).toHaveLength(2);
+  });
   it('keeps the model display name in pending replies after restore and retry while retaining the selected ID', () => {
     const pending = new ConversationSubmissions();
     pending.add({ ...submission(), modelName: 'Configured model' });

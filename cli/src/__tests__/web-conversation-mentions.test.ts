@@ -4,6 +4,7 @@ import { composerMentionToken, mentionRanges, mentionText } from '../web/convers
 import { ConversationMentions } from '../web/ui/conversation-mentions';
 import { ConversationComposer } from '../web/ui/conversation-composer';
 import type { Project } from '../web/workflow-types';
+import type { KanbanConversationMentionGroup } from '@steamharness/kanban-project';
 
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
 afterEach(() => {
@@ -27,7 +28,7 @@ function fixture() {
       { entryId: 'chat', name: '对话', type: 'conversation', root: '.', entry: 'index.ts', databases: [] },
       { entryId: 'collect', name: 'Collect data', type: 'workflow', root: 'collector', entry: 'main.ts', databases: [] },
     ] };
-  const state = { scope: 'first', project, enabled: true, disabled: false };
+  const state = { scope: 'first', project, enabled: true, disabled: false, groups: [] as KanbanConversationMentionGroup[] };
   const load = vi.fn(); const input = vi.fn(); textarea.addEventListener('input', input);
   const composer = new ConversationComposer(textarea, document.querySelector('#slash')!, document.querySelector('#footer')!, {
     current: () => ({ ...state, parameters: { fields: [] }, values: {}, states: {}, loading: false,
@@ -52,6 +53,19 @@ function fixture() {
 }
 
 describe('reference text', () => {
+  it('inserts project-defined references with stable values, search and highlights', () => {
+    const f = fixture();
+    f.state.groups = [{ kind: 'bot', label: 'Bot', items: [{ value: 'researcher', label: '研究员', description: '查证信息' }] }];
+    f.type('@'); expect(f.rows()[0]?.textContent).toContain('研究员');
+    f.key('Enter'); expect(f.mentions.text()).toBe('@bot:researcher ');
+    expect(f.textarea.parentElement?.querySelector('mark')?.textContent).toBe('@bot:researcher');
+    f.type('@bot:查证'); expect(f.rows()).toHaveLength(1);
+    f.key('Escape'); expect(f.popup.hidden).toBe(true);
+    f.type(''); f.type('@bot:查证'); expect(f.popup.hidden).toBe(false);
+    f.state.groups = []; f.mentions.update(); expect(f.rows()).toHaveLength(0);
+    expect(composerMentionToken('@ticket:abc', 11)).toMatchObject({ kind: 'ticket', query: 'abc' });
+    expect(mentionText('ticket', 'a b')).toBe('@ticket:"a b"');
+  });
   it('handles caret replacement, quoted paths, Chinese punctuation and ordinary email addresses', () => {
     expect(composerMentionToken('请检查（@file:src/main.ts）', 16)).toMatchObject({ kind: 'file', query: 'src/ma' });
     const text = '请检查 @file:src/main.ts 后续';

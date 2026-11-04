@@ -1503,6 +1503,34 @@ const snapshot = await bot.snapshot(receipt.conversationId);
 
 发送需要先经过业务 Workflow 时，可传 `submit: { entryId: "api", entrypointId: "message-send", payload: { workspaceId, threadId } }`。宿主在 payload 上追加可信目标 `conversationId` 和本次 `text`、`params`、`requestId`，调用 Workflow 后读取 `{ data: { errCode: 0, errMessage: "", data: [{ id, conversationId }] } }` 中的持久回执；`id` 必须与提交给 Conversation 的请求 ID 相同。原生 UI 用它关联乐观消息，避免重复显示。队列编辑、审批及停止继续使用同一原生 Controller；业务 Workflow 应对账这些原生操作。
 
+项目可以给嵌入界面提供自定义 `@` 内容和展示插槽。例如，由项目把 Bot 成员转换为提及选项，并在业务 Workflow 中解析目标：
+
+```ts
+const view = await window.steamHarnessKanban.conversations.mount(container, {
+  entryId: "assistant", conversationId: "room-assistant",
+  ui: {
+    presentation: "composer",
+    placeholder: "发送消息，@ 选择参与者",
+    mentions: [{ kind: "bot", label: "Bot", items: [
+      { value: "researcher", label: "研究员", description: "查证信息" },
+    ] }],
+  },
+  submit: { entryId: "api", entrypointId: "message-send", payload: { roomId } },
+}, {
+  slots: { header: participantsElement, transcript: messagesElement, footer: statusElement },
+  onSubmitted: ({ requestId, receiptId }) => refreshMessages(requestId, receiptId),
+});
+await view.update({ presentation: "composer", mentions: updatedGroups });
+// 卸载时调用 view()。
+```
+
+选择选项只插入并高亮 `@bot:researcher`，发送时才调用业务 Workflow。`kind` 是项目自己的命名空间，不能覆盖 `skill`、`file` 或 `entry`；最多 16 组、每组 200 项。名称与说明作为纯文本展示。`view.update(ui)` 替换全部 UI 配置并保留输入、草稿与原生会话；成员变化后应及时更新。内置技能、文件与项目入口菜单在嵌入模式也可使用，文件仍仅显示文件名，悬停查看完整路径。
+
+默认 `presentation: "conversation"` 保留完整原生消息区。`"composer"` 隐藏原生消息区，由 `slots.transcript` 展示项目消息；原生输入区按内容自适应高度，`@` 菜单在其上方展开。三个可选插槽都由项目提供 DOM 节点，留在 Kanban 文档中，项目自行渲染、订阅与处理审批、停止和各成员的队列。插槽不会把 HTML 或执行函数传入原生 sandbox。`onSubmitted` 在取得持久回执后通知页面，不能作为模型完成通知。
+
+业务 Workflow 可以返回其它目标会话的持久回执，例如在当前话题中定向触发另一位参与者。宿主确认回执后释放本地提交状态；跨目标回复由项目消息区订阅展示。成员资格、权限、幂等、目标会话隔离和投递状态由业务 Workflow 校验，提及菜单本身不授予执行权限。
+
+
 原生界面在独立 `allow-scripts` sandbox 中运行，沿已有 Bridge/SSE 通信，不接收宿主登录 token。宿主绑定项目、来源入口、用户、页面和单一会话，拒绝跨会话或账号/项目配置操作；身份、配置或预览变化后释放旧界面。每个 Kanban 宿主最多保留八个界面，页面可保留最近访问的界面以减少切换开销，但应释放不再需要的界面。
 
 

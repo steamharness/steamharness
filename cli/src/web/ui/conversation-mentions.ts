@@ -1,4 +1,5 @@
 import type { AgentSkillGuide } from 'steamharness';
+import type { KanbanConversationMentionGroup } from '@steamharness/kanban-project';
 import { t } from '../localization';
 import { composerMentionToken, mentionRanges, mentionText, type MentionFiles, type MentionKind, type MentionToken } from '../conversation-mentions';
 import type { Project } from '../workflow-types';
@@ -6,7 +7,7 @@ import { iconHtml } from './ui';
 import { MentionDraft } from './conversation-mention-draft';
 import './conversation-mentions.css';
 
-interface MentionState { scope: string; project: Project; enabled: boolean; disabled: boolean }
+interface MentionState { scope: string; project: Project; enabled: boolean; disabled: boolean; groups?: KanbanConversationMentionGroup[] }
 interface MentionOptions {
   current(): MentionState | undefined;
   load(type: 'project-skills' | 'project-mention-files', requestId: string, query?: string): unknown;
@@ -15,7 +16,7 @@ interface Choice { id: string; label: string; description?: string; title?: stri
 interface Request { id: string; timer: ReturnType<typeof setTimeout>; query?: string }
 const kinds: MentionKind[] = ['skill', 'file', 'entry'];
 const label = (kind: MentionKind) => kind === 'skill' ? t('Skills') : kind === 'file' ? t('Files') : t('Project entries');
-const glyph = (kind: MentionKind) => kind === 'skill' ? 'book' : kind === 'file' ? 'file' : 'project';
+const glyph = (kind: MentionKind) => kind === 'skill' ? 'book' : kind === 'file' ? 'file' : kind === 'entry' ? 'project' : 'mention';
 
 /** Native textarea editing with an inert mirror for colored references. */
 export class ConversationMentions {
@@ -88,6 +89,7 @@ export class ConversationMentions {
     this.draft.sync(this.textarea.value);
     const state = this.options.current();
     if (this.scope !== state?.scope) { this.reset(); this.scope = state?.scope; }
+    if (this.dismissed && this.dismissed !== this.key()) this.dismissed = undefined;
     this.renderHighlights(state?.enabled === true);
     const token = composerMentionToken(this.textarea.value, this.textarea.selectionStart, this.textarea.selectionEnd);
     if (!state?.enabled || state.disabled || this.composing || document.activeElement !== this.textarea || !token || this.dismissed === this.key()) {
@@ -99,6 +101,12 @@ export class ConversationMentions {
     const categories = !token.kind && !token.query;
     const search = token.query.toLocaleLowerCase();
     const choices: Choice[] = [];
+    const groupLabel = (kind: string) => state.groups?.find(group => group.kind === kind)?.label ?? label(kind);
+    for (const group of state.groups ?? []) {
+      if (token.kind && token.kind !== group.kind) continue;
+      choices.push(...group.items.filter(item => [item.value, item.label, item.description ?? ''].some(value => value.toLocaleLowerCase().includes(search)))
+        .map(item => ({ id: `${group.kind}:${item.value}`, label: item.label, description: item.description, kind: group.kind, value: item.value })));
+    }
     if (categories) choices.push(...kinds.map(kind => ({ id: kind, label: label(kind), kind })));
     else {
       if (!token.kind || token.kind === 'skill') {
@@ -138,7 +146,7 @@ export class ConversationMentions {
         const text = document.createElement('span'); text.className = 'mention-choice-text';
         const title = document.createElement('span'); title.textContent = choice.label; text.append(title);
         if (choice.description) { const detail = document.createElement('small'); detail.textContent = choice.description; text.append(detail); }
-        const suffix = document.createElement('small'); suffix.className = 'mention-choice-kind'; suffix.textContent = categories ? '›' : label(choice.kind);
+        const suffix = document.createElement('small'); suffix.className = 'mention-choice-kind'; suffix.textContent = categories && choice.value === undefined ? '›' : groupLabel(choice.kind);
         row.append(text, suffix); row.title = choice.title ?? [choice.label, choice.description].filter(Boolean).join('\n');
         row.addEventListener('pointermove', () => { this.active = index; this.highlight(); });
         row.addEventListener('click', () => this.choose(choice)); return row;
@@ -250,8 +258,10 @@ export class ConversationMentions {
     if (this.popup.hidden) return;
     const rect = (this.textarea.closest('.composer') ?? this.textarea).getBoundingClientRect();
     const width = Math.min(480, rect.width, Math.max(0, window.innerWidth - 24));
+    const compact = rect.top < 64;
     Object.assign(this.popup.style, { width: `${width}px`, left: `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`,
-      bottom: `${Math.max(8, window.innerHeight - rect.top + 8)}px`, maxHeight: `${Math.min(340, Math.max(0, rect.top - 16))}px` });
+      bottom: `${compact ? 8 : Math.max(8, window.innerHeight - rect.top + 8)}px`,
+      maxHeight: `${Math.min(340, Math.max(0, compact ? window.innerHeight - 16 : rect.top - 16))}px` });
   }
 
   private close(dismiss = false): void {

@@ -78,6 +78,34 @@ Mount a native private chat with `conversations.mount(container, { entryId, conv
 
 To submit through a business Workflow, provide `submit: { entryId: "api", entrypointId: "message-send", payload: { workspaceId, threadId } }`. The host adds the bound `conversationId` and the current `text`, `params`, and `requestId`, then reads the durable receipt from `{ data: { errCode: 0, errMessage: "", data: [{ id, conversationId }] } }`. The receipt `id` must match the request ID admitted to the Conversation. The native UI correlates optimistic messages with this ID to avoid duplicates. Queue edits, approvals, and cancellation continue through the same native Controller; the business Workflow must reconcile those operations.
 
+Projects can supply custom `@` references and display slots to an embedded view. For example, turn project members into mention choices and resolve recipients in a business Workflow:
+
+```ts
+const view = await window.steamHarnessKanban.conversations.mount(container, {
+  entryId: "assistant", conversationId: "room-assistant",
+  ui: {
+    presentation: "composer",
+    placeholder: "Write a message, @ to choose participants",
+    mentions: [{ kind: "bot", label: "Bot", items: [
+      { value: "researcher", label: "Researcher", description: "Verify information" },
+    ] }],
+  },
+  submit: { entryId: "api", entrypointId: "message-send", payload: { roomId } },
+}, {
+  slots: { header: participantsElement, transcript: messagesElement, footer: statusElement },
+  onSubmitted: ({ requestId, receiptId }) => refreshMessages(requestId, receiptId),
+});
+await view.update({ presentation: "composer", mentions: updatedGroups });
+// Call view() when unmounting.
+```
+
+Choosing an item only inserts and highlights `@bot:researcher`; sending invokes the business Workflow. Each `kind` is a project-owned namespace and cannot replace `skill`, `file`, or `entry`. Up to 16 groups and 200 items per group are supported. Labels and descriptions render as plain text. `view.update(ui)` replaces all UI options while preserving the input, draft, and native conversation. Update it when membership changes. Built-in skill, file, and project-entry menus also work in embedded views; files retain their short names and full-path hover text.
+
+The default `presentation: "conversation"` retains the full native transcript. `"composer"` hides it and displays project messages in `slots.transcript`. The native input resizes to fit its content, with the `@` menu opening above it. All three optional slots are project-owned DOM nodes that remain in the Kanban document. The project renders and subscribes to its transcript and handles approvals, cancellation, and each member's queue. Slots do not pass HTML or executable callbacks into the native sandbox. `onSubmitted` reports durable admission, not model completion.
+
+A business Workflow may return a durable receipt for another target conversation, such as a participant mentioned in the current topic. The host releases the local submission after acknowledgment; the project transcript subscribes to replies from other targets. The business Workflow validates membership, permissions, idempotency, conversation isolation, and delivery states. Mention choices do not grant execution privileges.
+
+
 The native view runs in a separate `allow-scripts` sandbox over the existing Bridge/SSE channel without receiving a host login token. The host binds the project, source entry, user, page, and one conversation, rejecting cross-session and account/project configuration actions. Identity, configuration, or preview changes dispose old views. Each Kanban host permits up to eight views. Pages may retain recently visited views to reduce switching work and should dispose views they no longer need.
 
 Workflow calls have a separate 120-second Bridge deadline for database authorization and durable receipts. Conversation submit, queue resume, input resolution, and cancellation IPC allow the same 120-second budget; ordinary read IPC retains 15 seconds. Receipts never wait for model completion: run model work asynchronously through a durable queue. A timeout may follow a committed write: retain the request ID and query its receipt instead of automatically replaying the write.
