@@ -27,8 +27,8 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 ## 当前 API 规则
 
 - 一个根 steamharness.json.id UUID 注册多个 steamharness.json.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
-- Workflow/Conversation 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认 dist/<entryId>/index.html。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
-- entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9；显式入口路径也不得进入受管 dist 子目录。打包名称只用单个可移植目录名，源码位置用 --path 指定。下载校验入口与生成清单，拒绝运行数据及未登记产物。
+- Workflow/Conversation 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认指向当前源码根的 build/<entryId>/index.html：根入口使用 dist/steamharness/build/<entryId>/，子入口使用 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/build/<entryId>/。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
+- entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9；显式入口路径位于 dist 时必须进入当前源码根对应的 build/<entryId>/，不得占用 generated 或其他入口的输出。打包名称只用单个可移植目录名，源码位置用 --path 指定。下载校验入口与生成清单，拒绝运行数据及未登记产物。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
 - 业务数据库使用 `steamharness.database.ts` 与 `steamharness.schema` 定义，生成描述符后通过 `context.databases.connect(descriptor)` 访问。关系别名声明在入口 databases 字符串数组中；资源 UUID 与绑定只由 Server 按账号、项目、入口、alias 管理。知识库使用 `context.knowledgeBases.get(alias)`，独立声明 knowledgeBases，并映射到根 config.json 的 knowledgeBases。附件通过 `knowledge.files` 操作，`knowledge` 来自 `context.knowledgeBases.get(alias)`。旧 KV、PersistentValue 与本地 KV 已删除。
 - 一个聚合是一个商品、版本和安装单元。发行所有注册入口、依赖清单及静态产物，保留数据库别名和知识库引用；引用不授予权限，安装后由宿主校验身份和授权。普通 npm 依赖按包管理，不生成项目关系与组合发布锁。
@@ -211,7 +211,7 @@ python <skill-dir>/scripts/create_workflow.py <kanban-name> --dir <target-dir> \
 
 - `steamharness.json`：项目 UUID、名称、版本、defaultEntry、显式 entries、projectCard、projectInfo；子入口仅在父 entries 登记后生效。
 - `package.json`：npm `name`、`version`、`type`、精确 Core/CLI dev dependency，以及必要时才加入的真实第三方依赖。
-- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Conversation 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
+- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Conversation 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/steamharness/**/build/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
 - `configuration.json`：为所有业务配置声明字段和安全默认值；无字段时使用空 fields。实际值不进入源码，由面板及 Studio Control 管理。
 - `interface.ts`：本地 `RunPayload`、`ExecutorResult`、输入类型、输出 payload 和输出结果类型。
 - `index.ts`：全局 `steamharness.*` 节点、具名 workflow、带静态 params 的 executor、默认导出。

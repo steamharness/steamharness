@@ -224,7 +224,7 @@ db.$queryRaw;
       expect(pkg.scripts.prebuild).toBe("steamharness database generate ../.. --entry board");
       expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain("/dist/");
       expect(await readFile(path.join(child, "steamharness.database.ts"), "utf8")).toContain("defineDatabase");
-      await expect(readFile(path.join(root, "dist/board/index.html"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(path.join(root, "dist/steamharness/build/board/index.html"))).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

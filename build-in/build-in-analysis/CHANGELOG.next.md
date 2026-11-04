@@ -1,5 +1,7 @@
 # Unreleased
 
+- 看板产物迁入 dist/steamharness/build/main/，与项目生成代码共用产物命名空间。
+
 - 【破坏性变更】项目身份、名称、版本和声明统一使用独立的 `steamharness.json`，移除 `package.json.id` 和 `steamHarness` 的读取与写回。聚合项目显式登记子入口，由子目录配置提供图标、声明、数据库别名与计划；未登记配置不生效，上传下载保留父子结构。
 
 - 【变更】静态分析按聚合入口执行，分别验证 Workflow、Conversation executor 和 Kanban 静态产物；移除单类型项目声明。

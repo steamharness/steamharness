@@ -104,10 +104,10 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
       name: "Schedule Kanban",
       version: "0.1.0",
 
-        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/index.html",databases:[],schedulePresets:[]}],
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/index.html",databases:[],schedulePresets:[]}],
     })),
-    mkdir(path.join(kanbanDir, "dist"), { recursive: true }).then(() =>
-      writeFile(path.join(kanbanDir, "dist", "index.html"), "<!doctype html>")),
+    mkdir(path.join(kanbanDir, "dist/steamharness/build/main"), { recursive: true }).then(() =>
+      writeFile(path.join(kanbanDir, "dist/steamharness/build/main/index.html"), "<!doctype html>")),
   ]);
   try {
     assert.throws(() => inspectLocalProjectStructure({ projectDir: conversationDir }), /Only Workflow/);

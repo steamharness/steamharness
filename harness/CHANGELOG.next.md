@@ -1,5 +1,7 @@
 # Unreleased
 
+- 入口编译与静态产物按源码根归入 dist/steamharness 的 build/<entryId>/，与数据库生成代码共用父目录；拒绝占用其他入口或生成目录。
+
 - 入口名称和路径禁止与受管产物目录及 Windows 设备名冲突，避免构建清理覆盖数据库、缓存或报告。
 
 - 可重建产物统一使用聚合根 dist；支持子入口共享数据库生成目录。独立 SDK 运行历史默认保存到用户目录 ~/.steamharness/runtime/<projectId>/<entryId>/，不再写入项目。

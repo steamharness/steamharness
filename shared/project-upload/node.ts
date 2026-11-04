@@ -77,7 +77,7 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
       const absolutePath = path.join(currentDir, entry.name);
       const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
       if (isProjectUploadExcludedPath(relativePath)) continue;
-      if (relativePath === "dist/steamharness" || relativePath.startsWith("dist/") && !inArtifacts(relativePath, entry.isDirectory())
+      if (relativePath.startsWith("dist/") && !inArtifacts(relativePath, entry.isDirectory())
         || ["dist/cache", "dist/reports", "dist/release", "dist/tmp"].some(prefix => relativePath === prefix || relativePath.startsWith(prefix + "/"))) {
         ignoredPaths.push(relativePath + (entry.isDirectory() ? "/" : "")); continue;
       }

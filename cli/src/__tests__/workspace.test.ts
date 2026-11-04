@@ -221,24 +221,24 @@ describe("server workspace CLI helpers", () => {
       name: "Kanban",
       version: "0.1.0",
 
-        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/main/board.html",databases:[]}],
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/board.html",databases:[]}],
     }));
-    await mkdir(path.join(sourceDir, "dist", "main"), { recursive: true });
+    await mkdir(path.join(sourceDir, "dist/steamharness/build/main"), { recursive: true });
     await mkdir(path.join(sourceDir, "src"), { recursive: true });
     await writeFile(path.join(sourceDir, ".gitignore"), "dist/\n");
     await writeFile(path.join(sourceDir, ".steamharnessignore"), "src/\ndist/**/*.map\n");
-    await writeFile(path.join(sourceDir, "dist", "main", "board.html"), "<!doctype html><title>Kanban</title>\n");
-    await writeFile(path.join(sourceDir, "dist", "main", "board.png"), Buffer.from([0, 1, 2, 255]));
-    await writeFile(path.join(sourceDir, "dist", "main", "app.js.map"), "{}");
+    await writeFile(path.join(sourceDir, "dist/steamharness/build/main", "board.html"), "<!doctype html><title>Kanban</title>\n");
+    await writeFile(path.join(sourceDir, "dist/steamharness/build/main", "board.png"), Buffer.from([0, 1, 2, 255]));
+    await writeFile(path.join(sourceDir, "dist/steamharness/build/main", "app.js.map"), "{}");
     await writeFile(path.join(sourceDir, "src", "main.ts"), "source");
 
     await expect(packProject("kanban", archivePath, sourceDir)).resolves.toBe(archivePath);
     const contents = await runTarList(archivePath);
     expect(contents).toContain("workspace/workflow/kanban/.gitignore");
     expect(contents).toContain("workspace/workflow/kanban/.steamharnessignore");
-    expect(contents).toContain("workspace/workflow/kanban/dist/main/board.html");
-    expect(contents).toContain("workspace/workflow/kanban/dist/main/board.png");
-    expect(contents).not.toContain("workspace/workflow/kanban/dist/main/app.js.map");
+    expect(contents).toContain("workspace/workflow/kanban/dist/steamharness/build/main/board.html");
+    expect(contents).toContain("workspace/workflow/kanban/dist/steamharness/build/main/board.png");
+    expect(contents).not.toContain("workspace/workflow/kanban/dist/steamharness/build/main/app.js.map");
     expect(contents).not.toContain("workspace/workflow/kanban/src/main.ts");
     await rm(root, { recursive: true, force: true });
   });
@@ -593,7 +593,7 @@ describe("server workspace CLI helpers", () => {
   it('packages every entry and its authored config separately from package.json',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
-      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'dist/map/index.html',databases:['data']}];
+      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'dist/steamharness/entries/map/build/map/index.html',databases:['data']}];
       await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',version: "0.1.0", defaultEntry:'one',entries}));
       const config={version:1,knowledgeBases:{docs:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
       await writeFile(path.join(root,'config.json'),JSON.stringify(config));

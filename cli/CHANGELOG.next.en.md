@@ -1,5 +1,9 @@
 # Unreleased
 
+- Exclude AppleDouble filesystem metadata from macOS project packages so database artifact inventories and downloaded sources stay intact.
+
+- Templates, default Kanban entries, uploads, and downloads use build/<entryId>/ under each source root's artifact namespace; frontend builds clean only their own output.
+
 - Reject package names containing path traversal and clean staging after failures. Downloads validate required entries and database inventories and reject runtime data or unregistered artifacts. Entry names and paths cannot collide with managed directories or Windows device names.
 
 - [Fix] Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.

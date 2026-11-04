@@ -195,11 +195,11 @@ test('version downloads reserve directories atomically and do not reuse another 
 });
 
 test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
- const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/board/index.html',databases:[]}];
+ const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/steamharness/entries/board/build/board/index.html',databases:[]}];
  const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
  assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'steamharness.json'),'utf8'));
  assert.deepEqual(pkg.entries,entries.map(entry=>entry.root==='.'?entry:{entryId:entry.entryId,root:entry.root}));
- for (const entry of entries.filter(entry=>entry.root!=='.')){const {entryId,root,...child}=entry;assert.deepEqual(JSON.parse(await fs.readFile(path.join(result[0].directory,root,'steamharness.json'),'utf8')),child);}await fs.access(path.join(result[0].directory,'dist/board/index.html'));
+ for (const entry of entries.filter(entry=>entry.root!=='.')){const {entryId,root,...child}=entry;assert.deepEqual(JSON.parse(await fs.readFile(path.join(result[0].directory,root,'steamharness.json'),'utf8')),child);}await fs.access(path.join(result[0].directory,'dist/steamharness/entries/board/build/board/index.html'));
 });
 
 for (const configuration of [{ wrongId: dependencyId }, { complete: false }]) {

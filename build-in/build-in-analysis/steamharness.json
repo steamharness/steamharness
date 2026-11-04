@@ -24,7 +24,7 @@
       "type": "kanban",
       "name": "Studio Analysis",
       "root": ".",
-      "entry": "dist/main/index.html",
+      "entry": "dist/steamharness/build/main/index.html",
       "databases": [],
       "configuration": "configuration.json"
     }

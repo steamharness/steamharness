@@ -101,7 +101,7 @@ pnpm exec steamharness database generate .
 pnpm exec steamharness database generate . --entry billing
 ```
 
-所有生成命令的目录参数均为聚合项目根。`validate`、`generate` 不带 `--entry` 时处理根与所有已声明入口的数据库定义，并按源码根去重；`--entry <id>` 只处理该入口的源码根。`init --entry <id>` 在该源码根创建定义，无需先构建入口。生成和校验的 JSON 返回 `outputs` 数组，每项包含 `sourceRoot`、`databases`；生成还包含 `directory` 和 `cached`。根定义输出到 `dist/steamharness/generated/database/`，子定义输出到 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`。
+所有生成命令的目录参数均为聚合项目根。`validate`、`generate` 不带 `--entry` 时处理根与所有已声明入口的数据库定义，并按源码根去重；`--entry <id>` 只处理该入口的源码根。`init --entry <id>` 在该源码根创建定义，无需先构建入口。生成和校验的 JSON 返回 `outputs` 数组，每项包含 `sourceRoot`、`databases`；生成还包含 `directory` 和 `cached`。根定义输出到 `dist/steamharness/generated/database/`，子定义输出到 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`。 Kanban 构建与生成代码按源码根归到同一父目录：根入口默认使用 `dist/steamharness/build/<entryId>/index.html`，子入口使用 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`。显式 `dist` 入口也必须位于自己的构建目录，构建器仅清理该目录。
 
 资源与迁移管理还提供 `create / list / inspect / retry / grant / revoke`、`migrate dev / deploy / status`。`migrate dev --draft` 保存可审阅的 SQL、模型快照与校验清单，`deploy` 只应用已有历史；`--database` 指定资源 UUID，`--alias` 指定模型别名（默认 main）。管理命令需要目标 Server 的账号登录，可用 `--server` 和 `--token` 覆盖。详见 [SteamHarness Database](/core-api/database)。关系库使用 `bind [directory] --database <id> [--entry <id>] [--alias main] [--mode read|write]` 绑定入口，`bindings [directory] [--entry <id>]` 查询宿主绑定，`unbind [directory] [--entry <id>] [--alias main]` 解除。绑定按账号、项目、入口和别名保存于 Server，不写回项目文件，也不授予资源权限。Node 入口通过 `context.databases.connect(descriptor)` 查询；Browser 通过 `window.steamHarnessKanban.databases.connect(descriptor)` 使用表级 `rows/insert/update/delete`。旧 KV API 已移除。
 

@@ -45,24 +45,24 @@ test("rejects run and parameter resolver commands for Kanban", async () => {
 test("inspects a Kanban project from a configured artifact directory", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-artifact-"));
   try {
-    await mkdir(path.join(projectDir, "dist", "pages"), { recursive: true });
+    await mkdir(path.join(projectDir, "dist/steamharness/build/board/pages"), { recursive: true });
     await Promise.all([
       writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
         id: "00000000-0000-4000-8000-000000000011",
         name: "Kanban Artifact Test",
         version: "0.1.0",
 
-          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/pages/board.html",databases:[]}],
+          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/pages/board.html",databases:[]}],
       })),
-      writeFile(path.join(projectDir, "dist", "pages", "board.html"), "<!doctype html>"),
+      writeFile(path.join(projectDir, "dist/steamharness/build/board/pages", "board.html"), "<!doctype html>"),
     ]);
 
     const report = inspectLocalProjectStructure({ projectDir: projectDir });
     assert.deepEqual(report.kanban, {
-      artifactDir: "dist/pages",
+      artifactDir: "dist/steamharness/build/board/pages",
       entry: "board.html",
     });
-    assert.ok(report.workflow.files.includes("dist/pages/board.html"));
+    assert.ok(report.workflow.files.includes("dist/steamharness/build/board/pages/board.html"));
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -103,7 +103,8 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-symlink-"));
   const outsideDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-outside-"));
   try {
-    await writeFile(path.join(outsideDir, "index.html"), "<!doctype html>");
+    await mkdir(path.join(outsideDir, "steamharness/build/board"), { recursive: true });
+    await writeFile(path.join(outsideDir, "steamharness/build/board/index.html"), "<!doctype html>");
     try {
       await symlink(outsideDir, path.join(projectDir, "dist"), "dir");
     } catch (error) {
@@ -115,7 +116,7 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
       name: "Kanban Symlink Test",
       version: "0.1.0",
 
-        defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/index.html",databases:[]}],
+        defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/index.html",databases:[]}],
     }));
 
     assert.throws(

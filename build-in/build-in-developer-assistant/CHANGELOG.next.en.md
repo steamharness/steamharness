@@ -1,8 +1,10 @@
 # Unreleased
 
+- Generator templates and guidance group entry builds and database generation under the same source root namespace.
+
 - Generator guidance covers reserved entry names, isolated package staging, and complete download validation.
 
-- Generator templates, built-in caches, reports, and archives use aggregate root dist. Generated Kanban entries use dist/main/index.html and runtime data lives in host or user directories.
+- Generator templates, built-in caches, reports, and archives use aggregate root dist. Generated Kanban entries use dist/steamharness/build/main/index.html and runtime data lives in host or user directories.
 
 - [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines, public database error codes, and receipt checks after timeouts.
 

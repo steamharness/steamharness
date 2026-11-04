@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { databaseArtifactDirectory, databaseArtifactSourceRoot, projectEntryFilePath, readProjectDeclaration } from "../index";
+import { databaseArtifactDirectory, databaseArtifactSourceRoot, projectEntryBuildDirectory, projectEntryFilePath, readProjectDeclaration } from "../index";
 import { assertProjectDataDirectory, resolveProjectEntry, resolveProjectEntrySync } from "../node";
 
 const directories: string[] = [];
@@ -21,15 +21,15 @@ it("isolates definitions by their complete canonical source root", () => {
 
 it("resolves a child Kanban from aggregate dist in sync and async readers", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "aggregate-artifacts-")); directories.push(root);
-  await mkdir(path.join(root, "board")); await mkdir(path.join(root, "dist/board"), { recursive: true });
+  await mkdir(path.join(root, "board")); await mkdir(path.join(root, "dist/steamharness/entries/board/build/board"), { recursive: true });
   await writeFile(path.join(root, "steamharness.json"), JSON.stringify({ id: "00000000-0000-4000-8000-000000000001", name: "Aggregate", version: "1.0.0", defaultEntry: "board", entries: [{ entryId: "board", root: "board" }] }));
-  await writeFile(path.join(root, "board/steamharness.json"), JSON.stringify({ type: "kanban", name: "Board", entry: "dist/board/index.html" }));
-  await writeFile(path.join(root, "dist/board/index.html"), "<!doctype html>");
+  await writeFile(path.join(root, "board/steamharness.json"), JSON.stringify({ type: "kanban", name: "Board", entry: "dist/steamharness/entries/board/build/board/index.html" }));
+  await writeFile(path.join(root, "dist/steamharness/entries/board/build/board/index.html"), "<!doctype html>");
   const resolved = await resolveProjectEntry(root, "board");
   expect(resolved).toEqual(resolveProjectEntrySync(root, "board"));
   expect(resolved.rootDir).toBe(path.join(await realpath(root), "board"));
-  expect(resolved.modulePath).toBe(path.join(await realpath(root), "dist/board/index.html"));
-  expect(projectEntryFilePath(resolved.registration)).toBe("dist/board/index.html");
+  expect(resolved.modulePath).toBe(path.join(await realpath(root), "dist/steamharness/entries/board/build/board/index.html"));
+  expect(projectEntryFilePath(resolved.registration)).toBe("dist/steamharness/entries/board/build/board/index.html");
 });
 
 it("rejects runtime data inside source and symlinks that lead back into source", async () => {
@@ -45,7 +45,20 @@ it("rejects runtime data inside source and symlinks that lead back into source",
 it("defaults each Kanban to its own aggregate artifact directory", () => {
   const declaration = readProjectDeclaration({ id: "00000000-0000-4000-8000-000000000001", name: "Board", version: "1.0.0", defaultEntry: "board",
     entries: [{ entryId: "board", root: ".", name: "Board", type: "kanban" }] });
-  expect(declaration.entries[0].entry).toBe("dist/board/index.html");
+  expect(declaration.entries[0].entry).toBe("dist/steamharness/build/board/index.html");
+});
+
+it("groups builds with their source root while isolating entries that share generated code", () => {
+  const root = "apps/board";
+  expect(projectEntryBuildDirectory({ root, entryId: "viewer" })).toBe("dist/steamharness/entries/apps%2Fboard/build/viewer");
+  expect(projectEntryBuildDirectory({ root, entryId: "editor" })).toBe("dist/steamharness/entries/apps%2Fboard/build/editor");
+  expect(databaseArtifactDirectory(root)).toBe("dist/steamharness/entries/apps%2Fboard/generated/database");
+  const declaration = readProjectDeclaration({ id: "00000000-0000-4000-8000-000000000001", name: "Shared source", version: "1.0.0", defaultEntry: "viewer",
+    entries: [{ entryId: "viewer", root }, { entryId: "editor", root }] }, { [root]: { type: "kanban", name: "Board" } });
+  expect(declaration.entries.map(entry => entry.entry)).toEqual([
+    "dist/steamharness/entries/apps%2Fboard/build/viewer/index.html",
+    "dist/steamharness/entries/apps%2Fboard/build/editor/index.html",
+  ]);
 });
 
 it.each(["steamharness", "cache", "reports", "release", "tmp", "con", "aux", "nul", "prn", "com1", "lpt9"])("rejects entry ID %s before it can collide with managed or nonportable directories", entryId => {
@@ -54,7 +67,7 @@ it.each(["steamharness", "cache", "reports", "release", "tmp", "con", "aux", "nu
   expect(() => readProjectDeclaration(source)).toThrow(/reserved/i);
 });
 
-it.each(["dist/steamharness/index.html", "dist/cache/index.html", "dist/reports/index.html", "dist/release/index.html", "dist/tmp/index.html"])("rejects an explicit entry inside managed directory %s", entry => {
+it.each(["dist/board/index.html", "dist/steamharness/index.html", "dist/steamharness/build/other/index.html", "dist/cache/index.html", "dist/reports/index.html", "dist/release/index.html", "dist/tmp/index.html"])("rejects an entry outside its own managed build directory %s", entry => {
   const source = { id: "00000000-0000-4000-8000-000000000001", name: "Board", version: "1.0.0", defaultEntry: "board",
     entries: [{ entryId: "board", root: ".", name: "Board", type: "kanban", entry }] };
   expect(() => readProjectDeclaration(source)).toThrow(/reserved/i);

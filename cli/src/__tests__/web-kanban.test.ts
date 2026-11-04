@@ -91,12 +91,12 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(root,'registry'));
   const directory = path.join(root, 'board'); await mkdir(directory);
   const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html",databases:[]}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/main/pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[]};
+  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/steamharness/build/main/pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[]};
 
   const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases}]  };
   Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration],databases:registration.databases});
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
-  const artifactRoot = options.artifact ? path.join(directory, 'dist/main/pages') : directory;
+  const artifactRoot = options.artifact ? path.join(directory, 'dist/steamharness/build/main/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   { await writeFile(path.join(directory, registration.root, 'configuration.json'), JSON.stringify({ version: 1, fields:options.noParams?[]: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
@@ -267,7 +267,7 @@ describe('Kanban CLI Web workspace', () => {
     const script = await fetch(`${app.origin}/kanban/${preview.nonce}/board.js`, { headers: { Origin: 'null' } }); expect(script.status).toBe(200); expect(script.headers.get('Access-Control-Allow-Origin')).toBe('*');
     for (const name of ['package.json', 'configuration.json', '%2e%2e%2fpackage.json', '%5cpackage.json', '.env']) { expect((await fetch(`${app.origin}/kanban/${preview.nonce}/${name}`)).status).toBe(404); }
     await writeFile(path.join(directory, 'outside.js'), 'secret');
-    try { await symlink(path.join(directory, 'outside.js'), path.join(directory, 'dist/main/linked.js')); } catch (error) { if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') { return; } throw error; }
+    try { await symlink(path.join(directory, 'outside.js'), path.join(directory, 'dist/steamharness/build/main/linked.js')); } catch (error) { if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') { return; } throw error; }
     expect((await fetch(`${app.origin}/kanban/${preview.nonce}/linked.js`)).status).toBe(404);
     expect((await fetch(`${app.origin}/kanban/wrong/index.html`)).status).toBe(404);
     expect((await fetch(`${app.origin}/api/session`, { headers: { Origin: 'null' } })).status).toBe(403);

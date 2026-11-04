@@ -556,7 +556,10 @@ async function packProject(
     await mkdir(path.dirname(archivePath), { recursive: true });
     // Every registered entry is included in this single aggregate unit.
     await stageProjectSource({ projectDir, projectName, stagingRoot: path.join(stagingDir, "workspace", "workflow") });
-    const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], { cwd: repoRoot });
+    const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], {
+      cwd: repoRoot,
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    });
     if (result.exitCode !== 0) {
       throw new Error(i18n.t("archiveCreateFailed", { ns: "cli", details: result.stderr || result.stdout }));
     }
@@ -1023,11 +1026,13 @@ function runCommand(
   args: string[],
   options: {
     cwd?: string;
+    env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
+      env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];

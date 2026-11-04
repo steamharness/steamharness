@@ -185,7 +185,7 @@ def project_json(name: str, project_type: str, description: str) -> str:
         "id": str(uuid4()), "name": name, "version": "0.1.0", "description": description,
         "defaultEntry": "main", "entries": [{
             "entryId": "main", "type": project_type, "name": name, "root": ".",
-            "entry": "dist/main/index.html" if project_type == "kanban" else "index.ts",
+            "entry": "dist/steamharness/build/main/index.html" if project_type == "kanban" else "index.ts",
             "configuration": "configuration.json", "databases": ["data"] if project_type == "kanban" else [],
         }],
         "projectCard": {"icon": icon, "iconBackgroundColor": icon_background},

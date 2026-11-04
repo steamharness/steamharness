@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static validation and previews group entry builds alongside generated databases and accept only the entry's own build directory.
+
 - Static project validation rejects entry names and paths that collide with managed artifact directories or Windows device names.
 
 - Static Kanban previews resolve entry from the aggregate root and validate database artifacts under dist/steamharness by source root. Old generated paths are no longer supported.

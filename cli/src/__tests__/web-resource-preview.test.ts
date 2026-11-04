@@ -24,10 +24,10 @@ async function fixture() {
   const owner: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:root,databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'ed18b4ed-5d84-4143-babe-407142cb33e9', uri: '', name: 'Owner', folderPath: root, projectType: 'conversation', fields: [], entrypoints: [] };
   await writeProjectFixture(path.join(root, 'package.json'), JSON.stringify({ id:owner.id,name:'Owner',version: "0.1.0", entries:owner.entries,defaultEntry:'main' }));
   const board = { ...owner, id: '26649e36-f751-43bc-9eb1-a4a041623f3c', name: 'Board', folderPath: path.join(root, 'board'), projectType: 'kanban' as const,
-    entryRoot:path.join(root,'board'),entries:[{entryId:'main',name:'Main',type:'kanban' as const,root:'.',entry:'dist/index.html',configuration:'configuration.json',databases:[]}],kanban: { artifactDir: '.', entry: 'dist/index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
-  await mkdir(path.join(board.folderPath, 'dist'), { recursive: true });
+    entryRoot:path.join(root,'board'),entries:[{entryId:'main',name:'Main',type:'kanban' as const,root:'.',entry:'dist/steamharness/build/main/index.html',configuration:'configuration.json',databases:[]}],kanban: { artifactDir: 'dist/steamharness/build/main', entry: 'index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
+  await mkdir(path.join(board.folderPath, 'dist/steamharness/build/main'), { recursive: true });
   await writeProjectFixture(path.join(board.folderPath, 'package.json'), JSON.stringify({id:board.id,name:'Board',version: "0.1.0", entries:board.entries,defaultEntry:'main'}));
-  await writeFile(path.join(board.folderPath, 'dist/index.html'), '<html><head></head><body>Map preview</body></html>');
+  await writeFile(path.join(board.folderPath, 'dist/steamharness/build/main/index.html'), '<html><head></head><body>Map preview</body></html>');
   await writeFile(path.join(root,'index.ts'),'export {};');
   await writeFile(path.join(board.folderPath,'configuration.json'),JSON.stringify({version:1,fields:board.fields}));
   const runtime = { inspect: vi.fn(async () => ({ projects: [board], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
@@ -451,7 +451,7 @@ describe('resource previews', () => {
       const first = (await (await request({ type: 'resource-data', id: opened.id })).json()).messages[0].data;
       await app.controller!.create();
       expect(app.controller!.current.id).not.toBe(original.id);
-      await writeFile(path.join(board.folderPath, 'dist/index.html'), '<html><head></head><body>Updated map</body></html>');
+      await writeFile(path.join(board.folderPath, 'dist/steamharness/build/main/index.html'), '<html><head></head><body>Updated map</body></html>');
       for (const type of ['resource-refresh', 'resource-data']) {
         app.setHostResourceProjects([board.folderPath]);
         expect((await request({ type, id: opened.id })).ok).toBe(false);

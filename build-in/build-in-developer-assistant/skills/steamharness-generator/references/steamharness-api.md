@@ -124,7 +124,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 {
   "type": "kanban",
   "name": "Board",
-  "entry": "dist/main/index.html",
+  "entry": "dist/steamharness/build/main/index.html",
   "databases": []
 }
 ```
@@ -208,7 +208,7 @@ Structure 将预设返回给宿主，但导入、打开或发布项目都不会�
 
 ## Kanban 静态入口
 
-在 entries 注册 type: "kanban"，root 指向代码目录，entry 指向已构建 HTML 产物（例如 dist/main/index.html）。不生成 executor。宿主只消费产物，不安装依赖、执行构建脚本或连接 dev server。HTML/CSS/JS、图片和字体使用产物内相对路径。页面位于 allow-scripts sandbox 和离线 CSP，不能访问 Node、父页面 DOM、公网或顶层导航。
+在 entries 注册 type: "kanban"，root 指向代码目录，entry 指向已构建 HTML 产物（例如 dist/steamharness/build/main/index.html）。不生成 executor。宿主只消费产物，不安装依赖、执行构建脚本或连接 dev server。HTML/CSS/JS、图片和字体使用产物内相对路径。页面位于 allow-scripts sandbox 和离线 CSP，不能访问 Node、父页面 DOM、公网或顶层导航。
 
 `window.steamHarnessKanban.getConfiguration()` 读取当前命名配置；监听 `steamharness:kanban-configuration-change`。`getPresentation()` 返回 full/card 展示，监听 `steamharness:kanban-presentation-change`。无参数时使用全幅布局，在手机、平板、低高度卡片中保留草稿与保存状态。
 
@@ -226,7 +226,7 @@ const { buffer } = await knowledge.files.readFile(file.id);
 
 知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和业务库的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件和聚合 Workflow 调用超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
-模板与生成器先 generate 再 build，入口为 dist/main/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
+模板与生成器先 generate 再 build，入口为 dist/steamharness/build/main/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
 
 页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
@@ -1507,7 +1507,7 @@ Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNT
 
 ### 聚合产物目录
 
-entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9。显式入口路径不得进入受管 dist 子目录。workspace pack 的名称必须是单个可移植目录名，源码位置通过 --path 指定；失败和成功仅清理本次临时目录。workspace download 与上传共用入口及数据库产物校验，拒绝缺失入口、运行数据和未登记的 dist 文件，验证通过后才创建目标项目目录。
+entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9。显式入口路径位于 dist 时必须使用当前源码根的 build/<entryId>/，不得进入 generated 或其他入口输出。workspace pack 的名称必须是单个可移植目录名，源码位置通过 --path 指定；失败和成功仅清理本次临时目录。workspace download 与上传共用入口及数据库产物校验，拒绝缺失入口、运行数据和未登记的 dist 文件，验证通过后才创建目标项目目录。
 
 所有可重建产物统一写入聚合项目根的 `dist/`，子入口不得另建产物根：
 
@@ -1515,7 +1515,8 @@ entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 
 | --- | --- |
 | 根数据库定义的生成代码 | `dist/steamharness/generated/database/` |
 | 子入口数据库定义的生成代码 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
-| 编译和静态页面 | `dist/<entryId>/` |
+| 根入口编译和静态页面 | `dist/steamharness/build/<entryId>/` |
+| 子入口编译和静态页面 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
 | 工具缓存、测试报告和打包文件 | `dist/cache/`、`dist/reports/`、`dist/release/` |
 
 子入口使用完整 `entry.root` 的 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`；同一源码根的入口共用生成代码。每个构建器只清理自己的子目录，不能清空整个 `dist/`。源码、配置、数据库模型和迁移保留在源码目录，根 `.gitignore` 忽略 `/dist/`。

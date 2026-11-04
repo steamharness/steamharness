@@ -188,13 +188,13 @@ await db.task.delete({ key: { id: row.values.id }, rowVersion: row.rowVersion })
 
 同一绑定或同一资源的多个表请求可以并发提交；Server 在执行 SQL 前按绑定和资源锁排队，每次锁等待最多 5 秒，超时返回 `DATABASE_BUSY`。取得锁后重新检查绑定、授权版本与模型指纹。该等待不会重放已执行的写入；更新冲突仍通过 `rowVersion` 拒绝。
 
-看板模板先执行 `database generate` 再构建 `dist/index.html`。任务保存在 `Task` 行中，并按 configurationId 过滤。未绑定、断连或读取失败会显示错误并禁止编辑，不切换临时本地模式。旧 KV、PersistentValue、本地 KV 和 KV 工具已移除，不自动迁移旧数据。
+看板模板先执行 `database generate` 再构建 `dist/steamharness/build/main/index.html`。任务保存在 `Task` 行中，并按 configurationId 过滤。未绑定、断连或读取失败会显示错误并禁止编辑，不切换临时本地模式。旧 KV、PersistentValue、本地 KV 和 KV 工具已移除，不自动迁移旧数据。
 
 ## 构建与分发
 
 自定义构建应先执行 `database generate`，再运行 TypeScript 或前端构建。`workspace pack` 会为聚合根目录和各注册入口目录中的定义自动生成产物，并将源码、模型与完整生成目录一起打包。`.gitignore` 仅控制 Git；不要在 `.steamharnessignore` 中排除这些必需文件。
 
-Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。只有 `dist/steamharness/generated/database` 可以进入源码包，其余 `.steamharness` 运行数据继续排除。
+Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。源码包包含各源码根通过清单校验的数据库生成代码，以及同一 `dist/steamharness/` 命名空间下已登记入口的构建产物；缓存、报告、临时文件和运行数据继续排除。
 
 本入口定义项目业务模型；[平台运行存储](/core-api/runtime-storage) 负责会话、运行历史和 Agent 记录，二者独立管理。声明业务模型不会自动转换现有 KV 数据。
 

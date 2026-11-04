@@ -33,28 +33,29 @@ describe("createProjectUploadPlan", () => {
   });
   it("includes a git-ignored Kanban artifact and applies only .steamharnessignore", async () => {
     const root = await createProject({
-      defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/board.html",databases:[]}],
+      defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/board.html",databases:[]}],
     });
-    await mkdir(path.join(root, "dist"));
+    const output = path.join(root, "dist/steamharness/build/board");
+    await mkdir(output, { recursive: true });
     await Promise.all([
       writeFile(path.join(root, ".gitignore"), "dist/\n.env\n"),
       writeFile(path.join(root, ".steamharnessignore"), "src/\ndist/**/*.map\n"),
       writeFile(path.join(root, ".env"), "TOKEN=value\n"),
-      writeFile(path.join(root, "dist", "board.html"), "<!doctype html>"),
-      writeFile(path.join(root, "dist", "app.js"), "console.log('ok')"),
-      writeFile(path.join(root, "dist", "app.js.map"), "{}"),
+      writeFile(path.join(output, "board.html"), "<!doctype html>"),
+      writeFile(path.join(output, "app.js"), "console.log('ok')"),
+      writeFile(path.join(output, "app.js.map"), "{}"),
     ]);
 
     const plan = await createProjectUploadPlan(root);
     expect(plan.files.map((file) => file.path)).toEqual([
       ".gitignore",
       ".steamharnessignore",
-      "dist/app.js",
-      "dist/board.html",
+      "dist/steamharness/build/board/app.js",
+      "dist/steamharness/build/board/board.html",
       "package.json",
       "steamharness.json",
     ]);
-    expect(plan.ignoredPaths).toContain("dist/app.js.map");
+    expect(plan.ignoredPaths).toContain("dist/steamharness/build/board/app.js.map");
   });
 
   it("excludes host dependencies even without .steamharnessignore", async () => {

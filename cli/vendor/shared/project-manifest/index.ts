@@ -1,6 +1,6 @@
 import { isProjectKind, type ProjectKind } from "@steamharness/project-types";
-import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN, isProjectEntryId, RESERVED_PROJECT_ARTIFACT_NAMES } from "./identity";
-import { projectEntryFilePath } from "./artifacts";
+import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN, isProjectEntryId } from "./identity";
+import { projectEntryBuildDirectory, projectEntryFilePath } from "./artifacts";
 export * from "./identity";
 export * from "./artifacts";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
@@ -149,9 +149,10 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
     ...record(item.projectCard, `${field}.projectCard`),
   });
   const root = normalizeEntryPath(item.root, `${field}.root`, true);
-  const entry = normalizeEntryPath(item.entry ?? (item.type === "kanban" ? `dist/${item.entryId}/index.html` : undefined), `${field}.entry`);
-  const [outputRoot, namespace] = projectEntryFilePath({ root, entry, type: item.type }).split("/");
-  if (outputRoot?.toLowerCase() === "dist" && RESERVED_PROJECT_ARTIFACT_NAMES.some(name => name === namespace?.toLowerCase())) throw new Error(`${field}.entry cannot use a reserved artifact directory.`);
+  const buildDirectory = projectEntryBuildDirectory({ root, entryId: item.entryId });
+  const entry = normalizeEntryPath(item.entry ?? (item.type === "kanban" ? `${buildDirectory}/index.html` : undefined), `${field}.entry`);
+  const filename = projectEntryFilePath({ root, entry, type: item.type });
+  if (filename.split("/")[0]?.toLowerCase() === "dist" && !filename.startsWith(buildDirectory + "/")) throw new Error(`${field}.entry must use ${buildDirectory}/ within the reserved artifact directory.`);
   if (item.type === "kanban" ? !/\.html$/i.test(entry) : !/\.[cm]?[jt]sx?$/i.test(entry)) throw new Error(`${field}.entry must be ${item.type === "kanban" ? "an HTML artifact" : "an executable module"}.`);
   const configuration = item.configuration === undefined ? undefined : normalizeEntryPath(item.configuration, `${field}.configuration`);
   if (!Array.isArray(item.databases)) throw new Error(`${field}.databases must be an array (use [] for no database access).`);

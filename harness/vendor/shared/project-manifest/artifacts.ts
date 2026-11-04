@@ -1,4 +1,5 @@
 import { normalizeEntryPath } from "./index";
+import { isProjectEntryId } from "./identity";
 
 export const PROJECT_ARTIFACT_DIRECTORY = "dist/steamharness";
 export const DATABASE_GENERATED_DIRECTORY = `${PROJECT_ARTIFACT_DIRECTORY}/generated/database`;
@@ -11,6 +12,12 @@ export function projectArtifactDirectory(sourceRoot = "."): string {
 
 export function databaseArtifactDirectory(sourceRoot = "."): string {
   return `${projectArtifactDirectory(sourceRoot)}/generated/database`;
+}
+
+/** Each source root owns generated code and a separate build directory for every entry. */
+export function projectEntryBuildDirectory(entry: { root: string; entryId: string }): string {
+  if (!isProjectEntryId(entry.entryId)) throw new Error("Invalid or reserved project entry identity.");
+  return `${projectArtifactDirectory(entry.root)}/build/${entry.entryId}`;
 }
 
 /** Source entries are relative to their source root; Kanban artifacts use the aggregate root. */

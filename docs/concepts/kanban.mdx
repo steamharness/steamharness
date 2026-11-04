@@ -5,17 +5,23 @@ description: "Kanban 入口"
 
 # Kanban 入口
 
-Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示例：
+Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。聚合根先注册源码目录：
 
 ```json
-{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/map/index.html", "configuration": "configuration.json", "databases": [] }
+{ "entries": [{ "entryId": "map", "root": "map" }] }
 ```
 
-`root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/<entryId>/index.html`。Workflow/Conversation 的源码入口仍相对各自 `root`。前端只清理 `dist/<entryId>/`，保留数据库生成目录。
+在 `map/steamharness.json` 声明入口：
+
+```json
+{ "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json", "databases": [] }
+```
+
+`root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/steamharness/build/<entryId>/index.html`（根入口）或 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`（子入口）。Workflow/Conversation 的源码入口仍相对各自 `root`。前端只清理当前源码根下的 `build/<entryId>/`，保留数据库生成目录。
 
 构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
-Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 dist/map/index.html，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
+Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 `dist/steamharness/build/main/index.html`，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
 
 ## 配置与展示
 

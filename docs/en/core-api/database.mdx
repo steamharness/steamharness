@@ -179,13 +179,13 @@ Declare the alias in the entry's `databases`, deploy migrations, and bind the re
 
 Multiple table requests for the same binding or resource may be submitted concurrently. Before executing SQL, Server queues on binding and resource locks, waiting up to 5 seconds per lock before returning `DATABASE_BUSY`. Binding identity, access revision, and the model fingerprint are checked again after acquiring the locks. Waiting never replays an executed write; stale updates are still rejected through `rowVersion`.
 
-Task templates generate descriptors before building `dist/index.html` and store `Task` rows filtered by configurationId. Unbound resources and failed reads disable editing with an explicit error. Legacy KV, PersistentValue, local KV, and KV tools are removed without compatibility or automatic migration.
+Task templates generate descriptors before building `dist/steamharness/build/main/index.html` and store `Task` rows filtered by configurationId. Unbound resources and failed reads disable editing with an explicit error. Legacy KV, PersistentValue, local KV, and KV tools are removed without compatibility or automatic migration.
 
 ## Build and distribute
 
 Custom builds should run `database generate` before TypeScript or frontend compilation. `workspace pack` generates definitions found at the aggregate root and registered entry directories, then includes source, models, and the complete generated subtree. `.gitignore` only controls Git. Do not exclude required database files through `.steamharnessignore`.
 
-Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `dist/steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
+Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Packages include the validated database artifact inventory for each source root and the registered entries' build outputs under the same `dist/steamharness/` namespace. Caches, reports, temporary files, and runtime data stay excluded.
 
 This API defines project business models. [Platform runtime storage](/en/core-api/runtime-storage) independently manages conversations, execution history and Agent records. Declaring business models does not convert existing KV data.
 

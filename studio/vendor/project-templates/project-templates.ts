@@ -68,7 +68,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
   for (const template of templates) {
     if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'conversation', 'kanban'].includes(template.projectType)
       || !['starter', 'example'].includes(template.kind) || !Array.isArray(template.files) || !template.files.every(safeRelative)
-      || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/main/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
+      || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/steamharness/build/main/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
       || ['en', 'zh-CN'].some(locale => !template.name?.[locale as 'en'] || !template.description?.[locale as 'en'])) {
       throw new ProjectTemplateError('invalid-template', 'Invalid project template catalog.');
     }

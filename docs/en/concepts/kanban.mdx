@@ -5,17 +5,23 @@ description: "Kanban entries"
 
 # Kanban entries
 
-Kanban is a static HTML entry in an aggregate project and does not export an executor:
+Kanban is a static HTML entry in an aggregate project and does not export an executor. Register its source directory at the aggregate root:
 
 ```json
-{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/map/index.html", "configuration": "configuration.json", "databases": [] }
+{ "entries": [{ "entryId": "map", "root": "map" }] }
 ```
 
-`root` identifies the source directory. A Kanban `entry` is relative to the aggregate root and defaults to `dist/<entryId>/index.html` when omitted. Workflow/Conversation modules remain relative to their own `root`. Frontend builders clean only `dist/<entryId>/`, preserving database outputs.
+Declare the entry in `map/steamharness.json`:
+
+```json
+{ "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json", "databases": [] }
+```
+
+`root` identifies the source directory. A Kanban `entry` is relative to the aggregate root and defaults to `dist/steamharness/build/<entryId>/index.html` for root entries or `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html` for child entries when omitted. Workflow/Conversation modules remain relative to their own `root`. Frontend builders clean only their source root's `build/<entryId>/`, preserving database outputs.
 
 Build on the client before upload. Server validates, stores and serves static files without installing dependencies or executing builds. Relative assets and all registered entry artifacts are retained during packaging and installation.
 
-Studio includes a minimal board and two task boards. Templates generate database descriptors before building `dist/main/index.html`. Task boards use an approved database with the `data` alias and isolate rows by configurationId. Missing bindings or failed reads disable editing; failed writes preserve drafts.
+Studio includes a minimal board and two task boards. Templates generate database descriptors before building `dist/steamharness/build/main/index.html`. Task boards use an approved database with the `data` alias and isolate rows by configurationId. Missing bindings or failed reads disable editing; failed writes preserve drafts.
 
 ## Configuration and presentation
 

@@ -37,6 +37,14 @@ async function fixture(): Promise<{ root: string; generated: string; manifest: D
 describe("static database artifacts", () => {
   it("copies only verified generated files, without executing definitions or copying host runtime state", async () => {
     const { root } = await fixture();
+    const declaration = JSON.parse(await readFile(path.join(root, "steamharness.json"), "utf8"));
+    declaration.entries.push({ entryId: "board", root: ".", type: "kanban", name: "Board", databases: [] });
+    await writeFile(path.join(root, "steamharness.json"), JSON.stringify(declaration));
+    await mkdir(path.join(root, "dist/steamharness/build/board"), { recursive: true });
+    await writeFile(path.join(root, "dist/steamharness/build/board/index.html"), '<script src="app.js"></script>');
+    await writeFile(path.join(root, "dist/steamharness/build/board/app.js"), "document.body.dataset.ready = 'yes';");
+    await mkdir(path.join(root, "dist/steamharness/build/unregistered"), { recursive: true });
+    await writeFile(path.join(root, "dist/steamharness/build/unregistered/private.json"), "{}");
     await writeFile(path.join(root, "dist/steamharness/session.json"), '{"secret":"local"}');
     const target = await mkdtemp(path.join(os.tmpdir(), "database-static-target-")); directories.push(target);
     for (const relative of ['cache/vite', 'reports/test', 'release/package', 'tmp/build', 'unregistered/output']) {
@@ -46,6 +54,8 @@ describe("static database artifacts", () => {
     const plan = await copyProjectUploadFiles(root, target);
     expect(plan.files.some(file => file.path.endsWith('private.json'))).toBe(false);
     expect(plan.files.some(file => file.path === "dist/steamharness/generated/database/node/main.js")).toBe(true);
+    expect(plan.files.some(file => file.path === "dist/steamharness/build/board/index.html")).toBe(true);
+    expect(plan.files.some(file => file.path === "dist/steamharness/build/board/app.js")).toBe(true);
     expect(plan.files.some(file => file.path.endsWith("session.json"))).toBe(false);
     expect((await readDatabaseArtifactFiles(target))?.manifest.databases[0].alias).toBe("main");
     await writeFile(path.join(root, ".steamharnessignore"), "dist/steamharness/\n");

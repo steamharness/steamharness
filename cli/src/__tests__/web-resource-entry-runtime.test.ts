@@ -34,13 +34,13 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   await writeProjectFixture(path.join(workspace, 'package.json'), JSON.stringify({ id, name: 'Workspace', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'agent', entries: [
       { entryId: 'agent', name: 'Agent', type: 'conversation', root: 'agent', entry: 'index.ts', databases: [] },
-      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/map-2d/index.html', configuration: 'configuration.json', databases: [] },
+      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/steamharness/entries/map-2d/build/map-2d/index.html', configuration: 'configuration.json', databases: [] },
     ] }));
   await writeFile(path.join(workspace, 'agent/index.ts'), conversationSource);
-  await mkdir(path.join(workspace, 'dist/map-2d'), { recursive: true });
-  await writeFile(path.join(workspace, 'dist/map-2d/index.html'), '<!doctype html><html><head><link rel="stylesheet" href="map.css"></head><body><script type="module" src="map.js"></script>Sibling map artifact</body></html>');
-  await writeFile(path.join(workspace, 'dist/map-2d/map.js'), 'document.body.dataset.map = "loaded";');
-  await writeFile(path.join(workspace, 'dist/map-2d/map.css'), 'body { color: teal; }');
+  await mkdir(path.join(workspace, 'dist/steamharness/entries/map-2d/build/map-2d'), { recursive: true });
+  await writeFile(path.join(workspace, 'dist/steamharness/entries/map-2d/build/map-2d/index.html'), '<!doctype html><html><head><link rel="stylesheet" href="map.css"></head><body><script type="module" src="map.js"></script>Sibling map artifact</body></html>');
+  await writeFile(path.join(workspace, 'dist/steamharness/entries/map-2d/build/map-2d/map.js'), 'document.body.dataset.map = "loaded";');
+  await writeFile(path.join(workspace, 'dist/steamharness/entries/map-2d/build/map-2d/map.css'), 'body { color: teal; }');
   await writeFile(path.join(workspace, 'map-2d/configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'mapName', type: 'string' }] }));
   await writeProjectFixture(path.join(assistant, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Assistant', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',

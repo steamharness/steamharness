@@ -17,7 +17,7 @@
       "type": "kanban",
       "name": "Studio Kanban",
       "root": ".",
-      "entry": "dist/main/index.html",
+      "entry": "dist/steamharness/build/main/index.html",
       "configuration": "configuration.json",
       "databases": [
         "data"

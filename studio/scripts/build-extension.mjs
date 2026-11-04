@@ -69,7 +69,7 @@ export async function buildExtension({ watch = false } = {}) {
   const analysisOutput = path.join(directory, 'dist/analysis');
   await fs.rm(analysisOutput, { recursive: true, force: true });
   await fs.mkdir(analysisOutput, { recursive: true });
-  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'dist/main']) {
+  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'dist/steamharness/build/main']) {
     await fs.cp(path.join(analysisSource, name), path.join(analysisOutput, name), { recursive: true });
   }
   for (const name of ['runtime', 'workflow-ui.js', 'workflow-ui.css']) {
