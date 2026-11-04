@@ -1,6 +1,7 @@
 import { t, locale } from './localization';
 import { iconButton, iconHtml, escapeHtml, markdownHtml } from './ui';
-import { agentSession, latestAgentPlan, orderedTasks, ownedActivity, terminalTask, retryableAgentTask, taskConversation, type AgentPlanDocument } from './trace-agent-model';
+import { agentSession, latestAgentPlan, orderedTasks, ownedActivity, terminalTask, retryableAgentTask, taskConversation, taskDuration, type AgentPlanDocument } from './trace-agent-model';
+import { traceDuration } from './trace-model';
 import type { TracePanelState } from '../src/workflow-trace-types';
 import type { TraceAgentAction, TraceAgentCommand, TraceAgentSnapshot, TraceTask } from '../src/workflow-agent-types';
 
@@ -117,9 +118,9 @@ export class TraceAgentView {
     const { session, agent, current, connected } = agentSession(this.state), plan = session && latestAgentPlan(session.messages);
     const nextKey = `${this.state.selection.projectUri}:${session?.id}:${agent?.ownerId}:${this.tab}`;
     const content = this.tab === 'tasks' ? [agent?.conversations, agent?.tasks, agent?.history, agent?.compactionFailure, current]
-      : this.tab === 'plan' ? [agent?.plan, plan] : this.tab === 'usage' ? [agent?.conversations, agent?.usage] : [agent?.epoch, agent?.configuration, agent?.prompt, agent?.records, agent?.resources];
+      : this.tab === 'plan' ? [agent?.plan, plan] : this.tab === 'usage' ? [agent?.conversations, agent?.usage, agent?.tokenUsage, agent?.contextUsage] : [agent?.epoch, agent?.configuration, agent?.prompt, agent?.records, agent?.resources];
     const signature = JSON.stringify([nextKey, connected, content, this.selectedTask, session?.forkSource]);
-    if (signature === this.signature) return;
+    if (signature === this.signature) { this.refreshTiming(); return; }
     this.savePosition(); const switching = nextKey !== this.key; this.key = nextKey;
     const position = this.positions.get(this.key); if (switching) this.selectedTask = position?.task;
     this.signature = signature;
@@ -134,16 +135,35 @@ export class TraceAgentView {
     for (const region of Array.from(this.body.querySelectorAll<HTMLElement>('[data-scroll]'))) region.scrollTop = position?.scrolls.get(region.dataset.scroll!) ?? 0;
     this.body.scrollTop = position?.scroll ?? 0;
     if (focus) Array.from(this.body.querySelectorAll<HTMLElement>('[data-focus]')).find(element => element.dataset.focus === focus)?.focus({ preventScroll: true });
+    this.refreshTiming();
+  }
+  refreshTiming(now = Date.now()): void {
+    if (!this.state || this.tab !== 'tasks' || this.body.hidden) return;
+    const { agent } = agentSession(this.state); if (!agent) return;
+    const tasks = new Map([...agent.tasks, ...agent.history].map(task => [task.id, task]));
+    for (const element of this.body.querySelectorAll<HTMLElement>('[data-task-duration]')) {
+      const task = tasks.get(Number(element.dataset.taskDuration));
+      const duration = task && traceDuration(taskDuration(task, agent, this.state.status === 'connected', now));
+      element.hidden = !duration && element.dataset.prefix !== undefined;
+      element.textContent = duration ? `${element.dataset.prefix ?? ''}${duration}` : t('Time not recorded');
+    }
+  }
+  private duration(task: TraceTask, summary = false): HTMLElement {
+    const element = document.createElement('span'); element.dataset.taskDuration = String(task.id);
+    if (summary) element.dataset.prefix = ' \u00b7 ';
+    return element;
   }
   private empty(text: string, parent = this.body): void { const paragraph = document.createElement('p'); paragraph.className = 'trace-agent-empty'; paragraph.textContent = text; parent.append(paragraph); }
   private heading(text: string, parent = this.body): void { const heading = document.createElement('h3'); heading.textContent = text; parent.append(heading); }
-  private fields(fields: [string, unknown][], parent = this.body): void {
+  private fields(fields: [string, unknown][], parent = this.body): HTMLDListElement {
     const list = document.createElement('dl'); list.className = 'trace-agent-fields';
     for (const [label, value] of fields) {
       if (value === undefined || value === '') continue;
-      const term = document.createElement('dt'), description = document.createElement('dd'); term.textContent = label; description.textContent = String(value); list.append(term, description);
+      const term = document.createElement('dt'), description = document.createElement('dd'); term.textContent = label;
+      if (value instanceof HTMLElement) description.append(value); else description.textContent = String(value);
+      list.append(term, description);
     }
-    parent.append(list);
+    parent.append(list); return list;
   }
   private record(key: string, title: string, value: unknown): void {
     const row = document.createElement('details'), summary = document.createElement('summary'); row.className = 'trace-agent-record'; row.dataset.record = key;
@@ -194,6 +214,7 @@ export class TraceAgentView {
       const label = task.label === 'pi.generation' ? t('Model request') : task.label === 'pi.compaction' ? t('Context compaction') : task.label === 'pi.tools' ? t('Tool round') : task.label;
       const stopping = task.stopping && !terminalTask(task);
       button.title = label; button.innerHTML = `${iconHtml(expanded ? 'chevron-down' : 'chevron-right')}${iconHtml(stopping ? 'loading' : task.status === 'completed' ? 'check' : task.blockedOn.length ? 'debug-pause' : task.toolName ? 'tools' : 'circle-outline')}<span>${escapeHtml(label)}</span><small>${escapeHtml(stopping ? t('Stopping') : status(task.status))}</small>`;
+      button.querySelector('small')!.append(this.duration(task, true));
       button.onclick = () => { this.selectedTask = expanded ? undefined : task.id; this.signature = ''; this.render(); };
       row.append(button);
       const progress = task.progress ?? task.agent?.progress;
@@ -222,7 +243,10 @@ export class TraceAgentView {
     const copy = iconButton('copy', t('Copy record'), () => this.copy(JSON.stringify(task, null, 2))); copy.dataset.focus = `copy-task-${task.id}`;
     tools.append(open, copy); content.append(tools);
     const progress = task.progress ?? task.agent?.progress;
-    this.fields([[t('Task'), task.id], [t('Status'), status(task.status)], [t('Phase'), task.phase], [t('Replay policy'), task.replay],
+    this.fields([[t('Task'), task.id], [t('Status'), status(task.status)], [t('Duration'), this.duration(task)],
+      [t('Started at'), task.startedAt === undefined ? undefined : new Date(task.startedAt).toLocaleString(locale())],
+      [t('Ended at'), task.endedAt === undefined ? undefined : new Date(task.endedAt).toLocaleString(locale())],
+      [t('Tokens'), task.usage?.totalTokens], [t('Phase'), task.phase], [t('Replay policy'), task.replay],
       [t('Agent role'), task.agent?.agentId], [t('Work item'), task.agent?.workId], [t('Failure reason'), task.agent?.error],
       [t('Progress'), progress && `${progress.completed}/${progress.total}`],
       [t('Attempt'), task.attempt], [t('Blocked by'), task.blockedOn.join(', ')], [t('Blocked reason'), task.blockedReason && status(task.blockedReason)],
@@ -266,6 +290,14 @@ export class TraceAgentView {
     for (const record of agent.records.filter(record => record.conversationId === agent.conversationId).reverse()) this.record(`command-${record.id}`, `#${record.id} ${record.label}`, record.data);
   }
   private usage(agent: TraceAgentSnapshot, connected: boolean): void {
+    if (agent.tokenUsage || agent.contextUsage) {
+      this.heading(t('Conversation usage'));
+      const usage = agent.tokenUsage, context = agent.contextUsage;
+      const summary = this.fields([[t('Total tokens'), usage?.totalTokens], [t('Input tokens'), usage?.inputTokens],
+        [t('Output tokens'), usage?.outputTokens], [t('Model calls'), usage?.calls],
+        [t('Context usage'), context ? `${context.used} / ${context.total}` : undefined]]);
+      summary.dataset.usageSummary = '';
+    }
     if (!agent.usage.length) this.empty(t('No usage recorded'));
     for (const spend of agent.usage) {
       const heading = document.createElement('div'); heading.className = 'trace-plan-heading';

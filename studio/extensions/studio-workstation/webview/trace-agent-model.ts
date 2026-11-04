@@ -36,6 +36,12 @@ export const terminalTask = (task: TraceTask): boolean => ['completed', 'aborted
 export const retryableAgentTask = (task: TraceTask): boolean => !!task.agent && ['aborted', 'failed', 'faulted', 'orphaned'].includes(task.status);
 export const taskConversation = (task: TraceTask): number => task.agent?.childConversationId ?? task.childConversationId ?? task.conversationId;
 
+export function taskDuration(task: TraceTask, agent: TraceAgentSnapshot, connected: boolean, now = Date.now()): number | undefined {
+  if (task.startedAt === undefined || !Number.isFinite(task.startedAt)) return;
+  const end = task.endedAt ?? (terminalTask(task) ? undefined : connected ? now : agent.capturedAt);
+  return end !== undefined && Number.isFinite(end) ? Math.max(0, end - task.startedAt) : undefined;
+}
+
 export function orderedTasks(tasks: TraceTask[], all: TraceTask[]): { task: TraceTask; depth: number }[] {
   const byId = new Map(all.map(task => [task.id, task])), visible = new Set(tasks.map(task => task.id));
   const children = new Map<number, TraceTask[]>();
@@ -71,8 +77,8 @@ function planText(items: OutputItem[]): string {
 export function latestAgentPlan(messages: readonly ConversationMessage[]): AgentPlanDocument | undefined {
   for (const message of [...messages].reverse()) {
     if (message.role !== 'assistant') continue;
-    const items = message.items ?? [];
-    const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])]
+    const items = message.items ?? message.report?.output?.items ?? [];
+    const answers = [...new Map([...(message.resolvedInputs ?? message.report?.resolvedUserInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])]
       .map(answer => [answer.requestId, answer])).values()];
     const inputs: { request: ResolvedInput['request']; preceding?: string[]; state: AgentPlanDocument['state'] }[] = answers.map(answer => ({
       request: answer.request, preceding: answer.precedingOutputItemIds,

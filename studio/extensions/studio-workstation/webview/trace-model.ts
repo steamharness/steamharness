@@ -1,7 +1,7 @@
 import { t } from './localization';
 import { agentActivity, activityValueText } from './agent-activity';
 import type { ConversationMessage, OutputItem } from '../src/workflow-types';
-import type { TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
+import type { TracePanelState, TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
 
 export type TraceLane = 'input' | 'model' | 'tool' | 'node' | 'output' | 'log' | 'error';
 export interface TraceRow {
@@ -19,7 +19,11 @@ export function traceDuration(value?: number): string {
   if (value === undefined || !Number.isFinite(value)) { return ''; }
   if (value < 1000) { return `${Math.max(0, Math.round(value))} ms`; }
   if (value < 60_000) { return `${(value / 1000).toFixed(1)} s`; }
-  return `${Math.floor(value / 60_000)} m ${Math.round(value % 60_000 / 1000)} s`;
+  const seconds = Math.round(value / 1000);
+  return `${Math.floor(seconds / 60)} m ${seconds % 60} s`;
+}
+export function traceClock(state: TracePanelState | undefined, now = Date.now()): number {
+  return state?.status === 'connected' ? now : traceTime(state?.snapshot?.capturedAt) ?? now;
 }
 // The run span remains authoritative when legacy items have no timing data.
 export function traceRange(snapshot: TraceSnapshot | undefined, selection: TraceSelection, selectedRun?: TraceRun, now = Date.now()): { start: number; end: number } | undefined {
@@ -90,7 +94,8 @@ function runRows(run: TraceRun, turn: number, conversation = false): TraceRow[] 
     const sections = activity?.sections.map(section => ({ ...section, value: valueText(section.value) })) ?? [{ label: t("Content"), value: valueText(item.content) }];
     const rawTitle = tool ? String(content.tool ?? item.title ?? t("Tool")) : activity?.title ?? item.title ?? (conversation ? t("Assistant") : t("Output"));
     rows.push({ id: `${prefix}item:${item.id ?? index}`, turn, lane, label: tool ? t("Tool") : activity ? activity.action : conversation ? t("Assistant") : t("Output"),
-      title: rawTitle, preview: sections.map(section => section.value).join(' \u2192 '), status: activity?.status ?? run.status,
+      title: rawTitle, preview: sections.map(section => section.value).join(' \u2192 '),
+      status: terminalStatus(activity?.status ?? item.metadata?.status ?? content.status ?? (end !== undefined ? 'success' : run.status), run.status),
       error: activity?.status === 'failed' || activity?.kind === 'retry' || sections.some(section => section.error)
         || ['failed', 'error'].includes(String(item.metadata?.status ?? content.status)),
       start, end, durationMs: start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined, sections });

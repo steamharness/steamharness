@@ -179,6 +179,8 @@ The host supplies `AgentExecutionEnv` with the declared stable id and target cwd
 
 Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
 
+Tasks show persisted start and end times, duration and delegated token usage; historical tasks without timing show "Time not recorded". Timing freezes at the last received snapshot while disconnected and resumes after reconnection. Usage starts with the selected conversation's authoritative cumulative tokens, model calls and context occupancy, followed by the existing model and tool breakdown per conversation, without counting delegated usage twice. Plan can also restore approval content from run reports. Separate Trace windows reload their selected historical runs after reconnection.
+
 For account-private PostgreSQL persistence through Server, inject [`createServerAgentStorage`](/en/core-api/runtime-storage).
 
 ### Storage And Backups

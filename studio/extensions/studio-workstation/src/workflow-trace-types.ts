@@ -13,6 +13,7 @@ export interface TraceRun extends TraceRunSummary {
 }
 export interface TraceSnapshot {
   project: { id: string; entryId: string; name: string; projectType: 'conversation' | 'workflow' };
+  capturedAt?: number;
   running?: boolean; sessions?: TraceSession[]; activeId?: string;
   durable?: boolean; agents?: Record<string, TraceAgentSnapshot>;
   runs?: TraceRunSummary[]; selectedId?: string; run?: TraceRun; occupiedRun?: TraceRun;

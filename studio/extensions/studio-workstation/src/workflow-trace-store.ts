@@ -3,7 +3,7 @@ import type { TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, Trace
 import type { TraceAgentAction } from './workflow-agent-types';
 
 interface Source {
-  project: Project; token: number; send?: (message: unknown) => void;
+  project: Project; token: number; ready: boolean; send?: (message: unknown) => void;
   snapshot?: TraceSnapshot; runs: Map<string, TraceRun>; requested: Set<string>; failed: Set<string>; status: string; error?: string;
   pending: Map<string, string>; actionErrors: Map<string, string>;
 }
@@ -45,7 +45,7 @@ export class TraceStore {
   bind(project: Project, version: number | undefined, send: (message: unknown) => void) {
     const token = ++this.shared.token;
     const previous = this.sources.get(projectWindowKey(project));
-    const source: Source = { project, token, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
+    const source: Source = { project, token, ready: false, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
       requested: new Set(), failed: new Set(), status: version === 1 ? 'connecting' : 'unsupported' };
     this.sources.set(projectWindowKey(project), source);
     ++this.generation;
@@ -56,6 +56,8 @@ export class TraceStore {
           const snapshot = message.snapshot as TraceSnapshot;
           if (snapshot?.project?.id !== project.id || snapshot.project.entryId !== project.entryId || snapshot.project.projectType !== project.projectType) { return false; }
           source.snapshot = snapshot;
+          source.snapshot.capturedAt = Date.now();
+          source.ready = true;
           if (project.assistant && snapshot.durable) {
             this.assistants.add(projectWindowKey(project));
             if (!this.selection.projectUri) { this.select(projectWindowKey(project)); }
@@ -95,8 +97,15 @@ export class TraceStore {
         source.requested.clear();
         if (source.snapshot) {
           source.snapshot.running = false;
-          for (const session of source.snapshot.sessions ?? []) { for (const message of session.messages) { if (message.status === 'running') { message.status = 'interrupted'; } } }
-          for (const run of source.runs.values()) { if (run.status === 'running') { run.status = 'interrupted'; } }
+          const interrupt = (run: { status?: string; createdAt?: number; durationMs?: number }): void => {
+            if (run.status !== 'running') return;
+            run.status = 'interrupted';
+            if (run.durationMs === undefined && run.createdAt !== undefined && source.snapshot?.capturedAt !== undefined) {
+              run.durationMs = Math.max(0, source.snapshot.capturedAt - run.createdAt);
+            }
+          };
+          for (const session of source.snapshot.sessions ?? []) { for (const message of session.messages) interrupt(message); }
+          for (const run of source.runs.values()) interrupt(run);
         }
         if (project.assistant) { this.assistants.delete(projectWindowKey(project)); this.sources.delete(projectWindowKey(project)); }
       },
@@ -104,7 +113,7 @@ export class TraceStore {
   }
   request(type: 'run' | 'more', runId?: string): void {
     const source = this.sources.get(this.selection.projectUri ?? '');
-    if (!source?.send) { return; }
+    if (!source?.send || type === 'run' && runId && source.requested.has(runId)) { return; }
     if (type === 'run' && runId) { source.requested.add(runId); source.failed.delete(runId); }
     source.send({ type: 'workflow-host', traceCommand: { type, runId } });
   }
@@ -123,6 +132,12 @@ export class TraceStore {
   hasConnection(uri: string): boolean { return !!this.sources.get(uri)?.send; }
   state(): TracePanelState {
     const source = this.sources.get(this.selection.projectUri ?? '');
+    const runId = this.selection.runId;
+    // Each view owns its selection. A replacement source must also reload a
+    // detached view's history, after its fresh snapshot completes the handshake.
+    if (source?.send && source.ready && runId && !source.runs.has(runId) && !source.requested.has(runId) && !source.failed.has(runId)) {
+      this.request('run', runId);
+    }
     const sessionId = this.selection.sessionId ?? source?.snapshot?.activeId;
     return { type: 'trace-state', generation: this.generation, reveal: this.reveal,
       projects: this.availableProjects().map(project => ({ uri: projectWindowKey(project), name: projectDisplayName(project), projectType: project.projectType })),

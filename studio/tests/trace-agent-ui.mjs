@@ -31,6 +31,23 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
+function timedTraceState() {
+  const state = durableTraceState(), now = Date.now(), agent = state.snapshot.agents.main;
+  state.snapshot.capturedAt = agent.capturedAt = now;
+  for (const task of agent.tasks) task.startedAt = now - 4500;
+  for (const task of agent.history) { task.startedAt = now - 8000; task.endedAt = now - 1000; }
+  agent.contexts[0].tokenUsage = { inputTokens: 3744, outputTokens: 123, totalTokens: 3867, calls: 2 };
+  agent.contexts[0].contextUsage = { used: 3755, total: 100000 };
+  agent.contexts[1].tokenUsage = { inputTokens: 90, outputTokens: 10, totalTokens: 100, calls: 1 };
+  agent.contexts[1].contextUsage = { used: 100, total: 100000 };
+  const [input, answer] = state.snapshot.sessions[0].messages;
+  input.createdAt = now - 6500; answer.createdAt = now - 6000;
+  answer.items.unshift(
+    { id: 'thought', content: { text: 'Inspect the workspace' }, metadata: { kind: 'agent-part', partType: 'reasoning', status: 'success', startedAt: now - 6000, endedAt: now - 5000 } },
+    { id: 'tool', content: { tool: 'read', input: { path: 'README.md' }, error: 'Fixture tool failure', status: 'failed' }, metadata: { kind: 'agent-part', partType: 'tool', status: 'failed', startedAt: now - 5000, endedAt: now - 4000 } },
+  );
+  return state;
+}
 const browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
 const page = await browser.newPage(); const errors = []; page.on('pageerror', error => errors.push(error.message));
 let state;
@@ -43,7 +60,7 @@ try {
     const label = key => catalogs[language][key] ?? key;
     for (const [width, height] of [[1280, 500], [700, 400], [390, 600], [320, 460]]) {
       await page.setViewportSize({ width, height }); await page.goto(`${origin}/?locale=${language}&theme=${theme}`);
-      state = durableTraceState(); await publish();
+      state = timedTraceState(); await publish();
       for (const tab of ['trace', 'tasks', 'plan', 'records', 'usage']) {
         await selectTab(tab);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${language} ${theme} ${width} ${tab}: no document overflow`);
@@ -55,20 +72,33 @@ try {
           assert.equal(await page.locator('.trace-agent-conversation[aria-current=true]').count(), 1);
           assert.equal(await page.locator('[data-scroll=history] .trace-task-select').count(), 65);
           assert.ok(!(await page.locator('[data-scroll=history]').innerText()).includes(label('Stopping')));
+          assert.match(await page.locator('[data-focus=task-164]').innerText(), /7.0 s/);
         }
         if (tab === 'plan') { assert.match(await page.locator('.trace-plan-document').innerText(), /Implementation plan/); assert.equal(await page.locator('#trace-agent button').count(), 0); }
         if (tab === 'records') assert.match(await page.locator('#trace-agent').innerText(), /sqlite/);
-        if (tab === 'usage') assert.match(await page.locator('#trace-agent').innerText(), /3755/);
+        if (tab === 'usage') {
+          const summary = await page.locator('[data-usage-summary]').innerText();
+          assert.match(summary, /3867/); assert.match(summary, /3755 \/ 100000/); assert.ok(summary.includes(label('Context usage')));
+        }
         await page.screenshot({ path: path.join(proof, `${language}-${theme}-${width}-${tab}.png`) }); screenshots++;
       }
     }
   }
-  await page.setViewportSize({ width: 1100, height: 500 }); await page.goto(origin); state = durableTraceState(); await publish(); await selectTab('tasks');
+  await page.setViewportSize({ width: 1100, height: 500 }); await page.goto(origin); state = timedTraceState(); await publish(); await selectTab('tasks');
   await selectTab('trace'); await page.locator('#trace-run').selectOption('reply');
   const selection = await page.evaluate(() => window.requests.filter(request => request.type === 'select').at(-1));
   assert.equal(selection.target.sessionId, undefined); assert.equal(selection.target.messageId, 'reply');
   state.selection = { ...state.selection, ...selection.target }; state.generation++; await publish();
   assert.ok(await page.locator('.trace-row').count() > 0, 'choosing a turn retains the current conversation');
+  for (const mode of ['rounds', 'calls', 'errors', 'duration']) {
+    await page.locator(`[data-mode=${mode}]`).click();
+    assert.equal(await page.locator(`[data-mode=${mode}]`).getAttribute('aria-pressed'), 'true');
+    if (mode === 'errors') {
+      assert.match(await page.locator('#trace-list').innerText(), /Fixture tool failure/);
+      assert.equal(await page.locator('#trace-timeline').isVisible(), false);
+    }
+    if (mode === 'calls') assert.equal(await page.locator('.trace-row[data-lane=input]').count(), 0);
+  }
   await selectTab('tasks');
   await page.locator('[data-focus=task-164]').click(); assert.match(await page.locator('#trace-task-164').innerText(), /Fixture failure/);
   await page.locator('[data-scroll=history]').evaluate(element => { element.scrollTop = 90; });
@@ -94,6 +124,10 @@ try {
   state.selection.sessionId = 'child'; state.generation++; await publish(); await selectTab('tasks');
   assert.equal(await page.locator('.trace-agent-conversation[aria-current=true]').innerText(), 'Main');
   assert.match(await page.locator('.trace-agent-conversation[data-selected=true]').innerText(), /subagent/);
+  await selectTab('usage');
+  const childUsage = await page.locator('[data-usage-summary]').innerText();
+  assert.match(childUsage, /100 \/ 100000/); assert.doesNotMatch(childUsage, /3867/);
+  await selectTab('tasks');
   await page.locator('[data-focus=conversation-3]').click(); action = await lastAction(); assert.equal(action.action.targetId, 3); assert.equal(action.action.conversationId, 2);
   await selectTab('records'); assert.match(await page.locator('#trace-agent').innerText(), /steamharness.plan/); assert.doesNotMatch(await page.locator('#trace-agent').innerText(), /steamharness.reset/);
   state.selection.sessionId = 'fork'; state.generation++; await publish(); await selectTab('tasks'); await page.locator('[data-focus=fork-source]').click();
@@ -108,5 +142,5 @@ try {
   state.status = 'connected'; state.reveal++; state.selection.messageId = 'reply'; await publish(); assert.equal(await page.locator('#trace-tab-trace').getAttribute('aria-selected'), 'true');
   await selectTab('tasks'); await page.locator('#trace-tab-tasks').focus(); await page.keyboard.press('ArrowRight'); assert.equal(await page.locator('#trace-tab-plan').getAttribute('aria-selected'), 'true');
   state.snapshot.durable = false; await publish(); assert.equal(await page.locator('#trace-tabs').isVisible(), false); assert.equal(await page.locator('#trace-execution').isVisible(), true);
-  assert.deepEqual(errors, []); console.log(JSON.stringify({ headless: true, screenshots, languages: ['en', 'zh-cn'], themes: ['dark', 'light'], checks: ['all-views', 'responsive', 'equal-task-sections', 'completed-details', 'scroll-focus-expansion', 'plan-CAS', 'handoff', 'scoped-navigation', 'current-conversation', 'scoped-cancel', 'disconnect', 'keyboard', 'original-trace'], proof }));
+  assert.deepEqual(errors, []); console.log(JSON.stringify({ headless: true, screenshots, languages: ['en', 'zh-cn'], themes: ['dark', 'light'], checks: ['all-views', 'trace-modes', 'responsive', 'equal-task-sections', 'task-timing', 'selected-context-usage', 'completed-details', 'scroll-focus-expansion', 'plan-CAS', 'handoff', 'scoped-navigation', 'current-conversation', 'scoped-cancel', 'disconnect', 'keyboard', 'original-trace'], proof }));
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

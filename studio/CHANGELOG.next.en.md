@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix Trace status and elapsed time for the selected turn, freeze timing on disconnection, and preserve timeline keyboard focus. Tasks show persisted timing and delegated token usage, Usage includes the selected conversation's cumulative tokens and context occupancy, Plan restores approval content from run reports, and separate Trace windows reload selected history after reconnection.
+
 - Fix Trace duration axes to include the selected turn's full elapsed time and render model, tool and output spans from the runtime; missing item timings no longer collapse a completed reply to 1 ms.
 
 - [Fixed] System model catalogues reuse a 30-second host snapshot and shared refreshes while preserving manual refresh. Resource views briefly reuse display data, merge concurrent refreshes, and clear cached data immediately when accounts change.

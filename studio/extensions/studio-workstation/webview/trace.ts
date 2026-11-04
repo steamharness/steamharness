@@ -1,7 +1,7 @@
 import { t, locale } from './localization';
 import './resources.css';
 import './trace.css';
-import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, type TraceRow, type TraceLane } from './trace-model';
+import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, traceClock, type TraceRow, type TraceLane } from './trace-model';
 import type { TracePanelState, TraceTarget } from '../src/workflow-trace-types';
 import { TraceAgentView, type AgentTab } from './trace-agent';
 import { agentSession } from './trace-agent-model';
@@ -110,11 +110,13 @@ function focusRow(id: string): void {
   follow = false; preferences(); view.root.open = true; view.root.scrollIntoView({ block: 'center' }); view.root.querySelector('summary')?.focus();
 }
 function timeline(filtered: TraceRow[]): void {
-  const target = element('trace-timeline'); target.replaceChildren();
+  const target = element('trace-timeline');
+  const focused = target.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.rowId : undefined;
+  target.replaceChildren();
   const entries = filtered.filter(row => row.lane !== 'log' && row.lane !== 'error'); target.hidden = mode === 'errors' || !entries.length;
   if (target.hidden) return;
   const timed = entries.filter(row => row.start !== undefined);
-  const now = Date.now(), range = traceRange(state?.snapshot, state?.selection ?? {}, state?.run, now);
+  const now = traceClock(state), range = traceRange(state?.snapshot, state?.selection ?? {}, state?.run, now);
   const start = Math.min(...timed.map(row => row.start!), ...(range ? [range.start] : []));
   const end = Math.max(...timed.map(row => traceRowEnd(row, now)!), ...(range ? [range.end] : []));
   const duration = end - start, span = Math.max(1, duration), turns = Math.max(1, ...entries.map(row => row.turn));
@@ -140,6 +142,7 @@ function timeline(filtered: TraceRow[]): void {
     }
     line.append(label, track); target.append(line);
   }
+  if (focused) Array.from(target.querySelectorAll<HTMLButtonElement>('[data-row-id]')).find(button => button.dataset.rowId === focused)?.focus({ preventScroll: true });
 }
 function renderRow(row: TraceRow): HTMLDetailsElement {
   let view = views.get(row.id);
@@ -203,9 +206,22 @@ function render(): void {
   element('trace-notice').hidden = !notice; element('trace-notice').textContent = notice;
   const sessionAgent = agentSession(state).agent;
   if (activeTab !== 'trace') element('trace-count').textContent = !sessionAgent ? t('No task state') : `${sessionAgent.foreground ? t('Responding') : t('Foreground complete')} \u00b7 ${t('Background tasks: {0}', sessionAgent.backgroundCount)}`;
-  const active = state.run ?? state.snapshot?.run;
-  element('trace-status').textContent = [active ? statuses[active.status] : '', statuses[state.status], traceDuration(active?.durationMs)].filter(Boolean).join(' \u00b7 ');
+  renderStatus();
   if (follow && activeTab === 'trace') { scroll.scrollTop = scroll.scrollHeight; }
+}
+function activeRun() {
+  const snapshot = state?.snapshot, selection = state?.selection;
+  if (snapshot?.project.projectType === 'workflow') return selection?.runId
+    ? [state?.run, snapshot.run, snapshot.occupiedRun].find(run => run?.id === selection.runId) : state?.run ?? snapshot.run ?? snapshot.occupiedRun;
+  const messages = snapshot?.sessions?.find(session => session.id === (selection?.sessionId ?? snapshot.activeId))?.messages.filter(message => message.role === 'assistant') ?? [];
+  return selection?.messageId ? messages.find(message => message.id === selection.messageId)
+    : selection?.runId ? messages.find(message => message.runId === selection.runId) : messages.at(-1);
+}
+function renderStatus(): void {
+  if (!state) return;
+  const active = activeRun();
+  const duration = active?.durationMs ?? (active?.status === 'running' && active.createdAt !== undefined ? Math.max(0, traceClock(state) - active.createdAt) : undefined);
+  element('trace-status').textContent = [active ? statuses[active.status ?? ''] : '', statuses[state.status], traceDuration(duration)].filter(Boolean).join(' \u00b7 ');
 }
 select('trace-project').onchange = () => post({ type: 'select', projectUri: select('trace-project').value });
 select('trace-session').onchange = () => post({ type: 'select', target: { sessionId: select('trace-session').value || undefined } });
@@ -231,5 +247,10 @@ addEventListener('message', event => {
   state = event.data;
   if (renderFrame === undefined) renderFrame = requestAnimationFrame(() => { renderFrame = undefined; render(); });
 });
-setInterval(() => { if (state?.snapshot?.running && (tab === 'trace' || !state.snapshot.durable) && !document.hidden) { timeline(filterTraceRows(rows, query, mode)); } }, 1000);
+setInterval(() => {
+  if (!state || state.status !== 'connected' || document.hidden) return;
+  if ((tab === 'trace' || !state.snapshot?.durable) && (activeRun()?.status === 'running' || rows.some(row => row.status === 'running'))) {
+    timeline(filterTraceRows(rows, query, mode)); renderStatus();
+  } else if (tab === 'tasks') agent.refreshTiming();
+}, 1000);
 host.postMessage({ type: 'ready' });

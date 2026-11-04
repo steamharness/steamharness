@@ -1,5 +1,9 @@
 // Execution DTOs carried by the CLI host bridge; no runtime dependency on Core.
 export interface TracePlanItem { id: string; text: string; status: 'pending' | 'in_progress' | 'completed' }
+export interface TraceTokenUsage {
+  inputTokens: number; outputTokens: number; totalTokens: number; calls: number;
+  cachedInputTokens?: number; cacheCreationTokens?: number; reasoningTokens?: number;
+}
 export interface TraceAgentWork {
   taskId: number; workId: string; agentId: string; label: string; status: string; attempt: number;
   childConversationId?: number; retryOf?: number; result?: string; error?: string;
@@ -7,6 +11,7 @@ export interface TraceAgentWork {
 }
 export interface TraceTask {
   id: number; conversationId: number; parentId?: number; kind: string; label: string; status: string;
+  startedAt?: number; endedAt?: number; usage?: TraceTokenUsage;
   phase?: string; background: boolean; stopping: boolean; blockedOn: number[]; blockedReason?: string;
   toolName?: string; callId?: string; arguments?: unknown; replay?: 'safe' | 'never'; attempt?: number;
   childConversationId?: number;
@@ -17,9 +22,11 @@ export interface TraceAgentContext {
   conversationId: number; foreground: boolean; backgroundCount: number; epoch: number;
   configuration: { version: number; model: string; provider: string; effort: string; cwd?: string };
   prompt: { hash: string; version: number }; plan: { version: number; items: TracePlanItem[] };
+  tokenUsage?: TraceTokenUsage; contextUsage?: { used: number; total: number };
 }
 export interface TraceAgentSnapshot extends TraceAgentContext {
   version: 1; ownerId: string; revision: number;
+  capturedAt?: number;
   contexts: TraceAgentContext[]; tasks: TraceTask[]; history: TraceTask[];
   conversations: { id: number; parentId?: number; title: string; background: boolean; forkEntryId?: number }[];
   turns: { conversationId: number; status: string }[];
