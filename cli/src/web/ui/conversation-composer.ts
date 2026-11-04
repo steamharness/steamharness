@@ -150,6 +150,7 @@ export class ConversationComposer {
     }
     if (this.active < 0 || entries[this.active]?.disabled) { this.active = entries.findIndex(entry => !entry.disabled); }
     this.popup.hidden = false;
+    this.textarea.setAttribute('aria-controls', this.popup.id);
     this.textarea.setAttribute('aria-expanded', 'true');
     this.highlight(); this.position();
   }
@@ -234,7 +235,9 @@ export class ConversationComposer {
   close(dismiss = false): void {
     if (dismiss) { this.dismissed = this.tokenKey(); }
     this.popup.hidden = true; this.token = undefined; this.active = -1;
-    this.textarea.setAttribute('aria-expanded', 'false'); this.textarea.removeAttribute('aria-activedescendant');
+    if (this.textarea.getAttribute('aria-controls') === this.popup.id) {
+      this.textarea.setAttribute('aria-expanded', 'false'); this.textarea.removeAttribute('aria-activedescendant');
+    }
   }
 
   private position(): void {

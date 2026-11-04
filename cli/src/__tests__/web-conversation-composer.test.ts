@@ -77,6 +77,7 @@ function fixture() {
     children: Element[] = []; dataset: Record<string, string> = {}; attributes = new Map<string, string>(); style = {};
     offsetTop = 0; offsetHeight = 40; clientHeight = 240; scrollTop = 0;
     setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    getAttribute(name: string) { return this.attributes.get(name) ?? null; }
     removeAttribute(name: string) { this.attributes.delete(name); }
     append(...children: Element[]) { this.children.push(...children); }
     replaceChildren(...children: Element[]) { this.children = children; }

@@ -46,6 +46,18 @@ async function fixture(query = '', saved?: object) {
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
 
+it('restores a compact file reference but saves and submits its complete path after editing surrounding text', async () => {
+  const f = await fixture(), source = '@file:/project/deeply/nested/package.json ';
+  const entry = { ...session('file-draft'), draft: { text: source, attachments: [] } };
+  f.receive([entry], entry.id);
+  expect(f.input.value).toBe('@file:package.json ');
+  expect(document.querySelector<HTMLElement>('.mention-highlights mark')!.title).toBe('/project/deeply/nested/package.json');
+  f.input.value = `检查 ${f.input.value}`; f.input.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(f.savedState().drafts[`${project.uri}:${entry.id}`]).toBe(`检查 ${source}`);
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'send', text: `检查 ${source}` }));
+});
+
 it.each(['success', 'failed', 'aborted'])('keeps the final duration in the reply metadata after %s', async status => {
   const f = await fixture(), startedAt = Date.now();
   const entry: ConversationSession = { ...session('duration'), messages: [{ id: 'reply', role: 'assistant', content: 'Answer', status: 'running', createdAt: startedAt - 12_000 }] };

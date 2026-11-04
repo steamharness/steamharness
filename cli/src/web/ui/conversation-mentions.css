@@ -1,0 +1,21 @@
+.mention-input { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.mention-input > textarea { position: relative; min-height: 0; caret-color: var(--vscode-input-foreground); }
+.mention-highlights { display: none; position: absolute; inset: 0; pointer-events: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; padding: 17px 18px 6px; font: inherit; line-height: 1.7; color: var(--vscode-input-foreground); }
+.mention-input.has-mentions > .mention-highlights { display: block; }
+.mention-input.has-mentions > textarea { color: transparent; -webkit-text-fill-color: transparent; }
+.mention-input.has-mentions > textarea::selection { background: var(--vscode-editor-selectionBackground, #3574b866); }
+.mention-highlights mark { color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 15%, transparent); border-radius: 3px; }
+.mention-menu { position: fixed; z-index: 100; overflow-y: auto; overscroll-behavior: contain; padding: 5px; border: 1px solid var(--vscode-editorWidget-border, var(--border)); border-radius: 10px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); box-shadow: 0 8px 24px #0003; }
+.mention-choice { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 7px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--vscode-editor-foreground); text-align: left; }
+.mention-choice[aria-selected=true] { background: var(--vscode-list-activeSelectionBackground, var(--selection)); color: var(--vscode-list-activeSelectionForeground, var(--vscode-editor-foreground)); }
+.mention-choice > .codicon { flex: 0 0 auto; font-size: 18px; }
+.mention-choice-text { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 3px; }
+.mention-choice-text > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mention-choice-text > small, .mention-choice-kind, .mention-status { color: var(--muted); font-size: 11px; }
+.mention-choice[aria-selected=true] small { color: inherit; opacity: .8; }
+.mention-choice-kind { flex-shrink: 0; }
+.mention-status { padding: 10px; overflow-wrap: anywhere; }
+@media (forced-colors: active) {
+  .mention-highlights mark { color: LinkText; }
+  .mention-choice[aria-selected=true] { outline: 1px solid Highlight; }
+}

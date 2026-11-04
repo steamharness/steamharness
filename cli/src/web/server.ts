@@ -38,6 +38,7 @@ import { ConversationOwnership } from './conversation-ownership';
 import { ConversationHistory } from './conversation-history';
 import { ConversationState } from './conversation-state';
 import { pathReferences } from './conversation-paths';
+import { projectMentionFiles } from './mention-files';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerConnection, projectServerAccessFailure, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
@@ -642,6 +643,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const value = await loadAgentModelCatalog(connection);
       if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
+    }
+    if (message.type === 'project-mention-files') {
+      if (project.projectType !== 'conversation' || typeof message.requestId !== 'string' || message.requestId.length > 256
+        || typeof message.query !== 'string' || message.query.length > 256 || /[\0\r\n]/.test(message.query)) throw new Error('Invalid file reference search.');
+      return [{ type: 'project-mention-files-result', requestId: message.requestId, value: await projectMentionFiles(project, message.query) }];
     }
     if (message.type === 'project-skills') {
       if (typeof message.requestId !== 'string' || message.requestId.length > 256

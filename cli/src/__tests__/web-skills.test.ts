@@ -61,6 +61,16 @@ it('lists and previews the selected agent through the real worker and authentica
     const listed = await post({ type: 'project-skills', requestId: 'catalog' });
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
     const guides = listed.body.messages[0].value;
+    const files = await post({ type: 'project-mention-files', requestId: 'files', query: 'index.ts' });
+    expect(files.status).toBe(200);
+    expect(files.body.messages[0]).toMatchObject({ type: 'project-mention-files-result', requestId: 'files', value: { files: expect.arrayContaining([
+      { name: 'index.ts', path: path.join(root, 'index.ts') },
+    ]) } });
+    expect((await post({ type: 'project-mention-files', requestId: 'invalid', query: '\0' })).status).toBe(400);
+    expect((await post({ type: 'project-mention-files', requestId: 'long', query: 'a'.repeat(257) })).status).toBe(400);
+    const deniedFiles = await fetch(`${app.origin}/api/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'project-mention-files', requestId: 'denied', query: '' }) });
+    expect(deniedFiles.status).toBe(401);
     expect(guides).toEqual([
       { id: 'project:large', name: 'large', description: 'Full project guide', source: 'project' },
       expect.objectContaining({ id: 'builtin:i-have-adhd', source: 'builtin' }),

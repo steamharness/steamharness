@@ -6,6 +6,7 @@ import type { ProjectServerState } from '../project-server-state';
 import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
+import { ConversationMentions } from './conversation-mentions';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
@@ -313,6 +314,12 @@ function initialize(): void {
       post({ type: 'command', command, params: values() }); updateControls(); return true;
     },
   });
+  const conversationMentions = new ConversationMentions(textarea, {
+    current: () => state ? { scope: JSON.stringify([formKey, state.serverInstanceId]), project: state.project,
+      enabled: state.project.projectType === 'conversation' && !embeddedConversation, disabled: readOnly() || busy() } : undefined,
+    load: (type, requestId, query) => state && vscode.postMessage({ type, requestId, query,
+      projectUri: state.project.uri, sessionId: state.activeId, entrypointId: entrypoint.value || undefined }),
+  });
 
   function showMenu(open: boolean): void {
     closeSessionMenu();
@@ -339,7 +346,7 @@ function initialize(): void {
     const parameters = currentParameters();
     return JSON.stringify([formKey, state?.serverInstanceId, state?.authenticationRevision, state?.parameterRevision,
       parameters, parameters.fields.map(field => [field.name, values()[field.name]]),
-      parameters.fields.some(field => field.resolveOnInput) ? textarea.value : undefined]);
+      parameters.fields.some(field => field.resolveOnInput) ? conversationMentions.text() : undefined]);
   }
 
   function cancelParameterRequest(): void {
@@ -386,7 +393,7 @@ function initialize(): void {
     updateControls();
     try {
       void Promise.resolve(vscode.postMessage({ type: 'resolve', projectUri: state.project.uri, sessionId: state.activeId,
-        requestId: id, entrypointId: entrypoint.value, params: structuredClone(values()), draftText: textarea.value, trigger }))
+        requestId: id, entrypointId: entrypoint.value, params: structuredClone(values()), draftText: conversationMentions.text(), trigger }))
         .then(delivered => { if (delivered === false) fail(t('Cannot load parameters. Retry or send the message to validate parameters.')); }, error => fail(String(error?.message ?? error)));
     } catch (error) { fail(String((error as Error).message)); }
   }
@@ -610,6 +617,7 @@ function initialize(): void {
     document.querySelector<HTMLElement>('#parameter-login')!.hidden = !authenticationRequired || state.account?.status === 'authenticated';
     parameterActions.update();
     conversationComposer.update();
+    conversationMentions.update();
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
@@ -790,8 +798,8 @@ function initialize(): void {
     clearTimeout(draftTimer);
     draftTimer = undefined;
     if (!state || submitting) { return; }
-    drafts[`${state.project.uri}:${state.activeId}`] = textarea.value;
-    const draft = { text: textarea.value, attachments: [...draftFiles], ...(draftReferences.length ? { references: [...draftReferences] } : {}), editingQueueId };
+    drafts[`${state.project.uri}:${state.activeId}`] = conversationMentions.text();
+    const draft = { text: conversationMentions.text(), attachments: [...draftFiles], ...(draftReferences.length ? { references: [...draftReferences] } : {}), editingQueueId };
     currentSession()!.draft = draft;
     draftUpdates.set(state.activeId, { id: state.activeId, create: localSessions.has(state.activeId), draft });
     persist();
@@ -1261,7 +1269,7 @@ function initialize(): void {
       retryingMessage = undefined;
       clearTimeout(inputTimer);
       clearTimeout(draftTimer); draftTimer = undefined; uploading = 0; dropGeneration++; pendingDrops.clear(); dialogs.close(); contentSearch.close();
-      textarea.value = session.draft?.text ?? drafts[`${next.project.uri}:${next.activeId}`] ?? '';
+      conversationMentions.setText(session.draft?.text ?? drafts[`${next.project.uri}:${next.activeId}`] ?? '');
       draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
       editingQueueId = session.draft?.editingQueueId;
       renderedSession = next.activeId;
@@ -1275,7 +1283,7 @@ function initialize(): void {
     if (editingChanged) { fileMenu.close(); dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear(); }
     if (editingChanged) {
       editingQueueId = session.draft?.editingQueueId;
-      textarea.value = session.draft?.text ?? ''; draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
+      conversationMentions.setText(session.draft?.text ?? ''); draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
       const queued = session.queuedInputs?.find((input) => input.id === editingQueueId);
       if (queued?.entrypointId) { entrypoint.value = queued.entrypointId; }
       sizeComposer();
@@ -1394,14 +1402,14 @@ function initialize(): void {
     stopRequests.delete(`${state.project.uri}:${state.activeId}`);
     if (state.project.projectType === 'conversation') {
       const session = currentSession()!;
-      const input = { id: crypto.randomUUID(), text: textarea.value, params: structuredClone(values()), entrypointId: entrypoint.value,
+      const input = { id: crypto.randomUUID(), text: conversationMentions.text(), params: structuredClone(values()), entrypointId: entrypoint.value,
         attachments: structuredClone(draftFiles), ...(draftReferences.length ? { references: structuredClone(draftReferences) } : {}), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
         modelName: conversationModelName({ params: input.params, states: paramStates }, currentParameters().fields),
         queued: !!editingQueueId || state.running || pendingSend() || !session.queuePaused && !!session.queuedInputs?.length });
       paramsNeedInit ||= resolving || inputTimer !== undefined || currentParameters().fields.some(field => field.resolveOnInput);
       cancelParameterRequest();
-      delete parameterEdits[formKey]; textarea.value = ''; draftFiles = []; draftReferences = []; editingQueueId = undefined;
+      delete parameterEdits[formKey]; conversationMentions.setText(''); draftFiles = []; draftReferences = []; editingQueueId = undefined;
       session.draft = { text: '', attachments: [] };
       followingLatest = true; sizeComposer(); saveDraft(false); render(state, false);
       persist(); syncNavigation(); dispatchSubmissions(); textarea.focus(); return;
@@ -1409,7 +1417,7 @@ function initialize(): void {
     draftUpdates.delete(state.activeId); persist();
     submitting = true;
     updateControls();
-    clearTimeout(draftTimer); post({ type: 'send', requestId: crypto.randomUUID(), mode: 'followUp', text: textarea.value, params: values(), entrypointId: entrypoint.value, attachments: draftFiles });
+    clearTimeout(draftTimer); post({ type: 'send', requestId: crypto.randomUUID(), mode: 'followUp', text: conversationMentions.text(), params: values(), entrypointId: entrypoint.value, attachments: draftFiles });
   }
 
   function finishStop(message: Record<string, any>): boolean {
@@ -1462,6 +1470,7 @@ function initialize(): void {
     }
   });
   textarea.addEventListener('keydown', (event) => {
+    if (conversationMentions.handleKeydown(event)) { return; }
     if (conversationComposer.handleKeydown(event)) { return; }
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && state?.project.projectType === 'conversation') { event.preventDefault(); send(); }
   });
@@ -1608,6 +1617,7 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     if (event.source !== null && event.source !== window.parent) return;
+    if (conversationMentions.receive(event.data ?? {})) return;
     if (event.data?.type === 'project-skills-result' || event.data?.type === 'error' && event.data.requestType === 'project-skills') {
       dialogs.skillsResult(event.data.requestId, event.data.value, event.data.type === 'error' ? event.data.message : undefined); return;
     }
@@ -1794,7 +1804,7 @@ function initialize(): void {
       submitting = false; updateControls();
     } else if (message.type === 'sent' && state && message.sessionId === state.activeId) {
       delete parameterEdits[formKey];
-      submitting = false; textarea.value = ''; draftFiles = []; draftReferences = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
+      submitting = false; conversationMentions.setText(''); draftFiles = []; draftReferences = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
       attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); updateControls(); textarea.focus();
     } else if (message.type === 'usage' && message.sessionId === state?.activeId) { dialogs.usageResult(message.requestId, message.usage); }
     else if (message.type === 'exported' && message.sessionId === state?.activeId) {
