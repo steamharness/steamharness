@@ -29,3 +29,7 @@ Use the client creation flow to request a Server identity. `upload --create` exp
 
 
 Configuration templates, profiles, snapshots and attachments are entry-scoped. Create, grant, migrate and bind relational resources in Server Web or CLI database commands. Downloaded projects do not carry account bindings; check the current account's resource grants and entry bindings before use. Knowledge bases use knowledgeBases configuration and authorization.
+
+## Release uploads
+
+`pack` and `upload` support `--mode auto|source|release`. Auto prepares a fresh release when configuration or artifacts exist. See [project release mode](/en/cli/steamharness#project-release-mode).

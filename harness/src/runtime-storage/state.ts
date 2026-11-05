@@ -1,3 +1,4 @@
+import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import os from "node:os";
 import { projectEntryKey } from "@steamharness/project-manifest";
 import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
@@ -9,7 +10,7 @@ import { emptyRuntimeRecord, type RuntimeHistoryLease, type RuntimePersistence }
 import { createLocalRuntimePersistence } from "./local";
 
 export function createRuntimeStateStorage(options: {
-  projectId: string; entryId: string; rootDir: string; runId: string; conversationId?: string;
+  projectId: string; entryId: string; rootDir: string; aggregateDir?: string; runId: string; conversationId?: string;
   env?: NodeJS.ProcessEnv; persistence?: RuntimePersistence; workspace?: RuntimeWorkspaceInput;
 }): { persistence: RuntimePersistence; failure: AbortSignal; conversation: ConversationStateStorage; usage(entry: TokenUsageEntry): Promise<void>; close(): Promise<void> } {
   const failed = new AbortController();
@@ -17,7 +18,7 @@ export function createRuntimeStateStorage(options: {
   const resolve = () => {
     if (backend) return backend;
     projectEntryKey(options.projectId, options.entryId);
-    const directory = path.join(os.homedir(), ".steamharness", "runtime", options.projectId.toLowerCase(), options.entryId);
+    const directory = path.join(os.homedir(), ".steamharness", "runtime", ...(readProjectReleaseSync(options.aggregateDir ?? options.rootDir) ? ["release"] : []), options.projectId.toLowerCase(), options.entryId);
     assertProjectDataDirectory(options.rootDir, directory);
     return backend = createLocalRuntimePersistence({ directory });
   };

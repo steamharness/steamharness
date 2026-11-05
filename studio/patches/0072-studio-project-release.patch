@@ -1,0 +1,105 @@
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 6b066571850..83822e480eb 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -51,6 +51,7 @@ export const studioSteamWorkspaceState = {
+ };
+ 
+ export interface StudioModeState {
++	releaseOnly?: boolean;
+ 	available: boolean;
+ 	projectUri?: string;
+ 	ready?: boolean;
+@@ -145,6 +146,8 @@ export class StudioModeSwitcher extends Disposable {
+ 		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
+ 		const update = () => {
+ 			const { state, steam: active, busy, targetSteam } = studioModeState;
++			mode.hidden = state.releaseOnly === true;
++			slot.hidden = state.releaseOnly === true;
+ 			toolsDock.hidden = !active;
+ 			const toolsParent = active ? toolsDock : right;
+ 			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+index 0047459e43e..8ca9a6afd0b 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+@@ -35,6 +35,16 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+ 	group: '0_studio',
+ 	order: 0
+ });
++MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
++	command: {
++		id: 'studio.openProjectRelease',
++		get title() { return MenuRegistry.getCommand('studio.openProjectRelease')?.title ?? localize('studio.runProjectRelease', "Run (Release Mode)"); },
++		icon: Codicon.rocket
++	},
++	when: ContextKeyExpr.equals('studio.projectReleaseAvailable', true),
++	group: '0_studio', order: 1
++});
++
+ 
+ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+ 	command: {
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index a1c3717d696..a60b1f2ff45 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -158,9 +158,9 @@ export class StudioModeContribution extends Disposable {
+ 		}));
+ 		this._register(studioModeState.onDidChangeState(state => {
+ 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
+-			if (!this.initialized || !state.available) {
++			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
+ 				this.initialized = true;
+-				void this.request(this.requested && state.available).catch(error => notifications.error(error));
++				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
+ 			}
+ 		}));
+ 		if (studioModeState.state.labels.mode) {
+@@ -170,7 +170,7 @@ export class StudioModeContribution extends Disposable {
+ 	}
+ 
+ 	private request(steam: boolean): Promise<void> {
+-		this.requested = steam && studioModeState.state.available;
++		this.requested = (steam || !!studioModeState.state.releaseOnly) && studioModeState.state.available;
+ 		const revision = ++this.revision;
+ 		for (const animation of this.animations) { animation.cancel(); }
+ 		if (!this.requested && studioModeState.busy) {
+@@ -219,6 +219,7 @@ export class StudioModeContribution extends Disposable {
+ 					prepared ??= await prepare();
+ 					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
+ 					if (!prepared) {
++						if (studioModeState.state.releaseOnly) { await this.rememberMode(true); return; }
+ 						this.requested = false;
+ 						if (this.snapshot) { await this.restoreIde(); }
+ 						await this.rememberMode(false);
+@@ -232,6 +233,7 @@ export class StudioModeContribution extends Disposable {
+ 				await this.rememberMode(next);
+ 			} catch (error) {
+ 				if (this._store.isDisposed) { return; }
++				if (studioModeState.state.releaseOnly) { await this.rememberMode(true); throw error; }
+ 				if (revision === this.revision) { this.requested = false; }
+ 				await this.restoreIde();
+ 				await this.rememberMode(false);
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts
+index 43c3e047b25..96b0862829b 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts
+@@ -20,6 +20,8 @@ export interface ProjectUploadDialogRequest {
+ 	version: string;
+ 	serverUrl: string;
+ 	folderPath: string;
++	distributionMode?: string;
++	entryNames?: string;
+ 	labels: Record<string, string>;
+ 	options?: { id: string; label: string; checked: boolean }[];
+ }
+@@ -58,7 +60,7 @@ export class StudioProjectUploadDialog extends Disposable {
+ 	private render(container: HTMLElement): void {
+ 		this.form = append(container, $('.studio-upload-form'));
+ 		const metadata = append(this.form, $('dl.studio-upload-metadata'));
+-		for (const [key, value] of [['project', this.request.name], ['version', this.request.version || this.text('unavailable')], ['server', this.request.serverUrl], ['directory', this.request.folderPath]]) {
++		for (const [key, value] of [['project', this.request.name], ['version', this.request.version || this.text('unavailable')], ['server', this.request.serverUrl], ['directory', this.request.folderPath], ...(this.request.distributionMode ? [['distributionMode', this.request.distributionMode], ['entries', this.request.entryNames ?? '']] : [])]) {
+ 			append(metadata, $('dt', undefined, this.text(key)));
+ 			append(metadata, $('dd', undefined, value));
+ 		}

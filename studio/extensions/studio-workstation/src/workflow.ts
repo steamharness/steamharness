@@ -151,8 +151,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     toolInstances.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
+    void vscode.commands.executeCommand('setContext', 'studio.projectReleaseAvailable', !!target && target.distribution !== 'release' && !!launcher.prepareDistribution);
     const workspace = target ? findWorkspace(target) : undefined;
-    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted, target?.uri, !!workspace?.running && workspace.loaded); }
+    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted, target?.uri, !!workspace?.running && workspace.loaded, target?.distribution === 'release'); }
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
     status.tooltip = target.folderPath; status.show();
@@ -289,7 +290,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           }, () => undefined);
         }
         if (message?.type === 'workflow-project-upload' && message.version === 1 && launcher.uploadProject && !project.assistant && !closed && projectAvailable(project)) {
-          void vscode.commands.executeCommand('studio.uploadProject', { uri: project.uri }).then(undefined, error => output.appendLine(`Project upload: ${String(error)}`));
+          void vscode.commands.executeCommand('studio.uploadProject', { uri: project.sourceUri ?? project.uri }).then(undefined, error => output.appendLine(`Project upload: ${String(error)}`));
           return;
         }
         if (!sidebar && message?.type === 'workflow-user-settings' && message.version === 1) {
@@ -350,7 +351,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   };
   const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false): Promise<void> => {
     signal?.throwIfAborted();
-    const selected = target?.builtin === 'analysis' ? target : target?.uri ? findProject(target.uri, target.entryId) : currentProject();
+    const selected = target?.releasePreview ? target : target?.builtin === 'analysis' ? target : target?.uri ? findProject(target.uri, target.entryId) : currentProject();
     if (!selected) { return; }
     assertNotUpgrading([selected.folderPath]);
     await settling.get(projectWindowKey(selected));
@@ -576,6 +577,27 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         await entry.panel.webview.postMessage({type:'workflow-host',openConfigurations:true});
       } finally { clearTimeout(timeout); }
       return {opened:true};
+    }),
+    register('studio.openProjectRelease', async () => {
+      const source = currentProject();
+      if (!source || !launcher.prepareDistribution || !vscode.workspace.isTrusted) return;
+      for (const document of vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.toString().startsWith(`${source.uri}/`))) {
+        if (!await document.save()) throw new Error(t('Save the project files before building a release.'));
+      }
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Preparing release'), cancellable: true }, async (progress, token) => {
+        const abort = new AbortController(), subscription = token.onCancellationRequested(() => abort.abort());
+        try {
+          const built = await launcher.prepareDistribution!(source, true, abort.signal, message => progress.report({ message }));
+          const inspected = await launcher.inspect([built.directory]);
+          const entries = inspected.projects.map(entry => ({ ...entry, uri: vscode.Uri.file(built.directory).toString(), distribution: 'release' as const, releasePreview: true, sourceUri: source.uri }));
+          const project = entries.find(entry => entry.entryId === source.entryId);
+          if (!project) throw new Error(t('This entry is not included in the release.'));
+          for (const entry of entries) externalProjects.set(projectWindowKey(entry), entry);
+          await openProject(project, undefined, abort.signal);
+          mode.update(true, project.uri, !!findWorkspace(project)?.loaded, true);
+          await vscode.commands.executeCommand('studio.enterSteamMode');
+        } finally { subscription.dispose(); }
+      });
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
     register('studio.openProjectWindow', (target?: Project) => openProjectWindow(target)),

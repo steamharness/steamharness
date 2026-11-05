@@ -485,6 +485,18 @@ export interface ConfigurationPublicationDraft {
   configurations: { id: string; name: string; values: ConfigurationValues; profileKey?: string }[];
   defaultConfigurationId: string;
 }
+
+/** The compiled definition is an upper bound on what a stored publication may distribute. */
+export function restrictReleasePublication(publication: ConfigurationPublicationDraft, definition: ProjectConfigurationDefinition): ConfigurationPublicationDraft {
+  const fields = definition.fields, names = new Set(fields.map(field => field.name)), policy = definition.profilePolicy;
+  const configurations = publication.configurations.filter(item => !policy || policy.profiles.some(profile => profile.key === item.profileKey)).map(item => {
+    const fixed = policy?.profiles.find(profile => profile.key === item.profileKey)?.fixedValues ?? {};
+    return { ...item, values: { ...Object.fromEntries(Object.entries(item.values).filter(([key]) => names.has(key))), ...fixed } };
+  });
+  if (!configurations.length) throw new ProjectConfigurationError("The publication contains no configuration allowed by this release.");
+  const defaultConfigurationId = policy ? configurations.find(item => item.profileKey === policy.defaultProfileKey)?.id : configurations.find(item => item.id === publication.defaultConfigurationId)?.id ?? configurations[0].id;
+  return parsePublicationDraft({ ...publication, fields, profilePolicy: policy, agentModelPolicy: definition.agentModelPolicy, configurations, defaultConfigurationId });
+}
 export interface ProjectConfigurationTemplate {
   version: 2 | 3;
   kind: 'steamharness-configuration-template';

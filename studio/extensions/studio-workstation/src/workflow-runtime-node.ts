@@ -1,3 +1,4 @@
+import { prepareProjectDistributionCli } from './workflow-cli-process';
 import { t } from './localization';
 import { AggregateWebHostPool } from './workflow-host-pool';
 import { upgradeServerProject } from './workflow-project-update-node';
@@ -187,6 +188,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       } catch { return false; }
     },
     prepareProjectTemplate: async (directory, signal) => { const runtime = await selectedRuntime(); return templates.prepare(directory, runtime.nodePath, AbortSignal.any([signal, controller.signal]), runtime); },
+    prepareDistribution: async (project, snapshot, signal, progress) => {
+      assertAvailable(); const runtime = await selectedRuntime();
+      return prepareProjectDistributionCli(project.folderPath, runtime.nodePath, snapshot, AbortSignal.any([signal, controller.signal]), progress, runtime);
+    },
     uploadProject: (project, releaseLog, signal, progress) => {
       assertAvailable();
       return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress }));

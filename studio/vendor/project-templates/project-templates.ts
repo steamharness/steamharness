@@ -97,7 +97,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
     name: packageName, version: '0.1.0', private: true, type: 'module',
-    scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .',
+    scripts: { dev: 'steamharness web .', release: 'steamharness release .', inspect: 'steamharness structure .',
       ...(template.files.includes('build.mjs') ? { build: 'steamharness database generate && node build.mjs' } : {}),
       ...(template.projectType === 'kanban' ? {} : { 'run:json': 'steamharness json .' }) },
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli, ...(template.files.includes('build.mjs') ? { esbuild: '0.28.2' } : {}) },

@@ -82,6 +82,9 @@ export interface ParamRequest {
 }
 
 export interface Project extends Parameters {
+  distribution?: 'source' | 'release';
+  sourceUri?: string;
+  releasePreview?: boolean;
   agentModelPolicy?: { allowThirdParty?: boolean };
   entryId: string;
   aggregateName: string;

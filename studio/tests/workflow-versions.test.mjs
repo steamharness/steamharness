@@ -19,7 +19,7 @@ const uri = value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value)
 const plain = value => JSON.parse(JSON.stringify(value));
 function fixture(t, options = {}) {
   const commands = new Map(), storage = new Map(), accountChanged = new Emitter(), visibility = new Emitter(), messages = [], requests = [];
-  const local = { uri: 'file:///demo', folderPath: path.resolve('/demo'), id, name: 'Demo', projectType: 'workflow', fields: [], entrypoints: [], manifest: { version: '1.0.0' } };
+  const local = { distribution: options.source ? 'source' : 'release', uri: 'file:///demo', folderPath: path.resolve('/demo'), id, name: 'Demo', projectType: 'workflow', fields: [], entrypoints: [], manifest: { version: '1.0.0' } };
   const f = { local, storage, requests, errors: [], infos: [], uploads: [], downloads: [], opens: [], notes: 'New version',
     connection: options.signedOut ? undefined : { serverUrl: 'https://steamharness.test', accessToken: 'host-token' },
     projects: [{ id, name: 'Demo', latest: '0.9.0',entries:[{entryId:'main',type:'workflow',name:'Main'}],defaultEntry:'main', access: { effectiveRole: 'developer', capabilities: ['read', 'downloadSource', 'readDraft', 'upload', 'publish', 'writeData'], sources: [] }, sourceDownload: { allowed: true, available: true } },
@@ -186,7 +186,8 @@ for (const phase of ['dialog', 'save', 'version check']) {
     }
     await f.command('studio.uploadProject');
     assert.equal(f.uploads.length, 0);
-    assert.match(f.uploadResult.error, phase === 'dialog' ? /Account changed/ : /Upload cancelled/);
+    if (phase === 'save') assert.match(f.errors.join(' '), /Account changed/);
+    else assert.match(f.uploadResult.error, phase === 'dialog' ? /Account changed/ : /Upload cancelled/);
   });
 }
 
@@ -355,4 +356,16 @@ test('uploading an unregistered project asks for a new application ID before own
   assert.equal(f.uploads.length, 0);
   assert.match(f.uploadResult.error, /apply for a new application ID/);
   assert.equal(f.requests.some(request => request.url.includes('/api/groups?minRole=developer')), false);
+});
+
+
+test('source projects show their authored version without polling for upgrades', async t => {
+  const f = fixture(t, { source: true });
+  await f.command('studio.refreshVersions');
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.state().localVersion, '1.0.0');
+  assert.equal(f.state().update.status, 'source');
+  assert.deepEqual(f.state().versions, []);
+  await f.command('studio.upgradeProject');
+  assert.equal(f.downloads.length, 0);
 });

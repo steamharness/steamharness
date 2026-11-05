@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add project release builds, compiled execution, entry selection, validated inventories and automatic release uploads.
+
 - Conversation views within one Kanban page can share a session writer while retaining separate parameter and draft state. Closing a view releases its claim immediately; reopened views remain editable and running tasks retain their execution owner.
 - The Conversation composer becomes editable after its first session state arrives, preventing newly typed drafts from being cleared by the initial snapshot.
 

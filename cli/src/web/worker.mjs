@@ -167,6 +167,7 @@ try {
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
           projectType: structure.projectType,
+          distribution: structure.distribution ?? "source",
           projectCard: registration.projectCard,
           aggregateProjectCard: readProjectCardMetadata(pkg, manifest.entries.find(entry => entry.entryId === manifest.defaultEntry).type),
           ...parameters(structure),

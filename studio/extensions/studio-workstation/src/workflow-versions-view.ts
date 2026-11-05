@@ -14,6 +14,7 @@ import { getProjectUploadProvider, type ProjectUploadCompletion, type ProjectUpl
 interface ProjectUploadSession {
   id: string;
   project: Project;
+  distribution?: { directory: string; mode: 'source' | 'release'; entries?: string[] };
   version: string;
   connection: Connection;
   controller?: AbortController;
@@ -132,7 +133,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     clearTimeout(this.timer);
     this.reading?.abort();
     const generation = ++this.generation, connection = this.account.getConnection(), project = this.preferred;
-    if (this.disposed || !connection || !this.localProjects.length) { this.loading = false; this.publish(); return; }
+    if (this.disposed || !connection || !this.localProjects.length || project?.distribution !== 'release' || project?.releasePreview) { this.loading = false; this.versions = []; this.serverProject = undefined; this.error = undefined; this.publish(); return; }
     const controller = this.reading = new AbortController();
     this.lastChecked = Date.now();
     this.loading = true; this.error = undefined; this.publish();
@@ -164,6 +165,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   getVersionStatus(project: Project): ProjectVersionStatus {
+    if (project.distribution !== 'release' || project.releasePreview) return { status: 'source', localVersion: projectVersion(project), canDownload: false };
     const localVersion = projectVersion(project), remote = this.serverProjects.get(project.id);
     const comparison = compareProjectVersions(localVersion, remote?.latest ?? undefined);
     const status: ProjectVersionStatus['status'] = !this.account.getConnection() ? 'signed-out' : this.error ? 'unavailable'
@@ -197,7 +199,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     if (!this.account.getConnection()) { this.account.open(); return; }
     if (!this.launcher.downloadProject) { throw new Error(t('Project transfers are unavailable in this extension host.')); }
     const project = this.localProjects.find(entry => entry.uri === target?.uri) ?? (!target?.uri ? this.preferred : undefined);
-    if (!project) { return; }
+    if (!project || project.distribution !== 'release' || project.releasePreview) { return; }
     this.choosing = true; this.publish();
     try {
       const connection = this.account.getConnection()!, key = JSON.stringify(connection);
@@ -280,6 +282,14 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
     const project = this.localProjects.find(project => project.uri === target?.uri) ?? (!target?.uri ? this.preferred : undefined);
     if (!project) { return; }
+    for (const document of vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.toString().startsWith(`${project.uri}/`))) {
+      if (!await document.save()) throw new Error(t('Save the project files before uploading.'));
+    }
+    const distribution = this.launcher.prepareDistribution ? await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Preparing upload...'), cancellable: true }, async (progress, token) => {
+      const abort = new AbortController(), subscription = token.onCancellationRequested(() => abort.abort());
+      try { return await this.launcher.prepareDistribution!(project, false, AbortSignal.any([abort.signal, this.lifetime.signal]), message => progress.report({ message })); }
+      finally { subscription.dispose(); }
+    }) : { directory: project.folderPath, mode: 'source' as const };
     const manifestUri = vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'steamharness.json');
     const document = vscode.workspace.textDocuments.find(entry => entry.uri.toString() === manifestUri.toString());
     let version = '';
@@ -287,15 +297,15 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       const manifest = JSON.parse(document?.getText() ?? new TextDecoder().decode(await vscode.workspace.fs.readFile(manifestUri)));
       if (typeof manifest?.version === 'string') { version = manifest.version; }
     } catch { /* Report manifest validation in the upload dialog when submitted. */ }
-    this.uploadSession = { id: globalThis.crypto.randomUUID(), project, version, connection };
+    this.uploadSession = { id: globalThis.crypto.randomUUID(), project, version, connection, distribution };
     this.uploadSession.extension = await getProjectUploadProvider()?.prepare({ projectId: project.id, version, connection, signal: this.lifetime.signal });
     this.lifetime.signal.throwIfAborted();
     if (JSON.stringify(this.account.getConnection()) !== JSON.stringify(connection)) { throw new Error(t('Account changed. Try again.')); }
     await vscode.commands.executeCommand('studio.internalShowProjectUpload', {
-      id: this.uploadSession.id, name: project.name, version, serverUrl: connection.serverUrl, folderPath: project.folderPath,
+      id: this.uploadSession.id, name: project.name, version, serverUrl: connection.serverUrl, folderPath: distribution.directory, distributionMode: distribution.mode === 'release' ? t('Release') : t('Source'), entryNames: (distribution.entries ?? (project.entries ?? []).map(entry => entry.entryId)).join(', '),
       options: this.uploadSession.extension?.options,
       labels: { title: t('Upload Project'), project: t('Project'), version: t('Version'), server: t('Server'),
-        directory: t('Project Folder'), releaseLog: t('Release Notes'), upload: t('Upload'), cancel: t('Cancel'), close: t('Close'), unavailable: t('Unavailable'),
+        directory: t('Project Folder'), distributionMode: t('Distribution Mode'), entries: t('Entries'), releaseLog: t('Release Notes'), upload: t('Upload'), cancel: t('Cancel'), close: t('Close'), unavailable: t('Unavailable'),
         preparing: t('Preparing upload...'), uploading: t('Uploading...'), cancelling: t('Cancelling...'), failed: t('Project transfer failed.'),
         success: t('Uploaded {0} version {1}.', project.name, version) },
     });
@@ -362,7 +372,11 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     } catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } throw error; }
     assertAvailable();
     await readManifest();
-    await this.launcher.uploadProject!({ ...project, manifest: { ...project.manifest, version: session.version } }, releaseLog, signal, progress => {
+    const prepared = this.launcher.prepareDistribution ? await this.launcher.prepareDistribution(project, false, signal, message => {
+      void vscode.commands.executeCommand('studio.internalUpdateProjectUpload', { id: session.id, message });
+    }) : session.distribution;
+    if (prepared && session.distribution && (prepared.mode !== session.distribution.mode || prepared.directory !== session.distribution.directory)) throw new Error(t('Distribution mode changed. Try uploading again.'));
+    await this.launcher.uploadProject!({ ...project, folderPath: prepared?.directory ?? project.folderPath, manifest: { ...project.manifest, version: session.version } }, releaseLog, signal, progress => {
       void vscode.commands.executeCommand('studio.internalUpdateProjectUpload', { id: session.id, message: progress.message }).then(undefined, () => {});
     });
     session.uploaded = true;

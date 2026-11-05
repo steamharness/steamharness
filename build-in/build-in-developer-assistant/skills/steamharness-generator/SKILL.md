@@ -236,3 +236,7 @@ Kanban scaffold 额外包含 `board-state.js`、`board-storage.js` 和 `tests/*.
 ## 多 Bot 聚合工作台
 
 Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Conversation 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。首屏通过 `entries.list()` 先发现本地入口，后台加载业务档案。私聊优先使用 `conversations.mount()` 复用原生 Conversation；业务发送使用 submit Workflow 适配，关联真实持久回执，卸载时释放界面。详细接口与隔离要求见 API 参考。
+
+## 项目发行
+
+使用 `steamharness release .` 生成 `dist/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。

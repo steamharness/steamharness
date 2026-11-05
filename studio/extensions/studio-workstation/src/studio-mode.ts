@@ -6,6 +6,7 @@ export class StudioModeController {
   private available?: boolean;
   private projectUri?: string;
   private ready?: boolean;
+  private releaseOnly = false;
 
   constructor(context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
     for (const [command, native] of [
@@ -15,6 +16,7 @@ export class StudioModeController {
       ['studio.openSteamTools', 'studio.internalOpenSteamTools'],
     ] as const) {
       context.subscriptions.push(vscode.commands.registerCommand(command, async () => {
+        if (this.releaseOnly && (command === 'studio.toggleMode' || command === 'studio.enterIdeMode')) return;
         try { await vscode.commands.executeCommand(native); }
         catch (error) {
           output.appendLine(`Studio mode: ${String(error)}`);
@@ -24,12 +26,13 @@ export class StudioModeController {
     }
   }
 
-  update(available: boolean, projectUri?: string, ready = false): void {
-    if (available === this.available && projectUri === this.projectUri && ready === this.ready) { return; }
+  update(available: boolean, projectUri?: string, ready = false, releaseOnly = false): void {
+    if (available === this.available && projectUri === this.projectUri && ready === this.ready && releaseOnly === this.releaseOnly) { return; }
     this.available = available;
     this.projectUri = projectUri;
     this.ready = ready;
-    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, labels: {
+    this.releaseOnly = releaseOnly;
+    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, releaseOnly, labels: {
       mode: t('Workspace Mode'), ide: 'IDE', steam: 'Steam',
       switchToIde: t('Switch to IDE Mode'), switchToSteam: t('Switch to Steam Mode'),
       loading: t('Loading project...'),

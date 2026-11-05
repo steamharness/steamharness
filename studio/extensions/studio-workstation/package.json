@@ -361,6 +361,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "studio.openProjectRelease",
+        "title": "%command.openProjectRelease%",
+        "category": "Project",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "studio.openProjectInTab",
         "title": "%command.openProjectInTab%",
         "category": "Project",

@@ -1,3 +1,4 @@
+import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
@@ -109,7 +110,8 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
 
 async function startProjectWebServer(options: WebOptions, credentials: { capability: string; cookie: string }, identityChanged: () => void) {
   const projectDir = await realpath(path.resolve(options.projectDir));
-  const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
+  const storageBase = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
+  const storageDir = readProjectReleaseSync(projectDir) ? path.join(storageBase, 'release') : storageBase;
   assertProjectDataDirectory(projectDir, storageDir);
   const clients = new Set<ServerResponse>();
   const entryObservers = new Set<() => void>();

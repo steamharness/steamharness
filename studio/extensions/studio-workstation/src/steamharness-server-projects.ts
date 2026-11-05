@@ -26,7 +26,7 @@ export interface VersionsState {
   canDownload: boolean; transfersAvailable: boolean; error?: string;
 }
 export interface ProjectVersionStatus {
-  status: 'checking' | 'signed-out' | 'unavailable' | 'unpublished' | 'current' | 'upgrade' | 'ahead' | 'different';
+  status: 'source' | 'checking' | 'signed-out' | 'unavailable' | 'unpublished' | 'current' | 'upgrade' | 'ahead' | 'different';
   localVersion?: string; serverVersion?: string; canDownload: boolean; checking?: boolean; busy?: boolean;
 }
 export function compareProjectVersions(local?: string, remote?: string): -1 | 0 | 1 | undefined {

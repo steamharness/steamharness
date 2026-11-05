@@ -1,3 +1,4 @@
+import { prepareReleaseRun } from "./release/build";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -72,6 +73,7 @@ export async function main(
   const parsed = parseProjectArgs(args, {
     json: command === "json",
   });
+  if (parsed.release) parsed.projectDir = (await prepareReleaseRun(parsed.projectDir, { signal: abortController.signal, progress: message => process.stderr.write(message + "\n") })).directory;
   assertLocalCliCoreCompatible(parsed.projectDir);
   const report = await runLocalProjectWithReport({
     projectDir: parsed.projectDir,
@@ -176,6 +178,7 @@ export function parseProjectArgs(
   options: { json: boolean },
 ): {
   projectDir: string;
+  release?: boolean;
   args: string[];
   json: boolean;
   runId?: string;
@@ -187,6 +190,7 @@ export function parseProjectArgs(
   toolPermissionPolicies?: ToolPermissionPolicyMap;
 } {
   let json = options.json;
+  let release = false;
   let runId: string | undefined;
   let entryId: string | undefined;
   let entrypointId: string | undefined;
@@ -205,6 +209,7 @@ export function parseProjectArgs(
       break;
     }
 
+    if (arg === "--release") { release = true; continue; }
     if (arg === "--json") {
       json = true;
       continue;
@@ -261,6 +266,7 @@ export function parseProjectArgs(
   ) {
     return {
       projectDir: path.resolve(process.cwd(), projectDirArg),
+      release,
       args: removePnpmRunSeparator(rest),
       json,
       runId,
@@ -275,6 +281,7 @@ export function parseProjectArgs(
 
   return {
     projectDir: process.cwd(),
+    release,
     args: removePnpmRunSeparator(filteredArgv),
     json,
     runId,

@@ -1,3 +1,6 @@
+import { resolveProjectDistribution } from "./release/build";
+import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
+import type { ProjectDistributionMode } from "@steamharness/project-manifest";
 import { prepareProjectDatabaseArtifacts } from "./database-generation";
 import { isProjectUploadExcludedPath } from "@steamharness/project-upload";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
@@ -39,6 +42,7 @@ interface CliOptions {
   token: string;
   target?: string;
   releaseLog?: string;
+  mode?: ProjectDistributionMode;
   file?: string;
   mimeType?: string;
   output?: string;
@@ -273,7 +277,7 @@ async function commandStatus(parsed: ParsedArgs): Promise<void> {
 
 async function commandPack(parsed: ParsedArgs): Promise<void> {
   const projectName = requirePositional(parsed, 0, "workflow");
-  const archivePath = await packProject(projectName, parsed.options.output, parsed.options.path);
+  const archivePath = await packProject(projectName, parsed.options.output, parsed.options.path, parsed.options.mode);
 
   console.log(JSON.stringify({ archivePath }, null, 2));
 }
@@ -302,7 +306,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
 
   const archivePath = parsed.options.file
     ? path.resolve(parsed.options.file)
-    : await packProject(projectArg, parsed.options.output, parsed.options.path);
+    : await packProject(projectArg, parsed.options.output, parsed.options.path, parsed.options.mode);
   const uploadResult = await uploadPackage({
     projectId,
     archivePath,
@@ -475,7 +479,7 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
       const attachments = (template.attachments ?? []).map(asset => { const file = download.files.find(file => file.path === asset.path); if (!file) throw new Error("Downloaded configuration attachment is missing."); return { id: asset.id, bytes: Buffer.from(decodeProjectFileContent(file)) }; });
       await cacheVerifiedConfigurationTemplate(template, attachments);
     }
-    await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
+    if (!readProjectReleaseSync(stage)) await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
     await rename(stage, targetDir);
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
@@ -533,6 +537,7 @@ async function packProject(
   projectName: string,
   outputPath: string | undefined,
   sourcePath: string | undefined,
+  mode: ProjectDistributionMode = "auto",
 ): Promise<string> {
   if (!projectName || /[\\/\u0000-\u001f:*?"<>|]/.test(projectName) || /[. ]$/.test(projectName)
     || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(projectName)) throw new Error("Project name must be a single portable directory name.");
@@ -554,8 +559,8 @@ async function packProject(
   try {
     await mkdir(path.join(stagingDir, "workspace", "workflow"), { recursive: true });
     await mkdir(path.dirname(archivePath), { recursive: true });
-    // Every registered entry is included in this single aggregate unit.
-    await stageProjectSource({ projectDir, projectName, stagingRoot: path.join(stagingDir, "workspace", "workflow") });
+    const distribution = await resolveProjectDistribution(projectDir, mode, { progress: message => process.stderr.write(message + "\n") });
+    await stageProjectSource({ projectDir: distribution.directory, projectName, stagingRoot: path.join(stagingDir, "workspace", "workflow") });
     const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], {
       cwd: repoRoot,
       env: { ...process.env, COPYFILE_DISABLE: "1" },
@@ -822,7 +827,7 @@ async function stageProjectSource(options: {
   projectName: string;
   stagingRoot: string;
 }): Promise<void> {
-  await prepareProjectDatabaseArtifacts(options.projectDir);
+  if (!readProjectReleaseSync(options.projectDir)) await prepareProjectDatabaseArtifacts(options.projectDir);
   const uploadPlan=await copyProjectSource(options.projectDir,path.join(options.stagingRoot,options.projectName));
   if(!uploadPlan.projectIgnoreConfigured)process.stderr.write(`${i18n.t('projectIgnoreWarning',{ns:'cli',files:uploadPlan.files.length,bytes:uploadPlan.totalBytes})}\n`);
 }
@@ -929,6 +934,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
         break;
       case "--version":
         throw new Error(i18n.t("versionOptionUnsupported", { ns: "cli" }));
+      case "--mode": {
+        const mode = requireValue(rest, ++index, "--mode");
+        if (!["auto", "source", "release"].includes(mode)) throw new Error("--mode must be auto, source, or release.");
+        options.mode = mode as ProjectDistributionMode; break;
+      }
       case "--release-log":
         options.releaseLog = requireValue(rest, (index += 1), "--release-log");
         break;

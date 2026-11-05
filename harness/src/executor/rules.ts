@@ -1,4 +1,5 @@
 import { projectEntrySources } from "../project-sources";
+import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -509,6 +510,8 @@ export function validateProjectScripts(
 export function inspectProjectScripts(
   options: ValidateProjectScriptsOptions,
 ): ScriptInspection {
+  const released = inspectReleasedEntry(options);
+  if (released) return released.scripts;
   const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile, options.aggregateDir);
 
   if (scriptPaths.length === 0) {
@@ -531,6 +534,8 @@ export function inspectProjectScripts(
 export function inspectProjectStructure(
   options: ValidateProjectScriptsOptions,
 ): StructureInspection {
+  const released = inspectReleasedEntry(options);
+  if (released) return released.report as unknown as StructureInspection;
   const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile, options.aggregateDir);
 
   if (scriptPaths.length === 0) {
@@ -575,6 +580,15 @@ export function inspectProjectStructure(
     files: scriptPaths.map((scriptPath) => path.relative(options.cwd, scriptPath)),
     analysis,
   });
+}
+
+function inspectReleasedEntry(options: ValidateProjectScriptsOptions) {
+  const root = options.aggregateDir ?? options.projectDir;
+  const manifest = readProjectReleaseSync(root);
+  if (!manifest) return undefined;
+  const entry = manifest.entries.find(item => path.resolve(root, item.root, item.entry) === path.resolve(options.entryFile ?? ""));
+  if (!entry) throw new Error("The requested module is not a registered release entry.");
+  return readReleaseStructureSync(root, entry.entryId);
 }
 
 export function analyzeProjectScriptSource(

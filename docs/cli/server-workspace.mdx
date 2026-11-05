@@ -29,3 +29,7 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 
 
 配置模板、方案、快照与附件按入口保存。关系库通过 Server Web 或 CLI database 命令创建、授权、迁移并绑定入口；下载项目不会携带账号绑定，使用前检查当前账号的资源权限与入口绑定。知识库按 knowledgeBases 配置和授权连接。
+
+## 发行包上传
+
+`pack` 与 `upload` 支持 `--mode auto|source|release`。auto 检测发行配置或产物后自动构建并上传发行目录。详见[项目发行模式](/cli/steamharness#项目发行模式)。

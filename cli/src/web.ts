@@ -1,3 +1,4 @@
+import { prepareReleaseRun } from "./release/build";
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { startWebServer } from './web/server';
@@ -9,11 +10,12 @@ import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-p
 import { parseUserSettings } from 'steamharness';
 
 export function parseWebArgs(argv: string[]) {
-  const options = { projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, entryId: undefined as string | undefined };
+  const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, entryId: undefined as string | undefined };
   let projectSet = false;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
-    if (arg === '--no-open') { options.open = false; }
+    if (arg === '--release') { options.release = true; }
+    else if (arg === '--no-open') { options.open = false; }
     else if (arg === '--json') { options.json = true; }
     else if (arg === '--inspect') { options.inspect = true; }
     else if (arg === '--host-stdio') { options.hostStdio = true; }
@@ -38,6 +40,7 @@ export async function main(argv: string[]): Promise<number> {
       : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
     return 0;
   }
+  if (options.release) options.projectDir = (await prepareReleaseRun(options.projectDir, { progress: message => process.stderr.write(message + '\n') })).directory;
   const input = options.hostStdio ? createInterface({ input: process.stdin, crlfDelay: Infinity }) : undefined;
   const lines = input?.[Symbol.asyncIterator]();
   let host: ReturnType<typeof parseHostConfiguration> | undefined;

@@ -1,3 +1,4 @@
+import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { projectEntrySources } from "./project-sources";
 import { resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
@@ -42,10 +43,21 @@ export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?:
   return discoverProjectAgentModels(projectDir, undefined, entryFile, "found", aggregateDir);
 }
 
+/** Compiler metadata preserves model ownership when local identifiers are minified. */
+export function inspectProjectAgentModelUsage(projectDir: string, entryFile: string, aggregateDir = projectDir): { found: boolean; projectModels: boolean } {
+  return { found: discoverProjectAgentModels(projectDir, undefined, entryFile, "found", aggregateDir), projectModels: discoverProjectAgentModels(projectDir, undefined, entryFile, "projectModels", aggregateDir) };
+}
+
 type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
 function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" = "found", aggregateDir = projectDir): boolean {
   // Kanban HTML is an artifact outside its source root, never executable Agent source.
   if (entryFile && /\.html$/i.test(entryFile)) return false;
+  const release = readProjectReleaseSync(aggregateDir);
+  if (release) {
+    const entry = release.entries.find(item => path.resolve(aggregateDir, item.root, item.entry) === path.resolve(entryFile ?? ""));
+    if (!entry) throw new Error("Agent model metadata requires a registered release entry.");
+    return readReleaseStructureSync(aggregateDir, entry.entryId)?.agentModels?.[mode] === true;
+  }
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
@@ -200,7 +212,7 @@ export interface LocalProjectConfigurationOptions {
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
-  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
+  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId) + (readProjectReleaseSync(resolved.projectDir) ? ":release" : ""), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
 }
 async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const directory=await realpath(projectDir);

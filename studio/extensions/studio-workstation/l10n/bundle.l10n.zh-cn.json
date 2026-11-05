@@ -575,7 +575,7 @@
   "Extension": "扩展",
   "No usage recorded": "暂无用量记录",
   "Type": "类型",
-  "Source": "来源",
+  "Source": "源码",
   "Tokens": "Token 数",
   "Cost": "费用",
   "Usage details": "用量详情",
@@ -915,5 +915,13 @@
   "All resources": "全部资源",
   "Relational databases": "关系型数据库",
   "Knowledge bases": "知识库",
-  "This database reference changed. Reopen the project.": "数据库引用已更改，请重新打开项目。"
+  "This database reference changed. Reopen the project.": "数据库引用已更改，请重新打开项目。",
+  "Save the project files before building a release.": "请先保存项目文件，再构建发行版。",
+  "Preparing release": "正在准备发行版",
+  "This entry is not included in the release.": "此入口未包含在发行版中。",
+  "Release": "发行版",
+  "Distribution mode changed. Try uploading again.": "发行模式已变更，请重新上传。",
+  "Distribution Mode": "分发模式",
+  "Entries": "入口",
+  "A release installation can only be upgraded to another release.": "发行版只能升级为另一个发行版。"
 }

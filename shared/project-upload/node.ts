@@ -1,4 +1,6 @@
 import { DATABASE_DEFINITION_FILE, readDatabaseArtifactFiles } from "./database-artifacts";
+import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
+import { PROJECT_RELEASE_FILE } from "@steamharness/project-manifest/release";
 import { projectEntryFilePath, projectManifestForDistribution } from "@steamharness/project-manifest";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -30,6 +32,11 @@ export interface UploadPlan {
 
 export async function createProjectUploadPlan(rootDir: string): Promise<UploadPlan> {
   const projectRoot = path.resolve(rootDir);
+  const release = readProjectReleaseSync(projectRoot);
+  if (release) {
+    const files = await Promise.all([...release.files.map(file => file.path), PROJECT_RELEASE_FILE].map(async relative => ({ path: relative, absolutePath: path.join(projectRoot, relative), size: (await lstat(path.join(projectRoot, relative))).size })));
+    return { projectIgnorePresent: false, projectIgnoreConfigured: true, files, ignoredPaths: [], totalBytes: files.reduce((sum, file) => sum + file.size, 0), requiredPaths: files.map(file => file.path) };
+  }
   const projectIgnorePath = path.join(projectRoot, STEAMHARNESS_IGNORE_FILE);
   const projectIgnoreStat = await lstat(projectIgnorePath).catch(() => undefined);
   if (projectIgnoreStat?.isSymbolicLink()) {
@@ -153,13 +160,15 @@ export async function copyProjectUploadFiles(
   targetDir: string,
 ): Promise<UploadPlan> {
   const plan = await createProjectUploadPlan(sourceDir);
+  const released = plan.files.some(file => file.path === PROJECT_RELEASE_FILE);
   await mkdir(targetDir, { recursive: true });
   for (const file of plan.files) {
     const targetPath = path.join(targetDir, ...file.path.split("/"));
     await mkdir(path.dirname(targetPath), { recursive: true });
-    if (file.path === "steamharness.json") await writeFile(targetPath, JSON.stringify(projectManifestForDistribution(JSON.parse(await readFile(file.absolutePath, "utf8"))), null, 2) + "\n");
+    if (file.path === "steamharness.json" && !released) await writeFile(targetPath, JSON.stringify(projectManifestForDistribution(JSON.parse(await readFile(file.absolutePath, "utf8"))), null, 2) + "\n");
     else await copyFile(file.absolutePath, targetPath);
   }
+  if (released) readProjectReleaseSync(targetDir);
   return plan;
 }
 

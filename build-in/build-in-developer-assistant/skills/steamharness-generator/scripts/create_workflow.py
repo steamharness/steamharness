@@ -175,7 +175,7 @@ def package_json(name: str, project_type: str) -> str:
         "name": f"@steamharness/{name}-{package_suffix}",
         "version": "0.1.0", "private": True, "type": "module",
         "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version, **({"esbuild": "0.28.2"} if project_type == "kanban" else {})},
-        "scripts": {"dev": "steamharness web .", **({"build": "steamharness database generate && node build.mjs"} if project_type == "kanban" else {})},
+        "scripts": {"dev": "steamharness web .", "release": "steamharness release .", **({"build": "steamharness database generate && node build.mjs"} if project_type == "kanban" else {})},
     }, ensure_ascii=False, indent=2) + "\n"
 
 

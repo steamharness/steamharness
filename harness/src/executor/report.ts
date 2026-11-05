@@ -261,6 +261,8 @@ export interface DefinitionEvent {
 }
 
 export interface StructureReport {
+  distribution?: "release";
+  releaseBuildId?: string;
   projectId?: string;
   entryId?: string;
   entryName?: string;
