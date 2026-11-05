@@ -1336,6 +1336,8 @@ const response = await fetch("https://api.example.com/run", {
 
 ## Package
 
+生成器分别解析 SDK 和 CLI 的精确版本：SDK 检出使用自身 `package.json` 与相邻 CLI 包的版本，安装到宿主时使用宿主的依赖声明并解析本地 link/file 引用。缺失、包名不匹配或非精确版本会报错，不依赖示例工程，也不使用宿主产品版本代替依赖版本。
+
 steamharness.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库通过 config.json 发行集中映射，各入口在 steamharness.json 中仅声明使用的数据库别名；权限、凭据、数据库数据、历史及个人配置不进入发行包。
 
 ## Server 数据服务

@@ -5,10 +5,25 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  createInjectedKanbanParams,
   inspectLocalProjectStructure,
   resolveLocalProjectParams,
   runLocalProjectWithReport,
 } from "../index";
+
+test("Kanban params expose opaque file references and preserve defaults for older configurations", () => {
+  const params = createInjectedKanbanParams([
+    { name: "attachments", type: "file", multiple: true },
+    { name: "title", type: "string", defaultValue: "Roadmap" },
+    { name: "columns", type: "number", defaultValue: "3" },
+  ], { attachments: JSON.stringify([{
+    id: "file-1", name: "brief.pdf", mimeType: "application/pdf", size: 42, kind: "file", storage: "server",
+    storagePath: "/private/files/file-1/content", localAbsolutePath: "/private/brief.pdf",
+  }]) });
+  assert.deepEqual(params, { title: "Roadmap", columns: 3, attachments: [{
+    id: "file-1", name: "brief.pdf", mimeType: "application/pdf", size: 42, kind: "file", storage: "server",
+  }] });
+});
 
 test("inspects a Kanban project without an executor", async () => {
   const projectDir = await createKanbanFixture();

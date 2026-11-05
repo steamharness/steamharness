@@ -23,12 +23,13 @@ description: "steamharness 统一 CLI 的本地与服务端 workspace 命令。"
 
 本地开发时，先用 `steamharness` 在 workflow 目录验证运行结果和结构，再用 workspace CLI 上传到 server。
 
+以下命令中的 `./my-project` 指你已创建并注册入口的本地项目目录。
+
 ```bash
-steamharness run workspace/workflow/hello -- --message "hello"
-steamharness json workspace/workflow/hello -- --message "hello"
-steamharness structure workspace/workflow/hello
-steamharness mcp workspace/workflow/hello
-steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness run ./my-project -- --message "hello"
+steamharness json ./my-project -- --message "hello"
+steamharness structure ./my-project
+steamharness mcp ./my-project
 ```
 
 发布到 server 时，先检查服务状态，再登录、上传、发布和下载。

@@ -1,5 +1,6 @@
 # Unreleased
 
+- [Fix] Resolve the generator's exact CLI version from the adjacent CLI package without depending on bundled examples, keeping SDK and CLI versions independent.
 - Agent command receipts no longer wait for snapshot delivery. Session projections and explicitly safe tools retry up to three times and continue automatically while preserving request identity, authorization, and cancellation.
 - Validate and run compiled project releases with readable entry metadata and separate development/release state.
 

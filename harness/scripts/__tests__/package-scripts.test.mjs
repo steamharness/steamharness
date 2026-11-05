@@ -3,15 +3,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-test("Workspace smoke uses the package-manager version declared by Core", async () => {
+test("Core tests and coverage use the same ordinary test suite", async () => {
   const root = path.resolve(import.meta.dirname, "../..");
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 
   assert.match(manifest.packageManager, /^pnpm@\d+\.\d+\.\d+$/);
-  assert.equal(
-    manifest.scripts["test:workspace"],
-    "corepack pnpm build && corepack pnpm -C workspace install --frozen-lockfile && corepack pnpm -C workspace test",
-  );
+  assert.equal(manifest.scripts["test:workspace"], undefined);
+  assert.match(manifest.scripts.test, /src\/__tests__\/\*\.test\.ts$/);
+  assert.match(manifest.scripts.coverage, /src\/__tests__\/\*\.test\.ts$/);
+  assert.doesNotMatch(JSON.stringify(manifest.scripts), /-C workspace|workspace install/);
 });
 
 test("published Core exports resolve only from the built package", async () => {

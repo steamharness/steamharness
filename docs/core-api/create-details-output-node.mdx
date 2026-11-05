@@ -102,7 +102,7 @@ const output = await workflow.runNode(detailsNode, {
 return output;
 ```
 
-如果要在 CLI Web 中暴露一个可运行示例，executor params 应直接对应这三个字段：`icon` 使用 `control: "radio"` 和预置 icon 选项，`title` / `content` 使用普通字符串输入。`workspace/workflow/details-output` 示例即采用这种形态，避免用 `scenario` 之类的演示分支掩盖 details 输出节点本身的输入。
+如果要在 CLI Web 中暴露一个可运行示例，executor params 应直接对应这三个字段：`icon` 使用 `control: "radio"` 和预置 icon 选项，`title` / `content` 使用普通字符串输入。在自己的项目中直接传递这些参数，即可验证 details 输出节点的格式与展示行为。
 
 ## 示例：从业务 input 生成折叠块
 

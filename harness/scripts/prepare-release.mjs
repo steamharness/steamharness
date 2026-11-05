@@ -1,5 +1,4 @@
-import { spawn } from "node:child_process";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
@@ -23,16 +22,12 @@ export async function prepareRelease(options) {
   const enHistoryPath = path.join(root, "CHANGELOG.en.md");
   const zhNextPath = path.join(root, "CHANGELOG.next.md");
   const enNextPath = path.join(root, "CHANGELOG.next.en.md");
-  const workspacePackages = await collectWorkspacePackageFiles(root);
-  const workspaceLockPath = path.join(root, "workspace", "pnpm-lock.yaml");
   const paths = [
     manifestPath,
     zhHistoryPath,
     enHistoryPath,
     zhNextPath,
     enNextPath,
-    ...workspacePackages,
-    workspaceLockPath,
   ];
   const snapshots = await captureSnapshots(paths);
   const manifest = JSON.parse(snapshots.get(manifestPath).toString("utf8"));
@@ -50,29 +45,18 @@ export async function prepareRelease(options) {
   const enNext = parseNext(snapshots.get(enNextPath).toString("utf8"), "en");
   assertNextParity(zhNext, enNext);
 
-  const synchronizedPackages = [];
   try {
-    for (const packageFile of workspacePackages) {
-      const packageJson = JSON.parse(snapshots.get(packageFile).toString("utf8"));
-      if (synchronizeDependency(packageJson, "steamharness", version)) {
-        await writeJson(packageFile, packageJson);
-        synchronizedPackages.push(path.relative(root, packageFile));
-      }
-    }
-
     const date = options.date ?? new Date().toISOString().slice(0, 10);
-    await Promise.all([
-      writeFile(zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body), "utf8"),
-      writeFile(enHistoryPath, appendHistory(enHistory, version, date, enNext.body), "utf8"),
-      writeFile(zhNextPath, "# Unreleased\n", "utf8"),
-      writeFile(enNextPath, "# Unreleased\n", "utf8"),
-    ]);
-
-    if (options.updateLockfile !== false) {
-      const run = options.runCommand ?? runCommand;
-      await run("corepack", ["pnpm", "install", "--lockfile-only"], {
-        cwd: path.join(root, "workspace"),
-      });
+    const updates = [
+      [zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body)],
+      [enHistoryPath, appendHistory(enHistory, version, date, enNext.body)],
+      [zhNextPath, "# Unreleased\n"],
+      [enNextPath, "# Unreleased\n"],
+    ];
+    // Finish each write before rollback can begin; concurrent writes could
+    // otherwise complete after the original contents have been restored.
+    for (const [filePath, contents] of updates) {
+      await fs.writeFile(filePath, contents, "utf8");
     }
   } catch (error) {
     await restoreSnapshots(snapshots);
@@ -83,50 +67,15 @@ export async function prepareRelease(options) {
     unit: "steamharness",
     version,
     tag: `steamharness/v${version}`,
-    synchronizedPackages: synchronizedPackages.sort(),
+    synchronizedPackages: [],
   };
-}
-
-async function collectWorkspacePackageFiles(root) {
-  const files = [path.join(root, "workspace", "package.json")];
-  for (const group of ["workflow", "conversation"]) {
-    const groupRoot = path.join(root, "workspace", group);
-    let entries = [];
-    try {
-      entries = await readdir(groupRoot, { withFileTypes: true });
-    } catch (error) {
-      if (error?.code === "ENOENT") continue;
-      throw error;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const packageFile = path.join(groupRoot, entry.name, "package.json");
-      try {
-        if ((await stat(packageFile)).isFile()) files.push(packageFile);
-      } catch (error) {
-        if (error?.code !== "ENOENT") throw error;
-      }
-    }
-  }
-  return files.sort();
-}
-
-function synchronizeDependency(manifest, packageName, version) {
-  let changed = false;
-  for (const field of ["dependencies", "devDependencies"]) {
-    if (manifest[field] && Object.hasOwn(manifest[field], packageName)) {
-      manifest[field][packageName] = version;
-      changed = true;
-    }
-  }
-  return changed;
 }
 
 async function captureSnapshots(paths) {
   const snapshots = new Map();
   for (const filePath of new Set(paths)) {
     try {
-      snapshots.set(filePath, await readFile(filePath));
+      snapshots.set(filePath, await fs.readFile(filePath));
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
       snapshots.set(filePath, undefined);
@@ -138,46 +87,12 @@ async function captureSnapshots(paths) {
 async function restoreSnapshots(snapshots) {
   for (const [filePath, contents] of snapshots) {
     if (contents === undefined) {
-      await rm(filePath, { force: true });
+      await fs.rm(filePath, { force: true });
       continue;
     }
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, contents);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, contents);
   }
-}
-
-async function writeJson(filePath, value) {
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
-function runCommand(command, args, options) {
-  const invocation = resolveSpawnInvocation(command, args);
-  return new Promise((resolve, reject) => {
-    const child = spawn(invocation.command, invocation.args, {
-      cwd: options.cwd,
-      env: process.env,
-      stdio: "inherit",
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => code === 0
-      ? resolve()
-      : reject(new Error(`${command} ${args.join(" ")} exited ${code}.`)));
-  });
-}
-
-export function resolveSpawnInvocation(command, args, options = {}) {
-  const platform = options.platform ?? process.platform;
-  if (platform === "win32" && command === "corepack") {
-    const executable = path.win32.join(
-      path.win32.dirname(options.execPath ?? process.execPath),
-      "corepack.cmd",
-    );
-    return {
-      command: options.comSpec ?? process.env.ComSpec ?? "cmd.exe",
-      args: ["/d", "/s", "/c", "call", executable, ...args],
-    };
-  }
-  return { command, args };
 }
 
 function parseArgs(argv) {

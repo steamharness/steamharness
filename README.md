@@ -8,7 +8,7 @@
 
 | 目录 | 内容 | 包名 |
 | --- | --- | --- |
-| `harness/` | Agent 运行时 SDK 与示例工作流 | `steamharness` |
+| `harness/` | Agent 运行时 SDK 与离线测试 | `steamharness` |
 | `cli/` | 本地、工作区与服务器管理 CLI（命令 `steamharness`） | `@steamharness/cli` |
 | `server/` | Server 与 Server Web 管理端 | `@steamharness/server`、`@steamharness/server-web` |
 | `shared/` | 跨组件源码、发布工具与 i18n 资源（18 个子包） | `@steamharness/shared-workspace`、`@steamharness/*` |
@@ -38,10 +38,11 @@ Studio 依赖 `studio/upstream/vscode` 子模块（VS Code 上游 fork）：
 git submodule update --init --depth 1 studio/upstream/vscode
 ```
 
-示例工作流是嵌套的独立 workspace：
+Core 的通用能力通过普通测试验证；加载器与 CLI 测试按需生成并清理最小临时夹具，共用根 workspace 的依赖：
 
 ```sh
-pnpm -C harness/workspace install
+pnpm -C harness test
+pnpm -C cli test
 ```
 
 ## 常用命令

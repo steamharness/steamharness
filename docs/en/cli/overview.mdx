@@ -23,12 +23,13 @@ description: "steamharness unifies the local and server-side workspace commands 
 
 For local development, use `steamharness` to verify the running results and structure in the workflow directory, and then use the workspace CLI to upload to the server.
 
+In these commands, `./my-project` is your own local project with registered entries.
+
 ```bash
-steamharness run workspace/workflow/hello -- --message "hello"
-steamharness json workspace/workflow/hello -- --message "hello"
-steamharness structure workspace/workflow/hello
-steamharness mcp workspace/workflow/hello
-steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness run ./my-project -- --message "hello"
+steamharness json ./my-project -- --message "hello"
+steamharness structure ./my-project
+steamharness mcp ./my-project
 ```
 
 When deploying to the server, first check the service status, then log in, upload files, publish a version, and download it.
