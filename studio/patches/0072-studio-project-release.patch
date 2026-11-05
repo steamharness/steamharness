@@ -20,7 +20,7 @@ index 6b066571850..83822e480eb 100644
  			const toolsParent = active ? toolsDock : right;
  			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
 diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
-index 0047459e43e..8ca9a6afd0b 100644
+index 0047459e43e..fa6c5e916a4 100644
 --- a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
 +++ b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
 @@ -35,6 +35,16 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
@@ -34,7 +34,7 @@ index 0047459e43e..8ca9a6afd0b 100644
 +		icon: Codicon.rocket
 +	},
 +	when: ContextKeyExpr.equals('studio.projectReleaseAvailable', true),
-+	group: '0_studio', order: 1
++	group: '0_studio', order: 0.5
 +});
 +
  
