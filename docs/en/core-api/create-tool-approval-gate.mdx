@@ -1,18 +1,20 @@
 ---
 title: "createToolApprovalGate"
-description: "Create tool approval gate, press executor.tools and run policy control tool calls."
+description: "Check registered tool permissions and pause for approval when the current run requires it."
 ---
 
 # createToolApprovalGate
 
-`workflow.createToolApprovalGate()` Create a tool to approve the gate. Workflow declares the invokable tool in `tools` of specific entrypoint,Conversation continues to declare it in `tools` of executor, and then uses gate to check the running policy before actually calling the tool.
+Before a tool call, use `steamharness.createToolApprovalGate()` to check whether the tool is enabled and whether approval is required. Register Workflow tools on the selected operation and Conversation tools on the executor.
 
-The tool has three results: if it is not registered, the input verification will fail; if it is disabled, the call will be rejected; if it is enabled but not automatically approved, the waiting/recovery protocol of the user input node will be reused to generate an approval request — **only a plan-mode agent turn stops to ask**. A build turn is running a plan the user already approved, so a tool that is not auto-approved runs there.
+An unregistered tool fails validation; a disabled tool is rejected. An enabled tool runs immediately when automatically approved. Otherwise, it follows the turn's approval policy: plan turns pause for confirmation, while build turns execute the plan the user already approved.
+
+Ordinary Workflow runs retain the default approval requirement. The mode rules and error types are listed below.
 
 ## Signature
 
 ```ts
-workflow.createToolApprovalGate(): ToolApprovalGate
+steamharness.createToolApprovalGate(): ToolApprovalGate
 ```
 
 ```ts
@@ -37,14 +39,14 @@ interface ToolApprovalGate {
 
 ## Tools Registration
 
-The selected Workflow entrypoint or Conversation executor declares the tool default policy through `tools`. The runtime only accepts the override policy of the execution configuration declared tool, and the unknown tool is ignored.
+Declare default policies in `tools` on the selected Workflow entrypoint or Conversation executor. Runtime overrides apply only to tools registered in that execution configuration; overrides for unknown tools are ignored.
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<Input, OutputPayload>({
+    steamharness.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "Full workflow",
       workflow: toolProject,
@@ -68,29 +70,29 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 |Field|Type|Description|
 | --- | --- | --- |
 | `name` | `string` |Stable tool name. Required. Empty strings are ignored.|
-| `label` | `string` |Show name.|
-| `description` | `string` |Description of the purpose of the tool.|
-| `enabled` | `boolean` |Whether it is enabled by default. `true` when not passed.|
-| `autoApprove` | `boolean` |Automatically approve by default. `false` when not passed.|
+| `label` | `string` |Display name.|
+| `description` | `string` |Tool purpose.|
+| `enabled` | `boolean` |Enabled by default; defaults to `true`.|
+| `autoApprove` | `boolean` |Approve automatically; defaults to `false`.|
 
 ## approve
 
-`approve(input, context)` only performs approval checks and does not call business functions. `{ approved: true }` is returned when approval is passed; `tool_permission_denied` is thrown when user rejects.
+`approve(input, context)` checks permission without invoking the business function. It returns `{ approved: true }` after approval and throws `tool_permission_denied` if the user rejects the request.
 
 |Input field|Type|Description|
 | --- | --- | --- |
 | `name` | `string` |Tool name, must match the `tools` declaration of the current entrypoint or Conversation executor.|
-| `label` | `string` |The name of this approval is displayed; if it is not passed, use the tool declaration.|
-| `description` | `string` |This approval description; use tool declaration if not passed.|
-| `reason` | `string` |Call reason.|
+| `label` | `string` |Display label; defaults to the registered tool label.|
+| `description` | `string` |Description; defaults to the registered tool description.|
+| `reason` | `string` |Reason for the call.|
 | `arguments` | `unknown` |The parameter snapshot of this call is written to the approval request metadata.|
 
 ## wrap
 
-`wrap(name, fn, options)` returns a new function. When calling a new function, the first argument must be `NodeContext`, and gate will approve it before passing the remaining arguments to the original function.
+`wrap(name, fn, options)` returns a function that checks approval before calling `fn`. Pass a `NodeContext` as its first argument; the remaining arguments are forwarded to the original function.
 
 ```ts
-const approval = workflow.createToolApprovalGate();
+const approval = steamharness.createToolApprovalGate();
 
 const searchWithApproval = approval.wrap(
   "search",
@@ -113,23 +115,27 @@ const result = await searchWithApproval(context, input.query);
 | --- | --- |
 |Tool not registered|Throws `HarnessError` of type `input_validation`.|
 |Tool is disabled|Throws `HarnessError` of type `tool_permission_denied`.|
-| `autoApprove: true` |Directly return `{ approved: true }`, does not generate wait request.|
+| `autoApprove: true` |Returns `{ approved: true }` without a waiting request.|
 |Requires approval, and the turn is in plan mode|The `tool-approval` request is created and the running status becomes `waiting_for_input`.|
-|Requires approval, but the turn is in build mode|Directly return `{ approved: true }`, does not generate wait request.|
+|Requires approval, but the turn is in build mode|Returns `{ approved: true }` without a waiting request.|
 |User Approval|Restore the same `runId`, return `{ approved: true }`, and continue calling the tool.|
 |User Rejected|Throw `tool_permission_denied`.|
 
-The mode is decided per turn by the agent runtime and written to `context.toolPermissions.requiresUserApproval`: `true` for a plan turn, `false` for a build turn. A run that never enters the agent (a plain Workflow Run, or a caller that declares no mode) keeps the default `true` and still asks according to `autoApprove`. This rule only decides whether the run stops to ask — a disabled tool is refused in either mode.
+The Agent runtime sets `context.toolPermissions.requiresUserApproval` for each turn: `true` for plan and `false` for build. Runs outside the Agent, including ordinary Workflow runs and callers without a mode, retain the default `true` and follow `autoApprove`.
 
-Approval requests use `workflow.createUserInputNode()` the same set of recovery agreements. The request ID contains workflow, runId, and tool name by default, and `params` contains a boolean field `approved`.
+A disabled tool is rejected in every mode. This setting controls whether an enabled tool pauses for confirmation.
 
-CLI Web render `tool-approval` as a dedicated decision interface, directly showing tool ID and `arguments` parameter snapshots, and providing "approve and continue" and "reject and end" actions. The interface does not display generic Boolean switches, nor does it implicitly approve tool invocations through Enter.
+Approval uses the same wait/resume protocol as `steamharness.createUserInputNode()`. The default request ID includes the workflow, run ID, and tool name; request `params` includes the boolean field `approved`.
 
-In Conversation mode, the enablement of the tool is saved with the auto-approval policy by dialog. When you switch back to a conversation, the Tools Permissions panel restores the last state of the conversation, and subsequent runs and approval restores also use the policy snapshot of the conversation. Conversations that are new or do not have a standalone policy use the executor `tools` default value directly and do not inherit overridden values from project-level or other conversations. Plain Workflow Run still uses project-level tool policies.
+CLI Web displays a dedicated approval view with the tool ID and `arguments` snapshot. Choose "Approve and continue" or "Reject and end". There is no generic boolean switch, and pressing Enter does not implicitly approve the tool.
+
+Conversation stores tool enablement and automatic approval per conversation. Returning to a conversation restores its Tools Permissions state; later runs and approval recovery use that conversation's policy snapshot.
+
+New conversations, or those without their own policy, use executor `tools` defaults. They do not inherit project-level overrides or another conversation's policy. Ordinary Workflow runs use project-level tool policies.
 
 ## CLI Recovery
 
-Local CLI does not pop up interactive approvals. The first run outputs a `waiting_for_input` report, followed by a recovery using the same `runId` and `--resolved-user-inputs-json`:
+The local CLI returns a `waiting_for_input` report instead of opening an approval dialog. Read its request ID, then resume with the same `runId` and an answer in `--resolved-user-inputs-json`:
 
 ```bash
 steamharness json . -- --message "run tool"
@@ -139,7 +145,7 @@ steamharness json . \
   -- --message "run tool"
 ```
 
-CLI Web and local host also pass in the tool policy snapshot for this run through `--tool-permissions-json`. Normal manual CLI debugging usually does not require this parameter to be passed directly, unless you want to simulate the enable or automatic approval policies passed in by the host.
+CLI Web and local hosts pass the run's tool-policy snapshot through `--tool-permissions-json`. Supply it during manual CLI debugging only when you need to reproduce a host's enablement or automatic-approval policy.
 
 ## Error
 
@@ -149,4 +155,4 @@ CLI Web and local host also pass in the tool policy snapshot for this run throug
 |Tool not registered at `executor.tools`| `input_validation` |Only declared tools can be approved.|
 |Tool disabled by policy| `tool_permission_denied` |The current run does not allow the tool to be called.|
 |User Rejected Approval| `tool_permission_denied` |On recovery `values.approved !== true`.|
-|No user input runtime and approval required| `user_input_required` |The host does not provide an input handler that pauses resume.|
+|No user input runtime and approval required| `user_input_required` |The host has no input handler for pausing and resuming approval.|

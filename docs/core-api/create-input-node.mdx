@@ -5,16 +5,30 @@ description: "创建输入解析节点，把 workflow input 转换为后续节�
 
 # createInputNode
 
-`workflow.createInputNode()` 创建普通输入节点。它通常放在 workflow 的第一步，用来 trim、校验、转换或补齐 executor 构造的 input。
+用 `steamharness.createInputNode()` 把执行器产生的输入转换为后续节点需要的值。通常把它放在流程开头，完成去空格、校验、类型转换或默认值补齐。
+
+## 示例
+
+```ts
+const inputNode = steamharness.createInputNode<Input, ParsedInput>({
+  name: "parse-input",
+  parse(input) {
+    return {
+      message: input.message.trim(),
+      count: Number(input.count ?? 1),
+    };
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.createInputNode<Input>(
+steamharness.createInputNode<Input>(
   options?: InputNodeOptions<Input, Input>,
 ): BaseNode<Input, Input>
 
-workflow.createInputNode<Input, Output>(
+steamharness.createInputNode<Input, Output>(
   options: InputNodeOptions<Input, Output> & {
     parse: InputParser<Input, Output>;
   },
@@ -47,7 +61,7 @@ workflow.createInputNode<Input, Output>(
 
 | 返回 | 类型 | 说明 |
 | --- | --- | --- |
-| 节点对象 | `BaseNode<Input, Output>` | 可通过 `workflow.runNode(inputNode, input, context)` 执行。 |
+| 节点对象 | `BaseNode<Input, Output>` | 可通过 `steamharness.runNode(inputNode, input, context)` 执行。 |
 | 节点输出 | `Output` | `parse` 返回值，作为下游节点输入。 |
 
 ## 解析流程
@@ -58,25 +72,11 @@ workflow.createInputNode<Input, Output>(
 | `createInputNode` 节点 | `Input`、`NodeContext` | `Output` |
 | 下游节点 | `Output` | 继续处理或进入 LLM/output 节点 |
 
-## 示例
-
-```ts
-const inputNode = workflow.createInputNode<Input, ParsedInput>({
-  name: "parse-input",
-  parse(input) {
-    return {
-      message: input.message.trim(),
-      count: Number(input.count ?? 1),
-    };
-  },
-});
-```
-
 ## 常见用法
 
 | 场景 | 做法 |
 | --- | --- |
 | 清理字符串 | 在 `parse` 中 `trim()`。 |
 | 转换类型 | 把 executor 构造的字符串转换成 number/boolean/object。 |
-| 输入校验 | 校验失败时抛出 `workflow.HarnessError`，类型通常用 `input_validation`。 |
+| 输入校验 | 校验失败时抛出 `steamharness.HarnessError`，类型通常用 `input_validation`。 |
 | 直接透传 | 不传 `parse`，节点输出等于输入。 |

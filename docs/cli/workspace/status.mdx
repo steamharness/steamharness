@@ -5,9 +5,16 @@ description: "查看 workspace CLI 保存的登录状态，以及本次调用实
 
 # workspace status
 
-`workspace status` 读取 CLI 登录态文件 `workflow-auth.json`，输出当前是否保存了 server URL、API Key、用户和过期时间，并用 `effective` 给出**本次参数解析后命令真正会连的服务器**及其来源。它不请求 SteamHarness Server，因此不能证明 API Key 仍然有效。
+用 `workspace status` 检查保存的登录信息，以及本次命令真正会使用的服务器。它只读本地配置，不访问 Server，因此不能证明 API Key 仍有效。
 
-登录态文件和有效目标可能不是同一个服务器。解析顺序是 `--server` / `--token` → 环境变量 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` → 保存的登录 → 内置默认值：命令行参数覆盖环境变量，环境变量覆盖文件。Studio 启动的运行与内置终端会注入自己的会话，所以那里的 `steamharness` 连的是 Studio 当前登录的服务器，而不是这份文件里可能很旧的登录。要判断「会不会传错服务器」，看 `effective` 而不是 `serverUrl`。
+连接设置按以下顺序解析：
+
+1. `--server` 与 `--token`。
+2. `STEAMHARNESS_SERVER_URL` 与 `STEAMHARNESS_SERVER_ADMIN_KEY`。
+3. 保存的 CLI 登录信息。
+4. 渠道默认值。
+
+查看 `effective.serverUrl` 判断本次目标，`serverUrl` 只表示保存值。Studio 为项目运行和内置终端注入当前会话，所以它们可能与独立终端保存的登录不同。
 
 ## 命令格式
 

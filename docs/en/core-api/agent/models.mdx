@@ -1,0 +1,84 @@
+---
+title: "Agent models and search"
+description: "Declare model capabilities, enable native search, and choose reasoning effort."
+---
+
+# Agent models and search
+
+Declare model capabilities, enable native search, and choose reasoning effort.
+
+Create the runtime with [createAgent](/en/core-api/create-agent). The sections below describe its related options and behavior.
+
+## Model attributes
+
+`modelAttributes` describes a model on a **custom endpoint** — the runtime's own catalogue does not know it, so only the caller can say what it is:
+
+```ts
+const agent = await steamharness.createAgent({
+  provider: "my-gateway",
+  model: "vendor/model-1",
+  baseUrl: "https://gateway.example.com/v1",
+  modelAttributes: {
+    name: "Vendor Model 1",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+    cost: { input: 0.4, output: 1.6, cacheRead: 0.04, cacheWrite: 0.5 },
+    thinkingLevelMap: { minimal: null, max: "xhigh" },
+  },
+});
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Display name, at most 200 characters. Defaults to the model id. |
+| `reasoning` | `boolean` | Whether the model does reasoning at all. |
+| `webSearch` | `boolean` | Whether the endpoint supports native web search. `true` enables it by default. |
+| `input` | `("text" \| "image")[]` | Input modalities the model accepts; `image` decides whether a turn hands pictures to the model. |
+| `cost` | `{ input, output, cacheRead, cacheWrite }` | Per-million-token prices; all four are non-negative numbers. |
+| `contextWindow` | `number` | The context window. |
+| `maxTokens` | `number` | The max output tokens. |
+| `thinkingLevelMap` | `Record<string, string \| null>` | Maps a pi thinking level to the value sent upstream; `null` marks a level unsupported, and an omitted level keeps pi's own mapping. `ultra` is not a legal level and is refused — it folds onto `max` before it reaches a model. |
+
+Declare known capabilities for a custom endpoint. When declarations and catalog matches are unavailable, the runtime uses defaults such as reasoning, image input, zero prices, and a window inferred from the model ID. Check these values against the actual service.
+
+An explicit `contextWindow` / `maxTokens` option still outranks `modelAttributes`, because it is the per-run override the caller passed on purpose. A `modelAttributes` passed on one run overrides the runtime option of the same name.
+
+Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `webSearch`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
+
+`modelAttributes` is for declaring a model on an endpoint owned by the caller. Projects manage system and third-party models in the configuration panel; custom endpoint attributes use explicit configuration rather than business environment variables.
+
+## Web search
+
+Agents support OpenAI Responses `web_search` and Anthropic Messages `web_search_20250305` (at most 5 uses per request). Declaring `modelAttributes.webSearch: true` enables it by default. Set the runtime option or per-run `AgentInput.webSearch` to `false` to disable it; a per-run value takes precedence. A custom endpoint with no capability declaration can explicitly enable `webSearch: true`. Enabling search when the capability is explicitly `false`, or with another protocol, fails with `input_validation`.
+
+```ts
+const agent = await steamharness.createAgent({
+  provider: "openai",
+  model: "your-search-capable-model",
+  baseUrl: "https://api.openai.com/v1",
+  apiKind: "openai-responses",
+  modelAttributes: { webSearch: true },
+});
+try {
+  for await (const event of agent.run({ prompt: "Find the latest release notes and cite sources", errCode: 0, errMessage: "" })) {
+    if (event.type === "web_search") console.log(event.search);
+    if (event.type === "sources") console.log(event.sources);
+  }
+} finally {
+  await agent.close();
+}
+```
+
+Enabling search adds the provider tool beside existing local tools. The model decides whether to call it. The endpoint and model must support that native tool; this path does not support OpenAI Chat Completions. Context summarization requests do not add search tools.
+
+The `web_search` event carries `search: { id, status, query?, sources, error? }`, where status is `running`, `success`, or `failed`. The `sources` event carries `sources: { url, title?, citedText? }[]`. Search records, citations, and provider content needed for follow-up requests are saved with assistant messages. Valid history is replayed even when search is disabled on the next run; native content is only replayed for the same provider and model. Anthropic `pause_turn` responses resume automatically, with at most 3 continuations before an error.
+
+Convenience Agent projects expose automatic, on, and off choices under model settings: `--web-search ""`, `--web-search true`, and `--web-search false`. Projects with static inline parameters must declare this parameter themselves.
+
+## Reasoning effort
+
+`effort` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`, and also `ultra` (meaning `max`). A level the model does not support converges to the nearest one it does, so an unsupported value never fails the run.
+
+An empty string means "let the model decide": pi expresses that by naming no level at all, which is its `off` — an OpenAI-style endpoint receives no `reasoningEffort`, the same thing the built-in OpenCode project's Model default does. On Anthropic-style endpoints it disables `thinking` outright, so pick a concrete level to keep reasoning. Only an absent value (`undefined`) means "no choice was made", and keeps the runtime's or project's own level.

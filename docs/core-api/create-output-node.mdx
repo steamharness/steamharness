@@ -5,24 +5,45 @@ description: "创建同步或流式输出节点，并格式化最终 workflow pa
 
 # createOutputNode
 
-`workflow.createOutputNode()` 创建输出节点。它既可以像普通节点一样同步格式化输入，也可以提供 `stream` 逐段输出，最后用 `format` 生成最终 payload。
+用 `steamharness.createOutputNode()` 生成界面输出和最终 payload。普通输出使用同步格式化；逐段输出提供 `stream`，再由 `format` 生成完整结果。
 
 当前输出协议直接使用 `RunOutputPayload.items`。不要再把完整输出聚合到顶层 `content` 字段；每一段可见输出都应该是独立的 `OutputItem`。
+
+## 示例：同步输出
+
+```ts
+const outputNode = steamharness.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  format(result) {
+    return {
+      ...steamharness.createOutputPayload({
+        items: [{
+          title: "Result",
+          content: result.text,
+          contentType: "markdown",
+          collapsed: false,
+        }],
+      }),
+      source: result.source,
+    };
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.createOutputNode<Input, Output>(
+steamharness.createOutputNode<Input, Output>(
   options: OutputStreamNodeOptions<Input, Output>,
 ): BaseStreamNode<Input, OutputStreamChunk, Output>
 
-workflow.createOutputNode<Input, Output>(
+steamharness.createOutputNode<Input, Output>(
   options: OutputNodeOptions<Input, Output> & {
     format: OutputFormatter<Input, Output>;
   },
 ): BaseNode<Input, Output>
 
-workflow.createOutputNode<Input>(
+steamharness.createOutputNode<Input>(
   options?: OutputNodeOptions<Input, Input>,
 ): BaseNode<Input, Input>
 ```
@@ -56,8 +77,8 @@ workflow.createOutputNode<Input>(
 
 | 模式 | 返回类型 | 执行方式 |
 | --- | --- | --- |
-| 同步输出 | `BaseNode<Input, Output>` | `workflow.runNode(outputNode, input, context)` |
-| 流式输出 | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `workflow.runStreamNode(outputNode, input, context)` |
+| 同步输出 | `BaseNode<Input, Output>` | `steamharness.runNode(outputNode, input, context)` |
+| 流式输出 | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `steamharness.runStreamNode(outputNode, input, context)` |
 
 ## 输出流程
 
@@ -66,7 +87,7 @@ workflow.createOutputNode<Input>(
 | 同步 | 接收 `Input`，通过 `format(input, context)` 生成 `Output`。 |
 | 流式 | 接收 `Input`，先输出 string 或 item chunks，再把累积后的 `{ text, items, chunks }` 交给 `format`。字符串 chunk 会自动追加到默认 Markdown item，普通流式输出无需手动创建 item。 |
 
-在 conversation UI 里，如果同一段 assistant 回答会先流式展示、再通过最终 report 校准，推荐使用 `workflow.createOutputItemChunk()` 发送带稳定 `id` 的 `output_item_start` / `output_item_delta` / `output_item_end`。这样共享运行界面会按 item id 用最终结果替换 live item，而不是把字符串 chunk 生成的实时默认 item 和最终默认 item 各渲染一份。内置 Conversation 项目的主回答使用固定 `conversation-answer` id 来保持单条回复只展示一次。
+在 conversation UI 里，如果同一段 assistant 回答会先流式展示、再通过最终 report 校准，推荐使用 `steamharness.createOutputItemChunk()` 发送带稳定 `id` 的 `output_item_start` / `output_item_delta` / `output_item_end`。这样共享运行界面会按 item id 用最终结果替换 live item，而不是把字符串 chunk 生成的实时默认 item 和最终默认 item 各渲染一份。内置 Conversation 项目的主回答使用固定 `conversation-answer` id 来保持单条回复只展示一次。
 
 如果 agent 文本会和工具调用穿插出现，不要把所有正文都 patch 到同一个稳定 item。工具调用前先结束当前 inline `Output` item，工具 detail item 输出后，再为后续正文创建新的 inline `Output` item；最终 `items` 应保持 `正文段 -> 工具 detail -> 正文段` 的事件顺序。
 
@@ -99,7 +120,7 @@ interface OutputItem {
 圆环可通过 `output_item_delta` 的对象增量更新，例如 `delta: { value: 75 }` 会保留已有的 `total` 和 `unit`。正文内的圆环更新时保留键盘焦点及打开的详情；多个圆环共存时只显示当前悬停或聚焦的提示框。
 
 ```ts
-workflow.createOutputItem({
+steamharness.createOutputItem({
   id: "storage-quota",
   title: "存储用量",
   content: { value: 57, total: 100, unit: "MB" },
@@ -118,10 +139,10 @@ Core Agent 使用同一协议输出上下文用量。自定义项目也可用于
 
 | API | 说明 |
 | --- | --- |
-| `workflow.createOutputItem(input)` | 创建带稳定 `id`、icon 预置解析和默认 `contentType` 的 item。 |
-| `workflow.createOutputPayload(input)` | 创建 `{ errCode, errMessage, items }` payload，并可保留业务扩展字段。 |
-| `workflow.addOutputItem(payload, item)` | 向现有 output payload 追加一个 item。 |
-| `workflow.createOutputItemChunk(chunk)` | 创建 `output_item_start` / `output_item_delta` / `output_item_end` 流式 chunk。 |
+| `steamharness.createOutputItem(input)` | 创建带稳定 `id`、icon 预置解析和默认 `contentType` 的 item。 |
+| `steamharness.createOutputPayload(input)` | 创建 `{ errCode, errMessage, items }` payload，并可保留业务扩展字段。 |
+| `steamharness.addOutputItem(payload, item)` | 向现有 output payload 追加一个 item。 |
+| `steamharness.createOutputItemChunk(chunk)` | 创建 `output_item_start` / `output_item_delta` / `output_item_end` 流式 chunk。 |
 
 ## 流式 item chunk
 
@@ -131,38 +152,17 @@ Core Agent 使用同一协议输出上下文用量。自定义项目也可用于
 | `output_item_delta` | 按 `itemId` 追加或合并内容；字符串拼接，数组追加，对象浅合并。可选 `item` patch 更新 `title`、`icon`、`metadata.status` 等展示字段。 |
 | `output_item_end` | 标记 item 结束；当前主要用于协议完整性和 UI 后续扩展。 |
 
-## 示例：同步输出
-
-```ts
-const outputNode = workflow.createOutputNode<Result, OutputPayload>({
-  name: "output",
-  format(result) {
-    return {
-      ...workflow.createOutputPayload({
-        items: [{
-          title: "Result",
-          content: result.text,
-          contentType: "markdown",
-          collapsed: false,
-        }],
-      }),
-      source: result.source,
-    };
-  },
-});
-```
-
 ## 示例：流式输出
 
 ```ts
-const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Result, OutputPayload>({
   name: "output",
   async *stream(result) {
     yield result.prefix;
     yield result.text;
   },
   format(stream) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: stream.items,
       totalChunks: stream.chunks.length,
     });
@@ -173,10 +173,10 @@ const outputNode = workflow.createOutputNode<Result, OutputPayload>({
 ## 示例：流式结构化 item
 
 ```ts
-const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
+const outputNode = steamharness.createOutputNode<ToolResult, OutputPayload>({
   name: "output",
   async *stream(result) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: "tool-result",
@@ -186,7 +186,7 @@ const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
         collapsed: true,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: "tool-result",
       delta: result.payload,
@@ -196,13 +196,13 @@ const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
         metadata: { status: "success" },
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: "tool-result",
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 ```

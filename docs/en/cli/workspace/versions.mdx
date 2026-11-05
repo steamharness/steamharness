@@ -1,14 +1,24 @@
 ---
 title: "workspace versions"
-description: "Inspect immutable source versions and latest."
+description: "Inspect releases, source hashes, and download counts."
 ---
 
 # workspace versions
 
-```bash
-steamharness workspace versions <project>
+Use `workspace versions` to inspect a project's `latest`, `nextVersion`, and historical releases.
+
+## Command
+
+```sh
+pnpm exec steamharness workspace versions <project-id>
 ```
 
-Calls `GET /api/workflows/{workflow}/versions` and returns `latest`, `nextVersion` and history. Versions include publisher, timestamp, release notes, source SHA-256, dependency locks, a `latest` flag and cumulative `downloadCount`. Downloads count source responses successfully sent by Server, including repeat downloads by the same user. A `latest` download counts toward its resolved version.
+The command reads `GET /api/projects/{projectId}/versions`. Failed requests print error JSON and exit with code `1`.
 
-Versions have no execution state or activation controls. Use [download --target](/en/cli/workspace/download) for history or [publish](/en/cli/workspace/publish) for a new snapshot. Errors produce JSON and exit status 1.
+## Returned information
+
+Each version includes its number, publisher, publication time, notes, source SHA-256, dependency lock, `latest` marker, and `downloadCount`.
+
+Counts increase when Server successfully sends a source response. Repeat downloads by the same user count again; a `latest` download is attributed to the resolved version.
+
+Version records have no execution state or online/offline operation. Use [download](/en/cli/workspace/download) to retrieve a snapshot and [publish](/en/cli/workspace/publish) to create another version.

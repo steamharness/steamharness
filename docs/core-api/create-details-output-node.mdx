@@ -5,14 +5,36 @@ description: "创建独立可折叠 output item 的便捷输出节点。"
 
 # createDetailsOutputNode
 
-`workflow.createDetailsOutputNode()` 创建一个通用输出节点，用来把标题、内容和 icon 转成独立的可折叠 `OutputItem`。
+用 `steamharness.createDetailsOutputNode()` 把标题、内容和图标组合成可折叠的 `OutputItem`。适合展示读者按需展开的日志、JSON 或补充说明。
 
 该节点执行时仍然是 `output` 标准节点，因此 CLI、CLI Web 和日志 replay 会把它的 `items` 作为用户可见输出收集。适合把长日志、调试信息、结构化 JSON、执行摘要或可选说明输出成独立折叠块。
+
+## 示例：直接传 title/content/icon
+
+```ts
+const detailsNode = steamharness.createDetailsOutputNode();
+
+const output = await steamharness.runNode(detailsNode, {
+  title: "点击展开",
+  icon: "info",
+  content: [
+    "这里是被折叠的内容。",
+    "",
+    "- 列表",
+    "- **加粗**",
+    "- `代码`",
+  ].join("\n"),
+}, context);
+
+return output;
+```
+
+如果要在 CLI Web 中暴露一个可运行示例，executor params 应直接对应这三个字段：`icon` 使用 `control: "radio"` 和预置 icon 选项，`title` / `content` 使用普通字符串输入。这样可以直接修改图标、标题和内容，观察节点输出。
 
 ## 签名
 
 ```ts
-workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
+steamharness.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
   options?: DetailsOutputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -82,32 +104,10 @@ workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunP
 
 对象和数组会保留在 `content` 中，并自动标记为 `contentType: "json"`；字符串默认按 `markdown` 渲染。`video` 也会按原生 `<video>` 渲染，详见 [createOutputNode](/core-api/create-output-node)。
 
-## 示例：直接传 title/content/icon
-
-```ts
-const detailsNode = workflow.createDetailsOutputNode();
-
-const output = await workflow.runNode(detailsNode, {
-  title: "点击展开",
-  icon: "info",
-  content: [
-    "这里是被折叠的内容。",
-    "",
-    "- 列表",
-    "- **加粗**",
-    "- `代码`",
-  ].join("\n"),
-}, context);
-
-return output;
-```
-
-如果要在 CLI Web 中暴露一个可运行示例，executor params 应直接对应这三个字段：`icon` 使用 `control: "radio"` 和预置 icon 选项，`title` / `content` 使用普通字符串输入。`workspace/workflow/details-output` 示例即采用这种形态，避免用 `scenario` 之类的演示分支掩盖 details 输出节点本身的输入。
-
 ## 示例：从业务 input 生成折叠块
 
 ```ts
-const debugNode = workflow.createDetailsOutputNode<DebugResult>({
+const debugNode = steamharness.createDetailsOutputNode<DebugResult>({
   name: "output",
   title: "Debug payload",
   icon: "code",
@@ -126,4 +126,4 @@ const debugNode = workflow.createDetailsOutputNode<DebugResult>({
 ## 注意
 
 - 一个 workflow 文件里不要声明多个配置名相同的 output 节点；如果要输出多个折叠块，可以复用同一个 `createDetailsOutputNode` 实例多次 `runNode`，最终 report 会把每次输出作为独立 item 收集。
-- 该节点是普通节点，使用 `workflow.runNode(...)` 执行；需要逐 chunk 流式输出时仍使用 `createOutputNode({ stream, format })`。
+- 该节点是普通节点，使用 `steamharness.runNode(...)` 执行；需要逐 chunk 流式输出时仍使用 `createOutputNode({ stream, format })`。

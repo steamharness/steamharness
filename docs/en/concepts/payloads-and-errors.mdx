@@ -5,7 +5,9 @@ description: "RunPayload, execution results, and current constraints for error r
 
 # Payload and error
 
-All data types passed between nodes, I .e. workflow payload, must inherit `RunPayload`. The type comes from the core package:
+A workflow's external result uses `RunPayload` to express success or failure, with visible output in `items`. Ordinary node intermediates use their declared generic types; not every intermediate value must be a `RunPayload`.
+
+The standard result type comes from the Core package:
 
 ```ts
 export interface RunPayload {
@@ -40,10 +42,10 @@ interface OutputPayload extends RunPayload {
   items: OutputItem[];
 }
 
-const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Parsed, OutputPayload>({
   name: "output",
   format(result) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: [{
         title: "Result",
         content: result,
@@ -113,7 +115,7 @@ Runtime event emits `user_input_requested` and `user_input_resolved`. The standa
 
 ## HarnessError
 
-Can proactively throw `workflow.HarnessError`, with type, message, node and metadata. The framework also converts ordinary exceptions to `HarnessError`.
+Can proactively throw `steamharness.HarnessError`, with type, message, node and metadata. The framework also converts ordinary exceptions to `HarnessError`.
 
 Common error types include:
 

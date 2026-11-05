@@ -5,14 +5,14 @@ description: "Define a type-safe, independently runnable entrypoint in a Workflo
 
 # defineEntrypoint
 
-`workflow.defineEntrypoint<Input, Output>()` defines an independently runnable entrypoint in a Workflow project. Each entrypoint has its own workflow, parameters, input construction, tools, token-usage settings, debug registry, and context extensions. Once the platform selects an entrypoint, it runs only that entrypoint; it does not run the default entrypoint first.
+Use `steamharness.defineEntrypoint()` to declare an independently runnable Workflow operation. Each operation has its own workflow, parameters, input constructor, tools, usage, registry, and context extensions. Selecting it executes only that operation.
 
-Entrypoints are a flat set of runnable targets in one project, not parent-child calls. To compose several business workflows into one run, explicitly call [`workflow.runProject()`](/en/core-api/run-workflow) from a workflow.
+Entrypoints are a flat set of runnable targets in one project, not parent-child calls. To compose several business workflows into one run, explicitly call [`steamharness.runProject()`](/en/core-api/run-workflow) from a workflow.
 
 ## Signature
 
 ```ts
-workflow.defineEntrypoint<Input, Output>(
+steamharness.defineEntrypoint<Input, Output>(
   definition: EntrypointDefinition<Input, Output>,
 ): EntrypointDefinition<Input, Output>
 ```
@@ -36,7 +36,7 @@ interface EntrypointGroupDefinition {
 | `description` | `string` | An optional entrypoint description. |
 | `group` | `EntrypointGroupDefinition` | Optional display group. Every entrypoint with the same group `id` must use exactly the same `title` and `order`. |
 | `workflow` | `Definition<Input, Output>` | The workflow executed by this entrypoint. Required. |
-| `params` | `ParamDeclaration[]` | Ordered fields and action entries for this entrypoint; see [`defineExecutor` parameters](/en/core-api/define-executor#projectparamdeclaration). |
+| `params` | `ParamDeclaration[]` | Ordered fields and action entries for this entrypoint; see [`defineExecutor` parameters](/en/core-api/executor/parameters#paramdeclaration). |
 | `createInput` | `(context) => Input` | Converts this entrypoint's arguments and `paramValues` into workflow input. Required. |
 | `resolveParams` | `(context) => ParamResolveResult` | Parameter-resolution callback for this entrypoint. |
 | `requiredProviders` | `ExecutorProviderName[]` | Providers required by this entrypoint. The only built-in name is currently `"llm"`. |
@@ -52,11 +52,11 @@ interface EntrypointGroupDefinition {
 A Workflow executor must declare a static default entrypoint and a non-empty entrypoint array:
 
 ```ts
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<MainInput, MainOutput>({
+    steamharness.defineEntrypoint<MainInput, MainOutput>({
       id: "main",
       title: "Full workflow",
       group: { id: "operations", title: "Operations", order: 10 },
@@ -66,7 +66,7 @@ export const executor = workflow.defineExecutor({
         return { errCode: 0, errMessage: "" };
       },
     }),
-    workflow.defineEntrypoint<ValidateInput, ValidateOutput>({
+    steamharness.defineEntrypoint<ValidateInput, ValidateOutput>({
       id: "validate",
       title: "Data validation",
       description: "Runs only the validation stage.",
@@ -88,11 +88,11 @@ When the caller does not select an entrypoint, the runtime runs `defaultEntrypoi
 `steamharness structure` does not execute configuration code, so it must be able to read the entrypoint declaration statically:
 
 - `entrypoints` must be a non-empty array literal.
-- Each item must directly call `workflow.defineEntrypoint({ ... })`.
+- Each item must directly call `steamharness.defineEntrypoint({ ... })`.
 - `id`, `title`, optional `description`, and `defaultEntrypoint` must be static strings.
 - `group` must be a static inline object. Its `id` and `title` must be non-empty static strings, and `order`, when present, must be a non-negative integer.
 - Every entrypoint with the same `group.id` must declare exactly the same `title` and `order`, including the difference between an omitted and an explicitly set `order`.
-- `workflow` must reference an identifier defined with `workflow.defineProject(...)` in the project source. You can use named, aliased, or default imports through a relative path in the project. Structure resolves the actual import/export binding. An unreferenced same-name definition, a value from an external package, or a dynamically constructed value produces a violation.
+- `workflow` must reference an identifier defined with `steamharness.defineProject(...)` in the project source. You can use named, aliased, or default imports through a relative path in the project. Structure resolves the actual import/export binding. An unreferenced same-name definition, a value from an external package, or a dynamically constructed value produces a violation.
 - IDs must be valid and unique, and `defaultEntrypoint` must identify one of them.
 - A Workflow executor no longer accepts top-level `workflow`, `params`, `createInput`, `resolveParams`, `requiredProviders`, `tools`, `tokenUsage`, `registry`, or `createContext`. Move these fields to their specific entrypoint.
 

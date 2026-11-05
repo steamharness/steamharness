@@ -1,24 +1,34 @@
 ---
 title: "Version compatibility"
-description: "Local Core runtime compatibility and Server static metadata validation."
+description: "Pin project dependencies and verify the Core/CLI compatibility line."
 ---
 
 # Version compatibility
 
-A Workflow project's `devDependencies.steamharness` must declare an exact SemVer such as `"0.2.7"` or `"0.2.7-20260826001"`. This records the development baseline; runtime compatibility compares only `major.minor`.
+Pin an exact SemVer in `devDependencies.steamharness` to record the version used for development and validation. Runtime compatibility compares `major.minor`.
 
-`0.2.0`, `0.2.99`, `0.2.4-20260826001` and `0.2.4-beta.1` all belong to `0.2.x`. Patch and prerelease ordering do not affect compatibility. A major or minor mismatch stops execution before loading user code and reports the project version, host version and required line.
+## Determine compatibility
 
-Breaking Core API changes require a new minor compatibility line rather than a patch release.
+| Declaration | Meaning |
+| --- | --- |
+| `0.2.7`, `0.2.7-20260826001` | Examples of exact dependency declarations |
+| `0.2.0`, `0.2.99`, `0.2.4-beta.1` | All belong to the `0.2.x` compatibility line |
+| Different major or minor | Execution is rejected before loading user modules, with the required line reported |
+
+Patch and prerelease identifiers do not order compatibility lines. Breaking API changes that require another line must increase minor rather than ship as a patch.
 
 ## Local execution and Server storage
 
-- Studio resolves and starts the CLI installed in the project. Project inspection and execution use that CLI's Core; install the declared dependencies and align incompatible lines to a verified combination.
-- CLI binds an exact Core and limits its peer range to the same minor, such as `>=0.2.0 <0.3.0`. `run`, `json`, `structure` and `resolve-params` validate the installed Core, CLI binding and project declaration.
-- Server validates static project declarations and stores source snapshots without installing dependencies or executing project code. The local CLI validates runtime compatibility after download.
+1. Install the project's declared Core and CLI.
+2. Studio resolves the CLI from that project and uses its Core for checks and execution.
+3. The CLI verifies installed Core, its own exact binding, and the project declaration. Update mismatched dependencies to a validated combination.
+
+CLI peer ranges stay within the same minor, such as `>=0.2.0 <0.3.0`. `run`, `json`, `structure`, and `resolve-params` all perform the compatibility check.
+
+Server validates only static declarations and source snapshots. The local CLI still checks execution compatibility after download.
 
 ## Built-in project snapshots
 
-Studio's built-in assistant and Studio Control use repository-pinned project snapshots. Development dependencies can resolve from the assistant repository in the aggregate. Studio Control exposes limited workspace and editor operations through a session-authenticated extension host and standard assistant MCP. Legacy Desktop Control has been removed from the current integration branch.
+Studio uses a pinned Developer Assistant snapshot. Studio Control belongs to the same aggregate and supplies permission-checked editor operations. They share identity, dependencies, and distribution.
 
-Existing built-in release indexes retain `components.core`, `components.cli` and `minDesktopVersion` as release metadata. Studio packages, release channels and index integration are configured separately. See [Studio workstation](/en/guides/studio/overview) for source execution.
+Older indexes retain `components.core`, `components.cli`, and `minDesktopVersion` as historical release information. See [installation and startup](/en/guides/studio/installation) for running Studio from source.

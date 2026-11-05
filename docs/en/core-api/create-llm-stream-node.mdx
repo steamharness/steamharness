@@ -5,12 +5,29 @@ description: "Create streaming LLM nodes to produce LLMStreamChunk and aggregate
 
 # createLLMStreamNode
 
-`workflow.createLLMStreamNode()` Creates a streaming LLM invocation node. When the node is executed, `provider.stream(llmInput)` is called, `LLMStreamChunk` is produced, and `runStreamNode` collects chunks and returns aggregate text.
+Use `steamharness.createLLMStreamNode()` to call `provider.stream(llmInput)` and receive `LLMStreamChunk` values. Execute it with `runStreamNode` to collect chunks and aggregated text.
+
+## Example
+
+```ts
+const streamNode = steamharness.createLLMStreamNode<ParsedInput>({
+  name: "draft-stream",
+  provider: steamharness.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      prompt: input.message,
+      temperature: 0.3,
+    };
+  },
+});
+
+const { chunks, output } = await steamharness.runStreamNode(streamNode, parsed, context);
+```
 
 ## Signature
 
 ```ts
-workflow.createLLMStreamNode<Input>(
+steamharness.createLLMStreamNode<Input>(
   options: Pick<
     LLMNodeOptions<Input>,
     "name" | "provider" | "mapInput" | "historyLimit" | "metadata"
@@ -47,7 +64,7 @@ workflow.createLLMStreamNode<Input>(
 
 |Return|Type|Description|
 | --- | --- | --- |
-|Node Object| `BaseStreamNode<Input, LLMStreamChunk, string>` |Execute via `workflow.runStreamNode`.|
+|Node Object| `BaseStreamNode<Input, LLMStreamChunk, string>` |Execute via `steamharness.runStreamNode`.|
 | chunks | `LLMStreamChunk[]` |`runStreamNode` All chunks collected.|
 | output | `string` |Node `finalize` splices all `text-delta.text`.|
 
@@ -61,23 +78,6 @@ When executor is configured with `tokenUsage: { enabled: true }`, the token usag
 | `mapInput` | `Input`, `NodeContext` | `LLMChatInput` |
 | provider `stream` | `LLMChatInput` | `AsyncIterable<LLMStreamChunk>` |
 | `runStreamNode` | chunks | `{ chunks, output: string }` |
-
-## Example
-
-```ts
-const streamNode = workflow.createLLMStreamNode<ParsedInput>({
-  name: "draft-stream",
-  provider: workflow.createLLMProviderRef("default"),
-  mapInput(input) {
-    return {
-      prompt: input.message,
-      temperature: 0.3,
-    };
-  },
-});
-
-const { chunks, output } = await workflow.runStreamNode(streamNode, parsed, context);
-```
 
 ## Difference from `createLLMNode`
 

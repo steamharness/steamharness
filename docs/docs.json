@@ -41,33 +41,43 @@
             "tab": "指南",
             "groups": [
               {
-                "group": "项目导览",
+                "group": "快速开始",
                 "pages": [
-                  "index"
-                ]
-              },
-              {
-                "group": "迁移",
-                "pages": [
-                  "guides/migrate-core-0-2"
+                  "index",
+                  "guides/quickstart"
                 ]
               },
               {
                 "group": "使用 Studio",
                 "pages": [
-                  "guides/studio/overview"
+                  "guides/studio/overview",
+                  "guides/studio/installation",
+                  "guides/studio/create-import",
+                  "guides/studio/run-debug",
+                  "guides/studio/interface",
+                  "guides/studio/models",
+                  "guides/studio/configuration",
+                  "guides/studio/data",
+                  "guides/studio/versions",
+                  "guides/studio/analysis",
+                  "guides/studio/assistant"
                 ]
               },
               {
-                "group": "使用 Server Web",
+                "group": "开发项目",
+                "pages": [
+                  "guides/development/workflow",
+                  "guides/development/conversation",
+                  "guides/development/kanban",
+                  "guides/testing",
+                  "guides/migrate-core-0-2"
+                ]
+              },
+              {
+                "group": "管理与部署",
                 "pages": [
                   "guides/server/overview",
-                  "guides/server/project-management"
-                ]
-              },
-              {
-                "group": "部署",
-                "pages": [
+                  "guides/server/project-management",
                   "guides/server/deployment"
                 ]
               }
@@ -135,10 +145,25 @@
                 ]
               },
               {
+                "group": "Agent 与参数专题",
+                "pages": [
+                  "core-api/agent/sessions",
+                  "core-api/agent/extensions",
+                  "core-api/agent/models",
+                  "core-api/agent/context",
+                  "core-api/agent/work-queue",
+                  "core-api/agent/errors",
+                  "core-api/executor/parameters"
+                ]
+              },
+              {
                 "group": "本地 CLI",
                 "pages": [
                   "cli/overview",
                   "cli/steamharness",
+                  "cli/web",
+                  "cli/agent-sessions",
+                  "cli/data",
                   "cli/steamharness/run",
                   "cli/steamharness/json",
                   "cli/steamharness/structure",
@@ -162,12 +187,6 @@
                   "cli/workspace/download",
                   "cli/workspace/help"
                 ]
-              },
-              {
-                "group": "测试资料",
-                "pages": [
-                  "guides/testing"
-                ]
               }
             ]
           },
@@ -178,7 +197,8 @@
                 "group": "版本信息",
                 "pages": [
                   "guides/releases/overview",
-                  "guides/releases/compatibility"
+                  "guides/releases/compatibility",
+                  "guides/releases/changelog"
                 ]
               },
               {
@@ -312,33 +332,43 @@
             "tab": "Guides",
             "groups": [
               {
-                "group": "Project overview",
+                "group": "Get started",
                 "pages": [
-                  "en/index"
+                  "en/index",
+                  "en/guides/quickstart"
                 ]
               },
               {
-                "group": "Migration",
+                "group": "Use Studio",
                 "pages": [
+                  "en/guides/studio/overview",
+                  "en/guides/studio/installation",
+                  "en/guides/studio/create-import",
+                  "en/guides/studio/run-debug",
+                  "en/guides/studio/interface",
+                  "en/guides/studio/models",
+                  "en/guides/studio/configuration",
+                  "en/guides/studio/data",
+                  "en/guides/studio/versions",
+                  "en/guides/studio/analysis",
+                  "en/guides/studio/assistant"
+                ]
+              },
+              {
+                "group": "Develop projects",
+                "pages": [
+                  "en/guides/development/workflow",
+                  "en/guides/development/conversation",
+                  "en/guides/development/kanban",
+                  "en/guides/testing",
                   "en/guides/migrate-core-0-2"
                 ]
               },
               {
-                "group": "Using Studio",
-                "pages": [
-                  "en/guides/studio/overview"
-                ]
-              },
-              {
-                "group": "Using Server Web",
+                "group": "Management and deployment",
                 "pages": [
                   "en/guides/server/overview",
-                  "en/guides/server/project-management"
-                ]
-              },
-              {
-                "group": "Deployment",
-                "pages": [
+                  "en/guides/server/project-management",
                   "en/guides/server/deployment"
                 ]
               }
@@ -406,10 +436,25 @@
                 ]
               },
               {
+                "group": "Agent and parameter details",
+                "pages": [
+                  "en/core-api/agent/sessions",
+                  "en/core-api/agent/extensions",
+                  "en/core-api/agent/models",
+                  "en/core-api/agent/context",
+                  "en/core-api/agent/work-queue",
+                  "en/core-api/agent/errors",
+                  "en/core-api/executor/parameters"
+                ]
+              },
+              {
                 "group": "Local CLI",
                 "pages": [
                   "en/cli/overview",
                   "en/cli/steamharness",
+                  "en/cli/web",
+                  "en/cli/agent-sessions",
+                  "en/cli/data",
                   "en/cli/steamharness/run",
                   "en/cli/steamharness/json",
                   "en/cli/steamharness/structure",
@@ -433,12 +478,6 @@
                   "en/cli/workspace/download",
                   "en/cli/workspace/help"
                 ]
-              },
-              {
-                "group": "Testing",
-                "pages": [
-                  "en/guides/testing"
-                ]
               }
             ]
           },
@@ -449,7 +488,8 @@
                 "group": "Version information",
                 "pages": [
                   "en/guides/releases/overview",
-                  "en/guides/releases/compatibility"
+                  "en/guides/releases/compatibility",
+                  "en/guides/releases/changelog"
                 ]
               },
               {

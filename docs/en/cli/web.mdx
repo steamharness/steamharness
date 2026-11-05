@@ -1,0 +1,50 @@
+---
+title: "Use CLI Web"
+description: "Open local projects in a browser, switch entries, and inspect project information."
+---
+
+# Use CLI Web
+
+Open local projects in a browser, switch entries, and inspect project information.
+
+```sh
+pnpm exec steamharness web .
+```
+
+## CLI Web
+
+In the main Conversation composer, type `@` to select **Skills**, **Files** or **Project entries**, or keep typing a name to search across them. Skills come from the current entry's configured directories. Files are searched from the project root, or Assistant's bound working directory. Git projects respect ignore rules; dependencies, build output, runtime data and `.env` configuration are excluded.
+
+Use ↑/↓ to select, Enter or Tab to insert, Esc to dismiss, and Shift+Enter for a new line. Inserted `@skill:…`, `@file:…` and `@entry:…` references are highlighted in the composer. File references display only the file name, with full paths on hover and automatic quoting for names containing spaces. Stored and sent messages retain full paths. References remain message text when restoring drafts, editing queued messages or resending.
+
+Referencing an entry neither switches windows nor runs it. Existing `/` commands remain available.
+
+Core Agents use built-in/custom models from Settings in Studio by default or with `modelSource: "user-settings"`, hiding project AI models. Standalone `steamharness web` lacks model settings and automatically uses project models; Configure model opens project configuration with System AI and Third-party AI sources. An empty Studio catalogue still opens Settings. Explicit `modelSource: "project"` always uses project models.
+
+When an execution worker unexpectedly exits under a live host, Core Agent entries automatically recover up to three times with the original tasks, child conversations and checkpoints. Local execution locks release when the old process exits. Explicit Server storage can wait up to 35 seconds for an old execution lease to expire. Recovery responds to cancellation and neither takes over another active owner nor replays committed writes.
+
+After a forced host exit, ordinary conversations recover using their original run identity; unfinished business work waits for explicit input. Host shutdown closes workers; workers that do not finish cleanup exit within five seconds to release conversation ownership. Failure, stop or timeout preserves and pauses queued input. Only a successful turn automatically starts the next queued message.
+
+You can explicitly resume the queue or send new input; successful new input then advances the retained queue in order.
+
+When reopening a conversation or synchronizing history from another window, persisted Agent turn outcomes correct stale responding and recovery flags. Completed, failed and stopped replies stop counting elapsed time and are not executed again because of old flags. Unfinished turns continue through normal recovery. Each reply keeps its final duration after completion, including after refreshing or reopening history. Follow-ups are timed independently from when their execution starts.
+
+Subagent views use persisted execution timestamps when first opened or restored, including time spent running before the view opened and excluding queue time. Older history without reliable timing records is not backfilled from the current time.
+
+In Studio, click local file links, inline code paths or plain absolute paths in Agent replies and plans to open the file in the editor. Relative paths, `file://` links and locations such as `src/main.ts:12:3` or `src/main.ts#L12C3` are supported. Relative paths resolve from the aggregate project root or Assistant's bound working directory. Web links open in the browser. Standalone CLI Web cannot open the local editor and prompts you to use Studio when opening a local path.
+
+Exporting a conversation, message or workflow record in Studio opens the native save dialog, defaulting to the Downloads folder in your home directory. You can choose another location. After you confirm a location and the file is written successfully, a notification in the lower-right corner shows the saved path. Cancellation shows no success notification; save failures show an error. Standalone CLI Web uses browser downloads.
+
+One root directory starts one aggregate host and initially displays only `defaultEntry`. Click the **Project windows** icon in the top toolbar to see compact entry cards with names, types, default/current markers and runtime states. Use the open icon on the right to open a new browser page in standalone CLI Web or a new native Studio tab. Every click creates another tab, including for the current entry. Tabs retain independent page state and drafts on the shared aggregate host. Closing one tab leaves the others open; closing the last Studio tab releases the host.
+
+Each entry has an `/entries/<entryId>/` URL and independent controller. Its optional `projectCard` configures `icon`, `iconColor` and `iconBackgroundColor`, with `#RRGGBB` colors. Omitted properties use defaults for that entry type. The root `steamharness.json.projectCard` identifies the aggregate card; entry icons are independent. Declare the sole version in root `steamharness.json.version`; entries do not accept their own version.
+
+Use the **Project information** icon in the upper-right corner to access Overview, Project configurations, Tools, Skills and Databases in one panel. Its width and height stay fixed, with sidebar navigation on wide screens and horizontally scrolling tabs on narrow screens. Content scrolls independently, and switching sections preserves configuration drafts and tool searches. Tool registrations and permissions update with the project state. Tools and skills are available for supported entries.
+
+The Skills page lists and counts actual guides for the selected entry, distinguishes project guides from Core built-in guides, and supports search. Select a guide to preview its complete `SKILL.md` or Markdown source inside the fixed panel. The return toolbar stays fixed while the document scrolls in its own area; returning preserves search and scroll position. Skills are read-only, without Enable or Auto-approve switches, and previewing does not execute instructions.
+
+Existing model setup shortcuts open Project configurations inside this panel.
+
+Select **Project information → Databases** to view relational and knowledge resource references, status and sharing entries. Binding follows each resource type's rules; browsing opens the Server Web resource page without account tokens in the URL. Create resources, manage grants and edit data in Server Web or CLI management commands.
+
+Entries declare `databases` and `knowledgeBases` aliases separately in `steamharness.json`. Server stores relational bindings by account, project, entry and alias. Root `config.json.knowledgeBases` stores knowledge alias-to-UUID mappings with `STEAMHARNESS_PROJECT_CONFIG` overrides. Entries may use multiple resources; binding grants no access. See [Project storage](/en/concepts/data-storage).

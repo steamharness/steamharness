@@ -1,22 +1,36 @@
 ---
 title: "workspace pack"
-description: "Package an aggregate"
+description: "Archive every registered entry for upload."
 ---
 
-# Package an aggregate
+<span id="package-an-aggregate"></span>
+
+# workspace pack
+
+Use `workspace pack` to package the entire aggregate locally. It creates neither a remote project nor a database.
+
+## Command
 
 ```sh
 pnpm exec steamharness workspace pack <project-id> --path . --output dist/release/project.tgz
 ```
 
-One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
+Install dependencies, build static entries, and run `steamharness check .` first. The name must be a single portable directory name, without path separators, parent traversal, or Windows reserved names. Specify source through `--path`.
 
-Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
+## Included and excluded files
 
-The output is a `.tgz` archive. Packaging is local and creates no remote project or space. Ordinary npm dependencies remain managed by package manifests and lockfiles.
+| Content | Handling |
+| --- | --- |
+| Registered entries, dependency manifests, configuration definitions | Included |
+| Kanban artifacts | Included when required by registered entries |
+| Database definitions and generated inventory | Validated and included completely |
+| Credentials, host runtime data, Git, `node_modules` | Excluded |
+| Caches, reports, temporary files, and archive output directories | Excluded |
 
-The package name must be a single portable directory name without `/`, `\`, parent traversal, or Windows reserved names. Select the source directory through `--path`. Both successful and failed packaging clean only the current staging directory, preserving other entry outputs.
+Server maintains account-specific relational bindings. Connection credentials and environment overrides are not exported. Knowledge references and resource declarations grant no access; the recipient still needs authorization.
 
-If the aggregate root or a registered entry directory contains `steamharness.database.ts`, packaging generates that directory’s Node/Browser descriptors, model types, and runtime assets first, then includes the complete `dist/steamharness/generated/database` inventory. Models and generated assets are required; excluding them through `.steamharnessignore` fails explicitly. Other `.steamharness` content stays excluded. See [SteamHarness Database](/en/core-api/database).
+## Database generation and output
 
-Archives default to the project root's `dist/release/`. Packages include registered entry artifacts and verified generated database inventories. `dist/cache/`, `dist/reports/`, `dist/release/`, and `dist/tmp/` are excluded.
+When the aggregate root or a registered source root contains `steamharness.database.ts`, packing generates Node/Browser descriptors, types, and runtime assets first. The validated database inventory must be complete and cannot be excluded with `.steamharnessignore`.
+
+The default output is a `.tgz` under the project root's `dist/release/`. Packing cleans only its own temporary directory and preserves other entry artifacts. See [database distribution](/en/core-api/database).

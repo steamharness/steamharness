@@ -1,0 +1,36 @@
+---
+title: "Manage databases and knowledge bases"
+description: "Inspect resources, obtain grants, and check entry bindings."
+---
+
+# Manage databases and knowledge bases
+
+Use Studio's database tool to view relational and knowledge resources available to the current Server account. An entry needs a declared alias, resource access, and a binding before it can use the data.
+
+## Connect a resource
+
+1. Sign in to the correct Server account and open the target entry.
+2. Select relational or knowledge resources in the database tool.
+3. Open management in Server Web to create a resource or request access to an existing one.
+4. Bind the entry alias. For relational resources, apply the project's model migration before running.
+
+Relational definitions come from `steamharness.database.ts` and the schema. Knowledge resources use separate `knowledgeBases` declarations. Shared references with the same type and UUID appear once.
+
+## Access and runtime requirements
+
+| Requirement | Meaning |
+| --- | --- |
+| Project access | Allows opening source or a published version |
+| Resource grant | Allows the account to read or write a database or knowledge base |
+| Entry binding | Points the entry's alias at an authorized resource |
+| Network | Persistent relational operations require reachable Server and PostgreSQL services |
+
+Neither project membership nor a binding grants resource access. Missing bindings affect only operations that need those resources; other entries can still open. The current protocol has no legacy KV editor or local/remote KV switch.
+
+## Manage in Server Web
+
+Opening a management link from signed-in Studio establishes a browser session with the current account and permissions, without another password prompt. Links contain no long-lived token. Credential revocation or account suspension also invalidates browser access.
+
+Server Web manages grants, entry bindings, models, table rows, knowledge documents, and attachments. Database sidebar controls in Studio follow the current theme.
+
+See the [Database API](/en/core-api/database) for generation and models, and [data storage](/en/concepts/data-storage) for resource ownership and runtime history.

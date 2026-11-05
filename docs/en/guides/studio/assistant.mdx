@@ -1,0 +1,85 @@
+---
+title: "Assistant and durable tasks"
+description: "Use project skills, Studio tools, child tasks, and conversation recovery."
+---
+
+# Assistant and durable tasks
+
+The Studio assistant works on code and project tasks in a dedicated working directory. It ships as a built-in project with a fixed identity. Server-provided models still require account authorization.
+
+## Start a task
+
+1. Open the assistant and check its working directory and model.
+2. Inspect **Permission** and enter a concrete task.
+3. Review the tool and arguments when an action requires approval.
+4. Use Trace to inspect tasks, plans, records, and usage.
+
+History is stored in the local host's user-data directory. Built-in identity grants no access to other Server projects. If loading fails, select **Retry**; progress appears while retrying, and another failure includes its reason.
+
+## Use project skills
+
+Open **Project information → Skills** to inspect names, counts, and sources. Select a skill to preview its `SKILL.md` and Markdown source without editing.
+
+The assistant reads guides through the `skill` tool rather than installing them globally:
+
+```json
+{"action":"list"}
+```
+
+```json
+{"action":"read","skill":"steamharness-generator"}
+```
+
+Pass `path` to read a referenced file. File edits and commands described by a guide still use their normal tools and permissions. See [createSkillTools](/en/core-api/create-skill-tools).
+
+## Control Studio
+
+The assistant project contains a default `main` Conversation and a `studio-control` Workflow, installed together with shared dependencies. It connects through `mcp --entry studio-control` on demand. You can also open the assistant project root and run that entry directly.
+
+| Tool area | Capabilities |
+| --- | --- |
+| Workspace and diagnostics | Read editor state, entries, errors, and warnings |
+| Files | Open a file at a line and column |
+| Views | Open terminal, files, search, source control, or the assistant |
+| Appearance | Switch to an installed theme |
+
+Opening a terminal does not execute a command. State, diagnostics, and entry queries are approved by default. Other editor operations retain tool permissions and Build/Plan approval rules.
+
+Control requires a Node extension host. Closing the conversation, removing the workspace, or revoking trust invalidates the connection. The `studio-control` subdirectory is not a standalone project. It does not provide the old Desktop Dock, updater, or login-start controls.
+
+## Diagnose a Kanban page
+
+`get_kanban_diagnostics` inspects an already open local entry without writing. First pass `projectDir` and `entryId` in the JSON-string `input` to inspect configuration, page instances, and the last 50 Bridge requests.
+
+To query a page method, build `call` using the returned `instanceId`, `configurationId`, and a method explicitly declaring `readOnly: true`. A map's `imageReady` can confirm loading; a successful upload or download cannot establish that the page displayed it.
+
+Diagnostics do not open or refresh pages or change configuration. Missing previews, missing instances, and stale instances return unavailable or failed results. Reopen the preview after updating the CLI to use new diagnostics.
+
+## Durable tasks and child Agents
+
+A durable conversation resumes the original run after an unexpected exit. Closing the host preserves checkpoints; an explicit stop persists cancellation. Input queues, additions to the current round, withdrawal, and forks remain in the conversation.
+
+| Trace tab or entry | Purpose |
+| --- | --- |
+| Tasks | Inspect trees and history, open child conversations or fork sources, stop a selected scope |
+| Plan | Inspect and update plan steps |
+| Records and Usage | Inspect records, context, and usage; compact or reset context |
+| **Child Agents** in the conversation | Inspect running, queued, failed, and completed counts, stages, progress, results, and errors |
+
+The child-Agent entry remains after the main reply and preserves its expanded state across later replies. Disconnection keeps the last state and disables navigation. Use Tasks for stop, retry, and batch management. Projects can delegate up to four read-only child Agents with a single result handoff.
+
+Studio Control connects on the first search for an authorized tool. Code Mode is disabled unless the host explicitly enables it.
+
+## When permissions apply
+
+Select **Permission** to open **Settings → Permissions**. The initial user default is automatic approval, `auto`, saved in user-level `studio.agent.permissionPolicy`. Workspace settings cannot override it.
+
+| Mode | File and command scope |
+| --- | --- |
+| Read-only | Hides write, edit, and command tools |
+| Workspace | Restricts file and search tools to workspace and mounted directories; shell commands still run as the host user |
+| Automatic approval | Also permits file-tool access outside the workspace |
+
+Projects can declare overridable defaults or reset to user settings. Coding tools, prompts, and Studio Control use the same effective permission.
+
+Changes do not interrupt current, background, or child tasks. Later input adopts new settings once all work ends and the conversation is idle, preserving history and request identifiers. See [user settings and permissions](/en/core-api/user-settings).

@@ -5,12 +5,25 @@ description: "创建文件输入节点，把 file param 引用解析成 Resolved
 
 # createFileInputNode
 
-`workflow.createFileInputNode()` 用来处理 `type: "file"` 的 executor param。它接收 file reference、JSON 字符串、数组或路径字符串，并通过 `context.files` 解析成 `ResolvedFile[]`。
+用 `steamharness.createFileInputNode()` 读取执行器的文件参数。节点接受文件引用、JSON 字符串、数组或路径，通过 `context.files` 解析后返回 `ResolvedFile[]`。
+
+## 示例
+
+```ts
+const imagesNode = steamharness.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const files = await steamharness.runNode(imagesNode, input.images, context);
+const imageParts = await Promise.all(files.map((file) => file.toLLMImagePart()));
+```
 
 ## 签名
 
 ```ts
-workflow.createFileInputNode(
+steamharness.createFileInputNode(
   options?: FileInputNodeOptions,
 ): BaseNode<unknown, ResolvedFile[]>
 ```
@@ -74,16 +87,3 @@ workflow.createFileInputNode(
 | --- | --- |
 | `context.files` | 必须提供 `FileStore`。没有文件 store 时会抛 `input_validation`。 |
 | `context.abortSignal` | 可选。节点执行时由 `runNode` 检查。 |
-
-## 示例
-
-```ts
-const imagesNode = workflow.createFileInputNode({
-  name: "images",
-  accept: ["image/png", "image/jpeg", "image/webp"],
-  multiple: true,
-});
-
-const files = await workflow.runNode(imagesNode, input.images, context);
-const imageParts = await Promise.all(files.map((file) => file.toLLMImagePart()));
-```

@@ -5,34 +5,21 @@ description: "读取当前 workflow 运行宿主选择的简体中文或英文�
 
 # 运行时语言
 
-`workflow.getRuntimeLocale()` 返回当前 CLI 或本地宿主为本次运行选择的语言。它用于已经明确支持国际化的 Workflow 或 Conversation 项目统一处理用户可见输出、错误以及日期和数字格式。
-
-## 签名
-
-```ts
-workflow.getRuntimeLocale(): "zh-CN" | "en"
-```
-
-## 返回值
-
-| 返回值 | 说明 |
-| --- | --- |
-| `"zh-CN"` | 简体中文。宿主没有注入语言、传入未知值或旧宿主不支持该能力时使用的默认值。 |
-| `"en"` | 英文。由当前 CLI 或本地宿主所选语言注入。 |
+用 `steamharness.getRuntimeLocale()` 读取宿主为本次运行选择的语言。已支持国际化的 Workflow 或 Conversation 可以据此选择输出、错误文案和日期数字格式。
 
 ## 示例
 
 ```ts
-const outputNode = workflow.createOutputNode<Input, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Input, OutputPayload>({
   name: "localized-output",
   format(input) {
-    const locale = workflow.getRuntimeLocale();
+    const locale = steamharness.getRuntimeLocale();
     const message = locale === "en"
       ? `Imported ${input.count} records.`
       : `已导入 ${input.count} 条记录。`;
 
-    return workflow.createOutputPayload({
-      items: [workflow.createOutputItem({
+    return steamharness.createOutputPayload({
+      items: [steamharness.createOutputItem({
         title: "Output",
         content: message,
         contentType: "text",
@@ -41,6 +28,19 @@ const outputNode = workflow.createOutputNode<Input, OutputPayload>({
   },
 });
 ```
+
+## 签名
+
+```ts
+steamharness.getRuntimeLocale(): "zh-CN" | "en"
+```
+
+## 返回值
+
+| 返回值 | 说明 |
+| --- | --- |
+| `"zh-CN"` | 简体中文。宿主没有注入语言、传入未知值或旧宿主不支持该能力时使用的默认值。 |
+| `"en"` | 英文。由当前 CLI 或本地宿主所选语言注入。 |
 
 ## 注意事项
 

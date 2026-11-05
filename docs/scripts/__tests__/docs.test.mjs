@@ -51,9 +51,15 @@ test("Studio documentation replaces Desktop navigation in both languages", async
   assert.doesNotMatch(navigation, /guides\/(?:desktop\/|releases\/(?:desktop|downloads))/u);
   for (const prefix of ["", "en/"]) {
     assert.ok(navigation.includes(`${prefix}guides/studio/overview`));
-    const source = await readFile(path.join(root, prefix, "guides/studio/overview.mdx"), "utf8");
-    assert.match(source, /@steamharness\/cli/u);
-    assert.match(source, /npm run dev:web/u);
+    const overview = await readFile(path.join(root, prefix, "guides/studio/overview.mdx"), "utf8");
+    for (const page of ["run-debug", "installation"]) {
+      assert.ok(overview.includes(`/${prefix}guides/studio/${page}`));
+      assert.ok(navigation.includes(`${prefix}guides/studio/${page}`));
+    }
+    const runtime = await readFile(path.join(root, prefix, "guides/studio/run-debug.mdx"), "utf8");
+    const installation = await readFile(path.join(root, prefix, "guides/studio/installation.mdx"), "utf8");
+    assert.match(runtime, /@steamharness\/cli/u);
+    assert.match(installation, /npm run dev:web/u);
   }
 });
 

@@ -1,11 +1,17 @@
 ---
 title: "Server Workspace CLI"
-description: "Workspace static project management"
+description: "Manage Server source drafts, published versions, and downloads."
 ---
 
-# Workspace static project management
+<span id="workspace-static-project-management"></span>
+<span id="identity-and-ownership"></span>
+<span id="transfer-and-configuration"></span>
 
-`steamharness workspace` manages aggregate source and immutable versions on Server. Server does not install project dependencies, build or execute projects.
+# Server Workspace CLI
+
+`steamharness workspace` manages project source and immutable Server versions. Dependencies, builds, and execution remain local; Server processes static archives.
+
+## From sign-in to download
 
 ```sh
 pnpm exec steamharness workspace login --server <server-url>
@@ -17,15 +23,23 @@ pnpm exec steamharness workspace versions <project-id>
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-The aggregate is one upload, version and download unit. Archives contain every registered entry's code, dependency manifests and Kanban artifacts, excluding Git, node_modules, runtime data and credentials. Database alias-to-ID references remain; hosts maintain grants and credentials.
+One archive contains every registered entry, dependency declaration, and Kanban artifact. It excludes Git, `node_modules`, runtime data, and credentials. After download, install dependencies and check resource grants and entry bindings.
 
-## Identity and ownership
+## Registration and ownership
 
-Use the client creation flow to request a Server identity. `upload --create` explicitly creates and replaces the local aggregate identity; `--group-id` selects its permission group. Membership, inherited roles and source-access requests remain separate from database requests.
+Client creation requests a Server identity. The CLI can explicitly create a project and replace the local aggregate identity with `upload --create`; `--group-id` selects its group. Confirm the intended identity and ownership first.
 
-## Transfer and configuration
+Project membership and group inheritance use fixed roles. Database and knowledge grants are managed separately and are not obtained through source downloads.
 
-`upload --file` accepts an archive. `--no-wait` returns a preparation job; `preparation` reads its static preparation result. `file-upload/file-download/file-delete` manage business files. `--server` and `--token` override saved authentication. Never put credentials in the manifest.
+## Transfers and configuration
 
+| Operation | Purpose |
+| --- | --- |
+| `upload --file` | Upload an existing archive |
+| `upload --no-wait`, `preparation` | Submit preparation, then inspect its result |
+| `file-upload`, `file-download`, `file-delete` | Manage business files |
+| `--server`, `--token` | Override connection settings explicitly |
 
-Configuration templates, profiles, snapshots and attachments are entry-scoped. Create, grant, migrate and bind relational resources in Server Web or CLI database commands. Downloaded projects do not carry account bindings; check the current account's resource grants and entry bindings before use. Knowledge bases use knowledgeBases configuration and authorization.
+Configuration templates, schemes, snapshots, and attachments are scoped to entries. Server maintains relational bindings by account, project, entry, and alias; archives carry no account bindings. Knowledge access follows declarations and grants. Keep credentials in host configuration.
+
+See [workspace help](/en/cli/workspace/help) for the complete command list.

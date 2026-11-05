@@ -5,7 +5,9 @@ description: "Fresh aggregate declarations"
 
 # Fresh aggregate declarations
 
-The current model requires fresh declarations and data. It does not provide legacy reads, automatic migration or data import.
+Create a root project identity, register its entries, and move child settings into child declarations. The current protocol requires new declarations and data, without legacy-model compatibility or automatic migration.
+
+## Declaration example
 
 `package.json`
 
@@ -63,10 +65,7 @@ The current model requires fresh declarations and data. It does not provide lega
   "entry": "index.ts",
   "configuration": "configuration.json",
   "databases": [
-    {
-      "alias": "data",
-      "databaseId": "00000000-0000-4000-8000-000000000001"
-    }
+    "data"
   ]
 }
 ```
@@ -87,3 +86,10 @@ Keep business code directories and register them in root entries. Remove child S
 Use `context.entries.get(entryId)` for Workflow calls. Define relational models and generate descriptors for `context.databases.connect(descriptor)`, with Server-managed account/project/entry bindings. Knowledge uses `context.knowledgeBases.get(alias)` with independent declarations and configuration. Old KV data is not migrated.
 
 When cleaning old identities, limit deletion to their old-model records. Do not clear unrelated host business data. The new project does not read old data. See [Workflow model](/en/concepts/workflow-model) and [Project storage](/en/concepts/data-storage).
+
+## Validate and bind
+
+1. Run `steamharness check .` to inspect the root and every child declaration.
+2. Generate relational models and explicitly create or select an authorized resource.
+3. Use `database bind` to save the account/entry binding on Server. `databases` declarations contain alias strings only.
+4. Run each entry, then test data access and conversation isolation.

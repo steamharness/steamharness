@@ -5,12 +5,49 @@ description: "执行可追踪的 while 循环节点，并让共享运行界面 D
 
 # runWhile
 
-`workflow.runWhile()` 是内置 while 循环执行节点。它会在每轮开始前执行 `condition`，条件为真时执行循环体 `run`，并把返回值作为下一轮状态。运行时会发出 `branch-node` 的开始/完成事件，共享运行界面 Diagram 会把循环体节点包在带背景色的循环容器里。
+用 `steamharness.runWhile()` 在每轮开始前检查 `condition`。条件为真时执行 `run`，将返回值传给下一轮；运行报告记录 `branch-node` 事件，Diagram 显示循环体。
+
+## 示例
+
+```ts
+const finalState = await steamharness.runWhile(seed, context, {
+  name: "Boost until target",
+  maxIterations: 8,
+  condition: (state) => state.total < state.target,
+  async run(state, loopContext, iteration) {
+    return steamharness.runIf(state, loopContext, {
+      name: "Choose boost strategy",
+      branches: [
+        {
+          label: "burst",
+          condition: (current) => current.target - current.total >= 7,
+          async run(current, branchContext) {
+            return steamharness.runFor(current, branchContext, {
+              name: "Burst passes",
+              maxIterations: 3,
+              items: () => [4, 3],
+              async run(passState, value, index, passContext) {
+                return steamharness.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+              },
+            });
+          },
+        },
+      ],
+      else: {
+        label: "finish",
+        async run(current, branchContext) {
+          return steamharness.runNode(boostNode, { ...current, iteration }, branchContext);
+        },
+      },
+    });
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.runWhile<State>(
+steamharness.runWhile<State>(
   input: State,
   context: RunContext,
   options: {
@@ -51,46 +88,9 @@ workflow.runWhile<State>(
 
 失败时 `completed` 为 `false`，并保留已完成的迭代次数。
 
-## 示例
-
-```ts
-const finalState = await workflow.runWhile(seed, context, {
-  name: "Boost until target",
-  maxIterations: 8,
-  condition: (state) => state.total < state.target,
-  async run(state, loopContext, iteration) {
-    return workflow.runIf(state, loopContext, {
-      name: "Choose boost strategy",
-      branches: [
-        {
-          label: "burst",
-          condition: (current) => current.target - current.total >= 7,
-          async run(current, branchContext) {
-            return workflow.runFor(current, branchContext, {
-              name: "Burst passes",
-              maxIterations: 3,
-              items: () => [4, 3],
-              async run(passState, value, index, passContext) {
-                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
-              },
-            });
-          },
-        },
-      ],
-      else: {
-        label: "finish",
-        async run(current, branchContext) {
-          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
-        },
-      },
-    });
-  },
-});
-```
-
 ## Diagram
 
-静态结构分析会识别对象字面量形式的 `condition`、`maxIterations` 和 `run`。`run` 中的 `workflow.runNode`、`workflow.runStreamNode`、`workflow.runIf`、`workflow.runFor` 和 `workflow.runWhile` 会成为循环体节点，并在共享运行界面 Diagram 中被循环容器包裹。为了让 Diagram 可读，循环配置尽量保持为对象字面量；动态拼装 options 仍可运行，但静态图只能展示有限信息。
+静态结构分析会识别对象字面量形式的 `condition`、`maxIterations` 和 `run`。`run` 中的 `steamharness.runNode`、`steamharness.runStreamNode`、`steamharness.runIf`、`steamharness.runFor` 和 `steamharness.runWhile` 会成为循环体节点，并在共享运行界面 Diagram 中被循环容器包裹。为了让 Diagram 可读，循环配置尽量保持为对象字面量；动态拼装 options 仍可运行，但静态图只能展示有限信息。
 
 ## 错误
 

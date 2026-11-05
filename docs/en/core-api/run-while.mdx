@@ -5,12 +5,49 @@ description: "Execute the traceable while loop node and have shared runtime UI D
 
 # runWhile
 
-`workflow.runWhile()` is the built-in while loop execution node. It executes `condition` before the start of each round, executes the loop body `run` when the condition is true, and returns the value as the state of the next round. The runtime will emit start/finish events for `branch-node`, and shared runtime UI Diagram will wrap the loop body node in a loop container with a background color.
+Use `steamharness.runWhile()` to check `condition` before each iteration. When true, it executes `run` and passes the returned state to the next iteration. Reports contain `branch-node` events, and Diagram shows the loop body.
+
+## Example
+
+```ts
+const finalState = await steamharness.runWhile(seed, context, {
+  name: "Boost until target",
+  maxIterations: 8,
+  condition: (state) => state.total < state.target,
+  async run(state, loopContext, iteration) {
+    return steamharness.runIf(state, loopContext, {
+      name: "Choose boost strategy",
+      branches: [
+        {
+          label: "burst",
+          condition: (current) => current.target - current.total >= 7,
+          async run(current, branchContext) {
+            return steamharness.runFor(current, branchContext, {
+              name: "Burst passes",
+              maxIterations: 3,
+              items: () => [4, 3],
+              async run(passState, value, index, passContext) {
+                return steamharness.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+              },
+            });
+          },
+        },
+      ],
+      else: {
+        label: "finish",
+        async run(current, branchContext) {
+          return steamharness.runNode(boostNode, { ...current, iteration }, branchContext);
+        },
+      },
+    });
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.runWhile<State>(
+steamharness.runWhile<State>(
   input: State,
   context: RunContext,
   options: {
@@ -51,46 +88,9 @@ workflow.runWhile<State>(
 
 `completed` is `false` on failure and retains the number of iterations that have completed.
 
-## Example
-
-```ts
-const finalState = await workflow.runWhile(seed, context, {
-  name: "Boost until target",
-  maxIterations: 8,
-  condition: (state) => state.total < state.target,
-  async run(state, loopContext, iteration) {
-    return workflow.runIf(state, loopContext, {
-      name: "Choose boost strategy",
-      branches: [
-        {
-          label: "burst",
-          condition: (current) => current.target - current.total >= 7,
-          async run(current, branchContext) {
-            return workflow.runFor(current, branchContext, {
-              name: "Burst passes",
-              maxIterations: 3,
-              items: () => [4, 3],
-              async run(passState, value, index, passContext) {
-                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
-              },
-            });
-          },
-        },
-      ],
-      else: {
-        label: "finish",
-        async run(current, branchContext) {
-          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
-        },
-      },
-    });
-  },
-});
-```
-
 ## Diagram
 
-Static structural analysis identifies object literals in the forms of `condition`, `maxIterations`, and `run`. In `run`, `workflow.runNode`, `workflow.runStreamNode`, `workflow.runIf`, `workflow.runFor`, and `workflow.runWhile` will become loop body nodes and will be enclosed by the loop container in shared runtime UI Diagram. To ensure Diagram remains readable, the loop configuration should preferably be kept as an object literal; dynamically constructing the options is still feasible, but the static diagram can only display limited information.
+Static structural analysis identifies object literals in the forms of `condition`, `maxIterations`, and `run`. In `run`, `steamharness.runNode`, `steamharness.runStreamNode`, `steamharness.runIf`, `steamharness.runFor`, and `steamharness.runWhile` will become loop body nodes and will be enclosed by the loop container in shared runtime UI Diagram. To ensure Diagram remains readable, the loop configuration should preferably be kept as an object literal; dynamically constructing the options is still feasible, but the static diagram can only display limited information.
 
 ## Error
 

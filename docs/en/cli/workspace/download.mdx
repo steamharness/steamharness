@@ -1,18 +1,32 @@
 ---
 title: "workspace download"
-description: "Download an aggregate"
+description: "Download a draft, latest release, or exact historical version."
 ---
 
-# Download an aggregate
+<span id="download-an-aggregate"></span>
+
+# workspace download
+
+Use `workspace download` to retrieve the complete aggregate while preserving entry-relative directories. The account must have the required source access.
+
+## Command
 
 ```sh
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
+| `--target` | Download |
+| --- | --- |
+| `draft` | Current draft |
+| `latest` | Latest published version |
+| Exact version | The corresponding historical snapshot |
 
-Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
+## Validation and installation
 
-`--target` accepts `draft`, `latest` or an exact version. Download into one aggregate directory while preserving registered subdirectories. Source access still requires membership or approved access.
+The target project directory is created only after entry files, database inventories, and hashes pass validation. Missing files, damaged inventories, runtime data, or unregistered `dist/` files fail the download and trigger temporary-file cleanup.
 
-Downloads use the same entry and database artifact validation as uploads. Missing entry files, invalid generated inventories, runtime data, and unregistered `dist/` files fail validation. The target project directory appears only after all validation succeeds; failures remove temporary files.
+Install dependencies in the downloaded directory. Rebuild modified static entries, then run `steamharness check .`.
+
+## Resource access
+
+Archives contain neither credentials nor host runtime data. Server keeps account-specific relational bindings. Resource declarations and knowledge references grant no access. Check grants and bindings again after changing accounts or Servers before running data operations.

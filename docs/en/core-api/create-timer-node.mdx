@@ -5,19 +5,49 @@ description: "Create a business timing node and end timing with the endTimer."
 
 # createTimerNode
 
-`workflow.createTimerNode()` creates a normal node to start a visible timer in the business workflow. Timing starts and ends appear in runtime events, the final report, and timing cards in CLI Web local playback.
+Start a business timer with `steamharness.createTimerNode()` and finish it with `endTimer`. Start and end events appear in runtime events, the final report, and CLI Web timer cards.
+
+## Example
+
+```ts
+const timerNode = steamharness.createTimerNode({
+  title: "External API call",
+});
+
+export const demo = steamharness.defineProject<Input, OutputPayload>({
+  name: "demo",
+  async run(input, context) {
+    const timer = await steamharness.runNode(timerNode, {
+      timerId: `api-${Date.now()}`,
+      metadata: { provider: "example" },
+    }, context);
+
+    try {
+      const result = await callExternalApi(input);
+      await steamharness.endTimer(timer, context, { message: "API call complete" });
+      return createOutput(result);
+    } catch (error) {
+      await steamharness.endTimer(timer, context, {
+        status: "failed",
+        message: error instanceof Error ? error.message : "API call failed",
+      });
+      throw error;
+    }
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.createTimerNode(options?: {
+steamharness.createTimerNode(options?: {
   name?: string;
   title?: string;
   historyLimit?: number;
   metadata?: NodeMetadataInput;
 }): BaseNode<TimerNodeInput | undefined, TimerPayload>
 
-workflow.endTimer(
+steamharness.endTimer(
   timer: TimerPayload | string,
   context: RunContext,
   options?: {
@@ -48,42 +78,12 @@ interface TimerRecord extends TimerPayload {
 
 `createTimerNode` Default `name: "timer"`, `standardName: "timer"`. Returns the serializable payload of `errCode: 0`, `errMessage: ""` on successful startup.
 
-## Example
-
-```ts
-const timerNode = workflow.createTimerNode({
-  title: "External API call",
-});
-
-export const demo = workflow.defineProject<Input, OutputPayload>({
-  name: "demo",
-  async run(input, context) {
-    const timer = await workflow.runNode(timerNode, {
-      timerId: `api-${Date.now()}`,
-      metadata: { provider: "example" },
-    }, context);
-
-    try {
-      const result = await callExternalApi(input);
-      await workflow.endTimer(timer, context, { message: "API call complete" });
-      return createOutput(result);
-    } catch (error) {
-      await workflow.endTimer(timer, context, {
-        status: "failed",
-        message: error instanceof Error ? error.message : "API call failed",
-      });
-      throw error;
-    }
-  },
-});
-```
-
 ## Running behavior
 
 |Behavior|Description|
 | --- | --- |
 |Start Timing|After the timer node is executed, the `timer_started` runtime event is sent and the `running` timer is written in live report.|
-|End Timing|`workflow.endTimer(timer, context)` default write `success`; write failure timing when passing `status: "failed"`.|
+|End Timing|`steamharness.endTimer(timer, context)` default write `success`; write failure timing when passing `status: "failed"`.|
 |Automatic cleanup|workflow will mark the timer still in `running` as `cleared` before ending, send `timer_finished`, and finally report will not retain running timer.|
 |Repeat End|Calling `endTimer` again after the same timer has ended will throw a workflow execution error.|
 

@@ -71,6 +71,10 @@ test("generateReleaseNotes writes an index plus one page per version", async () 
     assert.match(index, /\[v0\.2\.4\]\(\/guides\/releases\/server\/v0\.2\.4\)/u);
     // 索引页只留索引，不再堆全部版本正文
     assert.doesNotMatch(index, /^#### /mu);
+    const englishIndex = await readFile(path.join(docs, "en/guides/releases/server.mdx"), "utf8");
+    assert.match(englishIndex, /^# Server release notes$/mu);
+    assert.doesNotMatch(englishIndex, /\p{Script=Han}/u);
+    assert.doesNotMatch(index, /generate:releases|数据源：/u);
     const version = await readFile(path.join(docs, "guides/releases/server/v0.2.4.mdx"), "utf8");
     assert.match(version, /^# Server v0\.2\.4$/mu);
     assert.match(version, /^#### 新特性$/mu);

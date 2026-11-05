@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { contentQualityIssues, renderedInternalLinks, validateImages, validateNavigationCoverage } from "./content-quality.mjs";
 
 /**
  * 公开文档的内容校验器。这里不依赖 Docusaurus 或任何 npm 包：
@@ -85,11 +86,15 @@ export async function validateDocs(options = {}) {
     ...zhPages.map((page) => `${page}.mdx`),
     ...enPages.map((page) => `en/${page}.mdx`),
   ];
+  validateNavigationCoverage(languages, allMdx);
+  const qualityIssues = [];
   for (const relativeFile of allMdx) {
     const source = await readFile(path.join(root, relativeFile), "utf8");
     validateStandaloneDocsSource(relativeFile, source, {
       generated: isGeneratedReleasePage(relativeFile),
     });
+    qualityIssues.push(...contentQualityIssues(relativeFile, source, { historical: isGeneratedReleasePage(relativeFile) }));
+    await validateImages({ file: path.join(root, relativeFile), source, publicImages: path.join(root, "images") });
     for (const link of readInternalLinks(source)) {
       const normalized = link.replace(/^\//u, "").split(/[?#]/u, 1)[0].replace(/\/$/u, "");
       if (normalized === "" || normalized.startsWith("images/") || normalized.startsWith("assets/")) continue;
@@ -105,6 +110,8 @@ export async function validateDocs(options = {}) {
       }
     }
   }
+
+  if (qualityIssues.length) throw new Error(`Documentation readability checks failed (${qualityIssues.length}):\n${qualityIssues.join("\n")}`);
 
   const openapiFiles = ["openapi/steamharness.openapi.yaml", "en/openapi/steamharness.openapi.yaml"];
   for (const relativeFile of openapiFiles) {
@@ -123,7 +130,7 @@ export async function validateDocs(options = {}) {
 }
 
 function readInternalLinks(source) {
-  return [...source.matchAll(/(?:\]\(|href=["'])(\/[^)"'\s]+)(?:\)|["'])/gu)].map((match) => match[1]);
+  return renderedInternalLinks(source);
 }
 
 async function anyFile(candidates) {

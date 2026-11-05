@@ -5,12 +5,24 @@ description: "执行流式节点，收集 chunks，并返回 finalize 结果。"
 
 # runStreamNode
 
-`workflow.runStreamNode()` 执行流式节点。它会遍历 `node.stream(input, context)` 产出的 chunks，逐个触发 chunk hook，并在结束后调用可选 `node.finalize(chunks, context, input)`。
+用 `steamharness.runStreamNode()` 执行流式节点。它遍历 `node.stream(input, context)`，对每个 chunk 调用 hook，结束后调用可选的 `node.finalize(chunks, context, input)`。
+
+## 示例
+
+```ts
+const result = await steamharness.runStreamNode(streamNode, parsed, context);
+
+return {
+  errCode: 0,
+  errMessage: "",
+  content: result.output ?? "",
+};
+```
 
 ## 签名
 
 ```ts
-workflow.runStreamNode<Input, Chunk, Output>(
+steamharness.runStreamNode<Input, Chunk, Output>(
   node: StreamNodeDefinition<Input, Chunk, Output>,
   input: Input,
   context: NodeContext,
@@ -65,15 +77,3 @@ Core Agent 节点仅保留最新完整 `agent-session` 快照，避免长时间�
 | --- | --- | --- |
 | 执行前或流中中断 | `execution_aborted` 或 `stream_interrupted` | 中断会在流式遍历中被检查。 |
 | stream/finalize 抛错 | `stream_interrupted` | 错误会写入节点执行报告。 |
-
-## 示例
-
-```ts
-const result = await workflow.runStreamNode(streamNode, parsed, context);
-
-return {
-  errCode: 0,
-  errMessage: "",
-  content: result.output ?? "",
-};
-```

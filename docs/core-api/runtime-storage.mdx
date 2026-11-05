@@ -5,7 +5,7 @@ description: "本地持久化对话与 Agent 检查点，并按需异步备份�
 
 # 平台运行存储
 
-`steamharness/runtime-storage` 提供本地 SQLite 和显式选择的 Server PostgreSQL 存储。Agent 仍在 CLI、Studio 或自己的 Node.js 进程执行；Server 只鉴权并读写数据，不接收可执行的项目代码。
+用 `steamharness/runtime-storage` 保存运行历史与 Agent 检查点。它提供本地 SQLite 和显式选择的 Server PostgreSQL 仓储；Agent 代码仍在 CLI、Studio 或宿主 Node.js 进程执行。
 
 ## 默认存储与隔离
 
@@ -114,4 +114,4 @@ Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本
 
 独立编程式 `createAgent()` 不传 storage 或 databasePath 时仍是临时内存实例；需要长期保存时显式注入本地仓储的 `agentStorage(...)` 或 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
 
-本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](/openapi/steamharness.openapi.yaml)。
+本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](../openapi/steamharness.openapi.yaml)。

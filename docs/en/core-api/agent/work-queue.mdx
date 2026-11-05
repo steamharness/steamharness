@@ -1,0 +1,77 @@
+---
+title: "Named Agents and work queues"
+description: "Declare roles, control concurrency, report progress, and recover failed work."
+---
+
+# Named Agents and work queues
+
+Declare roles, control concurrency, report progress, and recover failed work.
+
+Create the runtime with [createAgent](/en/core-api/create-agent). The sections below describe its related options and behavior.
+
+## Named agents and durable work queues
+
+Projects declare roles in `session.subagents.definitions`. Each item gets an independent child conversation. Pi Durable checkpoints and a FIFO queue share per-parent concurrency slots; tools within one agent retain their existing order. Each admission check releases the previous round's losing task waits so long batches do not accumulate subscriptions.
+
+```ts
+const session = {
+  subagents: {
+    tools: ["read", "grep", "write"], maxAgents: 4,
+    definitions: [
+      { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
+        tools: ["read", "grep"], maxConcurrency: 3 },
+      { id: "writer", description: "Verify and save one draft", systemPrompt: "Save the assigned draft and verify the result.",
+        tools: ["read", "write"], maxConcurrency: 1 },
+    ],
+  },
+};
+```
+
+`maxAgents: null` removes the total concurrency limit; a role can set `maxConcurrency: null` to remove its own limit. Omitted role limits inherit the session limit. Positive integer limits still use the durable FIFO queue. Concurrency limits are independent of retry budgets; projects maintain write consistency with transactions, locks and idempotent receipts.
+
+`AgentDefinition` also accepts optional `model: { provider, modelId }` and `effort`; omitted values inherit the parent. Overrides must match `subagents.models`. Role prompts replace project coordinator instructions while platform rules remain. Tools intersect parent authorization, the overall allowlist, the role snapshot and current configuration. Recovery rechecks access; children cannot delegate.
+
+Set `subagents.retry: { maxAttempts: 3, delayMs: 1000 }` or override `retry` on a role. `maxAttempts` includes the initial attempt (1–10); omitting the policy disables automatic work retries. `delayMs` sets the initial backoff (0–60000 milliseconds), doubling up to 60 seconds. This work budget is separate from model transport retries. Each attempt continues in the original task and child conversation with committed text, tool results, business checkpoints and a stable per-attempt request ID.
+
+Tasks updates `attempt` and returns only the final result. Exhaustion stops the work and reports the cause; management `retry` cannot bypass the configured limit. Reopening preserves the budget, explicit resumption follows the checkpoint and respects a reduced current limit, and cancellation never retries.
+
+Set `requireProgress: true` on a role or on project work passed to `enqueueAgentWork(s)` to require a business completion receipt. Success requires `AgentWorkProgressDoc.total > 0`, `completed >= total` and an empty `error`; a text claim of completion is insufficient. Tools can set `retryable: false` for uncertain paid requests or writes and index repair barriers, then clear the error and set `retryable: true` after reconciliation.
+
+A tool receipt proving a request was not sent (such as a media download returning HTTP 403) can set `retryable: true` so the next work attempt repairs the input. Authorization denials, invalid credentials, insufficient balance, cancellation and uncertain side effects remain retry barriers. Wait for the original task during automatic retries; never create a new work ID or batch to bypass exhaustion.
+
+Projects can declare a single-model field in `configuration.json`:
+
+```json
+{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "label": "Subagent model", "defaultValue": "" }
+```
+
+Set `modelConfiguration: "SUBAGENT_MODEL"` in `subagents` above. The editor reuses `STEAMHARNESS_AGENT_MODELS` and offers Follow main model (an empty string) or one configured model ID. A selected model applies to new named and anonymous child tasks ahead of role defaults, without changing the main model. An empty value restores code-defined role defaults, or the main model when no role model is set. Saved changes apply to children created by the next execution; recovery retains its original snapshot.
+
+Project models remain available for child selection when Studio Settings supplies the main model. Invalid, removed or unauthorized models fail explicitly, including system-AI-only restrictions. Connections, credentials and proxies have independent lifetimes, and effort is clamped to child capabilities.
+
+Developers can instead set `subagents.model: { provider, modelId }` and authorize the registered pair in `subagents.models`, without an editor field. When `modelConfiguration` is set, the field takes precedence and Follow main model clears this shared override. Existing children retain their creation-time model.
+
+All `type: "subagent"` commands carry a stable `requestId`:
+
+| action | Parameters and behavior |
+| --- | --- |
+| `spawn` | `agentId`, `workId`, `prompt`; optional `label`, JSON `metadata`, `background`, `reportToParent`. Repeated work IDs reuse the task; conflicting payloads are rejected. |
+| `list` | List work for the current parent conversation. |
+| `get` / `wait` | `taskId`; read or await the result. Waiting does not block cancellation. |
+| `send` | `taskId`, `prompt`, optional `mode: "steer" \| "followUp"`. Accepted messages finish before releasing the slot. Queued, settling or settled work returns its current state and `messageDelivery: { status: "not_running", nextAction: "wait" \| "get" \| "retry" }`, with command receipt `settled`, without restarting work. Accepted delivery returns `{ status: "accepted" }`. |
+| `stop` | `taskId`; cancel only this item and its execution tree, without automatic retry. |
+| `retry` | `taskId`; create a linked attempt for failed/cancelled work, preserving history and continuing from the latest committed context. Resume a stopped owning batch first. |
+
+Receipts and snapshots expose `agents` with `taskId`, `workId`, `agentId`, `status` (including `queued`), `attempt`, `retryOf`, `childConversationId`, `metadata`, `progress`, `error` and `result`. Tasks uses these fields for roles, sources, phases and counts; opening a child, stopping and retrying use Core control. Business task history is retained; only internal Pi steps are limited to the latest 200 records.
+
+Normal lifecycle changes return a delivery receipt instead of failing the `send` tool. Check `messageDelivery`; `not_running` does not mean the message was delivered. Use `get` for completed results or explicitly `retry` failed/cancelled work. Batch task IDs are not subagent IDs; use the project's batch tools. Direct input to a settled child remains rejected so it cannot bypass concurrency slots or cancellation.
+
+Anonymous `subagent({ task, background?, model? })` and historical tasks remain supported. Named tool calls use `{ action: "spawn", agentId, workId, task, background: true }`; management actions use taskId. Tool background work reports to the parent by default. Commands and business tasks may set `reportToParent: false` to consume receipts themselves.
+
+An explicit `action` selects named management and ignores legacy result pagination fields populated by a model. Tool arguments still cannot override a named role's model.
+
+Durable tasks and native tools can call exported `enqueueAgentWork(tx, registry, input, options)` or `enqueueAgentWorks(tx, registry, inputs, options)` in a transaction. Use the bulk API for 1–1000 items, completing all table reads before creating tasks. Pi transactions cannot read tables after the first table write; do not loop over the single-item API. Task ownership makes batch cancellation cascade to queued and running items.
+
+Native tools call `readAgentWorkContext(api, ctx)` for the authorized role, workId, attempt, parent conversation and metadata. Persist progress with `tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`, updating `completed`, `total`, `phase` and optional JSON `data`. A nonempty `error` records failed business verification; clear it after successful retry. A finished model response alone does not prove business completion. The conversation family survives task settlement. Cross-entry operations accept `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`; both item and host cancellation apply.
+
+Retry does not prove an external side effect failed. Reconcile uncertain paid requests and writes using service state or business receipts first. Keep stable business IDs, drafts and stage checkpoints; retry an index conflict at the index stage without replaying committed bodies.

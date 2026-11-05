@@ -1,16 +1,25 @@
 ---
 title: "steamharness json"
-description: "JSON run reports"
+description: "Execute an entry and return a machine-readable JSON report."
 ---
 
-# JSON run reports
+<span id="json-run-reports"></span>
 
-Execute the selected entry and output its JSON run report.
+# steamharness json
+
+Use `json` when a script needs run status, output, or errors. It executes the project rather than converting a previously saved result.
+
+## Command
 
 ```sh
+pnpm exec steamharness json .
 pnpm exec steamharness json . --entry database --entrypoint search -- --query example
 ```
 
-`entryId` selects an aggregate entry; `entrypointId` selects an internal Workflow operation. Entries have independent configurations, database requirements and conversation state. Selection defaults to `defaultEntry`; unknown entries fail.
+The second example selects a declared `database` entry and `search` operation. Omitting `--entry` uses `defaultEntry`; unknown IDs fail. Put business arguments after `--`.
 
-Reports contain run status, output and errors. `--conversation-id` and `--run-id` select explicit identities; the host still isolates them by project and entry. Cancellation aborts the current execution.
+## Read the report
+
+Reports include status, output, and errors. Explicit `--conversation-id` and `--run-id` values remain scoped to the project and entry; reusing an ID grants no access to another entry.
+
+Entries retain independent configuration, resource requirements, and conversation state. Cancellation stops execution and reports an aborted state. Inspect permission and resource errors rather than treating the presence of JSON as success.

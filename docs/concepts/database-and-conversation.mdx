@@ -5,11 +5,15 @@ description: "业务关系表、知识库与平台会话存储的边界"
 
 # 数据库与会话
 
-业务模型、知识库和平台运行记录各自管理。业务数据库不会随新建项目或新建对话自动创建；显式申请、迁移并绑定后才能访问。
+业务关系库、知识库和对话历史使用不同的存储与授权。创建项目或会话不会自动建业务数据库；需要业务表时，先申请资源、迁移模型并绑定入口。
 
 ## 业务关系表
 
-在入口目录的 `steamharness.database.ts` 中定义一个或多个别名，在 `steamharness.schema` 中定义模型。入口的 `databases` 列出使用的别名；Server 按当前账号、项目、入口与别名保存资源绑定。项目配置不保存业务数据库 ID 或凭据。
+1. 在入口的 `steamharness.database.ts` 中声明别名，在 `steamharness.schema` 中定义模型。
+2. 将所需别名列入入口声明的 `databases`。
+3. 在 Server 绑定账号、项目、入口和别名，再用生成的描述符连接。
+
+业务数据库 ID 和凭据不写入项目配置。
 
 ```ts
 import { main } from "./dist/steamharness/generated/database/node/index.js";
@@ -55,8 +59,26 @@ const snapshot = await bot.snapshot(receipt.conversationId);
 // cancel({ conversationId, requestId })、resumeQueue({ conversationId, requestId })。
 ```
 
-`submit` 在输入持久化后返回 `{ conversationId, requestId, messageId, status }`，不等待模型；相同会话与请求 ID 的相同内容不会重复执行，不同内容会失败。省略参数时复用该会话的参数与宿主模型默认值。失败、停止或重开保留队列，显式调用 `resumeQueue` 后继续。项目可用 `conversation.recovery: { enabled: true, startup: "manual" }` 要求重开后的未完成轮次也等待恢复；默认 `automatic` 保持原恢复行为。
+### 提交与恢复队列
 
-快照含 `ownerId`、递增 `revision`、消息、待确认请求、运行状态和 FIFO 队列位置。消费者拒绝旧 revision，并在 owner 更换后丢弃退休 owner 的结果。宿主凭据、用户设置和运行参数不会进入此投影。业务共享聊天可以保存投影与回执，执行历史仍以 Core 为准。
+`submit` 将输入持久化后返回 `{ conversationId, requestId, messageId, status }`，无需等待模型完成。省略参数时复用会话参数与宿主默认模型。
 
-`context.entries.caller` 是可信直接调用来源 `{ entryId, conversationId?, runId? }`；由宿主或 Core 设置，不从业务参数读取。Bot 身份应从此来源及受控会话关联识别。调用保留用户、项目、权限和取消信号，并再次验证目标授权。单独命令运行或 Server 静态预览没有执行宿主，返回 `ENTRY_RUNTIME_UNAVAILABLE`；Server 不执行项目代码。
+| 条件 | 结果 |
+| --- | --- |
+| 相同会话、请求 ID 和内容再次提交 | 不重复执行 |
+| 相同会话和请求 ID，但内容不同 | 拒绝提交 |
+| 执行失败、停止或重开 | 保留输入队列，显式 `resumeQueue` 后继续 |
+| `conversation.recovery: { enabled: true, startup: "manual" }` | 重开后的未完成轮次也等待恢复 |
+| 默认 `startup: "automatic"` | 沿用自动恢复行为 |
+
+### 消费会话快照
+
+快照包含 `ownerId`、递增的 `revision`、消息、待确认请求、运行状态和 FIFO 队列位置。消费者应拒绝旧 revision；owner 变化后，丢弃已退休 owner 的结果。
+
+投影不含宿主凭据、用户设置或运行参数。业务聊天可以保存投影和回执，但执行历史仍以 Core 为准。
+
+### 识别调用者与宿主
+
+`context.entries.caller` 提供可信的直接来源 `{ entryId, conversationId?, runId? }`，由宿主或 Core 设置。用它和受控的会话关联识别 Bot，不要相信业务参数自报的身份。
+
+调用保留用户、项目、权限和取消信号，并重新检查目标授权。单独命令运行和 Server 静态预览没有执行宿主，会返回 `ENTRY_RUNTIME_UNAVAILABLE`；Server 不执行项目代码。

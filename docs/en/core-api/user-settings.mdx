@@ -5,7 +5,7 @@ description: "Read host user settings and explicitly inherit the user's Agent pe
 
 # User settings and permission inheritance
 
-User settings belong to the execution host and are stored separately from project configuration and turn parameters. Studio saves the user's Agent permission in **Settings → Permissions**, defaulting to `auto`. Workspace settings cannot override it. Ordinary Agents still default to `workspace`; they read user settings only when explicitly configured with `inherit`.
+User settings belong to the execution host and are stored separately from project configuration and per-round parameters. Studio defaults user permissions to `auto`, without workspace overrides. A directly created Agent defaults to `workspace` and reads user settings only when it selects `inherit`.
 
 ## Public API
 
@@ -103,7 +103,11 @@ Studio groups built-in models above custom models in one table. Built-in names c
 
 Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 saved custom models. Host built-in catalogues are not subject to that count limit. Invalid model configurations are rejected.
 
-Core Agents use two exclusive model sources. The default and `modelSource: "user-settings"` use only built-in/custom models from Settings in Studio and hide project AI models, without combining or referencing project models. Standalone CLI Web lacks model settings and automatically falls back to project models for choices and defaults. Empty `models: []` still means settings are supported: Studio asks users to add a model in Settings. `modelSource: "project"` always uses project models, with System AI and Third-party AI as the two add sources. Hosts omit `agent.models` when model settings are unavailable; omission and an empty array have different meanings. Explicit developer endpoints, `models`, and `resolvedModel` retain their behavior. `allowThirdParty: false` applies to both sources and explicit endpoints.
+### Settings models and project models
+
+Core Agents use two exclusive model sources. The default and `modelSource: "user-settings"` use only built-in/custom models from Settings in Studio and hide project AI models, without combining or referencing project models. Standalone CLI Web lacks model settings and automatically falls back to project models for choices and defaults. Empty `models: []` still means settings are supported: Studio asks users to add a model in Settings.
+
+`modelSource: "project"` always uses project models, with System AI and Third-party AI as the two add sources. Hosts omit `agent.models` when model settings are unavailable; omission and an empty array have different meanings. Explicit developer endpoints, `models`, and `resolvedModel` retain their behavior. `allowThirdParty: false` applies to both sources and explicit endpoints.
 
 ```ts
 // Generate overridable model parameters from the user's list and default.
@@ -122,6 +126,8 @@ const project = steamharness.createAgentConversationProject({
 Reused third-party connections retain developer `modelAttributes` defaults. System catalogue search restrictions remain authoritative and cannot be enabled through turn attribute overrides.
 
 The built-in assistant uses Settings models in Studio. Model and effort are separate Quick parameters. The model control groups built-in and custom models, with **Add model** opening Settings. Resetting follows the user default. The same project in standalone CLI Web uses project model configuration, with System AI and Third-party AI as the two add sources.
+
+### Empty lists and configuration access
 
 With no available models, the control shows **Configure model** and guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the choices.
 

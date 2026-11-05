@@ -5,7 +5,7 @@ description: "Independent knowledge bases, revisions and private attachments"
 
 # Knowledge Documents
 
-Use `context.knowledgeBases.get(alias)` for a Server-managed knowledge base. Documents, chunks, search indexes and attachment metadata use shared platform PostgreSQL tables isolated by resource ID. Private file storage holds attachment contents. No business schema or physical database per project is required.
+Access Server-managed knowledge with `context.knowledgeBases.get(alias)`. Documents, indexes, and attachment metadata are isolated by knowledge-base ID; attachment bytes use private file storage. A knowledge base requires no business schema and creates no physical database per project.
 
 ## Create and bind
 
@@ -40,11 +40,31 @@ const matches = await knowledge.searchDocuments({ query: "世界", pageSize: 20 
 const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
 ```
 
-Documents contain `id`, `title`, `markdown`, `revision`, `createdAt` and `updatedAt`. Lists return summaries, `total`, `hasMore` and optional `nextCursor`, ordered by most recent write. Pass opaque cursors back unchanged. Search matches literal substrings without case sensitivity, including Chinese, and retains 1-based line numbers and context. Search cursors are tied to query parameters and the resource revision; restart a search after content or attachments change. Documents and chunk indexes commit in one SQL transaction.
+### Results and pagination
+
+| Result | Contents |
+| --- | --- |
+| Document | `id`, `title`, `markdown`, `revision`, `createdAt`, `updatedAt` |
+| List | Summaries, `total`, `hasMore`, and optional `nextCursor`, ordered by latest write |
+| Search | Case-insensitive literal substring matches, including Chinese, with 1-based line numbers and context |
+
+Pass opaque cursors back unchanged. Search cursors are bound to query parameters and resource revision; restart the search after a document or attachment changes. Document content and chunk indexes commit in one SQL transaction.
 
 Pass the revision you read as `expectedRevision` when editing, or use `deleteDocument(id, expectedRevision)`. A mismatch returns a conflict: retain the draft, read again and resolve the change. Omitting the parameter changes the current version directly. Deleting a missing document returns `{ id, deleted: false }`; a stale expected revision returns a conflict.
 
-Titles allow 512 characters, Markdown allows 4 MiB characters, and IDs allow 256 characters without NUL. List pages contain 1–100 items. Search pages and match limits allow up to 1000, with at most 100 context lines on either side. Line reads allow 1000 lines per call. Hosts can poll `getRevision()` for updates.
+### Size and count limits
+
+| Item | Limit |
+| --- | --- |
+| Title | 512 characters |
+| Markdown body | 4 MiB characters |
+| ID | 256 characters, excluding NUL |
+| List page | 1–100 items |
+| Search page and maximum match count | 1000 |
+| Search context | Up to 100 lines before and after |
+| Line reads | Up to 1000 lines per call |
+
+`getRevision()` returns the resource revision so the host can decide when to refresh.
 
 ## Attachments
 

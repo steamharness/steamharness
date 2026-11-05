@@ -5,17 +5,30 @@ description: "为宿主嵌入或测试一步构造完整的 Conversation Agent e
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` 为宿主嵌入或测试一次构造完整的 Conversation Agent executor。项目入口继续使用内联 `workflow.defineExecutor({...})`，声明 `conversation`、`tokenUsage` 和 `tools`；其 `workflow` 来自 `workflow.createAgentConversationProject(...)` 时，Core 自动补全内置参数与 resolver。
+宿主嵌入和测试可用 `steamharness.defineAgentConversationExecutor()` 构造完整的 Conversation Agent 执行器。项目入口应使用内联 `defineExecutor({...})` 声明 `conversation`、`tokenUsage` 和 `tools`，并把 `createAgentConversationProject(...)` 交给 `workflow` 字段。
 
 这层封装让嵌入方无需实现流式循环、审批、压缩或输出项拼装。项目也可复用其中的工作流与输入实现，同时保留可被宿主读取的内联声明。
 
-
 权限菜单包含 `read-only`、`workspace` 和 `auto`。Core 项目默认与小助手一致：权限使用 `userSetting: { key: "agent.permissionPolicy", mode: "fixed" }` 跟随用户设置；无宿主时用户设置为 `auto`。显式 `permissionPolicy` 提供项目默认值；使用 `paramOptions.fields.permissionPolicy` 可定制绑定、隐藏或固定实际值。见[用户设置与权限继承](/core-api/user-settings)。
+
+## 示例
+
+宿主嵌入或测试中的用法：
+
+```ts
+const agentExecutor = steamharness.defineAgentConversationExecutor({
+  projectName: "Pi",
+  executorName: "pi",
+  outputItemId: "pi-answer",
+  provider: "anthropic",
+  effort: "high",
+});
+```
 
 ## 签名
 
 ```ts
-workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
+steamharness.defineAgentConversationExecutor(options?: AgentProjectOptions):
   ConversationExecutorDefinition<AgentInput, AgentOutputPayload>
 ```
 
@@ -59,28 +72,17 @@ Effort 默认 `high`，`/plan` 默认关闭。模型默认或 `modelSource: "use
 
 两点例外：只调用了工具、没有任何正文的一轮不写空的助手消息；带 `hostInput` 的一轮（OpenAI / Responses 网关）完全不写 conversation，因为网关自己保管这段历史——与内置 Conversation 项目的处理一致。
 
-**多轮上下文和未完成任务由 Pi Durable 保存。** Core 按当前账号、项目、入口、会话和 `sessionKey` 选择 Server PostgreSQL 会话，按提交保存消息、工具意图与结果、审批等待和用量身份。相同 `runId` 恢复同一请求；已完成请求只重建自身的输出。旧 KV transcript 不再读取，存储失败终止运行。多个 Agent 节点须使用不同 `sessionKey`；`hostInput` 网关运行默认使用内存存储。详见 [createAgentNode](./create-agent-node.mdx)。
+Pi Durable 保存多轮上下文和未完成任务。节点按 `conversationId` 与 `sessionKey` 使用宿主注入的运行仓储，CLI 与 Studio 默认是本地 SQLite；可信宿主可以显式选择 Server 仓储。
+
+消息、工具意图与结果、审批等待和用量身份随检查点提交。相同 `runId` 恢复同一请求，已完成请求只重建自身输出。多个 Agent 节点使用不同 `sessionKey`，`hostInput` 网关运行默认使用内存。
+
+旧 KV transcript 不再读取；存储失败终止运行，不切换后端。参见 [createAgentNode](./create-agent-node.mdx) 和[平台运行存储](./runtime-storage.mdx)。
 
 `defineExecutor` 选定 `createAgentConversationProject` 作为 `workflow` 或 `coreAgent` 时，运行时与静态结构报告都会自动继承 `conversation.recovery: { enabled: true }`，并保留项目自己的对话展示配置。配置 `session` 或 `createSession` 时同时继承 durable。CLI Web / Studio 强退重开包含业务任务的会话后，先暂停批次和用户队列，明确输入清理旧执行树，项目显式恢复批次。普通会话按原 `runId` 恢复；只有成功的用户轮次才能自动推进待发队列，后台任务报告不能触发发送。
 
 > **正文 item 的 id 必须与 `conversation.openai.outputItemId` 一致。** OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的：CLI 本地网关与 `__openai-responses-runner` 都走这条查找，两者不一致时运行会以「did not produce output item」失败。
 
 这个条目只在**宿主驱动的运行**里产出（适配器按 id 读回的就是整轮完整文本）。普通会话运行把正文写成 `partType: "text"` 的行——两条活动行之间的每段文字各占一行，写在它被说出的位置——再把它们拼回会话消息。
-
-## 示例
-
-宿主嵌入或测试中的用法：
-
-```ts
-const agentExecutor = workflow.defineAgentConversationExecutor({
-  projectName: "Pi",
-  executorName: "pi",
-  outputItemId: "pi-answer",
-  provider: "anthropic",
-  effort: "high",
-});
-```
-
 
 ## 项目参数继承与定制
 
@@ -91,7 +93,7 @@ Context 输入只消费当前参数表中启用的字段；固定用户设置绑
 `fields` 支持 `defaultValue`、`userSetting`（`null` 清除绑定）、`visible`、`fixedValue`、`label`、`description` 和 `options`。设为 `false` 移除字段；`groups` 用字段名重排 Quick/Auxiliary 分组，未分配字段保留原分组。`fixedValue` 覆盖绑定及默认值，并在输入构造和 Core 执行入口强制应用。隐藏只控制展示，需要禁止覆盖时同时使用 `fixedValue`。显式默认值会清除用户设置绑定。
 
 ```ts
-const agentProject = workflow.createAgentConversationProject({
+const agentProject = steamharness.createAgentConversationProject({
   modelSource: "project",
   paramOptions: {
     fields: {
@@ -104,13 +106,12 @@ const agentProject = workflow.createAgentConversationProject({
   },
 });
 
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: "conversation",
   workflow: agentProject,
-  createInput(context) { return workflow.createAgentProjectInput(context); },
+  createInput(context) { return steamharness.createAgentProjectInput(context); },
 });
 ```
-
 
 ## 技能目录与宿主预览
 

@@ -1,0 +1,66 @@
+---
+title: "扩展任务、工具与执行环境"
+description: "注册可恢复任务，按需连接工具目录，并选择执行目标与存储。"
+---
+
+# 扩展任务、工具与执行环境
+
+注册可恢复任务，按需连接工具目录，并选择执行目标与存储。
+
+先用 [createAgent](/core-api/create-agent) 创建运行时，再按下列规则配置相关选项。
+
+## 扩展执行与恢复
+
+Core 从 `steamharness/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：
+
+```ts
+const registry = steamharness.createAgentRegistry();
+const timer = steamharness.defineAgentTask<
+  { wakeAt: number }, { phase: "wait"; wakeAt: number }, string
+>({
+  name: "app.timer", version: 1,
+  initial: input => ({ phase: "wait", wakeAt: input.wakeAt }),
+  phases: { wait: async (task, runtime, context) => {
+    await runtime.sleep(task.state.checkpoint.wakeAt, context);
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: "awake" } }), context);
+  } },
+  abort: async (_task, runtime, context) => {
+    // Release project resources here, then commit the cancellation.
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+  },
+});
+registry.install(steamharness.defineAgentExtension({ name: "app", tasks: [timer] }));
+const agent = await steamharness.createAgent({ session: { registry } });
+```
+
+宿主在运行期间提交 `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`。多阶段任务在 `runtime.commit()` 中保存下一阶段；依赖通过 `tx.createTask()` 和 `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }` 绑定。每个 phase 必须提交进度或终态。取消会先处理 owned 子任务，再调用 `abort`；关闭宿主暂停执行，不等同业务取消。`wakeAt` 是检查点中供界面展示的绝对毫秒时间，计时器执行仍由 `runtime.sleep()` 决定。
+
+Registry publication 使用不可变快照，在途工具和 hook 固定实现；下一任务 phase 可切换兼容定义。已经运行的任务在定义被移除时可继续旧实现，等待后重新调度或重启时缺失/不兼容定义会保留为 `blocked`。重新安装正确定义后自动唤醒；`pi.*`、`workflow.*` 任务/扩展及重复工具名称不能覆盖。普通会话命令不能上传扩展代码。
+
+### 工具发现与 MCP
+
+`AgentToolCatalog` 为 `{ id, tools?, allowedTools?, open() }`。预声明 `tools` 是不含 `execute` 的工具描述，打开会话时保存定义，搜索只读取元数据，首次实际调用才连接；没有预声明 schema 时必须给最终工具 id 的 `allowedTools`，首次搜索才连接目录并保存工具定义。重开已有会话后，`tool_search` 仍会连接已授权的非预声明目录，发现并保存新增工具；预声明目录的新增描述在打开会话时保存。目录增加工具不会使原有工具失效，也无需丢弃会话。
+
+每个已有工具仍须保持首次保存的名称、描述、schema 和 replay，实际连接会核对当前描述与持久定义；同时更新宿主描述和服务定义也不能绕过核对。撤权的工具不提供给模型，原定义仍保留，重新授权不能绕过核对。缺失或改变已有定义、重复名称或返回未授权工具会报 `Tool catalog definition changed` 并关闭连接，不执行工具，也不保存发现的新定义。改变已有定义须创建新会话；暂时连接失败可再次调用重试。工具发现不会连接未声明的服务。`createTools` 可返回 `{ tools, catalogs, close? }`，或编程式配置 `session.toolSearch.catalogs`。
+
+标准 MCP 助手 `steamharness.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` 验证服务器定义但不立即启动进程。这里 `allowedTools` 使用 MCP 原始名称，最终 id 沿用 `<serverId>_<toolName>`；凭据按已有 MCP 环境继承规则传入。所有目录都由会话 owner 管理并在关闭后释放。
+
+### Code Mode 与执行目标
+
+显式设置 `session.codeMode: {}` 后提供 `codemode({ code })`。脚本可使用 `await tools.<name>(args)`、`text()`、`store()` / `load()`；没有 Node、网络或额外 `models.*` 能力。每个嵌套调用仍经过工具 whitelist、caller、审批、replay 和取消。官方执行日志、沙箱指纹、脚本 deadline 与调用顺序共同校验恢复；已提交嵌套结果不会重做。worker JS 和 QuickJS WASM 随 Core 包分发。
+
+`session.environment` 的 `open` 返回宿主实现的 `AgentExecutionEnv`，必须使用声明的稳定 `id` 和目标 `cwd`。同一会话不能在重开时换环境身份；更换执行目标须创建新会话。配置远端环境后，内置 read/write/edit/bash 使用该环境，grep/find/ls 不会回退本机；额外工具仍由项目显式声明。文件范围、shell 权限和远端 MCP 连接必须由环境及目录工厂在目标端实施。Core 不创建云沙箱。Harness 停止后调用环境 `cleanup()` 并关闭目录连接；连接失败显示环境/目录状态，不保存连接凭据。
+
+Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tabs，CLI Web 不再显示任务侧栏。任务详情包括定义版本、检查点、唤醒时间、Code Mode 脚本及嵌套调用；记录页展示扩展、目录、Code Mode、存储及本地/远端目标状态。没有数据库配置表单，assistant 主回答仍在正文平铺。
+
+任务页按持久记录显示开始、结束时间、耗时及委派任务用量；缺少起止时间的历史任务显示“未记录时间”。断线后计时固定在最后收到的快照，重连后继续更新。用量页顶部显示所选会话的权威累计 Token、模型请求数和上下文占用，下方保留逐会话的模型与工具明细，不重复累加子任务用量。计划页也可从运行报告恢复审批内容；独立轨迹窗口在重连后会重新加载各自选中的历史运行。
+
+### 自定义存储与备份
+
+Windows 深层目录中的 Agent SQLite 会话自动使用长路径支持，创建、重开、所有权锁及离线备份与导入均保留原存储位置，无需缩短宿主数据目录。
+
+运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, failure?: AbortSignal, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
+
+`steamharness/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
+
+离线取消 `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 也必须先停止并等待 worker；有自定义任务时传入项目 registry，使注册的 `abort` 清理可以执行。缺少定义的任务只能终结为 `orphaned`，不能执行项目清理代码。活动会话优先通过 `cancel` 控制命令取消，使用 owner 已加载的任务定义。

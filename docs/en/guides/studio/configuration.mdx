@@ -1,0 +1,39 @@
+---
+title: "Manage project configuration"
+description: "Choose named configurations, edit fields, and import or export settings."
+---
+
+# Manage project configuration
+
+Workflow, Conversation, and Kanban entries support configuration fields and named configurations. Open the entry whose configuration you want to change.
+
+## Change a configuration
+
+1. Open the run UI and select the entry.
+2. Choose a named configuration and edit the permitted fields.
+3. Save, then start the next run.
+
+Configurations are isolated by project and entry. A running task uses its startup snapshot; later edits do not change that task.
+
+## Save, import, and export
+
+Studio and the local CLI share local storage. Server isolates configurations by project and account. Project roles and template rules determine which official and personal fields can be edited.
+
+Configurations support complete import, export, and JSON operations. After a revision conflict, read the latest version before submitting again. See [project configuration](/en/concepts/project-configuration) for declarations, attachments, and snapshots.
+
+## Ownership and identity
+
+| Situation | Action |
+| --- | --- |
+| Project identity is not registered | Apply for an application ID in the run UI before uploading |
+| Creating under a group | Use an account with developer access or above; creation does not promote its group role |
+| Access was revoked | Obtain access again, then retry |
+| A new project ID was allocated | Grant and bind data resources for the new identity |
+
+Uploading does not change an existing project's ownership. A private version share link can be used to request guest access. See [project management](/en/guides/server/project-management).
+
+## Select a Server
+
+Use the account entry to sign in, verify, or sign out. Select Server through `studio.workflow.serverUrl`. Credentials are saved in SecretStorage, outside project source.
+
+Dev builds default to `http://localhost:7126`; alpha and main use their deployment addresses. An address explicitly chosen in settings or sign-in takes precedence. Use [`workspace status`](/en/cli/workspace/status) to inspect the CLI's effective target.

@@ -5,9 +5,20 @@ description: "Declare an owned LLM provider, its project configuration fields, a
 
 # LLM Provider
 
-LLM capability is injected into a workflow through one provider interface. Public workflows use their own provider configuration and API key; the Server does not store or proxy third-party model credentials for a steamharness.
+An LLM Provider connects model calls to a workflow. Projects can configure their own endpoint, model, and API key. Server neither stores nor proxies those third-party credentials.
 
-For system AI, `getServerLLMCredentials({ signal })` reuses a catalogue for up to 30 seconds in the current process, scoped to the service URL and account, and merges concurrent refreshes. Pass `{ fresh: true, signal }` to refresh online. Expiring proxy credentials also refresh online. Catalogues and short-lived tokens stay in memory, and changing accounts or service URLs loads a new catalogue. The Server still authorizes every model request. Cancelling one catalogue wait does not cancel another run's shared refresh.
+## System AI catalogue
+
+Call `getServerLLMCredentials({ signal })` to obtain the catalogue available to the current account. Catalogues are reused for 30 seconds in the process, scoped to service URL and account; concurrent refreshes are merged.
+
+| Situation | Behavior |
+| --- | --- |
+| A fresh catalogue is needed | Pass `{ fresh: true, signal }` for an online refresh |
+| Proxy credentials are about to expire | Refresh credentials online |
+| The account or service URL changes | Load the corresponding catalogue |
+| One caller cancels its wait | Other callers' shared refresh continues |
+
+Catalogues and short-lived tokens remain in memory. Server still authorizes every model request.
 
 ## Create a provider ref
 
@@ -53,14 +64,14 @@ const llmStreamNode = steamharness.createLLMStreamNode<Input>({
 
 ## Project configuration fields
 
-`steamharness.createLLMProviderFromConfig()` reads:
+Declare the model fields in `configuration.json`, then enter values in Project configurations. `steamharness.createLLMProviderFromConfig()` reads these fields:
 
 - `LLM_TYPE`
 - `LLM_API_KEY`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
 
-Declare these fields in `configuration.json` and enter their values in Project configurations. Values come from the immutable run snapshot and never fall back to `.env` or process variables. `LLM_BASE_URL` must be an HTTP(S) URL without credentials, query parameters, or a fragment.
+Each run reads its frozen configuration snapshot, without falling back to `.env` or process variables. `LLM_BASE_URL` must be an HTTP(S) URL without a username, password, query, or fragment.
 
 Third-party services use their own fields through `steamharness.getConfig()`. Host account credentials and transport settings remain host managed.
 

@@ -1,0 +1,78 @@
+---
+title: "Agent 会话控制"
+description: "提交命令、读取快照，并区分任务、轮次和会话用量。"
+---
+
+# Agent 会话控制
+
+提交命令、读取快照，并区分任务、轮次和会话用量。
+
+先用 [createAgent](/core-api/create-agent) 创建运行时，再按下列规则配置相关选项。
+
+## 持久会话控制
+
+`session: {}` 启用 Harness 会话协议；`run()` 期间可调用 `runtime.control(command)`，通过 `session` 事件读取 `AgentSessionSnapshot`。未运行时返回 `AGENT_NOT_READY`。普通编程式调用会等待后台工作结束；需要多轮常驻资源的工作流宿主使用 [createAgentNode](/core-api/create-agent-node) 的 host lease。
+
+| `session` 字段 | 说明 |
+| --- | --- |
+| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number \| null, modelConfiguration?: string, model?: { provider, modelId }, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，也可配置统一子模型；代码指定模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个，显式设置 `maxAgents: null` 可不设总数量上限。 |
+| `nativeTools` | Pi Durable `ToolRegistration[]`；可用 `api.executeTool()` 嵌套调用，仍执行 caller 限制、权限审批及取消传播。 |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`。默认在每次模型请求前检查，达到上下文窗口的 90% 时先压缩；`reserveTokens` 可要求更早预留空间，`backgroundTokens` 可提前启动后台压缩。`enabled: false` 关闭自动阈值与溢出恢复，仍可手动压缩。 |
+| `planFork` | `initial`、`current` 或 `asOf`（默认）：分叉计划为空初始值、当前值或分叉点值。 |
+| `registry` | `AgentRegistryReader`，安装项目自己的任务、工具、提示 sections 和 hooks；支持 install/uninstall 热更新。 |
+| `toolSearch` | `{ catalogs?: AgentToolCatalog[] }`，显式启用 `tool_search`；只发现宿主授权的目录。 |
+| `codeMode` | `{ memoryLimitBytes?, timeoutMs? }`，默认关闭；QuickJS worker 编排已有工具，默认 64 MiB / 300 秒，上限 256 MiB / 300 秒。 |
+| `environment` | `{ id, label, open(target, context) }`，由宿主提供的 `AgentExecutionEnv`；见下方远端环境边界。 |
+
+`subagent` 工具说明列出子工具白名单和可用的精确模型覆盖；未配置可用覆盖时，参数中不提供 `model`，省略它继承父模型及凭据。未获准的模型报错会提示省略 `model` 重试。内置小助手的只读子工具包含 `skill`，可按页读取随包指南；不授予 shell 或编辑能力。 较大的前台或后台子代理结果按 JSON 分页返回，页中携带 `taskId`。用 `subagent` 的 `{ resultTaskId: taskId, resultOffset: nextOffset, resultHash }` 续读，省略 `task`、`background` 和 `model`；
+
+读取只访问当前会话原有委派，不会新建子任务。按顺序拼接 `content` 并解析完整 JSON；每页最多 40 000 UTF-8 字节。子代理失败或取消会向前台返回 `isError: true`，失败委派记录为 failed；后台失败也明确通知父会话。
+
+命令均包含稳定 `requestId`，可带快照内数字 `targetId`（省略为主会话）。接口在等待就绪或排队前复制命令，调用方后续修改原对象不会改变本次操作。同一 requestId 不可换载荷；重发返回原回执。
+
+| `type` | 参数及效果 |
+| --- | --- |
+| `submit` | `prompt`、可选 `images`、`mode: "steer" \| "followUp" \| "reject"`。steer 在工具轮边界补充本轮，followUp 排下一轮，reject 在忙碌时拒绝；空闲 steer 是正常新轮。 |
+| `withdraw` | `inputId` 为待撤回输入的 requestId；已消费返回 `already_placed` / `settled`，不会撤销副作用。 |
+| `promote` | `inputId` 为待立即发送输入的 requestId；在同一事务内将队列项转为 steer 并保存回执，保留原身份和图片，在下一工具边界接入本轮。已消费返回 `already_placed` / `settled`，不会重发。 |
+| `compact` | 可选 `instructions`；创建后台压缩任务，可与活动任务协调。 |
+| `reset` | 可选 `handoff`；在输入边界进入新上下文世代，保留旧正文与任务计划。 |
+| `fork` | 已提交 `entryId`；同一持久会话内新建独立 conversation、provider 身份和输入队列，不复制活动任务或审批。回执包含 `forkId`。 |
+| `delete` | 取消并隐藏子会话；主会话及底层存储由宿主删除。 |
+| `configure` | `expectedVersion` 与可选 `model: { provider, modelId }` / `effort`；CAS 更新已注册模型，下一请求生效，子模型仍受白名单约束。 |
+| `plan` | `expectedVersion`、`items: { id, text, status }[]`；状态为 pending / in_progress / completed，CAS 更新事务计划。 |
+| `cancel` | `scope: "foreground" \| "all" \| "task"`，task 需 `taskId`。foreground 保留后台子树，all 包含 owned 子会话但不跨独立 fork；任务范围校验所属关系。 |
+| `snapshot` | 取得并发布最新完整快照。 |
+| `task` | `name`、严格 JSON `input`（最多 256 KiB）、可选 `background`；只能创建项目 registry 注册的任务，回执含 `taskId`，同身份重发不会新建任务。Date、Map、函数、非有限数等在记录 requestId 前拒绝。 |
+
+会话范围的取消由 Durable 在同一事务标记整个目标执行树并撤回待执行输入，回执返回前等待清理完成，避免逐项停止时协调者派发遗漏任务。宿主运行的主动取消同样包含后台任务；宿主挂起保留检查点，遵循单独的恢复流程。
+
+快照带 `version: 1`、每次打开改变的 `ownerId`、递增 `revision`、`contexts`、`tasks/history`、`turns`、`plan`、`records`、`receipts` 和逐会话 `usage`。快照是辅助状态；assistant 主回答继续平铺。重连读取完整快照，旧 owner 的 revision 不可压制新 owner。提示记录只有摘要/版本，配置记录不保存凭据。后台子结果由持久 reporter 用稳定身份回传一次；费用按父子会话分别归属，不重复累加重放。
+
+`tasks/history` 中的委派任务在子会话创建后提供 `childConversationId`，匿名和命名 `subagent` 均支持；任务结束及重开历史后仍保留关联，已删除的子会话不提供此字段。宿主可据此打开快照内的对应子会话，不应从任务标题推断身份。
+
+`tasks/history` 的可选 `startedAt` / `endedAt` 提供持久执行跨度；委派从子输入实际进入执行时开始，排队不计时，结束后固定。委派的 `usage` 是其所属子会话树的已提交 `TokenUsageAggregate`，包括失败尝试，未开始的工作为零。快照的 `capturedAt` 为 Unix 毫秒时间，断线或执行中断时可用它固定最近一次已知耗时；缺少可靠起止记录的旧历史显示未知。
+
+`contexts[].tokenUsage` 是当前会话及其 owned 子会话树的总用量，来自持久模型与工具用量记录，包含重试、停止前消耗、reset 前消耗及空闲压缩。每个子会话只归入执行 owner 一次，独立 fork 单独统计；删除子会话入口不会扣减已消耗用量。宿主直接替换完整快照中的总量，不再叠加子任务用量或 `token_usage_updated`；它与 `turns[].usage` 的单轮自身用量及 `contextUsage` 的上下文占用分别显示。
+
+`turns[].startedAt` 是输入进入执行时的 Unix 毫秒时间，排队期间不提供；`endedAt` 来自该轮执行任务持久化的结束时间，运行中不提供。宿主使用二者显示耗时，首次打开子会话、刷新和重开不会重置计时；等待和恢复仍属于该执行跨度。字段可选，旧记录缺少可靠起止时间时不得用打开页面的时间补造历史耗时。
+
+`turns[].items[].metadata` 中可选的 `startedAt` / `endedAt` 为轨迹提供 Unix 毫秒时间。思考与正文共享所属模型请求的跨度，包含首包等待，不代表各文本片段单独的生成耗时；工具条目使用对应工具任务的持久跨度。同一工具调用 ID 在不同模型回复中分别匹配。Studio 时间轴包含整轮耗时，即使旧历史缺少分段时间也不会缩成 1ms；未记录的模型分段时间保持未知。
+
+`turns[].reason` 是未完成轮次的原因码，`turns[].detail` 保留模型或重试耗尽的具体错误。宿主即使继续驻留，也应把 `model_error` 等失败显示为失败并展示原因；`aborted` 表示持久取消。续写耗尽同样报告失败，不当作正常完成。
+
+`turns[].usage` 是该轮已返回模型响应的累计用量，包含工具循环、失败重试和轮内压缩响应，字段为 `inputTokens`、`outputTokens`、`totalTokens`、`cachedInputTokens`、`cacheCreationTokens`、`reasoningTokens`、`calls`。继承的 fork 历史、其他轮次和其他会话不会重复计入该回答。空闲后台压缩的消耗保留在逐会话 `usage` 中，不回写已完成回答。`contexts[].contextUsage` 则是对应会话当前模型上下文的 `{ used, total }`，包括流式内容，在后续输入、fork、压缩和 reset 后更新，与累计消耗独立。
+
+`tasks` 仅包含活动任务，`history` 包含终态任务。`stopping` 表示已请求取消、但尚未到达终态；历史任务的 `stopping` 始终为 false，`status` 保留真实结果，包括已完成或已停止。重新打开会话后遵循相同规则。
+
+工具任务的 `arguments` 为模型或上层工具提交的参数，活动任务与完成历史均可读取；它不是经过工具修复或 hooks 转换后的参数审计。历史工具按各自已提交的 assistant entry 关联，模型跨轮复用 call ID 不会覆盖旧任务。流式工具事件的 `toolCallId` 为稳定的展示身份，调用方应将其视为不透明值。审批身份同时绑定持久 conversation、task 与 call ID：暂停恢复沿用原批准，后续同 ID、同参数的独立调用仍须按权限重新审批。
+
+session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ task, background?, model?: { provider, modelId } })`。显式 `toolDefinitions` / executor `tools` 列表须声明这些工具及所需 nativeTools 的权限；便捷 executor 默认补 update_plan/subagent。后台工作结束、前台回答完成和客户端连接状态相互独立。
+
+使用本地或 Server 仓储的宿主通过 `forkStoredAgentConversation({ persistence, conversationId, command })`，无活动 owner 时只分叉已提交历史，不加载模型或重跑任务；活动 owner 通过控制通道执行 `fork`。`isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 将回执的 forkId 复制成独立根会话，保留历史文档检查点，不复制任务、审批、输入队列或用量。源 owner 活动时仍可读取一致快照；停止、删除和模型选择各自独立。宿主需另行复制附件，可用 replacements 更新文件引用。导入、导出与取消 API 见[平台运行存储](/core-api/runtime-storage)。
+
+显式使用 databasePath 的实例仍可调用 SQLite 专用 forkAgentConversation / isolateAgentConversation；这些文件路径 API 不用于 CLI/Studio 默认仓储。
+
+命令回执表示操作已持久化，后续会话快照独立发送；调用方需要最新视图时等待对应请求的快照，或发送 `snapshot` 命令。CLI Web / Studio 的确认等待每次 30 秒，临时超时、连接错误、408/429/5xx 和暂未就绪最多自动重试 3 次，沿用原请求 ID、目标与载荷；迟到回执可结束等待，恢复后自动继续。主动停止、关闭宿主和达到重试上限会终止自动尝试。
+
+会话快照投影失败最多退避重试 3 次，不重跑模型或已提交工具；持续失败仍终止运行并保留原因。明确声明 `replay: "safe"` 的工具对执行异常或 `isError` 结果最多自动重试 3 次，保持调用身份，每次重新校验当前权限，成功后自动继续模型循环。权限拒绝、输入校验、用户交互等待、取消、`retryable: false` 和宿主存储错误不重复执行。默认工具以及 `never`/`unsafe` 工具的未知结果必须先核对，不能据超时推断写入未发生。

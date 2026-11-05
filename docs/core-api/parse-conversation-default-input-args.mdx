@@ -5,14 +5,14 @@ description: "解析 conversation 默认输入框序列化出来的 message、im
 
 # parseConversationDefaultInputArgs
 
-`workflow.parseConversationDefaultInputArgs(args)` 解析 conversation 默认输入框写入的固定参数。它只读取 `--message`、`--images`、`--videos` 和 `--files`，不会自动读取 `RunContext`，也不会替代 executor 的 `createInput`。
+在 Conversation 执行器的 `createInput` 中调用 `steamharness.parseConversationDefaultInputArgs(args)`，读取标准输入框提交的消息和附件。它只解析 `--message`、`--images`、`--videos` 和 `--files`，不读取 `RunContext`。
 
 Conversation 始终使用标准主输入框，无需配置开关。宿主按 `conversation.attachments` 声明的附件能力序列化这些参数；workflow 需要在 `createInput({ args })` 中显式调用本 helper。
 
 ## 签名
 
 ```ts
-workflow.parseConversationDefaultInputArgs(
+steamharness.parseConversationDefaultInputArgs(
   args: string[],
 ): {
   message: string;
@@ -38,7 +38,7 @@ workflow.parseConversationDefaultInputArgs(
 ## executor 配置
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
   workflow: conversationProject,
   conversation: {
@@ -49,7 +49,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     },
   },
   createInput({ args, conversationId }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(args);
     return {
       conversationId,
       message: defaults.message,
@@ -63,16 +63,16 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 ## 与文件输入节点配合
 
-helper 只把参数解析成 `FileReference[]`。如果需要读取文件内容，再把引用传给 `workflow.createFileInputNode()`：
+helper 只把参数解析成 `FileReference[]`。如果需要读取文件内容，再把引用传给 `steamharness.createFileInputNode()`：
 
 ```ts
-const imageInputNode = workflow.createFileInputNode({
+const imageInputNode = steamharness.createFileInputNode({
   name: "images",
   accept: ["image/png", "image/jpeg", "image/webp"],
   multiple: true,
 });
 
-const images = await workflow.runNode(imageInputNode, input.images, context);
+const images = await steamharness.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 

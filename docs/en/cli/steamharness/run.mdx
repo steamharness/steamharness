@@ -1,16 +1,32 @@
 ---
 title: "steamharness run"
-description: "Run the selected entry"
+description: "Execute a local Workflow or Conversation entry."
 ---
 
-# Run the selected entry
+<span id="run-the-selected-entry"></span>
 
-Execute a registered Workflow or Conversation; use `web` to present static Kanban entries.
+# steamharness run
+
+Run the project's default entry or select a registered Workflow or Conversation with `--entry`. Use `web` to display a static Kanban entry.
+
+## Command
 
 ```sh
+pnpm exec steamharness run .
 pnpm exec steamharness run . --entry database --entrypoint search -- --query example
 ```
 
-`entryId` selects an aggregate entry; `entrypointId` selects an internal Workflow operation. Entries have independent configurations, database requirements and conversation state. Selection defaults to `defaultEntry`; unknown entries fail.
+The second command requires a `database` entry with a `search` operation. Arguments after `--` belong to the business workflow rather than the CLI.
 
-Pass business arguments after `--`. Configuration is fixed at execution start; edits apply to the next execution. Cross-entry calls use the target configuration and inherit caller permissions. See [CLI](/en/cli/steamharness).
+## Entry selection
+
+| Option | Meaning |
+| --- | --- |
+| `--entry` | Aggregate `entryId`; defaults to `defaultEntry` |
+| `--entrypoint` | Operation within the selected Workflow; not accepted by Conversation |
+
+Unknown IDs fail. Each entry has separate configuration, database requirements, and conversation state. A run keeps its startup configuration snapshot; edits apply to the next run.
+
+## Results and next steps
+
+The command executes the selected workflow and displays its result. Use [json](/en/cli/steamharness/json) for a structured report or [structure](/en/cli/steamharness/structure) to inspect declarations first. Cross-entry calls load the target configuration and inherit current permissions.

@@ -5,14 +5,23 @@ description: "The entry, boundary, and per-method document index of the workflow
 
 # Core API Overview
 
-The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.steamharness`, so a business workflow does not import them from `"steamharness"`.
+Core APIs declare executors, connect nodes, and run Agents. CLI and Studio inject the runtime into `globalThis.steamharness`. Business code uses that object and imports SDK types as needed.
+
+## Bind the runtime
+
+```ts
+import type { RuntimeApi } from "steamharness/runtime-api";
+const steamharness = globalThis.steamharness as RuntimeApi;
+```
+
+Use this binding for examples that call `steamharness.*`. For complete project files, see [Build a Workflow](/en/guides/development/workflow).
 
 ## Entry boundary
 
 |Entrance|Description|
 | --- | --- |
-| `workflow.*` | Global API used by business workflows, sourced from `src/runtime-api.ts` in the Core repository. |
-| `steamharness` package entry | Utility entry used by CLI, Server, tests, and advanced hosts, sourced from `src/index.ts` in the Core repository. |
+| `globalThis.steamharness` | Host-injected runtime for nodes, executors, Agents, and other workflow APIs. |
+| `steamharness` package entry | SDK exports for the CLI, Server, tests, and custom hosts. |
 | [`steamharness/database`](/en/core-api/database) | Database definitions and typed Node/Browser descriptors. |
 
 ## Runtime API index

@@ -1,0 +1,50 @@
+---
+title: "Use the workbench and Steam mode"
+description: "Switch layouts and manage tools, editor tabs, and shortcuts."
+---
+
+# Use the workbench and Steam mode
+
+IDE mode provides the source editor. Once Studio recognizes a Workflow, Conversation, or Kanban project, Steam mode places the run page beside its tools.
+
+## Switch layouts
+
+1. Use the **IDE / Steam** button in the title bar.
+2. In Steam mode, keep the project on the left and open tools or files on the right.
+3. Hide or restore tools with the upper-right button; drag the divider to resize them.
+
+Tools initially occupy one third of the window. Their width is saved per workspace and restored after reopening, mode changes, or reloads. Narrow windows temporarily constrain it. Returning to IDE restores the previous layout and visible areas.
+
+Steam mode hides the top navigation and bottom status bars. macOS window controls sit at the top of the project menu, moving beside the title when the menu collapses or the window narrows. Drag blank navigation-bar space to move the window.
+
+## Tools and editors
+
+| Action | Result |
+| --- | --- |
+| Upper tabs | Switch terminal, browser, database, information, assistant, version, or trace tools |
+| Lower **+** | Create another instance of the current tool |
+| Close a terminal instance | End that terminal session |
+| Close the terminal tool tab | Hide the tool; existing sessions remain available, including in IDE |
+| Select **Editor** | Open workspace files in lower tabs; **+** creates a blank file |
+
+Terminal profiles, splits, and renaming live in the lower menu. Other projects retain separate project tabs. Explorer, Search, and Source Control appear to the editor's right and can be resized.
+
+Switching or hiding tools preserves unsaved files. Closing files or the editor tool still asks about saving. Short windows scroll dialog bodies while keeping titles, close buttons, and save controls visible.
+
+## Shortcuts and file links
+
+Project pages handle keys first; unhandled keys use Studio's bindings, including custom chords. Editing, copy/paste, and composition input stay inside project fields. A Kanban shortcut can call `event.preventDefault()` to prevent the host binding from also firing.
+
+Local paths in Agent replies are clickable, including spaces, Chinese characters, Windows paths, and `file://` links. Add `:line:column` or `#LlineCcolumn` to locate source. Relative project paths resolve from the aggregate root; assistant paths resolve from its bound working directory.
+
+Web links open in the browser; document files use document previews. Missing files report an error. A file tab can copy its path or reveal it in the system file manager.
+
+## Start workbench
+
+Empty editor areas show the start workbench. **Studio: Open Start Page** opens a separate tab; `studio.startPage.enabled` disables the background entry. Untitled remains an ordinary blank document, and double-clicking the background does not create a file.
+
+Each editor group has a close button when several groups exist, with save protection for dirty files. The last group has no close button. The start page supports both languages, light/dark themes, and narrow panes. Initial loading shows placeholders; subsequent refreshes preserve content.
+
+Project icons come from root `steamharness.json.projectCard`; entry icons use `entries[].projectCard`. Icon, foreground, and background can be set independently, with type defaults for missing fields. Reading icons needs neither execution nor installed dependencies.
+
+System status shows Studio, VS Code, the actual Node runtime, Core/CLI, account, connection, and local task counts. It refreshes every five seconds while visible. Partial failures preserve other counts; whole-read failures retain prior results and show an error. See [local analysis](/en/guides/studio/analysis).

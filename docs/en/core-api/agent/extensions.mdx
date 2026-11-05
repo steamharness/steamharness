@@ -1,0 +1,72 @@
+---
+title: "Extend tasks, tools, and execution environments"
+description: "Register recoverable tasks, connect tool catalogs on demand, and choose execution targets and storage."
+---
+
+# Extend tasks, tools, and execution environments
+
+Register recoverable tasks, connect tool catalogs on demand, and choose execution targets and storage.
+
+Create the runtime with [createAgent](/en/core-api/create-agent). The sections below describe its related options and behavior.
+
+## Extension Execution And Recovery
+
+`session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.
+
+Core exports `createAgentRegistry`, `defineAgentTask`, `defineAgentExtension`, `defineAgentDoc`, `agentHook`, `AgentToolTask`, `AgentGenerationTask` and their types from `steamharness/agent`. Injected projects can use the same functions through `workflow` without installing Pi.
+
+```ts
+const registry = steamharness.createAgentRegistry();
+const timer = steamharness.defineAgentTask<
+  { wakeAt: number }, { phase: "wait"; wakeAt: number }, string
+>({
+  name: "app.timer", version: 1,
+  initial: input => ({ phase: "wait", wakeAt: input.wakeAt }),
+  phases: { wait: async (task, runtime, context) => {
+    await runtime.sleep(task.state.checkpoint.wakeAt, context);
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: "awake" } }), context);
+  } },
+  abort: async (_task, runtime, context) => {
+    // Release project resources here, then commit the cancellation.
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+  },
+});
+registry.install(steamharness.defineAgentExtension({ name: "app", tasks: [timer] }));
+const agent = await steamharness.createAgent({ session: { registry } });
+```
+
+While running, the host submits `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`. The receipt contains `taskId`; resending the same command does not create another task. Every phase must commit progress or a terminal outcome. Create dependencies with `tx.createTask()` and commit `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }`. Cancellation drains owned work before `abort`; host shutdown pauses instead of cancelling. A checkpoint's `wakeAt` is an absolute timestamp for display; `runtime.sleep()` controls the actual timer.
+
+Registry publications are immutable. In-flight tools and hooks keep their implementation, and the next task phase may select a compatible replacement. An already running task may keep its old implementation after removal; rescheduling or reopening without a compatible definition leaves it `blocked`. Reinstalling the definition wakes it. Reserved `pi.*` / `workflow.*` tasks and extensions, and duplicate tool names, cannot be replaced. Conversation commands cannot upload extension code.
+
+### Discovery And MCP
+
+`AgentToolCatalog` is `{ id, tools?, allowedTools?, open() }`. Predeclared tools are descriptors without `execute`, persisted when the session opens; search only reads metadata and the first actual call connects. Without schemas, `allowedTools` must list final agent tool ids; the first search connects and persists the discovered definitions. After reopening an existing session, `tool_search` still connects to authorized catalogs without predeclared schemas to discover and persist additions. New predeclared descriptors are persisted when the session opens. Adding tools keeps existing tools usable and does not require discarding the conversation.
+
+Each existing tool must retain its originally persisted name, description, schema and replay policy. Connections check both current descriptors and persisted definitions; updating host and server descriptors together cannot bypass this check. Revoked tools are hidden from the model but keep their pinned definitions, so reauthorization cannot bypass validation. Missing or changed definitions, duplicate names or unauthorized tools return `Tool catalog definition changed` and close the connection without executing tools or saving discovered additions.
+
+Use a new session to change existing definitions. Transient connection failures can be retried by calling again. Only explicitly declared catalogs are discoverable. Return `{ tools, catalogs, close? }` from `createTools`, or supply `session.toolSearch.catalogs`.
+
+`steamharness.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` validates configuration without spawning a process. Its allowlist uses original MCP names; final ids remain `<serverId>_<toolName>`. Existing MCP credential inheritance and approval rules apply. The session owner releases catalog connections after the Harness stops.
+
+### Code Mode And Environments
+
+`session.codeMode: {}` enables `codemode({ code })` in an isolated QuickJS worker. Scripts use `await tools.<name>(args)`, `text()`, `store()` and `load()`; they have no Node, network or extra `models.*` capability. Nested calls keep the conversation's tool allowlist, caller restrictions, approvals, replay and cancellation. The official journal validates sandbox fingerprints, call order and deadlines when recovering; committed nested results are reused. The worker and WASM ship in Core's package. Defaults are 64 MiB and 300 seconds, with maximums of 256 MiB and 300 seconds.
+
+The host supplies `AgentExecutionEnv` with the declared stable id and target cwd. A reopened session cannot change environment identity; use a new session for another target. Remote read/write/edit/bash use that environment; grep/find/ls never fall back to local execution. Additional tools remain explicit project capabilities. File scope, shell permissions and remote MCP must be enforced by the target environment and catalog factory. Core does not provision a cloud sandbox. Shutdown stops the Harness before environment cleanup and catalog disposal; connection credentials are not in resource snapshots.
+
+Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
+
+Tasks show persisted start and end times, duration and delegated token usage; historical tasks without timing show "Time not recorded". Timing freezes at the last received snapshot while disconnected and resumes after reconnection. Usage starts with the selected conversation's authoritative cumulative tokens, model calls and context occupancy, followed by the existing model and tool breakdown per conversation, without counting delegated usage twice. Plan can also restore approval content from run reports. Separate Trace windows reload their selected historical runs after reconnection.
+
+For account-private PostgreSQL persistence through Server, inject [`createServerAgentStorage`](/en/core-api/runtime-storage).
+
+### Storage And Backups
+
+Agent SQLite sessions automatically support long Windows paths for creation, reopening, owner locks, offline backups and imports. Existing storage locations are preserved; hosts do not need to shorten their data directories.
+
+`storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, failure?: AbortSignal, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
+
+`exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `steamharness/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
+
+Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` also requires stopping and joining the worker first. Supply the project registry to run custom task abort cleanup. Tasks whose definitions are missing can only end as `orphaned`; their project cleanup code cannot execute. Prefer the `cancel` command on an active session, whose owner already holds the definitions.

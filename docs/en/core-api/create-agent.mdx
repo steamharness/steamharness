@@ -5,16 +5,28 @@ description: "Create an agent runtime you can drive programmatically."
 
 # createAgent
 
-`workflow.createAgent()` creates an agent runtime. It gathers input, output, reasoning effort, context compaction and plan approval behind one object, so a caller only has to send a prompt and handle events instead of building a tool loop.
+Create a programmable Agent with `steamharness.createAgent()`, submit a prompt, and consume events. The runtime handles model and tool loops, reasoning effort, context compaction, plan approval, and durable sessions.
 
 The runtime uses Pi Durable 1.2.0 as its only execution backend and requires Node.js `>=22.19.0`.
 
 Core Agent includes the [i-have-adhd](https://github.com/ayghri/i-have-adhd) communication skill. The complete guide ships with the package and is loaded directly into each turn's system prompt, without installation, `/i-have-adhd`, or a configured `skill` tool. It favors action-first answers, short steps and fewer tangents in build mode, plan mode, custom `systemPrompt` personas and durable sessions. The user's language, format and requests for detailed explanations take precedence; `stop adhd mode` or `normal mode` stops the style. The skill shapes communication while task execution, plan-mode constraints and tool permissions retain their own rules.
 
+## Example
+
+```ts
+const agent = await steamharness.createAgent({ workdir: ".", provider: "anthropic", effort: "high" });
+
+for await (const event of agent.run({ prompt: "Summarize this repository", errCode: 0, errMessage: "" })) {
+  if (event.type === "text_delta") process.stdout.write(event.delta);
+}
+```
+
+Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) do more of the work for you.
+
 ## Signature
 
 ```ts
-const agent = await workflow.createAgent({
+const agent = await steamharness.createAgent({
   databasePath?: string,
   storage?: AgentStorageFactory,
   workdir?: string,
@@ -76,126 +88,15 @@ The returned runtime exposes:
 
 ## Durable session control
 
-`session: {}` enables the Harness session protocol. During `run()`, call `runtime.control(command)` and consume `session` events carrying `AgentSessionSnapshot`. Calls outside a run fail with `AGENT_NOT_READY`. Programmatic runs wait for background work to settle; workflow hosts that keep resources alive between inputs use the host lease described in [createAgentNode](./create-agent-node.mdx).
+See [Agent session control](/en/core-api/agent/sessions).
 
-| `session` field | Meaning |
-| --- | --- |
-| `subagents` | Opt in with `{ tools: string[], maxAgents?: number | null, modelConfiguration?: string, model?: { provider, modelId }, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model or use a shared child selection. Code-defined models must match an allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations; set `maxAgents: null` explicitly to remove the total limit. |
-| `nativeTools` | Pi Durable `ToolRegistration[]`. Nested `api.executeTool()` calls retain caller restrictions, approval hooks, and cancellation propagation. |
-| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`. Check before every model request and compact at 90% of the context window by default. `reserveTokens` can reserve space earlier; `backgroundTokens` can start background compaction earlier. `enabled: false` disables automatic threshold and overflow recovery while retaining manual compaction. |
-| `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
-
-The `subagent` tool describes its child tool allowlist and exact usable model overrides. Without configured usable overrides, its schema omits `model`; omit it to inherit the parent's model and credentials. Rejected overrides explain how to retry without `model`. The built-in assistant includes `skill` in its read-only child subset, allowing paged access to bundled guides without granting shell or editing tools.
-Large foreground and background child results use JSON pages with a `taskId`. Continue through `subagent` with `{ resultTaskId: taskId, resultOffset: nextOffset, resultHash }`, omitting `task`, `background` and `model`. Reads access an existing delegation owned by this conversation and never create another child. Concatenate `content` in order and parse the complete JSON; each page fits within 40,000 UTF-8 bytes. Failed or cancelled children return `isError: true` to foreground callers; failed delegations remain failed, and background failures explicitly notify the parent.
-
-Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
-
-| `type` | Fields and effect |
-| --- | --- |
-| `submit` | `prompt`, optional `images`, and `mode: "steer" \| "followUp" \| "reject"`. Steer applies at a tool boundary; followUp queues another turn; reject refuses busy input. An idle steer becomes an ordinary answered turn. |
-| `withdraw` | `inputId` is the input requestId. Consumed inputs return `already_placed` / `settled`; withdrawal never undoes side effects. |
-| `promote` | `inputId` is a queued input's requestId. Atomically change it to steer and save the receipt, retaining its identity and images for the next tool boundary. Consumed inputs return `already_placed` / `settled` and are never resent. |
-| `compact` | Optional `instructions`; create a background compaction task coordinated with active work. |
-| `reset` | Optional `handoff`; start a new context epoch at an input boundary, retaining visible history and the task plan. |
-| `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same persistent session. Active tasks and approvals are not copied. The receipt contains `forkId`. |
-| `delete` | Cancel and hide a child conversation. The host deletes the main session and its store. |
-| `configure` | `expectedVersion`, optional `model: { provider, modelId }` / `effort`; CAS update a registered model for the next request. Child model restrictions still apply. |
-| `plan` | `expectedVersion`, `items: { id, text, status }[]`, where status is pending / in_progress / completed; CAS update the transactional plan. |
-| `cancel` | `scope: "foreground" \| "all" \| "task"`; task requires `taskId`. Foreground preserves background subtrees; all includes owned children but excludes independent forks. Task ownership is checked. |
-| `snapshot` | Publish the latest complete snapshot. |
-| `task` | `name`, strict JSON `input` (at most 256 KiB), optional `background`; create a project-registered task. The receipt contains `taskId`, and retransmission does not create another task. Date, Map, functions and non-finite numbers are rejected before recording the requestId. |
-
-Conversation cancellation atomically marks the target execution tree and withdraws queued input through Durable, then waits for cleanup before acknowledging. This prevents coordinators from dispatching work between individual cancellation requests. Explicit host run cancellation also includes background tasks; host suspension preserves checkpoints through its separate recovery path.
-
-Snapshots include `version: 1`, an `ownerId` that changes on reopen, increasing `revision`, `contexts`, `tasks/history`, `turns`, `plan`, `records`, `receipts`, and per-conversation `usage`. Treat snapshots as auxiliary state; assistant answers remain inline. Reconnect from a full snapshot, allowing a new owner to restart its revision sequence. Prompt records contain only a digest/version, and configuration records contain no credentials. A durable reporter delivers each background child result once using a stable identity. Usage belongs to individual parent/child conversations and replay does not add it again.
-
-Delegations in `tasks/history` expose `childConversationId` after a child is created, for both anonymous and named `subagent` work. The link survives settlement and reopening; deleted children omit it. Hosts can open that child from the snapshot without inferring identity from task labels.
-
-Optional `startedAt` / `endedAt` on `tasks/history` provide persisted execution spans. Delegations start when their child input is placed, exclude admission queue time and freeze on settlement. A delegation's `usage` is the committed `TokenUsageAggregate` of its owned child tree, including failed attempts; work that has not started has zero usage. Snapshot `capturedAt` is Unix time in milliseconds for freezing the last known span on disconnection or interruption. Show unknown duration for legacy records without reliable timestamps.
-
-`contexts[].tokenUsage` totals the current conversation and its owned child tree from persisted model and tool usage, including retries, spend before cancellation or reset, and idle compaction. Each child is counted once under its execution owner; independent forks have separate totals. Hiding a child does not subtract spent tokens. Replace the total from the full snapshot rather than adding child usage or `token_usage_updated` again. Display it separately from the turn's own `turns[].usage` and current context occupancy in `contextUsage`.
-
-`turns[].startedAt` is the Unix time in milliseconds when the input was placed for execution; queued input omits it. `endedAt` comes from the persisted end time of the turn's execution task and is absent while running. Hosts use these timestamps for elapsed time, preserving it when first opening subagents, refreshing or reopening history. The span includes waits and recovery. Both fields are optional; do not fabricate historical durations from view-opening times when older records lack reliable timestamps.
-
-Optional `startedAt` / `endedAt` in `turns[].items[].metadata` provide Unix millisecond timestamps for traces. Reasoning and text share their model request's span, including time to first token; these are not separate generation times for individual text blocks. Tool items use their corresponding persisted task spans, matching reused call IDs separately for each assistant response. Studio's axis includes the full turn duration even when legacy items lack timing data, avoiding a misleading 1 ms range. Unrecorded model spans remain unknown.
-
-`turns[].reason` is the reason code for an unanswered turn, and `turns[].detail` preserves the model error or retry exhaustion message. Hosts must display failures such as `model_error` and their details even while the owner stays resident; `aborted` indicates durable cancellation. Exhausted continuations also report failure rather than successful completion.
-
-`turns[].usage` totals returned model responses for that turn, including tool rounds, failed retries and compaction responses during the turn. It contains `inputTokens`, `outputTokens`, `totalTokens`, `cachedInputTokens`, `cacheCreationTokens`, `reasoningTokens` and `calls`. Inherited fork history, other turns and other conversations are not charged to this answer again. Idle background compaction remains in per-conversation `usage` without changing completed answers. `contexts[].contextUsage` instead describes the current model context as `{ used, total }`, including streamed content. It updates after follow-ups, forks, compaction and resets independently of cumulative consumption.
-
-`tasks` contains only active tasks, while `history` contains terminal tasks. `stopping` means cancellation was requested but the task has not settled. Historical tasks always have `stopping: false` and retain their actual outcome in `status`, including completed or aborted. Reopened sessions follow the same rule.
-
-Tool tasks expose `arguments` in both active and completed history: the arguments submitted by the model or calling tool, rather than an audit of subsequent argument repair or hook transformations. History resolves each tool against its committed assistant entry, so call IDs reused across turns cannot overwrite older tasks. Streaming tool events use a stable presentation `toolCallId`; treat it as opaque. Approval identities bind the durable conversation, task, and call ID: a paused call retains its decision on recovery, while a later independent call with the same ID and arguments requires its own permission check.
-
-Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, model?: { provider, modelId } })`. Explicit `toolDefinitions` / executor `tools` lists must declare their permissions along with any native tools; the convenience executor adds update_plan/subagent by default. Foreground completion, background execution, and client connectivity are independent states.
-
-Hosts using local or Server storage use `forkStoredAgentConversation({ persistence, conversationId, command })` to fork committed history without loading a model or resuming tasks when no owner is active. Active owners receive fork through the control channel. `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` copies the receipt's forkId into an independent root session, preserving historical document checkpoints without tasks, approvals, queued inputs or usage. Consistent source snapshots can be read while the owner is active. Stop, deletion and model choices remain independent. Copy attachments separately and rewrite file references with replacements. See [platform runtime storage](/en/core-api/runtime-storage) for import, export and cancellation APIs.
-
-Explicit databasePath instances retain the SQLite-specific forkAgentConversation / isolateAgentConversation helpers. These file-path APIs are not used by the CLI/Studio default repository.
-
-A command receipt confirms durable acceptance; session snapshots are delivered independently. Consumers needing a refreshed view wait for the matching snapshot or issue a `snapshot` command. CLI Web / Studio wait 30 seconds per confirmation attempt and retry temporary timeouts, connection errors, 408/429/5xx responses, and readiness races up to three times using the same request ID, target, and payload. Late receipts end the wait and execution continues automatically. Stop, host shutdown, and exhausted budgets end automatic recovery.
-
-Session snapshot projection failures retry with backoff up to three times without replaying models or committed tools; persistent failure still terminates the run with its diagnostic. Tools explicitly declaring `replay: "safe"` retry execution exceptions or `isError` results up to three times with the same invocation identity, rechecking authorization before each attempt. A successful result automatically continues the model loop. Authorization denial, input validation, user interaction, cancellation, `retryable: false`, and host storage failures remain barriers. Default and `never`/`unsafe` tools require reconciling unknown results; a timeout does not prove a write did not occur.
+<span id="discovery-and-mcp"></span>
+<span id="code-mode-and-environments"></span>
+<span id="storage-and-backups"></span>
 
 ## Extension Execution And Recovery
 
-`session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.
-
-Core exports `createAgentRegistry`, `defineAgentTask`, `defineAgentExtension`, `defineAgentDoc`, `agentHook`, `AgentToolTask`, `AgentGenerationTask` and their types from `steamharness/agent`. Injected projects can use the same functions through `workflow` without installing Pi.
-
-```ts
-const registry = workflow.createAgentRegistry();
-const timer = workflow.defineAgentTask<
-  { wakeAt: number }, { phase: "wait"; wakeAt: number }, string
->({
-  name: "app.timer", version: 1,
-  initial: input => ({ phase: "wait", wakeAt: input.wakeAt }),
-  phases: { wait: async (task, runtime, context) => {
-    await runtime.sleep(task.state.checkpoint.wakeAt, context);
-    await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: "awake" } }), context);
-  } },
-  abort: async (_task, runtime, context) => {
-    // Release project resources here, then commit the cancellation.
-    await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
-  },
-});
-registry.install(workflow.defineAgentExtension({ name: "app", tasks: [timer] }));
-const agent = await workflow.createAgent({ session: { registry } });
-```
-
-While running, the host submits `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`. The receipt contains `taskId`; resending the same command does not create another task. Every phase must commit progress or a terminal outcome. Create dependencies with `tx.createTask()` and commit `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }`. Cancellation drains owned work before `abort`; host shutdown pauses instead of cancelling. A checkpoint's `wakeAt` is an absolute timestamp for display; `runtime.sleep()` controls the actual timer.
-
-Registry publications are immutable. In-flight tools and hooks keep their implementation, and the next task phase may select a compatible replacement. An already running task may keep its old implementation after removal; rescheduling or reopening without a compatible definition leaves it `blocked`. Reinstalling the definition wakes it. Reserved `pi.*` / `workflow.*` tasks and extensions, and duplicate tool names, cannot be replaced. Conversation commands cannot upload extension code.
-
-### Discovery And MCP
-
-`AgentToolCatalog` is `{ id, tools?, allowedTools?, open() }`. Predeclared tools are descriptors without `execute`, persisted when the session opens; search only reads metadata and the first actual call connects. Without schemas, `allowedTools` must list final agent tool ids; the first search connects and persists the discovered definitions. After reopening an existing session, `tool_search` still connects to authorized catalogs without predeclared schemas to discover and persist additions. New predeclared descriptors are persisted when the session opens. Adding tools keeps existing tools usable and does not require discarding the conversation.
-
-Each existing tool must retain its originally persisted name, description, schema and replay policy. Connections check both current descriptors and persisted definitions; updating host and server descriptors together cannot bypass this check. Revoked tools are hidden from the model but keep their pinned definitions, so reauthorization cannot bypass validation. Missing or changed definitions, duplicate names or unauthorized tools return `Tool catalog definition changed` and close the connection without executing tools or saving discovered additions. Use a new session to change existing definitions. Transient connection failures can be retried by calling again. Only explicitly declared catalogs are discoverable. Return `{ tools, catalogs, close? }` from `createTools`, or supply `session.toolSearch.catalogs`.
-
-`workflow.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` validates configuration without spawning a process. Its allowlist uses original MCP names; final ids remain `<serverId>_<toolName>`. Existing MCP credential inheritance and approval rules apply. The session owner releases catalog connections after the Harness stops.
-
-### Code Mode And Environments
-
-`session.codeMode: {}` enables `codemode({ code })` in an isolated QuickJS worker. Scripts use `await tools.<name>(args)`, `text()`, `store()` and `load()`; they have no Node, network or extra `models.*` capability. Nested calls keep the conversation's tool allowlist, caller restrictions, approvals, replay and cancellation. The official journal validates sandbox fingerprints, call order and deadlines when recovering; committed nested results are reused. The worker and WASM ship in Core's package. Defaults are 64 MiB and 300 seconds, with maximums of 256 MiB and 300 seconds.
-
-The host supplies `AgentExecutionEnv` with the declared stable id and target cwd. A reopened session cannot change environment identity; use a new session for another target. Remote read/write/edit/bash use that environment; grep/find/ls never fall back to local execution. Additional tools remain explicit project capabilities. File scope, shell permissions and remote MCP must be enforced by the target environment and catalog factory. Core does not provision a cloud sandbox. Shutdown stops the Harness before environment cleanup and catalog disposal; connection credentials are not in resource snapshots.
-
-Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
-
-Tasks show persisted start and end times, duration and delegated token usage; historical tasks without timing show "Time not recorded". Timing freezes at the last received snapshot while disconnected and resumes after reconnection. Usage starts with the selected conversation's authoritative cumulative tokens, model calls and context occupancy, followed by the existing model and tool breakdown per conversation, without counting delegated usage twice. Plan can also restore approval content from run reports. Separate Trace windows reload their selected historical runs after reconnection.
-
-For account-private PostgreSQL persistence through Server, inject [`createServerAgentStorage`](/en/core-api/runtime-storage).
-
-### Storage And Backups
-
-Agent SQLite sessions automatically support long Windows paths for creation, reopening, owner locks, offline backups and imports. Existing storage locations are preserved; hosts do not need to shorten their data directories.
-
-`storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, failure?: AbortSignal, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
-
-`exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `steamharness/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
-
-Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` also requires stopping and joining the worker first. Supply the project registry to run custom task abort cleanup. Tasks whose definitions are missing can only end as `orphaned`; their project cleanup code cannot execute. Prefer the `cancel` command on an active session, whose owner already holds the definitions.
+See [Extend tasks, tools, and execution environments](/en/core-api/agent/extensions).
 
 ## Input (`AgentInput`)
 
@@ -221,141 +122,39 @@ Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 
 
 ## Model attributes
 
-`modelAttributes` describes a model on a **custom endpoint** — the runtime's own catalogue does not know it, so only the caller can say what it is:
-
-```ts
-const agent = await workflow.createAgent({
-  provider: "my-gateway",
-  model: "vendor/model-1",
-  baseUrl: "https://gateway.example.com/v1",
-  modelAttributes: {
-    name: "Vendor Model 1",
-    reasoning: true,
-    input: ["text", "image"],
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    cost: { input: 0.4, output: 1.6, cacheRead: 0.04, cacheWrite: 0.5 },
-    thinkingLevelMap: { minimal: null, max: "xhigh" },
-  },
-});
-```
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | `string` | Display name, at most 200 characters. Defaults to the model id. |
-| `reasoning` | `boolean` | Whether the model does reasoning at all. |
-| `webSearch` | `boolean` | Whether the endpoint supports native web search. `true` enables it by default. |
-| `input` | `("text" \| "image")[]` | Input modalities the model accepts; `image` decides whether a turn hands pictures to the model. |
-| `cost` | `{ input, output, cacheRead, cacheWrite }` | Per-million-token prices; all four are non-negative numbers. |
-| `contextWindow` | `number` | The context window. |
-| `maxTokens` | `number` | The max output tokens. |
-| `thinkingLevelMap` | `Record<string, string \| null>` | Maps a pi thinking level to the value sent upstream; `null` marks a level unsupported, and an omitted level keeps pi's own mapping. `ultra` is not a legal level and is refused — it folds onto `max` before it reaches a model. |
-
-Without a declaration the runtime can only fall back to its own description of the model — reasoning, images accepted, zero cost, and a window guessed from the model id's name prefix. That fallback is wrong for almost every real model, so a custom endpoint should declare whatever it knows.
-
-An explicit `contextWindow` / `maxTokens` option still outranks `modelAttributes`, because it is the per-run override the caller passed on purpose. A `modelAttributes` passed on one run overrides the runtime option of the same name.
-
-Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `webSearch`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
-
-`modelAttributes` is for declaring a model on an endpoint owned by the caller. Projects manage system and third-party models in the configuration panel; custom endpoint attributes use explicit configuration rather than business environment variables.
+See [Agent models and search](/en/core-api/agent/models).
 
 ## Web search
 
-Agents support OpenAI Responses `web_search` and Anthropic Messages `web_search_20250305` (at most 5 uses per request). Declaring `modelAttributes.webSearch: true` enables it by default. Set the runtime option or per-run `AgentInput.webSearch` to `false` to disable it; a per-run value takes precedence. A custom endpoint with no capability declaration can explicitly enable `webSearch: true`. Enabling search when the capability is explicitly `false`, or with another protocol, fails with `input_validation`.
-
-```ts
-const agent = await workflow.createAgent({
-  provider: "openai",
-  model: "your-search-capable-model",
-  baseUrl: "https://api.openai.com/v1",
-  apiKind: "openai-responses",
-  modelAttributes: { webSearch: true },
-});
-try {
-  for await (const event of agent.run({ prompt: "Find the latest release notes and cite sources", errCode: 0, errMessage: "" })) {
-    if (event.type === "web_search") console.log(event.search);
-    if (event.type === "sources") console.log(event.sources);
-  }
-} finally {
-  await agent.close();
-}
-```
-
-Enabling search adds the provider tool beside existing local tools. The model decides whether to call it. The endpoint and model must support that native tool; this path does not support OpenAI Chat Completions. Context summarization requests do not add search tools.
-
-The `web_search` event carries `search: { id, status, query?, sources, error? }`, where status is `running`, `success`, or `failed`. The `sources` event carries `sources: { url, title?, citedText? }[]`. Search records, citations, and provider content needed for follow-up requests are saved with assistant messages. Valid history is replayed even when search is disabled on the next run; native content is only replayed for the same provider and model. Anthropic `pause_turn` responses resume automatically, with at most 3 continuations before an error.
-
-Convenience Agent projects expose automatic, on, and off choices under model settings: `--web-search ""`, `--web-search true`, and `--web-search false`. Projects with static inline parameters must declare this parameter themselves.
+See [Agent models and search](/en/core-api/agent/models).
 
 ## Your own tools
 
-Local coding-tool `read` bounds output by bytes and can reach lines beyond 8 MiB. Continue complete lines with `offset: nextOffset`, or long lines and raw text with `byteOffset: nextByteOffset` (UTF-8 bytes), omitting line `offset` and `limit`. With `session.environment`, the same byte reads use that environment, including read-only children without shell access. `grep`, `find` and `ls` report truncation and `nextOffset`; long matching lines are previews that can be read in full with `read`. Shell output is bounded by UTF-8 bytes with an explicit truncation marker; timeout and cancellation diagnostics remain visible. Redirect verbose commands to a file when their complete output is needed.
-
-
-The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find` and `ls`, plus `ask_user` in plan mode only — the model uses it to put a question to the user mid-turn (one or more questions, each with optional choices, optionally multi-select, optionally accepting the user's own words); the run pauses for the answer and carries on with the same plan. To add more, use `extraTools` on a programmatic runtime, or [createAgentNode](./create-agent-node.mdx)'s `createTools` inside a workflow.
-
-- **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
-- To reach a stdio MCP server a host provides, open it with [connectMcpServer](./connect-mcp-server.mdx) and turn its tools into yours with [createMcpTools](./create-mcp-tools.mdx).
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## Reasoning effort
 
-`effort` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`, and also `ultra` (meaning `max`). A level the model does not support converges to the nearest one it does, so an unsupported value never fails the run.
-
-An empty string means "let the model decide": pi expresses that by naming no level at all, which is its `off` — an OpenAI-style endpoint receives no `reasoningEffort`, the same thing the built-in OpenCode project's Model default does. On Anthropic-style endpoints it disables `thinking` outright, so pick a concrete level to keep reasoning. Only an absent value (`undefined`) means "no choice was made", and keeps the runtime's or project's own level.
+See [Agent models and search](/en/core-api/agent/models).
 
 ## Permission policy
 
-Turn input takes precedence over developer defaults; omitting both still selects `workspace`. Explicit `inherit` reads `steamharness.getUserSettings().agent.permissionPolicy`, falling back to `auto` without a host. It is a configuration choice; execution still uses the three concrete policies below. Parameters and sessions retain the original `inherit`. See [User settings and permission inheritance](/en/core-api/user-settings).
-
-| Value | Behaviour |
-| --- | --- |
-| `read-only` | `write`, `edit` and `bash` are disabled; the model never sees them. |
-| `workspace` | Every tool is available. The file tools (`read`/`write`/`edit`/`ls`/`grep`/`find`) can only reach inside `workdir` and `allowedDirectories`, and that check is made after `fs.realpath`, so a symlink inside the workspace cannot carry them out; `grep` and `find` do not follow symlinks at all. The default. |
-| `auto` | As `workspace`, but the file tools may also reach paths outside the workspace. |
-
-None of the three prompts for a built-in tool: the policy decides which tools exist and how far they reach, and only the host's own declared tools go through the approval chain.
-
-> **`bash` is not path-confined.** Commands run as the host process with the working directory as their `cwd`, which is not a sandbox: they can read and write anywhere. `read-only` is stricter only because it does not expose `bash` in the first place. Containing a command is a job for a sandbox on the host side.
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## The transcript
 
-With `databasePath`, the Harness continuously commits generations, tool intents, results, and task checkpoints. Reopen the same file and reuse `requestId` to recover. Committed tool results are reused. A tool with an unknown outcome defaults to `replay: "never"`: recovery reports an interrupted tool result without repeating its effects. Declare `replay: "safe"` only when repeating the operation is safe. Built-in read/search tools are safe; write, edit, and shell tools default to never. Submission deduplication does not replace business idempotency in external services.
-
-`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing persistent history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires injected local or Server storage, or explicit SQLite. Conversation nodes select isolated local SQLite sessions by default; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
-
-After a process interruption during streaming, recovery includes committed text and reasoning in the continuation context and durably records its continuation prompt. Further interruptions continue from those committed fragments. Incomplete tool calls without committed intents are discarded and never executed or shown as started.
-
-Streaming preserves the original indices of thinking, text and tool blocks, applying block starts and subsequent deltas together. Main answers stay inline. A runtime or output projection exception cancels unfinished tasks, including independent forks, and queued inputs under the same execution owner, persists the failure, and publishes final task state from durable records. Reopening does not automatically continue a reported failure. Normal host shutdown and unexpected process exit still preserve checkpoint recovery. Tool business errors remain tool results that the model can handle.
-
-A node run carrying `hostInput` uses an in-memory Harness by default because the gateway owns its history; it writes no workflow conversation history.
-
-Custom tools follow Pi's `AgentTool` contract: `prepareArguments` repairs arguments before validation; `outputSchema` validates `structuredContent`. Throw or return `isError: true` on failure. Tool usage is separate from main-model context usage. The tool round ends when every result sets `terminate: true`. Recovery rechecks current permissions.
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## Context compaction
 
-When the prompt is exactly `/compact` or `/summarize`, or `compact: true` is passed, the turn immediately replaces the existing context with a model-written summary, even below the automatic compaction threshold. An empty context emits only an end event. A running summary emits `compaction` start followed by end; the Agent node displays running and completed states, retaining the original context on failure. The summary replaces the actual Agent transcript, is saved with the session, and is read by subsequent turns while the original conversation body remains. The public `compactAgentMessages({ ..., force: true })` also forces summarization of all existing messages.
-
-Only a non-empty summary from a normally completed model response replaces the context. Provider failures, truncated output, or incomplete responses fail manual summarization and retain the original transcript. Cancellation ends with `execution_aborted`; a summary returned after cancellation is never saved.
-
-Summary responses report model usage through `host.reportUsage`, including tokens consumed by failed or cancelled responses. Billed usage does not become the compacted context occupancy. Direct callers of `compactAgentMessages` can pass `onUsage(usage)` to receive the model's pi `Usage` before summary validation, for every attempt. Manual compaction and direct `compactAgentMessages` calls also retry transient failures. `retryDelayMs` adjusts the base backoff (500 ms by default, capped at 8 seconds per wait), with a fixed ten-retry budget. Automatic compaction uses the durable scheduler to avoid stacking request retry budgets.
-
-**Context is compacted automatically at 90% of the window.** Ordinary Agents and durable sessions check occupancy before every model request, including requests following tool execution in the same turn. At the threshold, older history is compacted before execution continues. A `contextWindow` override also controls this check. Events have `auto: true`, with start when compaction begins and end after success. Failure or cancellation preserves the original history; a compaction failure ends the run with its cause.
-
-If the provider still returns an explicit context overflow error, the runtime attempts compaction and retries once. Another overflow reports the error instead of retrying indefinitely. History already beyond the window is summarized in bounded chunks and then merged, reserving output space for each summary request and billing every call. Automatic compaction retains recent messages and complete tool call/result pairs. If a remaining input or tool result alone exceeds the window, shorten that input or output.
-
-Automatic compaction summarizes only the older part: the split point walks back from the end by token window and aligns to a user turn; when the kept window holds no user turn, it falls back to the nearest assistant turn, and the newest message is always kept. Explicit summarization includes the full context and preserves the goal, decisions, and unresolved work in its summary.
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## Cancelling
 
-When `context.abortSignal` fires the turn is stopped: the model stream and any tool mid-execution end together, the turn finishes as `execution_aborted` (the workflow reports the run as aborted rather than failed), and the tokens it did spend are still reported.
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## Plan mode
 
-With `agent: "plan"` the system prompt switches to the plan contract and the write tools are unavailable. While planning, the model can put a question to the user with `ask_user` (see the built-in tools above): the run pauses through `user_input_required` the same way, carries on in the same turn once answered, and keeps the question and the answer in `pendingUserInput` and `resolvedUserInputs` respectively. The turn then pauses through `user_input_required` for approval; the host resumes it on the same `requestId`, and the resume payload carries the plan text so a compaction in between cannot lose it. Declining does not end the session: it stays in plan mode and hands the plan back to the plan agent to revise with whatever instructions came with the decision, so no file is touched but another model turn does run.
-
-Each new plan uses an independent approval `requestId`. A completed revision waits for another decision, even if its text is unchanged; the previous answer cannot automatically approve or decline it. Resuming an existing paused approval still uses that request's original `requestId`.
-
-Question pauses and plan approval are separate stages: `ask_user` itself neither emits a `plan` event nor requests plan approval. The runtime emits `plan` events and calls `host.approvePlan` only when a turn finishes normally with nonempty plan text after the last tool call. Text before tools is excluded from that plan. Failed, cancelled, or question-paused turns do not submit leftover text as a plan.
+See [Agent permissions, context, and plans](/en/core-api/agent/context).
 
 ## Events
 
@@ -399,101 +198,8 @@ Agent nodes automatically convert these events to [standard ring outputs](./crea
 
 ## Errors
 
-| Situation | Error type | Description |
-| --- | --- | --- |
-| No model configured | `input_validation` | No `model` is given and the provider has no default model. |
-| Invalid model attributes | `input_validation` | JSON-form attributes with an unknown key, a mistyped value, or an out-of-range number; the field is never silently dropped. |
-| Waiting for approval | `user_input_required` | The run is paused until the host resumes it. |
-| Empty compaction summary | plain `Error` | The model produced no usable summary. |
-
-A model call that fails recoverably — a dropped connection, `408` / `409` / `429`, any 5xx, or a **response that starts and then dies** — is retried up to 10 times, with backoff capped at 8 seconds per attempt. A retry only happens while the attempt has produced nothing: once output exists, replaying the request would leave two half-finished copies in the record, so this layer never replays it.
-
-Failures without an HTTP status, including `error` / `response.failed` events inside an HTTP 200 stream, also use this recovery path when they report `upstream_error`, temporary service unavailability, or connection errors such as `ECONNRESET`. Ordinary requests, durable sessions, and automatic and manual compaction share this classification, retain the full upstream reason and keep the existing ten-retry budget. Wrapped authentication, validation, quota and context-overflow errors are not promoted to transient failures. Retries reuse committed tool results.
-
-Synchronous request-construction exceptions, stream iterator or `result()` exceptions, and rejected summary or deferred-fetch promises are converted into classifiable errors at the model boundary. Diagnostics retain `code`, `status`, `statusCode` and a bounded `cause` chain without serializing request, response or header objects. HTTP status normalization requires an explicit status position; request IDs and token counts do not qualify. Deferred-fetch failures use the existing Generation retry policy, which can issue a new model request. Storage, usage-reporting and host-observer failures are reported directly and do not trigger provider retries.
-
-Cancellation follows the current request’s `AbortSignal`. A provider reporting `aborted` without caller cancellation is treated as a connection interruption and uses the same retry budget. Explicit Stop is never retried. A stream ending without a terminal event or throwing a recoverable connection error uses the same recovery path while retaining committed text and tool results.
-
-**A drop that lands after the model has spoken is taken over by the turn.** When the model gets half an answer out and the stream dies, the turn no longer ends on `terminated`: the text it already produced stays in the record, and the runtime sends a continuation prompt asking the model to carry on from there — up to 10 times, with backoff capped at 8 seconds per attempt, each one yielding a `retry` event. A continuation only happens for a recoverable failure, and only when the turn has produced something already: with nothing produced, another request would be the same one again, which is what the budget above covers. In the interrupted assistant message, tool calls with no result are dropped (a provider refuses that history outright) while the text the user has already seen is kept, and the continuation prompt says whether the model can see its own last sentence. If the budget runs out, the error names how many times the stream was cut off and repeats the underlying reason, instead of leaving a single word from the transport. Auth, validation and quota errors, and cancelled runs, are never retried or continued.
-
-**Hitting the model's output limit is taken over by the turn too, on a budget of its own.** When an answer hits the request's `max_output_tokens`, the provider reports `stopReason: "length"` — not an error — so the turn used to be finalized as a finished answer: the model wrote a sentence announcing what it was about to do and there the answer ended, the tool call it announced was never sent, and the host saw no error and no retry row. That ending now triggers a continuation as well: the text is kept, the prompt says the output limit is why, and it tells the model to send the action it was composing — the tool call on its own — and keep the output short. The budget is separate and only **2** attempts rather than the 10 above: a drop is transient and worth retrying, whereas an output limit is deterministic and the same request cuts off in the same place, so two attempts tell "it nearly finished" from "the limit itself is wrong". Once that budget is spent the error names `maxTokens` as the thing to raise. The `retry` event's `kind` tells the two continuations apart, and `attempt` / `maxAttempts` count only within the budget each belongs to.
-
-**A lost tool call (`kind: "lost-call"`) is continued as well.** Every adapter normalises "the model is calling a tool" to the same `stopReason`, and each sets it from the provider's own field — independently of whether the tool-call block survived. So "says there is a tool call, has none" is the message contradicting itself, and the only thing that produces it is a call dropped on the way here (a block type the adapter skips, a relay that eats the block, truncated arguments). Such a message used to end the turn as a successful text-only answer: nothing in the interface looked wrong, and the action the model had decided on vanished. It now triggers a continuation whose `retry` row carries `kind: "lost-call"`, and the prompt says plainly that the response claimed a tool call, none arrived, and the call has to be made again. It shares the connection budget rather than the output-limit one — losing part of the answer is a transport problem — and when that budget runs out the error says how many calls went missing.
-
-Retry and continuation counts track consecutive failures. A complete successful model response, including a valid tool-calling response, resets the counts. Later failures in the same answer start again at `Retry 1 / 10` with the full ten-retry budget. A complete success also resets the separate two-attempt output-limit budget. Receiving partial text or reasoning, or reopening an unfinished run, does not reset the budget. Every retry remains a separate history record even when its attempt number repeats.
-
-`retry.kind` distinguishes connection interruptions (`dropped`), host recovery (`recovery`), output limits (`length`), and missing tool calls (`lost-call`). Node retry outputs retain this value in `content.kind`. CLI Web / Studio show only connection retries in the answer; other continuations run silently, preserving existing text and running status, with records available in Trace and exports. Host recovery shares the existing ten-attempt connection budget. Exhausted retries and unrecoverable errors still show the final failure reason; explicit Stop never resumes automatically.
-
-## Example
-
-```ts
-const agent = await workflow.createAgent({ workdir: ".", provider: "anthropic", effort: "high" });
-
-for await (const event of agent.run({ prompt: "Summarize this repository", errCode: 0, errMessage: "" })) {
-  if (event.type === "text_delta") process.stdout.write(event.delta);
-}
-```
-
-Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) do more of the work for you.
-
+See [Agent errors and retries](/en/core-api/agent/errors).
 
 ## Named agents and durable work queues
 
-Projects declare roles in `session.subagents.definitions`. Each item gets an independent child conversation. Pi Durable checkpoints and a FIFO queue share per-parent concurrency slots; tools within one agent retain their existing order. Each admission check releases the previous round's losing task waits so long batches do not accumulate subscriptions.
-
-```ts
-const session = {
-  subagents: {
-    tools: ["read", "grep", "write"], maxAgents: 4,
-    definitions: [
-      { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
-        tools: ["read", "grep"], maxConcurrency: 3 },
-      { id: "writer", description: "Verify and save one draft", systemPrompt: "Save the assigned draft and verify the result.",
-        tools: ["read", "write"], maxConcurrency: 1 },
-    ],
-  },
-};
-```
-
-`maxAgents: null` removes the total concurrency limit; a role can set `maxConcurrency: null` to remove its own limit. Omitted role limits inherit the session limit. Positive integer limits still use the durable FIFO queue. Concurrency limits are independent of retry budgets; projects maintain write consistency with transactions, locks and idempotent receipts.
-
-`AgentDefinition` also accepts optional `model: { provider, modelId }` and `effort`; omitted values inherit the parent. Overrides must match `subagents.models`. Role prompts replace project coordinator instructions while platform rules remain. Tools intersect parent authorization, the overall allowlist, the role snapshot and current configuration. Recovery rechecks access; children cannot delegate.
-
-Set `subagents.retry: { maxAttempts: 3, delayMs: 1000 }` or override `retry` on a role. `maxAttempts` includes the initial attempt (1–10); omitting the policy disables automatic work retries. `delayMs` sets the initial backoff (0–60000 milliseconds), doubling up to 60 seconds. This work budget is separate from model transport retries. Each attempt continues in the original task and child conversation with committed text, tool results, business checkpoints and a stable per-attempt request ID. Tasks updates `attempt` and returns only the final result. Exhaustion stops the work and reports the cause; management `retry` cannot bypass the configured limit. Reopening preserves the budget, explicit resumption follows the checkpoint and respects a reduced current limit, and cancellation never retries.
-
-Set `requireProgress: true` on a role or on project work passed to `enqueueAgentWork(s)` to require a business completion receipt. Success requires `AgentWorkProgressDoc.total > 0`, `completed >= total` and an empty `error`; a text claim of completion is insufficient. Tools can set `retryable: false` for uncertain paid requests or writes and index repair barriers, then clear the error and set `retryable: true` after reconciliation. A tool receipt proving a request was not sent (such as a media download returning HTTP 403) can set `retryable: true` so the next work attempt repairs the input. Authorization denials, invalid credentials, insufficient balance, cancellation and uncertain side effects remain retry barriers. Wait for the original task during automatic retries; never create a new work ID or batch to bypass exhaustion.
-
-Projects can declare a single-model field in `configuration.json`:
-
-```json
-{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "label": "Subagent model", "defaultValue": "" }
-```
-
-Set `modelConfiguration: "SUBAGENT_MODEL"` in `subagents` above. The editor reuses `STEAMHARNESS_AGENT_MODELS` and offers Follow main model (an empty string) or one configured model ID. A selected model applies to new named and anonymous child tasks ahead of role defaults, without changing the main model. An empty value restores code-defined role defaults, or the main model when no role model is set. Saved changes apply to children created by the next execution; recovery retains its original snapshot. Project models remain available for child selection when Studio Settings supplies the main model. Invalid, removed or unauthorized models fail explicitly, including system-AI-only restrictions. Connections, credentials and proxies have independent lifetimes, and effort is clamped to child capabilities.
-
-Developers can instead set `subagents.model: { provider, modelId }` and authorize the registered pair in `subagents.models`, without an editor field. When `modelConfiguration` is set, the field takes precedence and Follow main model clears this shared override. Existing children retain their creation-time model.
-
-All `type: "subagent"` commands carry a stable `requestId`:
-
-| action | Parameters and behavior |
-| --- | --- |
-| `spawn` | `agentId`, `workId`, `prompt`; optional `label`, JSON `metadata`, `background`, `reportToParent`. Repeated work IDs reuse the task; conflicting payloads are rejected. |
-| `list` | List work for the current parent conversation. |
-| `get` / `wait` | `taskId`; read or await the result. Waiting does not block cancellation. |
-| `send` | `taskId`, `prompt`, optional `mode: "steer" | "followUp"`. Accepted messages finish before releasing the slot. Queued, settling or settled work returns its current state and `messageDelivery: { status: "not_running", nextAction: "wait" | "get" | "retry" }`, with command receipt `settled`, without restarting work. Accepted delivery returns `{ status: "accepted" }`. |
-| `stop` | `taskId`; cancel only this item and its execution tree, without automatic retry. |
-| `retry` | `taskId`; create a linked attempt for failed/cancelled work, preserving history and continuing from the latest committed context. Resume a stopped owning batch first. |
-
-Receipts and snapshots expose `agents` with `taskId`, `workId`, `agentId`, `status` (including `queued`), `attempt`, `retryOf`, `childConversationId`, `metadata`, `progress`, `error` and `result`. Tasks uses these fields for roles, sources, phases and counts; opening a child, stopping and retrying use Core control. Business task history is retained; only internal Pi steps are limited to the latest 200 records.
-
-Normal lifecycle changes return a delivery receipt instead of failing the `send` tool. Check `messageDelivery`; `not_running` does not mean the message was delivered. Use `get` for completed results or explicitly `retry` failed/cancelled work. Batch task IDs are not subagent IDs; use the project's batch tools. Direct input to a settled child remains rejected so it cannot bypass concurrency slots or cancellation.
-
-Anonymous `subagent({ task, background?, model? })` and historical tasks remain supported. Named tool calls use `{ action: "spawn", agentId, workId, task, background: true }`; management actions use taskId. Tool background work reports to the parent by default. Commands and business tasks may set `reportToParent: false` to consume receipts themselves.
-
-An explicit `action` selects named management and ignores legacy result pagination fields populated by a model. Tool arguments still cannot override a named role's model.
-
-Durable tasks and native tools can call exported `enqueueAgentWork(tx, registry, input, options)` or `enqueueAgentWorks(tx, registry, inputs, options)` in a transaction. Use the bulk API for 1–1000 items, completing all table reads before creating tasks. Pi transactions cannot read tables after the first table write; do not loop over the single-item API. Task ownership makes batch cancellation cascade to queued and running items.
-
-Native tools call `readAgentWorkContext(api, ctx)` for the authorized role, workId, attempt, parent conversation and metadata. Persist progress with `tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`, updating `completed`, `total`, `phase` and optional JSON `data`. A nonempty `error` records failed business verification; clear it after successful retry. A finished model response alone does not prove business completion. The conversation family survives task settlement. Cross-entry operations accept `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`; both item and host cancellation apply.
-
-Retry does not prove an external side effect failed. Reconcile uncertain paid requests and writes using service state or business receipts first. Keep stable business IDs, drafts and stage checkpoints; retry an index conflict at the index stage without replaying committed bodies.
+See [Named Agents and work queues](/en/core-api/agent/work-queue).

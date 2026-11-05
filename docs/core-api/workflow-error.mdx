@@ -5,14 +5,27 @@ description: "标准 workflow 错误类，用于可序列化的错误报告。"
 
 # HarnessError
 
-`workflow.HarnessError` 是业务 workflow 和 runtime 使用的标准错误类。它会保留错误类型、节点名、metadata 和经过清洗的 cause，最终进入执行报告。
+用 `steamharness.HarnessError` 为业务失败提供可序列化的类型、节点名、metadata 和清洗后的 cause。运行时会把这些字段带入执行报告，便于宿主展示或分类处理。
 
 运行失败时，`ExecutionReport.error` 保留可序列化的结构化错误，`result.data` 继续提供标准的 `errCode`、`errMessage` 和 `output`。宿主需要判断服务器项目或数据资源授权问题时，读取 `report.error.metadata`；成功报告不包含 `error`。
+
+## 示例
+
+```ts
+throw new steamharness.HarnessError({
+  type: "input_validation",
+  message: "message is required.",
+  nodeName: "parse-input",
+  metadata: {
+    field: "message",
+  },
+});
+```
 
 ## 签名
 
 ```ts
-new workflow.HarnessError(options: ErrorOptions)
+new steamharness.HarnessError(options: ErrorOptions)
 ```
 
 ## 参数
@@ -81,19 +94,6 @@ new workflow.HarnessError(options: ErrorOptions)
 | `provider_call` | `502` |
 | `node_execution` | `500` |
 | `project_execution` | `500` |
-
-## 示例
-
-```ts
-throw new workflow.HarnessError({
-  type: "input_validation",
-  message: "message is required.",
-  nodeName: "parse-input",
-  metadata: {
-    field: "message",
-  },
-});
-```
 
 ## 何时使用
 

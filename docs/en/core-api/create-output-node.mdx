@@ -5,24 +5,45 @@ description: "Create synchronous or streaming output nodes and format the final 
 
 # createOutputNode
 
-`workflow.createOutputNode()` creates an output node. It can synchronously format its input like a normal node, or emit output incrementally through `stream` before `format` builds the final payload.
+Use `steamharness.createOutputNode()` to produce visible output and the final payload. Format ordinary output synchronously, or provide `stream` for incremental content and `format` for the complete result.
 
 The output protocol uses `RunOutputPayload.items` directly. Do not aggregate all visible content into the top-level `content` field. Each visible portion of output should be a separate `OutputItem`.
+
+## Example: synchronous output
+
+```ts
+const outputNode = steamharness.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  format(result) {
+    return {
+      ...steamharness.createOutputPayload({
+        items: [{
+          title: "Result",
+          content: result.text,
+          contentType: "markdown",
+          collapsed: false,
+        }],
+      }),
+      source: result.source,
+    };
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.createOutputNode<Input, Output>(
+steamharness.createOutputNode<Input, Output>(
   options: OutputStreamNodeOptions<Input, Output>,
 ): BaseStreamNode<Input, OutputStreamChunk, Output>
 
-workflow.createOutputNode<Input, Output>(
+steamharness.createOutputNode<Input, Output>(
   options: OutputNodeOptions<Input, Output> & {
     format: OutputFormatter<Input, Output>;
   },
 ): BaseNode<Input, Output>
 
-workflow.createOutputNode<Input>(
+steamharness.createOutputNode<Input>(
   options?: OutputNodeOptions<Input, Input>,
 ): BaseNode<Input, Input>
 ```
@@ -56,8 +77,8 @@ workflow.createOutputNode<Input>(
 
 | Mode | Return type | Execution method |
 | --- | --- | --- |
-| Synchronous output | `BaseNode<Input, Output>` | `workflow.runNode(outputNode, input, context)` |
-| Streaming output | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `workflow.runStreamNode(outputNode, input, context)` |
+| Synchronous output | `BaseNode<Input, Output>` | `steamharness.runNode(outputNode, input, context)` |
+| Streaming output | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `steamharness.runStreamNode(outputNode, input, context)` |
 
 ## Output flow
 
@@ -66,7 +87,7 @@ workflow.createOutputNode<Input>(
 | Synchronous | Receives `Input` and returns `Output` from `format(input, context)`. |
 | Streaming | Receives `Input`, emits string or item chunks, then passes accumulated `{ text, items, chunks }` to `format`. A string chunk is automatically appended to the default Markdown item, so ordinary streaming output does not need to create an item manually. |
 
-In a conversation UI, a response may first be displayed as a stream and then be reconciled by the final report. In that case, use `workflow.createOutputItemChunk()` to send `output_item_start`, `output_item_delta`, and `output_item_end` chunks with a stable `id`. shared runtime UI then replaces the live item with the final item of the same ID instead of rendering both the live default item and the final default item created from string chunks. The built-in Conversation project's primary answer uses the fixed `conversation-answer` ID so it appears only once.
+In a conversation UI, a response may first be displayed as a stream and then be reconciled by the final report. In that case, use `steamharness.createOutputItemChunk()` to send `output_item_start`, `output_item_delta`, and `output_item_end` chunks with a stable `id`. shared runtime UI then replaces the live item with the final item of the same ID instead of rendering both the live default item and the final default item created from string chunks. The built-in Conversation project's primary answer uses the fixed `conversation-answer` ID so it appears only once.
 
 When agent text is interleaved with tool calls, do not patch all text into one stable item. End the current inline `Output` item before a tool call, output the tool detail item, and create a new inline `Output` item for text that follows it. The final `items` array should preserve event order: `text segment -> tool detail -> text segment`.
 
@@ -99,7 +120,7 @@ interface OutputItem {
 Rings accept object deltas through `output_item_delta`: for example, `delta: { value: 75 }` retains the existing `total` and `unit`. Inline ring updates retain keyboard focus and an open tooltip. When multiple rings coexist, only the currently hovered or focused tooltip is shown.
 
 ```ts
-workflow.createOutputItem({
+steamharness.createOutputItem({
   id: "storage-quota",
   title: "Storage quota",
   content: { value: 57, total: 100, unit: "MB" },
@@ -112,16 +133,18 @@ Core Agent uses this protocol for context occupancy. Custom projects can use it 
 
 An `audio` item's `content` has the shape `{ src, mimeType, name, size, durationMs?, format? }`. `src` can be a safe `data:audio/...;base64,...` value or an `http(s)` audio URL. For local CLI and shared runtime UI examples, prefer a data URL so they do not depend on Server file storage.
 
-A `video` item's `content` has the shape `{ src, mimeType, name, durationMs?, format? }`. `mimeType` only accepts `video/mp4`; `format` only accepts `mp4`. `src` can be a safe `data:video/mp4;base64,...` value or an `http(s)` video URL; remote URLs must be publicly reachable. Signed OSS URLs fall under `http(s)`, but because the UI does not cache them and they are not durable, do not publish generated video assets only through signed OSS URLs without a stable fallback. For local CLI and shared runtime UI examples, still prefer a data URL so they do not depend on Server file storage. If the video item is missing required fields or `src` is unsafe, the UI falls back to a text preview and shows a localized fallback message (for example `videoPlaybackUnsupported`); do not leave `src` empty or point it at `file://` or other local paths.
+A `video` item's `content` has the shape `{ src, mimeType, name, durationMs?, format? }`. `mimeType` only accepts `video/mp4`; `format` only accepts `mp4`. `src` can be a safe `data:video/mp4;base64,...` value or an `http(s)` video URL; remote URLs must be publicly reachable. Signed OSS URLs fall under `http(s)`, but because the UI does not cache them and they are not durable, do not publish generated video assets only through signed OSS URLs without a stable fallback.
+
+For local CLI and shared runtime UI examples, still prefer a data URL so they do not depend on Server file storage. If the video item is missing required fields or `src` is unsafe, the UI falls back to a text preview and shows a localized fallback message (for example `videoPlaybackUnsupported`); do not leave `src` empty or point it at `file://` or other local paths.
 
 ## Output helpers
 
 | API | Description |
 | --- | --- |
-| `workflow.createOutputItem(input)` | Creates an item with a stable `id`, resolved icon preset, and default `contentType`. |
-| `workflow.createOutputPayload(input)` | Creates an `{ errCode, errMessage, items }` payload while preserving business extension fields. |
-| `workflow.addOutputItem(payload, item)` | Appends an item to an existing output payload. |
-| `workflow.createOutputItemChunk(chunk)` | Creates an `output_item_start`, `output_item_delta`, or `output_item_end` streaming chunk. |
+| `steamharness.createOutputItem(input)` | Creates an item with a stable `id`, resolved icon preset, and default `contentType`. |
+| `steamharness.createOutputPayload(input)` | Creates an `{ errCode, errMessage, items }` payload while preserving business extension fields. |
+| `steamharness.addOutputItem(payload, item)` | Appends an item to an existing output payload. |
+| `steamharness.createOutputItemChunk(chunk)` | Creates an `output_item_start`, `output_item_delta`, or `output_item_end` streaming chunk. |
 
 ## Streaming item chunks
 
@@ -131,38 +154,17 @@ A `video` item's `content` has the shape `{ src, mimeType, name, durationMs?, fo
 | `output_item_delta` | Appends or merges content by `itemId`: strings concatenate, arrays append, and objects are shallow-merged. An optional `item` patch can update presentation fields such as `title`, `icon`, and `metadata.status`. |
 | `output_item_end` | Marks an item as complete. It currently serves protocol completeness and future UI extensions. |
 
-## Example: synchronous output
-
-```ts
-const outputNode = workflow.createOutputNode<Result, OutputPayload>({
-  name: "output",
-  format(result) {
-    return {
-      ...workflow.createOutputPayload({
-        items: [{
-          title: "Result",
-          content: result.text,
-          contentType: "markdown",
-          collapsed: false,
-        }],
-      }),
-      source: result.source,
-    };
-  },
-});
-```
-
 ## Example: streaming output
 
 ```ts
-const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Result, OutputPayload>({
   name: "output",
   async *stream(result) {
     yield result.prefix;
     yield result.text;
   },
   format(stream) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: stream.items,
       totalChunks: stream.chunks.length,
     });
@@ -173,10 +175,10 @@ const outputNode = workflow.createOutputNode<Result, OutputPayload>({
 ## Example: structured streaming item
 
 ```ts
-const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
+const outputNode = steamharness.createOutputNode<ToolResult, OutputPayload>({
   name: "output",
   async *stream(result) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: "tool-result",
@@ -186,7 +188,7 @@ const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
         collapsed: true,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: "tool-result",
       delta: result.payload,
@@ -196,13 +198,13 @@ const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
         metadata: { status: "success" },
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: "tool-result",
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 ```

@@ -2,8 +2,7 @@ openapi: 3.1.0
 info:
   title: steamharness API
   version: 0.1.0
-  description: SteamHarness Server manages static aggregate metadata, immutable source and independent database
-    spaces. CLI and Studio execute entries.
+  description: "SteamHarness Server manages project declarations, immutable source versions, accounts, and data resources. CLI and Studio execute project entries."
 servers:
   - url: http://localhost:7126
     description: Local SteamHarness Server (dev default)
@@ -15,13 +14,13 @@ tags:
   - name: Health
     description: Health check.
   - name: Auth & Accounts
-    description: Login, session, device flow, user, role, and API Key.
+    description: "Sign-in, sessions, device authorization, accounts, roles, and API keys."
   - name: Admin Projects
     description: Project source, version and metadata management.
   - name: Admin Files
     description: Project file upload, read, download and deletion.
   - name: Projects & Groups
-    description: Independent spaces, explicit approval, consumer bindings and shared grants.
+    description: "Fixed roles, inherited group access, members, and invitations."
   - name: Runtime Storage
     description: Account-private Agent records, execution leases and relational checkpoints.
   - name: Relational Databases
@@ -32,7 +31,7 @@ paths:
   /api/knowledge-bases:
     get:
       tags: [Knowledge Bases]
-      summary: "List accessible knowledge resources"
+      summary: "List accessible knowledge bases"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -48,7 +47,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Create an independent knowledge resource"
+      summary: "Create a knowledge base"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -69,7 +68,7 @@ paths:
   /api/knowledge-bases/bindings:
     get:
       tags: [Knowledge Bases]
-      summary: "List current account knowledge bindings"
+      summary: "List the current account’s knowledge bindings"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -85,7 +84,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Bind an entry to an authorized knowledge resource"
+      summary: "Bind an entry to an authorized knowledge base"
       description: "Binding cannot grant access. Registered projects require writeData capability and a matching knowledge declaration. Local unregistered project IDs are account-scoped. Unchanged bindings keep their revision."
       security:
         - BearerAuth: []
@@ -105,7 +104,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags: [Knowledge Bases]
-      summary: "Unbind a knowledge alias"
+      summary: "Remove a knowledge binding"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -147,7 +146,7 @@ paths:
   /api/knowledge-bases/{baseId}:
     get:
       tags: [Knowledge Bases]
-      summary: "Describe an accessible knowledge base"
+      summary: "Read a knowledge base"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -164,7 +163,7 @@ paths:
   /api/knowledge-bases/{baseId}/grants:
     get:
       tags: [Knowledge Bases]
-      summary: "List knowledge account grants as owner"
+      summary: "List knowledge grants as the owner"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -180,7 +179,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Grant or replace knowledge account access"
+      summary: "Grant or update knowledge access"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -202,7 +201,7 @@ paths:
   /api/knowledge-bases/{baseId}/grants/{userId}:
     delete:
       tags: [Knowledge Bases]
-      summary: "Revoke knowledge account access"
+      summary: "Revoke knowledge access"
       description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
       security:
         - BearerAuth: []
@@ -219,7 +218,7 @@ paths:
   /api/knowledge-bases/{baseId}/operations:
     post:
       tags: [Knowledge Bases]
-      summary: "Operate on a declared knowledge resource"
+      summary: "Run a knowledge operation"
       description: "Rechecks account, binding ID/revision/accessRevision and registered project capability in the operation. Writes require write mode. Stale document expectedRevision returns 409. Search cursors are tied to resource revision and query. Body limit 70 MiB; file contents up to 50 MiB. No KV fallback or mutation replay."
       security:
         - BearerAuth: []
@@ -241,7 +240,7 @@ paths:
   /api/knowledge-bases/{baseId}/manage:
     post:
       tags: [Knowledge Bases]
-      summary: "Manage knowledge documents and private attachments"
+      summary: "Manage documents and private attachments"
       description: "Account read/write grants authorize management without a consumer binding. Mutations do not retry. Documents use optimistic expectedRevision; attachment contents remain outside SQL."
       security:
         - BearerAuth: []
@@ -263,8 +262,8 @@ paths:
   /api/databases/{databaseId}/data:
     post:
       tags: [Relational Databases]
-      summary: "Manage applied model rows"
-      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01. Enums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. Concurrent requests queue before SQL execution, with a 5-second wait per database lock and DATABASE_BUSY on timeout. Executed writes are not replayed. No raw SQL or relation mutation input is accepted."
+      summary: "Manage rows in the applied model"
+      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01.\n\nEnums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. Concurrent requests queue before SQL execution, with a 5-second wait per database lock and DATABASE_BUSY on timeout. Executed writes are not replayed. No raw SQL or relation mutation input is accepted."
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -285,7 +284,7 @@ paths:
   /api/databases/{databaseId}/query:
     post:
       tags: [Relational Databases]
-      summary: "Query rows through a pinned consumer binding"
+      summary: "Query rows through an entry binding"
       description: "Same bounded table operations as data, additionally requiring the current account/project/entry/alias binding. Read bindings cannot write. The generated Browser table client uses this structured protocol; accessRevision invalidates clients after grant changes. Concurrent requests queue on binding and resource locks for up to 5 seconds per lock; DATABASE_BUSY means the wait expired before execution. Binding, access revision and schema are revalidated after waiting; executed writes are never replayed."
       security:
         - BearerAuth: []
@@ -307,7 +306,7 @@ paths:
   /api/databases:
     get:
       tags: [Relational Databases]
-      summary: List owned and granted database resources
+      summary: "List owned and shared databases"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -323,7 +322,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Request and provision an independent database
+      summary: "Create an independent database"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -342,11 +341,11 @@ paths:
         default:
           $ref: "#/components/responses/HarnessError"
   /api/databases/bindings/resolve:
-    post: {"tags":["Relational Databases"],"summary":"Resolve an entry alias for a generated Browser table client","description":"Pins binding identity, mode, schemaHash and account accessRevision. Concurrent resolutions queue for up to 5 seconds per binding or resource lock before returning DATABASE_BUSY. No SQL credential is returned. Rebinding, unbinding, revocation and model changes invalidate old clients.","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"Success.","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
+    post: {"tags":["Relational Databases"],"summary":"Resolve a Browser database alias","description":"Pins binding identity, mode, schemaHash and account accessRevision. Concurrent resolutions queue for up to 5 seconds per binding or resource lock before returning DATABASE_BUSY. No SQL credential is returned. Rebinding, unbinding, revocation and model changes invalidate old clients.","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"Success.","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
   /api/databases/bindings:
     get:
       tags: [Relational Databases]
-      summary: List database bindings for the current account and entry
+      summary: "List account and entry database bindings"
       description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
       security:
         - BearerAuth: []
@@ -370,7 +369,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Bind a generated entry alias to an accessible resource
+      summary: "Bind an entry alias to a database"
       description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
       security:
         - BearerAuth: []
@@ -390,7 +389,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags: [Relational Databases]
-      summary: Unbind an entry alias and revoke its SQL connections
+      summary: "Remove a binding and revoke its SQL connections"
       description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
       security:
         - BearerAuth: []
@@ -411,7 +410,7 @@ paths:
   /api/databases/connections:
     post:
       tags: [Relational Databases]
-      summary: Issue a temporary connection for a bound native entry
+      summary: "Issue a temporary native connection"
       description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Independent native workers may issue credentials concurrently for the same binding using shared read locks. Every operation validates account access and the current entry binding after a bounded lock wait; binding changes, migrations and revocation retain exclusive locks and may return DATABASE_BUSY.
       security:
         - BearerAuth: []
@@ -431,8 +430,8 @@ paths:
   /api/databases/connections/{credentialId}/authorize:
     post:
       tags: [Relational Databases]
-      summary: Revalidate a connection before a query or transaction commit
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding. Authorization uses shared binding and resource locks so concurrent checks can proceed together; binding changes and migrations retain exclusive locks. Each lock waits up to five seconds before returning DATABASE_BUSY, and the binding is revalidated after the locks are acquired.
+      summary: "Validate a connection before querying or committing"
+      description: "Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding. Authorization uses shared binding and resource locks so concurrent checks can proceed together; binding changes and migrations retain exclusive locks.\n\nEach lock waits up to five seconds before returning DATABASE_BUSY, and the binding is revalidated after the locks are acquired."
       security:
         - BearerAuth: []
       parameters:
@@ -456,7 +455,7 @@ paths:
   /api/databases/connections/{credentialId}:
     delete:
       tags: [Relational Databases]
-      summary: Release a native connection and terminate its SQL sessions
+      summary: "Release a connection and its SQL sessions"
       description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
       security:
         - BearerAuth: []
@@ -476,7 +475,7 @@ paths:
   /api/databases/{databaseId}:
     get:
       tags: [Relational Databases]
-      summary: Inspect an accessible database resource
+      summary: "Read a database resource"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -497,7 +496,7 @@ paths:
   /api/databases/{databaseId}/retry:
     post:
       tags: [Relational Databases]
-      summary: Retry failed database provisioning
+      summary: "Retry database provisioning"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -523,7 +522,7 @@ paths:
   /api/databases/{databaseId}/grants:
     get:
       tags: [Relational Databases]
-      summary: List database account grants
+      summary: "List database grants"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -543,7 +542,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Grant or narrow database read or write access
+      summary: "Grant or narrow database access"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -569,7 +568,7 @@ paths:
   /api/databases/{databaseId}/grants/{userId}:
     delete:
       tags: [Relational Databases]
-      summary: Revoke access and terminate issued connections
+      summary: "Revoke database access and active connections"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -594,7 +593,7 @@ paths:
   /api/databases/{databaseId}/migrations:
     get:
       tags: [Relational Databases]
-      summary: Read immutable applied migration history
+      summary: "Read applied migration history"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -615,7 +614,7 @@ paths:
   /api/databases/{databaseId}/migrations/plan:
     post:
       tags: [Relational Databases]
-      summary: Validate history and generate a migration against current models
+      summary: "Generate a migration from current models"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -641,7 +640,7 @@ paths:
   /api/databases/{databaseId}/migrations/deploy:
     post:
       tags: [Relational Databases]
-      summary: Replay shadow history and transactionally deploy pending migrations
+      summary: "Validate and deploy pending migrations"
       description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
       security:
         - BearerAuth: []
@@ -668,7 +667,7 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Register or find an account-private Agent workspace
+      summary: "Register or find a private Agent workspace"
       description: Requires an account Bearer token or account session cookie. An administrator key alone is insufficient. Project workspaces require
         current project read access and a registered entry. Local/Assistant workspaces support unpublished projects without granting access to
         registered project data.
@@ -693,7 +692,7 @@ paths:
   /api/runtime-storage/workspaces/resolve:
     post:
       tags: [Runtime Storage]
-      summary: Resolve registered project or private unpublished workspace
+      summary: "Resolve a project or private local workspace"
       description: Existing projects require current read access and a registered entry. Only a missing project resolves to a private local workspace; forbidden access never falls back. Assistant identity remains separate.
       security:
         - BearerAuth: []
@@ -742,7 +741,7 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Acquire an exclusive Agent execution lease
+      summary: "Acquire an Agent execution lease"
       description: The workspace and sessionKey identify persistent history. Repeating an active ownerToken returns the same lease. Another active owner
         receives 409. Takeover after expiry increments the fence. Owner tokens are stored only as hashes.
       security:
@@ -793,7 +792,7 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/history/{kind}:
     get:
       tags: [Runtime Storage]
-      summary: Read committed platform history
+      summary: "Read committed runtime history"
       description: Returns account-owned ordered messages, queues, events and values. Project access and entry registration are rechecked. Reads do not acquire execution ownership.
       security:
         - BearerAuth: []
@@ -829,7 +828,7 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/agent-sessions:
     get:
       tags: [Runtime Storage]
-      summary: List stored Agent session identities
+      summary: "List stored Agent sessions"
       description: Returns non-deleted session keys in the account-owned workspace whose literal prefix matches the query.
       security:
         - BearerAuth: []
@@ -867,7 +866,7 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/snapshot:
     get:
       tags: [Runtime Storage]
-      summary: Read a versioned committed Agent session snapshot
+      summary: "Read a committed Agent snapshot"
       description: Uses a consistent database snapshot without acquiring or resuming the source execution. An active owner may continue. Deleted sessions return 404.
       security:
         - BearerAuth: []
@@ -904,11 +903,8 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Execute a typed Agent storage operation under the current lease
-      description: Account ownership, current project access, owner token, lease expiry and fence are verified for every request. Maximum body is 16 MiB.
-        Mutable operations persist requestId and result in the same transaction. Read queries such as submissionByRequest are never cached as mutations. Retrying identical content returns the original result; changing content
-        for an existing ID returns 409. No SQL or executable code is accepted. Errors include RUNTIME_STORAGE_LEASE_LOST, RUNTIME_STORAGE_OWNER_CONFLICT
-        RUNTIME_STORAGE_REVISION_CONFLICT and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code.
+      summary: "Run an Agent storage operation under a lease"
+      description: "Account ownership, current project access, owner token, lease expiry and fence are verified for every request. Maximum body is 16 MiB. Mutable operations persist requestId and result in the same transaction. Read queries such as submissionByRequest are never cached as mutations. Retrying identical content returns the original result; changing content for an existing ID returns 409. No SQL or executable code is accepted.\n\nErrors include RUNTIME_STORAGE_LEASE_LOST, RUNTIME_STORAGE_OWNER_CONFLICT RUNTIME_STORAGE_REVISION_CONFLICT and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code."
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -953,7 +949,7 @@ paths:
     get:
       tags:
         - Health
-      summary: Health check
+      summary: "Check Server health"
       security: []
       parameters:
         - in: header
@@ -979,7 +975,7 @@ paths:
               - en
       responses:
         "200":
-          description: Server Normal.
+          description: "Server is healthy."
           content:
             application/json:
               schema:
@@ -1062,7 +1058,7 @@ paths:
   /api/auth/browser-session:
     post:
       tags: [Auth & Accounts]
-      summary: Reuse a native client login in Server Web
+      summary: "Reuse native sign-in in Server Web"
       operationId: createBrowserSession
       description: Issue a single-use code valid for 60 seconds using an account API key. The destination must be a local absolute path. No new account session or API key is created. The code retains the original account and key permissions; responses are not cached. Limited to 20 requests per key per minute.
       security:
@@ -1097,7 +1093,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     get:
       tags: [Auth & Accounts]
-      summary: Consume a browser handoff and open its destination
+      summary: "Consume a browser sign-in code"
       operationId: consumeBrowserSession
       description: Consumes the code once, revalidates the original API key and sets a signed HttpOnly SameSite=Lax cookie before redirecting. The original key remains authoritative on every request, including revocation, expiry and disabled accounts. Expired or reused codes fail with 401. Responses use no-store and no-referrer.
       security: []
@@ -1122,12 +1118,12 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: Read the current browser or Bearer login status
+      summary: "Read the current sign-in status"
       operationId: getAuthSession
       security: []
       responses:
         "200":
-          description: "Return `authenticated: false` when not logged in; bring principal summary when logged in."
+          description: "Returns authenticated: false when signed out, or the current principal summary when signed in."
           content:
             application/json:
               schema:
@@ -1136,7 +1132,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: Check if the administrator key is configured
+      summary: "Check administrator-key configuration"
       operationId: getAdminKeyHealth
       security: []
       responses:
@@ -1150,13 +1146,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Establish a recovery session with an administrator key
-      description: >
-        It is used for the first administrator recovery, recovery login when there is no account, and
-        permission recovery.
-
-        If the account system is configured at the same time, the server will preferentially try to map the
-        current administrator key to the browser session with `builtin_admin`.
+      summary: "Establish an administrator recovery session"
+      description: "Use this endpoint for initial administrator recovery, recovery without an account, or permission recovery. If account authentication is also configured, Server first attempts to map the administrator key to a builtin_admin browser session."
       operationId: createAdminKeySession
       security: []
       requestBody:
@@ -1167,7 +1158,7 @@ paths:
               $ref: "#/components/schemas/AdminKeySessionRequest"
       responses:
         "200":
-          description: Login successful and write httpOnly cookie.
+          description: "Signed in; an HttpOnly cookie is set."
           content:
             application/json:
               schema:
@@ -1178,25 +1169,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Establish an account session by using the email password
-      description: >
-        Ordinary account and administrator account unified use this 1 portal login.
-
-        If the mailbox and password in the request match `STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL` /
-        `STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD`,
-
-        The server creates this `builtin_admin` only while the account table is empty. Later logins verify the
-        current database password and never overwrite a changed password or disabled state from environment
-        variables.
-
-        Display names follow the saved user profile. Login never replaces a changed name with the bootstrap
-        default or an outdated authentication name.
-
-        Accounts, password hashes, sessions, and invitations are stored in the PostgreSQL database selected by
-        `STEAMHARNESS_DATABASE_URL`.
-
-        Passwords use scrypt with random salts. The browser cookie stores only a signed refresh token and the
-        database stores token hashes only.
+      summary: "Sign in with email and password"
+      description: "Ordinary users and administrators use this endpoint. Matching bootstrap email/password values create builtin_admin only while the account table is empty. Later sign-ins verify the saved password and account state without replacing them from environment variables.\n\nDisplay names retain the saved user profile. PostgreSQL stores accounts, password hashes, sessions, and invitations. Passwords use scrypt with random salts. The browser stores a signed refresh token; the database stores only token hashes."
       operationId: createPasswordSession
       security: []
       requestBody:
@@ -1207,7 +1181,7 @@ paths:
               $ref: "#/components/schemas/PasswordLoginRequest"
       responses:
         "200":
-          description: Login successful and write httpOnly cookie.
+          description: "Signed in; an HttpOnly cookie is set."
           content:
             application/json:
               schema:
@@ -1222,12 +1196,12 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Clean up the current browser session
+      summary: "Sign out of the browser session"
       operationId: logoutAuthSession
       security: []
       responses:
         "200":
-          description: Attempts to clean cookies regardless of whether a session currently exists.
+          description: "Clears authentication cookies whether or not a session currently exists."
           content:
             application/json:
               schema:
@@ -1296,12 +1270,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Create Device Login Request
-      description: >
-        CLI, Desktop, and Web first call this endpoint to obtain the device code, user code, and browser
-        approval address,
-
-        The `/login/device` approval is then accessed by the logged-in browser session.
+      summary: "Start device sign-in"
+      description: "Clients first request a device code, user code, and browser approval URL. A signed-in browser then opens /login/device to approve the request."
       operationId: startDeviceFlow
       security: []
       requestBody:
@@ -1325,11 +1295,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Poll device flow results and exchange for API Key
-      description: |
-        Continue to poll by `intervalSeconds` when returning to `authorization_pending`;
-        When returning `slow_down`, `Retry-After` or `data.retryAfterSeconds` should be read for backoff;
-        Returns `expired_token` to indicate that the current device code has expired or been consumed.
+      summary: "Poll device authorization and obtain an API key"
+      description: "For authorization_pending, continue polling at intervalSeconds. For slow_down, respect Retry-After or data.retryAfterSeconds. expired_token means the code expired or was consumed."
       operationId: pollDeviceFlowToken
       security: []
       requestBody:
@@ -1362,7 +1329,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Approve a device login in the browser
+      summary: "Approve device sign-in"
       operationId: approveDeviceFlow
       security:
         - SessionCookie: []
@@ -1374,7 +1341,7 @@ paths:
               $ref: "#/components/schemas/DeviceFlowDecisionRequest"
       responses:
         "200":
-          description: If the approval is successful, the polling end can then exchange the API Key.
+          description: "After approval, the polling client can exchange its device code for an API key."
           content:
             application/json:
               schema:
@@ -1393,7 +1360,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Deny device login once in browser
+      summary: "Deny device sign-in"
       operationId: denyDeviceFlow
       security:
         - SessionCookie: []
@@ -1422,7 +1389,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: Read current account information
+      summary: "Read the current account profile"
       operationId: getCurrentAccount
       security:
         - SessionCookie: []
@@ -1441,7 +1408,7 @@ paths:
     patch:
       tags:
         - Auth & Accounts
-      summary: Update current account information
+      summary: "Update the current account profile"
       description: Display name changes update both the authentication account and user profile and survive login
         and session renewal. Updating only an avatar, email, or password preserves the saved name.
       operationId: updateCurrentAccount
@@ -1467,15 +1434,14 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: List currently manageable API Keys
+      summary: "List manageable API keys"
       operationId: listAccountApiKeys
       security:
         - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
-          description: Ordinary users view their own API Key by default; administrators or principal with
-            `api_keys.manage_all` can view all.
+          description: "Ordinary users see their own keys. Administrators or principals with api_keys.manage_all can inspect all keys."
           content:
             application/json:
               schema:
@@ -1487,7 +1453,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Create a new API Key
+      summary: "Create an API key"
       operationId: createAccountApiKey
       security:
         - SessionCookie: []
@@ -1500,7 +1466,7 @@ paths:
               $ref: "#/components/schemas/CreateApiKeyRequest"
       responses:
         "201":
-          description: Returns a new API Key record and a clear-text token that is displayed only once.
+          description: "Returns the key record and a plaintext token shown only once."
           content:
             application/json:
               schema:
@@ -1517,7 +1483,7 @@ paths:
     delete:
       tags:
         - Auth & Accounts
-      summary: Undo a API key
+      summary: "Revoke an API key"
       operationId: revokeAccountApiKey
       security:
         - SessionCookie: []
@@ -1526,7 +1492,7 @@ paths:
         - $ref: "#/components/parameters/ApiKeyId"
       responses:
         "200":
-          description: Undo successful.
+          description: "The key was revoked."
           content:
             application/json:
               schema:
@@ -1539,7 +1505,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: List accounts and aggregate permissions summary
+      summary: "List accounts and permission summaries"
       operationId: listAccountUsers
       security:
         - SessionCookie: []
@@ -1549,7 +1515,7 @@ paths:
           in: query
           schema:
             type: string
-          description: Search by mailbox, display name, or role name.
+          description: "Search by email, display name, or role."
         - name: status
           in: query
           schema:
@@ -1558,7 +1524,7 @@ paths:
               - active
               - disabled
               - invited
-          description: Filter by project account status.
+          description: "Filter by account status."
         - name: page
           in: query
           schema:
@@ -1586,7 +1552,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: Invite a new user
+      summary: "Invite an account"
       operationId: inviteAccountUser
       security:
         - SessionCookie: []
@@ -1615,7 +1581,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: Regenerate an invitation link for an existing invited user
+      summary: "Regenerate an account invitation"
       operationId: regenerateAccountInvitationLink
       security:
         - SessionCookie: []
@@ -1639,7 +1605,7 @@ paths:
     patch:
       tags:
         - Auth & Accounts
-      summary: Update a user's mailbox, display name, temporary password, or start/stop status
+      summary: "Update an account profile, password, or status"
       operationId: updateAccountUser
       security:
         - SessionCookie: []
@@ -1717,16 +1683,12 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/ProjectRole"
-      description: 先按登录账号权限筛选，再执行搜索与分页。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。 / Authorization precedes
-        pagination. Public projects grant signed-in users implicit guest access.
+      description: "Authorization precedes pagination. Public projects grant signed-in users implicit guest access."
     post:
       tags:
         - Admin Projects
-      summary: Create an application with a Server-assigned UUID
-      description: 登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。 / Signed-in
-        users may create personal projects as owners. Group projects require developer access and do not
-        promote the creator. Server assigns a fresh UUID; client-selected projectId is rejected. No source
-        upload is required.
+      summary: "Create a project with a Server-assigned UUID"
+      description: "Signed-in users may create personal projects as owners. Group projects require developer access and do not promote the creator. Server assigns a fresh UUID; client-selected projectId is rejected. No source upload is required."
       operationId: createProject
       requestBody:
         required: true
@@ -1796,12 +1758,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/TokenUsagePageResponse"
         "501":
-          description: The current storage does not support the PostgreSQL KV inspection.
+          description: "The current storage backend does not support this usage query."
   /api/audit-events:
     get:
       tags:
         - Admin Projects
-      summary: Read Global Audit Log
+      summary: "Read the system audit log"
       operationId: listAuditEvents
       parameters:
         - name: pageSize
@@ -1854,7 +1816,7 @@ paths:
             $ref: "#/components/schemas/AuditOutcome"
       responses:
         "200":
-          description: Audit events are paginated and structured context is desensitized.
+          description: "Returns paginated audit events with sensitive context redacted."
           content:
             application/json:
               schema:
@@ -1899,7 +1861,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Querying the Latest Server Preparation Tasks
+      summary: "Read the latest preparation job"
       operationId: getLatestProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1916,7 +1878,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Query Server Preparation Tasks
+      summary: "Read a preparation job"
       operationId: getProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1928,7 +1890,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Prepare the current status of the task.
+          description: "Current preparation-job state."
           content:
             application/json:
               schema:
@@ -1950,7 +1912,7 @@ paths:
           example: hello.tgz
         - name: mode
           in: query
-          description: When set to `create`, it is only created and not overwritten by normal upload.
+          description: "The create mode explicitly creates a project; ordinary upload does not replace an existing identity."
           schema:
             type: string
             enum:
@@ -1973,20 +1935,15 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read a project source file
-      description: Source download access includes published versions only. Reading draft additionally requires
-        project management access, so unpublished configuration fields and defaults remain private.
+      summary: "Read project source files"
+      description: "Guests can download published versions. Draft reads require developer access or above, keeping unpublished configuration fields and values private."
       operationId: getProjectFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
         - name: includeBinary
           in: query
-          description: >
-            When set to `true`, the non-text static resources of the Kanban item are returned in base64 and
-            marked
-
-            `encoding: base64`. The default response contains only editable text files.
+          description: "With includeBinary=true, Kanban binary assets use Base64 content and encoding: base64. The default response contains editable text files only."
           schema:
             type: boolean
             default: false
@@ -2046,13 +2003,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Upload project card image
-      description: >
-        Upload the WebP generated after the client completes 1:1 clipping. The caller must have project
-        management privileges.
-
-        Server After checking the format and size, it is saved by content hash and returns a public, immutable
-        image URL.
+      summary: "Upload a project card image"
+      description: "Upload a client-cropped square WebP using project-management permission. Server checks format and size, stores by content hash, and returns a public immutable URL."
       operationId: uploadProjectCardImage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2105,7 +2057,7 @@ paths:
                 - projectCard
       responses:
         "200":
-          description: Returns the normalized item card metadata.
+          description: "Normalized project card metadata."
           content:
             application/json:
               schema:
@@ -2124,10 +2076,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Download a localizable snapshot of the published source code
-      description: Download a published immutable source snapshot with separate source download permission. No
-        platform restriction. A successfully sent GET response adds one download to the exact returned
-        version. HEAD, failed and interrupted responses are not counted.
+      summary: "Download published source files"
+      description: "Requires project source-download access and returns an immutable published snapshot without platform restrictions. A successfully sent GET increments the resolved version’s download count; HEAD, failed, and interrupted responses do not count."
       operationId: getDownloadableSourceFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2152,8 +2102,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read public project card picture
-      description: Reads immutable WebP saved by content hash for project lists and Desktop surfaces.
+      summary: "Read a public project card image"
+      description: "Reads immutable content-addressed WebP for project lists and Studio."
       security: []
       operationId: getProjectCardImage
       parameters:
@@ -2171,7 +2121,7 @@ paths:
             pattern: ^[a-f0-9]{64}\.webp$
       responses:
         "200":
-          description: Project card WebP picture, response can be long-term public cache.
+          description: "Project card WebP; public long-term caching is allowed."
           headers:
             Cache-Control:
               schema:
@@ -2186,7 +2136,7 @@ paths:
                 type: string
                 format: binary
         "404":
-          description: The picture does not exist.
+          description: "Image not found."
   /storage/avatars/{userId}/{fileName}:
     get:
       tags:
@@ -2212,7 +2162,7 @@ paths:
             pattern: ^[a-f0-9]{64}\.(png|jpe?g|gif|webp)$
       responses:
         "200":
-          description: The avatar image. The response may be publicly cached for a long time.
+          description: "Avatar bytes; public long-term caching is allowed."
           headers:
             Cache-Control:
               schema:
@@ -2227,7 +2177,7 @@ paths:
                 type: string
                 format: binary
         "404":
-          description: The avatar does not exist.
+          description: "Avatar not found."
   /api/projects/files/{fileId}:
     get:
       tags:
@@ -2257,7 +2207,7 @@ paths:
     delete:
       tags:
         - Admin Files
-      summary: Delete project file
+      summary: "Delete a project file"
       operationId: deleteFile
       parameters:
         - name: fileId
@@ -2267,7 +2217,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Delete the result.
+          description: "Deletion result."
           content:
             application/json:
               schema:
@@ -2284,13 +2234,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read Kanban Workspace
-      description: >
-        Read fixed target static product directories, HTML entries, manifests, named configurations for
-        current user isolation, and short-term preview capability.
-
-        A parameterized project creates a "default configuration" atomically the first time it is read; a
-        parameterless project returns an empty configuration list.
+      summary: "Read a Kanban workspace"
+      description: "Returns a fixed version’s artifact directory, HTML entry, declarations, account-scoped configurations, and short-lived preview capability. Parameterized projects create a default configuration atomically on first read; projects without parameters return an empty list."
       operationId: getKanbanWorkspace
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2314,10 +2259,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Call Kanban project data Bridge
-      description: Use entryId for the registered Kanban entry. Data and attachment calls require input.database and
-        current project and space authorization. target selects a static declaration version; draft data
-        access can use a registered entry before source upload. No project execution occurs.
+      summary: "Call the Kanban data Bridge"
+      description: "entryId selects a registered Kanban entry. Relational data and attachment calls require input.database and current project/resource authorization. target selects a static declaration version; draft data access may precede source upload.\n\nServer does not execute projects. Local entries.* and conversations.* operations return 409 with ENTRY_RUNTIME_UNAVAILABLE; use CLI Web or Studio."
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2329,8 +2272,7 @@ paths:
               $ref: "#/components/schemas/KanbanStudioBridgeRequest"
       responses:
         "200":
-          description: Bridge operation result; data can be omitted for KV that does not exist, and null is returned for
-            knowledge documents that do not exist.
+          description: "Returns the operation result. Operations without a result may omit data; missing knowledge documents return null."
           content:
             application/json:
               schema:
@@ -2350,24 +2292,7 @@ paths:
       tags:
         - Admin Projects
       summary: Read capability-protected Kanban static resources
-      description: >
-        Uses the short-lived capability issued by the workspace endpoint to read resources from a fixed
-        version. `assetPath` may be
-
-        the configured HTML entry or a multi-segment relative path inside the artifact directory. Directory
-        traversal, symbolic links,
-
-        sensitive files, and files outside that directory are rejected. The HTML entry injects the
-        configuration and project-data Bridge
-
-        with a nonce and returns an offline CSP limited to same-artifact resources, data, and blob URLs. The
-        capability itself is a temporary
-
-        credential scoped to the project, user, fixed target, and expiration time, so a sandboxed iframe can
-        load ES modules, WASM, and
-
-        project data files without a login cookie or API key. Other project APIs still require login
-        authentication.
+      description: "Uses the short-lived capability issued by the workspace endpoint to read resources from a fixed version. `assetPath` may be the configured HTML entry or a multi-segment relative path inside the artifact directory. Directory traversal, symbolic links, sensitive files, and files outside that directory are rejected. The HTML entry injects the configuration and project-data Bridge with a nonce and returns an offline CSP limited to same-artifact resources, data, and blob URLs.\n\nThe capability itself is a temporary credential scoped to the project, user, fixed target, and expiration time, so a sandboxed iframe can load ES modules, WASM, and project data files without a login cookie or API key. Other project APIs still require login authentication."
       security: []
       operationId: getKanbanPreviewAsset
       parameters:
@@ -2524,12 +2449,7 @@ paths:
       tags:
         - Admin Projects
       summary: Read account-scoped configurations for any project type
-      description: Requires project read or source-download access and an account identity. Values are isolated by
-        project and account. Download access only exposes the version template and permitted personal values.
-        Official drafts require the actual original owner or an administrator. The Server never executes
-        project code. A temporary role fallback changes the response view while preserving the account's
-        saved selection; access recovery reuses it. Saving fallback values preserves that selection,
-        while an explicit select action updates it.
+      description: "Requires account identity and project read or source-download access. Values are scoped to project, entry, and account. Download access exposes only version templates and permitted personal values. Official drafts require maintainer, owner, or system-administrator access.\n\nFor v2 projects, non-managers use the latest published template by default, even with source-draft access. Unpublished role-controlled configuration requires publication first.\n\nTemporary role fallback changes the returned view while retaining the account’s saved selection. Access recovery reuses that selection, and saving fallback values does not replace it. An explicit select action changes it. Server executes no project code."
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2552,12 +2472,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Manage or export account-scoped project configurations
-      description: Mutations require the queried revision. Imports and path permission checks are atomic. Exports
-        contain all readable effective values, including sensitive fields. The last personal profile cannot be
-        deleted. publication.save manages an online author draft using its own revision, and
-        publication.preview filters an optional draft without saving. Both require the original owner or an
-        administrator. Client role fields never grant ownership.
+      summary: "Manage or export project configuration"
+      description: "Every mutation requires the queried revision. Imports and path-permission checks are atomic. Exports include readable effective values, including sensitive fields. The last personal profile cannot be deleted.\n\npublication.save updates an online official draft using its own revision; publication.preview filters a draft without saving. Official drafts require maintainer, owner, or system-administrator access. Client-supplied roles grant no permission."
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2600,7 +2516,7 @@ paths:
     put:
       tags:
         - Admin Projects
-      summary: Save server draft file
+      summary: "Save a source draft file"
       operationId: saveDraftFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2633,10 +2549,7 @@ paths:
       tags:
         - Admin Projects
       summary: Clone a project
-      description: Source download access includes published versions only. Cloning draft additionally requires
-        management access to the original project. Owning the copy never grants configuration publication
-        access to the original. The Server assigns a fresh target UUID; targetProjectName and projectId are
-        rejected.
+      description: "Guests can clone published source. Cloning a draft requires management access to the original project. Owning a copy grants no publication rights over the original. Server assigns a new UUID and rejects targetProjectName and projectId overrides."
       operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2665,7 +2578,7 @@ paths:
                       - projectId
       responses:
         "200":
-          description: Clone the result.
+          description: "Clone result."
           content:
             application/json:
               schema:
@@ -2674,12 +2587,8 @@ paths:
     put:
       tags:
         - Admin Projects
-      summary: Synchronize the default project name and presentation declarations
-      description: >
-        Synchronizes `name` and `projectInfo` from the local root `steamharness.json` to an already bound
-
-        project. Presentation declarations and platforms are display metadata and do not restrict source
-        upload or download.
+      summary: "Synchronize the project name and presentation"
+      description: "Synchronizes name and projectInfo from the local root steamharness.json to an already bound project. Presentation and platform declarations do not restrict source transfer."
       operationId: updateProjectInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2715,7 +2624,7 @@ paths:
     patch:
       tags:
         - Admin Projects
-      summary: Update project display information
+      summary: "Update project presentation"
       operationId: updateProjectDisplayInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2736,7 +2645,7 @@ paths:
                 - displayName
       responses:
         "200":
-          description: Update the results.
+          description: "Update result."
           content:
             application/json:
               schema:
@@ -2751,7 +2660,7 @@ paths:
         - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
-          description: Delete the result.
+          description: "Deletion result."
           content:
             application/json:
               schema:
@@ -2759,7 +2668,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 读取项目和有效权限 / Read project and effective access
+      summary: "Read project information and effective access"
       operationId: getProject
       parameters:
         - name: projectId
@@ -2769,7 +2678,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -2794,8 +2703,7 @@ paths:
       tags:
         - Admin Projects
       summary: Publish a project version
-      description: Publish the draft package version as an immutable source snapshot and update latest. Duplicate
-        versions return 409. Project code is never installed, built or loaded.
+      description: "Publishes the prepared root-manifest version as an immutable source snapshot and updates latest. Duplicate versions return 409. Server never installs dependencies, builds, or executes project code."
       operationId: publishProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2840,11 +2748,9 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: List Project Members
+      summary: "List project members"
       operationId: listprojectMembers
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage all roles; the last active owner is protected."
       parameters:
         - name: projectId
           in: path
@@ -2873,7 +2779,7 @@ paths:
             type: string
       responses:
         "200":
-          description: The owner/manager/writer/viewer member list of the current project.
+          description: "Direct and inherited guest, developer, maintainer, and owner roles, including their sources."
           content:
             application/json:
               schema:
@@ -2897,13 +2803,9 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: Set up project member roles
+      summary: "Set a project member role"
       operationId: setprojectMember
-      description: >
-        owner and manager can grant manager/writer/viewer; this interface does not support transferring
-        owners.
-
-        manager also cannot promote other members to owner.
+      description: "Maintainers can grant guest or developer and manage users whose effective role is below maintainer. Owners can manage every role. The last active owner is protected."
       parameters:
         - &a3
           name: projectId
@@ -2960,11 +2862,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: Delete Project Members
+      summary: "Remove a project member"
       operationId: removeprojectMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage all roles; the last active owner is protected."
       parameters:
         - *a3
         - name: userId
@@ -2974,7 +2874,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Delete the result.
+          description: "Deletion result."
           content:
             application/json:
               schema:
@@ -3005,8 +2905,7 @@ paths:
         - Projects & Groups
       summary: List project invitations
       operationId: listprojectInvitations
-      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only;
-        owners and system administrators can list every role.
+      description: "Maintainers can list guest and developer invitations only; owners and system administrators can list every role."
       parameters: &a4
         - name: projectId
           in: path
@@ -3040,14 +2939,9 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: Generate Project Invitation Link
+      summary: "Create a project invitation"
       operationId: createprojectInvitation
-      description: >
-        The owner / manager can generate a single valid invitation token that expires in 7 days. The owner
-        role cannot be granted by invitation.
-
-        API returns token only; the inviter needs to splice `${origin}/invite/${token}` and send the link to a
-        colleague.
+      description: "Creates a one-use invitation valid for seven days within the actor’s grantable roles. Maintainers invite guests or developers; owners can invite every role. Acceptance rechecks the inviter’s authority. Use the returned token to construct the local invitation link."
       parameters: *a4
       requestBody:
         required: true
@@ -3062,7 +2956,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3094,11 +2988,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: Withdrawal of unaccepted invitations
+      summary: "Revoke an unaccepted invitation"
       operationId: revokeprojectInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage all roles; the last active owner is protected."
       parameters:
         - name: projectId
           in: path
@@ -3112,7 +3004,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Undo the result.
+          description: "Revocation result."
           content:
             application/json:
               schema:
@@ -3141,13 +3033,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: View Invitation Details
-      description: >
-        before accepting the invitation, you must call this operation to check whether the token is still
-        valid. The token itself is the bear credential, and the interface can be accessed without logging in;
-
-        Users who are not logged in can see the joining information through the returned `project.name` and
-        `invitation.role`, and then be directed to the login.
+      summary: "Read invitation details"
+      description: "Check the token before acceptance. The invitation token is a temporary bearer credential; signed-out callers can read the project name and invited role before signing in."
       operationId: lookupProjectInvitation
       parameters:
         - name: token
@@ -3169,11 +3056,7 @@ paths:
       tags:
         - Admin Projects
       summary: Accept project invitation
-      description: >
-        The caller must be a logged in user. After successful acceptance, the user is added to the project
-        member table, and the corresponding role is determined by the invitation.
-
-        Each token can only be accepted once; a second request after acceptance returns a 409.
+      description: "Requires a signed-in account. Acceptance adds the invited role without reducing existing higher access. Each token is accepted once; repeat acceptance returns 409."
       operationId: acceptProjectInvitation
       parameters:
         - name: token
@@ -3236,7 +3119,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: List projects versions
+      summary: "List project versions"
       operationId: listProjectVersions
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -3259,7 +3142,7 @@ paths:
           in: query
           schema:
             type: string
-          description: The conversation aggregate is returned after being passed in.
+          description: "With conversationId, returns that conversation’s aggregate."
         - name: includeEntries
           in: query
           schema:
@@ -3273,15 +3156,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/TokenUsageDetailResponse"
         "501":
-          description: The current storage does not support the PostgreSQL KV inspection.
+          description: "The current storage backend does not support this usage query."
   /api/projects/{projectId}/source-share:
     get:
       tags:
         - Admin Projects
       summary: Read static metadata for a shared version
-      description: Requires sign-in and separate source download permission, including project-level source grants.
-        Reads an exact published version without loading project code or counting a download. Web share links
-        use /share/projects/{projectId}/{version} and contain no credentials or additional grants.
+      description: "Requires sign-in and project source-download access. Reads an exact published version without executing code or counting a download. Share links use /share/projects/{projectId}/{version} and carry no credentials or additional grants."
       operationId: getProjectSourceShare
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -3304,8 +3185,7 @@ paths:
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
-          description: 需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。 / Access required; data.requestUrl provides a
-            short-lived request link for guest membership.
+          description: "Access required; data.requestUrl provides a short-lived request link for guest membership."
           content:
             application/json:
               schema:
@@ -3366,7 +3246,7 @@ paths:
     put:
       tags:
         - Auth & Accounts
-      summary: PUT /api/auth/admin/users/{userId}/administrator
+      summary: "Set system-administrator status"
       operationId: setSystemAdministrator
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3388,7 +3268,7 @@ paths:
                 - isSystemAdmin
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3417,13 +3297,13 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: GET /api/projects/{projectId}/access-requests
+      summary: "List project access requests"
       operationId: listSourceAccessRequests
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
-          description: 维护者或所有者可列出项目访问申请。 / Maintainer or owner access required.
+          description: "Maintainer or owner access required."
           content:
             application/json:
               schema:
@@ -3433,7 +3313,7 @@ paths:
     patch:
       tags:
         - Admin Projects
-      summary: PATCH /api/projects/{projectId}/access-requests/{requestId}
+      summary: "Decide a project access request"
       operationId: resolveSourceAccessRequest
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3460,8 +3340,7 @@ paths:
                 - status
       responses:
         "200":
-          description: 批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。 / Approval adds a guest without lowering existing roles;
-            permissions and account status are checked in the transaction.
+          description: "Approval adds a guest without lowering existing roles; permissions and account status are checked in the transaction."
           content:
             application/json:
               schema:
@@ -3472,7 +3351,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: GET /api/project-access/{token}
+      summary: "Read an access-request entry point"
       operationId: getSourceAccessLink
       parameters:
         - name: token
@@ -3482,7 +3361,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 登录用户可见的来源项目摘要。
+          description: "Project summary visible to the signed-in caller."
           content:
             application/json:
               schema:
@@ -3494,7 +3373,7 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: POST /api/project-access/{token}/requests
+      summary: "Request project access"
       operationId: createSourceAccessRequest
       parameters:
         - name: token
@@ -3517,7 +3396,7 @@ paths:
                 - reason
       responses:
         "201":
-          description: 已创建或返回该用户唯一的 pending 申请。
+          description: "Returns the newly created or existing unique pending request for this account."
           content:
             application/json:
               schema:
@@ -3529,7 +3408,7 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: PUT /api/projects/{projectId}/group
+      summary: "Move a project to a group"
       operationId: transferProject
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3553,7 +3432,7 @@ paths:
                 - groupId
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3581,7 +3460,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: GET /api/groups
+      summary: "List accessible groups"
       operationId: listGroups
       parameters:
         - name: page
@@ -3615,7 +3494,7 @@ paths:
             $ref: "#/components/schemas/ProjectRole"
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3639,7 +3518,7 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: POST /api/groups
+      summary: "Create a group"
       operationId: createGroup
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters: []
@@ -3660,7 +3539,7 @@ paths:
                 - name
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3684,7 +3563,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: GET /api/groups/{groupId}
+      summary: "Read group details"
       operationId: getGroup
       parameters:
         - name: groupId
@@ -3694,7 +3573,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3718,7 +3597,7 @@ paths:
     patch:
       tags:
         - Projects & Groups
-      summary: PATCH /api/groups/{groupId}
+      summary: "Update a group"
       operationId: updateGroup
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3744,7 +3623,7 @@ paths:
               required: []
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3767,7 +3646,7 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: DELETE /api/groups/{groupId}
+      summary: "Delete an empty group"
       operationId: deleteGroup
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3778,7 +3657,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3807,7 +3686,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: GET /api/groups/{groupId}/members
+      summary: "List group members"
       operationId: listgroupMembers
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3838,7 +3717,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3862,7 +3741,7 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: PUT /api/groups/{groupId}/members/{userId}
+      summary: "Set a group member role"
       operationId: setgroupMember
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3890,7 +3769,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3921,7 +3800,7 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: DELETE /api/groups/{groupId}/members/{userId}
+      summary: "Remove a group member"
       operationId: removegroupMember
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -3933,7 +3812,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3962,7 +3841,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: GET /api/groups/{groupId}/invitations
+      summary: "List group invitations"
       operationId: listgroupInvitations
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters: &a9
@@ -3973,7 +3852,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -3998,7 +3877,7 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: POST /api/groups/{groupId}/invitations
+      summary: "Create a group invitation"
       operationId: creategroupInvitation
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters: *a9
@@ -4015,7 +3894,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -4047,7 +3926,7 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: DELETE /api/groups/{groupId}/invitations/{invitationId}
+      summary: "Revoke a group invitation"
       operationId: revokegroupInvitation
       description: Fixed roles and group inheritance apply. The server rechecks the current actor on every request.
       parameters:
@@ -4063,7 +3942,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "Request succeeded."
           content:
             application/json:
               schema:
@@ -4154,7 +4033,7 @@ components:
       type: apiKey
       in: cookie
       name: steamharness_auth_session
-      description: A httpOnly browser session established by password login or administrator key login.
+      description: "An HttpOnly browser session established through account or administrator-key sign-in."
   parameters:
     ProjectName:
       name: projectName
@@ -4208,7 +4087,7 @@ components:
       example: user-001
   responses:
     HarnessError:
-      description: steamharness standard error response.
+      description: "SteamHarness standard error response."
       content:
         application/json:
           schema:
@@ -4795,7 +4674,7 @@ components:
       type: string
       enum:
         - system.admin
-      description: 仅用于系统管理，不表示项目业务权限。 / System administration only.
+      description: "System administration only."
     AuthPrincipalKind:
       type: string
       enum:
@@ -5462,7 +5341,7 @@ components:
           type: string
           enum:
             - base64
-          description: when binary static resources are encoded in base64, they are content processed as UTF-8 text.
+          description: "Text files use UTF-8; binary assets are transported as Base64."
       required:
         - path
         - content
@@ -5514,10 +5393,7 @@ components:
         iconUrl:
           type: string
           format: uri
-          description: |
-            Optional image URL used instead of the icon token. New Desktop uploads use the
-            Server-generated `/project-card-images/...` WebP URL; existing external http(s)
-            values remain readable for backward compatibility.
+          description: "Optional legacy image URL retained for compatibility. Server Web and Studio display project avatars using icon, iconColor, and iconBackgroundColor."
         iconColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$
@@ -5584,7 +5460,7 @@ components:
           $ref: "#/components/schemas/ProjectInfoContract"
         ownerUserId:
           type: string
-          description: 历史创建者字段，不用于授权。 / Historical creator; never an authorization source.
+          description: "Historical creator; never an authorization source."
         visibility:
           $ref: "#/components/schemas/Visibility"
         createdByUserId:
@@ -6188,8 +6064,7 @@ components:
         - developer
         - maintainer
         - owner
-      description: 权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。 / Cumulative guest, developer,
-        maintainer and owner roles.
+      description: "Cumulative guest, developer, maintainer and owner roles."
     InvitationRole:
       $ref: "#/components/schemas/ProjectRole"
     ProjectInvitation:
@@ -6648,11 +6523,7 @@ components:
             - time
             - datetime
             - date-range
-          description: |
-            Shared form control hint. Date-related controls keep string values:
-            date uses YYYY-MM-DD, time uses HH:mm:ss, datetime uses local
-            YYYY-MM-DDTHH:mm:ss, and date-range uses inclusive
-            YYYY-MM-DD/YYYY-MM-DD. Date controls do not support panel=quick.
+          description: "Shared form control hint. Date-related controls keep string values: date uses YYYY-MM-DD, time uses HH:mm:ss, datetime uses local YYYY-MM-DDTHH:mm:ss, and date-range uses inclusive YYYY-MM-DD/YYYY-MM-DD. Date controls do not support panel=quick."
         panel:
           type: string
           enum:
@@ -6846,9 +6717,7 @@ components:
         - defaultConfigurationId
     ProjectConfigurationTemplate:
       type: object
-      description: Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names
-        are represented only by opaque deny hashes. The authenticated download validates source and attachment
-        hashes before caching outside project source.
+      description: "Version 3 freezes role policies and must be rejected by unsupported hosts. Version data is immutable and filtered, omits defaultValue, and treats arrays as indivisible. Excluded names are represented by opaque deny hashes.\n\nAuthenticated downloads verify source and attachment hashes before caching outside project source."
       properties:
         version:
           type: integer
@@ -7129,12 +6998,10 @@ components:
           type: boolean
         sourceHash:
           type: string
-          description: 当前所选源码的摘要；读取已发布版本不会要求草稿存在。 / Hash of the selected source; reading a published version does not
-            require a draft.
+          description: "Hash of the selected source; reading a published version does not require a draft."
         publicationRevision:
           type: integer
-          description: 仅开发者及以上读取草稿时提供，用于发布并发校验。 / Provided to developers and above when reading the draft for
-            publication concurrency checks.
+          description: "Provided to developers and above when reading the draft for publication concurrency checks."
         fieldCapabilities:
           type: object
           additionalProperties:
@@ -7207,9 +7074,7 @@ components:
         - configurations
     ProjectConfigurationAction:
       type: object
-      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create
-        takes optional name. Save merges typed values and removes overrides named in unset. Field edits use
-        field and optional old key. Import takes a complete document. Export optionally filters by id.
+      description: "Requests are limited to 1 MiB. Every mutation requires revision. Profile changes require id; create accepts an optional name. Save merges typed values and removes overrides named by unset. Field edits use field and an optional old key.\n\nImport accepts a complete document. Export may filter by id and always applies the current role. Fixed values and base names cannot change. Unauthorized batches are rejected atomically."
       properties:
         action:
           type: string
@@ -7286,12 +7151,7 @@ components:
         - url
     KanbanBridgeCall:
       type: object
-      description: >
-        The iframe generates the requestId and selects the operation from the fixed whitelist. The fields of
-        input are operation by
-
-        Decide; the server rejects additional project, scope, projectName, database path, or target control
-        fields.
+      description: "Relational operations require input.database, schemaHash, and a pinned binding. Knowledge operations require input.knowledgeBase. The host fixes account, project, and entry and checks grants and access revision. Runtime operations do not access data through this endpoint."
       properties:
         requestId:
           type: string
@@ -7340,7 +7200,7 @@ components:
         - type: object
           properties:
             data:
-              description: KV value, knowledge base result, null, or empty data for an operation with no return value.
+              description: "Relational or knowledge operation result, null for missing records, or empty data for operations without a return value."
     KanbanWorkspaceState:
       type: object
       properties:
@@ -7478,7 +7338,7 @@ components:
       properties:
         id:
           type: string
-          description: the optional document id. If omitted, the server is generated based on the title.
+          description: "Optional document ID; when omitted, Server derives it from the title."
         title:
           type: string
         markdown:
@@ -7852,10 +7712,10 @@ components:
               example: abcdef123456
             deploymentId:
               type: string
-              description: 可选的部署标识，同产品版本的不同部署可独立识别。 / Optional deployment identifier, independent of product version.
+              description: "Optional deployment identifier, independent of product version."
             docsPath:
               type: string
-              description: 当前语言的站内日志路径，仅允许以单个斜线开头的相对路径。 / Localized notes path within the documentation site.
+              description: "Localized notes path within the documentation site."
             components:
               type: object
               additionalProperties:
@@ -8050,7 +7910,7 @@ components:
           description: Safe code directory relative to the aggregate root. No traversal or absolute paths.
         entry:
           type: string
-          description: Module or built HTML path relative to root.
+          description: "Workflow and Conversation modules resolve from their entry source root. Kanban HTML resolves from the aggregate root."
         configuration: {type: string}
         databases:
           type: array

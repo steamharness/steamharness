@@ -1,21 +1,34 @@
 ---
 title: "getConfig"
-description: "Read a typed value from the immutable current project configuration."
+description: "Read the current run configuration without implicit environment lookup."
 ---
 
 # getConfig
 
-```ts
-steamharness.getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined
-```
+Use `steamharness.getConfig()` to read the current run's configuration snapshot. Values retain their native string, number, boolean, array, object, or `null` types.
 
-Returns a value from the current execution configuration without string conversion or trimming. Supported values include strings, numbers, booleans, arrays, objects and null. Missing keys and calls outside an execution scope return `undefined`. The generic type is a caller assertion; declarations and writes validate actual values. Nested values are frozen. `context.config` exposes the same values in executor, resolver and node contexts.
-
-Only own configuration keys are read. Names such as `toString` return a value only when explicitly configured and are subject to required-field validation.
+## Example
 
 ```ts
 const enabled = steamharness.getConfig<boolean>("enabled") ?? false;
 const token = steamharness.getConfig<string>("API_KEY");
 ```
 
-This API replaces business `getEnv`; it never reads process variables or project env files. See [Project configurations](/en/concepts/project-configuration) for declarations, storage, snapshots and import/export.
+## Signature
+
+```ts
+steamharness.getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined
+```
+
+## Return rules
+
+| Situation | Result |
+| --- | --- |
+| Field exists | Native value, without string conversion or whitespace trimming |
+| Missing field or run scope | `undefined` |
+| Array or object | Nested values are frozen |
+| Prototype name such as `toString` | Read only when explicitly configured as an own field; required-field validation still applies |
+
+The caller supplies the generic type; declarations and save validation determine the actual value type. Executors, parameter resolvers, and node `context.config` share the same snapshot.
+
+This API replaces business `getEnv` and reads neither process variables nor project env files. See [project configuration](/en/concepts/project-configuration) for declarations, storage, import, and export.

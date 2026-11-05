@@ -1,0 +1,54 @@
+---
+title: "CLI conversations, models, and tasks"
+description: "Select models and manage forks, queues, and durable Agent work."
+---
+
+# CLI conversations, models, and tasks
+
+Select models and manage forks, queues, and durable Agent work.
+
+Open a Conversation entry with `steamharness web . --entry <id>`, or use it in Studio. Model and resource actions still require their respective access.
+
+## User models and permissions
+
+Studio can inject user permission snapshots and updates into CLI Web, using a capability handshake for older CLIs. Projects inherit only with explicit `permissionPolicy: "inherit"`; an omitted policy still defaults to `workspace`. Standalone CLI does not persist this preference in this release, and `inherit` uses `auto` without host injection. Active durable work keeps its startup snapshot; subsequent input adopts updates at a safe idle boundary. See [User settings and permission inheritance](/en/core-api/user-settings).
+
+Quick menus bound to user models show model choices first and keep **Add model** available while loading or running work. Choices that cannot currently change remain disabled. With no available models, the control shows **Configure model** with setup guidance and opens model settings directly; adding a model restores the selection list. A model parameter named `inherit` is an ordinary model ID, not a permission inheritance marker; reset the model parameter to follow the user default.
+
+Model and effort use separate Quick controls in the default Agent and assistant. Model choices group built-ins above custom models, with Add model fixed at the bottom. Custom project parameter groups remain supported.
+
+CLI Web accepts host user model snapshots and updates. Bind a model parameter with `userSetting: { key: "agent.model", mode: "default" }` to open available choices before **Add model** opens Studio settings. Explicit choices become conversation overrides; resetting follows the user default. Entries may also use project model configuration APIs; standalone CLI does not persist Studio user models. Third-party keys are excluded from page state, ordinary history and exports, and durable sessions adopt changes after active work finishes. See [user settings](/en/core-api/user-settings#user-models-and-agents-without-connection-configuration).
+
+## Forking conversations
+
+The fork button below a response asks for confirmation, then shows creation and opening progress in a dialog. Success opens the branch automatically; failures display their reason. If creation succeeds but opening fails, the dialog identifies that result so you can open the saved branch from history. The branch contains history up to and including the selected response, excluding later messages.
+
+Creating a branch only changes saved conversation records: it does not call AI, rerun the project or resume old tasks, and works when System AI is unconfigured or unavailable. The original conversation is preserved. Model validation and execution begin when you send new input in the branch.
+
+## Agent batches and pending user messages
+
+The **Errors** filter in Studio Trace collects run, node and tool failures and model retry reasons. Existing diagnostics remain available after a successful retry and can be filtered by conversation and turn. Execution failures do not occupy the operation alert above the composer. Parameter validation, attachment and resource-opening errors remain in that alert; use **×** to hide them. Dismissing a parameter error does not bypass validation.
+
+Durable Agent conversations show a **Subagents** entry beside “Responding…” with running, queued, failed and completed counts for the current conversation. Click to expand tasks, then expand an item to see its role, phase, progress, current activity, result and error. **Open child conversation** opens the corresponding independent conversation. Both anonymous delegations and named project roles are supported; tool calls, other conversations and independent forks are excluded from the counts.
+
+The entry updates from task snapshots, remains after the parent reply, and preserves expansion across subsequent replies. Offline snapshots are identified and child navigation stays disabled until reconnection. Studio and standalone CLI Web share this interface; Studio Tasks/Trace retains full task management.
+
+Each subagent row shows elapsed time and token usage on the right, with status in its icon and expanded details. Timing starts at execution, excludes the admission queue and freezes when settled.
+
+Disconnection or interruption freezes the last snapshot; legacy records without reliable timing show “—”. **Conversation usage** below the latest response includes all committed usage of the main conversation and its owned subagents and keeps updating during background work, including failed retries and spend before cancellation. Hiding a child does not reduce the total, and reopening does not add it again. Independent forks have separate totals; the answer's own turn usage remains separate.
+
+Disabling token-usage display in the project also hides these token statistics.
+
+Work in the `needs_review` phase, or with a `MEDIA_RESULT_UNKNOWN` or `BODY_RESULT_UNKNOWN` outcome, shows **Awaiting verification** in its icon and details in a warning color, retaining its reason and unfinished progress. The child conversation shows the same task status and progress above its messages. A finished reply or a saved draft does not establish business completion. Verified work shows as completed, cancellation stays stopped, and independent forks do not inherit the source task banner. Offline status represents the last known snapshot.
+
+Tasks shows roles, sources, phases, queued state and completed/target counts. Open child conversations, stop an item, retry failed work or stop a batch through Core control. Business queues and pending user messages are stored separately. Ordinary messages entered while busy remain in the host until a successful user turn finishes, then submit one at a time. Background reports never advance the user queue. Failure, cancellation and forced exit preserve and pause pending messages.
+
+Reopening unfinished business work does not rerun its batch automatically: explicit input first clears the old tree, and project recovery tools resume the batch with drafts and verified receipts intact.
+
+With input queuing enabled, send consecutive messages without waiting for earlier delivery confirmations. New input after Stop submits directly; older queued messages wait for a successful turn before continuing. Clicking **Send now** or × immediately removes that pending row. Failed actions restore the original message with a retry control. Withdrawing local pending input while a new conversation is being created prevents it from being sent when creation finishes.
+
+Composer **Stop** cancels the current conversation's entire execution tree, including background batches and subagents, while excluding independent forks. Background work keeps Stop available. Unexpected execution worker crashes first recover the existing tree under the current host. Queued input stays paused during recovery and successful replies remain successful. After automatic recovery is exhausted or the host itself is forcibly closed, explicit input first clears the old tree and adopts updated configuration at an idle boundary; project recovery tools can then resume business batches. Use `cancel scope=foreground` in Tasks/Trace when only foreground work should stop.
+
+A fork is an independent new conversation with its own Server session, execution host, lease and configuration. Model, reasoning effort, Plan mode and tool permissions can be changed independently. Stopping, deleting or reopening the source does not stop or delete its branches. Managed attachments referenced in branch history are copied into the new conversation. Tasks, approvals, retries, usage and control receipts from the source execution are not imported. Legacy shared-host and SQLite branches are not migrated. Project-shared databases remain governed by project configuration and are not copied with a conversation. A source link remains below the title.
+
+Fork and child navigation requires a matching request from the current page and conversation. Late, duplicate or unrelated receipts never switch conversations automatically. Subagent detail views remain part of their owning execution tree; user-created branches are managed as independent conversations.

@@ -1,0 +1,68 @@
+---
+title: "编写一个 Conversation"
+description: "接收消息、保存历史并输出连续对话。"
+---
+
+# 编写一个 Conversation
+
+Conversation 每收到一条消息就运行一次执行器，适合需要连续上下文的助手。先创建轮次对话模板并完成项目设置。
+
+## 不调用模型的对话
+
+轮次对话模板读取已有消息、输出轮次编号，再保存本轮输入与回复：
+
+```ts
+import type { RuntimeApi } from 'steamharness/runtime-api';
+
+const steamharness = (globalThis as unknown as { steamharness: RuntimeApi }).steamharness;
+const answer = steamharness.createOutputNode<{ message: string }, unknown>({
+  name: 'round-answer',
+  async *stream(input, context) {
+    const history = await context.conversation.getValue();
+    const round = history.messages.filter(message => message.role === 'assistant').length + 1;
+    const text = `Round ${round}: ${input.message}`;
+    yield steamharness.createOutputItemChunk({ type: 'output_item_start', item: { id: 'answer', title: 'Output', contentType: 'markdown', content: '', collapsed: false } });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_delta', itemId: 'answer', delta: text });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_end', itemId: 'answer' });
+    await context.conversation.appendMessage({ role: 'user', content: input.message });
+    await context.conversation.appendMessage({ role: 'assistant', content: text });
+  },
+  format: stream => steamharness.createOutputPayload({ items: stream.items }),
+});
+const conversation = steamharness.defineProject<{ message: string }, unknown>({
+  name: 'round-conversation',
+  async run(input, context) { return (await steamharness.runStreamNode(answer, input, context)).output; },
+});
+export const executor = steamharness.defineExecutor({
+  projectType: 'conversation', workflow: conversation,
+  createInput: context => ({ message: steamharness.parseConversationDefaultInputArgs(context.args).message }),
+});
+```
+
+1. 打开运行页面，发送 `你好`。
+2. 确认回复包含 `Round 1` 和输入文字。
+3. 再发一条消息，确认轮次变为 `Round 2`。
+
+这个示例直接生成文本，不需要模型凭据。用户消息和助手消息由示例显式追加到会话中。
+
+
+![同一会话连续接收两条消息，输出 Round 1 与 Round 2。](../../images/studio/zh-cn/conversation.png)
+
+同一会话连续接收两条消息，输出 Round 1 与 Round 2。
+
+## 输入与历史
+
+| 部分 | 用途 |
+| --- | --- |
+| `parseConversationDefaultInputArgs` | 从执行器参数读取本轮消息 |
+| `context.conversation.getValue()` | 读取当前会话快照 |
+| `appendMessage()` | 保存一条用户或助手消息 |
+| 输出 item chunk | 在界面中逐步展示内容 |
+
+Conversation 执行器使用 `workflow` 与 `createInput` 字段，不声明 Workflow 的 `entrypoints`。聚合层仍可通过 `--entry` 选择 Conversation 入口，但不接受 Workflow 内部的 `--entrypoint`。
+
+## 改为模型助手
+
+需要工具调用、权限、上下文压缩或持久恢复时，使用 [defineAgentConversationExecutor](/core-api/define-agent-conversation-executor) 和 [createAgent](/core-api/create-agent)。先配置可用模型，再选择工具及审批策略。
+
+会话和配置的隔离规则见[数据库与会话](/concepts/database-and-conversation)。运行中的队列与子任务操作见[小助手与持久任务](/guides/studio/assistant)。

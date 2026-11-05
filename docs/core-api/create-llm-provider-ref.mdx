@@ -5,7 +5,22 @@ description: "创建延迟解析的 LLM provider 引用。"
 
 # createLLMProviderRef
 
-`steamharness.createLLMProviderRef()` 创建一个 provider 引用对象。LLM 节点执行时会通过 `getLLMProvider` 按节点名、provider id、绑定表和 fallback 解析出实际 provider。
+用 `steamharness.createLLMProviderRef()` 声明延迟解析的 Provider。节点运行时才由 `getLLMProvider` 根据节点名、Provider ID、绑定与 fallback 选择实际连接。
+
+## 示例
+
+```ts
+const defaultProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
+});
+
+const llmNode = steamharness.createLLMNode({
+  provider: defaultProvider,
+  mapInput(input) {
+    return { prompt: input.message };
+  },
+});
+```
 
 ## 签名
 
@@ -48,21 +63,6 @@ steamharness.createLLMProviderRef(
 | workflow 定义 | `id`、`fallback` | `LLMProviderRef` |
 | LLM 节点执行 | `LLMProviderRef`、`NodeContext`、`nodeName` | `LLMProvider` |
 | provider 调用 | `LLMProvider`、`LLMChatInput` | LLM 输出 |
-
-## 示例
-
-```ts
-const defaultProvider = steamharness.createLLMProviderRef("default", () => {
-  return steamharness.createLLMProviderFromConfig();
-});
-
-const llmNode = steamharness.createLLMNode({
-  provider: defaultProvider,
-  mapInput(input) {
-    return { prompt: input.message };
-  },
-});
-```
 
 ## 常见场景
 

@@ -5,12 +5,36 @@ description: "Execute the if / else-if / else branch node and write the branch s
 
 # runIf
 
-`workflow.runIf()` is a built-in branch execution node. It checks multiple branch conditions in order, and executes the corresponding `run` after hitting the first branch, otherwise it executes `else`. The runtime emits start/finish events for `branch-node`, and shared runtime UI Diagram displays it as an expandable branch path.
+Use `steamharness.runIf()` for a traceable conditional branch. Conditions are checked in order; the first match runs, otherwise `else` runs. Reports record the choice, and Diagram shows an expandable branch path.
+
+## Example
+
+```ts
+const loadout = await steamharness.runIf(seed, context, {
+  name: "Weapon branch",
+  branches: [
+    {
+      label: "high intensity assault",
+      condition: (mission) => mission.intensity >= 0.66,
+      run: (mission) => ({ ...mission, weapon: "ak47", route: "assault" }),
+    },
+    {
+      label: "stealth close quarter",
+      condition: (mission) => mission.stealth >= 0.58,
+      run: (mission) => ({ ...mission, weapon: "mp7", route: "stealth" }),
+    },
+  ],
+  else: {
+    label: "balanced rifle",
+    run: (mission) => ({ ...mission, weapon: "m4a1", route: "support" }),
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.runIf<Input, Output>(
+steamharness.runIf<Input, Output>(
   input: Input,
   context: RunContext,
   options: {
@@ -49,7 +73,7 @@ workflow.runIf<Input, Output>(
 | `label` |The branch name. A business language, such as `high intensity assault`, is recommended.|
 | `description` |Optional Description, writes a structure report and a run report.|
 | `condition` |Returns a Boolean value; executes in array order and stops checking after a hit.|
-| `run` |The branch logic executed after a hit. You can continue to call `workflow.runNode`, `workflow.runStreamNode`, or nested `workflow.runIf`.|
+| `run` |The branch logic executed after a hit. You can continue to call `steamharness.runNode`, `steamharness.runStreamNode`, or nested `steamharness.runIf`.|
 
 ## Operation Report
 
@@ -66,30 +90,6 @@ workflow.runIf<Input, Output>(
 ```
 
 `branchIndex` starts at `0`; goes `else` at `-1`.
-
-## Example
-
-```ts
-const loadout = await workflow.runIf(seed, context, {
-  name: "Weapon branch",
-  branches: [
-    {
-      label: "high intensity assault",
-      condition: (mission) => mission.intensity >= 0.66,
-      run: (mission) => ({ ...mission, weapon: "ak47", route: "assault" }),
-    },
-    {
-      label: "stealth close quarter",
-      condition: (mission) => mission.stealth >= 0.58,
-      run: (mission) => ({ ...mission, weapon: "mp7", route: "stealth" }),
-    },
-  ],
-  else: {
-    label: "balanced rifle",
-    run: (mission) => ({ ...mission, weapon: "m4a1", route: "support" }),
-  },
-});
-```
 
 ## Diagram
 

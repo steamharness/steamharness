@@ -5,12 +5,40 @@ description: "定义 workflow 本体、输入输出类型和主执行函数。"
 
 # defineProject
 
-`workflow.defineProject<Input, Output>()` 用来定义业务流程本体。它只返回传入的定义对象，真正的执行由本地 executor 或 CLI 完成。
+用 `steamharness.defineProject<Input, Output>()` 声明业务流程的名称和 `run` 函数。它原样返回定义对象；实际运行由执行器或本地 CLI 发起。
+
+## 示例
+
+```ts
+import type { RunPayload } from "steamharness";
+
+interface Input {
+  message: string;
+}
+
+interface Output extends RunPayload {
+  items: Array<{
+    id: string;
+    title: string;
+    content: unknown;
+    contentType?: "markdown" | "text" | "json" | "audio";
+    collapsed?: boolean;
+  }>;
+}
+
+export const exampleProject = steamharness.defineProject<Input, Output>({
+  name: "example",
+  async run(input, context) {
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    return steamharness.runNode(outputNode, parsed, context);
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.defineProject<Input, Output>(
+steamharness.defineProject<Input, Output>(
   workflow: Definition<Input, Output>,
 ): Definition<Input, Output>
 ```
@@ -26,7 +54,7 @@ workflow.defineProject<Input, Output>(
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `name` | `string` | workflow 的稳定名称。本地运行界面、日志和结构分析都会使用。 |
-| `run` | `(input, context) => Output` | 主执行函数。通常在这里调用 `workflow.runNode` 或 `workflow.runStreamNode`。 |
+| `run` | `(input, context) => Output` | 主执行函数。通常在这里调用 `steamharness.runNode` 或 `steamharness.runStreamNode`。 |
 
 ## `run` 入参
 
@@ -50,38 +78,10 @@ workflow.defineProject<Input, Output>(
 | workflow `run` | `Input`、`RunContext` | `Output` |
 | runtime report | `Output` | 标准执行报告和最终 payload |
 
-## 示例
-
-```ts
-import type { RunPayload } from "steamharness";
-
-interface Input {
-  message: string;
-}
-
-interface Output extends RunPayload {
-  items: Array<{
-    id: string;
-    title: string;
-    content: unknown;
-    contentType?: "markdown" | "text" | "json" | "audio";
-    collapsed?: boolean;
-  }>;
-}
-
-export const exampleProject = workflow.defineProject<Input, Output>({
-  name: "example",
-  async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    return workflow.runNode(outputNode, parsed, context);
-  },
-});
-```
-
 ## 注意事项
 
 | 规则 | 说明 |
 | --- | --- |
-| 不要从 `"steamharness"` 导入 runtime API | 业务 workflow 由平台注入全局 `workflow`。 |
+| 不要从 `"steamharness"` 导入 runtime API | 业务 workflow 由平台注入全局 `steamharness`。 |
 | `Output` 需要继承 `RunPayload` | 成功时统一返回 `errCode: 0`、`errMessage: ""`。 |
 | 异常会被 runtime 包装 | `run` 中抛出的未知错误会转换成 `HarnessError` 并进入执行报告。 |

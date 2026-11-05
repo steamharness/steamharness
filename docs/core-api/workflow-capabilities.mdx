@@ -5,7 +5,7 @@ description: "把项目与知识库、数据库、宿主配置和 Conversation �
 
 # 工作流能力工具
 
-Core 内置「工作流能力」工具，把项目跟它周围的东西接起来。每个能力只描述一次——一份 JSON Schema 加一个执行函数——再渲染成两种形态：给 [createAgent](./create-agent.mdx) 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边对模型呈现的工具名、描述和参数 schema 完全一致。
+用工作流能力工具访问项目周边的知识库、数据库、宿主配置和资源卡片。每项能力共用一份 JSON Schema 和执行函数，既可提供原生 Agent 工具，也可作为 MCP 服务，工具名、描述和参数保持一致。
 
 | 能力 | MCP 服务 id | 工具 id |
 | --- | --- | --- |
@@ -13,6 +13,26 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
 工具 id 是稳定的：宿主按它授权、审批和恢复，所以不要改名。
+
+## 示例
+
+```ts
+const approval = steamharness.createToolApprovalGate();
+
+const node = steamharness.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    return steamharness.createProjectCapabilityTools({
+      context,
+      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+    });
+  },
+});
+```
+
+工具必须在 executor 的 `tools` 里声明（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。
+
+知识库工具参数必须指定 `knowledgeBase` alias；宿主按该入口的声明与有效授权校验，不再有默认项目数据库。资源卡片和 Kanban 方法目标同时传递 `projectId + entryId`。
 
 ## 签名
 
@@ -28,7 +48,7 @@ const server: Server = await steamharness.createProjectCapabilityServer(toolId, 
 });
 
 const result: unknown = await steamharness.runProjectCapabilityAction(toolId, context, args);
-const toolIds: string[] = workflow.listProjectCapabilityToolIds();
+const toolIds: string[] = steamharness.listProjectCapabilityToolIds();
 ```
 
 | 成员 | 说明 |
@@ -80,7 +100,11 @@ return {
 };
 ```
 
-`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，知识库文档使用独立的 `knowledgeBase` 别名及 `documentId`。宿主在打开时重新校验目标权限。
+`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；
+
+已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 知识库调用仍指向小助手项目。
+
+浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，知识库文档使用独立的 `knowledgeBase` 别名及 `documentId`。宿主在打开时重新校验目标权限。
 
 ```json
 {
@@ -101,23 +125,3 @@ return {
 Kanban 和 project 卡片可以使用 Studio Control `get_configurations` 返回的 ID 设置 `target.configurationId`。指定 ID 只预览该配置，不切换当前配置；省略 ID 时使用打开预览时的当前配置。配置删除后报告不可用。参见[项目配置](/concepts/project-configuration)。
 
 固定预览区四周有边框，底部手柄支持拖动和键盘调整高度，最高占对话内容区的 `50%`。高度按当前客户端的会话保存，容器缩小时自动遵守上限；收起预览后只保留标题。
-
-## 示例
-
-```ts
-const approval = steamharness.createToolApprovalGate();
-
-const node = steamharness.createAgentNode({
-  provider: "anthropic",
-  async createTools(context) {
-    return steamharness.createProjectCapabilityTools({
-      context,
-      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
-    });
-  },
-});
-```
-
-工具必须在 executor 的 `tools` 里声明（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。
-
-知识库工具参数必须指定 `knowledgeBase` alias；宿主按该入口的声明与有效授权校验，不再有默认项目数据库。资源卡片和 Kanban 方法目标同时传递 `projectId + entryId`。

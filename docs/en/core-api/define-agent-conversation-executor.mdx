@@ -5,17 +5,30 @@ description: "Create a complete Conversation Agent executor for embedding hosts 
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` creates a complete Conversation Agent executor for embedding hosts and tests. Project entrypoints keep an inline `workflow.defineExecutor({...})` with `conversation`, `tokenUsage`, and `tools`. When its workflow comes from `workflow.createAgentConversationProject(...)`, Core inherits the built-in parameters and resolver automatically.
+Hosts and tests can construct a complete Conversation Agent executor with `steamharness.defineAgentConversationExecutor()`. Project entry files should use an inline `defineExecutor({...})` declaration with `conversation`, `tokenUsage`, and `tools`, and reference `createAgentConversationProject(...)` from the `workflow` field.
 
 The helper saves an embedding host from implementing streaming, approvals, compaction, or output-item assembly. Projects can reuse the underlying workflow and input implementation while keeping their declarations visible to the host.
 
-
 The permission menu contains `read-only`, `workspace`, and `auto`. Core projects follow Project Assistant: permissions bind to the user setting with `userSetting: { key: "agent.permissionPolicy", mode: "fixed" }`; hostless user settings use `auto`. An explicit `permissionPolicy` supplies a project default. Use `paramOptions.fields.permissionPolicy` to customize the binding, hide the field, or fix its actual value. See [User settings](/en/core-api/user-settings).
+
+## Example
+
+For an embedding host or test:
+
+```ts
+const agentExecutor = steamharness.defineAgentConversationExecutor({
+  projectName: "Pi",
+  executorName: "pi",
+  outputItemId: "pi-answer",
+  provider: "anthropic",
+  effort: "high",
+});
+```
 
 ## Signature
 
 ```ts
-workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
+steamharness.defineAgentConversationExecutor(options?: AgentProjectOptions):
   ConversationExecutorDefinition<AgentInput, AgentOutputPayload>
 ```
 
@@ -59,28 +72,17 @@ Output is an `AgentOutputPayload`, and the turn's user message and assistant ans
 
 Two exceptions: a turn that only called tools and produced no text appends no empty assistant message, and a turn carrying `hostInput` (the OpenAI/Responses gateway) appends nothing at all, because the gateway keeps that history itself — the same arrangement the built-in Conversation project makes.
 
-**Pi Durable preserves multi-turn context and unfinished tasks.** Core uses Server PostgreSQL tables keyed by account, project, entry, conversation and `sessionKey`, committing messages, tool intents and results, approval waits and usage identities. The same `runId` resumes the same request; completed requests reconstruct only their own output. Old KV transcripts are not read, and storage failures stop execution. Use different session keys for different agent nodes. Gateway runs carrying `hostInput` use memory by default; see [createAgentNode](./create-agent-node.mdx).
+Pi Durable preserves multi-turn context and unfinished tasks. Nodes use the host-injected runtime repository by `conversationId` and `sessionKey`. CLI and Studio default to local SQLite; a trusted host can explicitly select Server persistence.
+
+Checkpoints commit messages, tool intents and results, approval waits, and usage identities. The same `runId` resumes the same request; completed requests reconstruct only their own output. Use distinct `sessionKey` values for distinct Agent nodes. Gateway runs with `hostInput` default to memory.
+
+Old KV transcripts are not read. Storage failures stop execution instead of switching backends. See [createAgentNode](./create-agent-node.mdx) and [runtime storage](./runtime-storage.mdx).
 
 When `defineExecutor` selects a `createAgentConversationProject` as its `workflow` or `coreAgent`, both runtime and static structure reports inherit `conversation.recovery: { enabled: true }` while preserving project presentation settings. With session or createSession, durable is inherited too. Reopening CLI Web / Studio with business tasks pauses the batch and user queue. Explicit input clears the old tree; the project explicitly resumes its batch. Ordinary conversations recover with the original `runId`. Only a successful user turn advances queued input; background reports never release the queue.
 
 > **The answer item's id must equal `conversation.openai.outputItemId`.** The OpenAI/Responses adapters look that answer up **by id** in `report.outputs[].output.items` — the local gateway and CLI `__openai-responses-runner` all do — and a mismatch fails the run with "did not produce output item".
 
 That item is produced by a **host-driven run** only, since the text read back by id has to be the whole turn. An ordinary conversation run writes its text as `partType: "text"` rows — one per run of text between two activity rows, where it was spoken — and joins them back into the conversation message.
-
-## Example
-
-For an embedding host or test:
-
-```ts
-const agentExecutor = workflow.defineAgentConversationExecutor({
-  projectName: "Pi",
-  executorName: "pi",
-  outputItemId: "pi-answer",
-  provider: "anthropic",
-  effort: "high",
-});
-```
-
 
 ## Project parameter inheritance and customization
 
@@ -91,7 +93,7 @@ Executors using a Core workflow can omit `params` and `resolveParams`. For a bus
 `fields` supports `defaultValue`, `userSetting` (`null` clears a binding), `visible`, `fixedValue`, `label`, `description`, and `options`. Set a field to `false` to remove it. `groups` rearranges Quick/Auxiliary groups by field name; unassigned fields keep their original group. `fixedValue` replaces bindings and defaults and is enforced during input construction and at the Core execution boundary. Visibility controls presentation; add `fixedValue` to prevent overrides. An explicit default clears the user setting binding.
 
 ```ts
-const agentProject = workflow.createAgentConversationProject({
+const agentProject = steamharness.createAgentConversationProject({
   modelSource: "project",
   paramOptions: {
     fields: {
@@ -104,13 +106,12 @@ const agentProject = workflow.createAgentConversationProject({
   },
 });
 
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: "conversation",
   workflow: agentProject,
-  createInput(context) { return workflow.createAgentProjectInput(context); },
+  createInput(context) { return steamharness.createAgentProjectInput(context); },
 });
 ```
-
 
 ## Skill roots and host previews
 

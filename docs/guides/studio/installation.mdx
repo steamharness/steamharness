@@ -1,0 +1,58 @@
+---
+title: "安装与启动 Studio"
+description: "准备源码运行环境并启动工作站。"
+---
+
+# 安装与启动 Studio
+
+当前文档使用 Studio 的源码启动方式。先准备 Node 和原生构建工具，再安装并构建工作站。
+
+## 环境要求
+
+| 工具 | 要求 |
+| --- | --- |
+| Node.js | 24.18.0 或更新的 24.x |
+| npm | 11 或 12 |
+| Git、curl | 用于源码、子模块和下载 |
+| 原生编译工具 | macOS 使用 Xcode Command Line Tools；其他平台按 VS Code 源码构建要求准备 |
+
+## 启动桌面工作站
+
+在开源仓的 `studio` 目录中执行：
+
+```sh
+npm ci
+npm run setup
+npm run build
+npm run dev
+```
+
+`setup` 安装所需依赖并准备扩展。首次桌面启动会下载所需 Electron。也可通过 `npm run dev -- <项目目录>` 打开已有项目。
+
+源码环境需要访问包仓库与下载源。发生安装或构建错误时，先修复终端报告的问题，再重新运行对应步骤。
+
+## 浏览器工作站
+
+```sh
+npm run dev:web
+```
+
+命令输出本地访问地址；此入口用于本地开发。文件和终端位于运行该服务的机器。Server 的浏览器管理页面另见 [Server Web](/guides/server/overview)。
+
+## 切换显示语言
+
+需要简体中文界面时，在扩展中安装 **Chinese (Simplified) Language Pack**（`MS-CEINTL.vscode-language-pack-zh-hans`），执行 **Configure Display Language** 选择简体中文并重启。桌面与浏览器工作站分别管理扩展，需分别配置。
+
+## 更新后重启
+
+退出应用后重新运行启动命令。启动器会应用内核补丁并检查源码、依赖和环境指纹，有变化时重建；仅重载应用窗口不会执行这一步。
+
+构建失败会停止启动。排除错误后重试，不应继续使用未更新的构建判断新功能。
+
+## 可选语音依赖
+
+默认跳过 Foundry Local / ONNX 的 NuGet 下载。这些库用于上游聊天的本地语音听写，编辑器和 Workflow 功能不依赖它们。
+
+需要本地语音听写时，设置 `FOUNDRY_LOCAL_SKIP_INSTALL=0` 后重新执行 `npm run setup`，并确认对应 NuGet 下载源可访问。其他原生依赖仍按正常流程安装。
+
+启动成功后，跟随[快速开始](/guides/quickstart)创建第一个项目。

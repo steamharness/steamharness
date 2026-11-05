@@ -5,12 +5,40 @@ description: "Define a workflow body, its input and output types, and its main e
 
 # defineProject
 
-Use `workflow.defineProject<Input, Output>()` to define a business workflow. It returns the definition object unchanged; an executor or local CLI runtime performs the actual execution.
+Declare a workflow name and `run` function with `steamharness.defineProject<Input, Output>()`. It returns the definition unchanged; an executor or local CLI initiates execution.
+
+## Example
+
+```ts
+import type { RunPayload } from "steamharness";
+
+interface Input {
+  message: string;
+}
+
+interface Output extends RunPayload {
+  items: Array<{
+    id: string;
+    title: string;
+    content: unknown;
+    contentType?: "markdown" | "text" | "json" | "audio";
+    collapsed?: boolean;
+  }>;
+}
+
+export const exampleProject = steamharness.defineProject<Input, Output>({
+  name: "example",
+  async run(input, context) {
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    return steamharness.runNode(outputNode, parsed, context);
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.defineProject<Input, Output>(
+steamharness.defineProject<Input, Output>(
   workflow: Definition<Input, Output>,
 ): Definition<Input, Output>
 ```
@@ -26,7 +54,7 @@ workflow.defineProject<Input, Output>(
 | Field | Type | Description |
 | --- | --- | --- |
 | `name` | `string` | A stable workflow name used by local runtime UI, logs, and structural analysis. |
-| `run` | `(input, context) => Output` | The main execution function. It usually calls `workflow.runNode` or `workflow.runStreamNode`. |
+| `run` | `(input, context) => Output` | The main execution function. It usually calls `steamharness.runNode` or `steamharness.runStreamNode`. |
 
 ## `run` arguments
 
@@ -49,34 +77,6 @@ workflow.defineProject<Input, Output>(
 | Executor | CLI arguments or form values | `Input` |
 | Workflow `run` | `Input` and `RunContext` | `Output` |
 | Runtime report | `Output` | Standard execution report and final payload |
-
-## Example
-
-```ts
-import type { RunPayload } from "steamharness";
-
-interface Input {
-  message: string;
-}
-
-interface Output extends RunPayload {
-  items: Array<{
-    id: string;
-    title: string;
-    content: unknown;
-    contentType?: "markdown" | "text" | "json" | "audio";
-    collapsed?: boolean;
-  }>;
-}
-
-export const exampleProject = workflow.defineProject<Input, Output>({
-  name: "example",
-  async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    return workflow.runNode(outputNode, parsed, context);
-  },
-});
-```
 
 ## Notes
 

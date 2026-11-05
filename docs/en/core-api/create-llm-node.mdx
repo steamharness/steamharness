@@ -5,16 +5,39 @@ description: "Create a non-streaming LLM invocation node and map the business in
 
 # createLLMNode
 
-`workflow.createLLMNode()` Creates a one-time LLM invocation node. When the node executes, it will first parse the provider, then call `provider.chat(llmInput)`, and finally convert the LLM output into business payload through `mapOutput`.
+Use `steamharness.createLLMNode()` for a non-streaming model call. The node resolves its provider and calls `provider.chat(llmInput)`. Convert the reply to a business payload with `mapOutput` when needed.
+
+## Example
+
+```ts
+const llmNode = steamharness.createLLMNode<ParsedInput, AnswerPayload>({
+  name: "answer",
+  provider: steamharness.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      system: "You answer briefly.",
+      prompt: input.message,
+      temperature: 0.2,
+    };
+  },
+  mapOutput(output) {
+    return {
+      errCode: 0,
+      errMessage: "",
+      content: output.text,
+    };
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.createLLMNode<Input>(
+steamharness.createLLMNode<Input>(
   options: LLMNodeOptions<Input, LLMChatOutput>,
 ): BaseNode<Input, LLMChatOutput>
 
-workflow.createLLMNode<Input, Output>(
+steamharness.createLLMNode<Input, Output>(
   options: LLMNodeOptions<Input, Output> & {
     mapOutput: LLMOutputMapper<Input, Output>;
   },
@@ -92,26 +115,3 @@ When an executor configures `tokenUsage: { enabled: true }`, the provider resolv
 | `mapInput` | `Input`, `NodeContext` | `LLMChatInput` |
 | provider `chat` | `LLMChatInput` | `LLMChatOutput` |
 | `mapOutput` | `LLMChatOutput`, `Input`, `NodeContext` | `Output` |
-
-## Example
-
-```ts
-const llmNode = workflow.createLLMNode<ParsedInput, AnswerPayload>({
-  name: "answer",
-  provider: workflow.createLLMProviderRef("default"),
-  mapInput(input) {
-    return {
-      system: "You answer briefly.",
-      prompt: input.message,
-      temperature: 0.2,
-    };
-  },
-  mapOutput(output) {
-    return {
-      errCode: 0,
-      errMessage: "",
-      content: output.text,
-    };
-  },
-});
-```

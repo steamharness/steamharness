@@ -5,14 +5,14 @@ description: "创建工具审批 gate，按 executor.tools 与运行策略控制
 
 # createToolApprovalGate
 
-`workflow.createToolApprovalGate()` 创建一个工具审批 gate。Workflow 在具体 entrypoint 的 `tools` 中声明可调用工具，Conversation 继续在 executor 的 `tools` 中声明，再用 gate 在真正调用工具前检查运行策略。
+在调用工具前，用 `steamharness.createToolApprovalGate()` 检查工具是否启用、是否需要批准。Workflow 在当前操作的 `tools` 中注册工具；Conversation 在执行器的 `tools` 中注册。
 
 工具有三种结果：未注册会输入校验失败；已禁用会拒绝调用；启用但未自动批准时，会复用用户输入节点的等待/恢复协议生成审批请求——**只有 plan 模式的 agent 回合会停下来询问**。build 回合执行的是用户已经批准的计划，因此其中未自动批准的工具直接执行。
 
 ## 签名
 
 ```ts
-workflow.createToolApprovalGate(): ToolApprovalGate
+steamharness.createToolApprovalGate(): ToolApprovalGate
 ```
 
 ```ts
@@ -40,11 +40,11 @@ interface ToolApprovalGate {
 所选 Workflow entrypoint 或 Conversation executor 通过 `tools` 声明工具默认策略。运行时只接受该执行配置已声明工具的覆盖策略，未知工具会被忽略。
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<Input, OutputPayload>({
+    steamharness.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
       workflow: toolProject,
@@ -90,7 +90,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 `wrap(name, fn, options)` 返回一个新函数。调用新函数时，第一个参数必须是 `NodeContext`，gate 会先完成审批，再把剩余参数传给原始函数。
 
 ```ts
-const approval = workflow.createToolApprovalGate();
+const approval = steamharness.createToolApprovalGate();
 
 const searchWithApproval = approval.wrap(
   "search",
@@ -121,7 +121,7 @@ const result = await searchWithApproval(context, input.query);
 
 模式由 agent 运行时按本回合决定，并写在 `context.toolPermissions.requiresUserApproval` 上：plan 回合为 `true`，build 回合为 `false`。没有进入 agent 的多轮运行（普通 Workflow Run、以及没有声明模式的调用）保持默认的 `true`，仍然按 `autoApprove` 询问。这条规则只决定「是否停下来问」，禁用工具在任何模式下都仍然拒绝。
 
-审批请求使用 `workflow.createUserInputNode()` 同一套恢复协议。请求 ID 默认包含 workflow、runId 和工具名，`params` 中会包含一个布尔字段 `approved`。
+审批请求使用 `steamharness.createUserInputNode()` 同一套恢复协议。请求 ID 默认包含 workflow、runId 和工具名，`params` 中会包含一个布尔字段 `approved`。
 
 CLI Web 会把 `tool-approval` 渲染为专用决策界面，直接展示工具标识与 `arguments` 参数快照，并提供“批准并继续”和“拒绝并结束”操作。该界面不会显示通用布尔开关，也不会通过 Enter 隐式批准工具调用。
 

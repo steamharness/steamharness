@@ -1,18 +1,30 @@
 ---
 title: "workspace publish"
-description: "Publish an immutable aggregate version"
+description: "Create an immutable project version from a prepared draft."
 ---
 
-# Publish an immutable aggregate version
+<span id="publish-an-immutable-aggregate-version"></span>
+
+# workspace publish
+
+Use `workspace publish` to publish a prepared Server draft. The entire aggregate shares one version and source hash.
+
+## Command
 
 ```sh
 pnpm exec steamharness workspace publish <project-id> --release-log "Update entries"
 ```
 
-One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
+Complete local validation and [upload](/en/cli/workspace/upload) first. Publication reads root `steamharness.json.version`; a version cannot be published twice.
 
-Archives exclude credentials, host runtime data, Git and node_modules while retaining database aliases and model definitions. Server manages relational bindings by account, project, entry and alias; archives contain neither connection credentials nor business data. Request resource access and bind entries again when changing accounts or Servers.
+## Concurrency checks
 
-Publication uses the prepared draft root `steamharness.json.version` and creates an immutable snapshot. A version cannot be republished. Entries share one version and source hash. Server handles static data only.
+The CLI submits the source hash and each entry's `expectedConfigurationRevisions`. Revisions are nonnegative safe integers starting at `0`. Server rejects publication if source or configuration changed during preparation.
 
-Before publishing, CLI reads each entry's configuration and submits `expectedConfigurationRevisions` keyed by `entryId` (non-negative JSON safe integers, initially 0) together with the source hash. Server rejects publication when source or configuration changes concurrently.
+After a conflict, read the latest draft and configuration, inspect the changes, then upload or publish again. Do not repeatedly submit stale revisions.
+
+## Release contents
+
+A version contains every entry's code, dependency declarations, configuration definitions, models, and static artifacts. It excludes host credentials, runtime state, and business data. Recipients obtain resource access and bind entries under their own account.
+
+Server processes only the static snapshot. Inspect the version and source hash with [versions](/en/cli/workspace/versions) after publishing.

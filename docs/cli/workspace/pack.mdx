@@ -1,22 +1,36 @@
 ---
 title: "workspace pack"
-description: "打包聚合项目"
+description: "把全部注册入口打包为可上传的归档。"
 ---
 
-# 打包聚合项目
+<span id="打包聚合项目"></span>
+
+# workspace pack
+
+用 `workspace pack` 在本地打包整个聚合项目。它不会创建远程项目或数据库。
+
+## 命令
 
 ```sh
 pnpm exec steamharness workspace pack <project-id> --path . --output dist/release/project.tgz
 ```
 
-一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
+先安装依赖、构建静态入口，再执行 `steamharness check .`。名称必须是单个可移植目录名，不能包含路径分隔符、上级路径或 Windows 保留名称；源码位置用 `--path` 指定。
 
-归档过滤凭据、宿主运行数据、Git 和 node_modules，保留根 `config.json` 中的 `alias → databaseId` 映射，不导出环境变量覆盖值。引用不授予访问权；使用其他宿主或项目身份时，申请相应访问或替换数据库 ID。
+## 包含与排除
 
-默认输出 `.tgz`；打包是本地操作，不创建远程项目或空间。普通 npm 依赖继续由各包的 package.json 与锁文件管理。
+| 归档内容 | 处理 |
+| --- | --- |
+| 注册入口、依赖清单、业务配置定义 | 包含 |
+| Kanban 构建产物 | 包含已登记入口所需产物 |
+| 数据库定义和生成清单 | 检查并包含完整产物 |
+| 凭据、宿主运行数据、Git、`node_modules` | 排除 |
+| 缓存、报告、临时文件和归档输出目录 | 排除 |
 
-打包名称必须是单个可移植的目录名，不能包含 `/`、`\`、上级路径或 Windows 保留名称；源码位置通过 `--path` 指定。打包成功或失败均只清理本次临时目录，保留其他入口产物。
+关系库的账号绑定由 Server 维护，不导出连接凭据或环境覆盖值。知识库引用和资源声明不授予访问权，接收方仍需取得授权。
 
-如果聚合根或注册入口目录包含 `steamharness.database.ts`，打包先生成该目录的 Node/Browser 数据库描述符、模型类型和运行资产，再携带 `dist/steamharness/generated/database` 的完整校验清单。模型及产物是必需文件，`.steamharnessignore` 排除它们时打包明确失败。其余 `.steamharness` 内容不上传。参见 [SteamHarness Database](/core-api/database)。
+## 数据库生成与输出
 
-默认压缩包写入项目根 `dist/release/`。只收录已登记入口所需产物及校验通过的数据库生成清单；`dist/cache/`、`dist/reports/`、`dist/release/`、`dist/tmp/` 不进入上传包。
+聚合根或注册入口目录存在 `steamharness.database.ts` 时，打包先生成 Node/Browser 描述符、类型和运行资产。通过清单校验的数据库产物必须完整，不能用 `.steamharnessignore` 排除。
+
+默认输出 `.tgz`，存放在项目根的 `dist/release/`。打包结束只清理本次临时目录，其他入口的产物保留。路径规则见 [Database API](/core-api/database#构建与分发)。

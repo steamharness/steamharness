@@ -1,16 +1,32 @@
 ---
 title: "steamharness run"
-description: "运行所选入口"
+description: "执行本地 Workflow 或 Conversation 入口。"
 ---
 
-# 运行所选入口
+<span id="运行所选入口"></span>
 
-执行注册的 Workflow 或 Conversation；Kanban 使用 `web` 静态展示。
+# steamharness run
+
+在项目目录执行默认入口，或用 `--entry` 指定已注册的 Workflow、Conversation。Kanban 用 `web` 打开静态页面。
+
+## 命令
 
 ```sh
+pnpm exec steamharness run .
 pnpm exec steamharness run . --entry database --entrypoint search -- --query example
 ```
 
-`entryId` 定位聚合入口，`entrypointId` 定位 Workflow 内部操作。同一项目的多个入口分别持有配置、数据库需求和会话状态。默认使用 `defaultEntry`，未知入口直接报错。
+第二条命令要求项目声明 `database` 入口和 `search` 操作。`--` 之后是业务参数，不再作为 CLI 选项处理。
 
-`--` 后传业务参数；配置在本轮开始时固定，修改从下一轮生效。跨入口调用使用目标配置，继承当前权限。详见 [CLI](/cli/steamharness)。
+## 选择入口
+
+| 选项 | 含义 |
+| --- | --- |
+| `--entry` | 聚合清单中的 `entryId`；省略时使用 `defaultEntry` |
+| `--entrypoint` | 所选 Workflow 内部的操作 ID；Conversation 不接受此项 |
+
+未知入口直接报错。各入口分别持有配置、数据库需求和会话状态；本轮开始后配置快照固定，修改从下一轮生效。
+
+## 结果与后续操作
+
+命令执行所选流程并显示运行结果。需要结构化报告时使用 [json](/cli/steamharness/json)；执行前检查声明使用 [structure](/cli/steamharness/structure)。跨入口调用会加载目标配置并继承当前权限。

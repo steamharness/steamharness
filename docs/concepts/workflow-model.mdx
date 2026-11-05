@@ -5,15 +5,15 @@ description: "当前 steamharness 的 Workflow、Node、Provider、Executor 和 
 
 # Workflow 模型
 
-一个聚合项目只使用根 `steamharness.json.id`。每个注册入口有独立 `entryId`、类型、代码根目录、入口文件、配置和数据库需求。同类型可以注册多次；默认窗口由 `defaultEntry` 选择。Workflow 内部操作仍由 `entrypointId` 标识。
+一个项目由根 `steamharness.json` 标识，可以注册多个入口。入口各自声明类型、源码、配置与资源需求，`defaultEntry` 选择默认入口；Workflow 内部操作另用 `entrypointId` 选择。
 
-项目配置唯一来源为根 `steamharness.json`，不读取或兼容 `package.json.id`、`package.json.steamHarness`。npm 名称与版本可与项目名称和版本不同。根可包含 `id`、`name`、`version`、`defaultEntry`、`entries` 以及可选的 `description`、`projectCard`、`projectInfo`、`builtinRelease`。
+项目身份从根 `steamharness.json` 读取，入口设置来自已登记的声明文件，不读取或兼容 `package.json.id`、`package.json.steamHarness`。npm 名称与版本可与项目名称和版本不同。根可包含 `id`、`name`、`version`、`defaultEntry`、`entries` 以及可选的 `description`、`projectCard`、`projectInfo`、`builtinRelease`。
 
 父项目只用 `{ "entryId": "agent", "root": "agent" }` 登记子入口；子目录的 `steamharness.json` 提供 `type`、`name`、`entry`、`configuration`、`projectCard`、`projectInfo`、`databases`、`schedulePresets`。子配置不能声明 ID、版本或嵌套入口，路径相对该子目录。未登记的子配置不会扫描或加载。根入口用 `root: "."` 完整内联，子引用不能携带覆盖字段，也不继承根配置。所有已引用配置都是上传、下载和内置项目分发的必需文件。
 
 ## Runtime API
 
-当前 `workflow` 全局对象来自 Core 仓库 `src/runtime-api.ts`，包含：
+宿主注入 `globalThis.steamharness`。运行时包含以下 API：
 
 ```ts
 steamharness.defineProject
@@ -82,7 +82,7 @@ Workflow 的 `run` 接收 `input` 和 `context`，并返回最终 payload。执�
 
 ## Node
 
-Node 是最小可执行单元，分为普通节点、流式节点、分支节点和循环节点：
+Node 是最小可执行单元，可表示普通计算、流式输出、分支或循环：
 
 ```ts
 const inputNode = steamharness.createInputNode<Input, Parsed>({
@@ -105,13 +105,45 @@ const outputNode = steamharness.createOutputNode<Parsed, OutputPayload>({
 });
 ```
 
-输出 payload 的当前协议是 `RunOutputPayload.items: OutputItem[]`。每个 item 都是一个可独立展示和折叠的消息块，包含 `id`、`title`、`content`、可选 `icon` / `iconPreset`、`contentType`、`collapsed` 和 `metadata`。`contentType` 只决定渲染方式：`markdown`、`text`、`json`、`audio` 或 `video`；对象和数组应直接放进 `content`，不要提前 stringify 成 Markdown code block。`audio` content 使用 `{ src, mimeType, name, size, durationMs?, format? }`，`src` 可为安全 `data:audio/...;base64,...` 或 `http(s)` URL。`video` content 使用 `{ src, mimeType: "video/mp4", name, durationMs?, format?: "mp4" }`，`src` 同样只接受 `data:video/mp4;base64,...` 或公开 `http(s)` URL，UI 通过浏览器原生 `<video controls preload="metadata" playsInline>` 播放；签名 OSS URL 视为 `http(s)` 但不缓存，不要作为不可重建视频产物的唯一发布形式。缺失必填字段或 `src` 不安全时会降级为文本预览并显示 `videoPlaybackUnsupported` 之类的文案，不要把 `src` 留空或使用 `file://`、`blob:` 等本地 URL。
+### 执行与输出
 
-`steamharness.createDetailsOutputNode` 是创建独立可折叠 output item 的便捷节点，会把 `{ title, content, icon }` 转成 `items: [{ title, content, icon, contentType, collapsed: true }]`，并仍按 `output` 标准节点被本地 CLI 收集。`steamharness.createTimerNode` 会创建标准名为 `timer` 的普通节点，用于启动业务计时；`steamharness.endTimer(timer, context, { status, message })` 显式结束计时并写入 `report.timers`，未结束的 running timer 会在 workflow 收尾前自动标记为 `cleared`，避免 UI 残留运行态。`steamharness.runNode` 返回节点输出；`steamharness.runStreamNode` 返回 `{ chunks, output }`，其中 `chunks` 是原始流式 chunk 数组，`output` 是 `finalize` 或 `format` 生成的最终 payload。流式 `createOutputNode({ stream, format })` 的 `format` 接收累积后的 `{ text, items, chunks }`；字符串 chunk 会自动写入一个默认 Markdown item，结构化输出可使用 `steamharness.createOutputItemChunk(...)` 发送 `output_item_start`、`output_item_delta`、`output_item_end`。`output_item_delta` 除了合并 `content`，还可以携带 `item` patch 更新 `title`、`icon`、`collapsed`、`contentType` 或 `metadata.status`，用于展示工具调用从 running 到 success / failed 的状态变化。`steamharness.runIf` 会按顺序检查 if / else-if / else 分支，命中后执行对应 `run`，并用 `branch-node` 运行事件记录所选分支。`steamharness.runFor` 和 `steamharness.runWhile` 会把循环本身记录为可追踪节点，让循环体在本地宿主 Diagram 中保持可见。
+| API | 返回或记录的内容 |
+| --- | --- |
+| `runNode` | 节点输出 |
+| `runStreamNode` | `{ chunks, output }`；保留原始 chunk，最终输出由 `finalize` 或 `format` 生成 |
+| `createDetailsOutputNode` | 将标题、内容和图标转换为独立折叠项，仍按标准 `output` 节点收集 |
+| `createTimerNode` / `endTimer` | 创建标准名为 `timer` 的节点，将结束状态和消息写入 `report.timers` |
 
-`steamharness.createUserInputNode` 会在 workflow 中插入一个可持久恢复的人工输入点。节点的 `params` 使用与当前 Workflow entrypoint（Conversation 则为 executor）相同的字段定义，CLI Web 会用同一套 Run workspace 表单展示；外部 agent 动态产生问题时，可以通过无副作用的 `resolveRequest(input, context)` 为本次请求生成标题、说明、字段和默认值。首次执行时如果没有提交值，runtime 发出 `user_input_requested` 事件，report 写入 `pendingUserInput`，run 状态变为 `waiting_for_input`；提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复执行，并发出 `user_input_resolved`。Workflow 恢复固定使用 run 快照中的精确目标和原入口，不能切换入口。CLI 不读取 stdin，遇到该节点时会输出等待报告，需要通过 `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` 注入答案继续。
+未结束的 running timer 会在 Workflow 收尾前变为 `cleared`。流式 `createOutputNode({ stream, format })` 的 `format` 接收累计的 `{ text, items, chunks }`。
 
-`steamharness.createToolApprovalGate` 使用同一套等待/恢复协议审批工具调用。Workflow 先在当前 entrypoint 的 `tools` 中声明工具，Conversation 则使用 executor `tools`，再在业务代码中调用 gate；工具未注册会返回 `input_validation`，被禁用会返回 `tool_permission_denied`，需要人工确认时会生成 `tool-approval` 请求并把 run 暂停为 `waiting_for_input`。
+输出使用 `RunOutputPayload.items: OutputItem[]`，每项可独立展示和折叠。常用字段是 `id`、`title`、`content`、`contentType`、`collapsed`、`metadata`，以及可选 `icon` / `iconPreset`。
+
+| `contentType` | 内容要求 |
+| --- | --- |
+| `markdown`、`text`、`json` | 对象和数组直接放入 `content`，无需先转成 Markdown 代码块 |
+| `audio` | `{ src, mimeType, name, size, durationMs?, format? }`，使用安全 data 音频地址或 HTTP(S) |
+| `video` | MP4 对象，包含 `src`、`mimeType: "video/mp4"`、`name`，可附 `durationMs` 和 `format: "mp4"` |
+
+视频由浏览器原生控件播放。缺少必填值或不安全的地址会降级为文本并提示 `videoPlaybackUnsupported`；不要传空地址、`file://` 或 `blob:`。签名 OSS URL 会过期且不缓存，不能作为不可重建产物的唯一发布位置。完整字段和持久展示要求见[输出与错误](/concepts/payloads-and-errors#视频输出-item)。
+
+### 流式 item 与状态
+
+字符串 chunk 自动进入默认 Markdown item。使用 `createOutputItemChunk(...)` 可发送 `output_item_start`、`output_item_delta` 和 `output_item_end`。
+
+`output_item_delta` 合并 `content`，也接受 `item` patch 来更新标题、图标、折叠状态、内容类型和 `metadata.status`。例如，可让工具调用从 running 变为 success 或 failed；见[输出节点](/core-api/create-output-node)。
+
+`runIf` 按顺序检查分支，记录选中分支的 `branch-node` 事件。`runFor` 与 `runWhile` 将循环记录为可追踪节点，循环体在 Diagram 中可见。
+
+### 等待输入与工具审批
+
+1. 用 `createUserInputNode` 声明人工输入点。字段与当前 Workflow entrypoint 或 Conversation executor 的参数定义一致，CLI Web 使用相同表单。
+2. 需要动态问题时，用无副作用的 `resolveRequest(input, context)` 返回本次标题、说明、字段和默认值。
+3. 没有答案时，运行发出 `user_input_requested`，报告包含 `pendingUserInput`，状态变为 `waiting_for_input`。
+4. 提交答案后，以同一 `runId` 和 `resolvedUserInputs` 恢复，产生 `user_input_resolved`。恢复继续使用快照中的目标和原入口。
+
+CLI 不读取 stdin。使用 `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` 提交答案，详见[用户输入节点](/core-api/create-user-input-node)。
+
+`createToolApprovalGate` 复用等待与恢复协议。先在所选 Workflow entrypoint 或 Conversation executor 的 `tools` 注册工具：未注册时返回 `input_validation`，禁用时返回 `tool_permission_denied`，需要人工确认时暂停并生成 `tool-approval` 请求。模式与策略规则见[工具审批](/core-api/create-tool-approval-gate)。
 
 ## Branch
 
@@ -195,16 +227,22 @@ const boosted = await steamharness.runWhile(rounded, context, {
 
 本地宿主 diagram 使用两类信息展示 workflow：
 
-- 静态结构来自 TypeScript 源码分析。所有已知 `workflow.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `steamharness.createInputNode`、`steamharness.defineProject`、`steamharness.getConfig`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
+- 静态结构来自 TypeScript 源码分析。所有已知 `steamharness.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `steamharness.createInputNode`、`steamharness.defineProject`、`steamharness.getConfig`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
 - 运行状态来自 `steamharness.runNode` / `steamharness.runStreamNode` / `steamharness.runIf` / `steamharness.runFor` / `steamharness.runWhile` / `steamharness.runProject` 的 `nodeHooks` 报告。只有真正被这些 API 执行的节点会显示运行中、成功、失败、耗时和错误。
+
+### 分支与循环
 
 `steamharness.runIf` 会作为 `run-if` 分支节点展示，本地宿主会使用分支图标和语义色与 LLM、输出、provider、question-classifier 区分。完成事件的 `executionInfo` 会记录 `selectedBranch`、`selectedBranchIndex` 和 `description`，用于 Trace 查看实际走到了哪条分支。静态结构分析优先识别对象字面量形式的 `branches` / `else`；动态拼装分支仍可运行，但 Diagram 无法完整展开所有静态路径。
 
 `steamharness.runFor` 和 `steamharness.runWhile` 会作为 `run-for` / `run-while` 循环节点展示。本地宿主 Diagram 会用带语义色的矩形背景容器包裹循环体 children，循环头节点仍可点击查看 `items`、`condition`、`maxIterations` 和运行时迭代信息。循环体可以继续嵌套 `steamharness.runIf`、`steamharness.runFor` 或 `steamharness.runWhile`，用于表达 while 内部分支和多层循环。静态结构分析优先识别对象字面量形式的 loop options；动态拼装 options 仍可运行，但 Diagram 无法完整展开循环体。
 
+### 嵌套 Workflow
+
 `steamharness.runProject` 会作为 `run-workflow` 调用节点展示。子 workflow 不会创建独立 run report，子节点事件会进入父 trace；顶层 executor 入口不会额外插入这个包裹节点。默认 `conversationMode: "shared"`、`outputVisibility: "visible"`，只传 `name` 不会改变会话或输出语义；当父 workflow 传入 `conversationMode: "shared-readonly"` 时，子 workflow 可以读取父会话快照，但不会追加 transcript 或修改标题。
 
 Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项目对外只暴露一层独立入口；需要多级业务编排时继续嵌套 `steamharness.runProject()`，默认最大深度为 `16`。
+
+### 自定义节点协议
 
 内置节点工厂返回的普通节点继承 `BaseNode`，流式节点继承 `BaseStreamNode`；它们共同提供 `name`、`standardName`、`metadata` 和 `getExecutionInfo()` 等公共信息。Diagram 不直接绑定 `BaseNode` 类，而是读取 `NodeDefinition` / `StreamNodeDefinition` 执行协议和运行报告，因此未来自定义节点只要符合协议，也能被执行与记录。
 
@@ -296,7 +334,6 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 ```
 
 本地 CLI 的 `debug-node` 使用所选 entrypoint registry 中的节点配置运行单节点调试；省略入口时使用默认入口，不会跨入口搜索同名节点。Conversation 继续使用 executor 顶层 registry。
-
 
 ## 包结构
 

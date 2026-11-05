@@ -1,11 +1,11 @@
 ---
 title: "File Input"
-description: "The current usage of file param, upload file, and ResolvedFile."
+description: "Declare file inputs, read attachments, and return generated files."
 ---
 
 # File Input
 
-steamharness supports file input through executor params. Local clients save attachments first, then workflows read their contents through file references.
+Declare file inputs through executor parameters. The host stores an attachment and passes its reference; business code resolves the reference to a `ResolvedFile` and reads content when needed.
 
 ## file param
 
@@ -24,7 +24,7 @@ params: [
 ]
 ```
 
-The value of the file param is serialized as a JSON string to `createInput`.
+The host serializes the file parameter value as a JSON string before passing it to `createInput`.
 
 Images and videos share `type: "file"`. Set `accept` to the supported formats, for example
 `accept: ["image/png", "image/jpeg", "video/mp4", "video/quicktime"]`, and declare the same
@@ -47,21 +47,21 @@ action. Release tracks and temporary objects when switching projects or unmounti
 ## FileInputNode
 
 ```ts
-const imageInputNode = workflow.createFileInputNode({
+const imageInputNode = steamharness.createFileInputNode({
   name: "images",
   accept: ["image/png", "image/jpeg", "image/webp"],
   multiple: true,
 });
 
-const images = await workflow.runNode(imageInputNode, input.images, context);
+const images = await steamharness.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
-`createFileInputNode` will resolve the reference through `context.files` and return `ResolvedFile[]`.
+`createFileInputNode` resolves references through `context.files` and returns `ResolvedFile[]`.
 
 ## ResolvedFile
 
-Parsed file support:
+Read content or retrieve reference metadata from the resolved file:
 
 ```ts
 file.readBuffer()
@@ -77,8 +77,7 @@ file.toJSON()
 
 ## Runtime build file
 
-workflow When generating screenshots, exports, or other files while running, use
-`context.files.createFile(...)`：
+To create a screenshot, export, or other file during a Workflow run, call `context.files.createFile(...)`:
 
 ```ts
 const file = await context.files?.createFile?.({
@@ -89,11 +88,9 @@ const file = await context.files?.createFile?.({
 });
 ```
 
-An explicit Server connection provides managed file storage. Returned references can be opened at
-`/api/workflows/files/{fileId}`. Local CLI runs proxy to the same managed file API when connected.
-Without a connection, creating a file throws instead of saving generated files locally.
-Local resolution of input attachments continues through
-`context.files.resolveFile(...)` work.
+An explicit Server connection provides managed storage and references readable at `/api/projects/files/{fileId}`. Connected local CLI runs use the same file API.
+
+Without a Server connection, generated-file creation throws instead of saving to the local store. Input attachments can still be resolved locally through `context.files.resolveFile(...)`.
 
 ## Storage Recommendations
 
@@ -103,29 +100,30 @@ Kanban pages use `createFile/readFile/deleteFile` on `window.steamHarnessKanban.
 
 Server saves knowledge images and other attachments in separate private file storage; PostgreSQL retains metadata, sizes and content digests. Every read checks the current binding and account grant; JSON transport uses Base64. Legacy inline KV attachments are not migrated automatically. Backups must retain both PostgreSQL and file storage.
 
-Do not save base64 file contents into business rows or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
+Keep file bytes out of business rows and conversation history. For later turns, save the reference metadata from `file.toJSON()`.
 
-`workspace/workflow/gpt-image` The example uses the same file param process to receive one or more reference images:
-workflow resolves to `ResolvedFile[]` when there is a current picture or an input picture reference in the recent session history
-And call the picture editing; no picture context at all to call the picture generation. This example turns on conversation mode, and the cross wheel only turns on
-User prompts, generate summaries, and `file.toJSON()` reference metadata to write session history; subsequent rounds try to parse the most recent input image
-Reference and pass it to the picture editor as a context reference diagram. The sample locally retains up to 16 pictures for input. Generate results
-Markdown The preview of `data:image/...;base64,...` in output item is returned, and the generated graph base64 is not written into session history,
-Therefore, the generated graph itself will not automatically become the next round of picture input. When you need to generate files across pages or repositories, you should use
-`context.files.createFile(...)` Generate server file reference.
+### Multi-turn image editing
+
+The `workspace/workflow/gpt-image` example accepts one or more references through file parameters. If the current input or recent conversation history contains an input image reference, it resolves those references to `ResolvedFile[]` and edits the images. With no image context, it generates an image.
+
+Conversation mode stores only user prompts, result summaries, and `file.toJSON()` metadata. Later turns try to resolve recent input references for image editing; the example retains at most 16 input images locally.
+
+Generated images are returned as `data:image/...;base64,...` previews in Markdown output items. Their bytes are not saved in conversation state, so a generated image does not automatically become input for the next turn.
+
+For reuse across pages or knowledge resources, create a Server file reference with `context.files.createFile(...)`.
 
 ## CLI Web and server behavior
 
 - A local CLI Web run uploads the attachment to local file storage, with `storage: "local"`.
-- The server management interface `POST /api/workflows/{name}/files` saves project files with `storage: "server"`.
+- The server management interface `POST /api/projects/{name}/files` saves project files with `storage: "server"`.
 - Runtime-generated files use server file references. CLI Web and CLI upload them automatically when connected to Server and report an error when no Server connection is available.
-- `GET /api/workflows/files/{fileId}` can read or download the server file.
+- `GET /api/projects/files/{fileId}` can read or download the server file.
 
 If a Conversation declares `conversation.attachments`, its standard composer accepts pasted,
 dropped, or uploaded images, videos, and files using the same file reference protocol. The host
 writes each browser/Electron `File` to the local or server managed file store, then serializes
 the reference under `--images`, `--videos`, or `--files`. The workflow reads these references with
-[`workflow.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args).
+[`steamharness.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args).
 
 Enable the dedicated video action with `attachments.videos: true`. Existing projects that only set
 `files: true` continue to serialize videos under `--files`, preserving their session and file reference contract.
@@ -133,7 +131,6 @@ Enable the dedicated video action with `attachments.videos: true`. Existing proj
 ## MCP file parameters
 
 Local stdio MCP file parameters accept absolute paths, with an array of absolute paths for multiple files. The host verifies regular files and the 50 MB limit before importing them into the local managed-file store. Relative paths, URLs, and Base64 are rejected.
-
 
 ## External API files
 

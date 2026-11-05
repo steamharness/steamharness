@@ -5,7 +5,7 @@ description: "Shared fields, named configurations, import/export and execution s
 
 # Project configurations
 
-Workflow, Conversation and Kanban share one configuration model. Open Project configurations from the Studio or CLI Web toolbar, or the configuration tab in Server Web project details. Projects without declared fields can still add custom fields.
+Use project configuration for reusable business settings shared across Workflow, Conversation, and Kanban. Open it from project information in Studio or CLI Web, or project details in Server Web. Projects without declared fields can still add custom fields.
 
 ## Declare fields
 
@@ -26,23 +26,35 @@ The project root `configuration.json` declares structure and safe defaults. Mana
 
 Types are `string`, finite `number`, `boolean`, `json` and `file`. String fields support enum `options`. Optional properties are `label`, `description`, `defaultValue`, `required`, `secret`, `control`, `options` and `accept`. Defaults use native JSON types. Keep real sensitive values out of declarations. Configuration fields are separate from execution input parameters.
 
-A `file` field lets users choose a local file and upload it to the connected Server, up to 50 MiB per file, using published field rules and account isolation (personal attachments do not require Server data write access). `accept` supports MIME types (such as `image/png` or `image/*`) and extensions (such as `.json`); mismatched files are rejected before upload. Successful uploads display the file name and take effect after saving the configuration. Failures preserve the previous reference. A single file value is server metadata containing `id`, `name`, `mimeType`, `size` and `storage: "server"`, without local paths, file bytes or connection credentials. `multiple: true` means a string array for strings or up to 32 server file references for files. Clearing a value removes the configuration reference and keeps the server file.
+### File fields
+
+A `file` field lets users choose a local file and upload it to the connected Server, up to 50 MiB per file, using published field rules and account isolation (personal attachments do not require Server data write access). `accept` supports MIME types (such as `image/png` or `image/*`) and extensions (such as `.json`); mismatched files are rejected before upload. Successful uploads display the file name and take effect after saving the configuration.
+
+Failures preserve the previous reference. A single file value is server metadata containing `id`, `name`, `mimeType`, `size` and `storage: "server"`, without local paths, file bytes or connection credentials. `multiple: true` means a string array for strings or up to 32 server file references for files. Clearing a value removes the configuration reference and keeps the server file.
 
 ```json
 { "name": "imageFile", "type": "file", "label": "Map image", "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"] }
 ```
 
+### Names and custom fields
+
 Keys start with a letter or underscore and then allow letters, digits, underscores, dots and hyphens, up to 200 characters. Keys must be unique. Custom field definitions belong to the whole project, while each profile stores its own values. Users and assistants can create, edit, rename and delete custom fields. Declarations remain managed by `configuration.json`; custom fields cannot override them. Renaming a custom key updates every profile. Deleting it clears that key from every profile.
 
 ## Manage profiles
 
-Studio, CLI Web and Server Web open on a configuration list. The active profile has a highlighted row and an In use badge with an icon; other profiles offer a Use this configuration button. Click a profile name to open its details and edit its fields. The plus icon creates a profile; row actions copy, rename or delete it. Use this configuration explicitly changes the execution selection. Switching shows progress and disables duplicate actions; failure retains the previous selection and allows retrying. Viewing or saving another profile preserves that selection. Use Back to list in the detail header; save or discard unsaved values or publication rules before returning.
+Studio, CLI Web and Server Web open on a configuration list. The active profile has a highlighted row and an In use badge with an icon; other profiles offer a Use this configuration button. Click a profile name to open its details and edit its fields. The plus icon creates a profile; row actions copy, rename or delete it. Use this configuration explicitly changes the execution selection.
+
+Switching shows progress and disables duplicate actions; failure retains the previous selection and allows retrying. Viewing or saving another profile preserves that selection. Use Back to list in the detail header; save or discard unsaved values or publication rules before returning.
 
 Import / export groups JSON operations and explains that exports include sensitive values. Export all profiles from the list or the viewed profile from its details. The fields section has its own Add field action, with pencil and trash icons beside custom fields. The save area shows draft status; its refresh icon discards the draft. Icons include action labels and support keyboard access.
+
+### Save and reset values
 
 Create, copy, rename, select and delete named profiles. At least one profile must remain. Edit fields directly, then click Save at the bottom to apply changes together. The reset icon beside a field removes its override and immediately restores the declared default, or clears and unsets it when there is no default. Untouched fields retain their existing state. Boolean values and multiple options keep their own checkboxes. Incomplete required fields may be saved; execution validates them. New declared fields use defaults, and removed fields no longer reach the runtime.
 
 Removing a declaration or visiting another source version retains saved values, so restoring the field restores its value. A project declaration temporarily hides an existing custom definition with the same name; removing that declaration restores the custom definition. Runs and exports include only currently effective fields. Explicitly deleting a custom field still clears its value from every profile.
+
+### Revision conflicts and storage
 
 Writes check `revision` and commit atomically. Changes from another window or the assistant update committed state. Unsaved drafts keep their original version and content, with a conflict message. Refresh and discard the draft before editing again. Failed requests do not partially write data.
 
@@ -56,6 +68,8 @@ Import adds profiles with new IDs and preserves the active selection. Missing fi
 
 ## Agent model list
 
+### Choose a model source
+
 Core Agents have two model modes. Studio uses all built-in/custom models from Settings by default and hides project AI models without offering settings references. Explicit `modelSource: "project"` always uses project configuration. The default and `modelSource: "user-settings"` automatically fall back to project mode in standalone CLI Web. Project mode shows AI models first in configuration details, with System AI and Third-party AI as the only add/edit sources. Cancel or Escape discards only the current model edit and restores focus.
 
 In project mode an empty model list shows Configure model in Workflow and Conversation composers. It opens the current profile at AI models; saving models restores model selection. In settings mode an empty catalogue always opens Studio Settings. Changing hosts changes the view and active source while preserving local project models for CLI Web. Navigation preserves message drafts and the selected profile; finish or discard configuration/publication drafts first.
@@ -64,7 +78,11 @@ In project mode an empty model list shows Configure model in Workflow and Conver
 - Third-party AI accepts a display name, model ID, API Key, Base URL and API protocol: `openai-completions`, `openai-responses` or `anthropic-messages`. Keys use password inputs and never appear in list rows.
 - Edit, delete or set a model as default in the list. Apply the model draft before saving the profile; unfinished drafts block saving or navigation. The first entry is the default. The composer only selects saved models and no longer manages Provider.
 
+### Declare the model field
+
 The list uses the reserved `STEAMHARNESS_AGENT_MODELS` JSON field with `control: "ai-models"`. Core statically detects calls to `createAgentNode`, `createAgentConversationProject`, `createAgentProjectParamResolver` or `defineAgentConversationExecutor` and adds it without executing project code. Local configuration services update discovery after source changes without reopening the panel. For indirect wrappers that static discovery cannot see, declare the field explicitly in `configuration.json` with `secret: true`, `defaultValue: []` and `sharing: { "publish": true, "includeValue": false, "editable": true }`.
+
+### Restrict models to System AI
 
 To allow only system AI, explicitly declare the model field in the project's source `configuration.json` with `allowThirdParty: false`:
 
@@ -83,13 +101,19 @@ To allow only system AI, explicitly declare the model field in the project's sou
 }
 ```
 
-Omitting the option or setting it to `true` keeps both sources available. With `false`, Studio, CLI Web and Server Web hide the source selector and third-party form. Direct saves, imports and assistant CRUD reject third-party entries; imported definitions cannot relax the project's declaration. Existing third-party entries remain available for inspection, full backups, deletion or replacement with system AI, but are excluded from runtime options. The first available system entry becomes the default. Core also rejects explicit URLs, API keys and injected model collections; remove custom direct-endpoint branches from the project. The rule freezes with the execution snapshot, including waiting-run recovery. Publishing the model field includes the rule without automatically including personal values. This is a source declaration, so someone holding a source copy can still edit the code.
+Omitting the option or setting it to `true` keeps both sources available. With `false`, Studio, CLI Web and Server Web hide the source selector and third-party form. Direct saves, imports and assistant CRUD reject third-party entries; imported definitions cannot relax the project's declaration. Existing third-party entries remain available for inspection, full backups, deletion or replacement with system AI, but are excluded from runtime options. The first available system entry becomes the default.
+
+Core also rejects explicit URLs, API keys and injected model collections; remove custom direct-endpoint branches from the project. The rule freezes with the execution snapshot, including waiting-run recovery. Publishing the model field includes the rule without automatically including personal values. This is a source declaration, so someone holding a source copy can still edit the code.
 
 Publication drafts, previews and downloaded templates all honor the source restriction; older drafts or templates cannot relax it. Distributed files retain it in top-level `agentModelPolicy` metadata even when the author excludes the entire model field. Drafts with historical third-party values remain editable and can be published when those values are excluded; including them prevents publication.
+
+### Model entries and run snapshots
 
 Every entry has a unique `id`, `name`, `model` and `source`. System entries use `source: "system"` and `credentialId`; third-party entries use `source: "third-party"`, `apiKind`, `baseUrl` and `apiKey`. The `model` input parameter stores the list entry ID, which the runtime maps to the actual model ID. System execution verifies that the current account still has that subscription and model and never falls back to another subscription. Third-party execution calls its configured endpoint without requiring system AI sign-in.
 
 Lists belong to named profiles and freeze with execution snapshots. Saving another profile preserves the execution selection; the next turn or run reads the selected profile. Model lists share import/export, revision checks, permissions and assistant CRUD with other configuration fields. Automatically added fields publish their structure without values by default, so keys are not automatically included in templates. Complete backups still contain keys and must be kept private.
+
+### Switch models in a conversation
 
 Conversation and Studio Assistant support switching models within the same conversation. Editing, deleting or replacing configured models preserves completed replies and the model names recorded for those turns. Subsequent messages use the currently selected available model and retain conversation context. If the new model fails to start, that send operation returns the error while completed replies remain visible.
 
@@ -161,13 +185,21 @@ Configuration fields have distinct bordered groups, and model lists mark their d
 }
 ```
 
+### JSON path permissions
+
 Object paths use JSON Pointer: encode `/` as `~1` and `~` as `~0`. Children inherit parent rules, with more specific rules taking precedence. Excluding an entire field excludes all its descendants. Arrays are indivisible. The panel offers property controls and raw JSON editing; the service checks actual changes at every path. Parent replacement, clearing, imports and assistant operations cannot bypass locks. Invalid batches are rejected atomically with `CONFIGURATION_FORBIDDEN` (HTTP 403). Required locked fields need a published value.
 
 When an excluded JSON parent explicitly publishes a child, that child retains its inherited value inclusion and editing rules. Filtering the parent does not remove the child's lock.
 
+### Freeze and publish a template
+
 Inspect the recipient preview before saving. Drafts freeze selected profile values; after changing personal values, explicitly refresh published values and save the draft again. Publication checks the source digest and draft revision, then generates filtered `configuration.json`, `configuration.template.json` and `configuration-assets/` in a staging directory without changing the author's files. Published templates are fixed to project versions. Source downloads, share links and Store deliver the same version bundle. Complete backups still contain every readable value and are separate from sharing templates.
 
-Maintainers, owners and system administrators can manage official drafts and templates. Developers may publish prepared project versions but cannot change official rules. Downloads, copied projects or client role parameters never grant access to the original project. Recipients manage personal profiles and custom fields, while author definitions, permissions and templates remain immutable. Runtime snapshots combine the template with permitted personal values. Personal profiles store actual overrides only, so untouched initial values follow template upgrades. Upgrades preserve permitted personal changes and custom fields, stop applying newly locked overrides and retain type conflicts as drafts for resolution. Running or waiting Workflow tasks retain their original snapshot.
+Maintainers, owners and system administrators can manage official drafts and templates. Developers may publish prepared project versions but cannot change official rules. Downloads, copied projects or client role parameters never grant access to the original project. Recipients manage personal profiles and custom fields, while author definitions, permissions and templates remain immutable. Runtime snapshots combine the template with permitted personal values. Personal profiles store actual overrides only, so untouched initial values follow template upgrades.
+
+Upgrades preserve permitted personal changes and custom fields, stop applying newly locked overrides and retain type conflicts as drafts for resolution. Running or waiting Workflow tasks retain their original snapshot.
+
+### Attachments and offline use
 
 Publication copies referenced attachments into immutable version files and excludes unshared files. Downloads verify source and attachment digests and cache validated templates and bytes outside source. Validated versions and permitted personal edits work offline; official changes, publication and new version downloads require a connection. Newly selected files must upload successfully before saving. Downloaded bundles contain only the corresponding template and selected attachments. Reading live project data requires current guest access.
 
@@ -210,7 +242,11 @@ Declare `profilePolicy` in `configuration.json` v2 to bind runtime modes to role
 
 `key` is a stable source-owned identity. `minimumRole` uses effective project and inherited group roles: `guest`, `developer`, `maintainer`, and `owner`. Optional `description` and `tags` supply list summaries without exposing secrets. All base profiles fix the same set of fields. Fixed assignments override personal values and cannot be cleared. The default must be available to guests, and fixed values must be included in published templates.
 
+### Visible profiles and management actions
+
 Guests see only accessible base profiles. They may edit author-approved values, including models, but cannot create, copy, rename, delete, import, or manage fields. Users meeting `manageMinimumRole` may manage personal profiles; each inherits its `profileKey`, minimum role, and fixed assignments. Names, tags, imported metadata, and `templateId` cannot lower permission requirements. Base names and identities remain source-owned. Responses include `capabilities`, `configurationCapabilities`, and lock reasons. Opening details does not select a runtime profile; the composer displays a read-only mode label.
+
+### Account changes and permission checks
 
 Restricted local values are scoped by application, Server, and account, and shared between windows of the same account. Signed-out users and failed online checks get only the guest default; previous Build permission is not reused. Reads and parameter discovery use a short-lived role cache rather than requests on each keystroke. Writes, sends, queue starts, restores, and restricted tool calls recheck online authority. Conversation history, stored personal values, and editing drafts are preserved; a draft does not grant authority.
 
@@ -219,6 +255,8 @@ Local and Server configurations retain the account's explicitly selected profile
 Online role checks wait up to 30 seconds to accommodate remote database latency while Server resolves inherited access. Timeouts still count as failed online checks.
 
 Concurrent agents share an in-flight role lookup. Network errors, rate limits and temporary server failures receive up to three attempts within that deadline. Explicit denials apply immediately; exhausted checks still fall back to guest access and never reuse an old Build grant.
+
+### Recovery and version compatibility
 
 Supplied `configuration` snapshots and resumed runs revalidate the current account, role, stable identity, and fixed assignments. Unauthorized profiles are rejected; an active Build task is never silently continued as Ask. Published templates freeze the policy using version `3`, which unsupported hosts must reject with an upgrade prompt. Projects can check `steamharness.getProjectConfiguration()?.profilePolicyVersion`. Personal exports and configuration responses include only visible profiles and attachments; source archives still carry the complete official template and never automatically include personal credentials.
 

@@ -5,7 +5,7 @@ description: "独立知识库、版本控制与私有附件"
 
 # Knowledge Documents
 
-通过 `context.knowledgeBases.get(alias)` 使用 Server 管理的独立知识库。文档、分块、搜索索引和附件元数据保存在平台 PostgreSQL 共享表，按知识库 ID 隔离；附件正文保存在私有文件存储。知识库无需业务 schema，也不会为每个项目新建物理数据库。
+用 `context.knowledgeBases.get(alias)` 访问 Server 管理的知识库。文档、索引和附件元数据按知识库 ID 隔离，附件内容放在私有文件存储；使用知识库无需定义业务 schema，也不会为每个项目新建物理数据库。
 
 ## 申请与绑定
 
@@ -40,11 +40,31 @@ const matches = await knowledge.searchDocuments({ query: "世界", pageSize: 20 
 const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
 ```
 
-文档包含 `id`、`title`、`markdown`、`revision`、`createdAt`、`updatedAt`。列表返回摘要、`total`、`hasMore` 和可选 `nextCursor`，按最近写入顺序分页。游标不透明，只能原样回传。搜索是忽略大小写的字面子串匹配，保留 1-based 行号及上下文，支持中文；搜索游标绑定查询参数和资源修订号，文档或附件变化后应重新搜索。文档和分块索引在同一 SQL 事务中提交。
+### 返回结果与分页
+
+| 结果 | 内容 |
+| --- | --- |
+| 文档 | `id`、`title`、`markdown`、`revision`、`createdAt`、`updatedAt` |
+| 列表 | 摘要、`total`、`hasMore` 和可选 `nextCursor`，按最近写入排序 |
+| 搜索 | 忽略大小写的字面子串匹配，支持中文，保留从 1 开始的行号与上下文 |
+
+将不透明游标原样传回。搜索游标绑定查询参数和资源修订号；文档或附件变化后重新搜索。文档与分块索引在同一 SQL 事务内提交。
 
 编辑时传入读到的 `expectedRevision`；删除使用 `deleteDocument(id, expectedRevision)`。版本不符返回冲突并保留调用方草稿，应重新读取后由用户处理。省略该参数表示直接修改当前版本。删除不存在的文档返回 `{ id, deleted: false }`；带过期版本的删除返回冲突。
 
-标题最多 512 字符，正文最多 4 MiB 字符，ID 最多 256 字符且不能含 NUL。列表每页 1–100 项；搜索每页和最大匹配数上限 1000，前后上下文各最多 100 行；按行读取每次最多 1000 行。`getRevision()` 返回资源修订号，用于宿主刷新。
+### 大小与数量限制
+
+| 内容 | 限制 |
+| --- | --- |
+| 标题 | 512 字符 |
+| Markdown 正文 | 4 MiB 字符 |
+| ID | 256 字符，不含 NUL |
+| 列表分页 | 每页 1–100 项 |
+| 搜索分页及最大匹配数 | 上限 1000 |
+| 搜索上下文 | 前后各最多 100 行 |
+| 按行读取 | 每次最多 1000 行 |
+
+`getRevision()` 返回资源修订号，宿主可据此决定是否刷新。
 
 ## 附件
 

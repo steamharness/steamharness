@@ -1,147 +1,108 @@
 ---
-title: "Project guide"
-description: "Understand SteamHarness through project types, main features, and the development workflow."
+title: "Start with SteamHarness"
+description: "Create, run, and manage Workflow, Conversation, and Kanban projects."
 slug: /
 ---
 
-# SteamHarness guide
+<span id="steamharness-guide"></span>
 
-SteamHarness is a platform for building, running, and distributing Agent projects. It consists of the Core SDK, CLI, Studio, Server, and the Server Web console. Projects can be developed locally, uploaded to a Server, and published to Store.
+# Start with SteamHarness
+
+Build Agent projects with SteamHarness, run them in Studio or the CLI, and use Server to manage source code, versions, and access.
+
+Start with the [quickstart](/en/guides/quickstart) to run a Hello workflow. If you already have a project, [open it in Studio](/en/guides/studio/create-import).
 
 ## Three project types
 
-| Type | Form | Best for | Entry point |
-| --- | --- | --- | --- |
-| Workflow | Typed TypeScript workflow | Automation, multi-step tasks, tool orchestration | Entry function + nodes / executor |
-| Conversation | Conversational Agent project | Assistants, Agent conversations | Conversation executor |
-| Kanban | Static HTML / CSS / JavaScript | Boards, visualizations, human-in-the-loop | `index.html` |
+| Your task | Entry type | Start here |
+| --- | --- | --- |
+| Connect inputs, models, tools, and conditions into a task | Workflow | [Build a workflow](/en/guides/development/workflow) |
+| Create an assistant that accepts successive messages | Conversation | [Build a conversation](/en/guides/development/conversation) |
+| Display a board, map, or interactive data page | Kanban | [Build a board](/en/guides/development/kanban) |
+
+A project can contain several entry types under one project ID and version. Choose an entry to run; each entry has its own configuration, drafts, and conversation state.
 
 ### Workflow
 
-A Workflow describes a runnable task chain with nodes and executors: inputs, LLM calls, tools, branches, loops, and outputs are declared through the Runtime API. It is a good fit when a set of operations needs typed steps and reuse.
-
-- Typical uses: data processing, content generation, tool calling, multi-step automation.
-- Start with [Workflow model](/en/concepts/workflow-model) and [Core API](/en/core-api/overview).
+Declare inputs, nodes, and execution order in TypeScript. Use workflows for data processing, content generation, and multi-step automation. The [workflow model](/en/concepts/workflow-model) covers branches and loops.
 
 ### Conversation
 
-Conversation is an Agent project organized around conversation turns, tool calls, and session data. It uses the same Core Runtime, but its entry point is a message or conversation rather than a single task chain.
-
-- Typical uses: assistants, support/operations assistants, Agents that need ongoing context.
-- Start with [Databases and conversations](/en/concepts/database-and-conversation) and [Core API](/en/core-api/overview).
+Organize work around messages and rounds. A conversation executor accepts input using the same runtime as workflows. See [databases and conversations](/en/concepts/database-and-conversation) for history management.
 
 ### Kanban
 
-Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It loads `index.html`, does not execute the Runtime API, and needs no executor. A restricted bridge lets the page query bound relational models and read authorized knowledge documents.
-
-- Typical uses: boards, maps, dashboards, visual interfaces embedded in conversations or project details.
-- Start with [Kanban HTML projects](/en/concepts/kanban).
+Write HTML, CSS, and JavaScript with `index.html` as the entry. A restricted Bridge can access relational or knowledge resources that the entry has bound and the account is allowed to use.
 
 ## Where projects run
 
-SteamHarness separates **execution** from **management**:
+| Surface | Purpose |
+| --- | --- |
+| Studio | Edit source, run local projects, inspect results and traces |
+| Local CLI | Run tasks, inspect structure, export JSON, or expose MCP tools |
+| Server | Store source, versions, members, databases, knowledge bases, and files |
+| Server Web management console | Manage Server projects and resources in a browser |
+| Store | Browse, download, and publish project versions |
 
-| Location | Executes project code | Purpose |
-| --- | --- | --- |
-| Studio / local CLI | Yes | Run and debug locally, inspect traces |
-| Server | No | Stores source, versions, members, relational data, knowledge, and project files |
-| Server Web console | No | Manage projects, members, and data in the browser |
-| Store | No | Browse, download, and publish version archives |
-
-The Server does not install project dependencies, build, or load uploaded project code. A Kanban preview is a static iframe bound to a project, user, and version; it does not inherit account credentials and is not project execution on the Server.
+Project code runs on the machine hosting Studio or the local CLI. Server stores source archives without installing project dependencies or running project code. Server-side Kanban previews serve static pages under access controls.
 
 ## Main features
 
-| Capability | What it does | Entry point |
-| --- | --- | --- |
-| Studio | VS Code OSS-based workstation to open and run local projects, inspect traces, and manage versions and accounts | [Using Studio](/en/guides/studio/overview) |
-| Local CLI | Check project structure, run projects, open the web workspace | [Local CLI](/en/cli/steamharness) |
-| Server and Server Web | Manage project source, versions, members, knowledge, relational databases, and accounts | [Server Web console](/en/guides/server/overview) |
-| Workspace CLI | Sign in to a Server, upload/download source, publish and switch versions | [Workspace CLI](/en/cli/server-workspace) |
-| Store | Browse, download, and publish project versions | [Store overview](https://docs.steamharness.yuhe.space/en/enhanced/store/overview) |
-| System AI (Enhanced) | Shared models, personal defaults, provider preference, usage, and orders | [System AI guide](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison) |
-| Built-in projects | Developer Assistant, Codex, Conversation, OpenCode, Pi, and other ready-to-use projects | [Release notes](/en/guides/releases/overview) |
+| Current task | Documentation |
+| --- | --- |
+| Learn the workbench and run a project | [Studio guide](/en/guides/studio/overview) |
+| Work from the terminal | [CLI overview](/en/cli/overview) |
+| Write nodes and Agents | [Core API](/en/core-api/overview) |
+| Manage projects, members, and data | [Server Web](/en/guides/server/overview) |
+| Pack, upload, and publish versions | [Workspace CLI](/en/cli/server-workspace) |
+| Host your own service | [Deploy Server](/en/guides/server/deployment) |
+| Use system AI or Store | [Enhanced features](https://docs.steamharness.yuhe.space/en/enhanced/) |
 
 ## Project data and configuration
 
-Entries declare relational database aliases. Define business models in `steamharness.database.ts` and `steamharness.schema`, generate descriptors, and use `context.databases.connect(descriptor)`. Server manages bindings by account, project, entry and alias. Knowledge uses independent `knowledgeBases` declarations and configuration. Platform histories use shared PostgreSQL tables with account and project isolation.
+Business databases, knowledge bases, and runtime history have separate lifecycles. Declare relational aliases in `databases`; Server maintains their bindings by account, project, and entry. Declare knowledge resources in `knowledgeBases`.
 
-Configurations, snapshots, conversations and drafts are scoped by `projectId + entryId`. Configuration edits apply on the next run. See [Data storage](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration) and [Databases and conversations](/en/concepts/database-and-conversation).
+Configuration and conversations are scoped by `projectId + entryId`. Configuration changes apply to subsequent runs. See [project configuration](/en/concepts/project-configuration) and [data storage](/en/concepts/data-storage).
 
 ## Accounts, permissions, and collaboration
 
-The Server uses accounts and fixed project roles:
-
-| Role | What it can do |
+| Role | Main capabilities |
 | --- | --- |
-| `guest` | View the project, released versions, knowledge, files, and previews; download released source and run locally |
-| `developer` | Edit drafts, upload and publish versions, and modify server relational data, knowledge, and project files |
-| `maintainer` | Manage project information, public state, official configuration, guests, and developers |
-| `owner` | Assign all roles, manage owners, delete the project, and transfer ownership |
+| `guest` | View and download published projects, then run them locally |
+| `developer` | Edit drafts, upload, publish, and modify authorized data |
+| `maintainer` | Manage project information, official configuration, guests, and developers |
+| `owner` | Manage every role, project ownership, and deletion |
 
-Projects can live in groups, and groups can have nested subgroups. The effective role is the highest of the direct project role and any inherited group role. Public projects grant guest access to every signed-in user; private projects can accept access requests through a released version's share link. See [Project management](/en/guides/server/project-management).
+Groups support nested subgroups. Effective access is the highest role granted directly or inherited from a group. Project access and data-resource grants are checked separately. See [project management](/en/guides/server/project-management).
 
 ## AI capabilities
 
-In open source, each project owns its model: declare an LLM provider and API key in the project, and nodes read the configuration at runtime. The Server does not store or proxy third-party model credentials. See [LLM provider](/en/concepts/llm-provider).
+The open-source edition supports custom models in Studio and LLM Providers configured by a project. See [model settings](/en/guides/studio/models) and [LLM Provider](/en/concepts/llm-provider).
 
-Enhanced adds System AI on top: the platform maintains the model catalogue, credentials, and billing; users choose a default model and provider preference, subscribe or use balance, and review usage and orders. The Studio assistant uses System AI directly after signing in to a project. See [What Enhanced adds: System AI configuration](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison).
+The enhanced edition adds account-provided models, provider preferences, subscriptions, and usage. See [system AI](https://docs.steamharness.yuhe.space/en/enhanced/ai/overview).
 
 ## Development workflow
 
-1. **Create a project**: in Studio, choose New Project, then a Workflow, Conversation, or Kanban type and template; or create the directory manually.
-The root `steamharness.json.id` is the aggregate identity. `steamharness.json.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
-3. **Write the entry point**: Workflow / Conversation use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
-4. **Run locally**: open the project in Studio and run it, or use `steamharness structure .`, `steamharness run .`, and `steamharness web .`.
-5. **Upload to a Server**: use the Workspace CLI to sign in, package the source, and publish a version; manage the project, members, and data in the Server Web console.
-6. **Publish to Store** (optional): create a Store entry from a version already on the Server, submit it for review, and list it.
+1. [Create a project](/en/guides/studio/create-import), select a template, and wait for dependency installation.
+2. Write the entry and check `entries` and `defaultEntry` in the root `steamharness.json`.
+3. [Run locally](/en/guides/studio/run-debug) and inspect the result and trace.
+4. [Upload and publish](/en/guides/studio/versions), then assign member access as needed.
+5. For public distribution, [publish to Store](https://docs.steamharness.yuhe.space/en/enhanced/store/publishing).
 
 ## Project structure
 
-A minimal Workflow / Conversation project usually contains:
+The root `steamharness.json` declares project identity, version, and entries. Workflow and Conversation entries point to executor source; Kanban entries point to built HTML. `package.json` and the lockfile manage ordinary dependencies.
 
-```text
-my-project/
-├── steamharness.json  # project identity and entry declarations
-├── package.json       # npm dependencies and scripts
-├── index.ts       # entry point and executor
-└── ...
-```
-
-A Kanban project only needs:
-
-```text
-my-board/
-├── steamharness.json
-├── package.json
-└── index.html
-```
-
-The root `steamharness.json.id` is the aggregate identity. `steamharness.json.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
+See the [workflow model](/en/concepts/workflow-model) for declarations. Read the [Core 0.2 migration guide](/en/guides/migrate-core-0-2) before updating an older project.
 
 ## Built-in projects
 
-Studio ships with projects you can open or create directly:
-
-| Project | Purpose |
-| --- | --- |
-| Developer Assistant | Helps understand projects, generate code, and carry out development tasks in Studio |
-| Studio Control | Gives Agents controlled access to Studio operations |
-| Studio Analysis | Summarizes local projects and run state |
-| Codex / Conversation / OpenCode / Pi | Ready-to-use Agent / conversation projects |
-
-Built-in projects follow the same project types, versions, and permissions. See [Release notes](/en/guides/releases/overview) for version history.
+The Developer Assistant handles coding tasks, Studio Control provides permission-checked editor operations, and Studio Analysis summarizes local runs. See [release notes](/en/guides/releases/overview) for built-in Codex, Conversation, OpenCode, Pi, and assistant versions.
 
 ## Versions, testing, and deployment
 
-- **Versions**: Core, CLI, Server, Server Web, and built-in projects release independently; projects pin exact Core and CLI versions in `devDependencies`. See [Release notes](/en/guides/releases/overview) and [Version compatibility](/en/guides/releases/compatibility).
-- **Migration**: see the [Core 0.1 to 0.2 migration guide](/en/guides/migrate-core-0-2).
-- **Testing**: `steamharness structure .` checks project structure; see [Automated testing](/en/guides/testing) for project tests and repository gates.
-- **Deployment**: see [Deployment and publishing](/en/guides/server/deployment) for Server, Server Web, and Store.
+Pin compatible Core and CLI dependencies in your project. Check [version compatibility](/en/guides/releases/compatibility) before upgrades and run [project tests and structure checks](/en/guides/testing) during development. See [Deploy Server](/en/guides/server/deployment) for hosting.
 
 ## Choose your next step
 
-- New to SteamHarness: start with [Using Studio](/en/guides/studio/overview).
-- Writing business logic: see [Core API](/en/core-api/overview) and [Workflow model](/en/concepts/workflow-model).
-- Managing server projects: see [Workspace CLI](/en/cli/server-workspace) and [Server Web console](/en/guides/server/overview).
-- Using System AI or publishing to Store: see [Enhanced features](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison).
+Run your first project with the [quickstart](/en/guides/quickstart), write business logic with [Build a Workflow](/en/guides/development/workflow), or manage existing projects with the [Server Web guide](/en/guides/server/overview).

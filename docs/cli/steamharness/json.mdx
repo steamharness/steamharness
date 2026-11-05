@@ -1,16 +1,25 @@
 ---
 title: "steamharness json"
-description: "JSON 运行报告"
+description: "运行入口并输出机器可读的 JSON 报告。"
 ---
 
-# JSON 运行报告
+<span id="json-运行报告"></span>
 
-执行所选入口并输出 JSON 运行报告。
+# steamharness json
+
+需要在脚本中读取运行状态、输出或错误时，使用 `json`。它会实际执行项目，不只是转换已有结果。
+
+## 命令
 
 ```sh
+pnpm exec steamharness json .
 pnpm exec steamharness json . --entry database --entrypoint search -- --query example
 ```
 
-`entryId` 定位聚合入口，`entrypointId` 定位 Workflow 内部操作。同一项目的多个入口分别持有配置、数据库需求和会话状态。默认使用 `defaultEntry`，未知入口直接报错。
+第二条示例选择已声明的 `database` 入口和 `search` 操作。省略 `--entry` 使用 `defaultEntry`，未知 ID 报错；业务参数放在 `--` 后。
 
-报告包含运行状态、输出和错误。`--conversation-id` 和 `--run-id` 供显式会话与执行标识使用；宿主仍按项目与入口隔离，不能用相同 ID 访问其他入口。取消会终止当前执行，返回中止状态。
+## 阅读报告
+
+报告包含运行状态、输出与错误。显式使用 `--conversation-id` 和 `--run-id` 时，记录仍按项目与入口隔离，不能用相同 ID 读取其他入口。
+
+各入口有独立配置、资源需求和会话状态。取消会终止当前执行并返回中止状态；权限或资源失败需要按报告处理，不能仅凭有 JSON 输出判断成功。

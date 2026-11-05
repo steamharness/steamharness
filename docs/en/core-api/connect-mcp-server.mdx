@@ -5,14 +5,33 @@ description: "Start a stdio MCP server, handshake it, and list the tools it expo
 
 # connectMcpServer
 
-`workflow.connectMcpServer()` starts an MCP server as a stdio child process, completes the handshake, and lists the tools it exposes. Hand the returned connection to [createMcpTools](./create-mcp-tools.mdx) and those tools become ones an agent can call.
+Use `steamharness.connectMcpServer()` to start a stdio MCP subprocess, complete the handshake, and read its tool catalog. Pass the connection to [createMcpTools](./create-mcp-tools.mdx) to expose those tools to an Agent.
 
 A host uses this to hand an existing controlled capability to a project without exposing its implementation or adding that implementation to the Core API.
+
+## Example
+
+```ts
+const connection = await steamharness.connectMcpServer(
+  {
+    id: "project-tools",
+    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
+  },
+  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
+);
+
+try {
+  return await steamharness.createMcpTools({ connection });
+} finally {
+  await connection.close();
+}
+```
 
 ## Signature
 
 ```ts
-const connection = await workflow.connectMcpServer(
+const connection = await steamharness.connectMcpServer(
   {
     id: string,
     command: string[],
@@ -62,27 +81,8 @@ The value therefore never has to appear in a configuration that may be logged or
 
 A definition is validated before anything is spawned: the command must be an absolute path, the `id` must be well formed and unique, `timeout` must be in range, and environment keys must be valid identifiers. One connection carries at most 8 servers, and each server at most 256 tools.
 
-To validate separately before starting anything, use `workflow.normalizeMcpServers(servers, options?)`, which returns the normalized definitions and takes the same options.
+To validate separately before starting anything, use `steamharness.normalizeMcpServers(servers, options?)`, which returns the normalized definitions and takes the same options.
 
 ## Lifetime
 
 A connection lasts one run: it is opened before the run starts and closed when the run ends, errors included. `connectMcpServer` loads the MCP SDK through a dynamic `import()`, so a runtime that never uses MCP neither resolves nor loads it.
-
-## Example
-
-```ts
-const connection = await workflow.connectMcpServer(
-  {
-    id: "project-tools",
-    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
-    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
-  },
-  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
-);
-
-try {
-  return await workflow.createMcpTools({ connection });
-} finally {
-  await connection.close();
-}
-```

@@ -1,0 +1,2 @@
+# Keep the pinned upstream Python payload byte-for-byte; blob hashes are tested.
+humanize-chinese/scripts/*.py whitespace=-blank-at-eol
