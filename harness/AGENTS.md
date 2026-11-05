@@ -5,7 +5,7 @@
 
 ## 仓库边界
 
-- 本仓库维护 `steamharness` Core，仓库根就是 npm 包根；`workspace/**` 也归本仓维护，用于公开示例和 CLI/Core 兼容烟测。
+- 本目录维护 `steamharness` Core，也是 npm 包根；通用能力使用 `src/__tests__/` 普通测试，加载器与文件系统测试按需生成并清理最小临时夹具，不维护常驻示例工程或独立安装夹具依赖。
 - Shared workspace 依赖始终从已提交的 `vendor/shared` 刷新为 `.shared/*` 普通目录，刷新必须保留 pnpm 生成的包级 `node_modules`；不得把 `.shared/*` 链接到同级仓库。
 - 同级 Shared 源码只由 CLI 和 Server 的 `dev` 运行入口通过运行时生成的 `.steamharness-local/tsconfig.json` / Vite alias 加载；`main`、tag、detached checkout 和 CI 必须只消费 `.shared/*` 的 vendor 快照。`STEAMHARNESS_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
 - `.steamharness-local` 以及任何跨仓 tsconfig/path alias 都不得提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
@@ -19,13 +19,13 @@
 
 - 公开 API、行为、参数、错误或 runtime 语义变化必须同步同级 Docs 仓库的 `../docs/concepts/**`、`../docs/core-api/**` 或 `../docs/cli/**`。
 - 用户可见变化必须同步中文/英文 `CHANGELOG.next.md` 与 `CHANGELOG.next.en.md`；纯拆仓、测试和内部 CI 调整不写公开日志。
-- 代码变更必须补邻近 `src/__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm test:scripts`、`pnpm coverage`、`pnpm build`、`pnpm test:workspace` 和 `git diff --check`。
+- 代码变更必须补邻近 `src/__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm test:scripts`、`pnpm coverage`、`pnpm build`、`pnpm test:agent-dist` 和 `git diff --check`。CLI 命令兼容测试在同级 `../cli` 的测试体系运行。
 - 默认测试必须离线可复现，不依赖真实 GitLab、LLM、Server 或数据库。
 
 ## 发版与 Git
 
 - `package.json` 是 Core 版本唯一来源，正式 tag 固定为 `steamharness/vX.Y.Z`。
-- Core 是唯一需要先人工修改版本源的单元：先把 `package.json` 更新为目标版本，再执行 `pnpm release:prepare -- --version X.Y.Z`。prepare 事务式更新双语日志、Workspace 中精确的 `steamharness` 版本和 Workspace lockfile；不得改写 `@steamharness/cli` 版本。
+- Core 是唯一需要先人工修改版本源的单元：先把 `package.json` 更新为目标版本，再执行 `pnpm release:prepare -- --version X.Y.Z`。prepare 校验版本源并事务式归档双语日志，不安装依赖或改写消费者版本与 lockfile。
 - `main` 是正式发布分支，`alpha` 是自动测试发布分支，`dev` 是日常集成分支；三者声明版本遵循 `main <= alpha = dev`。普通 Alpha 发布保持基础版本不变，仅生成 `X.Y.Z-YYYYMMDDNNN`；只有明确收到“版本号 +1”指令时，才在 Alpha 和 Dev 一起递增 patch。发布前归档当前分支中英文 `CHANGELOG.next*` 到现有基础版本的历史条目并清空 next；新基础版本只有在显式 bump 时才建立。若提交范围只有版本字段、changelog、CI 或发布元数据，则跳过 npm、tag 和下游级联；源码、依赖或 vendor 内容变化才发布。Alpha 转正直接从已验证提交进入 `main`；成功后默认把 `alpha`、`dev` 对齐到 `main` 并跳过 CI，不发布空 Alpha。正式发布仍从准备完成的 `main` tag 触发。
 - **特性分支可以直接发版**：在 `codex/*` 这类功能性分支上执行 `pnpm release:feature`（等价于 `node scripts/feature-release.mjs tag`），脚本会按当天的全局序号算出 `<基础版本>-YYYYMMDDNNN.<分支 slug>`、创建并推送 `feat/v<版本>` tag，CI 随后走与通道发布同一条 validate → pack → publish 路径，publish 到 dist-tag `feat-<分支 slug>`。这条通道**不动 `alpha`/`dev`/`latest`，也不同步下游**：内置项目与宿主把 pin 升到这个精确版本即可（版本号里的日期序号与 alpha/dev 共用计数空间，因此不可能撞版本）。序号耗尽、工作区不干净、或在 `main`/`alpha`/`dev` 上执行时脚本会拒绝。
 - 每个 `release:npm*` 作业在打包前运行 `node vendor/shared/release-tools/release-gate.mjs publisher --manifest package.json --package steamharness`：拒绝已发布过的版本，稳定版还必须高于 `latest`。消费方一侧的检查（相对路径、特性分支版本、registry 读回、版本递增）由同一模块的 `verify` 子命令承担，内置项目与 `cli` 在各自 CI 里调用。
@@ -34,5 +34,4 @@
 
 ## 规则入口
 
-- 修改 `workspace/**` 时同时读取 [workspace/AGENTS.md](./workspace/AGENTS.md)。
 - 修改 `.agents/skills/steamharness-generator/**` 时同时读取该目录的 [AGENTS.md](./.agents/skills/steamharness-generator/AGENTS.md)。

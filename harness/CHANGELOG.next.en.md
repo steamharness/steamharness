@@ -1,5 +1,6 @@
 # Unreleased
 
+- [Fix] Resolve the generator's exact CLI version from the adjacent CLI package without depending on bundled examples, keeping SDK and CLI versions independent.
 - Agent command receipts no longer wait for snapshot delivery. Session projections and explicitly safe tools retry up to three times and continue automatically while preserving request identity, authorization, and cancellation.
 - Added submission lifecycle events and explicit retries to embedded Kanban Conversations, allowing business transcripts to show immediate feedback and merge authorized receipts.
 - Public Kanban Conversation types support project-defined @ choices, dynamic UI updates, presentation slots and submission callbacks, allowing multi-participant topics to reuse the native composer.

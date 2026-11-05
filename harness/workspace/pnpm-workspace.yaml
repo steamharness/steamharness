@@ -1,9 +1,0 @@
-packages:
-  - "workflow/*"
-  - "conversation/*"
-allowBuilds:
-  '@ffmpeg-installer/darwin-arm64': true
-  '@google/genai': true
-  esbuild: true
-  ffmpeg-static: true
-  protobufjs: true

@@ -1,104 +1,71 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { prepareRelease, resolveSpawnInvocation } from "../prepare-release.mjs";
+import { prepareRelease } from "../prepare-release.mjs";
 
-test("Core release preparation updates its version and only Core dependencies in Workspace", async () => {
-  const root = await createFixture();
-  try {
-    const result = await prepareRelease({
-      root,
-      version: "1.1.0",
-      date: "2026-08-12",
-      runCommand: async () => {},
-    });
-    assert.equal(result.tag, "steamharness/v1.1.0");
-    assert.deepEqual(result.synchronizedPackages, [
-      path.join("workspace", "package.json"),
-      path.join("workspace", "workflow", "hello", "package.json"),
-    ]);
-    assert.equal(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version, "1.1.0");
-    const workspace = JSON.parse(await readFile(path.join(root, "workspace", "package.json"), "utf8"));
-    assert.equal(workspace.dependencies["steamharness"], "1.1.0");
-    assert.equal(workspace.devDependencies["@steamharness/cli"], "2.0.0");
-    assert.match(await readFile(path.join(root, "CHANGELOG.md"), "utf8"), /## 1\.1\.0 - 2026-08-12/);
-    assert.equal(await readFile(path.join(root, "CHANGELOG.next.md"), "utf8"), "# Unreleased\n");
-  } finally {
-    await rm(root, { recursive: true, force: true });
+const releaseFiles = ["package.json", "CHANGELOG.md", "CHANGELOG.en.md", "CHANGELOG.next.md", "CHANGELOG.next.en.md"];
+
+test("Core release preparation archives bilingual notes without an example workspace", async (t) => {
+  const root = await createFixture(t);
+  const manifest = await fs.readFile(path.join(root, "package.json"), "utf8");
+  const result = await prepareRelease({ root, version: "1.1.0", date: "2026-08-12" });
+
+  assert.deepEqual(result, { unit: "steamharness", version: "1.1.0", tag: "steamharness/v1.1.0", synchronizedPackages: [] });
+  assert.equal(await fs.readFile(path.join(root, "package.json"), "utf8"), manifest);
+  assert.match(await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8"), /## 1\.1\.0 - 2026-08-12/);
+  assert.match(await fs.readFile(path.join(root, "CHANGELOG.en.md"), "utf8"), /Added Independent release/);
+  for (const filename of ["CHANGELOG.next.md", "CHANGELOG.next.en.md"]) {
+    assert.equal(await fs.readFile(path.join(root, filename), "utf8"), "# Unreleased\n");
   }
+  assert.deepEqual((await fs.readdir(root)).sort(), [...releaseFiles].sort());
 });
 
-test("Core release preparation rolls every file back when lockfile generation fails", async () => {
-  const root = await createFixture();
-  const tracked = [
-    "package.json",
-    "CHANGELOG.md",
-    "CHANGELOG.en.md",
-    "CHANGELOG.next.md",
-    "CHANGELOG.next.en.md",
-    path.join("workspace", "package.json"),
-    path.join("workspace", "pnpm-lock.yaml"),
-    path.join("workspace", "workflow", "hello", "package.json"),
-  ];
-  const before = new Map(await Promise.all(tracked.map(async (file) => [
-    file,
-    await readFile(path.join(root, file), "utf8"),
+test("Core release preparation restores every file after a changelog write fails", async (t) => {
+  const root = await createFixture(t);
+  const before = new Map(await Promise.all(releaseFiles.map(async file => [
+    file, await fs.readFile(path.join(root, file), "utf8"),
   ])));
-  try {
-    await assert.rejects(
-      prepareRelease({
-        root,
-        version: "1.1.0",
-        date: "2026-08-12",
-        runCommand: async () => {
-          await writeFile(path.join(root, "workspace", "pnpm-lock.yaml"), "changed\n", "utf8");
-          throw new Error("lockfile failed");
-        },
-      }),
-      /lockfile failed/,
-    );
-    for (const [file, contents] of before) {
-      assert.equal(await readFile(path.join(root, file), "utf8"), contents, file);
+  const originalWrite = fs.writeFile;
+  let failed = false;
+  t.mock.method(fs, "writeFile", async (filename, ...args) => {
+    if (filename === path.join(root, "CHANGELOG.en.md") && !failed) {
+      failed = true;
+      assert.notEqual(await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8"), before.get("CHANGELOG.md"));
+      // Model a partial write, not just a failure before any bytes were changed.
+      await originalWrite(filename, "partial write");
+      throw new Error("changelog write failed");
     }
-  } finally {
-    await rm(root, { recursive: true, force: true });
+    return originalWrite(filename, ...args);
+  });
+
+  await assert.rejects(prepareRelease({ root, version: "1.1.0" }), /changelog write failed/);
+  assert.equal(failed, true);
+  for (const [filename, contents] of before) {
+    assert.equal(await fs.readFile(path.join(root, filename), "utf8"), contents, filename);
   }
 });
 
-test("Corepack invocation is Windows-safe", () => {
-  assert.deepEqual(resolveSpawnInvocation("corepack", ["pnpm", "install"], {
-    platform: "win32",
-    execPath: "C:\\Program Files\\nodejs\\node.exe",
-    comSpec: "C:\\Windows\\System32\\cmd.exe",
-  }), {
-    command: "C:\\Windows\\System32\\cmd.exe",
-    args: [
-      "/d",
-      "/s",
-      "/c",
-      "call",
-      "C:\\Program Files\\nodejs\\corepack.cmd",
-      "pnpm",
-      "install",
-    ],
-  });
+test("Core release preparation validates the source version and bilingual notes before writing", async (t) => {
+  const root = await createFixture(t);
+  const before = await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8");
+  await assert.rejects(prepareRelease({ root, version: "1.1.0-alpha.1" }), /stable X.Y.Z/);
+  await assert.rejects(prepareRelease({ root, version: "1.2.0" }), /package.json must be changed/);
+  await fs.writeFile(path.join(root, "CHANGELOG.next.en.md"), "# Unreleased\n");
+  await assert.rejects(prepareRelease({ root, version: "1.1.0" }));
+  assert.equal(await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8"), before);
 });
 
-async function createFixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "workflow-core-release-"));
-  await mkdir(path.join(root, "workspace", "workflow", "hello"), { recursive: true });
-  await mkdir(path.join(root, "workspace", "conversation", "empty"), { recursive: true });
+async function createFixture(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "steamharness-release-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
   await Promise.all([
-    writeFile(path.join(root, "package.json"), '{"name":"steamharness","version":"1.1.0"}\n', "utf8"),
-    writeFile(path.join(root, "CHANGELOG.md"), "# Changelog\n\n## 1.0.0 - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n", "utf8"),
-    writeFile(path.join(root, "CHANGELOG.en.md"), "# Changelog\n\n## 1.0.0 - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n", "utf8"),
-    writeFile(path.join(root, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 独立发布。\n", "utf8"),
-    writeFile(path.join(root, "CHANGELOG.next.en.md"), "# Unreleased\n\n### Added\n\n- Added Independent release.\n", "utf8"),
-    writeFile(path.join(root, "workspace", "package.json"), '{"dependencies":{"steamharness":"1.0.0"},"devDependencies":{"@steamharness/cli":"2.0.0"}}\n', "utf8"),
-    writeFile(path.join(root, "workspace", "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8"),
-    writeFile(path.join(root, "workspace", "workflow", "hello", "package.json"), '{"devDependencies":{"steamharness":"1.0.0","@steamharness/cli":"2.0.0"}}\n', "utf8"),
+    fs.writeFile(path.join(root, "package.json"), '{"name":"steamharness","version":"1.1.0"}\n'),
+    fs.writeFile(path.join(root, "CHANGELOG.md"), "# Changelog\n\n## 1.0.0 - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n"),
+    fs.writeFile(path.join(root, "CHANGELOG.en.md"), "# Changelog\n\n## 1.0.0 - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n"),
+    fs.writeFile(path.join(root, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 独立发布。\n"),
+    fs.writeFile(path.join(root, "CHANGELOG.next.en.md"), "# Unreleased\n\n### Added\n\n- Added Independent release.\n"),
   ]);
   return root;
 }

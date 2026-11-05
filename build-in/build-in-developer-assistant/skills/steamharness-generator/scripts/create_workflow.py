@@ -233,10 +233,9 @@ def read_sibling_version(package_path: Path, specifier: str, package_name: str) 
 def resolve_dependency_versions() -> tuple[str, str]:
     """解析 scaffold 要写入的精确 Core/CLI 版本。
 
-    Core 仓库把 Core 版本放在根 `package.json.version`、CLI 版本放在
-    `workspace/package.json`；Desktop 与内置项目则把两者写在最近的祖先
-    package.json 依赖里。两种布局都支持，且只认包名/依赖声明，不看
-    `version` 字段，避免误把宿主产品版本当成 Core 版本。
+    SDK 检出使用自身和相邻 CLI 包的版本；已安装技能使用最近宿主的
+    package.json 依赖声明。两者分别解析，不依赖示例工程，也不把宿主的
+    version 字段当成 SDK 或 CLI 的版本。
     """
     for directory in Path(__file__).resolve().parents:
         package_path = directory / "package.json"
@@ -244,17 +243,13 @@ def resolve_dependency_versions() -> tuple[str, str]:
             continue
         package = read_package_json(package_path)
         if package.get("name") == "steamharness":
-            workspace_path = directory / "workspace" / "package.json"
             core_version = package.get("version")
-            cli_version = (
-                read_declared_version(read_package_json(workspace_path), "@steamharness/cli", workspace_path)
-                if workspace_path.is_file()
-                else None
-            )
             if not isinstance(core_version, str) or not SEMVER_PATTERN.fullmatch(core_version):
                 raise SystemExit(f"{package_path} 的版本不是精确 SemVer。")
+            cli_path = directory.parent / "cli" / "package.json"
+            cli_version = read_sibling_version(package_path, "link:../cli", "@steamharness/cli")
             if cli_version is None:
-                raise SystemExit(f"{workspace_path} 未声明精确的 @steamharness/cli 版本。")
+                raise SystemExit(f"{cli_path} 必须声明 @steamharness/cli 包名和精确 SemVer 版本。")
             return core_version, cli_version
         core_version = read_declared_version(package, "steamharness", package_path)
         if core_version is None:
@@ -265,7 +260,7 @@ def resolve_dependency_versions() -> tuple[str, str]:
         return core_version, cli_version
     raise SystemExit(
         "找不到 steamharness 与 @steamharness/cli 的精确依赖版本；"
-        "请在仓库根的 package.json（或 Core 布局的 workspace/package.json）中声明它们。"
+        "请在宿主 package.json 中分别声明它们，或在 SDK 检出旁准备 CLI 包。"
     )
 
 

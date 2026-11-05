@@ -93,11 +93,11 @@ export const demo = workflow.defineProject<Input, OutputPayload>({
 
 计时记录保存在最终 `report.timers` 中。共享运行界面普通 Run workspace、conversation 消息、Diagram Result/回放、本地输出和日志回放都会读取同一份记录展示计时卡片。
 
-## 可运行示例
+## 在自己的项目中验证
 
-`workspace/workflow/runtime-timer` 是可运行的计时示例。它会启动一个业务计时、按输入的毫秒数等待，并显式调用 `endTimer`。最终报告中只会生成一条业务计时记录；未显式结束 timer 的自动 `cleared` 行为由测试覆盖。
+将上面的计时节点加入已注册的 Workflow 入口，运行后检查 `report.timers`：显式结束的计时为 `success`，未结束的计时在运行结束时变为 `cleared`。
 
 ```bash
-steamharness structure workspace/workflow/runtime-timer
-steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness structure ./my-project
+steamharness json ./my-project
 ```

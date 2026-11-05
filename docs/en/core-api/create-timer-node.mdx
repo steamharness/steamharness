@@ -93,11 +93,11 @@ export const demo = workflow.defineProject<Input, OutputPayload>({
 
 Timing records are saved in the final `report.timers`. The shared runtime UI normal Run workspace, conversation message, Diagram Result/replay, local output and log replay all read the same record presentation timing card.
 
-## Runable example
+## Verify in Your Project
 
-`workspace/workflow/runtime-timer` is a runnable timing example. It starts a business timer, waits by the number of milliseconds entered, and explicitly calls `endTimer`. Only one business timing record is generated in the final report; automatic `cleared` behavior that does not explicitly end timer is overridden by the test.
+Add the timer node above to a registered Workflow entry and inspect `report.timers` after running it. Explicitly ended timers have status `success`; timers left running become `cleared` when the run ends.
 
 ```bash
-steamharness structure workspace/workflow/runtime-timer
-steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness structure ./my-project
+steamharness json ./my-project
 ```

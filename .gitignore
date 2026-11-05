@@ -18,7 +18,6 @@ studio/extensions/*/dist/
 *.tsbuildinfo
 .packs
 **/.packs
-harness/workspace/.packs/
 
 # 生成或缓存目录
 .shared/

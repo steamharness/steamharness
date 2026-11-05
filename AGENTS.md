@@ -26,7 +26,7 @@ node --test scripts/__tests__/*.test.mjs
 
 ## 工作区边界
 
-- `harness`、`cli`、`server`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）独立安装，不进 workspace；`docs` 只保存 Markdown/MDX、导航与 OpenAPI 源，不含站点工具链；`harness/workspace` 是示例工作流的嵌套 workspace。
+- `harness`、`cli`、`server`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）独立安装，不进 workspace；`docs` 只保存 Markdown/MDX、导航与 OpenAPI 源，不含站点工具链。Core 测试集中在 `harness/src/__tests__`，文件系统集成测试按需生成并清理最小临时夹具，不维护嵌套示例 workspace。
 - 内部专有内容不得进入本仓库。跨仓开发通过私有仓库的 `open-sources/` 子模块完成。
 
 ## 发布

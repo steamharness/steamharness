@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(path.join(tmpdir(), "workflow-agent-dist-"));
-const databasePath = path.join(temporary, ...Array.from({ length: 8 }, () => "nested directory with spaces and 中文"), "agent.sqlite");
+const runtimeDirectory = path.join(temporary, ...Array.from({ length: 8 }, () => "nested directory with spaces and 中文"), "runtime");
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 let requests = 0;
 let systemPrompt = "";
@@ -83,23 +83,25 @@ void session;
   const agentModule = await import(pathToFileURL(path.join(temporary, "dist/agent.js")).href);
   for (const removed of ["withAgentMemory", "createServerAgentMemoryProvider"]) assert.equal(removed in agentModule, false);
   const { createAgent } = agentModule;
+  const { createLocalRuntimePersistence } = await import(pathToFileURL(path.join(temporary, "dist/runtime-storage.js")).href);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
   assert.ok(address && typeof address === "object");
   const usage = [];
   for (let attempt = 0; attempt < 2; attempt++) {
+    const persistence = createLocalRuntimePersistence({ directory: runtimeDirectory });
     const agent = await createAgent({
       provider: "openai", model: "dist-smoke", baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "offline-fixture", apiKind: "openai-completions", contextWindow: 8192,
-      workdir: temporary, databasePath, tools: [],
+      workdir: temporary, storage: persistence.agentStorage("dist-conversation", "main"), tools: [],
     });
     let answer = "";
     try {
       for await (const event of agent.run({ prompt: "Hello", requestId: "same-dist-request" }, {
         reportUsage: record => { usage.push(record.recordId); },
       })) if (event.type === "text_delta") answer += event.delta;
-    } finally { await agent.close(); }
+    } finally { try { await agent.close(); } finally { await persistence.close(); } }
     assert.equal(answer, "Dist durable ready.");
   }
   assert.equal(requests, 1);
