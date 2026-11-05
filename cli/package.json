@@ -28,6 +28,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
+    "esbuild": "0.28.2",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@prisma/client-generator-ts": "7.10.1",
     "@prisma/internals": "7.10.1",
@@ -56,7 +57,6 @@
     "@vitest/coverage-v8": "4.1.10",
     "@vscode/codicons": "0.0.45",
     "dompurify": "3.3.1",
-    "esbuild": "0.28.2",
     "marked": "17.0.1",
     "semver": "^7.7.4",
     "steamharness": "0.1.2-dev.20261031002",

@@ -1,4 +1,4 @@
-import { t } from './localization';
+import { t, locale as currentLocale } from './localization';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
@@ -233,5 +233,25 @@ export async function requestProjectCliConfiguration(projectDir: string, nodePat
     child.stderr.on('data',text=>{stderr=(stderr+text).slice(-2000);});
     child.on('error',error=>{clearTimeout(timeout);reject(error);});
     child.on('close',()=>{clearTimeout(timeout);try{const result=JSON.parse(stdout);if(result.ok)resolve(result.value);else reject(Object.assign(new Error(result.error?.message||'Configuration request failed.'),{code:result.error?.code}));}catch(error){reject(new Error(stderr||'Invalid configuration response.'));}});
+  });
+}
+
+/** Build through the project CLI so desktop and command-line distribution use one contract. */
+export async function prepareProjectDistributionCli(directory: string, nodePath: string, snapshot: boolean, signal: AbortSignal, progress: (message: string) => void, runtime?: NodeRuntime): Promise<{ directory: string; mode: 'source' | 'release'; buildId?: string; entries?: string[] }> {
+  const cli = await resolveProjectCli(directory);
+  return new Promise((resolve, reject) => {
+    const child = spawn(nodePath, [cli.entry, '--locale', currentLocale(), 'release', directory, '--json', snapshot ? '--snapshot' : '--inspect'], { cwd: directory, env: environment(undefined, runtime), shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], signal });
+    let output = '', error = '';
+    child.stdout.on('data', bytes => { output += bytes; if (output.length > 2_000_000) child.kill(); });
+    child.stderr.on('data', bytes => { error = (error + bytes).slice(-12_000); progress(String(bytes).trim()); });
+    child.once('error', reject);
+    child.once('close', code => {
+      try {
+        if (code !== 0) throw new Error(error || `Release CLI exited (${code}).`);
+        const value = JSON.parse(output);
+        if (typeof value.directory !== 'string' || !path.isAbsolute(value.directory)) throw new Error('Invalid release CLI result.');
+        resolve({ ...value, mode: snapshot ? 'release' : value.mode });
+      } catch (failure) { reject(failure); }
+    });
   });
 }

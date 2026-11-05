@@ -6,6 +6,8 @@ export * from "./artifacts";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
 import { normalizeProjectInfo, type ProjectInfoContract } from "../project-info/index";
 import { readProjectConfig } from "./config";
+import { parseProjectReleaseConfiguration, type ProjectReleaseConfiguration } from "./release";
+export * from "./release";
 export * from "./config";
 export const PROJECT_MANIFEST_FILE = "steamharness.json";
 export interface KnowledgeBaseRequirement { alias: string; knowledgeBaseId: string }
@@ -45,6 +47,7 @@ export interface ProjectEntryDeclaration extends Omit<ProjectEntry, "databases" 
 export interface ProjectDeclaration extends Omit<ProjectManifest, "entries"> {
   version: string;
   entries: ProjectEntryDeclaration[];
+  release?: ProjectReleaseConfiguration;
 }
 
 /** Validate a host's resolved registration, distinct from an authored package declaration. */
@@ -66,7 +69,11 @@ export function normalizeProjectManifest(value: unknown): ProjectManifest {
 /** Parse the authored root document. Child configurations are loaded only for explicit registrations. */
 function rootDocument(value: unknown): Record<string, unknown> {
   const input = record(value, PROJECT_MANIFEST_FILE);
-  if (Object.keys(input).some(key => !["id", "name", "version", "description", "defaultEntry", "entries", "projectCard", "projectInfo", "builtinRelease"].includes(key))) throw new Error(`${PROJECT_MANIFEST_FILE} contains unsupported fields.`);
+  if (Object.keys(input).some(key => !["id", "name", "version", "description", "defaultEntry", "entries", "projectCard", "projectInfo", "builtinRelease", "release", "distribution"].includes(key))) throw new Error(`${PROJECT_MANIFEST_FILE} contains unsupported fields.`);
+  if (input.distribution !== undefined) {
+    const distribution = record(input.distribution, "distribution");
+    if (distribution.kind !== "release" || distribution.version !== 1 || Object.keys(distribution).some(key => !["kind", "version"].includes(key))) throw new Error("Unsupported project distribution format. Upgrade the host.");
+  }
   if (typeof input.id !== "string" || !DATABASE_UUID_PATTERN.test(input.id)) throw new Error(`${PROJECT_MANIFEST_FILE}.id must be the aggregate project's UUID.`);
   if (typeof input.name !== "string" || !input.name.trim()) throw new Error(`${PROJECT_MANIFEST_FILE}.name is required.`);
   if (typeof input.version !== "string" || !/^\d+\.\d+\.\d+$/.test(input.version)) throw new Error(`${PROJECT_MANIFEST_FILE}.version must use x.y.z format.`);
@@ -83,6 +90,7 @@ function rootDocument(value: unknown): Record<string, unknown> {
     if (root === "." && entry.entry === undefined && entry.type !== "kanban") throw new Error("Root entries must declare their executable entry inline.");
   }
   if (typeof input.defaultEntry !== "string" || !ids.has(input.defaultEntry)) throw new Error(`${PROJECT_MANIFEST_FILE}.defaultEntry must identify a registered entry.`);
+  parseProjectReleaseConfiguration(input.release, [...ids]);
   return input;
 }
 export function projectEntryConfigRoots(value: unknown): string[] {
@@ -120,6 +128,7 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
   });
   const defaultType = selectProjectEntry({entries, defaultEntry: input.defaultEntry as string}).type;
   return { projectId: (input.id as string).toLowerCase(), name: input.name as string, version: input.version as string, entries, defaultEntry: input.defaultEntry as string,
+    ...(input.release === undefined ? {} : { release: parseProjectReleaseConfiguration(input.release, entries.map(entry => entry.entryId)) }),
     ...(input.description === undefined ? {} : {description: input.description as string}),
     ...(input.projectCard === undefined ? {} : {projectCard: validateProjectCardMetadata({...normalizeProjectCardMetadata(undefined, defaultType), ...record(input.projectCard, "projectCard")})}),
     ...(input.projectInfo === undefined ? {} : {projectInfo: normalizeProjectInfo(input.projectInfo)}) };

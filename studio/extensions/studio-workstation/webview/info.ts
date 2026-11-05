@@ -68,7 +68,7 @@ function render(next: InfoState): void {
     const name = escapeHtml(next.project.name), previewLabel = escapeHtml(t("Project avatar"));
     app.innerHTML = `<div class="info-project-heading">${avatar ? `<button type="button" class="info-avatar" data-action="avatar" title="${previewLabel}" aria-label="${previewLabel}" aria-haspopup="dialog"><img src="${avatar}" alt=""></button>` : ''}<strong>${name}</strong></div>`
       + (avatar ? `<dialog class="avatar-dialog" aria-label="${name}"><button type="button" class="copy-button" data-close-avatar title="${escapeHtml(t("Close"))}" aria-label="${escapeHtml(t("Close"))}">${iconHtml('close')}</button><img src="${avatar}" alt="${name}"></dialog>` : '')
-      + (next.update ? projectVersionHtml(next.update) : '') + next.items.map(item => renderItem(item)).join('');
+      + (next.update && next.update.status !== 'source' ? projectVersionHtml(next.update) : '') + next.items.map(item => renderItem(item)).join('');
     const avatarButton = app.querySelector<HTMLButtonElement>('[data-action="avatar"]');
     if (avatarButton) {
       const preview = app.querySelector<HTMLDialogElement>('.avatar-dialog')!;

@@ -1,4 +1,5 @@
 import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
+import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
 import { createRuntimeStateStorage } from "../runtime-storage/state";
 import type { RuntimePersistence } from "../runtime-storage/history";
@@ -342,7 +343,7 @@ async function runWorkspaceProjectWithReportInternal(
     );
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
-      rootDir: projectStorageDeclaration.rootDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
+      rootDir: projectStorageDeclaration.rootDir, aggregateDir: projectStorageDeclaration.projectDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
       persistence: options.storage?.[options.storage.host]?.runtimePersistence,
       workspace: options.storage?.[options.storage.host]?.runtimeWorkspace,
     });
@@ -557,7 +558,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
     );
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
-      rootDir: projectStorageDeclaration.rootDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
+      rootDir: projectStorageDeclaration.rootDir, aggregateDir: projectStorageDeclaration.projectDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
       persistence: options.storage?.[options.storage.host]?.runtimePersistence,
       workspace: options.storage?.[options.storage.host]?.runtimeWorkspace,
     });
@@ -898,7 +899,7 @@ async function runLocalProjectWithReportInternal(
     );
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
-      rootDir: projectStorageDeclaration.rootDir, runId: runId, conversationId: resolvedConversationId, env,
+      rootDir: projectStorageDeclaration.rootDir, aggregateDir: projectStorageDeclaration.projectDir, runId: runId, conversationId: resolvedConversationId, env,
       persistence: options.storage?.[options.storage.host]?.runtimePersistence,
       workspace: options.storage?.[options.storage.host]?.runtimeWorkspace,
     });
@@ -1122,12 +1123,18 @@ export function inspectWorkspaceProjectStructure(options: {
 
 export function inspectLocalProjectStructure(options: {
   projectDir?: string; projectName?: string; entryId?: string;
+  /** Authoring tools may inspect an alternate module inside the registered source root. */
+  sourceEntry?: string;
 } = {}): StructureReport {
   const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId);
-  const { registration, rootDir, modulePath, manifest } = declaration;
+  const { registration, rootDir, manifest } = declaration;
+  const modulePath = options.sourceEntry === undefined ? declaration.modulePath : path.resolve(rootDir, options.sourceEntry);
+  if (options.sourceEntry !== undefined && (path.relative(rootDir, modulePath).startsWith("..") || path.isAbsolute(path.relative(rootDir, modulePath)))) throw new Error("Alternate source entry must stay inside its registered root.");
   const projectName = options.projectName ?? registration.name;
   const identity = { projectId: manifest.projectId, entryId: registration.entryId, entryName: registration.name, entries: manifest.entries, defaultEntry: manifest.defaultEntry };
   const configuration = readProjectConfigurationDefinition(declaration.projectDir, registration.entryId);
+  const released = readReleaseStructureSync(declaration.projectDir, registration.entryId);
+  if (released) return { ...released.report, ...identity, distribution: "release", configuration, workflow: { ...released.report.workflow, dir: declaration.projectDir } } as StructureReport;
   if (registration.type === "kanban") {
     readSchedulePresetValue({schedulePresets:registration.schedulePresets},"kanban",[]);
     const entry = path.basename(registration.entry);

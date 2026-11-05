@@ -898,6 +898,13 @@ export class DatabaseRepository {
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
 
+  /** Publication checks the saved revision without rebinding it to a newly uploaded definition. */
+  async projectConfigurationRevision(projectId: string, entryId: string, userId: string): Promise<number | undefined> {
+    const result = await this.pool.query("SELECT state->>'revision' AS revision FROM entry_configurations WHERE project_id=$1 AND entry_id=$2 AND user_id=$3", [projectId, entryId, userId]);
+    const value = result.rows[0]?.revision;
+    return value === undefined || value === null ? undefined : Number(value);
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     await this.pool.query("delete from projects where id = $1", [projectId]);
   }

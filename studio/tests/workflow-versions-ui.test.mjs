@@ -28,3 +28,15 @@ for (const language of ['en', 'zh-cn']) {
     assert.ok(!app.innerHTML.includes('<script>'));
   });
 }
+
+
+test('source versions hide sign-in, server comparisons and upgrade controls', async () => {
+  const events = new Map(), app = { innerHTML: '', setAttribute() {}, querySelectorAll: () => [] };
+  runInNewContext(code, { acquireVsCodeApi: () => ({ postMessage() {}, setState() {} }),
+    document: { documentElement: { lang: 'en' }, activeElement: null, querySelector: () => app, getElementById: () => ({ textContent: '{}' }) },
+    window: { scrollY: 0, scrollTo() {} }, addEventListener: (name, listener) => events.set(name, listener) });
+  events.get('message')({ data: { type: 'versions-state', generation: 1, signedIn: false, loading: false, busy: false,
+    project: { id: 'source', name: 'Source', uri: 'file:///source' }, localVersion: '1.2.3', update: { status: 'source', localVersion: '1.2.3', canDownload: false }, versions: [] } });
+  assert.match(app.innerHTML, /1.2.3/);
+  assert.doesNotMatch(app.innerHTML, /sign-in|upgrade|Server Version|No published versions/);
+});

@@ -730,6 +730,9 @@ export function isSafeKanbanAssetPath(filePath: string): boolean {
     part.startsWith(".") ||
     part === "node_modules" ||
     part === "package.json" ||
+    part === "steamharness.json" ||
+    part === "steamharness.release.json" ||
+    part === "structure.json" ||
     part === "kanban.json" ||
     part === "configuration.json" ||
     part === "configuration.template.json" ||

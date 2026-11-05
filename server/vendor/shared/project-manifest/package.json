@@ -7,7 +7,9 @@
   "types": "./index.ts",
   "exports": {
     ".": "./index.ts",
-    "./node": "./node.ts"
+    "./node": "./node.ts",
+    "./release": "./release.ts",
+    "./release-node": "./release-node.ts"
   },
   "dependencies": {
     "@steamharness/project-types": "workspace:*"

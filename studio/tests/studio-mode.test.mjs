@@ -620,3 +620,25 @@ test('interrupted animations complete the mode request and release all effects',
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false); assert.ok(cancelled > 0);
 });
+
+
+test('release projects automatically enter Steam and reject IDE switches', async t => {
+  const f = fixture(t);
+  f.state.state.releaseOnly = true;
+  f.publish(true);
+  await f.run('EnterSteamMode');
+  assert.equal(f.state.steam, true);
+  await f.run('EnterIdeMode');
+  assert.equal(f.state.steam, true);
+  await f.run('ToggleMode');
+  assert.equal(f.state.steam, true);
+});
+
+test('release startup failures keep the Steam shell', async t => {
+  const f = fixture(t);
+  f.state.state.releaseOnly = true;
+  f.prepare = async () => { throw new Error('Release startup failed'); };
+  f.publish(true);
+  await assert.rejects(f.run('EnterSteamMode'), /Release startup failed/);
+  assert.equal(f.state.steam, true);
+});

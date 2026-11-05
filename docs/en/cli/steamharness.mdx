@@ -126,3 +126,43 @@ Conversation, Workflow and assistant history persist to host-local SQLite by def
 `steamharness database data <UUID> < request.json` manages applied models with `models / rows / insert / update / delete`. Read schemaHash from models and send it on later requests. Updates and deletes also require the current rowVersion and complete stable key. Stdin is limited to 4 MiB. Encode BigInt and Decimal as decimal strings, DateTime as ISO with a timezone and Bytes as Base64. Dates use UTC, enums use authored names, and omitted lists without defaults become empty arrays. `database list` accepts the same pagination options. See [Knowledge API](/en/core-api/knowledge-documents) and [Database API](/en/core-api/database).
 
 Kanban can invoke registered Workflows and subscribe to native Conversations through the aggregate host. See [Kanban](/en/concepts/kanban) and [Conversation entry control](/en/concepts/database-and-conversation#local-conversation-entry-control). Each entry reuses its native controller, execution owner, and queue. Studio shares this host for the same aggregate project.
+
+## Project release mode
+
+`steamharness release . --json` writes a runnable distribution to `dist/release/project/` and a versioned archive beside it. Project UUID, version, entries, parameters, tools and configuration definitions remain readable. Business JavaScript is bundled and minified with local identifiers renamed; TypeScript sources and source maps are excluded.
+
+```sh
+pnpm exec steamharness release .
+pnpm exec steamharness web . --release
+pnpm exec steamharness json . --release --entry main
+pnpm exec steamharness workspace pack example --path . --mode release
+```
+
+An optional `release` object in the aggregate `steamharness.json` selects the distribution:
+
+```json
+{
+  "release": {
+    "entries": ["agent", "database", "board"],
+    "defaultEntry": "agent",
+    "entryOverrides": {
+      "agent": { "entry": "index.release.ts", "configuration": "configuration.release.json", "profiles": ["ask"] }
+    },
+    "build": ["corepack", "pnpm", "run", "build"],
+    "files": ["README.md", "LICENSE"],
+    "externals": []
+  }
+}
+```
+
+All entries are included by default. Override modules, configurations and `assets` are relative to the original entry root; `files` are relative to the aggregate root and support globs. Without `build`, the package's build script is used. Kanban requires a build step. Dependencies are bundled, while the SDK and Node built-ins are provided by the host. Explicit `externals` are recorded at their installed exact versions. Inclusion rules cannot override credential, source, test or runtime-data exclusions.
+
+Entry selection must account for calls between entries. `profiles` restricts configuration only. To remove executable capabilities, provide a release-specific module and separate its dependencies from excluded implementations.
+
+The `--release` option on run commands checks input fingerprints, rebuilds when necessary and runs an immutable build snapshot. Development and release sessions, configurations and checkpoints use separate namespaces in application/user data directories. They retain the same project UUID and Server resource bindings. Deleting `dist/` does not delete runtime data.
+
+Studio provides **Run (Release Mode)** beside the normal run action, with cancellable build progress. Source projects display their authored version only. Downloaded or imported release projects check for upgrades and open in Steam mode with the IDE switch hidden. A release installation cannot be replaced by a source version.
+
+Packing and uploading accept `--mode auto|source|release`, defaulting to `auto`. A release configuration or existing release output causes the latest distribution to be prepared and uploaded. Build failures stop the upload without falling back to source. `source` explicitly uploads source; `release` forces a release build. Release uploads use their validated inventory instead of inheriting source `.steamharnessignore` rules. Server configuration publication respects the release's profile and field limits.
+
+`steamharness.release.json` declares the format version, build identity and file hashes. Hosts validate it when inspecting, running or downloading a release. Older hosts must upgrade to support this format. The command generates project artifacts; it does not publish npm packages or deploy services.

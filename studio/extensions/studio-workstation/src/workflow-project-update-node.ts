@@ -1,3 +1,4 @@
+import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { chmod, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { t } from './localization';
@@ -86,6 +87,7 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
     await cp(source.directory, replacement, { recursive: true, errorOnExist: true, force: false,
       filter: () => { options.signal.throwIfAborted(); return true; } });
     await validateSource(replacement, options.signal);
+    if (readProjectReleaseSync(root) && !readProjectReleaseSync(replacement)) throw new Error(t("A release installation can only be upgraded to another release."));
     const targetManifest = JSON.parse(await readFile(path.join(replacement, 'steamharness.json'), 'utf8'));
     if (targetManifest.id !== options.projectId || targetManifest.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
     await chmod(replacement, stat.mode & 0o7777);

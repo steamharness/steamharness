@@ -96,5 +96,6 @@
   "container.studio-databases": "Databases",
   "command.openDatabases": "Open Databases",
   "command.refreshDatabases": "Refresh Databases",
-  "config.studio.project.nodeSource": "Use the runtime provided by Studio or a local Node.js. Restart existing project services and terminals after switching."
+  "config.studio.project.nodeSource": "Use the runtime provided by Studio or a local Node.js. Restart existing project services and terminals after switching.",
+  "command.openProjectRelease": "Run (Release Mode)"
 }

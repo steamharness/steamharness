@@ -1,6 +1,8 @@
 # Unreleased
 
 - Agent command receipts no longer wait for snapshot delivery. Session projections and explicitly safe tools retry up to three times and continue automatically while preserving request identity, authorization, and cancellation.
+- Validate and run compiled project releases with readable entry metadata and separate development/release state.
+
 - Added submission lifecycle events and explicit retries to embedded Kanban Conversations, allowing business transcripts to show immediate feedback and merge authorized receipts.
 - Public Kanban Conversation types support project-defined @ choices, dynamic UI updates, presentation slots and submission callbacks, allowing multi-participant topics to reuse the native composer.
 

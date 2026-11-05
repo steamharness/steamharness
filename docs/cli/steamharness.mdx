@@ -126,3 +126,43 @@ Conversation、Workflow 与助手历史默认持久化到宿主本地 SQLite，�
 `steamharness database data <UUID> < request.json` 管理已应用模型的表数据，operation 为 `models / rows / insert / update / delete`。先读取 models 的 schemaHash，后续请求传该值；更新和删除还需要当前 rowVersion 和完整稳定 key。请求输入上限 4 MiB。BigInt、Decimal 使用十进制字符串，DateTime 使用带时区的 ISO 并按 UTC 读写，Bytes 使用 Base64；枚举使用声明值，未提供且无默认值的列表写为空数组。`database list` 也支持上述分页参数。详见 [知识库 API](/core-api/knowledge-documents) 与 [数据库 API](/core-api/database)。
 
 Kanban 可通过聚合宿主调用已登记 Workflow 和订阅原生 Conversation，详见 [Kanban](/concepts/kanban) 与 [入口会话控制](/concepts/database-and-conversation#本地-conversation-入口控制)。宿主复用各入口原生控制器、执行 owner 与队列；Studio 的同一聚合项目共享此宿主。
+
+## 项目发行模式
+
+`steamharness release . --json` 生成 `dist/release/project/` 和同级版本压缩包。发行目录保留可读的项目 UUID、版本、入口、参数、工具及配置定义；业务 JavaScript 合并压缩、局部变量名混淆，不携带 TypeScript 源码和 source map。
+
+```sh
+pnpm exec steamharness release .
+pnpm exec steamharness web . --release
+pnpm exec steamharness json . --release --entry main
+pnpm exec steamharness workspace pack example --path . --mode release
+```
+
+根 `steamharness.json` 的可选 `release` 控制发行内容。例如：
+
+```json
+{
+  "release": {
+    "entries": ["agent", "database", "board"],
+    "defaultEntry": "agent",
+    "entryOverrides": {
+      "agent": { "entry": "index.release.ts", "configuration": "configuration.release.json", "profiles": ["ask"] }
+    },
+    "build": ["corepack", "pnpm", "run", "build"],
+    "files": ["README.md", "LICENSE"],
+    "externals": []
+  }
+}
+```
+
+`entries` 缺省包含全部入口。覆盖模块、配置和 `assets` 路径相对原入口根；`files` 相对聚合根，支持 glob。未指定 `build` 时使用项目的 `build` 脚本；包含 Kanban 必须有构建步骤。依赖默认打包，SDK 和 Node 内置模块由宿主提供；无法打包的 npm 包放入 `externals`，发行清单写入已安装的精确版本。文件包含规则不能绕过凭据、源码、测试和运行数据的排除规则。
+
+入口裁剪必须同时处理跨入口依赖。`profiles` 只裁剪配置，若需要彻底移除某项能力，应使用发行专用模块，并将相关实现拆成独立依赖，不能仅隐藏界面选项。
+
+运行命令的 `--release` 会检查输入指纹并在需要时重新构建，使用固定的构建快照运行。发行运行与源码运行的本地会话、配置和检查点分别保存在宿主/用户数据目录；两者仍使用原项目 UUID 和服务器资源绑定。删除 `dist/` 不会删除运行数据。
+
+Studio 在运行按钮右侧提供“运行（发行模式）”，显示可取消的构建进度。源码项目只显示本地声明的版本；下载或导入的发行项目检查可用升级，默认进入 Steam 模式并隐藏 IDE 模式切换。发行安装不能被源码版本替换。
+
+上传和打包支持 `--mode auto|source|release`，默认 `auto`：存在发行配置或发行结果时，先检查并构建最新发行结果，再上传发行目录。构建失败会停止上传，不回退到源码。`source` 显式上传源码；`release` 强制发行。发行上传使用完整文件清单，不继承源码 `.steamharnessignore`；服务器发布配置时遵守发行 profile 和字段限制。
+
+发行目录中的 `steamharness.release.json` 声明格式版本、构建身份及文件哈希。宿主在检查、运行和下载时验证它；不支持该格式的旧宿主需要升级。发行命令只生成项目产物，不发布 npm 包或部署服务。

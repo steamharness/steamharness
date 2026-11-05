@@ -915,5 +915,13 @@
   "All resources": "All resources",
   "Relational databases": "Relational databases",
   "Knowledge bases": "Knowledge bases",
-  "This database reference changed. Reopen the project.": "This database reference changed. Reopen the project."
+  "This database reference changed. Reopen the project.": "This database reference changed. Reopen the project.",
+  "Save the project files before building a release.": "Save the project files before building a release.",
+  "Preparing release": "Preparing release",
+  "This entry is not included in the release.": "This entry is not included in the release.",
+  "Release": "Release",
+  "Distribution mode changed. Try uploading again.": "Distribution mode changed. Try uploading again.",
+  "Distribution Mode": "Distribution Mode",
+  "Entries": "Entries",
+  "A release installation can only be upgraded to another release.": "A release installation can only be upgraded to another release."
 }

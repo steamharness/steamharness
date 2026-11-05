@@ -96,5 +96,6 @@
   "container.studio-databases": "数据库",
   "command.openDatabases": "打开数据库",
   "command.refreshDatabases": "刷新数据库",
-  "config.studio.project.nodeSource": "项目使用 Studio 提供的运行时或本地 Node.js；切换后重启已有项目服务和终端。"
+  "config.studio.project.nodeSource": "项目使用 Studio 提供的运行时或本地 Node.js；切换后重启已有项目服务和终端。",
+  "command.openProjectRelease": "运行（发行模式）"
 }

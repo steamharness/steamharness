@@ -3,8 +3,9 @@ import { escapeHtml as text, iconHtml } from './ui';
 import type { ProjectVersionStatus } from '../src/steamharness-server-projects';
 
 export function projectVersionHtml(update: ProjectVersionStatus, busy = false): string {
+  if (update.status === 'source') return `<section class="project-version-status"><span>${text(t('Version'))}</span><b>${text(update.localVersion ?? '\u2014')}</b></section>`;
   const labels: Record<ProjectVersionStatus['status'], string> = {
-    checking: t('Checking for Updates...'), 'signed-out': t('Sign in to Check for Updates'), unavailable: t('Could Not Check for Updates'),
+    source: t('Source'), checking: t('Checking for Updates...'), 'signed-out': t('Sign in to Check for Updates'), unavailable: t('Could Not Check for Updates'),
     unpublished: t('No Published Server Version'), current: t('Up to Date'), upgrade: t('Update Available'),
     ahead: t('Local Version Is Newer'), different: t('Versions Differ'),
   };

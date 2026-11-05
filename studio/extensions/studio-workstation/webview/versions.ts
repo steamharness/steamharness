@@ -10,7 +10,7 @@ const host = acquireVsCodeApi();
 const app = document.querySelector<HTMLElement>('#versions-app')!;
 let state: VersionsState | undefined, signature = '';
 installContextMenu(host, (target, copy) => {
-  if (!state || !target.closest('#versions-app')) { return []; }
+  if (!state || state.update?.status === 'source' || !target.closest('#versions-app')) { return []; }
   const post = (type: string, version?: string): void => host.postMessage({ type, generation: state!.generation, projectId: state!.project?.id, version });
   if (!state.signedIn) { return [{ id: 'signIn', run: () => post('sign-in') }]; }
   const version = state.versions.find(version => version.version === target.closest<HTMLElement>('article.version')?.dataset.version);
@@ -46,6 +46,8 @@ function render(next: VersionsState): void {
   app.setAttribute('aria-busy', String(next.loading || next.busy));
   if (!next.project) {
     app.innerHTML = `<p class="empty">${text(t('Open a project to view its versions.'))}</p>`;
+  } else if (next.update?.status === 'source') {
+    app.innerHTML = `<div class="current-project"><strong>${text(next.project.name)}</strong></div>${projectVersionHtml(next.update)}`;
   } else if (!next.signedIn) {
     app.innerHTML = `<div class="empty"><p>${text(t('Sign in to SteamHarness Server first.'))}</p><button type="button" data-action="sign-in">${text(t('Sign In'))}</button></div>`;
   } else {

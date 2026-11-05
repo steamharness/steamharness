@@ -1,4 +1,6 @@
 import { readProjectDocument, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
+import { readProjectReleaseSync, sealProjectRelease } from "@steamharness/project-manifest/release-node";
+import { restrictReleasePublication } from "@steamharness/project-configuration";
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
 import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
@@ -1512,7 +1514,10 @@ export class Storage {
         });
       }
       if (canManagePublication) {
-        const withSourcePolicy = (draft: ConfigurationPublicationDraft) => parsePublicationDraft({...draft,profilePolicy:state.profilePolicy,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
+        const released = readProjectReleaseSync(source.sourceDir);
+        const withSourcePolicy = (draft: ConfigurationPublicationDraft) => released
+          ? restrictReleasePublication(draft, { version: definitionVersion as 1 | 2, fields, profilePolicy, agentModelPolicy })
+          : parsePublicationDraft({...draft,profilePolicy:state.profilePolicy,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
         const operation = async () => {
           let draft = await this.configurationPublicationDraft(options.projectName, entryId);
           if(call.action === 'publication.save') {
@@ -1817,6 +1822,7 @@ export class Storage {
         await copyProjectSource(this.draftSourceDir(options.projectName), sourceDir);
       }
       const metadata = await validateProjectPackage(sourceDir, options.projectName);
+      const projectRelease = readProjectReleaseSync(sourceDir);
       version = metadata.version;
       assertVersion(version);
       if (options.expectedVersion !== undefined && options.expectedVersion !== version) {
@@ -1840,9 +1846,13 @@ export class Storage {
           if (options.expectedSourceHash === undefined || options.expectedConfigurationRevisions?.[entryId] !== publication.revision) throw new HttpError(409,409,`Confirm source and configuration publication revision for entry "${entryId}".`);
           const access = await this.getProjectAccessSummary(options.projectName, options.createdByUserId);
           const configurationAccountId = publication.configurationAccountId ?? access.ownerUserId ?? options.createdByUserId!;
-          const ownerState = await this.projectConfigurations({ projectName: options.projectName, entryId, actorId: configurationAccountId, administrator: true }, { action: "get" }) as ProjectConfigurationState;
-          if (ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,`Configuration changed for entry "${entryId}". Save its publication draft again.`);
-          template = freezeConfigurationTemplate({ ...publication, agentModelPolicy: configurationAgentModelPolicy(ownerState,publication), profilePolicy: ownerState.profilePolicy }, { projectId: options.projectName, entryId, projectVersion: version, sourceHash: authoredSourceHash });
+          const ownerState = projectRelease ? undefined : await this.projectConfigurations({ projectName: options.projectName, entryId, actorId: configurationAccountId, administrator: true }, { action: "get" }) as ProjectConfigurationState;
+          const configurationRevision = ownerState?.revision ?? (this.db
+            ? await this.db.projectConfigurationRevision(options.projectName, entryId, configurationAccountId)
+            : (await readJson<ProjectConfigurationState>(path.join(this.dataRoot, "project-configurations", `${createHash("sha256").update(JSON.stringify([options.projectName, entryId, configurationAccountId])).digest("hex")}.json`)))?.revision);
+          if (configurationRevision !== publication.configurationRevision) throw new HttpError(409,409,`Configuration changed for entry "${entryId}". Save its publication draft again.`);
+          const effectivePublication = projectRelease ? restrictReleasePublication(publication, definition) : { ...publication, agentModelPolicy: configurationAgentModelPolicy(ownerState!,publication), profilePolicy: ownerState!.profilePolicy };
+          template = freezeConfigurationTemplate(effectivePublication, { projectId: options.projectName, entryId, projectVersion: version, sourceHash: authoredSourceHash });
           await this.freezeConfigurationAttachments(options.projectName, sourceDir, template, configurationAccountId);
         } else if (definition.version === 2) {
           let empty = readConfigurationState(undefined, definition.fields, () => "default", definition.agentModelPolicy);
@@ -1858,6 +1868,7 @@ export class Storage {
       }
       const distribution = projectManifestForDistribution(await readProjectDocument(sourceDir));
       await writeJson(path.join(sourceDir, "steamharness.json"), distribution);
+      if (projectRelease) sealProjectRelease(sourceDir, projectRelease);
       const published = await readProjectManifestFromDirectory(sourceDir, {});
       const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });

@@ -54,6 +54,9 @@ export interface ParamRequest {
 }
 
 export interface Project extends Parameters {
+  distribution?: 'source' | 'release';
+  sourceUri?: string;
+  releasePreview?: boolean;
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   aggregateProjectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   entryId: string;

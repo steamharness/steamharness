@@ -41,6 +41,7 @@ export interface Launcher {
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
   hasProjectDependencies?(directory: string): Promise<boolean>;
   prepareProjectTemplate?(directory: string, signal: AbortSignal): Promise<boolean>;
+  prepareDistribution?(project: Project, snapshot: boolean, signal: AbortSignal, progress: (message: string) => void): Promise<{ directory: string; mode: 'source' | 'release'; entries?: string[] }>;
   uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<void>;
   downloadProject?(projectId: string, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<DownloadedServerProject[]>;
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,

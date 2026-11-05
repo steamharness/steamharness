@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add Run (Release Mode) and release uploads; source projects show their local version, while release installations check upgrades and stay in Steam mode.
+
 - Built-in analysis, Kanban examples, and project templates use build directories grouped by source root under dist/steamharness.
 
 - Fix Trace status and elapsed time for the selected turn, freeze timing on disconnection, and preserve timeline keyboard focus. Tasks show persisted timing and delegated token usage, Usage includes the selected conversation's cumulative tokens and context occupancy, Plan restores approval content from run reports, and separate Trace windows reload selected history after reconnection.
