@@ -1162,7 +1162,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
               const receiptId = own?.id ?? receipts?.[0]?.id;
               if (typeof receiptId !== 'string' || !receiptId) throw new Error('The Workflow did not return a durable receipt.');
               return [snapshot(), { type: 'sent', projectUri: project.uri, sessionId: id, requestId: message.requestId, receiptId,
-                external: !own || target.ui?.presentation === 'composer' }];
+                external: !own || target.ui?.presentation === 'composer', submissionResult: receipts }];
             }
             // Editing a persisted queued input retains its Core identity; Bot context
             // freezes the edited text when that queued turn actually starts.

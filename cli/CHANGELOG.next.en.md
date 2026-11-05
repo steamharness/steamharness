@@ -2,6 +2,7 @@
 
 - Fixed project checks retaining completed results during automatic retries and same-account verification, preventing flickering guidance and ready Kanban reloads while clearing old results on identity changes. Failure guidance includes HTTP status, recovery steps, and direct account/Server, project information, and Server project actions.
 
+- Fixed delayed updates after sending in Kanban multi-Bot topics: embedded composers expose provisional submission states and durable Workflow results, with explicit retries preserving request identity and drafts.
 - Embedded Kanban Conversations support project-defined @ choices, dynamic UI updates, and header/transcript/footer slots; projects can reuse the native composer for multi-participant topics and acknowledge deliveries to other conversations.
 - Conversation composers support @ references to the current entry's skills, project files and project entries, with inline highlighting, compact file names and full paths on hover, keyboard selection and preservation in drafts and queued messages.
 - Kanban can discover local aggregate entries and embed native Conversation chats with streaming, drafts, parameters, queues, approvals, and cancellation. Business Workflows can adapt submissions and durable receipts; each view is bound to one conversation without receiving login credentials. Cancelled requests retain their connection error type without leaving ordinary operation errors after recovery.

@@ -93,11 +93,14 @@ const view = await window.steamHarnessKanban.conversations.mount(container, {
   submit: { entryId: "api", entrypointId: "message-send", payload: { roomId } },
 }, {
   slots: { header: participantsElement, transcript: messagesElement, footer: statusElement },
-  onSubmitted: ({ requestId, receiptId }) => refreshMessages(requestId, receiptId),
+  onSubmission: event => updateSubmission(event), // sending / accepted / failed
+  onSubmitted: ({ requestId, receiptId }) => recordReceipt(requestId, receiptId),
 });
 await view.update({ presentation: "composer", mentions: updatedGroups });
 // Call view() when unmounting.
 ```
+
+`onSubmission` reports `sending`, `accepted`, and `failed` for the same `requestId`. `sending` is provisional local feedback, not a successful delivery. `accepted.result` contains the authorized submit Workflow result, so projects can update their business transcript and subscribe to target sessions without waiting for a full reload. Reconcile by request ID with durable records. After a failure, the user can explicitly call `view.retry(requestId)` to reuse the native submission identity and parameters while preserving the current draft. Submissions are never replayed automatically. Full native transcripts retain their own optimistic messages.
 
 Choosing an item only inserts and highlights `@bot:researcher`; sending invokes the business Workflow. Each `kind` is a project-owned namespace and cannot replace `skill`, `file`, or `entry`. Up to 16 groups and 200 items per group are supported. Labels and descriptions render as plain text. `view.update(ui)` replaces all UI options while preserving the input, draft, and native conversation. Update it when membership changes. Built-in skill, file, and project-entry menus also work in embedded views; files retain their short names and full-path hover text.
 

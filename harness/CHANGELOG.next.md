@@ -1,5 +1,6 @@
 # Unreleased
 
+- Kanban 原生 Conversation 嵌入接口新增发送生命周期与按原身份重试，业务消息区可即时展示发送状态并直接合并已授权回执。
 - Kanban Conversation 公开类型新增项目自定义 @ 选项、动态 UI 更新、展示插槽及提交回执回调，可复用原生输入框构建多人话题。
 
 - 入口编译与静态产物按源码根归入 dist/steamharness 的 build/<entryId>/，与数据库生成代码共用父目录；拒绝占用其他入口或生成目录。

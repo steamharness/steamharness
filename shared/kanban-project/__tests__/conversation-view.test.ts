@@ -36,9 +36,9 @@ describe('embedded Conversation bridge', () => {
     new Function('window', 'document', script)(pageWindow, document);
     const container = document.createElement('div'); document.body.append(container);
     try {
-      const transcript = document.createElement('div'), submitted = vi.fn();
+      const transcript = document.createElement('div'), submitted = vi.fn(), submission = vi.fn();
       const mounting = pageWindow.steamHarnessKanban.conversations.mount(container, { entryId: 'agent', conversationId: 'private', ui: { presentation: 'composer' } },
-        { slots: { transcript }, onSubmitted: submitted });
+        { slots: { transcript }, onSubmitted: submitted, onSubmission: submission });
       const opened = posted.at(-1);
       expect(opened).toMatchObject({ operation: 'conversations.openView', input: { entryId: 'agent', conversationId: 'private', documentId: expect.any(String) } });
       reply(opened, { html: '<html><body>Native</body></html>' });
@@ -48,6 +48,17 @@ describe('embedded Conversation bridge', () => {
       const viewId = opened.input.viewId;
       expect(container.querySelector('[data-conversation-slot=transcript]')).toBe(transcript);
       expect(container.querySelector('[data-conversation-shell]')?.getAttribute('data-presentation')).toBe('composer');
+      const submissionEnvelope = { type: 'steamharness:conversation-request', viewId, message: { type: 'send', requestId: 'submit-1', text: '@bot:researcher 内容' } };
+      const beforeSend = posted.length;
+      send({}, submissionEnvelope); expect(posted).toHaveLength(beforeSend);
+      expect(submission).not.toHaveBeenCalled();
+      send(frame.contentWindow, submissionEnvelope);
+      await vi.waitFor(() => expect(submission).toHaveBeenCalledWith(expect.objectContaining({ phase: 'sending', requestId: 'submit-1', text: '@bot:researcher 内容' })));
+      expect(submitted).not.toHaveBeenCalled();
+      const receipts = [{ id: 'receipt', conversationId: 'another-bot', status: 'queued' }];
+      reply(posted.at(-1), [{ type: 'sent', requestId: 'submit-1', receiptId: 'receipt', submissionResult: receipts }]);
+      await vi.waitFor(() => expect(submission).toHaveBeenCalledWith(expect.objectContaining({ phase: 'accepted', receiptId: 'receipt', result: receipts })));
+      expect(submitted).toHaveBeenCalledTimes(1);
       const updating = dispose.update({ presentation: 'conversation' });
       await Promise.resolve(); await Promise.resolve();
       const update = posted.at(-1); expect(update.input.message.type).toBe('view-ui'); reply(update, []); await updating;
@@ -60,6 +71,16 @@ describe('embedded Conversation bridge', () => {
       expect(message).toMatchObject({ operation: 'conversations.viewMessage', input: { viewId, message: { type: 'ready' } } });
       reply(message, []); await Promise.resolve();
       send(frame.contentWindow, { ...envelope, message: { type: 'view-ready' } });
+      await Promise.resolve(); expect(submitted).toHaveBeenCalledTimes(1); // Backlog playback cannot acknowledge twice.
+      const retryDelivery = vi.spyOn(frame.contentWindow!, 'postMessage');
+      dispose.retry('submit-1');
+      expect(retryDelivery).toHaveBeenCalledWith(expect.objectContaining({ message: { type: 'conversation-retry', requestId: 'submit-1' } }), '*');
+      send(frame.contentWindow, { ...submissionEnvelope, message: { ...submissionEnvelope.message, requestId: 'submit-failed' } });
+      const failedCall = posted.at(-1);
+      send(parent, { type: 'steamharness:kanban-bridge-response', nonce: 'nonce', requestId: failedCall.requestId, ok: false,
+        error: { code: 'KANBAN_BRIDGE_UNAVAILABLE', message: 'Request failed' } });
+      await vi.waitFor(() => expect(submission).toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed', requestId: 'submit-failed', error: expect.any(String) })));
+
       const delivered = vi.spyOn(frame.contentWindow!, 'postMessage');
       for (const code of ['KANBAN_BRIDGE_UNAVAILABLE', 'KANBAN_BRIDGE_ERROR']) {
         send(frame.contentWindow, { ...envelope, message: { type: 'navigate', requestId: code } });

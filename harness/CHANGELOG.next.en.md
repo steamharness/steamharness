@@ -1,5 +1,6 @@
 # Unreleased
 
+- Added submission lifecycle events and explicit retries to embedded Kanban Conversations, allowing business transcripts to show immediate feedback and merge authorized receipts.
 - Public Kanban Conversation types support project-defined @ choices, dynamic UI updates, presentation slots and submission callbacks, allowing multi-participant topics to reuse the native composer.
 
 - Group entry builds and static assets under each source root in dist/steamharness, alongside generated databases; reject entries that occupy generated code or another entry's build.

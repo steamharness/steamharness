@@ -1518,7 +1518,8 @@ const view = await window.steamHarnessKanban.conversations.mount(container, {
   submit: { entryId: "api", entrypointId: "message-send", payload: { roomId } },
 }, {
   slots: { header: participantsElement, transcript: messagesElement, footer: statusElement },
-  onSubmitted: ({ requestId, receiptId }) => refreshMessages(requestId, receiptId),
+  onSubmission: event => updateSubmission(event), // sending / accepted / failed
+  onSubmitted: ({ requestId, receiptId }) => recordReceipt(requestId, receiptId),
 });
 await view.update({ presentation: "composer", mentions: updatedGroups });
 // 卸载时调用 view()。
@@ -1527,6 +1528,8 @@ await view.update({ presentation: "composer", mentions: updatedGroups });
 选择选项只插入并高亮 `@bot:researcher`，发送时才调用业务 Workflow。`kind` 是项目自己的命名空间，不能覆盖 `skill`、`file` 或 `entry`；最多 16 组、每组 200 项。名称与说明作为纯文本展示。`view.update(ui)` 替换全部 UI 配置并保留输入、草稿与原生会话；成员变化后应及时更新。内置技能、文件与项目入口菜单在嵌入模式也可使用，文件仍仅显示文件名，悬停查看完整路径。
 
 默认 `presentation: "conversation"` 保留完整原生消息区。`"composer"` 隐藏原生消息区，由 `slots.transcript` 展示项目消息；原生输入区按内容自适应高度，`@` 菜单在其上方展开。三个可选插槽都由项目提供 DOM 节点，留在 Kanban 文档中，项目自行渲染、订阅与处理审批、停止和各成员的队列。插槽不会把 HTML 或执行函数传入原生 sandbox。`onSubmitted` 在取得持久回执后通知页面，不能作为模型完成通知。
+
+`onSubmission` 提供同一 `requestId` 的 `sending`、`accepted`、`failed` 生命周期；`sending` 只表示本地正在提交，不能显示为投递成功。`accepted.result` 是当前用户经授权的 submit Workflow 返回数据，可直接更新业务消息和订阅目标会话，避免串行等待全量重读；仍需按请求 ID 与持久记录对账。失败后可由用户调用 `view.retry(requestId)`，复用原生提交身份与参数，保留当前草稿；不会自动重放。完整原生消息区继续负责自身的即时消息展示。
 
 业务 Workflow 可以返回其它目标会话的持久回执，例如在当前话题中定向触发另一位参与者。宿主确认回执后释放本地提交状态；跨目标回复由项目消息区订阅展示。成员资格、权限、幂等、目标会话隔离和投递状态由业务 Workflow 校验，提及菜单本身不授予执行权限。
 

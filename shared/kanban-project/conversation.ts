@@ -12,9 +12,17 @@ export interface KanbanConversationUi {
   presentation?: "conversation" | "composer";
 }
 
+export type KanbanConversationSubmission = {
+  requestId: string;
+  text: string;
+  createdAt: number;
+} & ({ phase: "sending" } | { phase: "accepted"; receiptId: string; result?: unknown } | { phase: "failed"; error: string });
+
 export interface KanbanConversationMountOptions {
   /** DOM remains in the owning Kanban document, outside the native sandbox. */
   slots?: { header?: HTMLElement; transcript?: HTMLElement; footer?: HTMLElement };
+  /** Local sending is provisional; accepted carries the authorized Workflow result. */
+  onSubmission?(event: KanbanConversationSubmission): void;
   onSubmitted?(event: { requestId: string; receiptId: string }): void;
 }
 
@@ -22,6 +30,8 @@ export interface KanbanConversationMount {
   (): void;
   /** Update project UI without replacing the composer or its draft. */
   update(ui: KanbanConversationUi): Promise<void>;
+  /** Explicitly retry an unsuccessful native submission with its original identity. */
+  retry(requestId: string): void;
 }
 
 export function assertConversationUi(value: unknown): asserts value is KanbanConversationUi {

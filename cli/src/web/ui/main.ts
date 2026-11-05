@@ -1753,6 +1753,13 @@ function initialize(): void {
       document.querySelector<HTMLButtonElement>(message.command === 'new' ? '#new' : '#history-toggle')!.click();
       return;
     }
+    if (message.type === 'conversation-retry' && embeddedConversation && state) {
+      const submission = submissions.get(message.requestId);
+      if (submission?.phase === 'failed' && submission.projectUri === state.project.uri && submission.sessionId === state.activeId && connectionAvailable) {
+        submissions.retry(message.requestId); render(state, false); persist(); dispatchSubmissions();
+      }
+      return;
+    }
     if (message.type === 'conversation-ui' && embeddedConversation) {
       embeddedUi = message.ui;
       if (state) render(state, false);

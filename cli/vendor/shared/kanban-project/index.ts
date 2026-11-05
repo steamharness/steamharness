@@ -527,19 +527,32 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
     composer.style.flex=custom?"none":"1";composer.style.height=custom?Math.min(composerHeight,container.clientHeight||composerHeight)+"px":"";
     frame.style.position=custom?"absolute":"static";frame.style.bottom=custom?"0":"";frame.style.zIndex=custom?"2":"";
     frame.style.height=custom?Math.min(composerHeight+menuHeight,container.clientHeight||composerHeight+menuHeight)+"px":"100%";};
-  let closed=false,loaded=false;const backlog=[];
-  const deliver=message=>{if(!closed){if(message.type==="sent"&&message.requestId&&message.receiptId)Promise.resolve().then(()=>{if(!closed)options.onSubmitted?.({requestId:message.requestId,receiptId:message.receiptId});}).catch(()=>{});if(loaded)frame.contentWindow?.postMessage({type:"steamharness:conversation-message",viewId,message},"*");else backlog.push(message);}};
+  let closed=false,loaded=false;const backlog=[],submissions=new Map();
+  const announce=event=>Promise.resolve().then(()=>{if(!closed)options.onSubmission?.(event);}).catch(()=>{});
+  const forward=message=>{if(loaded)frame.contentWindow?.postMessage({type:"steamharness:conversation-message",viewId,message},"*");else backlog.push(message);};
+  const deliver=message=>{if(closed)return;
+    const pending=submissions.get(message.requestId);
+    if(message.type==="sent"&&message.requestId&&message.receiptId){
+      if(pending){announce({...pending,phase:"accepted",receiptId:message.receiptId,result:message.submissionResult});submissions.delete(message.requestId);}
+      Promise.resolve().then(()=>{if(!closed)options.onSubmitted?.({requestId:message.requestId,receiptId:message.receiptId});}).catch(()=>{});
+    }else if(message.type==="error"&&message.requestType==="send"&&pending){announce({...pending,phase:"failed",error:message.message});submissions.delete(message.requestId);}
+    forward(message);
+  };
   const receive=event=>{
     if(closed||event.source!==frame.contentWindow||event.data?.viewId!==viewId||event.data.type!=="steamharness:conversation-request")return;
-    if(event.data.message?.type==="view-ready"){loaded=true;for(const message of backlog.splice(0))deliver(message);return;}
+    if(event.data.message?.type==="view-ready"){loaded=true;for(const message of backlog.splice(0))forward(message);return;}
     if(event.data.message?.type==="view-layout"){const height=event.data.message.composerHeight,menu=event.data.message.menuHeight;
       if(Number.isFinite(height)&&height>=40&&height<=2000&&Number.isFinite(menu)&&menu>=0&&menu<=360){composerHeight=height;menuHeight=menu;layout();}return;}
     const message=JSON.parse(JSON.stringify(event.data.message));
+    if(message?.type==="send"&&typeof message.requestId==="string"&&typeof message.text==="string"){
+      const pending={requestId:message.requestId,text:message.text,createdAt:Date.now()};submissions.set(message.requestId,pending);announce({...pending,phase:"sending"});
+    }
     request("conversations.viewMessage",{viewId,message}).then(messages=>{for(const reply of messages||[])deliver(reply);}).catch(error=>deliver({type:"error",silent:error.code==="KANBAN_BRIDGE_UNAVAILABLE",connectionError:error.code==="KANBAN_BRIDGE_UNAVAILABLE",requestType:message?.type,requestId:message?.requestId,sessionId:target.conversationId,projectUri:message?.projectUri,errorScope:message?.errorScope,message:error.message}));
   };
   const theme=()=>deliver({type:"conversation-theme",theme:document.documentElement.dataset.theme||"light"});
   const resize=typeof ResizeObserver==="function"?new ResizeObserver(layout):undefined;
   const stop=()=>{if(closed)return;closed=true;resize?.disconnect();conversationViews.delete(viewId);window.removeEventListener("message",receive);window.removeEventListener("steamharness:kanban-theme-change",theme);shell.remove();request("conversations.closeView",{viewId}).catch(()=>{});};
+  stop.retry=requestId=>{if(!closed&&typeof requestId==="string")forward({type:"conversation-retry",requestId});};
   let updating=Promise.resolve();stop.update=ui=>updating=updating.catch(()=>{}).then(async()=>{if(closed)return;const messages=await request("conversations.viewMessage",{viewId,message:{type:"view-ui",ui}});if(closed)return;target.ui=JSON.parse(JSON.stringify(ui));layout();for(const message of messages||[])deliver(message);});
   const open=()=>request("conversations.openView",{locale:document.documentElement.lang==="zh-CN"?"zh-CN":"en",...target,viewId,documentId:methodDocumentId});
   const reconnect=async()=>{try{return await request("conversations.viewMessage",{viewId,message:{type:"ready"}});}catch(error){if(closed||error.code!=="KANBAN_BRIDGE_SESSION_INVALID")throw error;await open();if(closed){request("conversations.closeView",{viewId}).catch(()=>{});return [];}return request("conversations.viewMessage",{viewId,message:{type:"ready"}});}};

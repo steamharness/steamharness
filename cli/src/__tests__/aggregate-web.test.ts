@@ -247,3 +247,23 @@ it('discovers local entries and embeds one existing controller without exposing 
   expect(native.sessions.find((session: any) => session.id === conversationId).draft.text).toBe(snapshot.sessions[0].draft.text);
   expect(native.sessions.some((session: any) => session.id === agent.activeId)).toBe(true);
 });
+
+it('returns all authorized Workflow receipts to an embedded composer without waiting for models', async () => {
+  const f = await fixture(), board = await f.state('board');
+  const receipts = [{ id: 'durable-1', conversationId: 'researcher-session', status: 'queued', botId: 'researcher' },
+    { id: 'durable-2', conversationId: 'executor-session', status: 'queued', botId: 'executor' }];
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'success', result: { ok: true,
+    data: { output: { data: { errCode: 0, errMessage: '', data: receipts } } } } } as Report);
+  const bridge = (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,
+    call: { requestId: randomUUID(), operation, input } });
+  const viewId = 'multi-bot-composer';
+  expect((await bridge('conversations.openView', { viewId, entryId: 'agent', conversationId: 'composer-session', ui: { presentation: 'composer' },
+    submit: { entryId: 'workflow', entrypointId: 'operation', payload: { threadId: 'topic' } } })).ok).toBe(true);
+  const sent = await bridge('conversations.viewMessage', { viewId, message: { type: 'send', text: '@bot:all review', params: {}, requestId: 'stable-submission' } });
+  expect(sent.ok, JSON.stringify(sent)).toBe(true);
+  expect(sent.value.find((message: any) => message.type === 'sent')).toMatchObject({ requestId: 'stable-submission', receiptId: 'durable-1', external: true, submissionResult: receipts });
+  const request = vi.mocked(f.runtime.run).mock.calls.at(-1)![0];
+  expect(request.entryCall).toMatchObject({ entryId: 'board' });
+  expect(request.args).toContain(JSON.stringify({ threadId: 'topic', conversationId: 'composer-session', text: '@bot:all review', params: {}, requestId: 'stable-submission' }));
+  await bridge('conversations.closeView', { viewId });
+});
