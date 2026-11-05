@@ -4,6 +4,7 @@ import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { AgentTool, AgentToolSet } from "./types";
 import type { AgentSessionOptions, AgentSessionResources } from "./session-types";
+import { retryAgentTool } from "./tool-retry";
 
 export interface AgentToolCatalog {
   /** Stable, non-secret identity of an explicitly authorized directory. */
@@ -50,7 +51,8 @@ function rememberCatalogTools(catalogs: Record<string, JsonObject[]>, id: string
 
 /** Merges immutable publications; the Harness itself pins each phase and wakes missing tasks. */
 export function mergeAgentRegistries(internal: RegistryReader, application?: RegistryReader,
-  authorizeTool?: (name: string, args: unknown, api: ToolExecutionApi, context: Context) => Promise<ToolExecutionResult | void>): RegistryReader {
+  authorizeTool?: (name: string, args: unknown, api: ToolExecutionApi, context: Context) => Promise<ToolExecutionResult | void>,
+  recovery: { delayMs?: number; canRetry?(api: ToolExecutionApi, context: Context): boolean | Promise<boolean> } = {}): RegistryReader {
   return {
     snapshot: () => {
       const own = internal.snapshot(), extra = application?.snapshot();
@@ -76,9 +78,11 @@ export function mergeAgentRegistries(internal: RegistryReader, application?: Reg
         tools: extension.tools?.map(tool => ({ ...tool, execute: async (args, api, context) => {
           // Restored ToolTasks may already be past beforeTool. Guard the actual
           // side-effect boundary as well as fresh argument/approval phases.
-          const blocked = await authorizeTool(tool.name, args, api, context);
-          if (blocked) return blocked;
-          return tool.execute(args, api, context);
+          return retryAgentTool({ replay: tool.replay, signal: context.abortSignal, delayMs: recovery.delayMs,
+            canRetry: () => recovery.canRetry?.(api, context) ?? true,
+            before: () => authorizeTool(tool.name, args, api, context),
+            execute: () => tool.execute(args, api, context),
+          });
         } })),
       });
       return merged.snapshot();
@@ -175,7 +179,7 @@ export class AgentExtensionResources {
           || connection.tools.some(tool => !allowed.has(tool.name))
           || (directory.catalog.tools && connection.tools.length !== directory.tools.length)
           || directory.tools.some(expected => !fingerprints.has(toolFingerprint(expected)))
-          || directory.fingerprints?.some(expected => !fingerprints.has(expected))) throw new Error(`Tool catalog definition changed: ${directory.catalog.id}. Existing definitions must stay unchanged; use a new session for changed definitions.`);
+          || directory.fingerprints?.some(expected => !fingerprints.has(expected))) throw Object.assign(new Error(`Tool catalog definition changed: ${directory.catalog.id}. Existing definitions must stay unchanged; use a new session for changed definitions.`), { retryable: false });
         directory.state = "ready";
         return connection;
       } catch (error) {

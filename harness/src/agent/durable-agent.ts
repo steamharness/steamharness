@@ -172,7 +172,8 @@ export class DurableAgent {
             const decision = await this.approve({ type: "toolCall", id: api.callId, name, arguments: json(args) as JsonObject }, callContext, prefix);
             if (decision?.block) return { output: [{ type: "text", text: decision.reason }], isError: true };
           }
-        });
+        }, { delayMs: this.options.retryDelayMs, canRetry: (api, callContext) => this.fatalFailure === undefined
+          ? this.session?.canRetryTool(api.conversationId, callContext) ?? true : false });
       registry.snapshot();
       const compactionPolicy = () => {
         const settings = this.compactionSettings();
@@ -214,7 +215,7 @@ export class DurableAgent {
           }, error => this.fail(error), this.models, storage, registry,
           (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? "Memory"),
           (provider, model) => provider === this.state.model.provider && model === this.state.model.id
-            ? this.state.contextWindow ?? this.state.model.contextWindow : this.models.getModel(provider, model)?.contextWindow);
+            ? this.state.contextWindow ?? this.state.model.contextWindow : this.models.getModel(provider, model)?.contextWindow, this.options.retryDelayMs);
         this.session.install(this.registry);
       }
       if (!this.seeded && this.state.messages.length && (await this.root.context(context)).entries.length === 0) await this.replaceContext();

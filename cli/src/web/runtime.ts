@@ -107,7 +107,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       }
       if (message?.type !== 'agent-receipt' || typeof message.id !== 'string') return;
       const waiter = pending.get(message.id); if (!waiter) return; pending.delete(message.id);
-      if (message.error) waiter.reject(Object.assign(new Error(String(message.error)), { code: message.code }));
+      if (message.error) waiter.reject(Object.assign(new Error(String(message.error)), { code: message.code, status: message.status }));
       else waiter.resolve(message.receipt);
     });
     let buffer = '', stderr = '', failure: string | undefined;

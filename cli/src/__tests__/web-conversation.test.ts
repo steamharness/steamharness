@@ -17,6 +17,25 @@ function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
   return { controller, runtime, save };
 }
 
+it('automatically resumes the same recoverable run after project readiness is restored', async () => {
+  let ready = true;
+  const { controller, runtime } = fixture({ canStart: () => ready });
+  controller.project.conversation = { recovery: { enabled: true } };
+  vi.mocked(runtime.run).mockImplementationOnce(async () => {
+    ready = false; throw Object.assign(new Error('Project unavailable'), { code: 'PROJECT_SERVER_SETUP_REQUIRED' });
+  }).mockResolvedValue({ status: 'success' });
+  await controller.send({ text: 'Continue after recovery', params: {}, attachments: [] }); await controller.idle();
+  const answer = controller.current.messages.at(-1)!;
+  expect(answer).toMatchObject({ status: 'running', recovering: true });
+  controller.recover(); expect(runtime.run).toHaveBeenCalledOnce();
+  ready = true; controller.recover(); await controller.idle();
+  expect(runtime.run).toHaveBeenCalledTimes(2);
+  const calls = vi.mocked(runtime.run).mock.calls;
+  expect(calls[1][0]).toMatchObject({ runId: calls[0][0].runId, conversationId: calls[0][0].conversationId, args: calls[0][0].args });
+  expect(answer.status).toBe('success'); expect(controller.current.messages).toHaveLength(2);
+  controller.dispose();
+});
+
 it.each(['success', 'failed', 'aborted', 'timed_out', 'exception', 'reported'] as const)('persists the elapsed duration for an ordinary %s run', async outcome => {
   vi.useFakeTimers({ toFake: ['Date'] }); const startedAt = Date.now();
   const { controller, runtime, save } = fixture();
@@ -254,14 +273,14 @@ describe('Conversation execution lifecycle', () => {
     }
   });
 
-  it('pauses recovery for Server setup and retries the original run only when explicitly requested', async () => {
+  it('keeps a recoverable Server setup failure pending and resumes the original run', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { recovery: { enabled: true } };
     const answer: ConversationMessage = { id: 'answer', runId: 'original-run', role: 'assistant', status: 'running', recovering: true, content: 'Partial', args: ['--message', 'Hello'] };
     controller.current.messages.push(answer);
     vi.mocked(runtime.run).mockRejectedValueOnce(Object.assign(new Error('Complete Server setup'), { code: 'PROJECT_SERVER_SETUP_REQUIRED' }));
     controller.recover(); await controller.idle();
-    expect(answer).toMatchObject({ status: 'failed', recovering: true, runId: 'original-run', content: 'Partial' });
+    expect(answer).toMatchObject({ status: 'running', recovering: true, runId: 'original-run', content: 'Partial' });
     expect(controller.current.messages).toHaveLength(1); expect(runtime.run).toHaveBeenCalledOnce();
     vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'success' });
     await controller.retry('answer'); await controller.idle();
@@ -328,6 +347,8 @@ describe('Conversation execution lifecycle', () => {
     await controller.send({ text: 'Hello', params: {}, attachments: [] }); await controller.idle();
     const answer = controller.current.messages.at(-1)!;
     expect(runtime.run).toHaveBeenCalledTimes(4); expect(answer.status).toBe('failed');
+    controller.recover(); await controller.idle();
+    expect(runtime.run).toHaveBeenCalledTimes(4);
     vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'success' });
     await controller.retry(answer.id!); await controller.idle();
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ runId: answer.runId }), expect.any(Function));

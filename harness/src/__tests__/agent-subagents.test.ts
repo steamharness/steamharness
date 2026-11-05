@@ -75,7 +75,7 @@ for (const [totalLimit, roleLimit, expected] of [[null, null, 12], [null, 2, 2],
     agentId: "researcher", workId: `uncapped-${index}`, prompt: `Source ${index}`, background: true });
   await until(() => active === expected);
   assert.equal(maximum, expected);
-  if (expected < 12) assert.ok(f.snapshot().agents!.some(work => work.status === "queued"));
+  if (expected < 12) await until(() => f.snapshot().agents!.some(work => work.status === "queued"));
   gate.resolve();
   await until(() => f.snapshot().agents?.filter(work => work.status === "completed").length === 12);
   assert.equal(maximum, expected);
@@ -136,7 +136,7 @@ test("30 named work items overlap at 3 researchers and 1 writer, with durable FI
       prompt: `work-${index}-${agentId}`, background: true }));
   }
   await until(() => researchers === 3 && writers === 1);
-  assert.ok(f.snapshot().agents!.some(work => work.status === "queued"));
+  await until(() => f.snapshot().agents!.some(work => work.status === "queued"));
   const duplicate = await f.agent.control({ type: "subagent", action: "spawn", requestId: "duplicate", agentId: "researcher", workId: "work-0", prompt: "work-0-researcher", background: true });
   assert.equal(duplicate.taskId, receipts[0].taskId);
   await assert.rejects(f.agent.control({ type: "subagent", action: "spawn", requestId: "conflict", agentId: "writer", workId: "work-0", prompt: "different" }), /already used/);
@@ -280,6 +280,7 @@ test("stopping during work retry backoff never starts the next attempt", async t
   assert.ok(used.totalTokens > 0);
   const stopped = await f.agent.control({ type: "subagent", action: "stop", requestId: "stop-backoff", taskId: first.taskId! });
   assert.equal(stopped.agents![0].status, "aborted"); assert.equal(stopped.agents![0].attempt, 1); assert.equal(calls, 1);
+  await until(() => f.snapshot().history.some(task => task.id === first.taskId));
   assert.deepEqual(f.snapshot().history.find(task => task.id === first.taskId)!.usage, used);
   assert.ok(f.snapshot().contexts.find(scope => scope.conversationId === f.snapshot().conversationId)!.tokenUsage!.totalTokens >= used.totalTokens);
 });

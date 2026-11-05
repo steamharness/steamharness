@@ -140,6 +140,10 @@ session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ 
 
 显式使用 databasePath 的实例仍可调用 SQLite 专用 forkAgentConversation / isolateAgentConversation；这些文件路径 API 不用于 CLI/Studio 默认仓储。
 
+命令回执表示操作已持久化，后续会话快照独立发送；调用方需要最新视图时等待对应请求的快照，或发送 `snapshot` 命令。CLI Web / Studio 的确认等待每次 30 秒，临时超时、连接错误、408/429/5xx 和暂未就绪最多自动重试 3 次，沿用原请求 ID、目标与载荷；迟到回执可结束等待，恢复后自动继续。主动停止、关闭宿主和达到重试上限会终止自动尝试。
+
+会话快照投影失败最多退避重试 3 次，不重跑模型或已提交工具；持续失败仍终止运行并保留原因。明确声明 `replay: "safe"` 的工具对执行异常或 `isError` 结果最多自动重试 3 次，保持调用身份，每次重新校验当前权限，成功后自动继续模型循环。权限拒绝、输入校验、用户交互等待、取消、`retryable: false` 和宿主存储错误不重复执行。默认工具以及 `never`/`unsafe` 工具的未知结果必须先核对，不能据超时推断写入未发生。
+
 ## 扩展执行与恢复
 
 Core 从 `steamharness/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：

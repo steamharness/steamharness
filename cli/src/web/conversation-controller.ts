@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
+import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -134,7 +135,7 @@ export class ConversationController {
     this.saving = false;
   }
   recover(): void {
-    if (!this.project.conversation?.recovery?.enabled || this.disposed) return;
+    if (!this.project.conversation?.recovery?.enabled || this.disposed || this.options.canStart?.() === false) return;
     for (const entry of this.sessions) {
       if (entry.agentOwnerId || entry.recoveryPaused) continue;
       if (entry.agentInterrupted) continue;
@@ -427,11 +428,12 @@ export class ConversationController {
         if (event.type === 'agent_command_failed') {
           const id = String(event.requestId);
           const target = event.targetId ?? entry.agent?.conversationId;
-          if (!['AGENT_NOT_READY', 'STEAMHARNESS_WORKER_INTERRUPTED'].includes(String(event.code))) {
+          const error = Object.assign(new Error(String(event.message)), { code: event.code, status: event.status });
+          if (!retryableAgentCommandError(error)) {
             for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id)) session.agentCommands = session.agentCommands?.filter(item => item.command.requestId !== id || (item.command.targetId ?? entry.agent?.conversationId) !== target);
-          }
-          for (const [key, waiter] of this.agentWaiters) if (waiter.ownerId === entry.id && waiter.requestId === id && (waiter.targetId ?? entry.agent?.conversationId) === target) {
-            waiter.reject(Object.assign(new Error(String(event.message)), { code: event.code })); this.agentWaiters.delete(key);
+            for (const [key, waiter] of this.agentWaiters) if (waiter.ownerId === entry.id && waiter.requestId === id && (waiter.targetId ?? entry.agent?.conversationId) === target) {
+              waiter.reject(error); this.agentWaiters.delete(key);
+            }
           }
         }
         if (event.type === 'conversation_title_updated' && !entry.titleLocked && typeof event.title === 'string') { entry.title = event.title.slice(0, 160); }
@@ -496,8 +498,9 @@ export class ConversationController {
         && (this.disposed || (error as { code?: string }).code === 'STEAMHARNESS_WORKER_INTERRUPTED');
       if (setupRequired && !task.cancelled) {
         const message = error instanceof Error ? error.message : String(error);
-        if (historical) this.failAgentTurns(entry, message, true);
-        else { answer.status = 'failed'; answer.recovering = !!this.project.conversation?.recovery?.enabled; answer.error = message; }
+        const recovering = !!this.project.conversation?.recovery?.enabled;
+        if (historical) this.failAgentTurns(entry, message, recovering, recovering ? 'running' : 'failed');
+        else { answer.status = recovering ? 'running' : 'failed'; answer.recovering = recovering; answer.error = message; }
       } else if (interrupted) {
         const managed = entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'));
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
@@ -825,10 +828,12 @@ export class ConversationController {
     let resolve!: (receipt: AgentSessionReceipt) => void, reject!: (error: Error) => void;
     const confirmed = new Promise<AgentSessionReceipt>((done, fail) => { resolve = done; reject = fail; });
     void confirmed.catch(() => undefined);
-    this.agentWaiters.set(key, { ownerId: owner.id, targetId: prepared.targetId, requestId: command.requestId, promise: confirmed, resolve, reject });
-    const timeout = setTimeout(() => reject(Object.assign(new Error(command.type === 'fork'
+    let terminated = false;
+    this.agentWaiters.set(key, { ownerId: owner.id, targetId: prepared.targetId, requestId: command.requestId, promise: confirmed, resolve,
+      reject: error => { terminated = true; reject(error); } });
+    const timeoutError = () => Object.assign(new Error(command.type === 'fork'
       ? t('Fork creation was not confirmed. Reconnect and check your conversations before trying again.')
-      : 'Agent command confirmation timed out. Reconnect to check its result.'), { code: 'AGENT_COMMAND_TIMEOUT' })), 30_000);
+      : t('Agent command confirmation could not be recovered. Retry to check the same request.')), { code: 'AGENT_COMMAND_TIMEOUT' });
     const apply = async (): Promise<AgentSessionReceipt> => {
       if (owner.activeRunId) return this.runtime.agentControl!(owner.activeRunId, prepared, entry.id, attachments);
       if (prepared.type === 'fork') {
@@ -841,7 +846,16 @@ export class ConversationController {
       return confirmed;
     };
     try {
-      const receipt = await Promise.race([apply(), confirmed]); this.acknowledgeAgent(owner, receipt);
+      const receipt = await confirmAgentCommand({ confirmed, terminated: () => terminated || this.disposed, timeoutError,
+        apply: async () => {
+          const receipt = await apply();
+          // Receipts from earlier attempts remain authoritative after a timeout.
+          if (!terminated && !this.disposed) this.acknowledgeAgent(owner, receipt);
+          return receipt;
+        },
+        retry: attempt => this.options.log(`Agent command confirmation retry ${attempt}/3: ${command.type}`),
+      });
+      this.acknowledgeAgent(owner, receipt);
       if (stopping) entry.queuePaused = true;
       if (owner.agentInterrupted) for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) delete session.agentInterrupted;
       if (receipt.forkId !== undefined) {
@@ -861,12 +875,12 @@ export class ConversationController {
       }
       this.changed(); await this.persist(); return receipt;
     } catch (error) {
-      if (!['STEAMHARNESS_WORKER_INTERRUPTED', 'AGENT_NOT_READY', 'AGENT_COMMAND_TIMEOUT'].includes((error as { code?: string }).code ?? '')) {
+      if (!retryableAgentCommandError(error)) {
         entry.agentCommands = entry.agentCommands?.filter(item => item.command.requestId !== command.requestId);
         await this.persist();
       }
       throw error;
-    } finally { clearTimeout(timeout); if (this.agentWaiters.get(key)?.promise === confirmed) this.agentWaiters.delete(key); }
+    } finally { if (this.agentWaiters.get(key)?.promise === confirmed) this.agentWaiters.delete(key); }
   }
   configurationChanged(): void {
     if (this.disposed || !this.project.conversation?.durable?.enabled) return;
@@ -917,12 +931,12 @@ export class ConversationController {
       entry.agentCommands = [];
     }
   }
-  private failAgentTurns(owner: ConversationSession, error: string, recovering = false): void {
+  private failAgentTurns(owner: ConversationSession, error: string, recovering = false, status = 'failed'): void {
     for (const entry of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) {
       for (const answer of entry.messages) {
         const turn = entry.agent?.turns.find(turn => turn.requestId === answer.sessionRequestId && turn.conversationId === answer.sessionConversationId);
         if (answer.role === 'assistant' && turn?.status === 'placed') {
-          answer.status = 'failed'; answer.error = error; answer.recovering = recovering;
+          answer.status = status; answer.error = error; answer.recovering = recovering;
           if (!recovering) this.finishDuration(answer);
         }
       }
@@ -1002,6 +1016,19 @@ export class ConversationController {
     // or completion events can land in the same turn of the event loop.
     if (entry.agentOwnerId || this.isolating.has(entry.id)) await this.ensureIndependentFork(entry);
     entry.queuePaused = true; entry.recoveryPaused = false;
+    const commandOwner = this.owner(entry);
+    const stoppedSessions = this.sessions.filter(session => session.id === entry.id
+      || entry === commandOwner && (session.agentOwnerId ?? session.id) === entry.id);
+    for (const session of stoppedSessions) {
+      const pending = session.agentCommands?.filter(item => item.command.type !== 'cancel') ?? [];
+      for (const item of pending) for (const [key, waiter] of this.agentWaiters) {
+        if (waiter.ownerId === commandOwner.id && waiter.requestId === item.command.requestId
+          && waiter.targetId === item.command.targetId) {
+          waiter.reject(Object.assign(new Error(t('Stopped')), { code: 'AGENT_COMMAND_CANCELLED' })); this.agentWaiters.delete(key);
+        }
+      }
+      session.agentCommands = session.agentCommands?.filter(item => item.command.type === 'cancel');
+    }
     let controlError: unknown;
     if (this.project.conversation?.durable?.enabled && entry.agent && !entry.messages.some(message => message.pendingInput)) {
       const owner = this.owner(entry);

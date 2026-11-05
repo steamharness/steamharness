@@ -109,6 +109,7 @@ for (const stop of ["control", "host"] as const) test(`${stop} stop joins backgr
     f.instance.abort();
     await until(() => f.snapshot()?.tasks.length === 1);
   }
+  await until(() => f.snapshot().tasks.length === 1);
   assert.equal(cleaned, 2); assert.equal(f.snapshot().tasks.length, 1);
   assert.equal(f.snapshot().tasks[0]!.id, independent.taskId);
   assert.equal(f.snapshot().history.find(task => task.id === receipt.taskId)?.status, "aborted");
@@ -482,12 +483,11 @@ test("predeclared catalogs connect only on use, retry connection failures and cl
   } }] } });
   provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: "lazy read" })], { stopReason: "toolUse" }),
     () => { assert.equal(attempts, 0); return ai.fauxAssistantMessage([ai.fauxToolCall("lazy_read", {})], { stopReason: "toolUse" }); },
-    request => { assert.match(JSON.stringify(request.messages), /Temporary connection failure/); return ai.fauxAssistantMessage([ai.fauxToolCall("lazy_read", {})], { stopReason: "toolUse" }); },
-    ai.fauxAssistantMessage("Done")]);
+    request => { assert.match(JSON.stringify(request.messages), /Read/); assert.doesNotMatch(JSON.stringify(request.messages), /Temporary connection failure/); return ai.fauxAssistantMessage("Done"); }]);
   const run = instance.prompt("Discover then retry");
   t.after(async () => { lease.resolve(); await run; await instance.close(); });
   await until(() => snapshot()?.turns.some(turn => turn.status === "done"));
-  assert.equal(attempts, 2); lease.resolve(); await run; await instance.close(); assert.equal(closed, 1);
+  assert.equal(attempts, 2); assert.equal(provider.state.callCount, 3); lease.resolve(); await run; await instance.close(); assert.equal(closed, 1);
   const gate = latch(), opened = latch();
   const registry = createRegistry(), late = new AgentExtensionResources({ toolSearch: { catalogs: [{ id: "late", tools: [entry], open: async () => {
     opened.resolve(); await gate.promise; return { tools: [entry], close: async () => { closed++; } };

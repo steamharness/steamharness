@@ -993,7 +993,7 @@ it.each(['fork', 'owner'])('isolates equal command identities across a second %s
   }
 });
 
-it('retains interrupted commands and does not reject another target with the same request identity', async () => {
+it('retains interrupted commands for recovery without confusing another target with the same request identity', async () => {
   const f = fixture(); await f.start();
   const owner = f.controller!.current;
   f.emit({ ...f.snapshot(), revision: 2, conversations: [...f.snapshot().conversations,
@@ -1002,18 +1002,85 @@ it('retains interrupted commands and does not reject another target with the sam
   vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(() => {}));
   const command = { type: 'plan' as const, requestId: 'same-id', expectedVersion: 0, items: [] };
   const one = f.controller!.agentCommand(owner.id, command);
-  const rejected = expect(one).rejects.toMatchObject({ code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
+  let resolved = false; void one.then(() => { resolved = true; });
   const two = f.controller!.agentCommand(forkId, command);
   await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledTimes(2));
   f.runs[0].emit({ type: 'agent_command_failed', requestId: 'same-id', targetId: 1, message: 'Interrupted', code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
-  await rejected;
+  await Promise.resolve(); expect(resolved).toBe(false);
   expect(owner.agentCommands).toHaveLength(1);
   const receipt = { requestId: 'same-id', conversationId: 2, status: 'accepted' as const };
   f.emit({ ...f.snapshot(), revision: 3, receipts: [receipt] });
   expect(await two).toEqual(receipt);
   expect(owner.agentCommands).toHaveLength(1);
   expect(f.controller!.sessions.find(session => session.id === forkId)?.agentCommands).toEqual([]);
+  const recovered = { requestId: 'same-id', conversationId: 1, status: 'accepted' as const };
+  f.emit({ ...f.snapshot(), revision: 4, receipts: [recovered] });
+  expect(await one).toEqual(recovered);
   await f.finish();
+});
+
+it.each(['AGENT_NOT_READY', 'STEAMHARNESS_WORKER_INTERRUPTED', 'ECONNRESET', 'timeout', 'http'])(
+  'automatically confirms a %s follow-up using its original identity and continues its answer', async failure => {
+    vi.useFakeTimers(); const f = fixture(); await f.start();
+    const owner = f.controller.current, initial = f.snapshot();
+    const receipt = { requestId: 'retry-confirmation', conversationId: 1, status: 'accepted' as const };
+    vi.mocked(f.runtime.agentControl!).mockImplementationOnce(() => failure === 'timeout' ? new Promise(() => {})
+      : Promise.reject(Object.assign(new Error('Temporary command transport failure'), failure === 'http' ? { status: 503 } : { code: failure })))
+      .mockImplementationOnce(async () => receipt);
+    const sending = f.controller.send({ text: 'Continue', params: { model: 'one' }, attachments: [] }, owner, false, receipt.requestId);
+    await vi.advanceTimersByTimeAsync(failure === 'timeout' ? 30_500 : 500);
+    await sending;
+    const commands = vi.mocked(f.runtime.agentControl!).mock.calls.map(call => call[1]);
+    expect(commands).toHaveLength(2); expect(commands[1]).toEqual(commands[0]);
+    expect(owner.agentCommands).toEqual([]);
+    f.emit({ ...initial, revision: 2, receipts: [receipt], turns: [...initial.turns,
+      { requestId: receipt.requestId, conversationId: 1, prompt: 'Continue', mode: 'followUp', status: 'done', epoch: 0, entryId: 3,
+        items: [{ id: 'continued', title: 'Output', content: 'Recovered answer', contentType: 'markdown' }] }] });
+    expect(owner.messages.filter(message => message.sessionRequestId === receipt.requestId)).toMatchObject([{ status: 'success', content: 'Recovered answer' }]);
+    expect(f.runtime.run).toHaveBeenCalledOnce(); await f.finish();
+  },
+);
+
+it('accepts a late committed receipt during retry backoff without sending another command', async () => {
+  vi.useFakeTimers(); const f = fixture(); await f.start();
+  let complete!: (receipt: AgentSessionReceipt) => void;
+  vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+  const command = { type: 'plan' as const, requestId: 'late-confirmation', expectedVersion: 0, items: [] };
+  const pending = f.controller.agentCommand(f.controller.current.id, command);
+  await vi.advanceTimersByTimeAsync(30_100);
+  const receipt = { requestId: command.requestId, conversationId: 1, status: 'accepted' as const };
+  complete(receipt); expect(await pending).toEqual(receipt);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(f.runtime.agentControl).toHaveBeenCalledOnce(); expect(f.controller.current.agentCommands).toEqual([]);
+  await f.finish();
+});
+
+it('bounds missing receipt retries and preserves the same command for an explicit retry', async () => {
+  vi.useFakeTimers(); const f = fixture(); await f.start();
+  vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(() => {}));
+  const command = { type: 'plan' as const, requestId: 'unconfirmed', expectedVersion: 0, items: [] };
+  const pending = f.controller.agentCommand(f.controller.current.id, command);
+  const rejected = expect(pending).rejects.toMatchObject({ code: 'AGENT_COMMAND_TIMEOUT' });
+  await vi.advanceTimersByTimeAsync(135_000); await rejected;
+  expect(f.runtime.agentControl).toHaveBeenCalledTimes(4); expect(f.controller.current.agentCommands).toHaveLength(1);
+  const receipt = { requestId: command.requestId, conversationId: 1, status: 'accepted' as const };
+  vi.mocked(f.runtime.agentControl!).mockResolvedValueOnce(receipt);
+  expect(await f.controller.agentCommand(f.controller.current.id, command)).toEqual(receipt);
+  expect(f.controller.current.agentCommands).toEqual([]); await f.finish();
+});
+
+it('stops pending command recovery immediately and never resubmits after Stop', async () => {
+  vi.useFakeTimers(); const f = fixture(); await f.start();
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => {
+    if (command.type === 'cancel') return { requestId: command.requestId, conversationId: 1, status: 'accepted' };
+    throw Object.assign(new Error('Disconnected'), { code: 'ECONNRESET' });
+  });
+  const pending = f.controller.send({ text: 'Waiting', params: { model: 'one' }, attachments: [] }, f.controller.current, true, 'stop-retry');
+  const rejected = expect(pending).rejects.toMatchObject({ code: 'AGENT_COMMAND_CANCELLED' });
+  await vi.advanceTimersByTimeAsync(1); await f.controller.stop(); await rejected;
+  await vi.advanceTimersByTimeAsync(135_000);
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls.map(call => call[1].type)).toEqual(['submit', 'cancel']);
+  expect(f.controller.current.agentCommands).toEqual([]);
 });
 
 it('queues a settings change during owner startup until the first safe snapshot', async () => {
@@ -1184,6 +1251,27 @@ it('bounds interrupted owner reconnects without changing a completed reply or re
   expect(original).toMatchObject({ status: 'success', content: 'First answer', model: 'one' });
   expect(vi.mocked(f.runtime.run).mock.calls.slice(1).every(([request]) => request.resumeAgent && request.runId === original.runId)).toBe(true);
   expect(owner.agentCommands).toHaveLength(1);
+});
+
+it('reconciles an unfinished follow-up after its project connection recovers without keeping a false failed state', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  const owner = f.controller.current, initial = f.snapshot(), requestId = 'recover-project-followup';
+  const sending = f.controller.send({ text: 'Continue after repair', params: { model: 'one' }, attachments: [] }, owner, true, requestId);
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  const placed = { ...initial, ownerId: 'reattached', revision: 1, foreground: true,
+    receipts: [{ requestId, conversationId: 1, status: 'accepted' as const }],
+    turns: [...initial.turns, { requestId, conversationId: 1, prompt: 'Continue after repair', mode: 'followUp' as const, status: 'placed' as const, epoch: 0, entryId: 3, items: [] }] };
+  f.emit(placed); await sending;
+  f.runs[1].fail(Object.assign(new Error('Project temporarily unavailable'), { code: 'PROJECT_SERVER_SETUP_REQUIRED' }));
+  await f.controller.idle();
+  const answer = owner.messages.find(message => message.sessionRequestId === requestId)!;
+  expect(answer).toMatchObject({ status: 'running', recovering: true });
+  f.controller.recover(); await vi.waitFor(() => expect(f.runs).toHaveLength(3));
+  f.emit({ ...placed, ownerId: 'recovered', revision: 1, foreground: false,
+    turns: placed.turns.map(turn => turn.requestId === requestId ? { ...turn, status: 'done', items: [{ id: 'repaired', title: 'Output', content: 'Recovered', contentType: 'markdown' }] } : turn) });
+  expect(answer).toMatchObject({ status: 'success', content: 'Recovered', recovering: false });
+  expect(owner.messages.filter(message => message.sessionRequestId === requestId)).toHaveLength(1);
+  await f.finish();
 });
 
 it('allows retrying an interrupted follow-up after the reattached worker exhausts its recovery attempts', async () => {

@@ -1,5 +1,6 @@
 # Unreleased
 
+- Durable Agent commands automatically retry confirmation timeouts, temporary connection failures, and readiness races with the original request ID. Late receipts reconcile pending input, repaired project connections resume the original run, browser deadlines cover recovery, and Stop cancels retries.
 - Conversation views within one Kanban page can share a session writer while retaining separate parameter and draft state. Closing a view releases its claim immediately; reopened views remain editable and running tasks retain their execution owner.
 - The Conversation composer becomes editable after its first session state arrives, preventing newly typed drafts from being cleared by the initial snapshot.
 

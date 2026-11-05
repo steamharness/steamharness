@@ -317,7 +317,8 @@ try {
           try {
             const receipt = await withSettings(() => agentControl(message));
             await sendAgentReceipt({ type: 'agent-receipt', id: message.id, receipt });
-          } catch (error) { await sendAgentReceipt({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code }); }
+          } catch (error) { await sendAgentReceipt({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code ?? error.cause?.code ?? (error.name === 'TimeoutError' ? 'AGENT_COMMAND_TIMEOUT' : undefined),
+            status: typeof (error.status ?? error.statusCode) === 'number' ? error.status ?? error.statusCode : undefined }); }
         };
         for (const message of pendingAgentControls.splice(0)) dispatchAgentControl(message);
       }
@@ -352,7 +353,8 @@ try {
       }, error => { runFailure = error.message; throw error; }).finally(() => { runFinished = true; });
       const initialCommands = (request.agentCommands ?? []).map(async command => {
         try { const receipt = await agentControl?.(command); await send('event', { type: 'agent_command_receipt', receipt }); }
-        catch (error) { await send('event', { type: 'agent_command_failed', requestId: command.command.requestId, targetId: command.command.targetId, message: error.message, code: error.code }); }
+        catch (error) { await send('event', { type: 'agent_command_failed', requestId: command.command.requestId, targetId: command.command.targetId, message: error.message, code: error.code ?? error.cause?.code ?? (error.name === 'TimeoutError' ? 'AGENT_COMMAND_TIMEOUT' : undefined),
+          status: typeof (error.status ?? error.statusCode) === 'number' ? error.status ?? error.statusCode : undefined }); }
       });
       const report = await running;
       await Promise.all(initialCommands);

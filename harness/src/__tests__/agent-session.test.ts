@@ -465,6 +465,7 @@ test("turn usage and live context isolate forks, cached tool rounds and temporar
   await until(() => first.snapshot()?.turns.some(turn => turn.status === "done"));
   const initial = first.snapshot().turns[0]!;
   const fork = await first.instance.control({ type: "fork", requestId: "fork", entryId: initial.answerId! });
+  await until(() => first.snapshot().contexts.some(scope => scope.conversationId === fork.forkId));
   assert.deepEqual(first.snapshot().contexts.find(scope => scope.conversationId === fork.forkId)?.contextUsage, { used: 3755, total: 100_000 });
   await first.instance.control({ type: "submit", requestId: "fork-input", targetId: fork.forkId, prompt: "Inspect", mode: "followUp" });
   await until(() => first.snapshot().turns.some(turn => turn.requestId === "fork-input" && turn.status === "done"));
@@ -508,6 +509,7 @@ test("session context updates after follow-up, compaction and reset without usin
   assert.equal(snapshot().turns.find(turn => turn.requestId === "follow")?.usage?.totalTokens, 8000);
   assert.ok(snapshot().records.some(record => record.kind === "project.compaction-usage"));
   await instance.control({ type: "reset", requestId: "reset" });
+  await until(() => snapshot().contexts[0]?.contextUsage?.used === 0);
   assert.deepEqual(snapshot().contexts[0]?.contextUsage, { used: 0, total: 100_000 });
   assert.equal(snapshot().turns[0]?.usage?.totalTokens, 3755);
 });
@@ -541,10 +543,10 @@ test("an observer failure settles running tools, queued inputs and independent f
       });
       return { content: [ai.fauxText("Stopped")], details: {} };
     } }];
-  let failedProjection = false;
+  let failedProjection = 0;
   first.instance.subscribe(event => {
-    if ((event as { type: string }).type === "project_session" && entered === 2 && !failedProjection) {
-      failedProjection = true; throw new Error("projection unavailable");
+    if ((event as { type: string }).type === "project_session" && entered === 2 && failedProjection < 4) {
+      failedProjection++; throw new Error("projection unavailable");
     }
   });
   first.faux.setResponses([ai.fauxAssistantMessage("First answer"),
@@ -592,11 +594,13 @@ test("session commands persist plans, isolate forks and context resets, and reje
   const plan = { type: "plan" as const, requestId: "plan", expectedVersion: 0, items: [{ id: "one", text: "Review", status: "in_progress" as const }] };
   await instance.control(plan);
   await instance.control(plan);
+  await until(() => snapshot().plan.version === 1);
   assert.equal(snapshot().plan.version, 1);
   await assert.rejects(() => instance.control({ ...plan, items: [] }), /already used/);
   const command = { type: "fork" as const, requestId: "fork", entryId: initial.answerId! };
   const fork = await instance.control(command);
   assert.equal((await instance.control(command)).forkId, fork.forkId);
+  await until(() => snapshot().conversations.length === 2);
   assert.equal(snapshot().conversations.length, 2);
   assert.equal(snapshot().contexts.find(context => context.conversationId === fork.forkId)?.plan.version, 0);
   await instance.control({ type: "submit", requestId: "fork-input", targetId: fork.forkId, prompt: "Fork", mode: "followUp" });
@@ -655,6 +659,7 @@ test("Temporary repository reopens configuration, plans and command receipts wit
   assert.ok(second.snapshot().receipts.some(receipt => receipt.requestId === "config"));
   const remove = { type: "delete" as const, requestId: "delete", targetId: fork.forkId };
   await second.instance.control(remove); await second.instance.control(remove);
+  await until(() => second.snapshot().conversations.length === 1);
   assert.equal(second.snapshot().conversations.length, 1);
   await assert.rejects(() => second.instance.control({ type: "submit", targetId: fork.forkId, requestId: "deleted-input", prompt: "No", mode: "followUp" }), /deleted/);
 });
@@ -685,6 +690,7 @@ test("foreground cancellation leaves a background subagent alive and cancelling 
   assert.ok(snapshot().tasks.some(task => task.toolName === "wait"));
   const delegation = snapshot().tasks.find(task => task.kind === "project.delegation")!;
   await instance.control({ type: "cancel", requestId: "stop-child", scope: "task", taskId: delegation.id });
+  await until(() => snapshot().tasks.length === 0);
   const stopped = snapshot().turns.find(turn => turn.conversationId === child.id)!;
   assert.equal(stopped.status, "unanswered"); assert.equal(stopped.reason, "aborted");
   assert.ok(typeof stopped.startedAt === "number" && typeof stopped.endedAt === "number" && stopped.endedAt >= stopped.startedAt);
@@ -714,6 +720,7 @@ for (const sqlite of [false, true]) test(`cancelled tasks stop showing stopping 
   const stopped = first.instance.control({ type: "cancel", requestId: "stop", scope: "foreground" });
   await until(() => first.snapshot().tasks.some(task => task.id === taskId && task.stopping));
   cleanup.resolve(); await stopped;
+  await until(() => first.snapshot().tasks.length === 0);
   assert.equal(first.snapshot().tasks.length, 0);
   assert.equal(first.snapshot().history.find(task => task.id === taskId)?.status, "aborted");
   assert.ok(first.snapshot().history.every(task => !task.stopping));
@@ -826,6 +833,7 @@ test("the durable inbox steers at a tool boundary, withdraws follow ups and neve
   assert.equal(withdrawn.status, "aborted");
   const next = { type: "submit" as const, requestId: "next", prompt: "Next", mode: "followUp" as const };
   await instance.control(next); await instance.control(next);
+  await until(() => snapshot().turns.some(turn => turn.requestId === "next"));
   const queued = snapshot().turns.find(turn => turn.requestId === "next")!;
   assert.equal(queued.status, "queued"); assert.equal(queued.startedAt, undefined); assert.equal(queued.endedAt, undefined);
   tool.resolve();
@@ -858,6 +866,7 @@ for (const sqlite of [false, true]) test(`queued promotion preserves input ident
   const receipt = await instance.control(command);
   assert.equal(receipt.status, "accepted");
   assert.deepEqual(await instance.control(command), receipt);
+  await until(() => snapshot().turns.find(turn => turn.requestId === "urgent")?.mode === "steer");
   assert.equal(snapshot().turns.find(turn => turn.requestId === "urgent")?.mode, "steer");
   assert.equal(snapshot().turns.find(turn => turn.requestId === "next")?.mode, "followUp");
   assert.equal((await instance.control({ type: "promote", requestId: "already-placed", inputId: "first" })).status, "already_placed");
@@ -1039,3 +1048,72 @@ for (const background of [false, true]) test(`failed subagents report failure to
   t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
   await until(() => failureSeen && f.snapshot()?.history.some(task => task.kind === "project.delegation" && task.status === "failed"));
 });
+
+test("committed command receipts and subsequent controls do not wait for a slow snapshot observer", { timeout: 5000 }, async t => {
+  const f = session(), gate = latch();
+  f.faux.setResponses([ai.fauxAssistantMessage("First")]);
+  f.instance.requestId = "slow-snapshot";
+  const run = f.instance.prompt("Hello");
+  t.after(async () => { gate.resolve(); f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done"));
+  let blocked = false;
+  f.instance.subscribe(async event => {
+    if ((event as { type: string }).type === "project_session") { blocked = true; await gate.promise; }
+  });
+  const command = { type: "plan" as const, requestId: "slow-plan", expectedVersion: 0, items: [] };
+  const receipt = await f.instance.control(command);
+  assert.equal(receipt.status, "accepted");
+  await until(() => blocked);
+  assert.deepEqual(await f.instance.control(command), receipt);
+  const next = await f.instance.control({ ...command, requestId: "next-plan", expectedVersion: 1 });
+  assert.equal(next.status, "accepted");
+  gate.resolve();
+  await until(() => f.snapshot().plan.version === 2);
+  assert.equal(f.faux.state.callCount, 1);
+});
+
+test("a temporary session projection failure retries and keeps the Agent able to execute the next input", { timeout: 5000 }, async t => {
+  const f = session();
+  f.faux.setResponses([ai.fauxAssistantMessage("First"), ai.fauxAssistantMessage("Recovered")]);
+  f.instance.requestId = "projection-retry";
+  const run = f.instance.prompt("Hello");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done"));
+  let failed = false, recovered = false;
+  f.instance.subscribe(event => {
+    if ((event as { type: string }).type !== "project_session") return;
+    if (!failed) { failed = true; throw new Error("Temporary snapshot delivery failure"); }
+    recovered = true;
+  });
+  const command = { type: "submit" as const, requestId: "after-projection-failure", prompt: "Continue", mode: "followUp" as const };
+  assert.equal((await f.instance.control(command)).status, "accepted");
+  await until(() => recovered && f.snapshot().turns.some(turn => turn.requestId === command.requestId && turn.status === "done"));
+  assert.equal(f.faux.state.callCount, 2);
+  assert.equal(f.snapshot().turns.filter(turn => turn.requestId === command.requestId).length, 1);
+});
+
+for (const adapter of ["agent", "native"] as const) for (const failure of ["throw", "result"] as const) {
+  test(`${adapter} safe tool ${failure} failure retries the same invocation and automatically continues the model`, { timeout: 5000 }, async t => {
+    let calls = 0; const ids: string[] = [];
+    const execute = (id: string) => {
+      ids.push(id);
+      if (++calls === 1) {
+        if (failure === "throw") throw new Error("Temporary read failure");
+        return { content: [ai.fauxText("Temporary read failure")], isError: true };
+      }
+      return { content: [ai.fauxText("Recovered read")], isError: false };
+    };
+    const f = session(adapter === "native" ? { nativeTools: [{ name: "safe_read", replay: "safe", description: "Read", parameters: ai.Type.Object({}),
+      execute: async (_args, api) => { const result = execute(String(api.callId)); return { output: result.content, isError: result.isError }; } }] } : {});
+    if (adapter === "agent") f.instance.state.tools = [{ name: "safe_read", label: "Read", description: "Read", replay: "safe", parameters: ai.Type.Object({}),
+      execute: async id => ({ ...execute(id), details: {} }) }];
+    f.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("safe_read", {})], { stopReason: "toolUse" }), request => {
+      assert.match(JSON.stringify(request.messages), /Recovered read/); return ai.fauxAssistantMessage("Continued automatically");
+    }]);
+    f.instance.requestId = `tool-${adapter}-${failure}`; f.lease.resolve();
+    t.after(() => f.instance.close());
+    await f.instance.prompt("Read and continue");
+    assert.equal(calls, 2); assert.equal(new Set(ids).size, 1); assert.equal(f.faux.state.callCount, 2);
+    assert.equal(f.snapshot().turns.find(turn => turn.requestId === f.instance.requestId)?.status, "done");
+  });
+}

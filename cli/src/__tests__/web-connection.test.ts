@@ -128,7 +128,7 @@ it('preserves a slow Workflow receipt past the ordinary transport deadline witho
   }));
   try {
     const writing = fixture.connection.request({ type: 'kanban-bridge', call: { operation: 'entries.runEntrypoint', input: { entryId: 'api', entrypointId: 'message-send', args: [] } } });
-    ordinary.abort(); expect(timeout).toHaveBeenCalledWith(125_000);
+    ordinary.abort(); expect(timeout).toHaveBeenCalledWith(135_000);
     finish(Response.json({ messages: [{ type: 'kanban-bridge-result', ok: true, value: { receipt: 'persisted' } }] }));
     await expect(writing).resolves.toEqual([{ type: 'kanban-bridge-result', ok: true, value: { receipt: 'persisted' } }]);
     expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
@@ -185,7 +185,7 @@ it.each(['queue-promote', 'queue-remove'])('times out a stalled %s request and r
       options.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
     }));
     const pending = expect(fixture.connection.request({ type, requestId: randomUUID(), sessionId: 'original', id: 'queued' })).rejects.toThrow('Connection interrupted.');
-    expect(timeout).toHaveBeenCalledWith(35_000);
+    expect(timeout).toHaveBeenCalledWith(135_000);
     controller.abort(); await pending;
     expect(fixture.updates.at(-1)).toBe('reconnecting');
     const old = fixture.source();
@@ -296,7 +296,7 @@ it.each(['stop', 'cancel'])('bounds a stalled %s control even while the event st
       options.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
     }));
     const pending = expect(fixture.connection.request(type === 'stop' ? { type } : { type: 'agent-command', command: { type: 'cancel' } })).rejects.toThrow('Connection interrupted.');
-    expect(timeout).toHaveBeenCalledWith(35_000);
+    expect(timeout).toHaveBeenCalledWith(135_000);
     controller.abort(); await pending;
     expect(fixture.updates.at(-1)).toBe('reconnecting');
   } finally { timeout.mockRestore(); }

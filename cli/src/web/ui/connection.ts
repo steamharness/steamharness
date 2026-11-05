@@ -1,5 +1,6 @@
 const entryBase = () => document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content ?? '';
 import { t } from '../localization';
+import { AGENT_COMMAND_REQUEST_TIMEOUT_MS } from '../agent-command-retry';
 import { iconHtml } from './ui';
 import './connection.css';
 
@@ -223,7 +224,7 @@ export class BrowserConnection {
     const epoch = this.epoch;
     const controller = new AbortController();
     const control = message.type === 'stop' || message.type === 'workflow-stop' || message.type === 'agent-command' && message.command?.type === 'cancel';
-    const signal = control && this.recoverHost ? AbortSignal.any([controller.signal, AbortSignal.timeout(90_000)]) : controller.signal;
+    const signal = control && this.recoverHost ? AbortSignal.any([controller.signal, AbortSignal.timeout(AGENT_COMMAND_REQUEST_TIMEOUT_MS + 10_000)]) : controller.signal;
     this.requests.set(controller, control);
     try {
       // Only explicit cancellation can cross process recovery. A failed send or
@@ -236,8 +237,8 @@ export class BrowserConnection {
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
         : message.type === 'project-server-check' ? 180_000
         : ['kanban-bridge', 'resource-bridge'].includes(message.type) && message.call?.operation?.startsWith('files.') ? 125_000
-        : message.type === 'kanban-bridge' && ['entries.runEntrypoint', 'conversations.viewMessage'].includes(message.call?.operation) ? 125_000
-        : control || ['queue-promote', 'queue-remove'].includes(message.type) ? 35_000 : 60_000;
+        : message.type === 'kanban-bridge' && ['entries.runEntrypoint', 'conversations.viewMessage'].includes(message.call?.operation) ? AGENT_COMMAND_REQUEST_TIMEOUT_MS
+        : control || ['send', 'agent-command', 'queue-promote', 'queue-remove'].includes(message.type) ? AGENT_COMMAND_REQUEST_TIMEOUT_MS : 60_000;
       for (let attempt = 0; ; attempt++) {
         let response: Response, reply: Message;
         try {

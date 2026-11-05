@@ -133,6 +133,10 @@ Hosts using local or Server storage use `forkStoredAgentConversation({ persisten
 
 Explicit databasePath instances retain the SQLite-specific forkAgentConversation / isolateAgentConversation helpers. These file-path APIs are not used by the CLI/Studio default repository.
 
+A command receipt confirms durable acceptance; session snapshots are delivered independently. Consumers needing a refreshed view wait for the matching snapshot or issue a `snapshot` command. CLI Web / Studio wait 30 seconds per confirmation attempt and retry temporary timeouts, connection errors, 408/429/5xx responses, and readiness races up to three times using the same request ID, target, and payload. Late receipts end the wait and execution continues automatically. Stop, host shutdown, and exhausted budgets end automatic recovery.
+
+Session snapshot projection failures retry with backoff up to three times without replaying models or committed tools; persistent failure still terminates the run with its diagnostic. Tools explicitly declaring `replay: "safe"` retry execution exceptions or `isError` results up to three times with the same invocation identity, rechecking authorization before each attempt. A successful result automatically continues the model loop. Authorization denial, input validation, user interaction, cancellation, `retryable: false`, and host storage failures remain barriers. Default and `never`/`unsafe` tools require reconciling unknown results; a timeout does not prove a write did not occur.
+
 ## Extension Execution And Recovery
 
 `session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.

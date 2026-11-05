@@ -61,6 +61,7 @@ for (const named of [false, true]) test(`${named ? 'named' : 'anonymous'} delega
   assert.equal(total.totalTokens, settled.turns.filter(turn => turn.conversationId === settled.conversationId).reduce((n, turn) => n + (turn.usage?.totalTokens ?? 0), 0) + childUsage.totalTokens);
   assert.ok(settled.capturedAt! >= finished.endedAt!);
   const fork = await first.instance.control({ type: 'fork', requestId: 'fork', entryId: settled.turns.find(turn => turn.conversationId === settled.conversationId)!.answerId! });
+  await until(() => first.snapshot().contexts.some(item => item.conversationId === fork.forkId));
   assert.equal(first.snapshot().contexts.find(item => item.conversationId === fork.forkId)!.tokenUsage!.totalTokens, 0);
   await first.instance.control({ type: 'submit', requestId: 'fork-input', targetId: fork.forkId, prompt: 'Independent', mode: 'followUp' });
   await until(() => first.snapshot().turns.some(turn => turn.requestId === 'fork-input' && turn.status === 'done'));
@@ -75,6 +76,7 @@ for (const named of [false, true]) test(`${named ? 'named' : 'anonymous'} delega
   assert.deepEqual(second.snapshot().history.find(task => task.id === delegation.id), finished);
   assert.deepEqual(second.snapshot().contexts.find(item => item.conversationId === settled.conversationId)!.tokenUsage, total);
   await second.instance.control({ type: 'delete', requestId: 'delete-child', targetId: childId });
+  await until(() => second.snapshot().history.find(task => task.id === delegation.id)?.childConversationId === undefined);
   assert.equal(second.snapshot().history.find(task => task.id === delegation.id)!.childConversationId, undefined);
   assert.deepEqual(second.snapshot().history.find(task => task.id === delegation.id)!.usage, childUsage);
   assert.deepEqual(second.snapshot().contexts.find(item => item.conversationId === settled.conversationId)!.tokenUsage, total);

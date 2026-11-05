@@ -469,7 +469,7 @@ export async function resolveInsideScope(scope: AgentToolScope, requested: strin
   const permitted = roots.some((root) => target === root || target.startsWith(root + path.sep));
 
   if (!permitted) {
-    throw new Error(`Path "${requested}" is outside the directories this agent may access.`);
+    throw Object.assign(new Error(`Path "${requested}" is outside the directories this agent may access.`), { retryable: false });
   }
 
   return absolute;

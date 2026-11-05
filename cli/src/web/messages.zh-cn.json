@@ -685,6 +685,7 @@
   "Configuration access changed. Your draft is preserved.": "配置权限已变化，编辑草稿已保留。",
   "This restricted run has no verified configuration snapshot. Start a new task.": "此受限任务缺少已验证的配置快照，请新建任务。",
   "Check again": "重新检查",
+  "Agent command confirmation could not be recovered. Retry to check the same request.": "Agent 命令确认在自动重试后仍未恢复。点击重试将核对原请求并继续执行。",
   "Account / Server settings": "账号 / 服务器设置",
   "Entry": "入口",
   "Open Server project": "打开云端项目",

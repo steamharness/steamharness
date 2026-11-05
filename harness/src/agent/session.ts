@@ -20,6 +20,7 @@ import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionO
 import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentWorkRetryDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 import { SessionDoc, canonical, forkSessionConversation, sessionTarget } from "./session-state";
+import { waitBeforeRetry } from "./provider-retry";
 const initialPlan = () => ({ version: 0, items: [] as { id: string; text: string; status: string }[] });
 const PlanAsOf = defineDoc({ kind: "project.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
 const PlanCurrent = defineDoc({ kind: "project.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
@@ -55,6 +56,7 @@ export class DurableAgentSession {
   private commands = Promise.resolve();
   private readonly workMutations = new Map<number, Promise<void>>();
   private stopped = false;
+  private stopping = new AbortController();
   private pending = false;
   private dirty = false;
   private timer?: ReturnType<typeof setTimeout>;
@@ -72,7 +74,8 @@ export class DurableAgentSession {
     private readonly publish: (snapshot: AgentSessionSnapshot) => Promise<void>, private readonly report: (error: unknown) => void,
     private readonly models: Models, private readonly storage: Storage, private readonly registry: RegistryReader,
     private readonly resources: (loaded: readonly string[]) => AgentSessionResources,
-    private readonly contextWindow: (provider: string, model: string) => number | undefined = (provider, model) => models.getModel(provider, model)?.contextWindow) {
+    private readonly contextWindow: (provider: string, model: string) => number | undefined = (provider, model) => models.getModel(provider, model)?.contextWindow,
+    private readonly retryDelayMs = 500) {
     this.planDoc = options.planFork === "initial" ? PlanInitial : options.planFork === "current" ? PlanCurrent : PlanAsOf;
     this.delegation = this.createDelegationTask();
   }
@@ -510,6 +513,7 @@ export class DurableAgentSession {
 
   async start(prompt: string): Promise<void> {
     this.stopped = false;
+    this.stopping = new AbortController();
     this.unsubscribe?.();
     this.unsubscribeRegistry?.();
     this.unsubscribeRegistry = this.registry.subscribe(() => this.schedule());
@@ -565,6 +569,15 @@ export class DurableAgentSession {
     return input === undefined ? `conversation:${id}` : this.submissions.get(input)?.requestId ?? `submission:${input}`;
   }
 
+  async canRetryTool(id: ConversationId, callContext: typeof context): Promise<boolean> {
+    const record = await this.harness.commit(tx => tx.conversation(id), callContext);
+    if (!record?.owner) return true;
+    const progress = await this.harness.snapshot(AgentWorkProgressDoc, record.owner.conversationId, String(record.owner.taskId), callContext);
+    // A business checkpoint may require new input or reconciliation. Its work
+    // retry policy owns recovery; repeating the same tool must not clear it.
+    return !progress?.error && progress?.retryable !== false;
+  }
+
   async recordCompactionUsage(sessionId: string | undefined, recordId: string, usage: Usage): Promise<void> {
     if (!sessionId) return;
     for (const id of this.watches.keys()) {
@@ -600,13 +613,23 @@ export class DurableAgentSession {
   }
 
   emit(): Promise<void> {
-    const next = this.snapshots.then(async () => { await this.publish(await this.snapshot()); });
+    const next = this.snapshots.then(async () => {
+      for (let attempt = 0; ; attempt++) {
+        try { await this.publish(await this.snapshot()); return; }
+        catch (error) {
+          // Snapshots are replaceable projections. Retrying delivery never replays
+          // a model request or a committed tool, and never drops a final failure.
+          if (attempt >= 3 || this.stopped || !await waitBeforeRetry(attempt + 1, this.stopping.signal, this.retryDelayMs)) throw error;
+        }
+      }
+    });
     this.snapshots = next.catch(() => undefined);
     return next;
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.stopping.abort();
     clearTimeout(this.timer); this.timer = undefined; this.pending = false;
     this.unsubscribe?.(); this.unsubscribe = undefined;
     this.unsubscribeRegistry?.(); this.unsubscribeRegistry = undefined;
@@ -631,6 +654,7 @@ export class DurableAgentSession {
     this.commands = next.then(() => undefined, () => undefined);
     // Waiting for work must not hold the command line: stop/send remain usable.
     return next.then(async receipt => {
+      if (command.type === "snapshot") { await this.emit(); return receipt; }
       if (command.type !== "subagent" || command.action !== "wait" || !receipt.taskId) return receipt;
       await this.harness.waitForTask(receipt.taskId as TaskId, context);
       return { ...receipt, agents: (await this.agentWorks(receipt.conversationId as ConversationId)).filter(item => item.taskId === receipt.taskId) };
@@ -645,7 +669,7 @@ export class DurableAgentSession {
     if (command.type === "fork") {
       const receipt = await forkSessionConversation(this.harness, this.root, command);
       await this.attach((await this.harness.conversation(receipt.forkId as ConversationId, context))!);
-      await this.emit();
+      this.schedule();
       return receipt;
     }
     if (typeof command.requestId !== "string" || !command.requestId || command.requestId.length > 256 || ["__proto__", "constructor", "prototype"].includes(command.requestId)) throw new Error("A bounded stable requestId is required.");
@@ -654,7 +678,7 @@ export class DurableAgentSession {
     const fingerprint = createHash("sha256").update(canonical({ ...command, targetId: target.id })).digest("hex");
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw new Error("The requestId was already used for another command.");
-      if (previous.receipt) return plain(previous.receipt) as unknown as AgentSessionReceipt;
+      if (previous.receipt) { this.schedule(); return plain(previous.receipt) as unknown as AgentSessionReceipt; }
     }
     if ((await this.harness.snapshot(SessionDoc, target.id, context))?.deleted) throw new Error("The target conversation was deleted.");
     const receipt: AgentSessionReceipt = { requestId: command.requestId, status: "accepted", conversationId: target.id };
@@ -797,7 +821,9 @@ export class DurableAgentSession {
       default: throw new Error("Unknown agent session command.");
     }
     if (command.type !== "snapshot" && !saved) await target.commit(save, context);
-    await this.emit();
+    // The command is durable now. A slow snapshot/observer must not hold up its
+    // receipt, subsequent controls, or cause the host to report a false failure.
+    this.schedule();
     return receipt;
   }
 
