@@ -98,7 +98,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
 
   update(projects: Project[], preferred?: Project): void {
     this.localProjects = [...new Map(projects.filter(project => !project.assistant && !project.builtin).map(project => [project.uri, project])).values()];
-    const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project)]));
+    const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project), project.distribution, project.releasePreview]));
     const projectsChanged = signature !== this.projectSignature;
     this.projectSignature = signature;
     const changedPreferred = preferred?.uri !== this.preferredUri;
@@ -177,6 +177,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
 
   private publish(): void {
     if (this.disposed) { return; }
+    void vscode.commands.executeCommand('setContext', 'studio.projectReleaseInstalled', this.preferred?.distribution === 'release' && !this.preferred.releasePreview);
     const operationBusy = this.busy || this.choosing;
     if (operationBusy !== this.operationBusy) { this.operationBusy = operationBusy; this.operations.fire(); }
     const signature = JSON.stringify(this.localProjects.map(project => [project.uri, this.getVersionStatus(project)]));

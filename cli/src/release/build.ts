@@ -76,11 +76,13 @@ async function writeJson(root: string, file: string, value: unknown): Promise<vo
   await mkdir(path.dirname(path.join(root, file)), { recursive: true });
   await writeFile(path.join(root, file), JSON.stringify(value, null, 2) + "\n");
 }
-function sanitizeStructure(value: unknown, root = ""): unknown {
+function sanitizeStructure(value: unknown, root = "", artifact = ""): unknown {
   if (typeof value === "string" && root) return value.replaceAll(root, ".");
-  if (Array.isArray(value)) return value.map(item => sanitizeStructure(item, root));
+  if (Array.isArray(value)) return value.map(item => sanitizeStructure(item, root, artifact));
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).filter(([key]) => !["source", "sourceText", "expression", "location", "locations"].includes(key)).map(([key, item]) => [root ? key.replaceAll(root, ".") : key, sanitizeStructure(item, root)]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [root ? key.replaceAll(root, ".") : key,
+    key === "location" && artifact ? { file: artifact, line: 1, column: 1 }
+      : ["source", "sourceText", "expression"].includes(key) && typeof item === "string" ? "[compiled]" : sanitizeStructure(item, root, artifact)]));
 }
 function selectProfiles(definition: ProjectConfigurationDefinition, profiles?: string[]): ProjectConfigurationDefinition {
   if (!profiles) return definition;
@@ -213,13 +215,14 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
           banner: { js: 'import {createRequire as __releaseRequire} from "node:module";const require=__releaseRequire(import.meta.url);' } });
       }
       for (const asset of await selectedAssets(sourceRoot, override.assets ?? [])) await copyAsset(sourceRoot, path.join(stage, targetRoot), asset);
-      const portable = sanitizeStructure(report, root) as typeof report;
+      const artifactFile = entry.type === "kanban" ? targetEntry : `${targetRoot}/${targetEntry}`;
+      const portable = sanitizeStructure(report, root, artifactFile) as typeof report;
       portable.workflow = { ...portable.workflow, dir: ".", files: [entry.type === "kanban" ? targetEntry : `${targetRoot}/${targetEntry}`] };
       // Hosts read the separate configuration definition, including publication filtering.
       portable.configuration = undefined;
       portable.entries = undefined;
       if (entry.type === "kanban") portable.kanban = { artifactDir: targetRoot, entry: "index.html" };
-      await writeJson(stage, `${targetRoot}/structure.json`, { version: 1, report: portable, scripts: sanitizeStructure(scripts, root), agentModels: inspectProjectAgentModelUsage(sourceRoot, module, root) });
+      await writeJson(stage, `${targetRoot}/structure.json`, { version: 1, report: portable, scripts: sanitizeStructure(scripts, root, artifactFile), agentModels: inspectProjectAgentModelUsage(sourceRoot, module, root) });
       entries.push({ entryId, root: targetRoot, entry: targetEntry, structure: `${targetRoot}/structure.json`, ...(configuration ? { configuration: "configuration.json" } : {}), ...(override.profiles ? { profiles: override.profiles } : {}) });
     }
     for (const file of await selectedAssets(root, config.files ?? [])) await copyAsset(root, stage, file);

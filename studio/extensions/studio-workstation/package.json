@@ -860,12 +860,24 @@
         {
           "command": "studio.refreshDocumentPreview",
           "when": "activeCustomEditorId == studio.documentPreview || activeCustomEditorId == studio.formulaPreview"
+        },
+        {
+          "command": "studio.upgradeProject",
+          "when": "studio.projectReleaseInstalled"
+        },
+        {
+          "command": "studio.refreshVersions",
+          "when": "studio.projectReleaseInstalled"
+        },
+        {
+          "command": "studio.openProjectRelease",
+          "when": "studio.projectReleaseAvailable"
         }
       ],
       "view/title": [
         {
           "command": "studio.refreshVersions",
-          "when": "view == studio.versions",
+          "when": "view == studio.versions && studio.projectReleaseInstalled",
           "group": "navigation@1"
         },
         {
