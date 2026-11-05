@@ -27,6 +27,31 @@ it('retains the execution owner after navigation and releases idle scopes', asyn
   one.update(new Set(), new Set());
   await two.assertWritable('running'); expect(two.owns('running')).toBe(true);
 });
+it('releases a destroyed view immediately while retaining a running execution owner', async () => {
+  const f = fixture(), one = f.owner(), other = f.owner();
+  await one.assertWritable('conversation', 'old-view'); one.select('old-view', 'conversation');
+  one.execute('conversation');
+  one.disconnect('old-view', () => {});
+  one.detach('old-view');
+  await one.assertWritable('conversation', 'new-view');
+  expect(one.select('new-view', 'conversation').readOnly).toBe(false);
+  await expect(other.assertWritable('conversation')).rejects.toThrow('another window');
+  one.detach('new-view'); one.update(new Set(), new Set());
+  await other.assertWritable('conversation', 'other-view');
+  expect(other.select('other-view', 'conversation').readOnly).toBe(false);
+});
+it('shares only a trusted page writer while keeping view state and other pages independent', async () => {
+  const f = fixture(), one = f.owner();
+  one.shareWriter('group-view', 'page-a'); one.shareWriter('bot-view', 'page-a'); one.shareWriter('foreign-view', 'page-b');
+  await one.assertWritable('topic', 'group-view'); one.select('group-view', 'topic');
+  expect(one.select('bot-view', 'topic').readOnly).toBe(false);
+  expect(one.select('foreign-view', 'topic').readOnly).toBe(true);
+  await expect(one.assertWritable('topic', 'foreign-view')).rejects.toThrow('another window');
+  one.detach('group-view');
+  await one.assertWritable('topic', 'bot-view');
+  expect(one.select('foreign-view', 'topic').readOnly).toBe(true);
+  one.detach('bot-view'); await one.assertWritable('topic', 'foreign-view');
+});
 it('groups child execution with its root and retains an independent scope through its save', async () => {
   const f = fixture(id => id === 'child' ? 'root' : id), one = f.owner(), two = f.owner();
   await one.assertWritable('root', 'root-page'); one.select('root-page', 'root');

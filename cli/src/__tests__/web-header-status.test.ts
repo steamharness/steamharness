@@ -24,6 +24,12 @@ function renderPage(name: string): HTMLElement {
 
 afterEach(() => { document.body.replaceChildren(); document.head.replaceChildren(); });
 
+it('keeps the composer disabled until its first conversation state can preserve a draft', () => {
+  const app = renderPage('main');
+  expect(app.querySelector<HTMLTextAreaElement>('#message')!.disabled).toBe(true);
+  expect(app.querySelector<HTMLButtonElement>('#send')!.disabled).toBe(true);
+});
+
 it.each(['main', 'workflow-main'])('keeps the %s running count in the page header when the sidebar is hidden', name => {
   const app = renderPage(name), counter = app.querySelector<HTMLElement>('#running-count')!;
   const toolbar = app.querySelector<HTMLElement>('header.toolbar')!, sidebar = app.querySelector<HTMLElement>('#project-menu')!;

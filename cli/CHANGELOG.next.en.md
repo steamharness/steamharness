@@ -1,5 +1,8 @@
 # Unreleased
 
+- Conversation views within one Kanban page can share a session writer while retaining separate parameter and draft state. Closing a view releases its claim immediately; reopened views remain editable and running tasks retain their execution owner.
+- The Conversation composer becomes editable after its first session state arrives, preventing newly typed drafts from being cleared by the initial snapshot.
+
 - Fixed project checks retaining completed results during automatic retries and same-account verification, preventing flickering guidance and ready Kanban reloads while clearing old results on identity changes. Failure guidance includes HTTP status, recovery steps, and direct account/Server, project information, and Server project actions.
 
 - Fixed delayed updates after sending in Kanban multi-Bot topics: embedded composers expose provisional submission states and durable Workflow results, with explicit retries preserving request identity and drafts.

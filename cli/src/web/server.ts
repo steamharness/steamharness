@@ -1111,7 +1111,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     openConversationView: (async (source, target, emit) => {
       if (!controller || !entryConversations || source.projectId !== project.id || source.userId !== account.user?.userId) throw new Error('Conversation runtime is unavailable.');
-      const epoch = authRevision, configuration = parameterRevision, clientId = conversationViewClientId(source.entryId, source.clientId, target.viewId), id = target.conversationId;
+      const epoch = authRevision, configuration = parameterRevision, id = target.conversationId;
+      // A group's composer and its focused Bot view belong to one page. They
+      // may share a session writer; another page still gets a different identity.
+      const clientId = conversationViewClientId(source.entryId, source.clientId, target.viewId);
+      const writerId = conversationViewClientId(source.entryId, source.clientId, `conversation:${id}`);
       const lifetime = new AbortController();
       let closed = false;
       // Background profile checks advance authEpoch even when identity is unchanged.
@@ -1126,8 +1130,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       }
       check();
       const session = controller.sessions.find(session => session.id === id);
-      if (target.draft && session && !session.draft?.text) await controller.updateDraft(id, target.draft, session.draft?.attachments ?? []);
+      await ownership?.acquire(id);
       check(); rememberSelection(clientId, id);
+      ownership?.shareWriter(clientId, writerId);
+      ownership?.select(clientId, id);
+      const releaseWriter = () => {
+        selections.delete(clientId); ownership?.detach(clientId);
+        broadcast();
+      };
       const snapshot = () => {
         const current = state(clientId);
         // Project/account configuration is managed by the enclosing host.
@@ -1138,9 +1148,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const notify = () => { if (!closed && epoch === authRevision && configuration === parameterRevision) emit([snapshot()]); };
       entryObservers.add(notify);
       try {
+        if (target.draft && session && !session.draft?.text && !ownership?.select(clientId, id).readOnly)
+          await controller.updateDraft(id, target.draft, session.draft?.attachments ?? []);
         const html = await conversationViewHtml(path.join(cliRoot(), 'dist/web'), target.viewId, id, target.locale ?? locale(), !!target.submit);
         check();
-        return { html, close: () => { if (closed) return; closed = true; lifetime.abort(); entryObservers.delete(notify); selections.delete(clientId); ownership?.disconnect(clientId, broadcast); },
+        return { html, close: () => { if (closed) return; closed = true; lifetime.abort(); entryObservers.delete(notify); releaseWriter(); },
           request: async (input: Message): Promise<Message[]> => {
             check();
             const message = scopeConversationViewMessage(input, id, project.uri, clientId);
@@ -1171,7 +1183,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             return replies.map(reply => reply.type === 'state' ? snapshot() : reply);
           },
         };
-      } catch (error) { closed = true; lifetime.abort(); entryObservers.delete(notify); selections.delete(clientId); throw error; }
+      } catch (error) { closed = true; lifetime.abort(); entryObservers.delete(notify); releaseWriter(); throw error; }
     }) satisfies OpenConversationView,
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => {
       if (!controller || !storageReady || projectServer?.blocking && !projectServer.ready) throw new Error('Conversation runtime is unavailable.');

@@ -10,6 +10,7 @@ export class ConversationOwnership {
   private readonly pending = new Map<string, Promise<Owner | undefined>>();
   private readonly releasing = new Map<string, Promise<void>>();
   private readonly selections = new Map<string, string>();
+  private readonly writerGroups = new Map<string, string>();
   private readonly disconnects = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly acquired = new Set<string>();
   private readonly scopes = new Map<string, string>();
@@ -24,6 +25,8 @@ export class ConversationOwnership {
     return this.scopes.get(id) ?? scope;
   }
   rememberScope(id: string, scope: string): void { this.scopes.set(id, scope); }
+  shareWriter(clientId: string, groupId: string): void { this.writerGroups.set(clientId, groupId); }
+  private writer(clientId: string): string { return this.writerGroups.get(clientId) ?? clientId; }
   owns(id: string): boolean {
     const scope = this.scope(id), owner = this.owners.get(scope);
     if (!owner) return false;
@@ -69,20 +72,20 @@ export class ConversationOwnership {
     if (!this.owns(id)) {
       void this.acquire(id).then(owner => {
         if (!owner) return;
-        if (this.selections.get(clientId) === id && !owner.clients.has(id)) owner.clients.set(id, clientId);
+        if (this.selections.get(clientId) === id && !owner.clients.has(id)) owner.clients.set(id, this.writer(clientId));
         else if (!owner.clients.size && !owner.executing && !owner.retained) this.release(this.scope(id));
       });
       return { readOnly: true, reason: 'opened' };
     }
     const owner = this.owners.get(this.scope(id))!;
     const writer = owner.clients.get(id);
-    if (writer && writer !== clientId) return { readOnly: true, reason: owner.running ? 'running' : 'opened' };
-    owner.clients.set(id, clientId); return { readOnly: false };
+    if (writer && writer !== this.writer(clientId)) return { readOnly: true, reason: owner.running ? 'running' : 'opened' };
+    owner.clients.set(id, this.writer(clientId)); return { readOnly: false };
   }
   async assertWritable(id: string, clientId?: string): Promise<void> {
     const owner = await this.acquire(id), writer = owner?.clients.get(id);
-    if (!owner || clientId && writer && writer !== clientId) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
-    owner.lease.assertOwned(); if (clientId) owner.clients.set(id, clientId);
+    if (!owner || clientId && writer && writer !== this.writer(clientId)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    owner.lease.assertOwned(); if (clientId) owner.clients.set(id, this.writer(clientId));
   }
   async hold(id: string): Promise<() => void> {
     const owner = await this.acquire(id);
@@ -113,14 +116,21 @@ export class ConversationOwnership {
   disconnect(clientId: string, changed: () => void): void {
     clearTimeout(this.disconnects.get(clientId));
     this.disconnects.set(clientId, setTimeout(() => {
-      this.disconnects.delete(clientId); this.selections.delete(clientId);
-      for (const owner of this.owners.values()) for (const [id, writer] of owner.clients) if (writer === clientId) this.releaseClient(id, clientId);
+      this.detach(clientId);
       changed();
     }, 1_000));
   }
+  /** A destroyed view cannot reconnect; release its writer without the SSE grace period. */
+  detach(clientId: string): void {
+    clearTimeout(this.disconnects.get(clientId)); this.disconnects.delete(clientId); this.selections.delete(clientId);
+    for (const owner of this.owners.values()) for (const [id, writer] of owner.clients) if (writer === this.writer(clientId)) this.releaseClient(id, clientId);
+    this.writerGroups.delete(clientId);
+  }
   private releaseClient(id: string, clientId: string): void {
+    const writer = this.writer(clientId);
+    if ([...this.selections].some(([other, selected]) => other !== clientId && selected === id && this.writer(other) === writer)) return;
     for (const [scope, owner] of this.owners) {
-      if (owner.clients.get(id) !== clientId) continue;
+      if (owner.clients.get(id) !== writer) continue;
       owner.clients.delete(id); if (!owner.retained && !owner.executing && !owner.clients.size) this.release(scope);
     }
   }
@@ -133,7 +143,7 @@ export class ConversationOwnership {
     this.releasing.set(id, closing);
   }
   async reset(): Promise<void> {
-    this.epoch++; this.scopes.clear(); this.acquired.clear(); this.selections.clear();
+    this.epoch++; this.scopes.clear(); this.acquired.clear(); this.selections.clear(); this.writerGroups.clear();
     const owners = [...this.owners.values()]; this.owners.clear();
     const pending = [...this.pending.values()]; this.pending.clear();
     const releasing = [...this.releasing.values()];

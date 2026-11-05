@@ -240,7 +240,7 @@ it('discovers local entries and embeds one existing controller without exposing 
   expect(resolved.value.find((message: any) => message.type === 'params')?.error).toBeUndefined();
   const otherId = 'another-native-view';
   await bridge('conversations.openView', { viewId: otherId, entryId: 'agent', conversationId });
-  expect((await bridge('conversations.viewMessage', { viewId: otherId, message: { type: 'resolve', params: {} } })).ok).toBe(false);
+  expect((await bridge('conversations.viewMessage', { viewId: otherId, message: { type: 'resolve', params: {} } })).ok).toBe(true);
   await bridge('conversations.closeView', { viewId: otherId });
   await bridge('conversations.closeView', { viewId });
   const native = await f.state('agent');
@@ -266,4 +266,24 @@ it('returns all authorized Workflow receipts to an embedded composer without wai
   expect(request.entryCall).toMatchObject({ entryId: 'board' });
   expect(request.args).toContain(JSON.stringify({ threadId: 'topic', conversationId: 'composer-session', text: '@bot:all review', params: {}, requestId: 'stable-submission' }));
   await bridge('conversations.closeView', { viewId });
+});
+
+it('lets same-page views share a session writer and retains it until the final view closes', async () => {
+  const f = await fixture(), board = await f.state('board');
+  const bridge = (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,
+    call: { requestId: randomUUID(), operation, input } });
+  const open = (viewId: string) => bridge('conversations.openView', { viewId, entryId: 'agent', conversationId: 'same-topic' });
+  const state = async (viewId: string) => {
+    const result = await bridge('conversations.viewMessage', { viewId, message: { type: 'ready' } });
+    expect(result.ok).toBe(true); return result.value.find((message: any) => message.type === 'state');
+  };
+  expect((await open('group-composer')).ok).toBe(true);
+  expect((await open('focused-bot')).ok).toBe(true);
+  expect(await state('group-composer')).toMatchObject({ conversationAccess: { readOnly: false } });
+  expect(await state('focused-bot')).toMatchObject({ conversationAccess: { readOnly: false } });
+  await bridge('conversations.closeView', { viewId: 'group-composer' });
+  expect(await state('focused-bot')).toMatchObject({ conversationAccess: { readOnly: false } });
+  await bridge('conversations.closeView', { viewId: 'focused-bot' });
+  expect((await open('restored-bot')).ok).toBe(true);
+  expect(await state('restored-bot')).toMatchObject({ conversationAccess: { readOnly: false } });
 });
