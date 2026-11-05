@@ -52,6 +52,7 @@ let connected = false, working = false, methodWorking = false, transitioning = f
 let serverData: ProjectServerState | undefined, previewBlocked = false;
 const stateRevisions = new StateRevisions();
 let serverInstanceId: string | undefined;
+let serverUrl: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 let methodPublishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -59,6 +60,8 @@ const methodCalls = new Map<string, AbortController>();
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { void host.postMessage({ type: 'open-project-create' }); },
   databases: () => { if (project) dialogs.projectInfo(project, 'databases'); },
+  account: () => { void host.postMessage({ type: 'open-account' }); },
+  information: () => { if (project) dialogs.projectInfo(project); },
   retry: () => { void checkApplication(); },
 });
 function persist(): void { host.setState({ mode, sizes }); }
@@ -76,7 +79,7 @@ function request(message: Message): Promise<Message> {
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
-  serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking, canCreate: !project?.assistant });
+  serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking, canCreate: !project?.assistant, serverUrl, entryId: project?.entryId });
   for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
   element<HTMLButtonElement>('methods').disabled = !connected || previewBlocked || !methodSession?.getState().ready;
   element<HTMLButtonElement>('invoke-method').disabled = !connected || previewBlocked || methodWorking || !methodSession?.getState().methods.length;
@@ -230,6 +233,7 @@ window.addEventListener('message', event => {
     serverInstanceId = message.serverInstanceId;
     project = message.project; element('kanban-title').textContent = project!.name;
     serverData = message.serverData;
+    serverUrl = message.account.serverUrl;
     updateProjectAvatar(element('project-info'), project!);
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.close(); }
     usageAvailable = message.account.status === 'authenticated' && !!message.account.aiConfigured; update(message.kanban);

@@ -14,13 +14,15 @@ export function projectStartupInspector(project: Project, verify: (alias:string,
         const kind = status === 401 ? 'sign-in-required' : status === 403 ? 'access-denied'
           : status !== undefined && (status >= 500 || status === 408 || status === 429) ? 'connection-unavailable' : 'setup-required';
         issue = {kind,serverUrl:connection?.serverUrl,projectId:project.id,entryId:project.entryId,
+          ...(status === undefined ? {} : { status }),
           ...(kind === 'setup-required' ? {database:database.alias} : {})};
       }
       return {id:`${database.kind}:${database.alias}`,projectId:project.id,entryId:project.entryId,database:database.alias,stage:'database',status:issue?'action-required':'passed',issue} satisfies ProjectServerCheck;
     }));
     if (signal.aborted) return checks;
     if (server) {
-      const issue = connection ? (await readServerProject(project.id, connection, signal)).issue : unavailable;
+      const failure = connection ? (await readServerProject(project.id, connection, signal)).issue : unavailable;
+      const issue = failure ? { ...failure, projectId: project.id, entryId: project.entryId } : undefined;
       checks.unshift({ id: 'project', projectId: project.id, entryId: project.entryId, stage: 'registration', status: issue ? 'action-required' : 'passed', issue });
     }
     publish(checks); return checks;

@@ -115,6 +115,8 @@ function initialize(): void {
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
     create: () => { vscode.postMessage({ type: 'open-project-create' }); },
     databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
+    account: () => { vscode.postMessage({ type: 'open-account' }); },
+    information: () => { if (state) dialogs.projectInfo(state.project); },
     retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
   });
   let renderedProject = '';
@@ -609,7 +611,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
-    serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, canCreate: !state.project.assistant });
+    serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, canCreate: !state.project.assistant, serverUrl: state.account?.serverUrl, entryId: state.project.entryId });
     const conversation = state.project.projectType === 'conversation';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();

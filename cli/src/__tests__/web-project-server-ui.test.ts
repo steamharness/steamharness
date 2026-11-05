@@ -87,8 +87,15 @@ it.each([
   retry.click();
   expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
   expect(retry.disabled).toBe(true);
-  await f.render({ checking: true, checks });
-  expect(guidance.hidden).toBe(true);
+  const row = guidance.querySelector('li');
+  const title = document.getElementById('server-guidance-title')!.textContent;
+  const information = document.getElementById('server-guidance-information')!;
+  information.focus();
+  await f.render({ ...failed, checking: true });
+  expect(guidance.hidden).toBe(false);
+  expect(guidance.querySelector('li')).toBe(row);
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(title);
+  expect(document.activeElement).toBe(information);
   await f.render(failed);
   f.emit({ type: 'project-server-checked' });
   expect(guidance.hidden).toBe(false);
@@ -168,7 +175,7 @@ it('keeps the database recovery action disabled while disconnected and retries f
   expect(requests).toHaveLength(2); expect(requests[1].action).toBe('get'); expect(requests[1].requestId).not.toBe(request.requestId);
 });
 
-it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and only offers rechecking for access or Server compatibility problems', async kind => {
+it.each(['workflow', 'conversation'] as const)('keeps Stop and recovery settings available in %s for access or Server compatibility problems', async kind => {
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, blocking:true, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
@@ -176,10 +183,51 @@ it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and o
   const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, blocking:true, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
-  expect(document.getElementById('server-guidance-description')!.textContent).toContain('Check again');
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('Check again');
   if (kind === 'conversation') {
     expect(document.querySelector<HTMLButtonElement>('.queue-heading button')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(3)')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(4)')!.disabled).toBe(false);
   }
 });
+
+it.each([
+  ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
+] as const)('explains a Server failure and opens the correct %s recovery settings (%s)', async (kind, language) => {
+  const f = await fixture(kind, language);
+  const failed: ProjectServerState = { checking: false, issue: { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' },
+    checks: [{ id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required' }] };
+  await f.render(failed);
+  const guidance = document.getElementById('server-guidance')!;
+  expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain(language === 'en' ? 'registered entries' : '已登记的入口');
+  expect(document.getElementById('server-guidance-project-id')!.textContent).toBe(f.project.id);
+  expect(document.getElementById('server-guidance-entry-id')!.textContent).toBe('main');
+  const link = document.querySelector<HTMLAnchorElement>('#server-guidance-server')!;
+  expect(link.href).toBe(`https://server.test/detail/${f.project.id}`);
+  expect(link.rel).toContain('noopener');
+  document.getElementById('server-guidance-account')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-account' });
+  document.getElementById('server-guidance-information')!.click();
+  expect(document.querySelector<HTMLDialogElement>('.project-information-dialog')!.open).toBe(true);
+
+  const details = guidance.querySelector('details')!; details.open = true;
+  const row = guidance.querySelector('li');
+  const mutations: MutationRecord[] = [];
+  const observer = new MutationObserver(records => mutations.push(...records));
+  observer.observe(guidance, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  for (let i = 0; i < 3; i++) { await f.render({ ...failed, checking: true }); await f.render(failed); }
+  observer.disconnect();
+  expect(mutations).toEqual([]);
+  expect(guidance.querySelector('li')).toBe(row); expect(details.open).toBe(true);
+});
+
+it.each(['javascript:alert(1)', 'https://user:password@server.test', 'https://server.test/?token=private'])(
+  'does not offer a Server link for an unsafe address: %s', async serverUrl => {
+    const f = await fixture('conversation', 'en');
+    await f.render({ checking: false, issue: { kind: 'setup-required', serverUrl } });
+    const link = document.querySelector<HTMLAnchorElement>('#server-guidance-server')!;
+    expect(link.hidden).toBe(true); expect(link.hasAttribute('href')).toBe(false);
+    expect(document.getElementById('server-guidance-server-url')!.textContent).not.toMatch(/password|token|alert/);
+  },
+);

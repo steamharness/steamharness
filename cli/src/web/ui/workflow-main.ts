@@ -69,6 +69,8 @@ const serverBlocked = () => !!state?.serverData && state.serverData.blocking !==
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { host.postMessage({ type: 'open-project-create' }); },
   databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
+  account: () => { host.postMessage({ type: 'open-account' }); },
+  information: () => { if (state) dialogs.projectInfo(state.project); },
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
 let paramStates: Record<string, ParamState> = {};
@@ -174,7 +176,7 @@ function renderEntrypoints(): void {
 function controls(): void {
   dialogs.updatePermissions?.();
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
-  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant });
+  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant, serverUrl: state?.account.serverUrl, entryId: state?.project.entryId });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
   element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;

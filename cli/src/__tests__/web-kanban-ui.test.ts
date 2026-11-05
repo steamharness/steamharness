@@ -254,7 +254,7 @@ it('does not restore a blocked Server preview from the page cache or keep its pr
   expect(frame.src).toContain('/kanban/ready/index.html');
 });
 
-it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking in Server guidance (%s)', async language => {
+it.each(['en', 'zh-CN'] as const)('offers recovery settings and explains project creation in Server guidance (%s)', async language => {
   const { sources, sendState, fetcher } = await fixture(language);
   const parent = { postMessage: vi.fn() };
   vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
@@ -263,9 +263,9 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
   const guidance = document.getElementById('server-guidance')!;
   expect(guidance.hidden).toBe(false);
-  expect(guidance.textContent).toContain(language === 'en' ? 'Register this aggregate project' : '在所选 Server 注册此聚合项目');
-  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
-  expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
+  expect(guidance.textContent).toContain(language === 'en' ? 'new application with a new ID' : '用新 ID 新建应用');
+  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-account', 'server-guidance-information', 'server-guidance-retry']);
+  expect(document.getElementById('server-guidance-account')!.textContent).toBe(language === 'en' ? 'Account / Server settings' : '账号 / 服务器设置');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create project' : '创建项目');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
@@ -311,8 +311,27 @@ it('offers project creation without host upload support and hides it when access
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-upload')).toBeNull();
-  expect(document.getElementById('server-guidance-account')).toBeNull();
+  expect(document.getElementById('server-guidance-account')!.hidden).toBe(false);
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+});
+
+it.each(['en', 'zh-CN'] as const)('keeps Kanban failure guidance stable while rechecking (%s)', async language => {
+  const { sendState } = await fixture(language);
+  const failed: ProjectServerState = { checking: false, issue: { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' },
+    checks: [{ id: 'project', projectId: 'map', stage: 'registration', status: 'action-required' }] };
+  sendState(1, 'blocked', undefined, failed);
+  const guidance = document.getElementById('server-guidance')!;
+  const row = guidance.querySelector('li');
+  const title = document.getElementById('server-guidance-title')!.textContent;
+  const information = document.getElementById('server-guidance-information')!; information.focus();
+  sendState(2, 'blocked', undefined, { ...failed, checking: true });
+  expect(guidance.hidden).toBe(false); expect(guidance.querySelector('li')).toBe(row);
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(title);
+  expect(document.activeElement).toBe(information);
+  expect(document.querySelector<HTMLAnchorElement>('#server-guidance-server')!.href).toBe('https://server.test/detail/map');
+  expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
+  sendState(3, 'ready', undefined, { checking: false });
+  expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
 });

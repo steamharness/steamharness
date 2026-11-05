@@ -2,7 +2,7 @@ import type { WebConnection } from './runtime';
 import type { AccountState } from './workflow-auth-client';
 import type { Project } from './workflow-types';
 import { t } from './localization';
-export interface ProjectServerIssue { kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable'; serverUrl?: string; projectId?: string; entryId?: string; database?: string }
+export interface ProjectServerIssue { kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable'; serverUrl?: string; projectId?: string; entryId?: string; database?: string; status?: number; reason?: 'invalid-project-response' }
 export interface ProjectServerCheck { id: string; projectId: string; entryId?: string; database?: string; stage: 'builtin' | 'registration' | 'database'; status: 'checking' | 'passed' | 'action-required' | 'waiting'; issue?: ProjectServerIssue }
 export interface ProjectServerState { checking: boolean; issue?: ProjectServerIssue; blocking?: boolean; checks?: ProjectServerCheck[] }
 export type ProjectServerInspector = (connection: WebConnection | undefined, signal: AbortSignal, publish: (checks: ProjectServerCheck[]) => void, unavailable: ProjectServerIssue) => Promise<ProjectServerCheck[]>;
@@ -20,9 +20,9 @@ export function projectServerIssue(status: number, serverUrl: string): ProjectSe
 export async function readServerProject(projectId: string, connection: WebConnection, signal: AbortSignal): Promise<{ issue?: ProjectServerIssue; project?: { id: string; entries: import('@steamharness/project-manifest').ProjectEntry[] } }> {
   const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
   const issue = projectServerIssue(response.status, connection.serverUrl); if (issue) { await response.body?.cancel(); return { issue }; }
-  if (!response.ok) { await response.body?.cancel(); return { issue: { kind: 'connection-unavailable', serverUrl: connection.serverUrl } }; }
+  if (!response.ok) { await response.body?.cancel(); return { issue: { kind: 'connection-unavailable', serverUrl: connection.serverUrl, status: response.status } }; }
   const value = await response.json().catch(error => { if (error instanceof SyntaxError) return undefined; throw error; });
-  if (value?.errCode !== 0 || value.data?.id?.toLowerCase() !== projectId.toLowerCase() || !Array.isArray(value.data.entries)) return { issue: { kind: 'setup-required', serverUrl: connection.serverUrl } };
+  if (value?.errCode !== 0 || typeof value.data?.id !== 'string' || value.data.id.toLowerCase() !== projectId.toLowerCase() || !Array.isArray(value.data.entries)) return { issue: { kind: 'setup-required', serverUrl: connection.serverUrl, reason: 'invalid-project-response' } };
   return { project: value.data };
 }
 export async function checkProjectServer(projectId: string, connection: WebConnection, signal: AbortSignal) { return (await readServerProject(projectId, connection, signal)).issue; }
@@ -34,6 +34,7 @@ export class ProjectServerConnection {
   private retry?: ReturnType<typeof setTimeout>;
   private disposed = false;
   private checkedAt = 0;
+  private authentication?: { connection: WebConnection; userId?: string };
   private failure?: ProjectServerAccessFailure;
   private unavailable: ProjectServerIssue = { kind: 'sign-in-required' };
   get blocking(): boolean { return this.state.blocking !== false; }
@@ -52,13 +53,22 @@ export class ProjectServerConnection {
   }
   settled(): Promise<void> { return this.pending ?? Promise.resolve(); }
   authenticationChanged(account: AccountState): void {
-    this.request?.abort(); this.pending = undefined; clearTimeout(this.retry); this.checkedAt = 0;
     if (this.disposed) return;
+    const connection = this.connection();
+    const unchanged = connection && this.authentication && account.status !== 'error' && account.status !== 'expired' && account.status !== 'signed-out'
+      && sameConnection(connection, this.authentication.connection) && account.serverUrl.replace(/\/+$/, '') === connection.serverUrl
+      && account.user?.userId === this.authentication.userId;
+    if (!unchanged) {
+      this.request?.abort(); this.pending = undefined; clearTimeout(this.retry); this.checkedAt = 0;
+      this.authentication = undefined; this.failure = undefined;
+      const blocking = this.state.blocking;
+      this.state = { checking: true, ...(blocking === undefined ? {} : { blocking }) };
+    }
     if (account.status === 'checking') {
-      if (!this.connection()) this.failure = undefined;
-      this.state = { ...this.state, checking: true, issue: undefined, checks: this.state.checks?.map(check => ({ ...check, status: 'checking', issue: undefined })) };
+      this.state = { ...this.state, checking: !this.ready };
       this.changed(); return;
     }
+    if (connection) this.authentication = { connection: { ...connection }, userId: account.user?.userId };
     this.unavailable = {
       kind: account.status === 'error' ? 'connection-unavailable' : 'sign-in-required', serverUrl: account.serverUrl,
     };
@@ -71,14 +81,16 @@ export class ProjectServerConnection {
     if (this.pending) return this.pending;
     clearTimeout(this.retry);
     const connection = this.connection(), abort = this.request = new AbortController();
-    this.state = { ...this.state, checking: this.options.inspect ? true : !this.ready, ...(this.options.inspect ? { issue: undefined } : {}) }; this.changed();
+    // Revalidation keeps the last completed result. Only a new identity loses
+    // that result; a timer must not remove guidance or unmount a ready preview.
+    this.state = { ...this.state, checking: !this.ready }; this.changed();
     const task = (async () => {
       let issue: ProjectServerIssue | undefined;
       let checks: ProjectServerCheck[] | undefined;
       try {
         if (this.options.inspect) {
           checks = await this.options.inspect(connection, abort.signal, checks => {
-            if (abort.signal.aborted || this.disposed) return;
+            if (abort.signal.aborted || this.disposed || !sameConnection(connection, this.connection())) return;
             this.state = { ...this.state, checks, issue: checks.find(check => check.issue)?.issue }; this.changed();
           }, this.unavailable);
           issue = checks.find(check => check.issue)?.issue;
@@ -89,7 +101,7 @@ export class ProjectServerConnection {
         if (connection && !issue && !this.options.inspect) issue = await checkProjectServer(this.projectId, connection, abort.signal);
       }
       catch { issue = { kind: 'connection-unavailable', serverUrl: connection?.serverUrl ?? this.unavailable.serverUrl }; }
-      if (abort.signal.aborted || this.disposed) return;
+      if (abort.signal.aborted || this.disposed || !sameConnection(connection, this.connection())) return;
       this.checkedAt = Date.now(); this.state = projectServerStateWithIssue({ ...this.state, checking: false, ...(checks ? { checks } : {}) }, issue, this.projectId); this.changed();
       const temporary = issue?.kind === 'connection-unavailable' || checks?.some(check => check.issue?.kind === 'connection-unavailable');
       if ((!this.options.inspect && !issue) || temporary && connection) {
@@ -115,3 +127,7 @@ export class ProjectServerConnection {
 }
 
 export function projectServerStateWithIssue(state: ProjectServerState, issue: ProjectServerIssue | undefined, _projectId: string): ProjectServerState { return { ...state, issue }; }
+
+function sameConnection(left: WebConnection | undefined, right: WebConnection | undefined): boolean {
+  return left?.serverUrl === right?.serverUrl && left?.accessToken === right?.accessToken;
+}

@@ -109,6 +109,8 @@ Resource and migration management also provides `create / list / inspect / retry
 
 Studio and CLI Web resource startup checks distinguish transport, login, access and binding failures. Temporary Server outages trigger a read-only check every 5 seconds, and recovery clears the temporary guidance. Checks never resubmit business operations.
 
+Initial checks and successful results stay silent. Automatic retries and same-account verification retain the last completed result and page content until the check finishes; changing accounts or Servers clears the previous result and verifies the new identity. Failures include the HTTP status when available, recovery steps, and connection details showing the Server, project ID, and entry. Use Account / Server settings to check sign-in, Project information → Databases to check resource references, or Open Server project to inspect registration and access. Server 5xx responses require checking Server logs and registered entries. Use Create project only when starting a new application: it allocates a new ID and does not transfer existing data or access.
+
 Background account checks keep configuration attachment uploads active. After the account changes or authentication is lost, the host rejects the previous account's upload result; select the file again under the current account.
 
 ## Platform runtime history
