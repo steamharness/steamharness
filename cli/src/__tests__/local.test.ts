@@ -35,9 +35,9 @@ it("check validates all registered entries and supports selecting one entry", as
   try {
     assert.equal(await main(["check", projectDir]), 0);
     assert.deepEqual(JSON.parse(output.at(-1)!).entries.map((entry: { entryId: string }) => entry.entryId), ["main", "second"]);
-    pkg.entries[1].type = "conversation";
+    pkg.entries[1].type = "bot";
     await writeFile(packagePath, JSON.stringify(pkg));
-    await assert.rejects(main(["check", projectDir]), /second.*conversation/);
+    await assert.rejects(main(["check", projectDir]), /second.*bot/);
     assert.equal(await main(["check", projectDir, "--entry", "main"]), 0);
     assert.equal(JSON.parse(output.at(-1)!).entryId, "main");
   } finally {

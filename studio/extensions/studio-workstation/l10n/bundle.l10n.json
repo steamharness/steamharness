@@ -297,7 +297,7 @@
   "No project selected": "No project selected",
   "No related projects": "No related projects",
   "No trace loaded": "No trace loaded",
-  "No Workflow or Conversation projects": "No Workflow or Conversation projects",
+  "No Workflow or Bot projects": "No Workflow or Bot projects",
   "No Workflow project detected": "No Workflow project detected",
   "Node": "Node",
   "Node extension host is unavailable": "Node extension host is unavailable",
@@ -923,5 +923,6 @@
   "Distribution mode changed. Try uploading again.": "Distribution mode changed. Try uploading again.",
   "Distribution Mode": "Distribution Mode",
   "Entries": "Entries",
-  "A release installation can only be upgraded to another release.": "A release installation can only be upgraded to another release."
+  "A release installation can only be upgraded to another release.": "A release installation can only be upgraded to another release.",
+  "Bot": "Bot"
 }

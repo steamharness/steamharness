@@ -97,10 +97,10 @@ test('configuration reads, exports and writes select the intended entry using th
   assert.equal(remote.requests.length, 4);
 });
 
-for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${projectType} projects receive a Server-assigned UUID privately without uploading or publishing source`, async t => {
+for (const projectType of ['workflow', 'bot', 'kanban']) test(`new ${projectType} projects receive a Server-assigned UUID privately without uploading or publishing source`, async t => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], platformSupport: { mode: 'agnostic' } };
-  const projectCard = { icon: projectType === 'workflow' ? 'workflow' : projectType === 'conversation' ? 'message-circle' : 'boxes', iconColor: '#ffffff', iconBackgroundColor: '#123456' };
+  const projectCard = { icon: projectType === 'workflow' ? 'workflow' : projectType === 'bot' ? 'message-circle' : 'boxes', iconColor: '#ffffff', iconBackgroundColor: '#123456' };
   await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, version: "0.1.0", entries:entriesFor(projectType),defaultEntry:'main',projectInfo,projectCard }));
   await fs.writeFile(path.join(directory, 'index.ts'), "throw new Error('Registration must not read or execute source');");
   const http = await server(t, () => ({ data: { projectId:id,entries:entriesFor(projectType),defaultEntry:'main' } }));
@@ -195,7 +195,7 @@ test('version downloads reserve directories atomically and do not reuse another 
 });
 
 test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
- const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/steamharness/entries/board/build/board/index.html',databases:[]}];
+ const entries=[...entriesFor(),{entryId:'chat',type:'bot',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/steamharness/entries/board/build/board/index.html',databases:[]}];
  const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
  assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'steamharness.json'),'utf8'));
  assert.deepEqual(pkg.entries,entries.map(entry=>entry.root==='.'?entry:{entryId:entry.entryId,root:entry.root}));

@@ -31,7 +31,7 @@ SEMVER_PATTERN = re.compile(
 )
 PROJECT_CARD_DEFAULTS = {
     "workflow": ("workflow", "#2563eb"),
-    "conversation": ("message-circle", "#0f766e"),
+    "bot": ("bot", "#0f766e"),
     "kanban": ("boxes", "#b45309"),
 }
 
@@ -66,7 +66,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--project-type",
-        choices=("workflow", "conversation", "kanban"),
+        choices=("workflow", "bot", "kanban"),
         default="workflow",
         help="显式项目类型，默认 workflow。",
     )
@@ -133,7 +133,7 @@ def main() -> None:
 
     print(f"已创建 workflow：{workflow_dir}")
     print(f"可运行：steamharness structure {workflow_dir}")
-    input_args = '--message "input text"' if args.project_type == "conversation" else '"input text"'
+    input_args = '--message "input text"' if args.project_type == "bot" else '"input text"'
     print(f"可运行：steamharness run {workflow_dir} -- {input_args}")
 
 
@@ -170,7 +170,7 @@ def render_kanban_template(relative_path: str, name: str, with_params: bool) -> 
 
 def package_json(name: str, project_type: str) -> str:
     core_version, cli_version = resolve_dependency_versions()
-    package_suffix = "kanban" if project_type == "kanban" else "workflow"
+    package_suffix = project_type
     return json.dumps({
         "name": f"@steamharness/{name}-{package_suffix}",
         "version": "0.1.0", "private": True, "type": "module",
@@ -331,6 +331,16 @@ export type {type_name}Output = ExecutorResult<{type_name}OutputPayload>;
 
 def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
     prompt_literal = json.dumps(prompt, ensure_ascii=False)
+    if project_type == "bot":
+        return "\n".join([
+            'import type { RuntimeApi } from "steamharness/runtime-api";',
+            'declare const steamharness: RuntimeApi;', '',
+            'export const executor = steamharness.defineBot({',
+            '  name: ' + json.dumps(name, ensure_ascii=False) + ',',
+            '  agent: { systemPrompt: ' + prompt_literal + ' },',
+            '});', 'export default executor;', '',
+        ])
+
     workflow_const = f"{to_camel_case(name)}Workflow"
     if project_type == "workflow":
         executor_definition = f'''  defaultEntrypoint: "main",
@@ -370,11 +380,6 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
       }},
     }}),
   ],'''
-    else:
-        executor_definition = f'''  workflow: {workflow_const},
-  createInput({{ args }}) {{
-    return steamharness.parseConversationDefaultInputArgs(args).message;
-  }},'''
     return f'''import type {{
   {type_name}Input,
   {type_name}OutputPayload,
@@ -432,7 +437,7 @@ def to_camel_case(name: str) -> str:
 
 
 def readme_md(name: str, description: str, project_type: str) -> str:
-    input_args = '--message "input text"' if project_type == "conversation" else '"input text"'
+    input_args = '--message "input text"' if project_type == "bot" else '"input text"'
     return f'''# {name}
 
 {description}

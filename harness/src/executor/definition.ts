@@ -2,14 +2,9 @@ import { HarnessError } from "../workflow/index";
 import type {
   EntrypointDefinition,
   EntrypointGroupDefinition,
-  ExecutorDefinition,
+  ProjectExecutorDefinition,
 } from "./types";
-import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
-import { assertConversationFooter } from "./conversation-footer";
-import { assertConversationCommands } from "./conversation-commands";
-import { assertConversationUserInput } from "./conversation-input";
-import { assertConversationPresentation } from "./conversation-presentation";
-import { inheritAgentProjectParams } from "../agent/project-executor";
+import { assertProjectParamDeclarations } from "./param-definition";
 
 export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
@@ -21,8 +16,8 @@ export function defineProjectEntrypoint<Input, Output>(
 }
 
 export function defineProjectExecutor<Input = unknown, Output = unknown>(
-  definition: ExecutorDefinition<Input, Output>,
-): ExecutorDefinition<Input, Output> {
+  definition: ProjectExecutorDefinition,
+): ProjectExecutorDefinition {
   if (definition.projectType === "workflow") {
     if (!Array.isArray(definition.entrypoints) || definition.entrypoints.length === 0) {
       throw new HarnessError({
@@ -65,18 +60,7 @@ export function defineProjectExecutor<Input = unknown, Output = unknown>(
       });
     }
   } else {
-    inheritAgentProjectParams(definition);
-    if (definition.conversation && "defaultInput" in definition.conversation) {
-      throw new HarnessError({
-        type: "input_validation",
-        message: "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
-      });
-    }
-    assertProjectParamDeclarations(definition.params, "conversation");
-    assertConversationFooter(definition.conversation?.footer, normalizeProjectParamDeclarations(definition.params).params);
-    assertConversationCommands(definition.conversation?.commands, normalizeProjectParamDeclarations(definition.params).params);
-    assertConversationUserInput(definition.conversation?.userInput, normalizeProjectParamDeclarations(definition.params).params);
-    assertConversationPresentation(definition.conversation?.collapseIntermediate);
+    throw new HarnessError({ type: "input_validation", message: "defineExecutor only accepts Workflow projects. Use defineBot for Bot projects." });
   }
   return definition;
 }

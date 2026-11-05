@@ -26,7 +26,7 @@ export class TraceStore {
   }
 
   update(projects: Project[], preferred?: Project): void {
-    this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation'].includes(project.projectType));
+    this.projects = projects.filter(project => !project.assistant && ['workflow', 'bot'].includes(project.projectType));
     for (const [uri, source] of this.sources) {
       if (!source.project.assistant && !this.projects.some(project => projectWindowKey(project) === uri && project.id === source.project.id)) { this.sources.delete(uri); }
     }

@@ -3,7 +3,7 @@ import type { ProjectVersionStatus } from './steamharness-server-projects';
 
 export interface StartTemplate {
   id: string;
-  projectType: 'workflow' | 'conversation' | 'kanban';
+  projectType: 'workflow' | 'bot' | 'kanban';
   kind: 'starter' | 'example';
   name: string;
   description: string;

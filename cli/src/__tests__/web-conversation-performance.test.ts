@@ -25,7 +25,7 @@ it('collects attachments once per refresh and shares the latest list across hist
   vi.stubGlobal('cancelAnimationFrame', () => {});
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/performance',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'performance', uri: 'file:///performance', folderPath: '/performance', name: 'Performance', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/performance',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'performance', uri: 'file:///performance', folderPath: '/performance', name: 'Performance', projectType: 'bot', fields: [], entrypoints: [] };
   let reads = 0;
   const files: Attachment[] = [{ id: 'file', name: 'image.png', path: '/image.png', size: 1, previewUrl: '/old.png', mimeType: 'image/png', kind: 'image', storage: 'local', createdAt: '2026-10-22T00:00:00Z' }];
   const messages: ConversationMessage[] = Array.from({ length: 100 }, (_, index) => ({ id: `answer-${index}`, role: 'assistant', content: 'Finished answer', status: 'success',

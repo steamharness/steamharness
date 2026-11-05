@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { botNodeLifecycle, currentBotRequestId, withBotRequest } from "./bot-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { agentSessionLease, agentSessionResuming, agentSessionInterrupted, agentSessionSuspended, bindAgentSessionControl } from "./session-control";
 import path from "node:path";
@@ -269,8 +271,17 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
       }
       if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
+      const runInScope = AsyncLocalStorage.snapshot();
       unbind = (this.options.session || this.options.createSession) && context.conversation?.conversationId && runtime.control
-        ? bindAgentSessionControl(context.conversation.conversationId, command => runtime.control!(command)) : undefined;
+        && (!botNodeLifecycle(this) || agentSessionLease(context.conversation.conversationId))
+        ? bindAgentSessionControl(context.conversation.conversationId, command => runInScope(async () => {
+          const lifecycle = botNodeLifecycle(this);
+          if (command.type !== "submit" || !lifecycle) return runtime.control!(command);
+          const prepared = await withBotRequest(command.requestId, () => lifecycle.prepare({ ...input, agent: runInput.agent,
+            prompt: command.prompt, images: command.images, imageFiles: undefined, requestId: command.requestId }, context));
+          return runtime.control!({ ...command, prompt: prepared.prompt, images: prepared.images,
+            ...(prepared.systemPrompt === undefined ? {} : { botSystemPrompt: prepared.systemPrompt }) } as typeof command);
+        })) : undefined;
     } catch (error) {
       try { await runtime.close(); }
       finally { await closeIgnoringFailure(() => system.close()); await closeIgnoringFailure(toolSet?.close); }
@@ -409,6 +420,14 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
             break;
           }
           case "session": {
+            const lifecycle = botNodeLifecycle(this);
+            if (lifecycle && (runInput.agent ?? this.options.mode) !== "plan" && context.conversation.conversationId && agentSessionLease(context.conversation.conversationId)) {
+              try { await lifecycle.completed(event.snapshot, input, context); }
+              catch (error) {
+                yield* createAgentNoticeChunks({ id: `bot-completion-${event.snapshot.revision}`, title: readRuntimeLocaleSafe() === "zh-CN" ? "Bot 完成通知" : "Bot completion notification",
+                  content: error instanceof Error ? error.message : String(error) });
+              }
+            }
             const snapshot = { ...event.snapshot, contexts: event.snapshot.contexts.map(scope => ({ ...scope,
               outputs: scope.contextUsage ? [createContextUsageItem(scope.contextUsage, readSessionKey(this.options, context))] : [],
             })) };
@@ -711,13 +730,14 @@ export function createNodeAgentHost(
       // The built-in tools are declared auto-approved, so this only asks when a
       // host has explicitly marked one as needing approval — and refuses
       // outright when the host disabled it.
+      const botRequestId = currentBotRequestId(context.projectId, context.entryId);
       await gate.approve({
         name: request.toolName,
         label: request.label,
         description: request.description,
         arguments: request.arguments,
         callId: request.callId,
-      }, context);
+      }, botRequestId ? { ...context, metadata: { ...context.metadata, botRequestId } } : context);
     },
 
     async approvePlan(request) {

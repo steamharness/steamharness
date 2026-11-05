@@ -1,5 +1,5 @@
-import type { ConversationExecutorDefinition, ExecutorContext } from "../executor/types";
-import { defineProjectExecutor } from "../executor/definition";
+import { registerBotNode, type BotNodeLifecycle } from "./bot-lifecycle";
+import type { ExecutorContext } from "../executor/types";
 import { createOutputNode, createOutputPayload } from "../node/output/index";
 import { createInputNode } from "../node/input/index";
 import { parseConversationDefaultInputArgs } from "../executor/default-input";
@@ -28,7 +28,7 @@ import { readRuntimeLocaleSafe } from "./plan";
 import type { FileReference } from "../files/index";
 import {
   DEFAULT_AGENT_EFFORT,
-  type AgentConversationProject,
+  type CoreBotProject,
   type AgentImageInput,
   type AgentInput,
   type AgentOutputPayload,
@@ -47,12 +47,14 @@ const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
  * conversation presentation and tokenUsage remain explicit, statically readable
  * declarations. Host recovery is inherited with the selected Agent contract.
  */
-export function createAgentConversationProject(
+export function createCoreBotProject(
   options: AgentProjectOptions = {},
-): AgentConversationProject {
+  lifecycle?: BotNodeLifecycle,
+): CoreBotProject {
   const executorName = options.executorName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
   const node = createAgentNode({ ...options, name: `${executorName}-agent` });
+  registerBotNode(node, lifecycle);
 
   const inputNode = createInputNode<AgentInput, AgentInput>({
     name: `${executorName}-input`,
@@ -87,8 +89,15 @@ export function createAgentConversationProject(
       recordAgentRunItemOrder(input, tracker.ids());
     },
     async format(stream, input, context) {
-      const items = applyAgentItemOrder(stream.items, readAgentRunItemOrder(input));
+      let items = applyAgentItemOrder(stream.items, readAgentRunItemOrder(input));
       const answer = readAssistantAnswer(items, outputItemId);
+      // A Bot has one stable final-answer address. Intermediate segments keep
+      // their event order; only the final text segment receives the public ID.
+      if (lifecycle && !items.some(item => item.id === outputItemId)) {
+        const finalText = [...items].reverse().find(item => isTextItem(item) || item.metadata?.["plan"] === true);
+        items = finalText ? items.map(item => item === finalText ? { ...item, id: outputItemId } : item)
+          : items;
+      }
       // Kept for API consumers; the node emits the display as a standard item.
       const contextUsage = readAgentRunContextUsage(input);
 
@@ -171,51 +180,6 @@ export function createAgentProjectInput(
 ): AgentInput {
   const args = Array.isArray(context) ? context : context.args;
   return createAgentInputFromArgs(args, options, Array.isArray(context) ? undefined : context.paramValues);
-}
-
-/**
- * The whole project in one call.
- *
- * Convenience for callers that are not a project — an embedding host, or a
- * test — and therefore never go through structure validation. A project that
- * has to pass the structure contract composes `createAgentConversationProject`
- * and `createAgentProjectInput` into its own inline executor instead.
- */
-export function defineAgentConversationExecutor(
-  options: AgentProjectOptions = {},
-): ConversationExecutorDefinition<AgentInput, AgentOutputPayload> {
-  const executorName = options.executorName ?? "agent";
-  const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
-
-  // Annotated before validation so the returned definition keeps the narrower
-  // conversation type — a builtin that receives the union would lose `workflow`.
-  const definition: ConversationExecutorDefinition<AgentInput, AgentOutputPayload> = {
-    projectType: "conversation",
-    workflow: createAgentConversationProject(options),
-    conversation: {
-      collapseIntermediate: options.collapseIntermediate ?? true,
-      recovery: { enabled: true },
-      ...(options.session || options.createSession ? { durable: { enabled: true as const } } : {}),
-      inputQueue: { enabled: true },
-      openai: { enabled: true, outputItemId },
-    },
-    tokenUsage: { enabled: true, display: true },
-    tools: options.toolDefinitions ?? [...readAgentToolDefinitions(undefined), ...(options.session || options.createSession ? [
-      { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
-      ...(options.session?.subagents || options.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
-    ] : [])],
-    params: options.params ?? createAgentProjectParams(options),
-    async resolveParams(context) {
-      const result = await createAgentProjectParamResolver({ modelSource: options.modelSource })(context);
-      const names = new Set(normalizeProjectParamDeclarations(definition.params).params.map(param => param.name));
-      return { params: Object.fromEntries(Object.entries(result.params ?? {}).filter(([name]) => names.has(name))) };
-    },
-    createInput(context) {
-      return createAgentProjectInput(context, options);
-    },
-  };
-
-  return defineProjectExecutor<AgentInput, AgentOutputPayload>(definition) as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
 }
 
 /**

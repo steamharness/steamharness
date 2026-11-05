@@ -1,5 +1,5 @@
 import { t } from './localization';
-export type ProjectKind = 'conversation' | 'workflow' | 'kanban';
+export type ProjectKind = 'bot' | 'workflow' | 'kanban';
 
 export interface Field {
   name: string;
@@ -208,7 +208,7 @@ export interface ConversationSession {
 }
 
 export const projectTypeLabels: Record<ProjectKind, string> = {
-  get conversation() { return t("Conversation"); },
+  get bot() { return t("Bot"); },
   get workflow() { return t("Workflow"); },
   get kanban() { return t("Kanban"); },
 };

@@ -7,7 +7,7 @@ register();
 const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 const { traceRows, filterTraceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const { projectFrameHtml } = await import('../extensions/studio-workstation/src/workflow-webview.ts');
-const project = (id, projectType = 'conversation') => ({ entryId: 'main', aggregateName: id, id, name: id, uri: `file:///${id}`, projectType });
+const project = (id, projectType = 'bot') => ({ entryId: 'main', aggregateName: id, id, name: id, uri: `file:///${id}`, projectType });
 const snapshot = (project, extra = {}) => ({ project, ...extra });
 const send = (binding, snapshot) => binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot });
 

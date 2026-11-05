@@ -15,7 +15,7 @@ async function fixture() {
   await mkdir(path.join(root,"agent")); await mkdir(path.join(root,"unregistered"));
   await writeFile(path.join(root,"package.json"), JSON.stringify({name:"npm-package",version:"9.8.7",private:true,type:"module"}));
   await writeFile(path.join(root,"steamharness.json"), JSON.stringify(rootDocument()));
-  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({type:"conversation",name:"Agent",entry:"index.ts",projectCard:{icon:"bot",iconColor:"#ffffff",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}));
+  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({type:"bot",name:"Agent",entry:"index.ts",projectCard:{icon:"bot",iconColor:"#ffffff",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}));
   await writeFile(path.join(root,"agent/index.ts"), "export {};");
   await writeFile(path.join(root,"unregistered/steamharness.json"), "invalid JSON is never loaded");
   await writeFile(path.join(root,"config.json"), JSON.stringify({version:1,knowledgeBases:{data:id}}));
@@ -23,7 +23,7 @@ async function fixture() {
 }
 it("uses only registered child declarations and keeps identity independent from npm metadata", async () => {
   const root = await fixture(), manifest = await readProjectManifestFromDirectory(root, {});
-  expect(manifest).toMatchObject({projectId:id,name:"Product name",version:"1.2.3",entries:[{entryId:"agent",name:"Agent",root:"agent",type:"conversation",projectCard:{icon:"bot",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}]});
+  expect(manifest).toMatchObject({projectId:id,name:"Product name",version:"1.2.3",entries:[{entryId:"agent",name:"Agent",root:"agent",type:"bot",projectCard:{icon:"bot",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}]});
   expect(readProjectDeclarationFromDirectorySync(root)).toEqual(await readProjectDeclarationFromDirectory(root));
   expect(projectEntryDeclarationPath(rootDocument(), "agent")).toBe("agent/steamharness.json");
 });
@@ -41,7 +41,7 @@ it("keeps parent presentation separate from a child's optional metadata", async 
     projectInfo: { localizedNames: { en: "Parent title" }, declarations: ["multilingual"] },
   }));
   await writeFile(path.join(root, "agent/steamharness.json"), JSON.stringify({
-    type: "conversation", name: "Child title", entry: "index.ts", databases: [],
+    type: "bot", name: "Child title", entry: "index.ts", databases: [],
   }));
   const declaration = await readProjectDeclarationFromDirectory(root);
   expect(declaration.projectInfo?.localizedNames.en).toBe("Parent title");
@@ -52,7 +52,7 @@ it("keeps parent presentation separate from a child's optional metadata", async 
 });
 it("rejects missing children, parent overrides and child project identities", async () => {
   const root = await fixture();
-  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({id,type:"conversation",name:"Agent",entry:"index.ts"}));
+  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({id,type:"bot",name:"Agent",entry:"index.ts"}));
   await expect(readProjectDeclarationFromDirectory(root)).rejects.toThrow(/child entries/);
   await rm(path.join(root,"agent/steamharness.json"));
   await expect(readProjectDeclarationFromDirectory(root)).rejects.toThrow(/steamharness.json/);

@@ -1,3 +1,4 @@
+import { botFixtureSource } from "./bot-fixture-source";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
@@ -94,11 +95,8 @@ test('durable conversations use local persistence without requiring a Server con
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-required-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
-  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Requires storage', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
-  await writeFile(path.join(directory, 'index.ts'), `
-    const workflow = steamharness.defineProject({ name: 'Offline conversation', run() { return { errCode: 0, errMessage: '' }; } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow, createInput() { return {}; } });
-  `);
+  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Requires storage', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+  await writeFile(path.join(directory, 'index.ts'), botFixtureSource());
   const report = await runLocalProjectWithReport({ projectDir: directory, env: {} });
   assert.equal(report.status, 'success');
   assert.equal(report.error, undefined);
@@ -108,25 +106,24 @@ test('losing the runtime history lease aborts an executing conversation', { time
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-lost-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
-  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease loss', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
-  await writeFile(path.join(directory, 'index.ts'), `
-    import { writeFile } from 'node:fs/promises';
-    const workflow = steamharness.defineProject({ name: 'Wait for cancellation', async run(input, context) {
-      await writeFile(new URL('./started', import.meta.url), 'started');
-      await new Promise((resolve, reject) => {
-        context.abortSignal.throwIfAborted();
-        context.abortSignal.addEventListener('abort', () => reject(context.abortSignal.reason), { once: true });
-      });
-      return { errCode: 0, errMessage: '' };
-    } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow, createInput() { return {}; } });
-  `);
+  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease loss', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+  await writeFile(path.join(directory, 'index.ts'), botFixtureSource({ prepare: `
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(new URL('./started', import.meta.url), 'started');
+    await new Promise((resolve, reject) => {
+      context.abortSignal.throwIfAborted();
+      context.abortSignal.addEventListener('abort', () => reject(context.abortSignal.reason), { once: true });
+    });
+    return { ...input, prompt: "Wait" };
+  ` }));
   const persistence = createMemoryRuntimePersistence();
   const acquire = persistence.acquire.bind(persistence);
   let lose: ((error: Error) => void) | undefined;
   persistence.acquire = (scope, onLost) => { lose = onLost; return acquire(scope); };
   const running = runLocalProjectWithReport({ projectDir: directory, env: {}, storage: { host: 'local', local: { runtimePersistence: persistence } } });
+  const deadline = Date.now() + 5000;
   while (true) {
+    if (Date.now() > deadline) throw new Error("Runtime fixture did not start");
     if (await readFile(path.join(directory, 'started'), 'utf8').catch(() => '') === 'started') break;
     await new Promise(resolve => setTimeout(resolve, 10));
   }
@@ -142,13 +139,9 @@ for (const fails of [false, true]) test(`lease release failures remain in a stru
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease release', version: '1.0.0', defaultEntry: 'main',
-    entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
-  await writeFile(path.join(directory, 'index.ts'), `
-    const workflow = steamharness.defineProject({ name: 'Release failure', async run() {
-      ${fails ? "throw new Error('Original business failure');" : "return { errCode: 0, errMessage: '' };"}
-    } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow, createInput() { return {}; } });
-  `);
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+  await writeFile(path.join(directory, 'index.ts'), botFixtureSource({ prepare: fails
+    ? "throw new Error('Original business failure');" : "return { ...input, prompt: 'Success' };" }));
   const persistence = createMemoryRuntimePersistence(), acquire = persistence.acquire.bind(persistence);
   persistence.acquire = async scope => {
     const lease = await acquire(scope);

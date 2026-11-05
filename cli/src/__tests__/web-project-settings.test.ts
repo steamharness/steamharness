@@ -10,8 +10,8 @@ import type { Project, Tool, ToolPolicies } from '../web/workflow-types';
 
 const project: Project = {
   id: 'project', entryId: 'agent', aggregateName: 'Example project', name: 'Agent', defaultEntry: 'agent',
-  projectType: 'conversation', entryRoot: '/project', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [], databases: [],
-  entries: [{ entryId: 'agent', type: 'conversation', name: 'Agent', root: '.', entry: 'index.ts', databases: [] }],
+  projectType: 'bot', entryRoot: '/project', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [], databases: [],
+  entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', root: '.', entry: 'index.ts', databases: [] }],
 };
 const state = createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD, { name: 'title', type: 'string', defaultValue: 'Original' }], () => 'default');
 const host = { postMessage: vi.fn() };

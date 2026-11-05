@@ -151,7 +151,7 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   const item = record(value, field);
   if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
   if (!isProjectEntryId(item.entryId)) throw new Error(`${field}.entryId must be an identifier and cannot use a reserved artifact or filesystem name.`);
-  if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, conversation, or kanban.`);
+  if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, bot, or kanban.`);
   if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 256) throw new Error(`${field}.name is required.`);
   const projectCard = item.projectCard === undefined ? undefined : validateProjectCardMetadata({
     ...normalizeProjectCardMetadata(undefined, item.type),

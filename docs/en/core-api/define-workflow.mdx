@@ -32,7 +32,7 @@ workflow.defineProject<Input, Output>(
 
 | Name | Description |
 | --- | --- |
-| `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; in a Conversation project it comes from `executor.createInput(context)`. |
+| `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; in a Bot project it comes from `executor.createInput(context)`. |
 | `context` | The runtime-provided `RunContext`, including providers, databases, conversation, files, metadata, node hooks, and an abort signal. |
 
 ## Return values

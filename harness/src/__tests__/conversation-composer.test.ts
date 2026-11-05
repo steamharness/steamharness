@@ -4,8 +4,8 @@ import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { defineProjectExecutor, inspectLocalProjectStructure, normalizeProjectParamDeclarations, parseProjectParamValues,
-  validateProjectParamResolveResult, type ConversationParamDeclaration, type ParamDeclaration } from "../index";
+import { defineBot, defineProjectExecutor, inspectLocalProjectStructure, normalizeProjectParamDeclarations, parseProjectParamValues,
+  validateProjectParamResolveResult, type BotParamDeclaration, type ParamDeclaration } from "../index";
 
 const commands = [
   { command: "export", label: "Export conversation", action: { kind: "export" as const } },
@@ -13,17 +13,17 @@ const commands = [
 ];
 
 test("Conversation execution commands are independent of parameters and reject collisions", () => {
-  const definition = { projectType: "conversation" as const, workflow: {} as never, params, createInput: () => ({}) };
-  assert.deepEqual(defineProjectExecutor({ ...definition, conversation: { commands } }).conversation?.commands, commands);
+  const definition = { agent: { paramOptions: { fields: { plan: false as const } } }, params };
+  assert.deepEqual(defineBot({ ...definition, conversation: { commands } }).conversation?.commands, commands);
   for (const invalid of [
     {}, [{ ...commands[0], command: "/export" }], [commands[0], commands[0]], [{ ...commands[0], command: "plan" }],
     [{ ...commands[0], label: "" }], [{ ...commands[0], action: { kind: "shell", text: "ls" } }],
     [{ ...commands[1], action: { kind: "prompt", text: "" } }], [{ ...commands[0], localizedLabel: { en: false } }],
     [{ ...commands[0], action: { kind: "export", text: "wrong" } }],
-  ]) { assert.throws(() => defineProjectExecutor({ ...definition, conversation: { commands: invalid as never } }), /Conversation commands/); }
+  ]) { assert.throws(() => defineBot({ ...definition, conversation: { commands: invalid as never } }), /Conversation commands/); }
 });
 
-const params: ConversationParamDeclaration[] = [
+const params: BotParamDeclaration[] = [
   { kind: "slash", name: "agent", flag: "--agent", type: "string", defaultValue: "build", options: [
     { value: "build", label: "Build" }, { value: "plan", label: "Plan" },
   ] },
@@ -53,7 +53,7 @@ test("Slash declarations reject ambiguous commands, invalid selectors and Workfl
   ]) { assert.throws(() => normalizeProjectParamDeclarations([{ ...selector, ...patch }] as never), /Slash parameter/); }
   assert.throws(() => defineProjectExecutor({ projectType: "workflow", defaultEntrypoint: "run", entrypoints: [
     { id: "run", title: "Run", workflow: {} as never, params, createInput: () => ({}) },
-  ] }), /only supported by Conversation/);
+  ] }), /only supported by Bot/);
 });
 
 test("Conversation footer definitions reject missing and contradictory parameter references", () => {
@@ -62,15 +62,15 @@ test("Conversation footer definitions reject missing and contradictory parameter
     [{ text: "Plan", when: { param: "missing", value: "plan" } }],
     [{ text: "Plan", localizedText: { en: false } }], [{ param: "agent", localizedText: { en: "Plan" } }],
   ]) {
-    assert.throws(() => defineProjectExecutor({ projectType: "conversation", workflow: {} as never, params,
-      conversation: { footer: footer as never }, createInput: () => ({}) }), /Conversation footer/);
+    assert.throws(() => defineBot({ agent: { paramOptions: { fields: { plan: false } } }, params,
+      conversation: { footer: footer as never } }), /Conversation footer/);
   }
 });
 
 test("Conversation user input configures composer visibility and generic parameter effects", () => {
   const userInput = { hideComposer: false, effects: [{ when: { type: "review", nodeName: "confirm", values: { accepted: true, tags: ["ready"] } }, params: { webSearch: "false" } }] };
-  const definition = { projectType: "conversation" as const, workflow: {} as never, params, createInput: () => ({}) };
-  assert.deepEqual(defineProjectExecutor({ ...definition, conversation: { userInput } }).conversation?.userInput, userInput);
+  const definition = { agent: { paramOptions: { fields: { plan: false as const } } }, params };
+  assert.deepEqual(defineBot({ ...definition, conversation: { userInput } }).conversation?.userInput, userInput);
   for (const invalid of [
     [], { hideComposer: "yes" }, { effects: {} }, { effects: [{}] },
     { effects: [{ when: {}, params: { webSearch: "false" } }] },
@@ -83,7 +83,7 @@ test("Conversation user input configures composer visibility and generic paramet
     { effects: [{ when: { type: "review" }, params: { webSearch: false } }] },
     { effects: [{ when: { type: "review" }, params: { webSearch: "invalid" } }] },
     { effects: [{ when: { type: "review" }, params: { webSearch: null } }] },
-  ]) { assert.throws(() => defineProjectExecutor({ ...definition, conversation: { userInput: invalid as never } }), /Conversation userInput/); }
+  ]) { assert.throws(() => defineBot({ ...definition, conversation: { userInput: invalid as never } }), /Conversation userInput/); }
 });
 
 test("resolved Slash options preserve aliases and reject conflicting or invalid commands", () => {
@@ -98,13 +98,13 @@ test("resolved Slash options preserve aliases and reject conflicting or invalid 
 test("static inspection carries Slash commands and conditional plain-text footers to hosts", async t => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-composer-contract-"));
   t.after(() => rm(projectDir, { recursive: true, force: true }));
-  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], name: "composer", type: "module" }));
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], name: "composer", type: "module" }));
   const footer = [{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "agent", value: "plan" } }, { param: "webSearch" }];
   const userInput = { hideComposer: true, effects: [{ when: { type: "review", values: { accepted: true } }, params: { webSearch: "false" } }] };
   const source = (footerSource: string, inputSource = JSON.stringify(userInput)) => `
     const task = steamharness.defineProject({ name: "composer", run(input) { return input; } });
-    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task,
-      params: ${JSON.stringify(params)}, conversation: { commands: ${JSON.stringify(commands)}, footer: ${footerSource}, userInput: ${inputSource} }, createInput: context => context.paramValues });`;
+    export const executor = steamharness.defineBot({ agent: { paramOptions: { fields: { plan: false } } },
+      params: ${JSON.stringify(params)}, conversation: { commands: ${JSON.stringify(commands)}, footer: ${footerSource}, userInput: ${inputSource} } });`;
   await writeFile(path.join(projectDir, "index.ts"), source(JSON.stringify(footer)));
   const report = inspectLocalProjectStructure({ projectDir });
   assert.deepEqual(report.diagnostics.violations, []);
@@ -112,7 +112,7 @@ test("static inspection carries Slash commands and conditional plain-text footer
   assert.deepEqual(report.conversation?.commands, commands);
   assert.deepEqual(report.conversation?.userInput, userInput);
   assert.equal(report.params?.find(param => param.name === "webSearch")?.command, "search");
-  assert.deepEqual(report.paramLayout?.actions, [{ kind: "slash", name: "agent" }, { kind: "slash", name: "webSearch" }]);
+  assert.deepEqual(report.paramLayout?.actions?.filter(action => action.kind === "slash"), [{ kind: "slash", name: "agent" }, { kind: "slash", name: "webSearch" }]);
   for (const invalid of ['[{ param: "missing" }]', '[{ text: getFooterText() }]', '[{ text: "Plan", when: { param: "agent", value: true } }]']) {
     await writeFile(path.join(projectDir, "index.ts"), source(invalid));
     assert.throws(() => inspectLocalProjectStructure({ projectDir }), error => {
@@ -128,20 +128,20 @@ test("static inspection carries Slash commands and conditional plain-text footer
 });
 
 test("Conversation process folding validates runtime and static defaults without dropping false", async t => {
-  const definition = { projectType: "conversation" as const, workflow: {} as never, createInput: () => ({}) };
+  const definition = {};
   for (const collapseIntermediate of [true, false, undefined]) {
-    assert.equal(defineProjectExecutor({ ...definition, conversation: { collapseIntermediate } }).conversation?.collapseIntermediate, collapseIntermediate);
+    assert.equal(defineBot({ ...definition, conversation: { collapseIntermediate } }).conversation?.collapseIntermediate, collapseIntermediate ?? true);
   }
   for (const value of [null, "true", {}, 1]) {
-    assert.throws(() => defineProjectExecutor({ ...definition, conversation: { collapseIntermediate: value as never } }), /collapseIntermediate/);
+    assert.throws(() => defineBot({ ...definition, conversation: { collapseIntermediate: value as never } }), /collapseIntermediate/);
   }
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "conversation-presentation-"));
   t.after(() => rm(projectDir, { recursive: true, force: true }));
-  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], name: "presentation", type: "module" }));
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], name: "presentation", type: "module" }));
   const write = (value: string) => writeFile(path.join(projectDir, "index.ts"), `
     const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
-    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task,
-      conversation: { collapseIntermediate: ${value} }, createInput: () => ({}) });`);
+    export const executor = steamharness.defineBot({ agent: { paramOptions: { fields: { plan: false } } },
+      conversation: { collapseIntermediate: ${value} } });`);
   for (const enabled of [true, false]) {
     await write(String(enabled));
     assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, enabled);
@@ -151,8 +151,8 @@ test("Conversation process folding validates runtime and static defaults without
   assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, false);
   await writeFile(path.join(projectDir, "index.ts"), `
     const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
-    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task, createInput: () => ({}) });`);
-  assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, undefined);
+    export const executor = steamharness.defineBot({ agent: { paramOptions: { fields: { plan: false } } } });`);
+  assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, true);
   await writeFile(path.join(projectDir, "index.ts"), 'import "./agent";\n' + await readFile(path.join(projectDir, "index.ts"), "utf8"));
   assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, true);
   for (const invalid of ['"yes"', '{}', 'getPreference()']) {

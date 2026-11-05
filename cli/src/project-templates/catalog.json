@@ -18,16 +18,16 @@
     "entryFile": "index.ts"
   },
   {
-    "id": "conversation-starter",
-    "projectType": "conversation",
+    "id": "bot-starter",
+    "projectType": "bot",
     "kind": "starter",
     "name": {
-      "en": "Conversation",
-      "zh-CN": "对话"
+      "en": "Bot starter",
+      "zh-CN": "Bot 起步"
     },
     "description": {
-      "en": "Minimal conversation project",
-      "zh-CN": "最小对话项目"
+      "en": "A Core Agent Bot with standard streaming, tools, and durable conversations.",
+      "zh-CN": "使用 Core Agent，统一提供流式输出、工具与持久会话。"
     },
     "files": [
       "index.ts",
@@ -72,16 +72,16 @@
     "entryFile": "index.ts"
   },
   {
-    "id": "conversation-round-output",
-    "projectType": "conversation",
+    "id": "bot-tools",
+    "projectType": "bot",
     "kind": "example",
     "name": {
-      "en": "Conversation Rounds",
-      "zh-CN": "轮次对话"
+      "en": "Bot with tools",
+      "zh-CN": "带工具的 Bot"
     },
     "description": {
-      "en": "Local replies with persistent conversation history",
-      "zh-CN": "根据会话历史回复当前轮次"
+      "en": "A Core Agent Bot with standard streaming, tools, and durable conversations.",
+      "zh-CN": "使用 Core Agent，统一提供流式输出、工具与持久会话。"
     },
     "files": [
       "index.ts",

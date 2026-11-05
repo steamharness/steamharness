@@ -22,7 +22,7 @@ vi.mock('node:fs/promises', async importOriginal => {
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const clean of cleanup.splice(0).reverse()) await clean(); });
-async function fixture(kind: 'workflow'|'conversation'|'kanban' = 'workflow') {
+async function fixture(kind: 'workflow'|'bot'|'kanban' = 'workflow') {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'local-analysis-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const folderPath = path.join(root, 'project'); await mkdir(folderPath);
   const reference = { entryId:'main', id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Imported', uri: pathToFileURL(folderPath).href, folderPath };
@@ -104,20 +104,20 @@ describe('local Studio analysis', () => {
     expect((await f.snapshot()).projects[0].runs).toEqual([]);
   });
   it('counts a persisted queued input once across multiple service leases', async () => {
-    const f = await fixture('conversation'); await f.history([]);
+    const f = await fixture('bot'); await f.history([]);
     for (let index = 0; index < 2; index++) {
-      const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'conversation' }, () => ({ runs: [], queued: 1, queuedInputIds: ['queued-input'] }), () => {});
+      const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'bot' }, () => ({ runs: [], queued: 1, queuedInputIds: ['queued-input'] }), () => {});
       cleanup.push(writer.close); await writer.publish();
     }
     expect((await f.snapshot()).projects[0].queued).toBe(1);
   });
   it('uses the current project type when a folder retains history from another type', async () => {
-    const f = await fixture('conversation'); await f.history([{ id: 'old-workflow', title: 'Old workflow', status: 'success' }]);
-    await writeFile(path.join(f.directory, 'project.json'), JSON.stringify({ version: 1, projectId: f.reference.id, entryId:'main', projectType: 'conversation' }));
+    const f = await fixture('bot'); await f.history([{ id: 'old-workflow', title: 'Old workflow', status: 'success' }]);
+    await writeFile(path.join(f.directory, 'project.json'), JSON.stringify({ version: 1, projectId: f.reference.id, entryId:'main', projectType: 'bot' }));
     await f.conversations([{ id: 'chat', title: 'Chat', messages: [
       { id: 'answer', role: 'assistant', content: '', status: 'success', createdAt: 10 },
     ] }]);
-    const conversation = (await f.snapshot()).projects[0]; expect(conversation.projectType).toBe('conversation');
+    const conversation = (await f.snapshot()).projects[0]; expect(conversation.projectType).toBe('bot');
     expect(conversation.runs.map(run => run.id)).toEqual(['answer']);
     f.manifest.entries[0]!.type='kanban';f.manifest.entries[0]!.entry='index.html';await writeProjectFixture(path.join(f.folderPath,'package.json'),JSON.stringify(f.manifest));
     const board = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...f.reference, projectType: 'kanban' }] });
@@ -126,10 +126,10 @@ describe('local Studio analysis', () => {
     expect((await f.snapshot()).projects[0].availability).toBe('available');
   });
   it('preserves conversation session context when live summaries replace persisted turns', async () => {
-    const f = await fixture('conversation');
+    const f = await fixture('bot');
     const sessions: ConversationSession[] = [{ id: 'chat', title: 'Chat', messages: [{ id: 'answer', role: 'assistant', content: '', status: 'running' }] }];
     await f.conversations(sessions);
-    const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'conversation' }, () => ({ runs: summarizeLocalRuns(undefined, sessions), queued: 0 }), () => {});
+    const writer = createLocalActivityWriter(f.directory, { entryId:"main", id: f.reference.id, projectType: 'bot' }, () => ({ runs: summarizeLocalRuns(undefined, sessions), queued: 0 }), () => {});
     cleanup.push(writer.close); await writer.publish();
     expect((await f.snapshot()).projects[0].runs[0]).toMatchObject({ id: 'answer', status: 'running', sessionId: 'chat' });
   });
@@ -236,7 +236,7 @@ describe('local Studio analysis', () => {
     expect((await f.snapshot()).projects[0].runs[0]).toMatchObject({ id: 'unverified', status: 'unknown', createdAt: undefined });
   });
   it('reads default local history without an account and ignores old conversation files', async () => {
-    const f = await fixture('conversation');
+    const f = await fixture('bot');
     await writeFile(path.join(f.directory, 'conversations.json'), JSON.stringify({ sessions: [{ id: 'old', title: 'Old', messages: [] }] }));
     expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [] });
     const local = createLocalRuntimePersistence({ directory: path.join(f.directory, 'runtime') });

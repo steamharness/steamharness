@@ -12,7 +12,7 @@ import {
 } from "@steamharness/project-card-metadata";
 
 describe("project-card-metadata package", () => {
-  it.each(["workflow", "conversation", "kanban"] as const)("generates a readable %s avatar using its type icon", type => {
+  it.each(["workflow", "bot", "kanban"] as const)("generates a readable %s avatar using its type icon", type => {
     const dark = generateProjectCardMetadata(type, () => 0.25);
     const light = generateProjectCardMetadata(type, () => 0.75);
     expect(dark.icon).toBe(defaultProjectCardIcon(type));
@@ -73,10 +73,10 @@ describe("project-card-metadata package", () => {
           iconUrl: "javascript:alert(1)",
           iconBackgroundColor: "blue",
         },
-        "conversation",
+        "bot",
       ),
     ).toEqual({
-      icon: "message-circle",
+      icon: "bot",
       iconUrl: undefined,
       iconColor: "#ffffff",
       iconBackgroundColor: "#0f766e",
@@ -139,11 +139,11 @@ describe("project-card-metadata package", () => {
     expect(() => readProjectCardMetadata({
 
         projectCard: {
-          kind: "conversation",
+          kind: "bot",
           icon: "message-circle",
           iconBackgroundColor: "#0f766e",
         },
-    }, "conversation")).toThrow(/projectCard\.kind was removed/);
+    }, "bot")).toThrow(/projectCard\.kind was removed/);
 
     expect(() => validateProjectAppCardMetadata({
       kind: "workflow",

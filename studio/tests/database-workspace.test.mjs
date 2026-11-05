@@ -10,7 +10,7 @@ const compiled = (await build({ entryPoints: ['extensions/studio-workstation/src
 const ui = (await build({ entryPoints: ['extensions/studio-workstation/webview/databases.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false })).outputFiles[0].text;
 const id = '00000000-0000-4000-8000-000000000001';
 const resources = [{ id, kind: 'databases', name: 'Main' }, { id, kind: 'knowledge-bases', name: 'Docs' }];
-const project = (entryId = 'agent') => ({ id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', entryId, projectType: 'conversation', databases: ['main'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: id }] });
+const project = (entryId = 'agent') => ({ id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', entryId, projectType: 'bot', databases: ['main'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: id }] });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(t, operation = async input => input.action === 'bindings' ? { bindings: [{ alias: 'main', databaseId: id }] } : { resources }) {
   const providers = new Map(), calls = [], opened = [], messages = [], listeners = [], receivers = [];

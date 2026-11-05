@@ -1,3 +1,4 @@
+import { currentBotRequestId } from "../agent/bot-lifecycle";
 import { selectProjectEntry, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import type { AccessActor } from "@steamharness/project-access";
 import type { ToolPermissionContext } from "../tool-permissions/index";
@@ -38,7 +39,7 @@ export function createEntriesContext(manifest: ProjectManifest, identity: EntryC
     caller: caller && Object.freeze({ ...caller }),
     conversations: { get(entryId) {
       const registration = selectProjectEntry(manifest, entryId);
-      if (registration.type !== 'conversation') throw new Error(`Entry "${entryId}" is not a Conversation.`);
+      if (registration.type !== 'bot') throw new Error(`Entry "${entryId}" is not a Bot.`);
       const call = async (action: EntryConversationAction, input: Record<string, unknown> = {}) => {
         identity.abortSignal?.throwIfAborted();
         if (!conversations) throw Object.assign(new Error('Conversation entry control requires a local execution host.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
@@ -69,7 +70,7 @@ export function createEntriesContext(manifest: ProjectManifest, identity: EntryC
           const abortSignal = options.abortSignal && identity.abortSignal ? AbortSignal.any([identity.abortSignal, options.abortSignal])
             : options.abortSignal ?? identity.abortSignal;
           abortSignal?.throwIfAborted();
-          return runner.run(entryId, entrypointId, args, { ...identity, abortSignal });
+          return runner.run(entryId, entrypointId, args, { ...identity, sourceRunId: currentBotRequestId(identity.projectId, identity.sourceEntryId) ?? identity.sourceRunId, abortSignal });
         },
       };
     },

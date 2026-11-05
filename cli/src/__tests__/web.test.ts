@@ -65,7 +65,7 @@ async function initialState(events: Response) {
   } finally { await reader.cancel(); }
 }
 
-async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'conversation') {
+async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'bot') {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
@@ -544,7 +544,7 @@ describe('steamharness web', () => {
   });
 
   it.each([
-    ['conversation', 'workflow-ui'], ['workflow', 'workflow-workspace'], ['kanban', 'kanban-workspace'],
+    ['bot', 'workflow-ui'], ['workflow', 'workflow-workspace'], ['kanban', 'kanban-workspace'],
   ] as const)('serves the shared theme after the %s page styles, including resource previews', async (projectType, ui) => {
     const { app } = await fixture(undefined, undefined, projectType);
     for (const [pathname, stylesheet] of [['/', ui], [`/resource/${crypto.randomUUID()}`, 'resource-preview']]) {

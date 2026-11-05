@@ -117,7 +117,7 @@ describe("steamharness-generator contract", () => {
       "references/runtime-api-index.md",
       "references/param-panels.md",
       "references/steamharness-api.md",
-      "assets/examples/agent-conversation/index.ts",
+      "assets/examples/bot/index.ts",
       "scripts/create_workflow.py",
     ]) {
       expect(taskMap).toContain(relative.split("/").at(-1));
@@ -126,7 +126,7 @@ describe("steamharness-generator contract", () => {
 
     const { hasExport } = createDefinitionChecker();
     for (const name of [
-      "EntrypointDefinition", "ExecutorDefinition", "ConversationExecutorDefinition",
+      "EntrypointDefinition", "ExecutorDefinition", "BotExecutorDefinition",
       "ExecutorContext", "ParamDeclaration", "ParamResolverContext",
       "ParamResolveResult", "RunOutputPayload", "OutputItem",
       "RunContext", "AgentInput",
@@ -138,7 +138,7 @@ describe("steamharness-generator contract", () => {
   });
 
   it("keeps the Agent project example statically discoverable", () => {
-    const exampleDir = path.join(skillRoot, "assets", "examples", "agent-conversation");
+    const exampleDir = path.join(skillRoot, "assets", "examples", "bot");
     const structure = inspectProjectStructure({
       cwd: exampleDir,
       projectDir: exampleDir,
@@ -146,17 +146,17 @@ describe("steamharness-generator contract", () => {
     });
 
     expect(structure.diagnostics.violations).toEqual([]);
-    expect(structure.projectType).toBe("conversation");
+    expect(structure.projectType).toBe("bot");
     expect(structure.params?.map((param) => param.name)).toEqual(["provider", "model", "effort", "plan", "permissionPolicy"]);
     expect(structure.paramLayout?.actions.map((action) => action.kind)).toEqual(["quick", "quick", "slash", "quick"]);
     expect(structure.params?.find(param => param.name === "plan")).toMatchObject({ panel: "slash", type: "boolean", defaultValue: "false" });
-    expect(structure.conversation?.footer).toEqual([{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" },
+    expect(structure.conversation?.footer).toEqual([{ text: "Plan 模式",
       when: { param: "plan", value: "true" } }]);
     expect(structure.conversation?.commands?.map(command => command.command)).toEqual(["export", "compact"]);
     expect(structure.conversation?.userInput).toEqual({ effects: [{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }] });
-    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls"]);
-    expect(structure.conversation?.openai?.outputItemId).toBe("assistant-answer");
-    expect(structure.conversation?.recovery).toEqual({ enabled: true });
+    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls", "update_plan"]);
+    expect(structure.conversation?.openai?.outputItemId).toBe("agent-answer");
+    expect(structure.conversation?.recovery).toEqual({ enabled: true, startup: "automatic" });
     expect(structure.tokenUsage).toEqual({ enabled: true, display: true });
   });
 
@@ -206,13 +206,13 @@ describe("steamharness-generator contract", () => {
   it("generates Conversations with only the standard message input", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "workflow-standard-input-"));
     try {
-      execFileSync("python3", [path.join(skillRoot, "scripts/create_workflow.py"), "standard-input", "--project-type", "conversation", "--dir", directory], { encoding: "utf8" });
+      execFileSync("python3", [path.join(skillRoot, "scripts/create_workflow.py"), "standard-input", "--project-type", "bot", "--dir", directory], { encoding: "utf8" });
       const structure = inspectProjectStructure({ cwd: directory, projectName: "standard-input", projectDir: directory });
       expect(structure.diagnostics.violations).toEqual([]);
-      expect(structure.params ?? []).toEqual([]);
-      expect(structure.conversation).toBeUndefined();
+      expect(structure.params?.map(param => param.name)).toEqual(["provider", "model", "effort", "plan", "permissionPolicy"]);
+      expect(structure.conversation?.durable?.enabled).toBe(true);
       const source = await readFile(path.join(directory, "index.ts"), "utf8");
-      expect(source).toContain("steamharness.parseConversationDefaultInputArgs(args).message");
+      expect(source).toContain("steamharness.defineBot({");
       expect(await readFile(path.join(directory, "README.md"), "utf8")).toContain('steamharness run . -- --message "input text"');
     } finally {
       await rm(directory, { recursive: true, force: true });

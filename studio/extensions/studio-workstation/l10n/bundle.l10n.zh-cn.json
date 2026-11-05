@@ -297,7 +297,7 @@
   "No project selected": "未选择项目",
   "No related projects": "暂无关联项目",
   "No trace loaded": "暂未加载轨迹",
-  "No Workflow or Conversation projects": "暂无 Workflow 或对话项目",
+  "No Workflow or Bot projects": "暂无 Workflow 或对话项目",
   "No Workflow project detected": "未识别到 Workflow 项目",
   "Node": "节点",
   "Node extension host is unavailable": "Node 扩展宿主不可用",
@@ -923,5 +923,6 @@
   "Distribution mode changed. Try uploading again.": "发行模式已变更，请重新上传。",
   "Distribution Mode": "分发模式",
   "Entries": "入口",
-  "A release installation can only be upgraded to another release.": "发行版只能升级为另一个发行版。"
+  "A release installation can only be upgraded to another release.": "发行版只能升级为另一个发行版。",
+  "Bot": "Bot"
 }

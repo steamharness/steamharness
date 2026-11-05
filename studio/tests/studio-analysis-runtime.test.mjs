@@ -48,7 +48,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     import path from 'node:path';
     const args = process.argv.slice(2), folderPath = args[args.indexOf('web') + 1];
     const manifest = JSON.parse(readFileSync(path.join(folderPath, 'steamharness.json'), 'utf8'));
-    const project = { id: manifest.id, name: manifest.name, folderPath, projectType: 'kanban',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
+    const project = { id: manifest.id, name: manifest.name, folderPath, projectType: 'kanban',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
     if (args.includes('--inspect')) console.log(JSON.stringify({ projects: [project], errors: [] }));
     else {
       const input = createInterface({ input: process.stdin }); let server;

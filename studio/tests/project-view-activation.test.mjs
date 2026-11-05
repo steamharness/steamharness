@@ -136,7 +136,7 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
   const scope = assistant ? { standalone: true, workdir: '/workspace', roots: [{ uri: 'file:///workspace', folderPath: '/workspace', name: 'Workspace' }] } : undefined;
   const projects = entries.map((entryId, index) => ({ uri, entryId, folderPath: '/aggregate', entryRoot: `/aggregate/${entryId}`,
     id: 'aggregate', defaultEntry: 'agent', name: entryId, entries: entries.map(entryId => ({ entryId })),
-    projectType: ['conversation', 'workflow', 'kanban'][index], ...(scope ? { assistant: scope } : {}) }));
+    projectType: ['bot', 'workflow', 'kanban'][index], ...(scope ? { assistant: scope } : {}) }));
   const workspaces = new Map(), sessions = new Set(), leases = [], panels = [], frames = [], deliveries = [];
   const launches = [], errors = [], logs = [], pathBases = [], externalProjects = new Map();
   const provider = { projects: assistant ? [] : projects };

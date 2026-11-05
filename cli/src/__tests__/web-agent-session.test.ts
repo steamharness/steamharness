@@ -7,7 +7,7 @@ import { messageSettled, sessionRunning, type Project, type Report, type Runtime
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
 function fixture(configurationRevision?: () => number, userSettings?: () => import('steamharness').UserSettings) {
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'bot', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void; fail(error: Error): void }[] = [];
   const runtime: Runtime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(),
@@ -727,7 +727,7 @@ it('deletes a root together with its dependent views after joining the worker', 
 });
 
 it('joins the owner and clears parked work when its durable stop command fails', async () => {
-  const f = fixture(); await f.start();
+  const f = fixture(); await f.start('placed');
   vi.mocked(f.runtime.agentControl!).mockRejectedValue(new Error('Control transport failed'));
   await expect(f.controller!.stop()).rejects.toThrow('Control transport failed');
   expect(f.runtime.cancel).toHaveBeenCalledOnce();
@@ -1079,8 +1079,22 @@ it('stops pending command recovery immediately and never resubmits after Stop', 
   const rejected = expect(pending).rejects.toMatchObject({ code: 'AGENT_COMMAND_CANCELLED' });
   await vi.advanceTimersByTimeAsync(1); await f.controller.stop(); await rejected;
   await vi.advanceTimersByTimeAsync(135_000);
-  expect(vi.mocked(f.runtime.agentControl!).mock.calls.map(call => call[1].type)).toEqual(['submit', 'cancel']);
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls.map(call => call[1].type)).toEqual(['submit']);
+  expect(f.runtime.cancelConversation).toHaveBeenCalledWith(f.controller.project, f.controller.current.id);
   expect(f.controller.current.agentCommands).toEqual([]);
+});
+
+it('keeps an unchanged owner when recovered settings omit the model credential', async () => {
+  const model = { id: 'one', name: 'User model', model: 'actual', source: 'third-party' as const,
+    apiKind: 'openai-responses' as const, baseUrl: 'https://example.test/v1', apiKey: 'test-key' };
+  const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [model] } };
+  const f = fixture(undefined, () => settings); await f.start();
+  f.controller.current.agentParameters!.userSettings = JSON.parse(JSON.stringify(settings, (key, value) => key === 'apiKey' ? undefined : value));
+  f.controller.configurationChanged();
+  await Promise.resolve();
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  expect(f.controller.current.messages[1].status).toBe('success');
+  await f.finish();
 });
 
 it('queues a settings change during owner startup until the first safe snapshot', async () => {
@@ -1447,6 +1461,29 @@ it('preserves old host queues across snapshots and restores a failed manual send
   expect(owner.queuedInputs).toMatchObject([{ ...legacy, hostQueued: true }]);
   expect(owner.queuePaused).toBe(true);
   await f.finish();
+});
+
+it('cancels stored work without restarting an owner with unavailable credentials', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  await f.controller.stop();
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(f.runs).toHaveLength(1);
+  expect(f.runtime.cancelConversation).toHaveBeenCalledWith(f.controller.project, f.controller.current.id);
+  expect(f.controller.current.messages[1].status).toBe('success');
+});
+
+it('settles a stopped follow-up when the owner exits before its final snapshot', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  owner.agentInputs = { next: { id: 'next', text: 'Active follow-up', params: { model: 'one' }, attachments: [], createdAt: 1 } };
+  f.emit({ ...initial, revision: 2, foreground: true, turns: [...initial.turns,
+    { requestId: 'next', conversationId: 1, prompt: 'Active follow-up', mode: 'followUp', status: 'placed', epoch: 0, items: [] }] });
+  owner.queuedInputs = [{ id: 'queued', text: 'Keep me', params: { model: 'one' }, attachments: [], createdAt: 2 }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.stop();
+  expect(owner.messages.filter(message => message.role === 'assistant').map(message => message.status)).toEqual(['success', 'aborted']);
+  expect(f.controller.running).toBe(false);
+  expect(owner.queuedInputs).toMatchObject([{ id: 'queued', hostQueued: true }]);
+  expect(owner.queuePaused).toBe(true);
 });
 
 it('pauses the user queue for direct foreground Stop even when no turn changes status', async () => {

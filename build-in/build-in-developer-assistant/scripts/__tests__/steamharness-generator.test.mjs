@@ -31,7 +31,7 @@ async function siblingVersion(manifest, packageName) {
 }
 
 describe("packaged workflow generator", () => {
-  it.each(['workflow', 'conversation'])('generates valid %s TypeScript for numeric names and multiline prompts', async projectType => {
+  it.each(['workflow', 'bot'])('generates valid %s TypeScript for numeric names and multiline prompts', async projectType => {
     const target = await mkdtemp(path.join(os.tmpdir(), 'steamharness-generator-input-'));
     try {
       await execFileAsync('python3', [generator, '123-start', '--project-type', projectType, '--dir', target,
@@ -46,7 +46,7 @@ describe("packaged workflow generator", () => {
     } finally { await rm(target, { recursive: true, force: true }); }
   });
 
-  it.each(['workflow', 'conversation', 'kanban'].flatMap(projectType => ['configuration.json', '.steamharnessignore'].map(filename => [projectType, filename])))('rejects conflicting %s %s before creating any project files', async (projectType, filename) => {
+  it.each(['workflow', 'bot', 'kanban'].flatMap(projectType => ['configuration.json', '.steamharnessignore'].map(filename => [projectType, filename])))('rejects conflicting %s %s before creating any project files', async (projectType, filename) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-generator-conflict-'));
     try {
       const target = path.join(directory, 'existing'); await mkdir(target);

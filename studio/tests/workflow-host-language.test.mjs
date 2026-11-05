@@ -30,7 +30,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
       const locale = index < 0 ? process.env.STEAMHARNESS_LOCALE : args[index + 1];
       const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
       const project = { id: manifest.id, name: manifest.projectInfo.localizedNames[locale] ?? manifest.name,
-        folderPath: process.cwd(), projectType: 'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
+        folderPath: process.cwd(), projectType: 'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
       if (args.includes('--inspect')) { console.log(JSON.stringify({ projects: [project], errors: [] })); }
       else {
         const input = createInterface({ input: process.stdin });

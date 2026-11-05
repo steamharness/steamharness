@@ -1,6 +1,6 @@
 ---
 name: steamharness-generator
-description: 生成、修改或迁移 steamharness Workflow、Conversation 或 Kanban 项目；适用于 executor、HTML 看板、参数配置、标准化 package 元数据、运行时约定，以及因旧清单或结构校验失败被 Desktop 降级为普通文件夹、数据库空间未绑定的修复。
+description: 生成、修改或迁移 steamharness Workflow、Bot 或 Kanban 项目；适用于 executor、HTML 看板、参数配置、标准化 package 元数据、运行时约定，以及因旧清单或结构校验失败被 Desktop 降级为普通文件夹、数据库空间未绑定的修复。
 ---
 
 # SteamHarness 项目生成器
@@ -8,12 +8,12 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 ## 核心流程
 
 1. 将用户指定目录视为项目根目录；如果用户没有指定目录，使用当前工作目录。
-2. 先明确项目类型。Workflow/Conversation 继续确认输入、输出和运行语义；Kanban 确认静态产物目录、HTML 入口、画面、静态资源以及是否需要命名参数配置。
+2. 先明确项目类型。Workflow/Bot 继续确认输入、输出和运行语义；Kanban 确认静态产物目录、HTML 入口、画面、静态资源以及是否需要命名参数配置。
 3. 确认文案语言和国际化范围。生成项目默认采用简体中文的用户可见文案、示例数据、README、错误与页面 `lang`，且默认不创建翻译字典、locale 状态、语言切换、locale 检测或 i18n 依赖，也不自动声明 `multilingual` 或 `multiplatform`。仅当用户明确要求国际化或多语言支持时才适配：先确认默认语言、目标语言和切换方式，再复用项目既有国际化方案或选用成熟兼容方案，并将所有用户可见文本、ARIA 文案、错误及日期/数字格式纳入资源、回退和测试。用户仅提供英文名称、代码标识或单条英文文案不构成国际化请求。
 4. 需要选择 API、定位公开类型或寻找项目示例时，先读短索引 `references/task-map.md`，再按其指向读取详细契约；要改参数入口或控件（`kind` / `fields` / `control`），先读 `references/param-panels.md`。
-5. 项目不存在时使用 `scripts/create_workflow.py`。所有类型生成 `.steamharnessignore` 与 `configuration.json`；Workflow/Conversation 生成 TypeScript executor，Kanban 生成 HTML、状态与存储模块和测试。`--with-kanban-params` 在声明文件加入示例字段。
+5. 项目不存在时使用 `scripts/create_workflow.py`。所有类型生成 `.steamharnessignore` 与 `configuration.json`；Workflow/Bot 生成 TypeScript executor，Kanban 生成 HTML、状态与存储模块和测试。`--with-kanban-params` 在声明文件加入示例字段。
 6. 如果项目已存在，先判断它是否处于 Desktop 普通文件夹降级、旧清单迁移或数据库空间未绑定状态；命中任一情况时必须完整读取 `references/project-repair.md`。如果该必需引用缺失、被拒绝或只读取到部分内容，立即停止本次修复并准确报告读取失败与未验证阶段；不得继续编辑、转向无关优化、用旧工具的成功结果代替当前合同校验，或宣称修复完成。引用可用时再按当前授权根目录分阶段完成，不能把局部修复宣称为整体完成。
-8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Conversation 才运行 json/run 或 runtime smoke。运行历史默认保存在宿主应用数据目录；独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`。业务数据验证使用专用账号与独立资源；可重建缓存使用聚合根 `dist/cache/`，报告使用 `dist/reports/`。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
+8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Bot 才运行 json/run 或 runtime smoke。运行历史默认保存在宿主应用数据目录；独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`。业务数据验证使用专用账号与独立资源；可重建缓存使用聚合根 `dist/cache/`，报告使用 `dist/reports/`。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
 9. 新增功能时不要把所有功能都加在 `index.ts` 中，合理创建文件和文件夹组织代码。
 
 ## 项目修复边界
@@ -24,10 +24,20 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 项目内已安装的旧版 `steamharness structure` 只能作为补充证据，不能覆盖本 skill 的当前 package 字段白名单。必须先直接校验当前 `entries` 与 `defaultEntry` 合同；旧 CLI 返回 `0` 也不能证明 Desktop 能重新识别项目。
 - API 语义以本 skill 为准。项目内 `node_modules/**/dist/**` 只是某个已安装版本的实现，不要从里面反推运行时 API，也不要把它的失败当成当前合同；本地 CLI 的结果与本文档冲突时，先按通道升级到同线最新的精确版本再复跑，而不是按旧实现改项目代码。
 
+## Bot 开发契约
+
+Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 Conversation 项目类型与工厂已删除。
+
+`agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
+
+Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, context)` 返回扩展的 `AgentInput`，可读取配置、调用聚合入口或加载索引；context 提供资源、取消信号、args 与 paramValues。工具工厂 `agent.createTools(context, input)` 和 session 工厂 `agent.createSession(context, input)` 接收准备后的输入。会话队列、durable、recovery、用量和网关由 Core 固定提供；`conversation` 仅定制展示、命令、输入交互和 `recovery.startup: "automatic" | "manual"`。
+
+`onCompleted({ requestId, output }, context)` 接收成功结果的只读快照，返回 void。按 requestId 幂等保存业务回执，不修改输出或再次运行模型。Core 持久化结果与通知状态；通知失败单独报告，恢复只补通知。持久宿主的后续消息也经过输入钩子与完成通知。`conversationId`、会话历史及 `context.entries.conversations` 继续表示会话。
+
 ## 当前 API 规则
 
 - 一个根 steamharness.json.id UUID 注册多个 steamharness.json.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
-- Workflow/Conversation 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认指向当前源码根的 build/<entryId>/index.html：根入口使用 dist/steamharness/build/<entryId>/，子入口使用 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/build/<entryId>/。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
+- Workflow/Bot 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认指向当前源码根的 build/<entryId>/index.html：根入口使用 dist/steamharness/build/<entryId>/，子入口使用 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/build/<entryId>/。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
 - entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9；显式入口路径位于 dist 时必须进入当前源码根对应的 build/<entryId>/，不得占用 generated 或其他入口的输出。打包名称只用单个可移植目录名，源码位置用 --path 指定。下载校验入口与生成清单，拒绝运行数据及未登记产物。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
 - 业务数据库使用 `steamharness.database.ts` 与 `steamharness.schema` 定义，生成描述符后通过 `context.databases.connect(descriptor)` 访问。关系别名声明在入口 databases 字符串数组中；资源 UUID 与绑定只由 Server 按账号、项目、入口、alias 管理。知识库使用 `context.knowledgeBases.get(alias)`，独立声明 knowledgeBases，并映射到根 config.json 的 knowledgeBases。附件通过 `knowledge.files` 操作，`knowledge` 来自 `context.knowledgeBases.get(alias)`。旧 KV、PersistentValue 与本地 KV 已删除。
@@ -38,31 +48,31 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 不要在 workflow 源码中从 `"steamharness"` 导入 runtime API。
 - **判断 `steamharness.*` 全局成员是否存在先读 `references/runtime-api-index.md`**：它由 Core 源码生成。`context.files` 与 Kanban 浏览器 Bridge 不属于全局成员清单，文件创建、读取与上传迁移的契约见 `references/steamharness-api.md`，不能因全局清单未列出就判断文件接口不存在。
 - **API 与类型细节只从本 skill 取，不要去项目的 `node_modules` 里翻。** 先用 `references/task-map.md` 按任务定位公开类型、项目示例与详细章节，再读 `references/steamharness-api.md` 中对应契约；运行时成员是否存在以 `references/runtime-api-index.md` 为准。项目源码可从 `steamharness` 或 `steamharness/runtime-api` 使用 `import type` 获取公开类型，但不能导入运行时函数。**不要用 `read` / `grep` / `find` 去读已安装 `steamharness` 的 `dist/*.d.ts` 或打包后的 JS**：那是某个历史版本的构建产物，不是契约，照着它写出来的代码在宿主升级后就会失效，而且这条路会消耗掉大量轮次。bundled 技能不在工作区里，按文件路径 `read` 只会得到 ENOENT——`SKILL.md`、`references/*.md`、`assets/*`、`scripts/*` 一律用 `skill` 工具的 `action: "read"` 读（`path` 省略时读 `SKILL.md`），`action: "list"` 会列出全部文件。
-- Workflow、Conversation 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确固定 `steamharness` 和 `@steamharness/cli` 版本，不能使用 range 或 `workspace:*`。精确声明记录开发基线，但 Core 运行门禁只比较宿主与项目的 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，不比较日期顺序；major 或 minor 变化必须升级宿主。Core `0.2.x` 与数据存储声明从 Desktop `0.1.22` 开始支持；采用 Core `0.2.x` 的内置项目必须把发布索引 `minDesktopVersion` 设为至少 `0.1.22`。CLI 独立发版，不要假定与 Core 同版本。解析精确版本时读取对应通道的 `dist-tags`，不要用 `latest` 代替指定通道。平台会话、检查点和运行历史默认保存到宿主应用数据目录或用户目录的本地 SQLite；显式选择时才使用 Server 存储。不得写入源码或 dist；旧路径不再读取或回退。Kanban 不执行 Core runtime，但仍须安装精确依赖、生成数据库描述符并构建静态产物。
+- Workflow、Bot 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确固定 `steamharness` 和 `@steamharness/cli` 版本，不能使用 range 或 `workspace:*`。精确声明记录开发基线，但 Core 运行门禁只比较宿主与项目的 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，不比较日期顺序；major 或 minor 变化必须升级宿主。Core `0.2.x` 与数据存储声明从 Desktop `0.1.22` 开始支持；采用 Core `0.2.x` 的内置项目必须把发布索引 `minDesktopVersion` 设为至少 `0.1.22`。CLI 独立发版，不要假定与 Core 同版本。解析精确版本时读取对应通道的 `dist-tags`，不要用 `latest` 代替指定通道。平台会话、检查点和运行历史默认保存到宿主应用数据目录或用户目录的本地 SQLite；显式选择时才使用 Server 存储。不得写入源码或 dist；旧路径不再读取或回退。Kanban 不执行 Core runtime，但仍须安装精确依赖、生成数据库描述符并构建静态产物。
 - workflow `package.json` 只保留标准化源码元数据和第三方依赖。不要添加 package 内部的 `start`、`structure` 或 `json` scripts；终端运行应直接调用外层 `steamharness` CLI。
-- workflow `steamharness.json.id` 必须是顶层 UUID，不要再使用目录名、包名或 `steamharness.json.id`。新 scaffold 应直接写入固定 UUID；上传、发布和数据权限边界都以这个顶层 UUID 为准。每个注册入口的 `type` 静态声明 `workflow`、`conversation` 或 `kanban`；Workflow/Conversation 的 executor 类型必须与注册匹配。
+- workflow `steamharness.json.id` 必须是顶层 UUID，不要再使用目录名、包名或 `steamharness.json.id`。新 scaffold 应直接写入固定 UUID；上传、发布和数据权限边界都以这个顶层 UUID 为准。每个注册入口的 `type` 静态声明 `workflow`、`conversation` 或 `kanban`；Workflow/Bot 的 executor 类型必须与注册匹配。
 - 在 `interface.ts` 中定义最小本地类型，尤其是 `RunPayload`、`OutputItem`、`RunOutputPayload` 和 `ExecutorResult`，让 workflow 源码保持自包含。
 - 所有节点 payload 类型都必须继承或包含 `RunPayload`：`errCode: number` 和 `errMessage: string`。成功输出统一使用 `errCode: 0, errMessage: ""`。
-- 每个 executor 必须显式声明唯一运行类型 `projectType: "workflow" | "conversation"`。`"workflow"` 禁止声明 `conversation`；`"conversation"` 自动启用 conversation id、上下文、持久化和标准主输入框，不提供关闭或自定义主输入框的配置。`conversation` 承载 `attachments.images/videos/files`、`inputQueue`、可选的 `openai` 网关和输入框外的纯文字 `footer`；禁止生成 `conversation.defaultInput` 或旧的 `conversation.enabled`。Conversation 的 `params` 只允许 Auxiliary、Quick、Mode 和 Slash，不声明普通主字段，主文本和附件使用固定 flags。
-- `steamharness.defineExecutor(...)` 必须接收可静态分析的内联对象字面量，并把返回值导出为 executor。Workflow executor 必须声明静态 `defaultEntrypoint` 和非空 `entrypoints` 数组，每项直接调用 `steamharness.defineEntrypoint({ id, title, ... })`；`workflow`、`params`、`createInput`、resolver、tools、token usage、registry 和 context factory 都属于具体入口，不得放在 Workflow executor 顶层。Conversation executor 继续使用单入口顶层执行配置。不要生成 `defineExecutor(config)` 动态配置，也不要生成顶层 `workflow`、`createInput`、`projectType` 分散导出的旧式入口。
+- Workflow 使用内联 `steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint, entrypoints })`；Bot 使用内联 `steamharness.defineBot({ ... })`，类型由 Core 固定。Bot 的标准输入、输出、队列、恢复和用量无需重复声明。
+- Workflow 的 `defineExecutor` 和 Bot 的 `defineBot` 必须接收内联对象并导出为 executor。Workflow 的执行配置属于各 entrypoint；Bot 仅提供 agent 配置、静态业务参数、工具权限、会话展示和输入／完成钩子。结构检查不执行这些钩子。
 - Workflow entrypoint 是同一项目下可独立启动的扁平入口，不表达强制父子关系。需要组合业务流程时在 workflow 内显式调用 `steamharness.runProject(...)`；不要生成多级入口路径或让子入口先运行默认入口。
 - 多入口项目按业务域折叠时，在入口对象上声明静态 `group: { id, title, order? }`。`group` 必须是内联对象字面量且只含这三个属性；`id`、`title` 是非空静态字符串，`order` 一旦声明就必须是非负整数（写 `order: undefined` 也算失败）；同一个 `group.id` 在所有入口上的 `title` 和 `order` 必须逐字一致。分区只影响 Desktop Run 区和 CLI Web 的折叠展示，本地 CLI、MCP 和 OpenAI 接口 仍只按 `entrypoint.id` 执行；不要把业务层级编码进 `group.id`。单入口或不需要分组的项目不要声明 `group`。
 - 需要被宿主识别的失败、暂停和取消必须抛 `steamharness.HarnessError({ type, message, nodeName?, metadata? })`，类型取 `input_validation`、`execution_aborted`、`user_input_required`、`tool_permission_denied`、`node_execution`、`provider_call`、`project_execution`、`stream_interrupted`。普通 `Error` 只会被归类成 `project_execution`；`runNode` 抛出的 `user_input_required` 与 `execution_aborted` 必须原样向上传递，不要吞掉或包装。
 - 项目卡片只在用户明确要求时写入 `steamharness.json.projectCard`：`icon` 取注册图标名（`workflow`、`message-circle`、`bot`、`sparkles`、`code`、`git-branch`、`boxes`、`zap`、`database`、`file-text`、`cpu`、`brain`），`iconUrl` 只接受 `http(s)`，`iconColor` / `iconBackgroundColor` 必须是 `#RRGGBB`。不要写已移除的 `kind` 字段。
-- 音频输入用 `type: "file"` 加 `control: "audio"` 和可选 `audio: { maxDurationSeconds, maxBytes }`；音频参数必须单文件、不能声明 `options`、不能放进 Quick，限制值必须是正的有限数（`maxBytes` 必须是正整数）。Conversation 视频附件只有在 `conversation.attachments.videos: true` 时才走 `--videos`，否则继续走 `--files`；视频输出使用 `contentType: "video"` 的 item，`content` 为 `{ src, mimeType: "video/mp4", name, durationMs?, format? }`，`src` 只接受 `data:video/...;base64,...` 或 `http(s)` URL。
-- Conversation 可选接入宿主 OpenAI Responses 网关：声明 `conversation.openai: { enabled: true, outputItemId: "<最终纯文本答案的稳定 item id>" }`，并在 `createInput` 里用 `steamharness.readOpenAIConversationHostInput(context)` 读取宿主输入（非 OpenAI 宿主返回 `undefined`，必须保留普通输入分支）。走网关时不要把请求或答案正文再写进普通 conversation 或自定义日志。
+- 音频输入用 `type: "file"` 加 `control: "audio"` 和可选 `audio: { maxDurationSeconds, maxBytes }`；音频参数必须单文件、不能声明 `options`、不能放进 Quick，限制值必须是正的有限数（`maxBytes` 必须是正整数）。Bot 视频附件只有在 `conversation.attachments.videos: true` 时才走 `--videos`，否则继续走 `--files`；视频输出使用 `contentType: "video"` 的 item，`content` 为 `{ src, mimeType: "video/mp4", name, durationMs?, format? }`，`src` 只接受 `data:video/...;base64,...` 或 `http(s)` URL。
+- Bot 自动支持宿主 OpenAI Responses 输入与标准输出，不声明 outputItemId，也不重复写入宿主管理的 transcript。
 - 需要 LLM 的自定义节点用 `steamharness.createLLMNode({ name?, provider, mapInput, mapOutput?, historyLimit?, metadata? })`（非流式）或 `steamharness.createLLMStreamNode({ name?, provider, mapInput, historyLimit?, metadata? })`（流式）；在节点内部解析 provider 时用 `steamharness.getLLMProvider(context, nodeName, source?)`，它会按「节点名绑定 → source → 默认 provider → `context.providers.llm` → fallback 引用」解析并自动上报 token usage。用户从 Server 账户选择模型时优先 `getServerLLMCredentials`，并在未显式指定模型时使用凭据的 `defaultModelId`。
 - 知识库 helper 的 create、edit、delete 需要原子写入：目标 `persistentValue` namespace 必须提供 `withLock` 或 store 提供 `executeMutation`，两者都没有时会抛 `project_execution`；`deleteKnowledgeDocument` 对不存在的 id 返回 `{ id, deleted: false }` 而不是抛错。`searchKnowledgeDocuments` 的 `pageSize`/`maxMatches` 上限 1000、上下文行 0–50；`readKnowledgeDocumentLines` 单次最多 1000 行。
-- Workflow 确实适合后台定时运行时，可在 `注册入口的 schedulePresets` 声明建议计划。每项使用唯一静态 `id`、标题、可选 `description`、现有 `entrypointId`、IANA 时区、`window-interval` 或五字段 Cron，以及 JSON `paramValues`；最多 20 项，`title` ≤100 字符，每天最多 12 个窗口，`intervalMinutes` ≤1440，`weekdays` 取 1–7（1 为周一），未知字段会被拒绝。宿主只展示并要求用户确认，不能因导入项目自动启用。Conversation 和 Kanban 禁止声明该字段。计划参数不支持日期占位模板，需要动态日期时由 Workflow 按业务时区读取当前时间。
-- 导出具名 workflow、`executor`、别名 `export { namedProject as workflow }`，以及默认 workflow。
+- Workflow 确实适合后台定时运行时，可在 `注册入口的 schedulePresets` 声明建议计划。每项使用唯一静态 `id`、标题、可选 `description`、现有 `entrypointId`、IANA 时区、`window-interval` 或五字段 Cron，以及 JSON `paramValues`；最多 20 项，`title` ≤100 字符，每天最多 12 个窗口，`intervalMinutes` ≤1440，`weekdays` 取 1–7（1 为周一），未知字段会被拒绝。宿主只展示并要求用户确认，不能因导入项目自动启用。Bot 和 Kanban 禁止声明该字段。计划参数不支持日期占位模板，需要动态日期时由 Workflow 按业务时区读取当前时间。
+- Workflow 导出具名 workflow 与 executor；Bot 导出 `const executor = steamharness.defineBot({...})`，默认导出 executor。
 - 用户可见输出必须使用 output node。当前协议是 `RunOutputPayload.items: OutputItem[]`；不要生成顶层 output `content` 作为可见聚合输出。使用 `steamharness.createOutputPayload(...)`、`steamharness.createOutputItem(...)`、`steamharness.addOutputItem(...)` 和 `steamharness.createOutputItemChunk(...)`，不要手写 id 或旧式 Markdown details 块。
-- 数值辅助输出使用 `display: { type: "ring", placement: "composer-right" }` 和 `content: { value, total?, unit? }` 可固定到 Conversation 输入栏右侧；使用跨轮稳定的 item id 更新。Core Agent 的上下文用量使用此标准协议，不另写 context 专用宿主逻辑；省略 placement 时圆环在输出列表中展示。默认 Markdown/text 主回答仍直接平铺。
+- 数值辅助输出使用 `display: { type: "ring", placement: "composer-right" }` 和 `content: { value, total?, unit? }` 可固定到 Bot 输入栏右侧；使用跨轮稳定的 item id 更新。Core Agent 的上下文用量使用此标准协议，不另写 context 专用宿主逻辑；省略 placement 时圆环在输出列表中展示。默认 Markdown/text 主回答仍直接平铺。
 - Core Agent 在运行开始就发送上下文圆环，并在流式消息、工具结果和压缩后更新。编程式运行时通过 `getContextUsage()` 查询、`updateContextUsage({ used, total })` 提交绝对测量值，运行中的更新沿用 `context_usage` 事件；计费用量由 `host.reportUsage` 按每次模型响应增量上报，不能把它的累计值当作当前上下文大小。
 - Agent 的持久扩展用公开 registry/task/doc/hook API；延迟工具目录、Code Mode 和远端 ExecutionEnv 均由 session 显式启用，调用仍经过授权和审批，执行目标不回退到本机。任务检查点、计时、资源释放、自定义存储及离线备份契约见 `references/steamharness-api.md` 的 Agent 章节；不要直接依赖 Pi SDK 或另写持久执行引擎。
 - 手动 `/compact` 总结全部已有上下文，自动压缩才保留最近对话；复用 Core 的执行中、完成和失败协议。只有正常结束的非空摘要才替换真实 transcript，失败、截断或取消时保留原始记录，不得将不完整摘要当作成功结果。
 - 默认对所有用户可见 output node 使用流式输出。定义 `steamharness.createOutputNode({ async *stream, format })`，并用 `steamharness.runStreamNode(...)` 执行。叙述文本、LLM/AI/agent 正文、最终答案和普通状态文案优先直接 `yield "文本"`，让 runtime 自动生成 inline `Output` item；只有工具调用、trace、日志、调试 JSON、文件/音频描述等结构化辅助信息才使用 `steamharness.createOutputItemChunk(...)`。流式输出能让 本地 CLI Web 渐进渲染，并让平台用最终 report 替换 live items，避免重复内容。非流式 `steamharness.runNode(...)` 只保留给确定瞬时完成或不属于用户可见文本的输出。
 - 默认让所有用户可见 output item 直接展示。不要把叙述文本、项目介绍、状态更新、最终答案、分支结果或已完成任务摘要包在 collapsed/details 块里。AI/LLM/agent 正文必须渲染为 inline `Output`：`title: "Output"`、`contentType: "markdown"` 或 `"text"`、`collapsed` 不是 `true`、没有 `metadata`、没有 `icon`/`iconPreset`。如果为了稳定 live/final 合并必须手动创建正文 item，也必须保持这些字段；不要给正文加 `metadata.kind = "answer"` 之类标记，因为 shared UI 会把带 metadata/icon 的 item 当成 detail/block。手动创建正文 item 时不能跨工具调用一直 patch 同一个正文 item；遇到工具调用前先结束当前正文段，工具完成后的后续 AI 文本重新创建新的 inline `Output` item，确保最终 `items` 顺序与事件顺序一致。工具调用才应该创建 detail item，并用 `metadata: { kind: "...-tool", status: "running" | "success" | "failed" }` 加 `iconPreset` 展示进行中和完成状态。
-- 只有 workflow 必须暂停等待人工回答并在同一 run 中恢复时，才使用 `steamharness.createUserInputNode(...)`。它的 `params` 复用与所选 entrypoint（Conversation 则为 executor）相同的 `ParamDefinition` 结构，不要发明第二套表单 schema。字段由外部 agent 或当前节点输入动态产生时，保留静态 `params` 默认定义，并用无副作用、对同一输入保持确定性的 `resolveRequest(input, context)` 返回本次 `title`、`description`、`params` 和 `defaultValues`；恢复同一个 requestId 时字段名和 option value 必须稳定。
+- 只有 workflow 必须暂停等待人工回答并在同一 run 中恢复时，才使用 `steamharness.createUserInputNode(...)`。它的 `params` 复用与所选 entrypoint（Bot 则为 executor）相同的 `ParamDefinition` 结构，不要发明第二套表单 schema。字段由外部 agent 或当前节点输入动态产生时，保留静态 `params` 默认定义，并用无副作用、对同一输入保持确定性的 `resolveRequest(input, context)` 返回本次 `title`、`description`、`params` 和 `defaultValues`；恢复同一个 requestId 时字段名和 option value 必须稳定。
 - 当业务逻辑需要在 Diagram 中明确呈现为分支时，使用 `steamharness.runIf(input, context, { name, branches, else })`。尽量让 `branches` 和 `else` 保持静态对象或数组字面量。
 - 当重复业务步骤需要在 Diagram 中明确呈现为循环时，使用 `steamharness.runFor(input, context, { name, items, run, maxIterations })` 或 `steamharness.runWhile(input, context, { name, condition, run, maxIterations })`。
 - 当 workflow 需要复用另一个 imported workflow，且父 workflow 拥有最终 conversation 写入或可见输出时，使用 `steamharness.runProject(...)`，只在确有桥接需求时设置 `conversationMode: "shared-readonly"`、`outputVisibility: "hidden"`。
@@ -70,9 +80,9 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 业务配置统一在项目配置面板管理，用 `steamharness.getConfig(name)` 或 `context.config` 读取运行快照；`configuration.json` 声明 fields、原生默认值、说明和敏感标记。不生成或加载项目 env 文件，不回退读取 `process.env`。Server 部署和 Studio 内部通信变量由宿主管理。
 - 本地运行生成文件时使用 `context.files.createFile({ name, mimeType, buffer, kind })`；需要保存到服务器时显式使用服务器文件存储或 CLI `workspace file-upload`，数据写入独立校验成员权限。
 - 对 conversation-to-knowledge workflow，启用 `executor.conversation`，从 `context.conversation.conversationId` 派生稳定文档 id，通过 `context.conversation` 追加消息，再用知识文档 helper upsert 完整 transcript。
-- Conversation workflow 使用 `context.conversation.getValue()`、`context.conversation.setValue(key, value)` 和 `context.conversation.appendMessage(...)`；不要使用旧的 `getState()` API。
-- 需要在 conversation 的当前 run 尚未结束时继续接受主输入框消息时，在 `executor.conversation` 声明 `inputQueue: { enabled: true }`。这是本地执行宿主的持久化输入队列，后续消息会作为新的 conversation turn 顺序执行；它不同于 `createUserInputNode(...)` 的同一 run 暂停与恢复。
-- 项目需要 agent 对话时，优先使用 Core 的 `createAgentConversationProject` 并保留内联 `defineExecutor`，省略重复 `params` / 标准 `resolveParams`。Model、Effort（high）、`/plan`（false）和用户权限绑定由 Core 内置；`paramOptions.fields` 支持默认值、显隐、固定值、绑定和禁用，`groups` 按字段名分组。业务包装 workflow 通过 `executor.coreAgent` 关联参数来源，自己的 `createInput` 调用 `createAgentProjectInput(context, options)` 后继续追加业务输入，原有业务校验与工具组装照常保留。模型默认跟随用户设置；明确要求项目模型时设置 `modelSource: "project"`，只允许系统模型时继续在配置字段声明 `allowThirdParty: false`。不要把密钥写入源码、参数或日志，不要在项目内自研 LLM 工具循环。
+- Bot workflow 使用 `context.conversation.getValue()`、`context.conversation.setValue(key, value)` 和 `context.conversation.appendMessage(...)`；不要使用旧的 `getState()` API。
+- Bot 自动提供持久输入队列和恢复；后续输入按原生会话控制协议处理，不能通过项目配置关闭。
+- 项目需要 Agent 对话时使用 `steamharness.defineBot`；输入处理放在 `prepareInput`，业务回执放在只读 `onCompleted`。参数继承与字段定制见 API 参考的 Bot 契约。
 - 如果 workflow 业务逻辑需要 LLM，使用全局 LLM helper，例如 `steamharness.createLLMProviderRef(...)`、`steamharness.createLLMProviderFromConfig()`、`steamharness.getServerLLMCredentials(...)`、`steamharness.createLLMStreamNode(...)` 和 `steamharness.createQuestionClassifierNode(...)`。用户从 SteamHarness Server 账户配置中选择 provider/model 时，优先使用 `getServerLLMCredentials`，不要把真实上游 Key 写入 workflow 参数或环境变量。联网搜索必须在 `credential.modelDetails` 中找到当前模型，并检查其 `capabilities.webSearch`；只有明确为 `true` 时才能调用 `createProvider({ model, webSearch: true })`，workflow 不要自行按模型 ID 推断。只接受 HTTP base URL 的 agent SDK 使用凭据对象的 `startLLMProxyBridge({ signal })`，并在 `finally` 中关闭桥；兼容方法 `startOpenAIProxyBridge()` 仅用于 OpenAI Responses。
 
 ## 依赖安装与环境
@@ -97,37 +107,37 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 只允许系统 AI 的项目在 `configuration.json` 显式声明 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`、`allowThirdParty: false`、`defaultValue: []`、`secret: true`），并保留模型字段的发布结构；不要生成自定义 URL/API Key 直连分支。省略限制时仍可添加第三方模型。
 - 底图、初始化文件等文件配置声明 `type: "file"` 和 `accept`，由项目配置面板选择并上传到服务器；不要将文件配置降级为要求用户填写引用的 JSON 文本框。单文件保存服务器元数据对象，多文件保存引用数组，文件内容和本机路径不进入配置。
 - 无声明字段时生成 `{ "version": 1, "fields": [] }` 的 `configuration.json`。三种类型始终保留项目配置入口，用户可以添加自定义字段。
-- Kanban 页面必须同时适配全屏工作区、手机、平板和 Conversation 对话卡片中的小预览；“小卡片”是对话资源卡片内的 Kanban 页面，不是另一种设备。Desktop 标题栏提供全屏（默认填满可用区域）、手机 `390×844`、平板 `768×1024`、小卡片 `360×200` 的真实 iframe 视口；对话卡片的实际宽高还会随容器变化，至少覆盖 `340–500px` 宽及 `180–200px` 高的紧凑场景，不能只适配这几个固定数字。
+- Kanban 页面必须同时适配全屏工作区、手机、平板和 Bot 对话卡片中的小预览；“小卡片”是对话资源卡片内的 Kanban 页面，不是另一种设备。Desktop 标题栏提供全屏（默认填满可用区域）、手机 `390×844`、平板 `768×1024`、小卡片 `360×200` 的真实 iframe 视口；对话卡片的实际宽高还会随容器变化，至少覆盖 `340–500px` 宽及 `180–200px` 高的紧凑场景，不能只适配这几个固定数字。
 - HTML 声明 `meta name="viewport" content="width=device-width, initial-scale=1"`，以页面自身 iframe 的宽高进行响应式布局，使用 CSS media/container query、弹性布局或 ResizeObserver；不要依赖父窗口尺寸、设备 UA、固定桌面最小宽度或整页缩放。手机与平板保持核心功能可操作；小卡片优先呈现主要内容与必要操作，收敛页头、留白和次要面板，长内容在有界区域滚动，不能出现文字重叠、控件越界或只有空白首屏。图像、地图和 canvas 随容器重新测量并保持可检查的内容。
 - 手机、平板和小卡片预览均可拖动或输入宽高，并可恢复当前模式默认尺寸；不能把模式与某一固定尺寸绑定。宿主切换或调整尺寸不重载页面或切换命名配置；页面的 resize 处理必须保留草稿、选择、存储状态和进行中的图片/文件请求。布局变化不能重建业务数据或重复提交上传与保存，卸载时清理尺寸监听。
-- 页面通过 `window.steamHarnessKanban.getPresentation()` 读取 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，监听 `steamharness:kanban-presentation-change` 的 `CustomEvent.detail` 更新展示状态；实际 Conversation 卡片也使用 `card`。这不是业务参数，不能写入业务数据库、切换配置或通过宽高猜测模式。地图、图片等内容预览或用户指定的只读小卡片应隐藏页头、工具栏、侧栏、详情和编辑浮层，关闭绘制、实体拖动及修改快捷键，让主要内容占满画布并随容器适应取景；返回其它模式时恢复编辑状态。
+- 页面通过 `window.steamHarnessKanban.getPresentation()` 读取 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，监听 `steamharness:kanban-presentation-change` 的 `CustomEvent.detail` 更新展示状态；实际 Bot 卡片也使用 `card`。这不是业务参数，不能写入业务数据库、切换配置或通过宽高猜测模式。地图、图片等内容预览或用户指定的只读小卡片应隐藏页头、工具栏、侧栏、详情和编辑浮层，关闭绘制、实体拖动及修改快捷键，让主要内容占满画布并随容器适应取景；返回其它模式时恢复编辑状态。
 - 参数项目使用 `{ "version": 1, "params": [...] }`。字段直接复用 executor 参数定义，支持 string、number、boolean、positional、file、枚举和多选；file 必须使用平台文件引用，页面不能读取本地绝对路径。
 - `configuration.json` 只承载同一页面的视图或行为配置，例如标题、主题、过滤条件和显示模式。任务、卡片、记录等页面业务数据必须在 HTML 内提供新建、编辑、删除等操作，并通过关系表 API 保存；禁止把业务列表编码成逗号分隔 textarea 或要求用户在配置区维护。
 - 页面通过 `window.steamHarnessKanban.getConfiguration()` 读取 `{ id, name, params }`，并监听 `steamharness:kanban-configuration-change` 的 `CustomEvent.detail` 实时重绘。配置切换时 iframe 不会重新加载；异步读取旧配置数据时使用请求代次，禁止旧响应覆盖新配置。
 - 用户需要 Agent 查询或操作页面时，通过 `window.steamHarnessKanban.methods.register({ name, description, inputSchema, readOnly? }, handler)` 注册业务白名单方法，保存返回的注销函数并在卸载时调用。handler 接收 JSON 对象与 `{ signal, configuration, presentation }`，自行校验业务参数并返回 JSON；检查取消信号，配置 ID 变化后按新配置重新注册。不要依靠全局函数名、模拟按钮或自建消息协议。Desktop 小助手先用 `steamharness-kanban_kanban_methods` 的 `action: "list"` 发现方法和具体实例，再用该实例的 `instanceId`、`configurationId`、`method`、`args` 调用；主区、Dock、对话卡片独立，不能因项目 ID 相同而误控其它预览。超时后先查询状态，禁止自动重试相对缩放、平移或写入。此 capability 需要已启用的 Desktop 本地宿主桥，独立 CLI/Server 和托管 Web 不具备页面连接；详细限制见 API 参考。
 - 页面业务数据先定义模型并执行 database generate，导入 `dist/steamharness/generated/database/browser/index.js` 描述符，使用 `await window.steamHarnessKanban.databases.connect(data)`；模型 delegate 提供 rows/insert/update/delete，更新与删除携带 rowVersion。Browser API 不暴露 Node ORM、SQL 或连接串。Bridge 固定当前项目和入口；页面不能选择账号、项目、资源路径或授权身份。知识文档使用 knowledgeBases.get(alias)。
-- 图片和文件使用 `window.steamHarnessKanban.knowledgeBases.get("data").files.createFile({ name, mimeType?, buffer })`、`readFile(fileId)`、`deleteFile(fileId)`。`buffer` 接受 Blob、ArrayBuffer 或 Uint8Array；read 返回 `{ file, buffer: ArrayBuffer }`，可转 Blob 与临时 object URL 显示，卸载时释放 URL。文件始终写入当前连接服务器的受鉴权存储，与 Workflow/Conversation 的 `context.knowledgeBases.get(alias).files` 使用相同知识资源授权；`context.files` 的配置附件和项目托管文件仍使用独立通道；宿主未连接、未获同 UUID 服务器项目授权或服务器不支持接口时明确失败，不回退本地。单文件上限 50 MiB，文件 Bridge 超时 120 秒；业务行只保存文件引用与标注，禁止把图片分块或 base64 写入数据库行。现有本地图片可用 `steamharness workspace file-upload <项目 UUID> --file <路径>` 上传，`file-download <文件 ID> --output <新文件>` 读回核对原始字节；业务文件上传与项目源码上传、版本发布独立。
+- 图片和文件使用 `window.steamHarnessKanban.knowledgeBases.get("data").files.createFile({ name, mimeType?, buffer })`、`readFile(fileId)`、`deleteFile(fileId)`。`buffer` 接受 Blob、ArrayBuffer 或 Uint8Array；read 返回 `{ file, buffer: ArrayBuffer }`，可转 Blob 与临时 object URL 显示，卸载时释放 URL。文件始终写入当前连接服务器的受鉴权存储，与 Workflow/Bot 的 `context.knowledgeBases.get(alias).files` 使用相同知识资源授权；`context.files` 的配置附件和项目托管文件仍使用独立通道；宿主未连接、未获同 UUID 服务器项目授权或服务器不支持接口时明确失败，不回退本地。单文件上限 50 MiB，文件 Bridge 超时 120 秒；业务行只保存文件引用与标注，禁止把图片分块或 base64 写入数据库行。现有本地图片可用 `steamharness workspace file-upload <项目 UUID> --file <路径>` 上传，`file-download <文件 ID> --output <新文件>` 读回核对原始字节；业务文件上传与项目源码上传、版本发布独立。
 - 命名配置的业务隔离使用模型字段 configurationId，所有列表按当前配置筛选，新建时写入该字段。未绑定、断连或读取失败须显示恢复入口并禁用编辑，不启用临时存储。写入失败保留已保存记录和未提交草稿；冲突重新读取并交由用户处理，不自动覆盖或重放写入。
 - Bridge 调用必须处理 Promise reject。页面同时最多有 16 个请求，普通调用 15 秒、聚合 Workflow 调用 120 秒超时；直接打开 `index.html` 时 Bridge 不存在，仍应提供明确的只读或内存降级，不能因此阻塞首屏。
 - HTML、CSS、JS、图片和字体必须使用产物目录内相对路径，不能通过 `..` 读取源码或项目元数据。ES module、动态 import、WASM 和 `fetch()` 可以读取宿主自动续期的短期预览 capability 下的同源产物，页面不应缓存或解析 capability URL；页面运行在 `sandbox="allow-scripts"` 和离线 CSP 下，不能请求公网、父页面 DOM、Node/preload、弹窗、下载或顶层导航。
-- 上传清单只由项目根目录 `.steamharnessignore` 控制，`.gitignore` 不参与。规则支持目录、glob、`**` 与 `!` 反向包含；缺失或空规则会上传全部普通文件。`.steamharnessignore` 必须是普通文件（符号链接会被拒绝）且为 UTF-8；自身始终上传，`package.json`、根及所有登记的子 `steamharness.json`、项目入口和已有 `configuration.json` 不得被忽略。Workflow/Conversation 的必备上传路径包括 `package.json`、`steamharness.json` 与登记的入口文件。Kanban 规则不得排除实际 `artifactDir`；是否把产物提交 Git 与是否上传无关。
+- 上传清单只由项目根目录 `.steamharnessignore` 控制，`.gitignore` 不参与。规则支持目录、glob、`**` 与 `!` 反向包含；缺失或空规则会上传全部普通文件。`.steamharnessignore` 必须是普通文件（符号链接会被拒绝）且为 UTF-8；自身始终上传，`package.json`、根及所有登记的子 `steamharness.json`、项目入口和已有 `configuration.json` 不得被忽略。Workflow/Bot 的必备上传路径包括 `package.json`、`steamharness.json` 与登记的入口文件。Kanban 规则不得排除实际 `artifactDir`；是否把产物提交 Git 与是否上传无关。
 - 必须验证没有参数时的全幅布局、有参数时的命名配置、配置事件更新、存储损坏回退、配置隔离、保存顺序与失败重试，以及全屏、手机、平板和对话小卡片的宽高适配；覆盖 760px 以下与低高度卡片布局，确认内容不溢出或重叠，尺寸切换保留草稿、上传与保存状态。
 
 ## Executor 参数
 
-- 新 Workflow 有用户输入时，应在 `steamharness.defineEntrypoint({ params, createInput })` 中声明；Conversation 继续在 executor 上声明，让本地 CLI 和 CLI Web 共享相同参数语义。
-- Workflow 的 `params` 必须是 entrypoint object 内部的静态数组字面量；Conversation 的 `params` 保持在 executor object 内。静态结构分析只读取字面量字段。数组中可按顺序写多个 `kind: "auxiliary" | "quick" | "mode" | "slash"` 入口；Mode/Slash 仅用于 Conversation。Auxiliary/Quick 的 `fields` 也是内联字段数组，源码字段不写 `panel`。结构报告会展平字段并用 `paramLayout.actions` 保留入口顺序。
+- 新 Workflow 有用户输入时，应在 `steamharness.defineEntrypoint({ params, createInput })` 中声明；Bot 继续在 executor 上声明，让本地 CLI 和 CLI Web 共享相同参数语义。
+- Workflow 的 `params` 必须是 entrypoint object 内部的静态数组字面量；Bot 的 `params` 保持在 executor object 内。静态结构分析只读取字面量字段。数组中可按顺序写多个 `kind: "auxiliary" | "quick" | "mode" | "slash"` 入口；Mode/Slash 仅用于 Bot。Auxiliary/Quick 的 `fields` 也是内联字段数组，源码字段不写 `panel`。结构报告会展平字段并用 `paramLayout.actions` 保留入口顺序。
 - 每个 param 应包含稳定的 `name`、`flag` 和 `type`。支持类型为 `"string"`、`"number"`、`"boolean"`、`"positional"` 和 `"file"`。
 - 长文本参数使用 `control: "textarea"`，让本地运行界面显示多行输入。
 - 日期参数使用 `type: "string"` 和 `control: "date" | "time" | "datetime" | "date-range"`；固定格式分别为 `YYYY-MM-DD`、`HH:mm:ss`、本地 `YYYY-MM-DDTHH:mm:ss` 和闭区间 `YYYY-MM-DD/YYYY-MM-DD`。只放在主字段或 Auxiliary，不用于 Quick，不声明 `options` 或 `multiple: true`，也不通过 resolver 返回 option 补丁。无效值会阻止宿主提交，生成 workflow 时应给出合法默认值或保留空值。
 - 高频枚举参数放进 `kind: "quick"` 的 `fields`，并用 `summary` 显式指定摘要字段；每个 Quick 声明产生一个独立入口，组内字段使用 `control: "select" | "radio" | "checkboxes"`。同一个 Quick 内可放多个字段，多个 Quick 按声明顺序排列，重置只影响本组。业务输入从 `createInput({ paramValues })` 读取结构化单值或多选数组。
-- 偶尔修改的字段放进 `kind: "auxiliary"` 的 `fields`；每个 Auxiliary 是一个可收缩面板，允许声明多个。Conversation 中单击轮换的模式声明为 `kind: "mode"`，要求至少两个 `options`，名称可以是任意稳定字段名。完整呈现及限制见 `references/param-panels.md`。
-- Conversation 的 `/` 菜单使用 `kind: "slash"`，声明 `name`、`flag` 和 `type: "string" | "boolean"`，不写 `control`、`panel` 或 `multiple`。单选使用 `options`，选项 `command` 默认取 `value`；boolean 的参数级 `command` 默认取 `name`，选择后切换开关。命令在项目内唯一且匹配 `/^[a-z][a-z0-9_-]*$/`，选择只更新参数并消费命令文字，不发送消息。输入框外底部文字使用静态 `conversation.footer`，每项二选一 `{ text, localizedText? }` 或 `{ param }`，可加 `when: { param, value }`；内容为纯文字。小助手默认 Build，以 `/plan` 切换并按条件显示 Plan 模式提示，不增加专用宿主判断。
+- 偶尔修改的字段放进 `kind: "auxiliary"` 的 `fields`；每个 Auxiliary 是一个可收缩面板，允许声明多个。Bot 中单击轮换的模式声明为 `kind: "mode"`，要求至少两个 `options`，名称可以是任意稳定字段名。完整呈现及限制见 `references/param-panels.md`。
+- Bot 的 `/` 菜单使用 `kind: "slash"`，声明 `name`、`flag` 和 `type: "string" | "boolean"`，不写 `control`、`panel` 或 `multiple`。单选使用 `options`，选项 `command` 默认取 `value`；boolean 的参数级 `command` 默认取 `name`，选择后切换开关。命令在项目内唯一且匹配 `/^[a-z][a-z0-9_-]*$/`，选择只更新参数并消费命令文字，不发送消息。输入框外底部文字使用静态 `conversation.footer`，每项二选一 `{ text, localizedText? }` 或 `{ param }`，可加 `when: { param, value }`；内容为纯文字。小助手默认 Build，以 `/plan` 切换并按条件显示 Plan 模式提示，不增加专用宿主判断。
 - 需要参数互斥或联动时，定义无写入副作用、幂等的 `resolveParams({ draftText, paramValues, trigger })`，返回值、可见性、禁用状态、`resolvedOptions` 或 option 状态补丁；初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发。互斥字段隐藏时必须同时返回 `{ visible: false, value: null }`，因为只隐藏不会清空旧值，旧值仍会进入 args。Raw 模式初始化补丁只更新对应已声明参数，其它 Raw 参数保持不变。`resolvedOptions` 数组替换静态选项，`null` 恢复静态选项。只有联动确实依赖主输入文本时，才在相关参数上声明 `resolveOnInput: true`；不要在该回调中写数据库/文件。确需读取服务器动态目录时只能调用支持 `AbortSignal` 的只读 API，例如 `steamharness.getServerLLMCredentials({ signal: abortSignal })`。
 - 平台托管运行附件使用 `"file"` params。workflow 期望 file references 时，包含 `multiple`、`accept` 和 `format: "json"`，并在 `createInput` 中解析 JSON 字符串。
-- 同步维护对应 entrypoint（Conversation 则为 executor）的 `params`、`createInput({ args })`、输入类型和 README 命令。
+- 同步维护对应 entrypoint（Bot 则为 executor）的 `params`、`createInput({ args })`、输入类型和 README 命令。
 - 用户输入节点的 `params` 是独立的等待表单，继续声明普通字段，不使用 executor 的 Auxiliary/Quick/Mode 分组。保持名称稳定，因为提交答案会存储在 `values[param.name]` 下。
-- Conversation 的用户输入交互使用静态 `conversation.userInput`：`hideComposer` 默认 true，待回答期间隐藏主输入区，确认答案或停止后恢复并保留草稿，可设 false 保留输入区。答案影响参数时声明 `effects: [{ when: { type?, nodeName?, values? }, params: { ... } }]`，按请求 `metadata.type`、节点名和已确认的答案匹配，至少一个条件、多个条件须全部匹配；只更新已有参数，boolean 用字符串，后项覆盖前项。小助手批准计划关闭 `/plan` 也通过该通用声明实现，不在宿主中加入 Plan 特判。
+- Bot 的用户输入交互使用静态 `conversation.userInput`：`hideComposer` 默认 true，待回答期间隐藏主输入区，确认答案或停止后恢复并保留草稿，可设 false 保留输入区。答案影响参数时声明 `effects: [{ when: { type?, nodeName?, values? }, params: { ... } }]`，按请求 `metadata.type`、节点名和已确认的答案匹配，至少一个条件、多个条件须全部匹配；只更新已有参数，boolean 用字符串，后项覆盖前项。小助手批准计划关闭 `/plan` 也通过该通用声明实现，不在宿主中加入 Plan 特判。
 - Boolean params 为 true 时只追加 flag。Positional params 会追加到 argv，仍应包含稳定的 `flag` 供静态提取。
 - File params 追加 `flag` 加 file references JSON 字符串；在 workflow 内用 `steamharness.createFileInputNode(...)` 解析这些 references。
 
@@ -136,7 +146,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - 输入变化：同步更新输入类型、`params`、`createInput`、README 示例，以及任何 parser nodes。
 - 输出变化：同步更新 payload 类型、output node `format`、inline 正文 item 与工具/detail item 的边界、README 输出示例，以及 tests/smoke 命令。LLM/agent 正文回归测试要断言正文 item 没有 `metadata`/`icon`/`iconPreset`；工具调用测试要断言同一个工具 item 从 `running` patch 到 `success` 或 `failed`。
 - 节点变化：优先使用显式 `steamharness.runNode` / `steamharness.runStreamNode` 串联；用户可见分支用 `steamharness.runIf`；用户可见循环用 `steamharness.runFor` / `steamharness.runWhile`。
-- 可调试节点变化：用静态数组字面量把稳定节点注册到对应 entrypoint 的 `registry`；Conversation 仍使用 `executor.registry`。
+- 可调试节点变化：用静态数组字面量把稳定节点注册到对应 entrypoint 的 `registry`；Bot 仍使用 `executor.registry`。
 - 外部服务变化：用 `steamharness.getConfig(name)` 读取配置，将字段定义加入 `configuration.json`，README 说明字段用途；敏感字段不写真实默认值。项目 package 只声明真正使用的 npm 依赖。
 - Package 变化：保持 Core/CLI 精确 dev dependency 与真实第三方依赖，并用根目录 `.steamharnessignore` 显式选择上传文件；不要依赖 `.gitignore` 或宿主隐式排除生成产物、secret、cache、`node_modules`。
 - 定时预设变化：确认每个 `schedulePresets` 项引用现有 entrypoint，时区与触发规则有效，`paramValues` 符合入口静态参数；同步 README，并用 structure 检查预设目录。预设不能代替 Workflow 内部的日期和幂等处理。
@@ -211,7 +221,7 @@ python <skill-dir>/scripts/create_workflow.py <kanban-name> --dir <target-dir> \
 
 - `steamharness.json`：项目 UUID、名称、版本、defaultEntry、显式 entries、projectCard、projectInfo；子入口仅在父 entries 登记后生效。
 - `package.json`：npm `name`、`version`、`type`、精确 Core/CLI dev dependency，以及必要时才加入的真实第三方依赖。
-- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Conversation 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/steamharness/**/build/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
+- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Bot 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/steamharness/**/build/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
 - `configuration.json`：为所有业务配置声明字段和安全默认值；无字段时使用空 fields。实际值不进入源码，由面板及 Studio Control 管理。
 - `interface.ts`：本地 `RunPayload`、`ExecutorResult`、输入类型、输出 payload 和输出结果类型。
 - `index.ts`：全局 `steamharness.*` 节点、具名 workflow、带静态 params 的 executor、默认导出。
@@ -235,7 +245,7 @@ Kanban scaffold 额外包含 `board-state.js`、`board-storage.js` 和 `tests/*.
 
 ## 多 Bot 聚合工作台
 
-Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Conversation 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。首屏通过 `entries.list()` 先发现本地入口，后台加载业务档案。私聊优先使用 `conversations.mount()` 复用原生 Conversation；业务发送使用 submit Workflow 适配，关联真实持久回执，卸载时释放界面。详细接口与隔离要求见 API 参考。
+Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow 用 `context.entries.conversations.get(id)` 复用已登记 Bot 的原生控制器和持久队列。业务身份从可信 `context.entries.caller` 与会话关联推导，不接受 sender 参数。不要另造 Agent 调度器或复制 Core 执行历史。提交立即返回持久回执，页面订阅流式状态并按 owner/revision 丢弃旧快照。只有 CLI Web / Studio 提供执行，Server 静态预览显示本地连接指引。需要重开后显式恢复时声明 `recovery: { enabled: true, startup: "manual" }`。首屏通过 `entries.list()` 先发现本地入口，后台加载业务档案。私聊优先使用 `conversations.mount()` 复用原生 Bot；业务发送使用 submit Workflow 适配，关联真实持久回执，卸载时释放界面。详细接口与隔离要求见 API 参考。
 
 ## 项目发行
 

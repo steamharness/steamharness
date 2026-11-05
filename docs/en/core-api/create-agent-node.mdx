@@ -7,7 +7,7 @@ description: "Create a streaming node that runs an agent as a workflow node."
 
 `workflow.createAgentNode()` returns a streaming node to be executed with `runStreamNode`. It wires the [createAgent](./create-agent.mdx) runtime into a workflow: tool approval goes through `context.toolPermissions`, plan approval through `context.userInput`, token usage through `context.tokenUsage`, and output items use the same `createOutputItemChunk` protocol as the rest of the runtime.
 
-Reach for it when you need to arrange nodes around the agent. When the whole project is an agent, [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) does more for you.
+Reach for it when you need to arrange nodes around the agent. When the whole project is an agent, [defineBot](./define-bot.mdx) does more for you.
 
 Without an explicit endpoint or injected model collection, the node uses the current project configuration `STEAMHARNESS_AGENT_MODELS` list. `model` selects an entry ID and omission selects the first entry. System subscriptions are authorized for the current account; third-party entries use their saved connection. See [Project configurations](/en/concepts/project-configuration).
 
@@ -49,7 +49,7 @@ const node = workflow.createAgentNode({
 
 The node is a `BaseStreamNode<AgentInput, OutputItemStreamChunk, AgentOutputPayload>`: it streams `OutputItemStreamChunk` values and `finalize(chunks, context, input)` aggregates them into an `AgentOutputPayload` with `createOutputStreamAccumulator`.
 
-The Agent emits context occupancy as a standard output item with `display: { type: "ring", placement: "composer-right" }` and `content: { value: used, total, unit: "tokens" }`. Its stable id derives from `sessionKey`; distinct keys, including spaces and non-ASCII characters, produce independent outputs. Conversation pins it to the right of the composer, saves and restores it with that conversation, and retains its streamed value while awaiting approval. Hosts consume the [output presentation protocol](./create-output-node.mdx) without reading Agent-specific fields. `contextUsage` remains available for programmatic use.
+The Agent emits context occupancy as a standard output item with `display: { type: "ring", placement: "composer-right" }` and `content: { value: used, total, unit: "tokens" }`. Its stable id derives from `sessionKey`; distinct keys, including spaces and non-ASCII characters, produce independent outputs. Bot pins it to the right of the composer, saves and restores it with that conversation, and retains its streamed value while awaiting approval. Hosts consume the [output presentation protocol](./create-output-node.mdx) without reading Agent-specific fields. `contextUsage` remains available for programmatic use.
 
 The first run emits this item before the model responds. Text, reasoning, tool arguments, and tool results update the ring during the conversation, and compaction recalibrates it. Context occupancy uses the latest valid model usage plus subsequent message estimates, independently of billed usage reported incrementally for each model response. [createAgent](./create-agent.mdx) provides `getContextUsage()` and `updateContextUsage()` for live queries and external measurements.
 
@@ -63,7 +63,7 @@ Every [createAgent](./create-agent.mdx) option, plus:
 | --- | --- | --- |
 | `name` | `string` | Node name. Defaults to `agent`. |
 | `outputItemId` | `string` | Id of the output item the answer belongs to. The OpenAI/Responses adapters find the answer by id, so it must equal `conversation.openai.outputItemId`; when it is left out the id is derived from the conversation, which no adapter can name in advance. |
-| `skills` | `{ directories: readonly string[] }` | Skill roots, relative to the entry root. Core creates a permission-checked `skill` tool each run. Core Agent project declarations also provide a read-only host catalog. See [Skill roots and host previews](./define-agent-conversation-executor.mdx#skill-roots-and-host-previews). |
+| `skills` | `{ directories: readonly string[] }` | Skill roots, relative to the entry root. Core creates a permission-checked `skill` tool each run. Core Agent project declarations also provide a read-only host catalog. See [Skill roots and host previews](./define-bot.mdx). |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | Builds the tools that go alongside the built-ins before each run. A factory rather than a list because those tools close over the run's `NodeContext` — its storage, its approval gate, its user input. To start something with a lifetime — a stdio MCP child, say — return `{ tools, close?() }`; `close` runs when the turn ends, errors included. |
 | `sessionKey` | `string` | Storage isolation key within a project and conversation. Falls back to `sessionId`, then `agent`. Use a different key for each agent node. |
 | `databasePath` | `string` | Explicit Durable SQLite file. CLI/Studio manage local runtime storage by default without this option. |
@@ -87,13 +87,13 @@ These fields come from the input the turn **actually used** (a turn may carry it
 
 ## The transcript
 
-The Pi Durable Harness owns Agent execution history. Conversation nodes select local SQLite sessions by project, entry, conversationId and sessionKey, preserving messages, tool intents and results, approval waits and usage. Ordinary runs close after each turn; hosts enabling `session` can retain the owner, tools and AI bridge. Conversation state and usage also persist locally without a Server login or connection for storage. Inject Server storage explicitly or back up on demand in the background; see [runtime storage](/en/core-api/runtime-storage).
+The Pi Durable Harness owns Agent execution history. Bot nodes select local SQLite sessions by project, entry, conversationId and sessionKey, preserving messages, tool intents and results, approval waits and usage. Ordinary runs close after each turn; hosts enabling `session` can retain the owner, tools and AI bridge. Bot state and usage also persist locally without a Server login or connection for storage. Inject Server storage explicitly or back up on demand in the background; see [runtime storage](/en/core-api/runtime-storage).
 
 - Each session has one execution owner. Local file locks release on close or process exit. With explicit Server storage, SIGKILL requires lease expiry before takeover and a higher fence rejects stale writers. Preserve working directories and attachments alongside the database.
-- A stable `requestId` is derived from the original `runId`. Recovery reconstructs output without repeating committed results, Conversation messages or billed usage.
+- A stable `requestId` is derived from the original `runId`. Recovery reconstructs output without repeating committed results, Bot messages or billed usage.
 - Calls with unknown results after a crash are repeated only with `replay: "safe"`. The default is `never`; built-in write, edit and bash tools return an interruption error for model inspection. External side effects still require application idempotency.
 - Storage or projection failures stop execution. Old KV transcripts are not read or migrated, and failures never fall back to execution without history.
-- Non-Conversation nodes and gateway runs carrying `hostInput` use MemoryStorage by default. An explicit `databasePath` overrides storage selection. Gateway input does not enter ordinary Conversation history.
+- Non-Bot nodes and gateway runs carrying `hostInput` use MemoryStorage by default. An explicit `databasePath` overrides storage selection. Gateway input does not enter ordinary Bot history.
 - Manual `/compact` or direct context replacement requires no active Durable tasks. Automatic compaction checks before every model request and runs at 90% of the window by default. Compaction during tool loops and session compact/reset coordinate through Harness transactions and input boundaries; never overwrite the transcript directly.
 
 ## Persistent session hosts
@@ -134,7 +134,7 @@ Shared runtime UI displays plans marked with `metadata.plan: true` as preview ca
 
 When confirmation resumes the same run, new plans, text, and activity rows use independent identifiers. Earlier output remains intact, so a revised plan cannot replace the previous one or move resumed text before the answer. The host API's declared `agent-answer` identifier stays fixed so it can read the complete response.
 
-A conversation run creates a plan card only after the runtime emits a final `plan` event. The card contains the plan text after the last tool call. Research introductions, explanations around `ask_user`, and text left without a completed plan when the run pauses, fails, or is cancelled remain ordinary inline text. Pausing for a question does not request plan approval. Conversation messages retain both ordinary text and the final plan in output order. Host-driven runs still stream the whole turn into the declared `agent-answer` item in plan mode so OpenAI / Responses adapters can read it.
+A conversation run creates a plan card only after the runtime emits a final `plan` event. The card contains the plan text after the last tool call. Research introductions, explanations around `ask_user`, and text left without a completed plan when the run pauses, fails, or is cancelled remain ordinary inline text. Pausing for a question does not request plan approval. Bot messages retain both ordinary text and the final plan in output order. Host-driven runs still stream the whole turn into the declared `agent-answer` item in plan mode so OpenAI / Responses adapters can read it.
 
 ## Pause and resume
 

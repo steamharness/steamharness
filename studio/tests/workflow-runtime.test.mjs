@@ -23,7 +23,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
     const version=${JSON.stringify(version)},args=process.argv.slice(2);
     const assistantId='a3aca697-b086-459b-84e4-d357ad2d9fb2';
     if(args.includes('--inspect') && !args.includes('--host-stdio')) {
-      console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[]}],errors:[]}));
+      console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[]}],errors:[]}));
     } else {
       const input=createInterface({input:process.stdin});
       let configuration,effectiveConnection,server,authMessages=0,userSettingsMessages=0;
@@ -38,7 +38,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
         const message=JSON.parse(line);
         if(message.type==='configure') {
           configuration=message;
-          if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
+          if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
           authenticate(message);
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
@@ -52,7 +52,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
             }
             response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},databaseSpacesProtocolVersion:1,userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},databaseSpacesProtocolVersion:1,userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
         else if(message.type==='resource-projects') {configuration.resourceProjects=message.resourceProjects;}
         else if(message.type==='user-settings') {if(${userSettingsProtocol}!==1) process.exit(31);userSettingsMessages++;configuration.userSettings=message.userSettings;}

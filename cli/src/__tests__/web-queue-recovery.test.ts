@@ -3,7 +3,7 @@ import { ConversationController } from '../web/conversation-controller';
 import type { ConversationSession, Project, Report, Runtime } from '../web/workflow-types';
 
 function fixture(saved: { sessions?: ConversationSession[] } = {}) {
-  const project = { projectType: 'conversation', fields: [], entrypoints: [], conversation: { recovery: { enabled: true }, inputQueue: { enabled: true } } } as unknown as Project;
+  const project = { projectType: 'bot', fields: [], entrypoints: [], conversation: { recovery: { enabled: true }, inputQueue: { enabled: true } } } as unknown as Project;
   const runtime = { run: vi.fn(), cancel: vi.fn(), cancelConversation: vi.fn(async () => {}) } as unknown as Runtime;
   const save = vi.fn(async () => {});
   const controller = new ConversationController(project, runtime, saved, { save, changed: vi.fn(), log: vi.fn() });

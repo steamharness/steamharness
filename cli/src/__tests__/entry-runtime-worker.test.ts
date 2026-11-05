@@ -30,7 +30,7 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     await symlink(await resolveHarnessRoot(),path.join(directory,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
     await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({name:'entry-runtime-worker',type:'module',id,version:'1.0.0',defaultEntry:'api',entries:[
       {entryId:'api',name:'API',type:'workflow',root:'.',entry:'api.ts',databases:[]},
-      {entryId:'bot',name:'Bot',type:'conversation',root:'.',entry:'bot.ts',databases:[]},
+      {entryId:'bot',name:'Bot',type:'bot',root:'.',entry:'bot.ts',databases:[]},
     ]}));
     await writeFile(path.join(directory,'api.ts'),`
       const ipcProject=steamharness.defineProject({name:'ipc',async run(input,context){
@@ -39,7 +39,7 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
       }});
       export const executor=steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',workflow:ipcProject,params:[{name:'request',flag:'--request',type:'string'}],createInput({args}){return {errCode:0,errMessage:'',requestId:args[1]};}})]});
     `);
-    await writeFile(path.join(directory,'bot.ts'),`const botProject=steamharness.defineProject({name:'bot',async run(input){return input;}});export const executor=steamharness.defineExecutor({projectType:'conversation',workflow:botProject,createInput(){return {errCode:0,errMessage:''};}});`);
+    await writeFile(path.join(directory,'bot.ts'),`export const executor=steamharness.defineBot({});`);
     const inspected=await runtime.inspect([directory]);expect(inspected.errors).toEqual([]);
     const project={...inspected.projects.find(project=>project.entryId==='api')!,uri:''};
     const entryCall={entryId:'bot',conversationId:'source',runId:'bot-run'};

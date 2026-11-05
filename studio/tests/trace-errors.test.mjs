@@ -7,7 +7,7 @@ import { JSDOM } from 'jsdom';
 register();
 const { traceRows, filterTraceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const client = await build({ entryPoints: ['extensions/studio-workstation/webview/trace.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
-const project = { id: 'project', entryId: 'main', name: 'Project', projectType: 'conversation' };
+const project = { id: 'project', entryId: 'main', name: 'Project', projectType: 'bot' };
 const tool = { id: 'tool', metadata: { kind: 'agent-part', partType: 'tool', status: 'failed' },
   content: { tool: 'read', input: { path: 'missing.ts' }, output: 'File unavailable', status: 'failed' } };
 const retry = { id: 'retry', metadata: { kind: 'opencode-retry' }, content: { attempt: 1, maxAttempts: 10, reason: 'Provider disconnected' } };

@@ -6,7 +6,7 @@ import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamhar
 import type { DeclaredProjectInfo } from '@steamharness/project-info';
 import { isProjectUuid } from '@steamharness/workflow-ids';
 
-export type ProjectTemplateType = 'workflow' | 'conversation' | 'kanban';
+export type ProjectTemplateType = 'workflow' | 'bot' | 'kanban';
 export interface ProjectTemplateDefinition {
   id: string;
   projectType: ProjectTemplateType;
@@ -66,7 +66,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
   const templates: ProjectTemplateDefinition[] = JSON.parse(await readFile(path.join(templateRoot, 'catalog.json'), 'utf8'));
   const ids = new Set<string>();
   for (const template of templates) {
-    if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'conversation', 'kanban'].includes(template.projectType)
+    if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'bot', 'kanban'].includes(template.projectType)
       || !['starter', 'example'].includes(template.kind) || !Array.isArray(template.files) || !template.files.every(safeRelative)
       || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/steamharness/build/main/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
       || ['en', 'zh-CN'].some(locale => !template.name?.[locale as 'en'] || !template.description?.[locale as 'en'])) {

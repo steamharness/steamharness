@@ -4,7 +4,7 @@ import { EntryConversations, conversationProjection } from '../web/entry-convers
 import type { Project, Report, Runtime, ConversationSession } from '../web/workflow-types';
 
 function fixture(saved: { sessions?: ConversationSession[] } = {}) {
-  const project = { id:'aggregate',entryId:'bot',name:'Bot',aggregateName:'Aggregate',entries:[],defaultEntry:'bot',entryRoot:'/test',folderPath:'/test',uri:'/test',projectType:'conversation',databases:[],fields:[],entrypoints:[],conversation:{inputQueue:{enabled:true},recovery:{enabled:true,startup:'manual'}} } as Project;
+  const project = { id:'aggregate',entryId:'bot',name:'Bot',aggregateName:'Aggregate',entries:[],defaultEntry:'bot',entryRoot:'/test',folderPath:'/test',uri:'/test',projectType:'bot',databases:[],fields:[],entrypoints:[],conversation:{inputQueue:{enabled:true},recovery:{enabled:true,startup:'manual'}} } as Project;
   const running = new Map<string, (report: Report) => void>();
   const runtime = { run: vi.fn(async request => new Promise<Report>(resolve => running.set(request.runId!, resolve))),
     cancel: vi.fn(id => running.get(id!)?.({status:'aborted'})), cancelConversation: vi.fn(async () => {}) } as unknown as Runtime;

@@ -96,7 +96,7 @@ export function listAgentSystemModels(credential: ServerLLMCredential): string[]
 /**
  * Picks the credential and model a run should use.
  *
- * Mirrors the Conversation project's rule: an explicit request wins, then the
+ * Mirrors the Bot project's rule: an explicit request wins, then the
  * credential's configured default (the Server has already merged the admin
  * system default with the user's personal default), then a known-good model
  * from the credential's own list.

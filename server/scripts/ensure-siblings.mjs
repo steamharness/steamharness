@@ -11,7 +11,7 @@ const SKIP_ENVIRONMENT_VARIABLE = "STEAMHARNESS_SKIP_SIBLING_BOOTSTRAP";
  * Development run plans execute sibling checkouts directly, so a sibling that
  * was never installed fails at startup. The failure is silent on Desktop:
  * the CLI exits without writing a structure report, the preview parses as
- * empty, and a Conversation project degrades to the Workflow panel with no
+ * empty, and a Bot project degrades to the Workflow panel with no
  * entrypoints instead of reporting an error. Repairing the siblings before the
  * plan starts keeps a partial checkout from reading as a broken project.
  */

@@ -19,7 +19,7 @@ Run every command below from the corresponding repository root. Every repository
 | Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | Checks both the Server API and the repository's `web/` management UI. |
 | Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks shared source packages and the source bundle consumed by hosts. |
 | Docs | `node scripts/validate-docs.mjs && node --test scripts/__tests__/*.test.mjs` | Checks paired navigation, links, and OpenAPI content. |
-| Each built-in project | `pnpm typecheck && pnpm test && pnpm coverage && pnpm build` | Independently checks Conversation, Codex, OpenCode, Developer Assistant. |
+| Each built-in project | `pnpm typecheck && pnpm test && pnpm coverage && pnpm build` | Independently checks Bot, Codex, OpenCode, Developer Assistant. |
 
 ## Add Tests for New Code
 

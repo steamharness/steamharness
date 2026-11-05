@@ -66,7 +66,7 @@ workflow.createOutputNode<Input>(
 | 同步 | 接收 `Input`，通过 `format(input, context)` 生成 `Output`。 |
 | 流式 | 接收 `Input`，先输出 string 或 item chunks，再把累积后的 `{ text, items, chunks }` 交给 `format`。字符串 chunk 会自动追加到默认 Markdown item，普通流式输出无需手动创建 item。 |
 
-在 conversation UI 里，如果同一段 assistant 回答会先流式展示、再通过最终 report 校准，推荐使用 `workflow.createOutputItemChunk()` 发送带稳定 `id` 的 `output_item_start` / `output_item_delta` / `output_item_end`。这样共享运行界面会按 item id 用最终结果替换 live item，而不是把字符串 chunk 生成的实时默认 item 和最终默认 item 各渲染一份。内置 Conversation 项目的主回答使用固定 `conversation-answer` id 来保持单条回复只展示一次。
+在 conversation UI 里，如果同一段 assistant 回答会先流式展示、再通过最终 report 校准，推荐使用 `workflow.createOutputItemChunk()` 发送带稳定 `id` 的 `output_item_start` / `output_item_delta` / `output_item_end`。这样共享运行界面会按 item id 用最终结果替换 live item，而不是把字符串 chunk 生成的实时默认 item 和最终默认 item 各渲染一份。内置 Bot 项目的主回答使用固定 `conversation-answer` id 来保持单条回复只展示一次。
 
 如果 agent 文本会和工具调用穿插出现，不要把所有正文都 patch 到同一个稳定 item。工具调用前先结束当前 inline `Output` item，工具 detail item 输出后，再为后续正文创建新的 inline `Output` item；最终 `items` 应保持 `正文段 -> 工具 detail -> 正文段` 的事件顺序。
 
@@ -94,7 +94,7 @@ interface OutputItem {
 
 `display` 可为辅助数值输出声明圆环展示。`type: "ring"` 时，`content` 使用 `RingContent`：`{ value: number, total?: number, unit?: string }`。`value` 必须是非负有限数，`total` 若提供必须大于零；未提供时显示空环并在提示框中注明上限未知。圆环本身只展示比例，悬停或键盘聚焦时用浅灰提示框显示 `title`、百分比和精确用量；超限时圆环填满，提示保留实际百分比。
 
-`placement` 默认为 `"inline"`。设为 `"composer-right"` 时，Conversation 将该输出固定在输入栏右侧，不在消息正文重复显示。使用跨轮稳定的 `id` 更新同一个固定输出；每个会话独立恢复最近的值，后续轮次未更新该项时保留原值。同一 `id` 改回 `"inline"` 后解除固定。普通 Workflow 的输出与回放在输出列表中展示圆环。
+`placement` 默认为 `"inline"`。设为 `"composer-right"` 时，Bot 将该输出固定在输入栏右侧，不在消息正文重复显示。使用跨轮稳定的 `id` 更新同一个固定输出；每个会话独立恢复最近的值，后续轮次未更新该项时保留原值。同一 `id` 改回 `"inline"` 后解除固定。普通 Workflow 的输出与回放在输出列表中展示圆环。
 
 圆环可通过 `output_item_delta` 的对象增量更新，例如 `delta: { value: 75 }` 会保留已有的 `total` 和 `unit`。正文内的圆环更新时保留键盘焦点及打开的详情；多个圆环共存时只显示当前悬停或聚焦的提示框。
 

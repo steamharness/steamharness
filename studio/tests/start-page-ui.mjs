@@ -54,7 +54,7 @@ for (const language of ['en', 'zh-cn']) {
     const projects = [];
     for (const template of await listProjectTemplates()) {
       const project = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory: workdir, versions });
-      await symlink(path.join(ROOT, 'examples/conversation/node_modules'), path.join(project.directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+      await symlink(path.join(ROOT, 'examples/bot/node_modules'), path.join(project.directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
       projects.push(project);
     }
     const emptyFile = path.join(workdir, 'empty.txt'); await writeFile(emptyFile, '');
@@ -69,7 +69,7 @@ for (const language of ['en', 'zh-cn']) {
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
       '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--force-disable-user-env', '--telemetry-level', 'off', '--default-folder', workdir],
     { cwd: upstream.directory, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
-      PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`, STUDIO_START_TEST_NODE_MODULES: path.join(ROOT, 'examples/conversation/node_modules'),
+      PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`, STUDIO_START_TEST_NODE_MODULES: path.join(ROOT, 'examples/bot/node_modules'),
       STUDIO_START_TEST_PROJECT_DIRECTORIES: JSON.stringify([path.join(workdir, `new-window-${language}`), path.join(workdir, `same-window-${language}`)]),
       NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: path.resolve(ROOT, '..'), STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'),
       STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
@@ -624,7 +624,7 @@ for (const language of ['en', 'zh-cn']) {
       value => value.error || value.port !== targetBridge.port && value.folders?.[0] === sameDirectory, 'Reusing the window did not activate the new project', 120_000);
     assert.equal(sameBridge.error, undefined, sameBridge.error);
     await until(() => call({ action: 'state' }, sameBridge.port), state => !state.start.busy && !state.start.pending.length
-      && state.start.projects.some(project => project.name === sameName && project.projectType === 'conversation'), 'The reused window did not finish installation');
+      && state.start.projects.some(project => project.name === sameName && project.projectType === 'bot'), 'The reused window did not finish installation');
     assert.equal(context.pages().length, 2, 'Current-window selection must reuse the chosen window');
     assert.ok((await call({ action: 'installationLog' }, sameBridge.port)).includes(`Installing fixture dependencies in ${sameDirectory}`));
     assert.deepEqual((await call({ action: 'state' })).folders, [workdir]);

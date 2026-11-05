@@ -175,7 +175,7 @@ export type ParamDeclaration =
   | ModeParamDefinition
   | SlashParamDefinition;
 
-export type ConversationParamDeclaration =
+export type BotParamDeclaration =
   | AuxiliaryParamGroupDefinition
   | QuickParamGroupDefinition
   | ModeParamDefinition
@@ -325,12 +325,11 @@ export interface ProjectExecutorDefinition {
   conversation?: never;
 }
 
-export type ConversationExecutorDefinition<Input, Output> =
-  Omit<ExecutionDefinition<Input, Output>, "params"> & {
-    projectType: "conversation";
-    /** Parameter source when workflow wraps a Core Agent project. */
-    coreAgent?: import("../agent/types").AgentConversationProject;
-    params?: ConversationParamDeclaration[];
+/** Resolved execution is supplied exclusively by defineBot, never by project code. */
+export type BotExecutorDefinition<Input = import("../agent/types").AgentInput> =
+  Omit<ExecutionDefinition<import("../agent/types").AgentInput, import("../agent/types").AgentOutputPayload>, "params"> & {
+    readonly projectType: "bot";
+    params?: BotParamDeclaration[];
     conversation?: ConversationDefinition;
     defaultEntrypoint?: never;
     entrypoints?: never;
@@ -338,7 +337,7 @@ export type ConversationExecutorDefinition<Input, Output> =
 
 export type ExecutorDefinition<Input = unknown, Output = unknown> =
   | ProjectExecutorDefinition
-  | ConversationExecutorDefinition<Input, Output>;
+  | BotExecutorDefinition<any>;
 
 export interface ExecutorModule<Input = unknown, Output = unknown> {
   default?: unknown;

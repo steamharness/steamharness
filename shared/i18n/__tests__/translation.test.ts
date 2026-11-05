@@ -81,9 +81,9 @@ describe("translation resolution", () => {
     expect(i18n.t("copy")).toBe("复制");
     expect([
       i18n.t("projectTypeWorkflow"),
-      i18n.t("projectTypeConversation"),
+      i18n.t("projectTypeBot"),
       i18n.t("projectTypeKanban"),
-    ]).toEqual(["工作流", "对话", "看板"]);
+    ]).toEqual(["工作流", "Bot", "看板"]);
     expect(i18n.t("runStatus.success")).toBe("完成");
     expect(i18n.t("diagnosticViewAction.logs.open")).toBe("显示日志");
   });
@@ -93,9 +93,9 @@ describe("translation resolution", () => {
     expect(i18n.t("copy")).toBe("Copy");
     expect([
       i18n.t("projectTypeWorkflow"),
-      i18n.t("projectTypeConversation"),
+      i18n.t("projectTypeBot"),
       i18n.t("projectTypeKanban"),
-    ]).toEqual(["Workflow", "Conversation", "Kanban"]);
+    ]).toEqual(["Workflow", "Bot", "Kanban"]);
     expect(i18n.t("runStatus.success")).toBe("Done");
     expect(i18n.t("diagnosticViewAction.logs.open")).toBe("Show Logs");
     expect(i18n.t("attachmentPreview", { name: "demo.png" })).toBe("Preview demo.png");

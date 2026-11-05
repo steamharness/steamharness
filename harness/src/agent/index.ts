@@ -23,10 +23,8 @@ export { controlAgentSession, createAgentSessionHost } from "./session-control";
 export type { AgentDefinition, AgentWorkInput, AgentWorkInfo, AgentSubagentAction, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
 export { enqueueAgentWork, enqueueAgentWorks, readAgentWorkContext, AgentWorkProgressDoc, AgentSessionLifecycleDoc } from "./subagents";
 export {
-  createAgentConversationProject,
   createAgentProjectInput,
   createAgentProjectParams,
-  defineAgentConversationExecutor,
 } from "./project";
 
 export {
@@ -59,7 +57,6 @@ export type {
   AgentPlanDecision,
   AgentPlanApprovalRequest,
   AgentProjectOptions,
-  AgentConversationProject,
   AgentProjectParamName,
   AgentProjectParamOptions,
   AgentProjectParamOverride,
@@ -213,3 +210,6 @@ export { parseAgentModelAttributes } from "./model-attributes";
 /** The factory callers use: creates a runnable agent from plain options. */
 export { createAgentRuntime as createAgent } from "./runtime";
 export { exportAgentSession, importAgentSession, forkStoredAgentConversation, isolateStoredAgentConversation, cancelStoredAgentConversation, deleteStoredAgentConversation } from "./stored-session";
+
+export { defineBot } from "./bot";
+export type { BotDefinition, BotAgentOptions, BotInputContext, BotCompletion, BotConversationOptions } from "./bot";

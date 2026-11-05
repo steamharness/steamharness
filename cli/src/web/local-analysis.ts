@@ -24,7 +24,7 @@ const runStatuses = new Set(['running', 'waiting_for_input', 'success', 'failed'
 const number = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 const timestamp = (value: unknown): number | undefined => number(value) !== undefined && Number(value) <= 8_640_000_000_000_000 ? Number(value) : undefined;
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
-const projectType = (value: unknown): string | undefined => typeof value === 'string' && ['workflow', 'conversation', 'kanban'].includes(value) ? value : undefined;
+const projectType = (value: unknown): string | undefined => typeof value === 'string' && ['workflow', 'bot', 'kanban'].includes(value) ? value : undefined;
 const sameProjectId = (value: unknown, id: string): boolean => typeof value === 'string' && value.toLowerCase() === id.toLowerCase();
 
 function summary(value: Record<string, any>, fallback: string): LocalRunSummary {
@@ -143,7 +143,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       if (type !== 'kanban') {
         const backend = options.persistenceForProject?.(reference) ?? createLocalRuntimePersistence({ directory: path.join(root, 'runtime') });
         try {
-          if (type === 'conversation') storedSessions = (await backend.list('conversation')).map(decodeSession);
+          if (type === 'bot') storedSessions = (await backend.list('conversation')).map(decodeSession);
           else storedRuns = (await backend.list('run')).map(record => ({ ...record.state, items: [], events: [] } as unknown as RunRecord));
         } finally { if (!options.persistenceForProject) await backend.close(); }
       }

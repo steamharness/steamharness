@@ -20,7 +20,7 @@ it('processes logout and close while an earlier host authentication is pending',
   const systemAiConnection = { serverUrl: 'https://ai.test', accessToken: 'ai-test-token' };
   vi.mocked(startWebServer).mockResolvedValue({
     url: `http://127.0.0.1:3000/#session=${'a'.repeat(64)}`,
-    manifest:{entries:[],defaultEntry:'main'}, project: { id: 'host-test', name: 'Host test', projectType: 'conversation', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
+    manifest:{entries:[],defaultEntry:'main'}, project: { id: 'host-test', name: 'Host test', projectType: 'bot', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
     setHostConnection, setHostResourceProjects, setHostUserSettings, close,
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([

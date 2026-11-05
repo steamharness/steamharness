@@ -569,6 +569,16 @@ export class DurableAgentSession {
     return input === undefined ? `conversation:${id}` : this.submissions.get(input)?.requestId ?? `submission:${input}`;
   }
 
+  async botSystemPromptFor(id: ConversationId): Promise<string | undefined> {
+    const live = await this.harness.snapshot(LiveDoc, id, context);
+    const input = live?.run?.inputs[0];
+    const submission = input === undefined ? undefined : this.submissions.get(input);
+    if (submission?.type !== "input" || submission.entry === undefined) return;
+    const entry = await this.storage.entry(submission.entry, context);
+    const prompt = object(entry?.entry.data).botSystemPrompt;
+    return typeof prompt === "string" ? prompt : undefined;
+  }
+
   async canRetryTool(id: ConversationId, callContext: typeof context): Promise<boolean> {
     const record = await this.harness.commit(tx => tx.conversation(id), callContext);
     if (!record?.owner) return true;
@@ -713,7 +723,8 @@ export class DurableAgentSession {
         if (typeof command.prompt !== "string" || command.prompt.length > 100_000 || !["steer", "followUp", "reject"].includes(command.mode)) throw new Error("Invalid agent input.");
         const content = command.images?.length ? [{ type: "text" as const, text: command.prompt }, ...command.images.map(image => ({ type: "image" as const, ...image }))] : command.prompt;
         const submission = await this.submitManagedInput(target, { type: "input", content, requestId: command.requestId, whenBusy: command.mode,
-          entry: { kind: "project.input", data: { requestId: command.requestId, mode: command.mode } } }, context);
+          entry: { kind: "project.input", data: { requestId: command.requestId, mode: command.mode,
+            ...((command as { botSystemPrompt?: string }).botSystemPrompt === undefined ? {} : { botSystemPrompt: (command as unknown as { botSystemPrompt: string }).botSystemPrompt }) } } }, context);
         receipt.submissionId = submission.id;
         break;
       }
@@ -994,7 +1005,10 @@ export class DurableAgentSession {
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }
       for (const entry of entries) if (entry.kind.startsWith("project.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
-        records.push({ id: entry.id, conversationId: record.id, kind: entry.kind, label: entry.kind, ...(entry.data === undefined ? {} : { data: plain(entry.data) }) });
+        const data = plain(entry.data);
+        const { botSystemPrompt: _privateBotPrompt, ...publicInput } = object(data);
+        records.push({ id: entry.id, conversationId: record.id, kind: entry.kind, label: entry.kind,
+          ...(entry.data === undefined ? {} : { data: entry.kind === "project.input" ? publicInput : data }) });
       }
       for (const command of Object.values(info.commands).slice(-200)) if (command.receipt) receipts.push(plain(command.receipt) as unknown as AgentSessionReceipt);
     }

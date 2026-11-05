@@ -5,7 +5,7 @@ import { mountEntryWindows } from '../web/ui/entry-windows';
 
 const projectId = '3bd18168-f4f6-486b-842c-ab9f8098d9d4';
 const entries = [
-  { entryId: 'agent', name: 'Agent', type: 'conversation', status: 'running', href: '/entries/agent/', projectCard: { icon: 'bot', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
+  { entryId: 'agent', name: 'Agent', type: 'bot', status: 'running', href: '/entries/agent/', projectCard: { icon: 'bot', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
   { entryId: 'database', name: 'Database', type: 'workflow', status: 'idle', href: '/entries/database/' },
   { entryId: 'board', name: 'Board', type: 'kanban', status: 'idle', href: '/entries/board/' },
 ];

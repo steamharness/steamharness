@@ -26,9 +26,9 @@ it('persists and reopens offline history through the default host backend withou
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-local-history-'));
   const projectId = randomUUID();
   directories.push({ directory, projectId });
-  const entry = { entryId: 'main', name: 'Offline', type: 'conversation' as const, root: '.', entry: 'index.ts', databases: [] };
+  const entry = { entryId: 'main', name: 'Offline', type: 'bot' as const, root: '.', entry: 'index.ts', databases: [] };
   const project: Project = { id: projectId, entryId: 'main', aggregateName: 'Offline', defaultEntry: 'main', entries: [entry],
-    entryRoot: directory, folderPath: directory, uri: '', name: 'Offline', projectType: 'conversation', databases: [], fields: [], entrypoints: [] };
+    entryRoot: directory, folderPath: directory, uri: '', name: 'Offline', projectType: 'bot', databases: [], fields: [], entrypoints: [] };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: projectId, name: 'offline-history', version: '0.1.0', entries: [entry], defaultEntry: 'main' }));
   await writeFile(path.join(directory, 'index.ts'), 'export {};');
   const runtime: Runtime = {

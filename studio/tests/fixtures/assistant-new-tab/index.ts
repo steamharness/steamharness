@@ -11,6 +11,6 @@ const task = steamharness.defineProject({
   },
 });
 export const executor = steamharness.defineExecutor({
-  projectType: 'conversation', workflow: task, conversation: { inputQueue: { enabled: true } },
+  projectType: 'bot', workflow: task, conversation: { inputQueue: { enabled: true } },
   createInput(context) { return steamharness.parseConversationDefaultInputArgs(context.args); },
 });

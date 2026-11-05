@@ -1,16 +1,17 @@
 import type { RuntimeApi } from 'steamharness/runtime-api';
 
 const steamharness = (globalThis as unknown as { steamharness: RuntimeApi }).steamharness;
-const task = steamharness.defineProject({
-  name: 'parameter-layout',
-  run(input) {
-    return steamharness.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: JSON.stringify(input) }] });
-  },
-});
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+const require = createRequire(import.meta.resolve('steamharness'));
+const ai = await import(pathToFileURL(require.resolve('@earendil-works/pi-ai')).href);
+const provider = ai.fauxProvider({ models: [{ id: 'fixture', name: 'Fixture', contextWindow: 8192, maxTokens: 2048 }] });
+const models = ai.createModels(); models.setProvider(provider.provider);
+provider.setResponses(Array.from({ length: 64 }, () => request => ai.fauxAssistantMessage(String(request.messages.filter(message => message.role === 'user').at(-1)?.content ?? 'Ready'))));
 
-export const executor = steamharness.defineExecutor({
-  projectType: 'conversation',
-  workflow: task,
+export const executor = steamharness.defineBot({
+  agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: [],
+    paramOptions: { fields: { provider: false, model: false, effort: false, plan: false, permissionPolicy: false } } },
   params: [
     { kind: 'auxiliary', id: 'writing', label: 'Writing', fields: [
       { name: 'subject', flag: '--subject', type: 'string', label: 'Subject', defaultValue: 'Draft', required: true },
@@ -43,7 +44,7 @@ export const executor = steamharness.defineExecutor({
       audience: { options: { hidden: { visible: false } } },
     } };
   },
-  createInput(context) {
+  prepareInput(input, context) {
     return { ...context.paramValues, message: steamharness.parseConversationDefaultInputArgs(context.args).message };
   },
 });

@@ -1,4 +1,5 @@
 import { t } from './localization';
+import { hydrateUserSettings } from './user-settings';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
@@ -163,7 +164,14 @@ export class ConversationController {
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
   private currentUserSettings(): UserSettings { return parseUserSettings(this.options.userSettings?.() ?? getUserSettings()); }
   private settingsChanged(owner: ConversationSession): boolean {
-    return !!owner.agentParameters && !isDeepStrictEqual(owner.agentParameters.userSettings, this.currentUserSettings());
+    if (!owner.agentParameters) return false;
+    const current = this.currentUserSettings();
+    const saved = owner.agentParameters.userSettings;
+    if (saved?.agent.models === undefined || current.agent.models === undefined) return !isDeepStrictEqual(saved, current);
+    // Persisted history omits credentials. Restore the matching reference before
+    // comparing so resuming an approval cannot retire an unchanged model owner.
+    try { return !isDeepStrictEqual(parseUserSettings(hydrateUserSettings(saved, current)), current); }
+    catch { return true; }
   }
   async create(force = false): Promise<void> {
     const blank = force ? undefined : this.sessions.find((entry) => !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
@@ -267,8 +275,8 @@ export class ConversationController {
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
     const isolation = await this.ensureIndependentFork(entry);
     if (isolation) input = forkReferences(input, isolation);
-    if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
-    if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length && !input.references?.length) { return; }
+    if (this.project.projectType !== 'bot' && input.text) { this.rawArgs(input.text); }
+    if (this.project.projectType === 'bot' && !input.text.trim() && !input.attachments.length && !input.references?.length) { return; }
     const id = requestId ?? globalThis.crypto.randomUUID();
     const queued: ConversationQueuedInput = { ...input, id, requestId: id, createdAt: Date.now(), params: { ...input.params }, attachments: [...input.attachments] };
     if (entry.messages.some(message => message.id === id || message.sessionRequestId === id || message.input?.requestId === id) || entry.queuedInputs?.some(item => item.id === id || item.requestId === id)) return;
@@ -356,7 +364,7 @@ export class ConversationController {
       && !answer.pendingInput && !answer.submittingInput;
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = projectParamArgs(parameters.fields, input.params, input.states);
-    if (this.project.projectType === 'conversation') {
+    if (this.project.projectType === 'bot') {
       args.push('--message', conversationPrompt(input.text, input.references));
       for (const [flag, files] of [
         ['--images', input.attachments.filter((file) => file.kind === 'image')],
@@ -440,7 +448,7 @@ export class ConversationController {
         if (event.type === 'token_usage_updated' && !this.project.conversation?.durable?.enabled) {
           answer.tokenUsage = { enabled: true, display: true, run: event.usage as Record<string, unknown> };
         }
-        if (event.type === 'user_input_requested') { answer.pendingInput = event as unknown as ConversationMessage['pendingInput']; }
+        if (event.type === 'user_input_requested') { this.bindUserInput(entry, answer, event as unknown as NonNullable<ConversationMessage['pendingInput']>); }
         if (event.type === 'user_input_resolved') {
           this.confirmInput(entry, answer, event as unknown as ResolvedInput);
           if (answer.pendingInput?.requestId === event.requestId) { answer.pendingInput = undefined; }
@@ -454,9 +462,13 @@ export class ConversationController {
         this.changed();
       });
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
+      if (report.status === 'waiting_for_input' && report.pendingUserInput) {
+        const target = this.bindUserInput(entry, answer, report.pendingUserInput);
+        if (target !== answer) { target.report = report; entry.queuePaused = true; return; }
+      }
       if (historical) {
         if (report.status === 'failed') {
-          const error = new Error(report.result?.error?.message ?? t("Run failed"));
+          const error = new Error(report.result?.error?.message ?? report.error?.message ?? t("Run failed"));
           this.failAgentTurns(entry, error.message);
           this.rejectAgentWaiters(entry.id, error);
           this.options.log(`Agent reconnection: ${error.message}`);
@@ -643,7 +655,7 @@ export class ConversationController {
     const anchors = owner.messages.filter(message => message.role === 'assistant' && message.runId && message.args);
     // A rejected bootstrap has no admitted turn and must never become the
     // historical input used to reconnect an existing durable owner.
-    return [...anchors].reverse().find(message => owner.agent?.turns.some(turn => turn.entryId !== undefined && turn.requestId.startsWith(`${message.runId}:`)))
+    return [...anchors].reverse().find(message => owner.agent?.turns.some(turn => turn.entryId !== undefined && (turn.requestId === (message.agentAnchorRequestId ?? message.runId) || turn.requestId.startsWith(`${message.agentAnchorRequestId ?? message.runId}:`))))
       ?? anchors.find(message => message.status !== 'failed') ?? anchors[0];
   }
   async openAgentConversation(sessionId: string, conversationId: number): Promise<string> {
@@ -733,8 +745,8 @@ export class ConversationController {
         if (turn.status === 'unanswered' && entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (turn.status === 'queued' || turn.status === 'unanswered' && !turn.entryId) continue;
         // Plan revisions and Build resumes belong to the original workflow answer.
-        const continuation = anchors.find(message => turn.requestId.startsWith(`${message.runId}:`));
-        const outputTurns = continuation ? turns.filter(part => part.requestId.startsWith(`${continuation.runId}:`) && part.status !== 'queued' && (part.status !== 'unanswered' || part.entryId !== undefined)) : [turn];
+        const continuation = anchors.find(message => turn.requestId === (message.agentAnchorRequestId ?? message.runId) || turn.requestId.startsWith(`${message.agentAnchorRequestId ?? message.runId}:`));
+        const outputTurns = continuation ? turns.filter(part => (part.requestId === (continuation.agentAnchorRequestId ?? continuation.runId) || part.requestId.startsWith(`${continuation.agentAnchorRequestId ?? continuation.runId}:`)) && part.status !== 'queued' && (part.status !== 'unanswered' || part.entryId !== undefined)) : [turn];
         if (turn !== outputTurns.at(-1)) continue;
         let answer = continuation ?? entry.messages.find(message => message.role === 'assistant' && message.sessionRequestId === turn.requestId);
         if (continuation) continuation.sessionRequestId = turn.requestId;
@@ -793,6 +805,7 @@ export class ConversationController {
         if (startedAt !== undefined && turn.endedAt !== undefined && terminal) answer.durationMs = Math.max(0, turn.endedAt - startedAt);
         const extras = answer.items?.filter(item => item.display) ?? [];
         answer.items = [...outputTurns.flatMap(part => part.items), ...extras]; answer.content = outputText(answer.items);
+        if (answer.pendingInput) answer.status = 'waiting_for_input';
       }
     }
     if (!restore) this.configurationChanged();
@@ -942,6 +955,17 @@ export class ConversationController {
       }
     }
   }
+  private settleStoppedAgent(owner: ConversationSession): void {
+    const snapshot = owner.agent;
+    if (snapshot && (snapshot.foreground || snapshot.tasks.length || snapshot.turns.some(turn => turn.status === 'placed' || turn.status === 'queued'))) {
+      this.pauseInterruptedAgent(owner);
+    } else {
+      for (const session of this.sessions.filter(entry => (entry.agentOwnerId ?? entry.id) === owner.id)) {
+        session.queuePaused = true; delete session.agentInterrupted;
+      }
+    }
+    this.failAgentTurns(owner, t('Stopped'), false, 'aborted');
+  }
   private finishDuration(answer: ConversationMessage): void {
     if (answer.durationMs === undefined && answer.createdAt !== undefined) answer.durationMs = Math.max(0, Date.now() - answer.createdAt);
   }
@@ -1030,7 +1054,14 @@ export class ConversationController {
       session.agentCommands = session.agentCommands?.filter(item => item.command.type === 'cancel');
     }
     let controlError: unknown;
-    if (this.project.conversation?.durable?.enabled && entry.agent && !entry.messages.some(message => message.pendingInput)) {
+    if (entry === commandOwner && entry.agent && !commandOwner.activeRunId) {
+      // Cancelling stored work must remain possible after credentials expire;
+      // it does not require restarting the model that owned the last turn.
+      await this.runtime.cancelConversation(this.project, entry.id);
+      this.settleStoppedAgent(entry);
+      this.changed(); await this.persist(); return;
+    }
+    if (this.project.conversation?.durable?.enabled && entry.agent && (entry !== commandOwner || sessionRunning(entry)) && !entry.messages.some(message => message.pendingInput)) {
       const owner = this.owner(entry);
       try { await this.agentCommand(entry.id, { type: 'cancel', requestId: globalThis.crypto.randomUUID(), scope: 'all' }); }
       catch (error) { if (entry !== owner) throw error; controlError = error; }
@@ -1069,7 +1100,40 @@ export class ConversationController {
       })();
       await cancellation.finished;
     }
+    if (entry.agent) {
+      // The worker can exit after acknowledging cancel and before its final
+      // snapshot arrives. Preserve completed replies and settle the active
+      // follow-ups locally; the next explicit resume refreshes persisted state.
+      this.settleStoppedAgent(entry);
+      this.changed(); await this.persist();
+    }
     if (controlError) throw controlError;
+  }
+  private bindUserInput(entry: ConversationSession, owner: ConversationMessage, request: NonNullable<ConversationMessage['pendingInput']>): ConversationMessage {
+    const logicalId = request.metadata?.botRequestId;
+    let target = typeof logicalId === 'string' && this.project.conversation?.durable?.enabled
+      ? entry.messages.find(message => message.role === 'assistant' && (message.sessionRequestId === logicalId || message.id === logicalId)) : undefined;
+    const input = typeof logicalId === 'string' ? entry.agentInputs?.[logicalId] : undefined;
+    if (!target && input && entry.agent) {
+      const conversationId = entry.agentConversationId ?? entry.agent.conversationId;
+      const id = `session:${conversationId}:${logicalId}`;
+      entry.messages.push({ id: `${id}:input`, role: 'user', content: input.text, createdAt: input.createdAt,
+        input, attachments: input.attachments, references: input.references });
+      target = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: logicalId as string,
+        sessionConversationId: conversationId, model: conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) };
+      entry.messages.push(target);
+    }
+    target ??= owner;
+    if (target !== owner) {
+      target.agentAnchorRequestId = logicalId as string;
+      target.runId = owner.runId; target.args = owner.args ? [...owner.args] : undefined;
+      target.userSettings = owner.userSettings; target.entrypointId = owner.entrypointId;
+      target.configurationSelection = owner.configurationSelection;
+      if (owner.pendingInput?.requestId === request.requestId) delete owner.pendingInput;
+      if (entry.agent?.turns.some(turn => turn.requestId === owner.sessionRequestId && turn.status === 'done')) owner.status = 'success';
+    }
+    target.pendingInput = request; target.status = 'waiting_for_input'; target.recovering = false; delete target.error;
+    return target;
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
     await this.ensureIndependentFork(entry);

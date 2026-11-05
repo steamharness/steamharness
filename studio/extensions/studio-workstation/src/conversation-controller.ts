@@ -96,8 +96,8 @@ export class ConversationController {
     const parameters = projectParameters(this.project, input.entrypointId);
     validateProjectValues(parameters.fields, input.params, input.states);
     if (this.removing.has(entry.id)) { return; }
-    if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
-    if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length) { return; }
+    if (this.project.projectType !== 'bot' && input.text) { this.rawArgs(input.text); }
+    if (this.project.projectType === 'bot' && !input.text.trim() && !input.attachments.length) { return; }
     const queued: ConversationQueuedInput = { ...input, id: globalThis.crypto.randomUUID(), createdAt: Date.now(), params: { ...input.params }, attachments: [...input.attachments] };
     const waiting = entry.messages.some((message) => message.pendingInput);
     if (entry.activeRunId || waiting || entry.queuedInputs?.length) {
@@ -117,7 +117,7 @@ export class ConversationController {
   private start(entry: ConversationSession, input: ConversationQueuedInput, answer?: ConversationMessage): void {
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = projectParamArgs(parameters.fields, input.params, input.states);
-    if (this.project.projectType === 'conversation') {
+    if (this.project.projectType === 'bot') {
       args.push('--message', input.text);
       for (const [flag, files] of [
         ['--images', input.attachments.filter((file) => file.kind === 'image')],

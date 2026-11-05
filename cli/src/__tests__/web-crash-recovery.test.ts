@@ -13,7 +13,7 @@ import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { startWebServer } from '../web/server';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
-it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after its CLI is SIGKILLed during %s without sending its queue after failure', async phase => {
+it.each(['generation', 'uncooperative-tool'])('recovers a Bot after its CLI is SIGKILLed during %s without sending its queue after failure', async phase => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-crash-recovery-'));
   const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
   const applicationId = crypto.randomUUID(), dataDir = path.join(testDataDirectory(directory));
@@ -42,26 +42,29 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'crash-fixture', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },
-      defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
+      defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import { writeFileSync } from 'node:fs';
-      const core = steamharness.createAgentConversationProject({ projectName: 'Crash fixture', outputItemId: 'answer',
-        provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline-fixture',
-        baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1', contextWindow: 8192, tools: [],
-        createTools() { return [{ name: 'stuck_tool', label: 'Stuck tool', description: 'Offline shutdown fixture',
+
+      export const executor = steamharness.defineBot({
+agent: {paramOptions: { fields: { provider: false, model: false } }, provider: 'openai',
+model: 'fixture',
+apiKind: 'openai-completions',
+apiKey: 'offline-fixture',
+baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1',
+contextWindow: 8192,
+tools: [],
+createTools() { return [{ name: 'stuck_tool', label: 'Stuck tool', description: 'Offline shutdown fixture',
           parameters: { type: 'object', properties: {} }, replay: 'never',
           async execute() {
             writeFileSync(new URL('./tool-started', import.meta.url), String(process.pid));
             setInterval(() => {}, 1000);
             await new Promise(() => {});
-          } }]; }
-      });
-      const wrapped = steamharness.defineProject({ name: 'Business wrapper', run(input, context) { return core.run(input, context); } });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: wrapped, coreAgent: core,
-        conversation: { inputQueue: { enabled: true } }, params: [],
-        tools: [{ name: 'stuck_tool', enabled: true, autoApprove: true }],
-        createInput({ args }) { writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid)); return steamharness.createAgentProjectInput(args); }
-      });
+          } }]; }},
+params: [],
+tools: [{ name: 'stuck_tool', enabled: true, autoApprove: true }],
+prepareInput(input, { args }) { writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid)); return input; }
+});
     `);
     cli = spawn(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), 'web', directory, '--data-dir', dataDir, '--no-open', '--json'],
       { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: connection.accessToken }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -112,7 +115,6 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     workerPid = undefined;
     expect(restored.project.conversation?.recovery?.enabled).toBe(true);
     await expect.poll(() => restored!.controller!.current.messages.at(-1)?.status, { timeout: 90_000 }).toBe('failed');
-    await restored.controller!.idle();
     const session = restored.controller!.current;
     expect(session.messages.filter(message => message.role === 'assistant')).toHaveLength(1);
     expect(session.messages.at(-1)?.status).toBe('failed');
@@ -129,7 +131,8 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
       Authorization: `Bearer ${new URL(restored.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json',
     }, body: JSON.stringify({ type: 'send', text: 'Explicit input after restart', params: {}, attachments: [] }) });
     expect(resumed.status, await resumed.text()).toBe(200);
-    await restored.controller!.idle();
+    await expect.poll(() => restored!.controller!.current.messages.filter(message => message.role === 'assistant').map(message => message.status), { timeout: 12_000 })
+      .toEqual(['failed', 'success', 'success', 'success']);
     const current = restored.controller!.current;
     expect(current.messages.filter(message => message.role === 'assistant').map(message => message.status)).toEqual(['failed', 'success', 'success', 'success']);
     expect(current.queuedInputs).toEqual([]); expect(calls).toBe(failedCalls + 3);

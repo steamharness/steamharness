@@ -1,3 +1,4 @@
+import { botConversationDefaults, botParams, botTools } from "../agent/bot";
 import { projectEntrySources } from "../project-sources";
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
@@ -561,7 +562,7 @@ export function inspectProjectStructure(
           type: "invalid_executor_project_type",
           name: "projectType",
           message: createProjectTypeRuleMessage(
-            'Workflow must define an executor with projectType: "workflow" or projectType: "conversation".',
+            'Project must export defineExecutor for Workflow or defineBot for Bot.',
           ),
           locations: [],
         }],
@@ -624,7 +625,7 @@ function createMissingExecutorViolation(): ScriptRuleViolation {
     type: "invalid_executor_project_type",
     name: "executor",
     message: createProjectTypeRuleMessage(
-      'Project must export steamharness.defineExecutor({ projectType: "workflow" | "conversation", ... }).',
+      'Project must export steamharness.defineExecutor({ projectType: "workflow" | "bot", ... }).',
     ),
     locations: [],
   };
@@ -1653,7 +1654,7 @@ function analyzeSourceFile(
       return;
     }
     const variableName = readProjectDefinitionBindingName(node);
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
     if (variableName === undefined) return;
     const projectOptions = objectArg === undefined ? undefined : unwrapExpression(objectArg);
     const projectName = projectOptions !== undefined && ts.isObjectLiteralExpression(projectOptions)
@@ -1675,7 +1676,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
 
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
       return;
@@ -1691,23 +1692,43 @@ function analyzeSourceFile(
     if (paramsProperty === undefined) {
       const options = readCoreAgentOptions(objectArg);
       if (options) {
-        const normalized = normalizeProjectParamDeclarations(options.params ?? createAgentProjectParams(options));
+        const normalized = normalizeProjectParamDeclarations(botParams(options));
         analysis.executorParams = normalized.params;
         analysis.executorParamLayout = normalized.layout;
       }
       return;
     }
-    const normalized = readExecutorParamDeclarations(paramsProperty, "Conversation executor");
+    const normalized = readExecutorParamDeclarations(paramsProperty, "Bot executor");
     if (normalized !== undefined) {
-      analysis.executorParams = normalized.params;
-      analysis.executorParamLayout = normalized.layout;
+      const core = readCoreAgentOptions(objectArg);
+      if (core) {
+        const combined = normalizeProjectParamDeclarations(botParams(core, readParamLiteral(paramsProperty.initializer) as import("./types").BotParamDeclaration[]));
+        analysis.executorParams = combined.params;
+        analysis.executorParamLayout = combined.layout;
+      } else {
+        analysis.executorParams = normalized.params;
+        analysis.executorParamLayout = normalized.layout;
+      }
     }
+  }
+
+  function readParamLiteral(node: ts.Expression): unknown {
+    const value = evaluateExpression(node);
+    const literal = (v: StructureValue): unknown => {
+      if (v.kind === "literal") return v.value;
+      if (v.kind === "variable" && v.name === "undefined") return undefined;
+      if (v.kind === "array") return v.value.map(literal);
+      if (v.kind === "object") return Object.fromEntries(Object.entries(v.value).map(([k, item]) => [k, literal(item)]));
+      if (v.kind === "variable" && v.resolved) return literal(v.resolved);
+      throw new Error("Bot parameters must be static.");
+    };
+    return literal(value);
   }
 
   function collectExecutorParamResolver(node: ts.Node): void {
     if (!ts.isCallExpression(node) || analysis.executorParamResolver !== undefined) return;
     if (!isProjectDefineExecutorCall(node)) return;
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
     if (!objectArg || !ts.isObjectLiteralExpression(objectArg)) return;
     const resolver = objectArg.properties.find((property) => (
       (ts.isMethodDeclaration(property) || ts.isPropertyAssignment(property)) &&
@@ -1724,9 +1745,8 @@ function analyzeSourceFile(
       (property): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
         (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && readStructurePropertyName(property.name) === name,
     );
-    const explicit = findReference("coreAgent");
-    const reference = explicit ?? findReference("workflow");
-    if (!reference) return;
+    if (!ts.isCallExpression(executor.parent) || readProjectApiCallName(executor.parent.expression) !== "defineBot") return;
+    const reference = findReference("agent");
     const seen = new Set<string>();
     const resolve = (expression: ts.Expression): ts.Expression => {
       expression = unwrapExpression(expression);
@@ -1740,48 +1760,40 @@ function analyzeSourceFile(
       }
       return expression;
     };
-    const call = resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
-    let factory = ts.isCallExpression(call) ? readProjectApiCallName(call.expression) : undefined;
-    if (ts.isCallExpression(call)) {
-      for (const statement of sourceFile.statements) {
-        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text)) continue;
-        const bindings = statement.importClause?.namedBindings;
-        if (ts.isIdentifier(call.expression) && bindings && ts.isNamedImports(bindings)) for (const item of bindings.elements) {
-          if (item.name.text === call.expression.text) factory = item.propertyName?.text ?? item.name.text;
-        }
-        if (bindings && ts.isNamespaceImport(bindings) && ts.isPropertyAccessExpression(call.expression) &&
-          ts.isIdentifier(call.expression.expression) && bindings.name.text === call.expression.expression.text) factory = call.expression.name.text;
-      }
-    }
-    if (!ts.isCallExpression(call) || factory !== "createAgentConversationProject") {
-      if (explicit) invalid("coreAgent must reference a statically named Core Agent conversation project.");
-      return;
-    }
     try {
-      const options: AgentProjectOptions = {};
-      const argument = call.arguments[0] === undefined ? undefined : resolve(call.arguments[0]);
+      const options: AgentProjectOptions = { session: {} };
+      const argument = reference === undefined ? undefined : resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
       if (argument !== undefined && !ts.isObjectLiteralExpression(argument)) throw new Error("Core Agent options must be a static object.");
       for (const property of argument?.properties ?? []) {
         if (ts.isSpreadAssignment(property)) throw new Error("Core Agent options cannot spread dynamic parameter configuration.");
-        if (ts.isMethodDeclaration(property) && readStructurePropertyName(property.name) === "createSession") { options.session = {}; continue; }
+        const field = property.name ? readStructurePropertyName(property.name) : undefined;
+        if (["outputItemId", "executorName", "projectName", "params", "collapseIntermediate", "toolDefinitions"].includes(field ?? "")) throw new Error(`Bot agent.${field} is not customizable.`);
+        if (ts.isMethodDeclaration(property) && readStructurePropertyName(property.name) === "createSession") { options.session = {}; options.createSession = () => ({}); continue; }
         if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
         const name = readStructurePropertyName(property.name);
+        if (name === "skills") { options.skills = { directories: [] }; continue; }
         if (name === "session" || name === "createSession") {
+          if (name === "createSession") options.createSession = () => ({});
           const value = resolve(ts.isPropertyAssignment(property) ? property.initializer : property.name);
           if (!(ts.isIdentifier(value) && value.text === "undefined") && value.kind !== ts.SyntaxKind.NullKeyword) options.session = {};
+          if (name === "session" && ts.isObjectLiteralExpression(value)) {
+            if (findStaticPropertyAssignment(value, "subagents")) options.session = { ...options.session, subagents: { tools: [] } };
+            if (findStaticPropertyAssignment(value, "toolSearch")) options.session = { ...options.session, toolSearch: {} };
+            if (findStaticPropertyAssignment(value, "codeMode")) options.session = { ...options.session, codeMode: {} };
+          }
           continue;
         }
-        if (!name || !["modelSource", "model", "effort", "permissionPolicy", "mode", "params", "paramOptions"].includes(name)) continue;
+        if (!name || !["modelSource", "model", "effort", "permissionPolicy", "mode", "tools", "paramOptions"].includes(name)) continue;
         const expression = ts.isPropertyAssignment(property) ? property.initializer : property.name;
         (options as Record<string, unknown>)[name] = literal(evaluateExpression(resolve(expression)));
       }
-      normalizeProjectParamDeclarations(options.params ?? createAgentProjectParams(options));
+      normalizeProjectParamDeclarations(botParams(options));
       coreOptions.set(executor, options);
       return options;
     } catch (error) { invalid(error instanceof Error ? error.message : String(error)); }
     function invalid(message: string): void {
       analysis.executorConfigurationViolations.push({ type: "invalid_executor_param_configuration", name: "coreAgent", message,
-        locations: [createLocation(cwd, filePath, sourceFile, reference!)] });
+        locations: [createLocation(cwd, filePath, sourceFile, reference ?? executor)] });
     }
     function literal(value: StructureValue): unknown {
       if (value.kind === "literal") return value.value;
@@ -1808,7 +1820,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
 
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
       return;
@@ -1822,6 +1834,8 @@ function analyzeSourceFile(
     );
 
     if (toolsProperty === undefined || !ts.isArrayLiteralExpression(toolsProperty.initializer)) {
+      const core = readCoreAgentOptions(objectArg);
+      if (core) analysis.executorTools = botTools(core);
       return;
     }
 
@@ -1842,7 +1856,8 @@ function analyzeSourceFile(
     if (tools.length > 0) {
       // Expose registered tool permissions through the structure
       // report so local hosts can render their policy controls.
-      analysis.executorTools = tools;
+      const core = readCoreAgentOptions(objectArg);
+      analysis.executorTools = core ? botTools(core, tools) : tools;
     }
   }
 
@@ -1858,54 +1873,23 @@ function analyzeSourceFile(
       return;
     }
 
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
 
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
       return;
     }
 
-    const conversationProperty = findStaticPropertyAssignment(objectArg, "conversation");
-
-    if (
-      conversationProperty === undefined ||
-      !ts.isObjectLiteralExpression(conversationProperty.initializer)
-    ) {
-      const options = readCoreAgentOptions(objectArg);
-      if (options) analysis.executorConversation = { recovery: { enabled: true }, ...(options.session ? { durable: { enabled: true } } : {}) };
-      return;
-    }
-
-    const attachments = readConversationAttachmentsProperty(
-      conversationProperty.initializer,
-    );
-    const inputQueue = readConversationInputQueueProperty(
-      conversationProperty.initializer,
-    );
-    const openai = readConversationOpenAIProperty(
-      conversationProperty.initializer,
-    );
-    const footer = readConversationFooterProperty(conversationProperty.initializer);
-    const commands = readConversationCommandsProperty(conversationProperty.initializer);
-    const userInput = readConversationUserInputProperty(conversationProperty.initializer);
-    const collapseIntermediate = readConversationPresentationProperty(conversationProperty.initializer);
-    const recoveryProperty = findStaticPropertyAssignment(conversationProperty.initializer, "recovery");
-    const recovery = readCoreAgentOptions(objectArg) || recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
-      && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const, ...(recoveryProperty && ts.isObjectLiteralExpression(recoveryProperty.initializer) && readStringProperty(recoveryProperty.initializer, "startup") === "manual" ? { startup: "manual" as const } : {}) } : undefined;
-    const durableProperty = findStaticPropertyAssignment(conversationProperty.initializer, "durable");
-    const durable = readCoreAgentOptions(objectArg)?.session || durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)
-      && readBooleanProperty(durableProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
-    if (collapseIntermediate !== undefined || durable !== undefined || recovery !== undefined || attachments !== undefined || inputQueue !== undefined || openai !== undefined || footer !== undefined || commands !== undefined || userInput !== undefined) {
-      analysis.executorConversation = {
-        ...(collapseIntermediate === undefined ? {} : { collapseIntermediate }),
-        ...(durable === undefined ? {} : { durable }),
-        ...(recovery === undefined ? {} : { recovery }),
-        ...(attachments === undefined ? {} : { attachments }),
-        ...(inputQueue === undefined ? {} : { inputQueue }),
-        ...(openai === undefined ? {} : { openai }),
-        ...(footer === undefined ? {} : { footer }),
-        ...(commands === undefined ? {} : { commands }),
-        ...(userInput === undefined ? {} : { userInput }),
-      };
+    if (readProjectApiCallName(node.expression) !== "defineBot") return;
+    const property = findStaticPropertyAssignment(objectArg, "conversation");
+    try {
+      const value = property ? readParamLiteral(property.initializer) : {};
+      analysis.executorConversation = botConversationDefaults(value as import("../agent/bot").BotConversationOptions);
+      const fields = analysis.executorParams ?? [];
+      assertConversationFooter(analysis.executorConversation.footer, fields);
+      assertConversationCommands(analysis.executorConversation.commands, fields);
+      assertConversationUserInput(analysis.executorConversation.userInput, fields);
+    } catch (error) {
+      analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: "conversation", message: `Bot conversation ${property && ts.isObjectLiteralExpression(property.initializer) ? property.initializer.properties.map(p => p.name?.getText(sourceFile)).join(", ") : "settings"}: ${String(error)}`, locations: [createLocation(cwd, filePath, sourceFile, property ?? objectArg)] });
     }
   }
 
@@ -1915,8 +1899,12 @@ function analyzeSourceFile(
     }
 
     analysis.executorDefinitionCount += 1;
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
+      if (readProjectApiCallName(node.expression) === "defineBot") {
+        analysis.executorConfigurationViolations.push({ type: "invalid_executor_project_type", name: "executor", message: "defineBot must receive a static object literal.", locations: [createLocation(cwd, filePath, sourceFile, node)] });
+        return;
+      }
       analysis.structureWarnings.push({
         message: "Executor project type could not be read statically and will be resolved at runtime.",
         location: createLocation(cwd, filePath, sourceFile, node),
@@ -1928,18 +1916,29 @@ function analyzeSourceFile(
     const projectTypeProperty = findStaticPropertyAssignment(objectArg, "projectType");
     const conversationProperty = findStaticPropertyAssignment(objectArg, "conversation");
 
-    const declaredProjectType = projectTypeProperty !== undefined && ts.isStringLiteralLike(projectTypeProperty.initializer)
+    const declaredProjectType = readProjectApiCallName(node.expression) === "defineBot" ? "bot" : projectTypeProperty !== undefined && ts.isStringLiteralLike(projectTypeProperty.initializer)
       ? projectTypeProperty.initializer.text
       : undefined;
     if (!isExecutorProjectKind(declaredProjectType)) {
       if (projectTypeProperty && !ts.isStringLiteralLike(projectTypeProperty.initializer)) {
         analysis.structureWarnings.push({message:"Executor project type is dynamic and will be resolved at runtime.",location});
       } else {
-        analysis.executorConfigurationViolations.push({type:"invalid_executor_project_type",name:"projectType",message:"Executor projectType must explicitly be workflow or conversation.",locations:[location]});
+        analysis.executorConfigurationViolations.push({type:"invalid_executor_project_type",name:"projectType",message:"Use defineExecutor for Workflow or defineBot for Bot.",locations:[location]});
       }
       return;
     }
     const projectType = declaredProjectType;
+    const bot = readProjectApiCallName(node.expression) === "defineBot";
+    if (projectType === "bot" && !bot) {
+      analysis.executorConfigurationViolations.push({ type: "invalid_executor_project_type", name: "projectType", message: "Bot projects must use defineBot.", locations: [location] });
+    }
+    if (bot) {
+      const allowed = new Set(["name", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
+      for (const property of objectArg.properties) {
+        const name = property.name ? readStructurePropertyName(property.name) : undefined;
+        if (!name || !allowed.has(name)) analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: name ?? "spread", message: `Unsupported Bot field ${name ?? "spread"}.`, locations: [location] });
+      }
+    }
 
     if (
       analysis.executorProjectType !== undefined &&
@@ -1982,13 +1981,13 @@ function analyzeSourceFile(
         analysis.executorConfigurationViolations.push({
           type: "project_type_configuration_conflict",
           name: "defaultInput",
-          message: "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
+          message: "conversation.defaultInput was removed. Bot always uses the standard message input; declare attachment capabilities in conversation.attachments.",
           locations: [createLocation(cwd, filePath, sourceFile, defaultInputProperty)],
         });
       }
 
       switch (projectType) {
-        case "conversation":
+        case "bot":
           break;
         case "workflow":
           analysis.structureWarnings.push({
@@ -2236,12 +2235,13 @@ function analyzeSourceFile(
       return;
     }
 
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
 
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
       return;
     }
 
+    if (readProjectApiCallName(node.expression) === "defineBot") { analysis.executorTokenUsage = { enabled: true, display: true }; return; }
     const tokenUsageProperty = objectArg.properties.find(
       (prop): prop is ts.PropertyAssignment =>
         ts.isPropertyAssignment(prop) &&
@@ -2277,7 +2277,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const objectArg = node.arguments[0];
+    const objectArg = projectDefinitionArgument(node);
 
     if (objectArg === undefined || !ts.isObjectLiteralExpression(objectArg)) {
       return;
@@ -2532,7 +2532,7 @@ function analyzeSourceFile(
     }
     if (analysis.executorConfigurationViolations.length > initialViolationCount) return undefined;
     try {
-      assertProjectParamDeclarations(declarations, owner === "Conversation executor" ? "conversation" : "workflow");
+      assertProjectParamDeclarations(declarations, owner === "Bot executor" ? "bot" : "workflow");
       return normalizeProjectParamDeclarations(declarations);
     } catch (error) {
       analysis.executorConfigurationViolations.push({
@@ -2652,12 +2652,17 @@ function analyzeSourceFile(
       return undefined;
     }
 
+    const approvalMode = readStringProperty(obj, "approvalMode");
+    if (findStaticPropertyAssignment(obj, "approvalMode") && approvalMode !== "always" && approvalMode !== "plan") {
+      analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: "tools", message: "Tool approvalMode must be always or plan.", locations: [createLocation(cwd, filePath, sourceFile, obj)] });
+    }
     return {
       name,
       label: readStringProperty(obj, "label"),
       description: readStringProperty(obj, "description"),
       enabled: readBooleanProperty(obj, "enabled"),
       autoApprove: readBooleanProperty(obj, "autoApprove"),
+      ...(approvalMode === "always" || approvalMode === "plan" ? { approvalMode } : {}),
     };
   }
 
@@ -4416,8 +4421,16 @@ function readRunNodeCallee(node: ts.CallExpression): "runNode" | "runStreamNode"
   return "runNode";
 }
 
+function projectDefinitionArgument(node: ts.CallExpression): ts.Expression | undefined {
+  if (node.arguments[0]) return node.arguments[0];
+  if (readProjectApiCallName(node.expression) !== "defineBot") return;
+  const value = ts.factory.createObjectLiteralExpression();
+  Object.assign(value, { parent: node, pos: node.pos, end: node.end });
+  return value;
+}
+
 function isProjectDefineExecutorCall(node: ts.CallExpression): boolean {
-  return readProjectApiCallName(node.expression) === "defineExecutor" ||
+  return readProjectApiCallName(node.expression) === "defineBot" || readProjectApiCallName(node.expression) === "defineExecutor" ||
     readProjectApiCallName(node.expression) === "defineProjectExecutor";
 }
 

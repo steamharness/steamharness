@@ -32,12 +32,13 @@ it('falls back to project models in standalone Web and follows later host capabi
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'model-modes', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'model-modes', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
     await writeFile(path.join(directory, 'index.ts'), `
-      const project = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [] });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: project,
-        createInput(context) { return steamharness.createAgentProjectInput(context); }
-      });
+
+      export const executor = steamharness.defineBot({
+agent: {modelSource: 'user-settings',
+tools: []}
+});
     `);
     app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
@@ -58,7 +59,10 @@ it('falls back to project models in standalone Web and follows later host capabi
     };
     expect((await resolve('standalone')).resolvedOptions).toEqual([{ value: project.id, label: project.name, description: project.model }]);
     const send = async (text: string) => {
-      await post({ type: 'send', text, params: {}, attachments: [] }); await app!.controller.idle();
+      const count = app!.controller.current.messages.filter(message => message.role === 'assistant').length;
+      await post({ type: 'send', text, params: {}, attachments: [] });
+      await expect.poll(() => app!.controller.current.messages.filter(message => message.role === 'assistant').length).toBe(count + 1);
+      await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe("success");
       const answer = app!.controller.current.messages.at(-1);
       expect(answer?.status, answer?.error).toBe('success');
     };

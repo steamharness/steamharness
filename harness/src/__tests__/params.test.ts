@@ -1,3 +1,4 @@
+import { defineBot } from "../agent/bot";
 import { createMemoryRuntimePersistence } from "../runtime-storage/memory";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
@@ -84,27 +85,17 @@ test("conversation structure reports every declared parameter action", async () 
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-actions-"));
   try {
     await Promise.all([
-      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}],
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}],
         name: "param-actions-structure-test", version: "0.1.0", type: "module",
       })),
       writeFile(path.join(projectDir, "index.ts"), `
         const conversationProject = steamharness.defineProject({ name: "conversation", run(input) { return input; } });
-        export const executor = steamharness.defineExecutor({
-          projectType: "conversation", workflow: conversationProject,
-          params: [
-            { kind: "auxiliary", id: "workspace", label: "Workspace", fields: [
-              { name: "workdir", flag: "--workdir", type: "string" },
-              { name: "trace", flag: "--trace", type: "boolean" },
-            ] },
-            { kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["model"], fields: [
-              { name: "model", flag: "--model", type: "string", control: "select", options: [{ value: "sol" }] },
-            ] },
-            { kind: "mode", name: "taskMode", flag: "--task-mode", options: [{ value: "ask" }, { value: "build" }] },
-            { kind: "auxiliary", id: "output", label: "Output", fields: [
-              { name: "format", flag: "--format", type: "string" },
-            ] },
-          ],
-          createInput({ paramValues }) { return paramValues; },
+        export const executor = steamharness.defineBot({
+          agent: { paramOptions: { fields: { provider: false, model: false, effort: false, plan: false, permissionPolicy: false } } },
+          params: [{ kind: "auxiliary", id: "workspace", label: "Workspace", fields: [{ name: "workdir", flag: "--workdir", type: "string" },{ name: "trace", flag: "--trace", type: "boolean" }] },
+{ kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["responseModel"], fields: [{ name: "responseModel", flag: "--responseModel", type: "string", control: "select", options: [{ value: "sol" }] }] },
+{ kind: "mode", name: "taskMode", flag: "--task-mode", options: [{ value: "ask" }, { value: "build" }] },
+{ kind: "auxiliary", id: "output", label: "Output", fields: [{ name: "format", flag: "--format", type: "string" }] }],
         });
         export { conversationProject as workflow };
         export default conversationProject;
@@ -115,12 +106,12 @@ test("conversation structure reports every declared parameter action", async () 
     assert.deepEqual(structure.diagnostics.violations, []);
     assert.deepEqual(structure.params?.map(({ name, panel }) => [name, panel]), [
       ["workdir", "auxiliary"], ["trace", "auxiliary"],
-      ["model", "quick"], ["taskMode", "mode"], ["format", "auxiliary"],
+      ["responseModel", "quick"], ["taskMode", "mode"], ["format", "auxiliary"],
     ]);
     assert.equal(structure.params?.find((param) => param.name === "taskMode")?.defaultValue, "ask");
     assert.deepEqual(structure.paramLayout?.actions, [
       { kind: "auxiliary", id: "workspace", label: "Workspace", params: ["workdir", "trace"] },
-      { kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["model"], params: ["model"] },
+      { kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["responseModel"], params: ["responseModel"] },
       { kind: "mode", name: "taskMode" },
       { kind: "auxiliary", id: "output", label: "Output", params: ["format"] },
     ]);
@@ -157,7 +148,7 @@ test("group declarations reject ambiguous placement, ids, summaries and fields",
       id: "run", title: "Run", workflow: {} as never,
       params: [{ kind: "mode", name: "agentMode", flag: "--agent-mode", options: [{ value: "ask" }, { value: "build" }] }],
     }],
-  } as never), /only supported by Conversation/);
+  } as never), /only supported by Bot/);
 });
 
 test("Quick icons reject invalid runtime names and non-static source declarations", () => {
@@ -170,7 +161,7 @@ test("Quick icons reject invalid runtime names and non-static source declaration
   for (const sourceIcon of ["'shield extra-class'", "selectedIcon", "1"]) {
     const violations = validateProjectScriptSource(`
       const flow = steamharness.defineProject({ name: 'icons', run(input) { return input; } });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
+      export const executor = steamharness.defineExecutor({ projectType: 'bot', workflow: flow,
         params: [{ kind: 'quick', id: 'permissions', label: 'Permission', icon: ${sourceIcon}, summary: ['permission'], fields: [
           { name: 'permission', flag: '--permission', type: 'string', control: 'select', options: [{ value: 'auto' }] }
         ] }], createInput({ paramValues }) { return paramValues; }
@@ -257,7 +248,7 @@ test("a param step must be a positive integer", () => {
   // A request that never declares steps keeps asking its fields at once.
   assert.equal(readProjectParamDefinitionError({ name: "question_2", type: "string" }), undefined);
 
-  assert.throws(() => defineProjectExecutor({
+  assert.throws(() => defineBot({
     params: [{ name: "notAStep", type: "string", step: 0 }],
   } as never), /step must be a positive integer/);
 });
@@ -311,7 +302,7 @@ test("date params reject invalid type, quick, options and multiple combinations"
   assert.match(dateViolations[2]?.message ?? "", /cannot declare options/);
   assert.match(dateViolations[3]?.message ?? "", /multiple: true/);
 
-  assert.throws(() => defineProjectExecutor({
+  assert.throws(() => defineBot({
     params: [{ name: "hiddenDate", type: "string", control: "date", panel: "quick" }],
   } as never), /must declare placement through/);
 });

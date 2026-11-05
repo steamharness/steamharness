@@ -16,7 +16,7 @@ for (const mode of ['stale-draft', 'client-override', 'private-field'] as const)
       const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
       const definition = (restricted: boolean) => JSON.stringify({ version: 2, fields: [{ ...AGENT_MODELS_CONFIGURATION_FIELD, ...(restricted ? { allowThirdParty: false } : {}) }] });
       await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
-        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version },  defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   }  }) },
+        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version },  defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   }  }) },
         { path: 'index.ts', content: 'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();' },
         { path: 'configuration.json', content: definition(mode !== 'stale-draft') },
       ]) });
@@ -51,7 +51,7 @@ test('Server saves, imports and published configurations retain a source-declare
   try {
     const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
     await storage.createProjectFromFiles({projectName:projectId,files:projectFixtureFiles([
-      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
+      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
       {path:'index.ts',content:'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();'},
       {path:'configuration.json',content:JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false},{name:'title',type:'string'}]})},
     ])});

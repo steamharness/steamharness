@@ -37,7 +37,7 @@ async function worker(phase) {
   finally { clearTimeout(timer); if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exit; } }
 }
 const decisions = [], sessionId = crypto.randomUUID(); let unexpectedRuns = 0;
-const project = { id: crypto.randomUUID(), uri: pathToFileURL(directory).href, folderPath: directory, name: 'Actual Project Assistant', projectType: 'conversation',
+const project = { id: crypto.randomUUID(), uri: pathToFileURL(directory).href, folderPath: directory, name: 'Actual Project Assistant', projectType: 'bot',
   fields: [], entrypoints: [], conversation: { durable: { enabled: true }, recovery: { enabled: true }, userInput: { hideComposer: false } } };
 const runtime = { available: true, inspect: async () => ({ projects: [project], errors: [] }), resolveParams: async () => ({ params: {} }),
   run: async () => { unexpectedRuns++; throw new Error('This proof must not execute an additional model.'); },

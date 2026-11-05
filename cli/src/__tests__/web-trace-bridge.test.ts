@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TraceBridge, traceSnapshot } from '../web/ui/trace-bridge';
 import { isExecutionError } from '../web/ui/execution-error';
 
-const project = { id: 'project', name: 'Example', projectType: 'conversation', privateField: 'private' };
+const project = { id: 'project', name: 'Example', projectType: 'bot', privateField: 'private' };
 const state = { type: 'state', project, activeId: 'session', running: true, account: { token: 'secret' },
   sessions: [{ id: 'session', title: 'Title', draft: 'draft', parameterValues: { key: 'draft-key' }, queuedInputs: ['queued'],
     messages: [{ id: 'answer', role: 'assistant', content: 'Answer', status: 'running', events: [{ type: 'node_started' }], items: [{ content: 'live' }] }] }] };
@@ -69,7 +69,7 @@ describe('embedded execution trace bridge', () => {
   });
   it('keeps account, parameters, drafts and unrelated project metadata outside the host snapshot', () => {
     const snapshot = traceSnapshot(state)!;
-    expect(snapshot.project).toEqual({ id: 'project', name: 'Example', projectType: 'conversation' });
+    expect(snapshot.project).toEqual({ id: 'project', name: 'Example', projectType: 'bot' });
     expect(snapshot.sessions[0].messages[0].items).toEqual([{ content: 'live' }]);
     for (const value of ['secret', 'draft', 'draft-key', 'queued', 'private']) { expect(JSON.stringify(snapshot)).not.toContain(value); }
     expect(traceSnapshot({ project: { projectType: 'kanban' } })).toBeUndefined();

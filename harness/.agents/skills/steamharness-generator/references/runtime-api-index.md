@@ -63,12 +63,11 @@
 - `steamharness.readAgentWorkContext(...)`
 - `steamharness.AgentWorkProgressDoc(...)`
 - `steamharness.AgentSessionLifecycleDoc(...)`
-- `steamharness.createAgentConversationProject(...)`
+- `steamharness.defineBot(...)`
 - `steamharness.createAgentNode(...)`
 - `steamharness.createAgentProjectInput(...)`
 - `steamharness.createAgentProjectParamResolver(...)`
 - `steamharness.createAgentProjectParams(...)`
-- `steamharness.defineAgentConversationExecutor(...)`
 - `steamharness.connectMcpServer(...)`
 - `steamharness.createFileInputNode(...)`
 - `steamharness.addOutputItem(...)`

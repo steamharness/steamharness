@@ -84,7 +84,7 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/steamharness-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可选择在新窗口或当前窗口打开，再在项目终端安装依赖。
 
-打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
+打开 `examples/bot` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
 
 标题栏左侧可切换 **IDE / Steam** 模式，并为 macOS 原生窗口按钮预留随缩放调整的空间。IDE 保留编辑器布局；Steam 隐藏活动栏、文件侧栏和底部面板，左侧显示项目运行页面，右侧通过“打开工具”使用数据库、知识库、项目信息、小助手、版本管理和运行追踪。返回 IDE 会恢复原有布局和编辑器，运行页面及未保存文件会保留。模式按工作区记忆，工具位置只在当前窗口临时调整；普通文件夹不能进入 Steam 模式。过渡动画遵循系统的“减少动态效果”设置。
 

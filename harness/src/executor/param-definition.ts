@@ -241,10 +241,10 @@ export function normalizeProjectParamDeclarations(
 
 export function assertProjectParamDeclarations(
   declarations: readonly ParamDeclaration[] | undefined,
-  projectType: "conversation" | "workflow",
+  projectType: "bot" | "workflow",
 ): void {
   const { params, layout } = normalizeProjectParamDeclarations(declarations);
-  if (projectType === "conversation") {
+  if (projectType === "bot") {
     if (declarations?.some((declaration) => !("kind" in declaration))) {
       throw paramError("Conversation uses the standard message input. Declare parameters inside auxiliary, quick, mode, or slash entries.");
     }
@@ -254,7 +254,7 @@ export function assertProjectParamDeclarations(
     }
   }
   if (projectType === "workflow" && layout?.actions.some((action) => action.kind === "mode" || action.kind === "slash")) {
-    throw paramError("Composer mode and Slash parameters are only supported by Conversation executors.");
+    throw paramError("Composer mode and Slash parameters are only supported by Bot executors.");
   }
 }
 

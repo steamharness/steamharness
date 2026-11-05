@@ -33,7 +33,7 @@ it('accepts the new service revision sequence and rejects late snapshots from th
   expect(revisions.accept({ stateRevision: 103 })).toBe(false);
   expect(revisions.accept({ serverInstanceId: 'replacement', stateRevision: 2 })).toBe(true);
   const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)); bridge.enable(1);
-  const state = { type: 'state', project: { projectType: 'conversation' }, sessions: [] };
+  const state = { type: 'state', project: { projectType: 'bot' }, sessions: [] };
   bridge.receive({ ...state, serverInstanceId: 'old', stateRevision: 400, activeId: 'old' });
   bridge.receive({ ...state, serverInstanceId: 'new', stateRevision: 1, activeId: 'restored' });
   bridge.receive({ ...state, serverInstanceId: 'old', stateRevision: 401, activeId: 'stale' });

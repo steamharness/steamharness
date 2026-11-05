@@ -97,11 +97,10 @@ function sourceFileWithComment() { return source + "\n// next build\n"; }
 
 it("keeps configured Agent model ownership after identifier minification", async () => {
   const { directory, declaration } = await fixture();
-  declaration.entries[0].type = "conversation";
+  declaration.entries[0].type = "bot";
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(declaration));
   await writeFile(path.join(directory, "index.ts"), `const steamharness=globalThis.steamharness;
-const agent=steamharness.createAgentConversationProject({modelSource:'project'});
-export const executor=steamharness.defineExecutor({projectType:'conversation',workflow:agent,coreAgent:agent,createInput:()=>({errCode:0,errMessage:''})});`);
+export const executor=steamharness.defineBot({name:'release-agent',agent:{modelSource:'project'}});`);
   const release = await buildProjectRelease(directory);
   expect(projectUsesConfiguredAgentModels(path.join(release.directory, "entries/main"), path.join(release.directory, "entries/main/index.mjs"), release.directory)).toBe(true);
   await withUserSettings({ agent: { permissionPolicy: "auto", models: [] } }, async () => {

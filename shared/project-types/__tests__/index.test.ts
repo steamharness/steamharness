@@ -16,7 +16,7 @@ describe("project type registry", () => {
 
     expect(STEAMHARNESS_PROJECT_TYPES).toEqual(registeredTypes);
     expect(new Set(registeredTypes).size).toBe(registeredTypes.length);
-    expect(registeredTypes).toEqual(["workflow", "conversation", "kanban"]);
+    expect(registeredTypes).toEqual(["workflow", "bot", "kanban"]);
   });
 
   it("derives the executor subset without treating Kanban as runnable", () => {
@@ -25,15 +25,15 @@ describe("project type registry", () => {
       .map((definition) => definition.id);
 
     expect(STEAMHARNESS_EXECUTOR_PROJECT_TYPES).toEqual(registeredExecutorTypes);
-    expect(STEAMHARNESS_EXECUTOR_PROJECT_TYPES).toEqual(["workflow", "conversation"]);
+    expect(STEAMHARNESS_EXECUTOR_PROJECT_TYPES).toEqual(["workflow", "bot"]);
     expect(isExecutorProjectKind("kanban")).toBe(false);
     expect(getProjectKindDefinition("kanban").hasExecutor).toBe(false);
   });
 
   it("provides labels and card defaults through the same registry", () => {
-    expect(getProjectKindLabel("conversation")).toBe("Conversation");
+    expect(getProjectKindLabel("bot")).toBe("Bot");
     expect(getProjectKindLabelKey("workflow")).toBe("projectTypeWorkflow");
-    expect(getProjectKindLabelKey("conversation")).toBe("projectTypeConversation");
+    expect(getProjectKindLabelKey("bot")).toBe("projectTypeBot");
     expect(getProjectKindDefinition("kanban")).toMatchObject({
       label: "Kanban",
       labelKey: "projectTypeKanban",

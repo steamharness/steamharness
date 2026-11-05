@@ -18,9 +18,9 @@ export async function runPerformance({ measure, PROFILE }) {
   const directory = await mkdtemp(path.join(tmpdir(), 'steamharness-cli-performance-'));
   const metrics = [], previousFetch = globalThis.fetch, previousConfig = process.env.STEAMHARNESS_PROJECT_CONFIG;
   const projectId = randomUUID(), knowledgeId = randomUUID(), databaseId = randomUUID();
-  const entry = { entryId: 'main', root: '.', type: 'conversation', name: 'Performance', entry: 'index.ts', databases: ['first', 'second'], knowledgeBases: ['docs'] };
+  const entry = { entryId: 'main', root: '.', type: 'bot', name: 'Performance', entry: 'index.ts', databases: ['first', 'second'], knowledgeBases: ['docs'] };
   const project = { id: projectId, entryId: 'main', defaultEntry: 'main', aggregateName: 'Performance', folderPath: directory, entryRoot: directory,
-    uri: '', name: 'Performance', projectType: 'conversation', databases: entry.databases, knowledgeBases: [{ alias: 'docs', knowledgeBaseId: knowledgeId }], entries: [entry], fields: [], entrypoints: [] };
+    uri: '', name: 'Performance', projectType: 'bot', databases: entry.databases, knowledgeBases: [{ alias: 'docs', knowledgeBaseId: knowledgeId }], entries: [entry], fields: [], entrypoints: [] };
   const connection = { serverUrl: 'https://resources.performance.test', accessToken: 'fixture-only' };
   let requests = 0;
   const persistence = createLocalRuntimePersistence({ directory: path.join(directory, 'runtime') });

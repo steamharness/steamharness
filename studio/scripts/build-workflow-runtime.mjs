@@ -49,6 +49,6 @@ export async function buildProjectRuntime(directory) {
     harness: harnessManifest.version, cli: cliManifest.version, source: useSource ? source : 'npm',
     assistant: 'build-in/build-in-developer-assistant',
   }, null, 2) + '\n');
-  await fs.cp(path.join(ROOT, 'examples/conversation'), path.join(runtime, 'demo'), { recursive: true });
+  await fs.cp(path.join(ROOT, 'examples/bot'), path.join(runtime, 'demo'), { recursive: true });
   console.log(`Workflow runtime: Harness ${harnessManifest.version}, CLI ${cliManifest.version} (${useSource ? source : 'npm'}).`);
 }

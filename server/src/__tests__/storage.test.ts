@@ -444,7 +444,7 @@ test("Storage creates a readable random avatar when no projectCard is supplied",
       return createDbProjectRecord(DEMO_WF_ID, null);
     } } as unknown as DatabaseRepository });
   try {
-    for (const projectType of ["workflow", "conversation", "kanban"] as const) {
+    for (const projectType of ["workflow", "bot", "kanban"] as const) {
       await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:projectType==="kanban"?"index.html":"index.ts",databases:[]}],defaultEntry:"main", projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
       assert.equal(saved!.icon, defaultProjectCardIcon(projectType));
       assert.ok(getProjectCardColorContrastRatio(saved!.iconColor!, saved!.iconBackgroundColor) >= 4.5);
@@ -587,7 +587,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
   try {
     await storage.init();
     await writeFileVersion(dataRoot, DEMO_CONV_WF_ID, "1.0.0", "2026-05-21T00:00:00.000Z", {
-       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
         projectInfo: DECLARED_SERVER_PROJECT_INFO,
         projectCard: {
           icon: "bot",
@@ -595,7 +595,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
           iconColor: "#f8fafc",
           iconBackgroundColor: "#7c3aed",
         },
-    }, "conversation");
+    }, "bot");
     await writeFile(
       path.join(dataRoot, "projects", DEMO_CONV_WF_ID, "latest.json"),
       JSON.stringify({ version: "1.0.0" }),
@@ -605,7 +605,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
     const workflows = await storage.listProjects();
 
     assert.equal(workflows[0]?.id, DEMO_CONV_WF_ID);
-    assert.equal(workflows[0]?.entries[0]?.type, "conversation");
+    assert.equal(workflows[0]?.entries[0]?.type, "bot");
     assert.deepEqual(workflows[0]?.projectCard, {
       icon: "bot",
       iconUrl: "https://example.test/bot.png",
@@ -1101,7 +1101,7 @@ async function writeFileVersion(
   version: string,
   createdAt: string,
   packageJsonOverrides: Record<string, unknown> = {},
-  projectType: "workflow" | "conversation" = "workflow",
+  projectType: "workflow" | "bot" = "workflow",
 ): Promise<void> {
   const versionRoot = path.join(dataRoot, "projects", projectName, "versions", version);
   await mkdir(path.join(versionRoot, "source"), { recursive: true });
@@ -1121,7 +1121,7 @@ async function writeFileVersion(
     path.join(versionRoot, "source", "index.ts"),
     projectType === "workflow"
       ? `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\n`
-      : `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "conversation", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) });\n`,
+      : `export default steamharness.defineBot({ name: "test" });\n`,
     "utf8",
   );
   await writeFile(path.join(versionRoot, "source", "configuration.json"), JSON.stringify({version:2,fields:[]}));

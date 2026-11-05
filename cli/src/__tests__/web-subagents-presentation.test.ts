@@ -20,8 +20,8 @@ it('shows one live entry on the latest response and routes child navigation thro
   vi.stubGlobal('cancelAnimationFrame', clearTimeout); document.documentElement.lang = 'en'; document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
   const project: Project = { entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/project', databases: [],
-    entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }],
-    id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', projectType: 'conversation', fields: [], entrypoints: [] };
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }],
+    id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', projectType: 'bot', fields: [], entrypoints: [] };
   const session = { id: 'parent', title: 'Parent', messages: [
     { id: 'old', role: 'assistant', content: 'Earlier answer', status: 'success' },
     { id: 'current', role: 'assistant', content: 'Current answer', status: 'running' },

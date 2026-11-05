@@ -50,6 +50,8 @@ export function inspectProjectTypeSources(
       if (!ts.isCallExpression(node) || !isDefineExecutorCall(node)) return;
       executorCount += 1;
 
+      const callName = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : node.expression.getText(sourceFile);
+      if (callName === "defineBot" && node.arguments.length === 0) { projectTypes.push("bot"); return; }
       const objectArgument = node.arguments[0];
       if (!objectArgument || !ts.isObjectLiteralExpression(objectArgument)) {
         violations.push(createViolation(
@@ -62,7 +64,8 @@ export function inspectProjectTypeSources(
 
       const projectTypeProperty = findProperty(objectArgument, "projectType");
       const conversationProperty = findProperty(objectArgument, "conversation");
-      if (!projectTypeProperty || !ts.isStringLiteralLike(projectTypeProperty.initializer)) {
+      const bot = (ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : node.expression.getText(sourceFile)) === "defineBot";
+      if (!bot && (!projectTypeProperty || !ts.isStringLiteralLike(projectTypeProperty.initializer))) {
         violations.push(createViolation(
           "invalid_executor_project_type",
           formatProjectKindMigrationMessage("Executor projectType is missing or must be a string literal"),
@@ -71,7 +74,8 @@ export function inspectProjectTypeSources(
         return;
       }
 
-      const projectType = projectTypeProperty.initializer.text;
+      const projectType = bot ? "bot" : (projectTypeProperty!.initializer as ts.StringLiteral).text;
+      if (!bot && projectType === "bot") { violations.push(createViolation("invalid_executor_project_type", "Bot projects must use defineBot.", source.fileName)); return; }
       if (!isExecutorProjectKind(projectType)) {
         violations.push(createViolation(
           "invalid_executor_project_type",
@@ -95,7 +99,7 @@ export function inspectProjectTypeSources(
       if (findProperty(conversationProperty.initializer, "enabled")) {
         violations.push(createViolation(
           "legacy_conversation_enabled",
-          'conversation.enabled was removed. Declare projectType: "conversation" and remove the outer enabled field.',
+          'conversation.enabled was removed. Use defineBot and remove the outer enabled field.',
           source.fileName,
         ));
       }
@@ -103,13 +107,13 @@ export function inspectProjectTypeSources(
       if (findProperty(conversationProperty.initializer, "defaultInput")) {
         violations.push(createViolation(
           "project_type_configuration_conflict",
-          "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
+          "conversation.defaultInput was removed. Bot always uses the standard message input; declare attachment capabilities in conversation.attachments.",
           source.fileName,
         ));
       }
 
       switch (projectType) {
-        case "conversation":
+        case "bot":
           break;
         case "workflow":
           violations.push(createViolation(
@@ -172,12 +176,12 @@ function visit(node: ts.Node, visitor: (node: ts.Node) => void): void {
 
 function isDefineExecutorCall(node: ts.CallExpression): boolean {
   if (ts.isIdentifier(node.expression)) {
-    return node.expression.text === "defineProjectExecutor";
+    return ["defineProjectExecutor", "defineBot"].includes(node.expression.text);
   }
   return ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
     node.expression.expression.text === "steamharness" &&
-    (node.expression.name.text === "defineExecutor" ||
+    (node.expression.name.text === "defineBot" || node.expression.name.text === "defineExecutor" ||
       node.expression.name.text === "defineProjectExecutor");
 }
 

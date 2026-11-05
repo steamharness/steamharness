@@ -72,7 +72,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       const previous = cache?.get(file);
       if (previous?.stamp === stamp) { if (previous[mode]) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
-      const factories = new Set(["createAgentNode", "createAgentConversationProject", "createAgentProjectParamResolver", "defineAgentConversationExecutor"]);
+      const factories = new Set(["createAgentNode", "defineBot", "createAgentProjectParamResolver"]);
       const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
       for (const statement of source.statements) {
         if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text) || statement.importClause?.isTypeOnly) continue;
@@ -144,7 +144,11 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
           if (ts.isIdentifier(expression) && imports.has(expression.text) ||
             ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression) && namespaces.has(expression.expression.text) && factories.has(expression.name.text)) {
             found = true;
-            const mode = modelSource(node.arguments[0]);
+            const isBot = ts.isPropertyAccessExpression(expression) ? expression.name.text === "defineBot" : expression.getText(source) === "defineBot";
+            const argument = node.arguments[0] && unwrap(node.arguments[0]);
+            const agent = isBot && argument && ts.isObjectLiteralExpression(argument)
+              ? argument.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && property.name.getText(source) === "agent")?.initializer : undefined;
+            const mode = modelSource(isBot ? agent : node.arguments[0]);
             projectModels ||= mode === "project" || mode === "unknown";
           }
         }

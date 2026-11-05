@@ -56,7 +56,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       name: projectName,
       version: "0.1.0",
       type: "module",
-      defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }), "utf8");
     await writeFile(path.join(projectDir, "index.ts"), `
       const openaiProject = steamharness.defineProject({
@@ -69,9 +69,8 @@ test("local and workspace execution plus param resolution receive hostInput", as
         },
       });
       export const executor = steamharness.defineExecutor({
-        projectType: "conversation",
+        projectType: "workflow", defaultEntrypoint: "main", entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main",
         workflow: openaiProject,
-        conversation: { openai: { enabled: true, outputItemId: "assistant-response" } },
         params: [{ kind: "auxiliary", id: "options", label: "Options", fields: [{ name: "modelEcho", flag: "--model", type: "string" }] }],
         createInput(context) {
           const input = steamharness.readOpenAIConversationHostInput(context);
@@ -91,7 +90,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
           const input = steamharness.readOpenAIConversationHostInput(context);
           return { metadata: { hostModel: input?.model } };
         },
-      });
+      })] });
       export default openaiProject;
     `, "utf8");
 

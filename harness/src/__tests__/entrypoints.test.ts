@@ -1,3 +1,4 @@
+import { botFixtureSource } from "./bot-fixture-source";
 import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
@@ -438,7 +439,7 @@ test("conversation executors reject entrypoint selection without changing their 
   const projectDir = await createConversationProject();
   try {
     const structure = inspectLocalProjectStructure({ projectDir });
-    assert.equal(structure.projectType, "conversation");
+    assert.equal(structure.projectType, "bot");
     assert.equal(structure.entrypoints, undefined);
     assert.equal(structure.execution?.kind, "sequence");
 
@@ -816,18 +817,8 @@ async function createConversationProject(): Promise<string> {
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
-    defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    defaultEntry:"main",entries:[{entryId:"main",type:"bot",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
-  await writeFile(path.join(projectDir, "index.ts"), `
-    const conversationProject = steamharness.defineProject({
-      name: "conversation-flow",
-      run(input) { return input; },
-    });
-    export const executor = steamharness.defineExecutor({
-      projectType: "conversation",
-      workflow: conversationProject,
-      createInput() { return { errCode: 0, errMessage: "" }; },
-    });
-  `);
+  await writeFile(path.join(projectDir, "index.ts"), botFixtureSource({ properties: 'name: "conversation-flow",' }));
   return projectDir;
 }

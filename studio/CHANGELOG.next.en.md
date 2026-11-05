@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: project creation, discovery and type labels now use Bot, with templates built directly on Core Agent and native conversation, Workflow and Kanban views.
+
 - Add Run (Release Mode) and release uploads; source projects show their local version, while release installations check upgrades and stay in Steam mode.
 
 - Built-in analysis, Kanban examples, and project templates use build directories grouped by source root under dist/steamharness.
@@ -93,7 +95,7 @@
 
 - [Improved] Place the enhanced badge beside the Start page title and remove its refresh button. The bottom-left gear opens Studio Settings directly.
 
-- Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.
+- Fixed Server storage setup guidance for local Kanban, Workflow and Bot projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.
 
 - Fixed: The default project Server follows the build channel: local services for dev and the corresponding site for alpha and main. User-configured addresses retain priority.
 

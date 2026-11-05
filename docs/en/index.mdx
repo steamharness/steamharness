@@ -13,7 +13,7 @@ SteamHarness is a platform for building, running, and distributing Agent project
 | Type | Form | Best for | Entry point |
 | --- | --- | --- | --- |
 | Workflow | Typed TypeScript workflow | Automation, multi-step tasks, tool orchestration | Entry function + nodes / executor |
-| Conversation | Conversational Agent project | Assistants, Agent conversations | Conversation executor |
+| Bot | Conversational Agent project | Assistants, Agent conversations | Bot executor |
 | Kanban | Static HTML / CSS / JavaScript | Boards, visualizations, human-in-the-loop | `index.html` |
 
 ### Workflow
@@ -23,9 +23,9 @@ A Workflow describes a runnable task chain with nodes and executors: inputs, LLM
 - Typical uses: data processing, content generation, tool calling, multi-step automation.
 - Start with [Workflow model](/en/concepts/workflow-model) and [Core API](/en/core-api/overview).
 
-### Conversation
+### Bot
 
-Conversation is an Agent project organized around conversation turns, tool calls, and session data. It uses the same Core Runtime, but its entry point is a message or conversation rather than a single task chain.
+Bot is an Agent project organized around conversation turns, tool calls, and session data. It uses the same Core Runtime, but its entry point is a message or conversation rather than a single task chain.
 
 - Typical uses: assistants, support/operations assistants, Agents that need ongoing context.
 - Start with [Databases and conversations](/en/concepts/database-and-conversation) and [Core API](/en/core-api/overview).
@@ -60,7 +60,7 @@ The Server does not install project dependencies, build, or load uploaded projec
 | Workspace CLI | Sign in to a Server, upload/download source, publish and switch versions | [Workspace CLI](/en/cli/server-workspace) |
 | Store | Browse, download, and publish project versions | [Store overview](https://docs.steamharness.yuhe.space/en/enhanced/store/overview) |
 | System AI (Enhanced) | Shared models, personal defaults, provider preference, usage, and orders | [System AI guide](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison) |
-| Built-in projects | Developer Assistant, Codex, Conversation, OpenCode, Pi, and other ready-to-use projects | [Release notes](/en/guides/releases/overview) |
+| Built-in projects | Developer Assistant, Codex, Bot, OpenCode, Pi, and other ready-to-use projects | [Release notes](/en/guides/releases/overview) |
 
 ## Project data and configuration
 
@@ -89,16 +89,16 @@ Enhanced adds System AI on top: the platform maintains the model catalogue, cred
 
 ## Development workflow
 
-1. **Create a project**: in Studio, choose New Project, then a Workflow, Conversation, or Kanban type and template; or create the directory manually.
+1. **Create a project**: in Studio, choose New Project, then a Workflow, Bot, or Kanban type and template; or create the directory manually.
 The root `steamharness.json.id` is the aggregate identity. `steamharness.json.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
-3. **Write the entry point**: Workflow / Conversation use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
+3. **Write the entry point**: Workflow / Bot use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
 4. **Run locally**: open the project in Studio and run it, or use `steamharness structure .`, `steamharness run .`, and `steamharness web .`.
 5. **Upload to a Server**: use the Workspace CLI to sign in, package the source, and publish a version; manage the project, members, and data in the Server Web console.
 6. **Publish to Store** (optional): create a Store entry from a version already on the Server, submit it for review, and list it.
 
 ## Project structure
 
-A minimal Workflow / Conversation project usually contains:
+A minimal Workflow / Bot project usually contains:
 
 ```text
 my-project/
@@ -128,7 +128,7 @@ Studio ships with projects you can open or create directly:
 | Developer Assistant | Helps understand projects, generate code, and carry out development tasks in Studio |
 | Studio Control | Gives Agents controlled access to Studio operations |
 | Studio Analysis | Summarizes local projects and run state |
-| Codex / Conversation / OpenCode / Pi | Ready-to-use Agent / conversation projects |
+| Codex / Bot / OpenCode / Pi | Ready-to-use Agent / conversation projects |
 
 Built-in projects follow the same project types, versions, and permissions. See [Release notes](/en/guides/releases/overview) for version history.
 

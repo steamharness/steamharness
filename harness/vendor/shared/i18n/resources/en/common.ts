@@ -153,7 +153,7 @@ export const common = {
     runTarget: "Run target",
     projectType: "Project type",
     projectTypeWorkflow: "Workflow",
-    projectTypeConversation: "Conversation",
+    projectTypeBot: "Bot",
     projectTypeKanban: "Kanban",
     iconSource: "Icon source",
     themeColor: "Theme color",

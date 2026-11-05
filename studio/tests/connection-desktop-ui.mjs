@@ -44,7 +44,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const serverUrl = `http://127.0.0.1:${server.address().port}`;
 const project = path.join(directory, 'conversation');
-const original = path.join(root, 'examples/conversation');
+const original = path.join(root, 'examples/bot');
 await cp(original, project, { recursive: true, filter: entry => !entry.split(path.sep).includes('node_modules') });
 await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
 for (const dependency of ['steamharness', '@steamharness/cli']) {

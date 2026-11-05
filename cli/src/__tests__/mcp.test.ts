@@ -419,7 +419,7 @@ describe("steamharness mcp", () => {
     assert.equal((result.structuredContent as { status: string }).status, "success");
   });
 
-  it("rejects Conversation projects before opening the MCP protocol", async () => {
+  it("rejects Bot projects before opening the MCP protocol", async () => {
     const projectDir = await createConversationProject();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
     const transport = new StdioClientTransport({
@@ -433,7 +433,7 @@ describe("steamharness mcp", () => {
 
     await assert.rejects(() => client.connect(transport));
     const stderr = await readStreamAfterClose(transport.stderr);
-    assert.match(stderr, /project type "conversation" cannot be exposed through MCP/i);
+    assert.match(stderr, /project type "bot" cannot be exposed through MCP/i);
   });
 
   it("reports the structure validation diagnostic when a Workflow project is invalid", async () => {
@@ -671,17 +671,9 @@ async function createConversationProject(): Promise<string> {
     name: "@steamharness/mcp-test-conversation",
     type: "module",
     devDependencies: { "steamharness": await resolveHarnessVersion() },
-    version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} ,
+    version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} ,
   }), "utf8");
-  await writeFile(path.join(projectDir, "index.ts"), [
-    'const conversationProject = steamharness.defineProject({ name: "conversation", run(input) { return input; } });',
-    "export const executor = steamharness.defineExecutor({",
-    '  projectType: "conversation", workflow: conversationProject, params: [], createInput() { return {}; },',
-    "});",
-    "export { conversationProject as workflow };",
-    "export default conversationProject;",
-    "",
-  ].join("\n"), "utf8");
+  await writeFile(path.join(projectDir, "index.ts"), "export const executor = steamharness.defineBot({});", "utf8");
   return projectDir;
 }
 

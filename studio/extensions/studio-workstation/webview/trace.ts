@@ -83,7 +83,7 @@ function selectors(): void {
   if (!state) { return; }
   const snapshot = state.snapshot, selection = state.selection;
   options(select('trace-project'), state.projects.map(project => ({ value: project.uri, label: [project.name, project.version].filter(Boolean).join(' \u00b7 ') })), selection.projectUri ?? '');
-  const conversation = snapshot?.project.projectType === 'conversation';
+  const conversation = snapshot?.project.projectType === 'bot';
   element('trace-session').parentElement!.hidden = !conversation;
   options(select('trace-session'), [{ value: '', label: t('Current conversation') }, ...(snapshot?.sessions ?? []).map(session => ({ value: session.id, label: session.title }))], selection.sessionId ?? '');
   const session = snapshot?.sessions?.find(session => session.id === (selection.sessionId ?? snapshot.activeId));
@@ -189,7 +189,7 @@ function renderTrace(): void {
   }
   timeline(filtered);
   element('trace-empty').hidden = filtered.length > 0;
-  element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Conversation projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : mode === 'errors' ? t('No execution errors') : t("No execution records");
+  element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Bot projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : mode === 'errors' ? t('No execution errors') : t("No execution records");
 }
 function render(): void {
   if (!state) { return; }
@@ -227,7 +227,7 @@ select('trace-project').onchange = () => post({ type: 'select', projectUri: sele
 select('trace-session').onchange = () => post({ type: 'select', target: { sessionId: select('trace-session').value || undefined } });
 element('trace-current').onclick = () => post({ type: 'select', target: {} });
 select('trace-run').onchange = () => {
-  const target: TraceTarget = state?.snapshot?.project.projectType === 'conversation'
+  const target: TraceTarget = state?.snapshot?.project.projectType === 'bot'
     ? { sessionId: select('trace-session').value || undefined, messageId: select('trace-run').value || undefined }
     : { runId: select('trace-run').value };
   post({ type: 'select', target });

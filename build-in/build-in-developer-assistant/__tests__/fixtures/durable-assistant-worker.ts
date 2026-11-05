@@ -4,7 +4,7 @@ import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import {
   createProjectConversationContext, createProjectToolPermissionContext, createProjectTokenUsageContext,
-  type RunContext, type ConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
+  type RunContext, type BotExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
   type UserInputResolved,
 } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
@@ -28,16 +28,16 @@ const timer = runtime.defineAgentTask<{ wakeAt: number }, { phase: "sleep"; wake
 registry.install(runtime.defineAgentExtension({ name: "fixture", tasks: [timer] }));
 let scriptWaiting = false;
 // Keep the real assistant declaration, persona, tools and nodes; only the model is scripted.
-globalThis.steamharness = { ...runtime, createAgentConversationProject: options => runtime.createAgentConversationProject({
-  ...options, models: injectedModels, resolvedModel: models.getModel("faux", "fixture")!,
-  ...(scenario === "extensions" ? { session: { ...options?.session, codeMode: {}, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
+globalThis.steamharness = { ...runtime, defineBot: options => runtime.defineBot({ ...options, agent: {
+  ...options?.agent, models: injectedModels, resolvedModel: models.getModel("faux", "fixture")!,
+  ...(scenario === "extensions" ? { session: { ...options?.agent?.session, codeMode: {}, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
     parameters: ai.Type.Object({}), execute: async () => { scriptWaiting = true;
       if (phase === "initial") return new Promise(() => undefined);
       return { output: [{ type: "text" as const, text: "Resumed checkpoint" }] };
     } }] } } : {}),
-}) };
+} }) };
 const { executor: declaration } = await import("../../index");
-const executor = declaration as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
+const executor = declaration as BotExecutorDefinition<AgentInput>;
 const projectId = "durable-assistant", conversationId = scenario, projectName = "developer-assistant";
 const runId = phase === "fresh" ? "fresh-run" : "original-run";
 const host = ["session", "extensions", "blocks", "approval-session", "skill-recovery"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;

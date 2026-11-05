@@ -60,7 +60,7 @@ export async function runOpenAIResponsesRunner(
       openai?: { enabled?: boolean; outputItemId?: string };
     };
     if (
-      structure.projectType !== "conversation"
+      structure.projectType !== "bot"
       || conversation?.openai?.enabled !== true
       || typeof conversation.openai.outputItemId !== "string"
     ) {

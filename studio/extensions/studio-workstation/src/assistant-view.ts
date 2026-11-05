@@ -122,7 +122,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         return;
       }
       const result = await this.runtime.inspectAssistant(target, folders);
-      const project = result.projects.find((project) => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'conversation' && project.assistant?.standalone);
+      const project = result.projects.find((project) => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'bot' && project.assistant?.standalone);
       if (!project) { throw new Error(result.errors.join('\n') || t("The standalone Assistant project did not load correctly. Update its @steamharness/cli.")); }
       if (this.disposed || view !== this.view || epoch !== this.epoch) { return; }
       const conversation = await this.openConversation(createAssistantProject({ ...project, uri: '' }, target, folders), view);

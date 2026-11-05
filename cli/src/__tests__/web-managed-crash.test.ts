@@ -46,26 +46,30 @@ it('recovers a killed worker inside managed child execution without replaying it
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'managed-crash', version: '1.0.0', defaultEntry: 'main',
-      entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
+      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import { appendFileSync, writeFileSync } from 'node:fs';
-      const core = steamharness.createAgentConversationProject({ projectName: 'Managed crash', outputItemId: 'answer',
-        provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline-fixture',
-        baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1', contextWindow: 16384, tools: [],
-        session: { compaction: { enabled: false }, subagents: { tools: ['record_once'], maxAgents: null, definitions: [{
+
+      export const executor = steamharness.defineBot({
+agent: {paramOptions: { fields: { provider: false, model: false } }, provider: 'openai',
+model: 'fixture',
+apiKind: 'openai-completions',
+apiKey: 'offline-fixture',
+baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1',
+contextWindow: 16384,
+tools: [],
+session: { compaction: { enabled: false }, subagents: { tools: ['record_once'], maxAgents: null, definitions: [{
           id: 'researcher', description: 'Research one source', systemPrompt: 'CHILD_ONLY_ROLE', tools: ['record_once'], maxConcurrency: null,
         }] } },
-        createTools() { return [{ name: 'record_once', label: 'Record', description: 'Write the committed receipt once',
+createTools() { return [{ name: 'record_once', label: 'Record', description: 'Write the committed receipt once',
           parameters: { type: 'object', properties: {} }, replay: 'never', async execute() {
             appendFileSync(new URL('./committed-writes', import.meta.url), 'committed\\n');
             return { content: [{ type: 'text', text: 'Committed once' }], details: {} };
-          } }]; }
-      });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: core,
-        conversation: { inputQueue: { enabled: true } }, params: [],
-        tools: ['subagent', 'record_once'].map(name => ({ name, enabled: true, autoApprove: true })),
-        createInput({ args }) { writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid)); return steamharness.createAgentProjectInput(args); }
-      });
+          } }]; }},
+params: [],
+tools: ['subagent', 'record_once'].map(name => ({ name, enabled: true, autoApprove: true })),
+prepareInput(input, { args }) { writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid)); return input; }
+});
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     controller = new ConversationController({ ...inspected.projects[0], uri: '' }, runtime, {}, { save: async () => {}, changed() {}, log(text) { diagnostics.push(text); } });

@@ -14,7 +14,7 @@ const { projectFrameHtml } = await import('../extensions/studio-workstation/src/
 const directory = await mkdtemp(path.join(os.tmpdir(), 'studio-keyboard-ui-'));
 const previousAuth = process.env.STEAMHARNESS_CLI_AUTH_DIR;
 process.env.STEAMHARNESS_CLI_AUTH_DIR = path.join(directory, 'auth');
-const entries = ['workflow', 'conversation', 'kanban'].map(type => ({ entryId: type, type, name: type, root: type, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json', databases: [] }));
+const entries = ['workflow', 'bot', 'kanban'].map(type => ({ entryId: type, type, name: type, root: type, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json', databases: [] }));
 const id = randomUUID();
 let app, browser;
 const errors = [];
@@ -50,9 +50,9 @@ try {
   for (const entry of entries) {
     await page.goto(`http://127.0.0.1:${shell.address().port}/${entry.entryId}`);
     const project = page.frameLocator('#workflow-frame');
-    await project.locator(entry.type === 'conversation' ? '#app[data-project-uri]' : '#app[data-connection="connected"]').waitFor();
+    await project.locator(entry.type === 'bot' ? '#app[data-project-uri]' : '#app[data-connection="connected"]').waitFor();
     const target = entry.type === 'kanban' ? project.frameLocator('#kanban-preview').locator('#board-input')
-      : project.locator(entry.type === 'conversation' ? '#message' : '#run').first();
+      : project.locator(entry.type === 'bot' ? '#message' : '#run').first();
     await target.waitFor();
     // A modifier key itself is forwarded too; check the requested key below.
     await target.press('Control+p');

@@ -408,7 +408,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       return {
         projectId: options.projectId,
         projectName: "Round Conversation",
-        entries:entrySet("conversation"),defaultEntry:"main",
+        entries:entrySet("bot"),defaultEntry:"main",
         projectInfo,
         visibility: "private",
       };
@@ -422,7 +422,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Round Conversation",
-        entries:entrySet("conversation"),defaultEntry:"main",
+        entries:entrySet("bot"),defaultEntry:"main",
         projectInfo,
         projectCard,
       }),
@@ -432,7 +432,7 @@ test("create workflow endpoint validates and forwards optional project card meta
     assert.deepEqual(receivedOptions, {
       projectId: (receivedOptions as { projectId: string }).projectId,
       projectName: "Round Conversation",
-      entries:entrySet("conversation"),defaultEntry:"main",
+      entries:entrySet("bot"),defaultEntry:"main",
       projectInfo,
       ownerUserId: "creator-1",
       groupId: undefined,
@@ -951,7 +951,7 @@ test("configuration routes reject unreadable projects before reaching the store"
   }assert.equal(called,false);}finally{await server.close();}
 });
 
-function entrySet(type: "workflow"|"conversation"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts",databases:[]}]; }
+function entrySet(type: "workflow"|"bot"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts",databases:[]}]; }
 
 test('knowledge resource cards resolve the selected entry and reject removed KV requests',async()=>{
   const calls:unknown[]=[];

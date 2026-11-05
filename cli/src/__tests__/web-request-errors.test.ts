@@ -121,9 +121,9 @@ it('formats saved Conversation failures, retry errors and request alerts without
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   document.documentElement.lang = 'en'; document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'errors', uri: 'file:///errors', folderPath: '/errors', name: 'Errors', projectType: 'conversation',
+  const project: Project = { id: 'errors', uri: 'file:///errors', folderPath: '/errors', name: 'Errors', projectType: 'bot',
     entryId: 'main', aggregateName: 'Errors', defaultEntry: 'main', entryRoot: '/errors', databases: [],
-    entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }], fields: [], entrypoints: [] };
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }], fields: [], entrypoints: [] };
   const answer: ConversationMessage = { id: 'answer', role: 'assistant', content: '', status: 'failed', error: failure, model: 'My model' };
   const emit = (data: object) => window.dispatchEvent(new MessageEvent('message', { data }));
   const render = async (status = answer.status) => {

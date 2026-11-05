@@ -32,12 +32,17 @@ it('loads user models through the host and worker without project configuration,
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }]  }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }]  }));
     await writeFile(path.join(directory, 'index.ts'), `
-      const agent = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [] });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
-        createInput(context) { return steamharness.createAgentProjectInput(context); }
-      }); export default agent;
+
+      export const executor = steamharness.defineBot({
+agent: {modelSource: 'user-settings',
+tools: []},
+prepareInput(input) {
+  if (input.apiKey || input.baseUrl) throw new Error('Resolved credentials must not reach Bot input hooks');
+  return input;
+}
+}); export default executor;
     `);
     const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
       id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
@@ -52,15 +57,19 @@ it('loads user models through the host and worker without project configuration,
     const resolution = (await post({ type: 'resolve', params: {}, requestId: 'user-models' }))[0];
     expect(resolution.error).toBeUndefined(); expect(resolution.params.model.value).toBeUndefined();
     expect(resolution.params.model.resolvedOptions).toEqual([{ value: 'first', label: 'User first', description: 'actual-one' }]);
-    await post({ type: 'send', text: 'First', params: {}, attachments: [] }); await app.controller.idle();
+    await post({ type: 'send', text: 'First', params: {}, attachments: [] }); await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe("success");
     expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-one', model: 'User first' });
     const selectedModel = settings.agent.models![0];
     if (selectedModel.source !== 'third-party') throw new Error('Expected the third-party fixture model.');
     const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...selectedModel, model: 'actual-two', apiKey: 'test-only-next-key' }] } };
     await app.setHostUserSettings(updated);
-    await post({ type: 'send', text: 'Second', params: {}, attachments: [] }); await app.controller.idle();
+    await post({ type: 'send', text: 'Second', params: {}, attachments: [] }); await expect.poll(() => app!.controller.current.messages.at(-1)?.content).toBe("Answer actual-two");
+    await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe("success");
     expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-two' });
-    expect(calls).toEqual([{ model: 'actual-one', token: 'Bearer test-only-first-key' }, { model: 'actual-two', token: 'Bearer test-only-next-key' }]);
+    await post({ type: 'send', text: 'Follow-up', params: {}, attachments: [] });
+    await expect.poll(() => calls.length).toBe(3);
+    await expect.poll(() => app!.controller.current.messages.filter(message => message.role === 'assistant' && message.status === 'success').length).toBe(3);
+    expect(calls).toEqual([{ model: 'actual-one', token: 'Bearer test-only-first-key' }, { model: 'actual-two', token: 'Bearer test-only-next-key' }, { model: 'actual-two', token: 'Bearer test-only-next-key' }]);
     expect(app.controller.current.parameterValues?.['']?.model).toBeUndefined();
     const view = JSON.stringify(await post({ type: 'ready' }));
     const exported = JSON.stringify(await post({ type: 'session-action', action: 'export', id: app.controller.current.id }));
@@ -146,17 +155,15 @@ it('runs saved system and third-party models through the real Web worker with re
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
     await writeFile(path.join(directory, 'index.ts'), `
-      const agent = steamharness.createAgentConversationProject({ tools: [], outputItemId: 'answer' });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
-        params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
-          { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
-          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [] },
-        ] }],
-        resolveParams: steamharness.createAgentProjectParamResolver(),
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); }, });
-      export default agent;
+
+      export const executor = steamharness.defineBot({
+agent: {tools: []},
+params: [],
+resolveParams: steamharness.createAgentProjectParamResolver()
+});
+      export default executor;
     `);
     app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: {
       serverUrl: origin, accessToken: 'project-identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
@@ -184,7 +191,8 @@ it('runs saved system and third-party models through the real Web worker with re
     for (const [index, model] of models.entries()) {
       const catalogsBefore = catalogRequests.length;
       await post({ type: 'send', text: `Turn ${index}`, params: index ? { model: model.id } : {}, attachments: [] });
-      await app.controller!.idle();
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.content).toContain(`Answer from ${model.model}`);
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe("success");
       const answer = app.controller!.current.messages.at(-1)!;
       expect(answer.status, answer.error).toBe('success'); expect(answer.content).toContain(`Answer from ${model.model}`);
       expect(answer.model).toBe(model.name);
@@ -198,15 +206,18 @@ it('runs saved system and third-party models through the real Web worker with re
     expect(catalogRequests.every(token => token === 'Bearer ai-identity')).toBe(true);
     for (const secret of ['ai-identity', 'project-identity', 'third-identity', 'credentialToken']) expect(JSON.stringify(app.controller!.current)).not.toContain(secret);
     subscribed = false;
-    await post({ type: 'send', text: 'Revoked subscription', params: { model: 'responses' }, attachments: [] });
-    await app.controller!.idle();
-    expect(app.controller!.current.messages.at(-1)?.status).toBe('failed'); expect(calls).toHaveLength(3);
+    const revoked = await fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'send', text: 'Revoked subscription', params: { model: 'responses' }, attachments: [] }) });
+    expect(revoked.status).toBe(400);
+    expect((await revoked.json()).message).toContain('no available server AI credentials');
+    expect(calls).toHaveLength(3);
 
     subscribed = true;
     await app.setHostConnection({ serverUrl: origin, accessToken: 'next-project-identity', aiServerUrl: origin, aiAccessToken: 'next-ai-identity' });
     const switchedAt = catalogRequests.length;
     await post({ type: 'send', text: 'Changed account', params: { model: 'responses' }, attachments: [] });
-    await app.controller!.idle();
+    await expect.poll(() => app!.controller!.current.messages.at(-1)?.content).toContain('Answer from system-responses');
+    await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe("success");
     expect(app.controller!.current.messages.at(-1)?.status).toBe('success');
     expect(catalogRequests.slice(switchedAt)).toEqual(['Bearer next-ai-identity', 'Bearer next-ai-identity']);
     expect(calls.at(-1)?.token).toBe(`Bearer responses-${generation}`);
@@ -217,7 +228,8 @@ it('runs saved system and third-party models through the real Web worker with re
     const updated = [{ ...models[2], model: 'third-next-model', apiKey: 'third-next-identity' }, ...models.slice(0, 2)];
     await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: updated } } });
     await post({ type: 'send', text: 'Updated configuration without system AI sign-in', params: { model: 'deleted-entry' }, attachments: [] });
-    await app.controller!.idle();
+    await expect.poll(() => app!.controller!.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
+    await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe("success");
     expect(app.controller!.current.messages.at(-1)?.status).toBe('success');
     expect(app.controller!.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
     expect(app.controller!.current.messages.at(-1)?.model).toBe('Third-party');
@@ -278,18 +290,9 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}], devDependencies: { steamharness: await resolveHarnessVersion() } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}], devDependencies: { steamharness: await resolveHarnessVersion() } }));
     await writeFile(path.join(directory, 'index.ts'), `
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({ modelSource: '${modelSource}', projectName: 'Switch models', outputItemId: 'answer', tools: [], session: { compaction: { enabled: false } } }),
-        conversation: { durable: { enabled: true }, recovery: { enabled: true } },
-        params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
-          { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
-          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], ${modelSource === 'user-settings' ? "userSetting: { key: 'agent.model', mode: 'default' }" : ''} },
-          { name: 'effort', flag: '--effort', type: 'string', control: 'select', defaultValue: 'high', options: [{ value: 'high' }, { value: 'xhigh' }, { value: 'medium' }] },
-        ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: '${modelSource}' }),
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
-      });
+      export const executor = steamharness.defineBot({ agent: { modelSource: '${modelSource}', tools: [], session: { compaction: { enabled: false } } } });
     `);
     const options = { projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor' as const, userSettings: { agent: { permissionPolicy: 'auto' as const, models: [] as import('steamharness').UserAgentModel[] } }, connection: {
       serverUrl: origin, accessToken: 'identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',

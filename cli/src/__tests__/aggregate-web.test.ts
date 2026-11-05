@@ -20,7 +20,7 @@ async function fixture(database = false) {
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const entries = ([['agent', 'conversation'], ['assistant', 'conversation'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
+  const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json',
     databases: database && entryId === 'agent' ? ['data'] : [],
   }));

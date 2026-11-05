@@ -8,7 +8,7 @@ export const DEVELOPER_ASSISTANT_PROJECT_ID = 'a3aca697-b086-459b-84e4-d357ad2d9
 /** Only the dedicated host surface supplies assistant context, never a project manifest. */
 export function isLocalBuiltinAssistant(project: Project): boolean {
   return !!project.assistant && project.id.toLowerCase() === DEVELOPER_ASSISTANT_PROJECT_ID
-    && project.projectType === 'conversation';
+    && project.projectType === 'bot';
 }
 
 const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', 'skill',

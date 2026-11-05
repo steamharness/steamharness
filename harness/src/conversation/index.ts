@@ -191,7 +191,7 @@ function createDisabledConversationError(): HarnessError {
   return new HarnessError({
     type: "input_validation",
     message:
-      'Workflow conversation context is disabled. Set executor.projectType to "conversation" before using context.conversation.',
+      'Workflow conversation context is disabled. Use defineBot before using context.conversation.',
   });
 }
 

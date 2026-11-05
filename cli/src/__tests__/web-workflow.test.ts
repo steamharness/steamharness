@@ -1,3 +1,4 @@
+import { offlineModel } from "./offline-model";
 import { testDataDirectory } from './test-data-directory';
 import { runtimeStorageService } from './runtime-storage-service';
 import { temporaryRuntimePersistence } from "./web-test-storage";
@@ -448,7 +449,7 @@ it('persists nested conversation state on the Server while preserving authored f
   await mkdir(path.join(directory, 'child'));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'npm-name', version: '9.9.9', type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id, name: 'Manifest name', version: '1.2.3', defaultEntry: 'child', entries: [{ entryId: 'child', root: 'child' }] }));
-  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'conversation', name: 'Child', entry: 'index.ts', databases: [] }));
+  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'bot', name: 'Child', entry: 'index.ts', databases: [] }));
   const config = JSON.stringify({ version: 1 });
   await writeFile(path.join(directory, 'config.json'), config);
   await writeFile(path.join(directory, 'child/index.ts'), `
@@ -456,18 +457,19 @@ it('persists nested conversation state on the Server while preserving authored f
       await context.conversation.setValue('marker', 'manifest-workflow');
       return steamharness.createOutputPayload({items:[{title:'Result',content:(await context.conversation.getValue()).values.marker,contentType:'text'}]});
     }});
-    export const executor = steamharness.defineExecutor({projectType:'conversation',workflow:flow,createInput:()=>({})});
+    export const executor = steamharness.defineBot({ async prepareInput(input, context) { const result = await flow.run(input, context); return { ...input, prompt: result.items[0].content }; } });
   `);
   const connection = await runtimeStorageService().start();
-  const executor = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => connection);
+  const model = await offlineModel('manifest-workflow');
+  const executor = createWebRuntime(directory, path.join(testDataDirectory(directory)), () => connection, { userSettings: () => model.settings });
   try {
     const inspected = await executor.inspect([directory]);
     expect(inspected.errors).toEqual([]);
-    const descriptor = { ...inspected.projects[0]!, uri: pathToFileURL(directory).href };
+    const descriptor = { ...inspected.projects[0]!, conversation: undefined, uri: pathToFileURL(directory).href };
     expect(descriptor).toMatchObject({ id, aggregateName: 'Manifest name', manifest: { version: '1.2.3' }, entryId: 'child', databases: [] });
     const report = await executor.run({ project: descriptor, conversationId: 'scope', runId: randomUUID(), args: [] }, () => {});
     expect(report.status, JSON.stringify(report.error)).toBe('success');
-    expect(report.output?.items?.[0]?.content).toBe('manifest-workflow');
+    expect(report.output?.items?.find(item => item.id === 'agent-answer')?.content).toBe('manifest-workflow');
     expect(await readFile(path.join(directory, 'config.json'), 'utf8')).toBe(config);
-  } finally { executor.dispose(); await connection.close(); }
+  } finally { executor.dispose(); await connection.close(); await model.close(); }
 }, 30_000);

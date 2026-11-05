@@ -10,9 +10,9 @@ const databaseId = '00000000-0000-4000-8000-000000000001', replacementId = '0000
 const all = { mode: 'all' as const }, none = { mode: 'none' as const };
 const project: Project = {
   id: '00000000-0000-4000-8000-000000000010', entryId: 'agent', aggregateName: 'Aggregate', name: 'Agent', defaultEntry: 'agent',
-  projectType: 'conversation', entryRoot: '/project/agent', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [],
+  projectType: 'bot', entryRoot: '/project/agent', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [],
   databases: ['data'], entries: [
-    { entryId: 'agent', type: 'conversation', name: 'Agent', root: 'agent', entry: 'index.ts', databases: ['data'] },
+    { entryId: 'agent', type: 'bot', name: 'Agent', root: 'agent', entry: 'index.ts', databases: ['data'] },
     { entryId: 'board', type: 'kanban', name: 'Map', root: 'board', entry: 'index.html', databases: ['data'] },
   ],
 };

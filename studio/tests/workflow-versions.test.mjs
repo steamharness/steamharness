@@ -152,7 +152,7 @@ test('upload publishes the saved package version with release notes and refreshe
   assert.equal(f.uploads.length, 1); assert.match(f.uploadResult.error, /already exists/);
 });
 
-for (const kind of ['kanban', 'workflow', 'conversation']) test(`opening a ${kind} upload dialog does not upload until the user submits it`, async t => {
+for (const kind of ['kanban', 'workflow', 'bot']) test(`opening a ${kind} upload dialog does not upload until the user submits it`, async t => {
   const f = fixture(t); f.local.projectType = kind; f.notes = undefined;
   await f.command('studio.uploadProject', { uri: f.local.uri });
   assert.equal(f.uploadDialog.folderPath, f.local.folderPath);
@@ -249,7 +249,7 @@ test('an account change while choosing a download cannot transfer the prior sele
 
 test('the download picker displays the server project avatar', async t => {
   const f = fixture(t);
-  f.projects[0].projectType = 'conversation';
+  f.projects[0].projectType = 'bot';
   f.projects[0].projectCard = { icon: 'bot', iconColor: '#123456', iconBackgroundColor: '#f0f4f8' };
   let avatar;
   f.pick = items => { if (items[0].project) { avatar = items[0].iconPath.toString(); } };

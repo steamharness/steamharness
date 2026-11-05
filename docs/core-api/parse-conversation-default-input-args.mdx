@@ -7,7 +7,7 @@ description: "解析 conversation 默认输入框序列化出来的 message、im
 
 `workflow.parseConversationDefaultInputArgs(args)` 解析 conversation 默认输入框写入的固定参数。它只读取 `--message`、`--images`、`--videos` 和 `--files`，不会自动读取 `RunContext`，也不会替代 executor 的 `createInput`。
 
-Conversation 始终使用标准主输入框，无需配置开关。宿主按 `conversation.attachments` 声明的附件能力序列化这些参数；workflow 需要在 `createInput({ args })` 中显式调用本 helper。
+Bot 始终使用标准主输入框。Core 自动解析文本与图片；业务输入钩子需要额外处理文件或视频时，可调用本 helper 读取宿主附件引用。
 
 ## 签名
 
@@ -38,25 +38,11 @@ workflow.parseConversationDefaultInputArgs(
 ## executor 配置
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
-  projectType: "conversation",
-  workflow: conversationProject,
-  conversation: {
-    attachments: {
-      images: true,
-      videos: true,
-      files: true,
-    },
-  },
-  createInput({ args, conversationId }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
-    return {
-      conversationId,
-      message: defaults.message,
-      images: defaults.images,
-      videos: defaults.videos,
-      files: defaults.files,
-    };
+export const executor = steamharness.defineBot({
+  conversation: { attachments: { images: true, files: true } },
+  async prepareInput(input, context) {
+    const attachments = steamharness.parseConversationDefaultInputArgs(context.args);
+    return { ...input, businessFiles: attachments.files };
   },
 });
 ```
@@ -82,5 +68,5 @@ const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart())
 | --- | --- |
 | 多次传 `--message` | 返回最后一个值，适合宿主用后一次输入覆盖前一次草稿。 |
 | 多次传附件 | `--images` / `--videos` / `--files` 各自合并所有出现次数。 |
-| 标准主输入框 | 始终展示，仍需要在 `createInput` 中显式调用 helper。 |
+| 标准主输入框 | 由 Core 自动解析；额外业务附件可在 `prepareInput` 中读取。 |
 | CLI 手动调试 | 可以直接传 `--message`、`--images`、`--videos`、`--files` 模拟默认输入框。 |

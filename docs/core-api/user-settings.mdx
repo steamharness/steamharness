@@ -107,9 +107,8 @@ Core Agent 使用两种互斥的模型来源。默认或 `modelSource: "user-set
 
 ```ts
 // 自动生成可覆盖的模型参数，列表和默认值来自用户设置。
-const project = steamharness.createAgentConversationProject({
-  modelSource: "user-settings",
-  permissionPolicy: "inherit",
+const executor = steamharness.defineBot({
+  agent: { modelSource: "user-settings", permissionPolicy: "inherit" },
 });
 
 // 自定义参数入口仍可内联声明：

@@ -9,7 +9,7 @@ description: "Persist conversations and Agent checkpoints locally, with optional
 
 ## Default storage and isolation
 
-CLI Web, Studio Conversation/Workflow history and assistant sessions use host-managed local SQLite by default, including messages, queued inputs, drafts, parameters, runs, events, usage and Agent checkpoints. Projects and entries have separate stores; assistants also use their working directory. Execution checkpoints commit locally, streaming output is displayed immediately, and coalesced history saves do not wait for cloud writes.
+CLI Web, Studio Bot/Workflow history and assistant sessions use host-managed local SQLite by default, including messages, queued inputs, drafts, parameters, runs, events, usage and Agent checkpoints. Projects and entries have separate stores; assistants also use their working directory. Execution checkpoints commit locally, streaming output is displayed immediately, and coalesced history saves do not wait for cloud writes.
 
 Local persistence requires no platform sign-in or database connection. System AI, business databases, knowledge and protected configuration retain their own authorization. Local write failures are reported without falling back to temporary memory. Existing cloud records and legacy JSON/SQLite files are preserved and never overwritten automatically; import them explicitly when needed.
 
@@ -102,7 +102,7 @@ The following helpers are exported from steamharness/agent and accept persistenc
 | forkStoredAgentConversation({ persistence, conversationId, command }) | Fork committed history under an idle owner with durable receipts; use the control channel for an active owner. |
 | isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? }) | Create an independent session with cutoff history and document policies, preserving document version changes and replacement identities even when content is equal, excluding tasks, approvals, queues and usage. |
 | cancelStoredAgentConversation({ persistence, conversationId }) | Cancel a stored execution tree without an active owner. |
-| deleteStoredAgentConversation({ persistence, conversationId }) | Cancel and delete Agent sessions and Conversation state. |
+| deleteStoredAgentConversation({ persistence, conversationId }) | Cancel and delete Agent sessions and Bot state. |
 
 The storage snapshot is `{ format: "steamharness.agent-session", version: 1, nextId, commits }`. It preserves commit order, historical documents and reserved IDs, and differs from the AgentSessionSnapshot UI projection. Forking requires no system AI. Stop, background ownership and queue pause semantics are preserved. Crash recovery resumes with the original runId and requestId; failed turns do not advance queued input. Explicit Server storage still waits for the previous lease to expire.
 

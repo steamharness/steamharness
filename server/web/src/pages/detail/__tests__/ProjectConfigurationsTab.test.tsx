@@ -96,7 +96,7 @@ it("creates custom file definitions with accept restrictions through the panel",
  await waitFor(()=>expect(state.customFields[0]).toMatchObject({name:"photo",type:"file",accept:["image/png",".webp"]}));
  expect(await screen.findByLabelText("Choose file for photo")).toBeTruthy();
 });
-it.each(["workflow","conversation","kanban"] as const)("shows the same configuration editor for %s",async projectType=>{
+it.each(["workflow","bot","kanban"] as const)("shows the same configuration editor for %s",async projectType=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
  await render(<ProjectConfigurationsTab entryId="main" project={{...project,entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[]}]}}/>);
  expect(await screen.findByLabelText("label")).toHaveProperty("value","Original");

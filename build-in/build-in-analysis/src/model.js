@@ -1,5 +1,5 @@
 export const runStatuses = ['running', 'waiting_for_input', 'success', 'failed', 'aborted', 'timed_out', 'interrupted', 'unknown'];
-export const projectTypes = ['workflow', 'conversation', 'kanban', 'unknown'];
+export const projectTypes = ['workflow', 'bot', 'kanban', 'unknown'];
 
 export function status(value) { return runStatuses.includes(value) ? value : 'unknown'; }
 

@@ -55,7 +55,7 @@ exports.run = async () => {
   fs.writeFileSync(path.join(cliDir, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '0.0.0', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
   fs.writeFileSync(path.join(cliDir, 'dist/index.js'), `
     import {createServer} from 'node:http';import {createInterface} from 'node:readline';import {writeFileSync,existsSync,readFileSync} from 'node:fs';import path from 'node:path';
-    const project={id:${JSON.stringify(projectId)},name:${JSON.stringify(demoName)},folderPath:process.cwd(),projectType:'conversation',fields:[],entrypoints:[]};
+    const project={id:${JSON.stringify(projectId)},name:${JSON.stringify(demoName)},folderPath:process.cwd(),projectType:'bot',fields:[],entrypoints:[]};
     if(process.argv.includes('--inspect')&&!process.argv.includes('--host-stdio'))console.log(JSON.stringify({projects:[project],errors:[]}));
     else{const input=createInterface({input:process.stdin});let server;input.on('line',line=>{
       const message=JSON.parse(line);if(message.type==='configure'){

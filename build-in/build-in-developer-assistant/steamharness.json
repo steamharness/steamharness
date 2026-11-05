@@ -27,7 +27,7 @@
   "entries": [
     {
       "entryId": "main",
-      "type": "conversation",
+      "type": "bot",
       "name": "Project Assistant",
       "root": ".",
       "entry": "index.ts",

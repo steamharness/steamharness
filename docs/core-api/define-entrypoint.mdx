@@ -109,7 +109,7 @@ export const executor = workflow.defineExecutor({
 | 入口分区展开状态 | 共享运行界面和 CLI Web 仅在声明了至少一个分区时启用分区界面；按 `projectId + resolved target` 使用版本化 localStorage 键持久化分区展开状态，未分组入口归入本地化“未分组”分区。 |
 | registry / debug node | 只读取所选入口的 registry。 |
 | `context.databases` | 当前聚合入口的数据库绑定。Workflow 内部操作共享该入口的绑定；需要隔离时设计业务键或独立空间。 |
-| Conversation | 不使用 `defineEntrypoint`，也不接受入口选择。 |
+| Bot | 不使用 `defineEntrypoint`，也不接受入口选择。 |
 
 ## 错误
 
@@ -119,6 +119,6 @@ export const executor = workflow.defineExecutor({
 | 分区不是静态内联对象、字段无效或同一 ID 的元数据冲突 | `input_validation` | runtime 拒绝定义；静态分析和 structure report 在对应位置报告 violation。 |
 | 默认入口不存在 | `input_validation` | executor 无法加载。 |
 | 运行未知入口 | `input_validation` | 错误 metadata 包含默认入口和允许入口列表。 |
-| Conversation 接收入口参数 | `input_validation` | Conversation 保持单入口，不会忽略或回退该参数。 |
+| Bot 接收入口参数 | `input_validation` | Bot 保持单入口，不会忽略或回退该参数。 |
 
 `entrypointId` 是 Workflow 入口内部的操作 ID，不能替代根 manifest 中选择窗口的 `entryId`。CLI 示例：`steamharness run . --entry database --entrypoint search`。

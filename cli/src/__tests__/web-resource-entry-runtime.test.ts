@@ -22,18 +22,14 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const workspace = path.join(root, 'workspace'), assistant = path.join(root, 'assistant'), id = randomUUID();
-  const conversationSource = `
-    const flow = steamharness.defineProject({ run() { return { errCode: 0, errMessage: '' }; } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow, createInput() { return {}; } });
-    export default flow;
-  `;
+  const conversationSource = `export const executor = steamharness.defineBot({});`;
   for (const directory of [workspace, assistant]) {
     await mkdir(path.join(directory, 'node_modules'), { recursive: true });
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   }
   await writeProjectFixture(path.join(workspace, 'package.json'), JSON.stringify({ id, name: 'Workspace', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'agent', entries: [
-      { entryId: 'agent', name: 'Agent', type: 'conversation', root: 'agent', entry: 'index.ts', databases: [] },
+      { entryId: 'agent', name: 'Agent', type: 'bot', root: 'agent', entry: 'index.ts', databases: [] },
       { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/steamharness/entries/map-2d/build/map-2d/index.html', configuration: 'configuration.json', databases: [] },
     ] }));
   await writeFile(path.join(workspace, 'agent/index.ts'), conversationSource);
@@ -44,7 +40,7 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   await writeFile(path.join(workspace, 'map-2d/configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'mapName', type: 'string' }] }));
   await writeProjectFixture(path.join(assistant, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Assistant', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',
-    entries: [{ entryId: 'main', name: 'Assistant', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
+    entries: [{ entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
   await writeFile(path.join(assistant, 'index.ts'), conversationSource);
   const store = await createLocalProjectConfigurationStore(workspace, { entryId: 'map-2d' });
   let state = await store.read();

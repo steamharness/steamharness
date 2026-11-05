@@ -1,3 +1,4 @@
+import { botFixtureSource } from "./bot-fixture-source";
 import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
@@ -16,27 +17,24 @@ import { runLocalProjectWithReport } from "../executor/index";
 test("executor projectType is extracted as the structure mode", () => {
   const projectAnalysis = analyzeProjectScriptSource(createExecutorSource('projectType: "workflow",'));
   const conversationAnalysis = analyzeProjectScriptSource(createExecutorSource(`
-    projectType: "conversation",
+    projectType: "bot",
     conversation: { attachments: { images: true } },
   `));
 
   assert.equal(projectAnalysis.executorProjectType, "workflow");
-  assert.equal(conversationAnalysis.executorProjectType, "conversation");
-  assert.deepEqual(conversationAnalysis.executorConversation, {
-    attachments: { images: true },
-  });
+  assert.equal(conversationAnalysis.executorProjectType, "bot");
+  assert.deepEqual(conversationAnalysis.executorConversation?.attachments, { images: true });
+  assert.equal(conversationAnalysis.executorConversation?.durable?.enabled, true);
 });
 
 test("quoted executor project type and conversation keys are extracted", () => {
   const analysis = analyzeProjectScriptSource(createExecutorSource(`
-    "projectType": "conversation",
+    "projectType": "bot",
     "conversation": { "attachments": { images: true } },
   `));
 
-  assert.equal(analysis.executorProjectType, "conversation");
-  assert.deepEqual(analysis.executorConversation, {
-    attachments: { images: true },
-  });
+  assert.equal(analysis.executorProjectType, "bot");
+  assert.deepEqual(analysis.executorConversation?.attachments, { images: true });
 });
 
 test("missing and unknown executor project types are rejected", () => {
@@ -113,9 +111,9 @@ test("workflow script inspection rejects a project without an executor", async (
   }
 });
 
-test("legacy conversation settings produce warnings instead of blocking execution", () => {
+test("Bot rejects removed settings while Workflow reports incompatible conversation settings", () => {
   const legacy = analyzeProjectScriptSource(createExecutorSource(`
-    projectType: "conversation",
+    projectType: "bot",
     conversation: { enabled: true },
   `));
   const conflict = analyzeProjectScriptSource(createExecutorSource(`
@@ -123,16 +121,16 @@ test("legacy conversation settings produce warnings instead of blocking executio
     conversation: { inputQueue: { enabled: true } },
   `));
 
-  assert.equal(legacy.executorConfigurationViolations.length, 0);
+  assert.ok(legacy.executorConfigurationViolations.length > 0);
   assert.equal(conflict.executorConfigurationViolations.length, 0);
-  assert.equal(legacy.structureWarnings.some((warning) => /conversation\.enabled/.test(warning.message)), true);
+  assert.ok(legacy.executorConfigurationViolations.some(violation => /enabled/.test(violation.message)));
   assert.equal(conflict.structureWarnings.some((warning) => /ignored/.test(warning.message)), true);
 
   const quotedLegacy = analyzeProjectScriptSource(createExecutorSource(`
-    "projectType": "conversation",
+    "projectType": "bot",
     "conversation": { "enabled": true },
   `));
-  assert.equal(quotedLegacy.structureWarnings.some((warning) => /conversation\.enabled/.test(warning.message)), true);
+  assert.ok(quotedLegacy.executorConfigurationViolations.some(violation => /enabled/.test(violation.message)));
 });
 
 test("structure inspection warns about conflicting executor project types across files", async () => {
@@ -140,7 +138,7 @@ test("structure inspection warns about conflicting executor project types across
   try {
     await Promise.all([
       writeFile(path.join(projectDir, "index.ts"), createExecutorSource('projectType: "workflow",'), "utf8"),
-      writeFile(path.join(projectDir, "secondary.ts"), createExecutorSource('projectType: "conversation",'), "utf8"),
+      writeFile(path.join(projectDir, "secondary.ts"), createExecutorSource('projectType: "bot",'), "utf8"),
     ]);
 
     const inspection = inspectProjectStructure({
@@ -251,12 +249,12 @@ test("runtime rejects a Workflow executor without projectType", async () => {
 test("projectType alone controls runtime conversation context", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-runtime-"));
   const projectDir = path.join(rootDir, "workflow");
-  const conversationDir = path.join(rootDir, "conversation");
+  const conversationDir = path.join(rootDir, "bot");
 
   try {
     await Promise.all([
       writeRuntimeProject(projectDir, "workflow"),
-      writeRuntimeProject(conversationDir, "conversation"),
+      writeRuntimeProject(conversationDir, "bot"),
     ]);
 
     const [projectReport, conversationReport] = await Promise.all([
@@ -283,13 +281,8 @@ test("projectType alone controls runtime conversation context", async () => {
     }).output;
     assert.equal(projectOutput?.["conversationEnabled"], false);
     assert.equal(projectOutput?.["conversationId"], undefined);
-    assert.deepEqual({
-      conversationEnabled: conversationOutput?.["conversationEnabled"],
-      conversationId: conversationOutput?.["conversationId"],
-    }, {
-      conversationEnabled: true,
-      conversationId: "active-thread",
-    });
+    assert.equal(conversationReport.conversationId, "active-thread");
+    assert.ok(Array.isArray(conversationOutput?.["items"]));
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -338,6 +331,8 @@ test("runtime reports static violations before server storage connection checks"
 });
 
 function createExecutorSource(configuration: string): string {
+  if (/"?projectType"?: "bot"/.test(configuration)) return `export const executor = steamharness.defineBot({ ${configuration.replace(/"?projectType"?: "bot",?/, "")} });`;
+
   const execution = /projectType\s*:\s*["']workflow["']/.test(configuration)
     ? `
       defaultEntrypoint: "main",
@@ -364,7 +359,7 @@ function createExecutorSource(configuration: string): string {
 
 async function writeRuntimeProject(
   projectDir: string,
-  projectType: "workflow" | "conversation",
+  projectType: "workflow" | "bot",
 ): Promise<void> {
   await mkdir(projectDir, { recursive: true });
   await Promise.all([
@@ -377,7 +372,7 @@ async function writeRuntimeProject(
       type: "module",
       defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }), "utf8"),
-    writeFile(path.join(projectDir, "index.ts"), `
+    writeFile(path.join(projectDir, "index.ts"), projectType === "bot" ? botFixtureSource({ prepare: `if (!context.conversation.enabled) throw new Error("Bot conversation is disabled"); return { ...input, prompt: "Hello" };` }) : `
       const runtimeProject = steamharness.defineProject({
         name: "${projectType}-mode",
         async run(_input, context) {

@@ -155,7 +155,7 @@ export class ConversationQueue {
     });
     this.root.hidden = !visible.length;
     this.title.textContent = t('Queued messages ({0})', visible.length);
-    this.resume.hidden = state.durable || sessionRunning(state.session) || state.session.messages.some(message => message.pendingInput);
+    this.resume.hidden = state.durable && !state.session.queuePaused || sessionRunning(state.session) || state.session.messages.some(message => message.pendingInput);
     this.resume.disabled = !state.ready || state.canExecute === false || queue.some(input => state.pendingIds.has(input.requestId ?? input.id));
     for (const [id, row] of this.rows) if (!visible.some(input => input.id === id)) { row.root.remove(); this.rows.delete(id); }
     for (const [index, input] of visible.entries()) {

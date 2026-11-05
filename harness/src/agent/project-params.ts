@@ -1,28 +1,28 @@
 import { HarnessError } from "../workflow/errors";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { parseProjectParamValues } from "../executor/params";
-import type { ConversationParamDeclaration, ParamFieldDeclaration, ParamValues } from "../executor/types";
-import type { AgentConversationProject, AgentInput, AgentProjectOptions, AgentProjectParamOverride } from "./types";
+import type { BotParamDeclaration, ParamFieldDeclaration, ParamValues } from "../executor/types";
+import type { CoreBotProject, AgentInput, AgentProjectOptions, AgentProjectParamOverride } from "./types";
 
 export interface AgentProjectParamContract {
-  params: ConversationParamDeclaration[];
+  params: BotParamDeclaration[];
   modelSource?: "user-settings" | "project";
   skillDirectories: readonly string[];
   durable?: boolean;
 }
 const contracts = new WeakMap<object, AgentProjectParamContract>();
-export function registerAgentProject(project: object, options: AgentProjectOptions): AgentConversationProject {
+export function registerAgentProject(project: object, options: AgentProjectOptions): CoreBotProject {
   contracts.set(project, { params: structuredClone(options.params ?? createAgentProjectParams(options)), modelSource: options.modelSource,
     skillDirectories: [...(options.skills?.directories ?? [])], durable: !!options.session || !!options.createSession });
-  return project as AgentConversationProject;
+  return project as CoreBotProject;
 }
 export function readAgentProjectContract(project: unknown): AgentProjectParamContract | undefined {
   return typeof project === "object" && project !== null ? contracts.get(project) : undefined;
 }
 
 /** The assistant parameter contract, shared by runtime and static inspection. */
-export function createAgentProjectParams(options: AgentProjectOptions = {}): ConversationParamDeclaration[] {
-  const defaults: ConversationParamDeclaration[] = [
+export function createAgentProjectParams(options: AgentProjectOptions = {}): BotParamDeclaration[] {
+  const defaults: BotParamDeclaration[] = [
     {
       kind: "quick",
       id: "model",
@@ -125,7 +125,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
     const patch = fields[name as keyof typeof fields];
     if (patch !== undefined && patch !== false && (patch === null || typeof patch !== "object" || Array.isArray(patch))) fail(`Core Agent parameter "${name}" options must be an object or false.`);
   }
-  const declarations: ConversationParamDeclaration[] = [];
+  const declarations: BotParamDeclaration[] = [];
   for (const declaration of defaults) {
     if (declaration.kind === "quick" || declaration.kind === "auxiliary") {
       const updated = declaration.fields.flatMap(field => {
@@ -139,14 +139,14 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
       });
       if (updated.length) declarations.push({ ...declaration, fields: updated,
         ...(declaration.kind === "quick" ? { summary: remainingSummary(declaration.summary, updated) } : {}),
-      } as ConversationParamDeclaration);
+      } as BotParamDeclaration);
     } else {
       const patch = fields[declaration.name as keyof typeof fields];
       if (patch !== false) {
         const next = { ...declaration, ...definedOverrides(patch) };
         if (patch?.userSetting === null || patch?.defaultValue !== undefined || patch?.fixedValue !== undefined) delete next.userSetting;
         if (next.userSetting || patch?.fixedValue !== undefined) delete next.defaultValue;
-        declarations.push(next as ConversationParamDeclaration);
+        declarations.push(next as BotParamDeclaration);
       }
     }
   }
@@ -170,12 +170,12 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
       if (!field || assigned.has(name)) fail(`Core Agent group field "${name}" must be enabled and assigned once.`);
       assigned.add(name);
       return field;
-    }) } as ConversationParamDeclaration));
+    }) } as BotParamDeclaration));
     const remaining = declarations.flatMap(d => {
       if (d.kind !== "quick" && d.kind !== "auxiliary") return assigned.has(d.name) ? [] : [d];
       const kept = d.fields.filter(f => !assigned.has(f.name));
       if (!kept.length) return [];
-      return [{ ...d, fields: kept, ...(d.kind === "quick" ? { summary: remainingSummary(d.summary, kept) } : {}) } as ConversationParamDeclaration];
+      return [{ ...d, fields: kept, ...(d.kind === "quick" ? { summary: remainingSummary(d.summary, kept) } : {}) } as BotParamDeclaration];
     });
     declarations.splice(0, declarations.length, ...custom, ...remaining);
   }
@@ -185,7 +185,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
 
 /** Resolve only declared fields, preserving resolved overrides and legacy Agent flags. */
 export function resolveAgentProjectParamValues(
-  params: ConversationParamDeclaration[],
+  params: BotParamDeclaration[],
   args: string[] = [],
   supplied?: ParamValues,
 ): ParamValues {
@@ -238,7 +238,7 @@ export function applyAgentParamValues(input: AgentInput, values: ParamValues): A
   return result;
 }
 
-export function applyAgentProjectDefaults(input: AgentInput, params: ConversationParamDeclaration[]): AgentInput {
+export function applyAgentProjectDefaults(input: AgentInput, params: BotParamDeclaration[]): AgentInput {
   const defaults = applyAgentParamValues({ errCode: 0, errMessage: "", prompt: "" }, parseProjectParamValues(params, []));
   const result = { ...defaults, ...input };
   for (const name of ["provider", "model", "effort", "agent", "permissionPolicy"] as const) {
@@ -247,8 +247,11 @@ export function applyAgentProjectDefaults(input: AgentInput, params: Conversatio
   return applyAgentProjectFixedValues(result, params);
 }
 
-export function applyAgentProjectFixedValues(input: AgentInput, params: ConversationParamDeclaration[]): AgentInput {
-  const fixed = Object.fromEntries(normalizeProjectParamDeclarations(params).params.filter(p => p.fixedValue !== undefined).map(p => [p.name, p.fixedValue!]));
+export function applyAgentProjectFixedValues(input: AgentInput, params: BotParamDeclaration[]): AgentInput {
+  const values = parseProjectParamValues(params, []);
+  const fixed = Object.fromEntries(normalizeProjectParamDeclarations(params).params
+    .filter(p => p.fixedValue !== undefined || p.userSetting?.mode === "fixed")
+    .map(p => [p.name, values[p.name]]));
   return applyAgentParamValues(input, fixed);
 }
 function fail(message: string): never { throw new HarnessError({ type: "input_validation", message }); }

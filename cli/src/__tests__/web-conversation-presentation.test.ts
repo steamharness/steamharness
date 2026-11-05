@@ -158,7 +158,7 @@ it('uses code defaults instead of saved UI preferences, replays folded history, 
   let height = 1000, top = 0;
   Object.defineProperties(transcript, { scrollHeight: { get: () => height }, clientHeight: { get: () => 400 },
     scrollTop: { get: () => top, set: value => { top = Math.max(0, Math.min(value, height - 400)); } } });
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Agent', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Agent', projectType: 'bot', fields: [], entrypoints: [] };
   const emit = (id = 'one', message = turn()) => {
     window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', project, activeId: id, running: false,
       sessions: [{ id, title: 'Conversation', messages: [message], createdAt: 1, updatedAt: 1 }] } }));

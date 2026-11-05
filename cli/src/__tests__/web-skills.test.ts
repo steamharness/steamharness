@@ -23,26 +23,30 @@ it('lists and previews the selected agent through the real worker and authentica
   const version = JSON.parse(await readFile(path.join(harness, 'package.json'), 'utf8')).version;
   await writeProjectFixture(path.join(root, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Skill catalog', version: '1.0.0', type: 'module',
     devDependencies: { steamharness: version }, defaultEntry: 'main', entries: [
-      { entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] },
-      { entryId: 'child', name: 'Child', type: 'conversation', root: 'child', entry: 'index.ts', databases: [] },
+      { entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] },
+      { entryId: 'child', name: 'Child', type: 'bot', root: 'child', entry: 'index.ts', databases: [] },
       { entryId: 'plain', name: 'Plain workflow', type: 'workflow', root: 'plain', entry: 'index.ts', databases: [] },
     ] }));
   await mkdir(path.join(root, 'guides', 'large'), { recursive: true });
   const content = '---\nname: large\ndescription: Full project guide\n---\n# Guide\n' + '中文内容😀\n'.repeat(50_000) + '\nEND_OF_GUIDE';
   await writeFile(path.join(root, 'guides/large/SKILL.md'), content);
   await writeFile(path.join(root, 'index.ts'), `
-    const agent = steamharness.createAgentConversationProject({ skills: { directories: ['guides'] },
-      createTools() { throw new Error('Tool factories must not run during preview'); } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
-      tools: [{ name: 'skill', label: 'List and read skill guides', enabled: true, autoApprove: true }],
-      createInput(context) { return steamharness.createAgentProjectInput(context); } });
+
+    export const executor = steamharness.defineBot({
+agent: {skills: { directories: ['guides'] },
+createTools() { throw new Error('Tool factories must not run during preview'); }},
+tools: [{ name: 'skill', label: 'List and read skill guides', enabled: true, autoApprove: true }]
+});
   `);
   await mkdir(path.join(root, 'child/guides/child'), { recursive: true });
   await writeFile(path.join(root, 'child/guides/child/SKILL.md'), '---\nname: child\n---\nChild entry guide');
   await writeFile(path.join(root, 'child/index.ts'), `
-    const agent = steamharness.createAgentConversationProject({ skills: { directories: ['guides'] } });
+
     const wrapper = steamharness.defineProject({ name: 'wrapper', async run() { throw new Error('Preview must not run the wrapper'); } });
-    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: wrapper, coreAgent: agent, createInput() { return {}; } });
+    export const executor = steamharness.defineBot({
+agent: {skills: { directories: ['guides'] }},
+prepareInput(input, ) { return {}; }
+});
   `);
   await writeFile(path.join(root, 'plain/index.ts'), `
     const plain = steamharness.defineProject({ name: 'plain', async run() { throw new Error('Preview must not run a workflow'); } });

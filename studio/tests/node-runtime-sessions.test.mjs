@@ -35,7 +35,7 @@ test('runtime changes isolate new services and recovery keeps the original runti
       server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,
         accountProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,userSettingsProtocolVersion:1,
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),
-        project:{id:'project',name:'Project',projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[]}})));
+        project:{id:'project',name:'Project',projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[]}})));
     }});
     input.on('close',()=>{process.stdin.pause();server.close();});
   `);
@@ -50,7 +50,7 @@ test('runtime changes isolate new services and recovery keeps the original runti
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
     { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
-  const project = { id: 'project', folderPath: directory, uri: '', projectType: 'conversation', entryId: 'main', entries: [{ entryId: 'main' }] };
+  const project = { id: 'project', folderPath: directory, uri: '', projectType: 'bot', entryId: 'main', entries: [{ entryId: 'main' }] };
   const first = await runtime.start(project, 'editor'); t.after(() => first.close());
   const info = session => fetch(session.ready.url).then(response => response.json());
   const initial = await info(first);

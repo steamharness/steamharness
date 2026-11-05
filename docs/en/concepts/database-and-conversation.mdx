@@ -32,7 +32,7 @@ Only registered Workflow entries are callable. The host preserves the actor, can
 
 Use `context.knowledgeBases.get("docs")` for documents and its `files` member for attachments. Knowledge resources have separate account grants and entry bindings without requiring a project schema. Private file storage holds bytes; relational tables hold metadata and versions. Business rows store references. See [Knowledge API](/en/core-api/knowledge-documents).
 
-## Conversation and runtime storage
+## Bot and runtime storage
 
 Conversations, messages, input queues, drafts, runs, usage and Agent checkpoints persist to host-local SQLite by default, isolated by project, entry and conversationId. Runtime history needs no business database grant and creates no remote database per session.
 
@@ -40,9 +40,9 @@ Conversations, messages, input queues, drafts, runs, usage and Agent checkpoints
 
 Local persistent history requires no platform login or network connection; system AI and business resources retain their own authorization. Trusted hosts can explicitly select Server storage or use `copyRuntimePersistence` to copy idle sessions to an empty cloud destination in the background. This is an on-demand snapshot backup rather than continuous synchronization. Back up attachments and workspace files separately. Existing cloud and legacy local records are preserved without automatic reads, migration or dual writes; KV and PersistentValue remain removed. See [runtime storage](/en/core-api/runtime-storage).
 
-## Local Conversation entry control
+## Local Bot entry control
 
-The CLI Web / Studio aggregate host provides `context.entries.conversations.get(entryId)` for registered Conversation entries. It reuses the native controller, execution owner, persisted FIFO input queue, and Core history:
+The CLI Web / Studio aggregate host provides `context.entries.conversations.get(entryId)` for registered Bot entries. It reuses the native controller, execution owner, persisted FIFO input queue, and Core history:
 
 ```ts
 const bot = context.entries.conversations.get("assistant");

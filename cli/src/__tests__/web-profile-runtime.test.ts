@@ -1,3 +1,4 @@
+import { offlineModel } from "./offline-model";
 import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import {expect,it} from 'vitest';
@@ -24,36 +25,34 @@ it('enforces verified profiles through the real child worker, including downgrad
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
   let connection:WebConnection|undefined={serverUrl:origin,accessToken:'fixture-only'};
-  const runtime=createWebRuntime(directory,path.join(testDataDirectory(directory)),()=>connection);
+  const model=await offlineModel(body => String(body.messages.filter((message: any) => message.role === "user").at(-1)?.content ?? ""));
+  const runtime=createWebRuntime(directory,path.join(testDataDirectory(directory)),()=>connection,{userSettings:()=>model.settings});
   const root=path.join(os.homedir(),'.steamharness','configurations');
   try{
     await mkdir(path.join(directory,'node_modules'));
     await symlink(await resolveHarnessRoot(),path.join(directory,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
-    await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'restricted-profile',type:'module',version:'1.0.0', defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}));
+    await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'restricted-profile',type:'module',version:'1.0.0', defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}));
     await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
-    await writeFile(path.join(directory,'index.ts'),`
-      const answer=steamharness.createOutputNode({name:'answer-node',async format(){return steamharness.createOutputPayload({items:[{id:'answer',title:'Mode',content:String(steamharness.getConfig('mode')),contentType:'text'}]});}});
-      const workflow=steamharness.defineProject({name:'restricted',async run(input,context){return steamharness.runNode(answer,input,context);}});
-      export const executor=steamharness.defineExecutor({projectType:'conversation',workflow,params:[],createInput(){return {};}});
-    `);
+    await writeFile(path.join(directory,'index.ts'),`export const executor=steamharness.defineBot({ prepareInput(input) { return { ...input, prompt: String(steamharness.getConfig('mode')) }; } });`);
+
     const inspected=await runtime.inspect([directory]);expect(inspected.errors).toEqual([]);
-    const project={...inspected.projects[0],uri:''};
+    const project={...inspected.projects[0],uri:'',conversation:undefined};
     const store=await createLocalProjectConfigurationStore(directory,{connection:()=>connection??null});
     const state=await store.read(true),profile=state.configurations!.find(profile=>profile.profileKey==='build')!;
     const selection={id:profile.id,profileKey:'build',subject:JSON.stringify([origin,'alice'])};
     const request={project,conversationId:'session',runId:'build',args:[],configurationSelection:selection};
     const report=await runtime.run(request,()=>{});
-    expect(report.status).toBe('success');expect(report.output?.items?.[0].content).toBe('build');
+    expect(report.status).toBe('success');expect(report.output?.items?.find(item=>item.id==='agent-answer')?.content).toBe('build');
     role='guest';
     await expect(runtime.run({...request,resumeConfiguration:true},()=>{})).rejects.toThrow(/not available/);
     await expect(runtime.run({...request,runId:'forged-build'},()=>{})).rejects.toThrow(/not available/);
     connection=undefined;
     await expect(runtime.run({...request,runId:'logged-out'},()=>{})).rejects.toThrow(/not available/);
     const offline=await runtime.run({project,conversationId:'session',runId:'offline-ask',args:[]},()=>{});
-    expect(offline.status).toBe('success');expect(offline.output?.items?.[0].content).toBe('ask');
+    expect(offline.status).toBe('success');expect(offline.output?.items?.find(item=>item.id==='agent-answer')?.content).toBe('ask');
     await expect(runtime.run({project,conversationId:'session',runId:'pre-policy',args:[],resumeConfiguration:true},()=>{})).rejects.toThrow(/no verified configuration snapshot/);
   }finally{
-    runtime.dispose();await new Promise<void>(resolve=>{server.close(()=>resolve());server.closeAllConnections();});
+    runtime.dispose();await model.close();await new Promise<void>(resolve=>{server.close(()=>resolve());server.closeAllConnections();});
     await rm(directory,{recursive:true,force:true});
     for(const subject of [JSON.stringify([origin,'alice']),'local:guest']){
       const key=createHash('sha256').update(JSON.stringify([`application:${id}`,subject])).digest('hex');

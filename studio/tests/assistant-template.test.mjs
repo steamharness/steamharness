@@ -18,7 +18,7 @@ test('assistant bundles resolve every registered entry and its database configur
   const databaseId = '00000000-0000-4000-8000-000000000001';
   const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant', version: '0.1.9',
     defaultEntry: 'main', entries: [
-      { entryId: 'main', name: 'Assistant', type: 'conversation', root: '.', entry: 'index.ts', configuration: 'configuration.json', databases: ['memory'] },
+      { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', configuration: 'configuration.json', databases: ['memory'] },
       { entryId: 'studio-control', root: 'studio-control' },
     ],
   };

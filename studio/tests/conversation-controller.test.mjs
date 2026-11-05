@@ -6,7 +6,7 @@ register();
 const { ConversationController } = await import('../extensions/studio-workstation/src/conversation-controller.ts');
 const { resolvedProjectValues, redactProjectData, projectFormValue } = await import('../extensions/studio-workstation/src/workflow-types.ts');
 const { conversationResourceCards } = await import('../extensions/studio-workstation/src/resource-cards.ts');
-const project = { id: '5ee91340-71ed-4b74-ac97-f523eaa0c9a0', uri: 'file:///fixture', folderPath: '/fixture', name: 'Fixture', projectType: 'conversation', fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
+const project = { id: '5ee91340-71ed-4b74-ac97-f523eaa0c9a0', uri: 'file:///fixture', folderPath: '/fixture', name: 'Fixture', projectType: 'bot', fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
 const input = (text) => ({ text, params: {}, attachments: [] });
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 function fixture(saved = {}, options = {}) {

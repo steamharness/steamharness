@@ -375,7 +375,7 @@ test('form validation returns inline errors and current-project cards receive pa
   assert.match(validation.error, /already exists/);
   f.projects = [
     { id, aggregateName: 'Aggregate', name: 'Board', uri: 'file:///board', entryId: 'board', defaultEntry:'board', entries:[{entryId:'board',type:'kanban'}], folderPath: '/board', projectType: 'kanban', aggregateProjectCard: { icon: 'boxes', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
-    { id, name: 'Assistant', uri: 'file:///assistant', projectType: 'conversation', assistant: {} },
+    { id, name: 'Assistant', uri: 'file:///assistant', projectType: 'bot', assistant: {} },
   ];
   await f.execute('studio.refreshStart');
   const [{ avatarUrl, ...project }] = (await f.state()).projects;

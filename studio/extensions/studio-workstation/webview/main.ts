@@ -217,7 +217,7 @@ function initialize(): void {
     for (const field of parameters.fields) {
       values()[field.name] = projectParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
       fields.set(field.name, createField(field));
-      if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
+      if (project.projectType !== 'bot' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
     }
     parameterActions.render(parameters);
     paramError.hidden = true;
@@ -308,7 +308,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
-    const conversation = state.project.projectType === 'conversation';
+    const conversation = state.project.projectType === 'bot';
     for (const [name, view] of fields) {
       for (const control of view.controls) {
         control.disabled = busy() || resolving || paramStates[name]?.disabled === true
@@ -621,7 +621,7 @@ function initialize(): void {
     state = next;
     const session = next.sessions.find((entry) => entry.id === next.activeId);
     if (!session) { return; }
-    const conversation = next.project.projectType === 'conversation';
+    const conversation = next.project.projectType === 'bot';
     const projectChanged = renderedProject !== next.project.uri;
     app.dataset.projectUri = next.project.uri;
     const folder = document.querySelector<HTMLElement>('#assistant-folder')!;
@@ -711,7 +711,7 @@ function initialize(): void {
     if (!state) { return; }
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0;
     if (state.running && (!canQueue() || !hasInput)) { post({ type: 'stop' }); return; }
-    if (busy() || resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
+    if (busy() || resolving || uploading || state.project.projectType === 'bot' && !hasInput) { return; }
     for (const [name, view] of fields) {
       if (view.root.hidden || paramStates[name]?.disabled) { continue; }
       const value = values()[name];
@@ -743,7 +743,7 @@ function initialize(): void {
     }
   });
   textarea.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && state?.project.projectType === 'conversation') { event.preventDefault(); send(); }
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && state?.project.projectType === 'bot') { event.preventDefault(); send(); }
   });
   sendButton.addEventListener('click', send);
   document.querySelector('#new')!.addEventListener('click', () => { saveDraft(); post({ type: 'new', text: textarea.value, attachments: draftFiles }); });

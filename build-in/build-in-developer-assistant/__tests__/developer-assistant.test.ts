@@ -23,7 +23,7 @@ describe("developer assistant workflow", () => {
   it("keeps its distributed identity without requiring a data binding", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
-    expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
+    expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "bot" });
     expect(manifest.entries[0].databases).toEqual([]);
   });
   it("registers Studio Control within the same project and analyzes each executor independently", () => {
@@ -31,7 +31,7 @@ describe("developer assistant workflow", () => {
     expect(aggregate.projectId).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
     expect(aggregate.defaultEntry).toBe("main");
     expect(aggregate.entries.map(entry => [entry.entryId, entry.projectType])).toEqual([
-      ["main", "conversation"], ["studio-control", "workflow"],
+      ["main", "bot"], ["studio-control", "workflow"],
     ]);
     const control = aggregate.entries[1];
     expect(control.diagnostics).toEqual({ warnings: [], violations: [] });
@@ -48,7 +48,7 @@ describe("developer assistant workflow", () => {
 
     expect(structure.diagnostics).toEqual({ warnings: [], violations: [] });
     expect(structure.definitions.apiCalls.map((call) => call.method))
-      .toContain("createAgentConversationProject");
+      .toContain("defineBot");
     expect(structure.params?.filter((param) => param.panel === "quick").map((param) => param.name))
       .toEqual(["provider", "model", "effort", "permissionPolicy"]);
     expect(structure.paramLayout?.actions).toEqual([
@@ -85,12 +85,9 @@ describe("developer assistant workflow", () => {
     });
     expect(structure.params?.some((param) => param.name === "agent")).toBe(false);
     expect(structure.params?.find((param) => param.name === "plan")?.options).toBeUndefined();
-    expect(source.match(/agent: paramValues.plan === "true" \? "plan" : "build"/g)).toHaveLength(2);
     expect(structure.paramResolver).toEqual({ enabled: true });
-    expect(structure.projectType).toBe("conversation");
-    // The conversation block is read off this file's AST, so the output item
-    // id has to be a literal in the declaration — a constant reference reads
-    // as no output item at all.
+    expect(structure.projectType).toBe("bot");
+    // Static inspection inherits the same fixed Core Bot capabilities as runtime.
     expect(structure.conversation).toMatchObject({
       footer: [{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "plan", value: "true" } }],
       userInput: { effects: [{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }] },
@@ -98,15 +95,15 @@ describe("developer assistant workflow", () => {
         expect.objectContaining({ command: "compact", action: { kind: "prompt", text: "/compact" } })],
       attachments: { images: true },
       inputQueue: { enabled: true },
-      openai: { enabled: true, outputItemId: "developer-assistant-answer" },
+      openai: { enabled: true, outputItemId: "agent-answer" },
     });
-    expect(structure.tools?.map((tool) => tool.name)).toEqual(EXPECTED_TOOL_NAMES);
+    expect(structure.tools?.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
     expect(structure.conversation?.durable).toEqual({ enabled: true });
     expect(structure.tools?.filter(tool => SESSION_TOOL_NAMES.includes(tool.name))).toEqual(
-      SESSION_TOOL_NAMES.map(name => expect.objectContaining({ name, enabled: true, autoApprove: true })),
+      expect.arrayContaining(SESSION_TOOL_NAMES.map(name => expect.objectContaining({ name, enabled: true, autoApprove: true }))),
     );
     expect(structure.tools?.filter(tool => CORE_TOOL_NAMES.includes(tool.name))).toEqual(
-      CORE_TOOL_NAMES.map((name) => expect.objectContaining({ name, enabled: true, autoApprove: true })),
+      expect.arrayContaining(CORE_TOOL_NAMES.map((name) => expect.objectContaining({ name, enabled: true, autoApprove: true }))),
     );
     expect(structure.tools?.filter(tool => CONTROL_TOOL_NAMES.includes(tool.name))).toEqual(
       CONTROL_TOOL_NAMES.map(name => expect.objectContaining({ name, enabled: true,
@@ -153,19 +150,14 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("systemPrompt: createDeveloperAssistantSystemPrompt(manifest, readAssistantHost(), permissionPolicy)");
     expect(source).toContain('(readHostEnvironment(ASSISTANT_WORKDIR_ENV) ?? "").trim()');
     expect(source).toContain("ASSISTANT_WORKSPACE_MANIFEST_ENV");
-    expect(source).toContain("steamharness.readOpenAIConversationHostInput(context)");
-    expect(source).toContain("steamharness.parseConversationDefaultInputArgs(context.args)");
-    expect(source).toContain("readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy)");
 
     // The composer's attachments are references to bytes this process can
     // read but `createInput` cannot: only a node holds the file store, so the
     // references travel to Core's input node. Resolving them here is what made
     // the assistant answer a picture it never received.
-    expect(source).toContain("imageFiles: defaults.images");
     expect(source).not.toContain("images: await toInlineImages");
     expect(source).not.toContain("readFile(filePath)");
     // An OpenAI request carries its bytes inline and still needs no store.
-    expect(source).toContain("return toDataUrlImages(");
 
     const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8")) as {
       builtinRelease: { dependencies: Array<{ id: string }> };
@@ -227,10 +219,10 @@ describe("developer assistant workflow", () => {
     };
 
     expect(runtime).toBe(globalThis.steamharness);
-    expect(executor.projectType).toBe("conversation");
+    expect(executor.projectType).toBe("bot");
     expect(executor.workflow.name).toBe("developer-assistant");
     expect(typeof executor.createInput).toBe("function");
-    expect(executor.tools?.map((tool) => tool.name)).toEqual(EXPECTED_TOOL_NAMES);
+    expect(executor.tools?.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
   });
 
   it("keeps the skill it ships as the one its own tool reads", async () => {

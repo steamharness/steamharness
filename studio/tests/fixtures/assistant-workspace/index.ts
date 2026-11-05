@@ -37,7 +37,7 @@ const task = steamharness.defineProject({
 });
 
 export const executor = steamharness.defineExecutor({
-  projectType: 'conversation', workflow: task,
+  projectType: 'bot', workflow: task,
   tools: [{ name: 'bash', enabled: true, autoApprove: true }, { name: 'read', enabled: true, autoApprove: true }],
   createInput(context) { return steamharness.parseConversationDefaultInputArgs(context.args); },
 });

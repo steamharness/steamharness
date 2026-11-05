@@ -36,7 +36,7 @@ test('project declarations use the Desktop manifest fields and preserve extended
 });
 
 test('entry windows and empty database requirements are displayed for all types', () => {
-  for (const type of ['workflow', 'conversation', 'kanban']) {
+  for (const type of ['workflow', 'bot', 'kanban']) {
     const items = projectInfoItems(project('Example', type), {});
     assert.equal(fields(items)['databases:empty'].label, 'Not declared');assert.equal(values(items)['window:main:id'],'main');
     assert.equal(values(items).type, type[0].toUpperCase() + type.slice(1));
@@ -86,7 +86,7 @@ function fixture(t, read) {
 
 test('ordinary workspaces and the independent assistant never expose the information tab', async t => {
   const { provider, contexts, state } = fixture(t, () => ({}));
-  await provider.update([{ ...project('Assistant', 'conversation'), assistant: { standalone: true } }, project('Other', 'other')]);
+  await provider.update([{ ...project('Assistant', 'bot'), assistant: { standalone: true } }, project('Other', 'other')]);
   assert.deepEqual([...contexts], [['studio.projectInfoAvailable', false], ['studio.projectInfoMultipleProjects', false]]);
   assert.equal(state().items.length, 0);
   assert.equal(state().project, undefined);
@@ -110,7 +110,7 @@ test('late reads and disposal do not overwrite the selected project', async t =>
 
 test('project selection persists until the active project changes and source opens the selected project', async t => {
   const { provider, choose, commands, opened, copied, contexts, state } = fixture(t, uri => ({ name: uri.split('/').at(-2) }));
-  const first = project('First'), second = project('Second', 'conversation');
+  const first = project('First'), second = project('Second', 'bot');
   await provider.update([first, second], first);
   choose(second.uri); await commands.get('studio.selectInfoProject')();
   await provider.update([first, second], first);

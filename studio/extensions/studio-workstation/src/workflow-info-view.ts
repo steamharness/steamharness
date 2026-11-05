@@ -33,7 +33,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   update(projects: Project[], preferred?: Project): Promise<void> {
-    this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation', 'kanban'].includes(project.projectType));
+    this.projects = projects.filter(project => !project.assistant && ['workflow', 'bot', 'kanban'].includes(project.projectType));
     const changedPreferred = (preferred && projectWindowKey(preferred)) !== this.preferredUri;
     this.preferredUri = (preferred && projectWindowKey(preferred));
     const selected = this.projects.find(project => projectWindowKey(project) === (changedPreferred ? (preferred && projectWindowKey(preferred)) : (this.selected && projectWindowKey(this.selected)))) ?? this.projects[0];

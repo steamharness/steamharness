@@ -33,7 +33,7 @@ const result = await context.entries.get("jobs")
 
 使用 `context.knowledgeBases.get("docs")` 访问文档及其 `files` 附件。知识库使用独立资源、账号授权和入口绑定，无需业务项目定义 schema。文件字节保存在私有文件存储，元数据和版本保存在关系表；业务表只保存引用。详见 [知识库 API](/core-api/knowledge-documents)。
 
-## Conversation 与运行存储
+## Bot 与运行存储
 
 会话、消息、输入队列、草稿、Run、用量与 Agent 检查点默认保存在宿主本地 SQLite，按项目、入口和 conversationId 隔离。运行历史不需要业务库权限，也不会为每个会话创建远程数据库。
 
@@ -41,9 +41,9 @@ const result = await context.entries.get("jobs")
 
 本地持久历史不要求平台登录或网络连接；系统 AI 和业务资源仍按各自权限校验。可信宿主可显式选择 Server 仓储，或用 `copyRuntimePersistence` 在会话空闲时后台复制到空云端目标。它是按需快照备份，不是持续同步；附件与工作区文件独立备份。已有云端和旧本地记录保留，不自动读取、迁移或双写；不重新引入 KV 或 PersistentValue。详见[运行存储](/core-api/runtime-storage)。
 
-## 本地 Conversation 入口控制
+## 本地 Bot 入口控制
 
-CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Conversation，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
+CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Bot，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
 
 ```ts
 const bot = context.entries.conversations.get("assistant");

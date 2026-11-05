@@ -1,5 +1,5 @@
-export type ProjectType = 'workflow' | 'conversation' | 'kanban';
-export const projectTypeIcons: Record<ProjectType, string> = { workflow: 'run-all', conversation: 'comment-discussion', kanban: 'layout' };
+export type ProjectType = 'workflow' | 'bot' | 'kanban';
+export const projectTypeIcons: Record<ProjectType, string> = { workflow: 'run-all', bot: 'hubot', kanban: 'layout' };
 
 export interface RecentProject {
   uri: string;

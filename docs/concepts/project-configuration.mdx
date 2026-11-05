@@ -1,11 +1,11 @@
 ---
 title: "项目配置"
-description: "Workflow、Conversation、Kanban 共用的字段、命名配置、导入导出和运行快照。"
+description: "Workflow、Bot、Kanban 共用的字段、命名配置、导入导出和运行快照。"
 ---
 
 # 项目配置
 
-Workflow、Conversation、Kanban 使用同一套项目配置。Studio 与 CLI Web 从工具栏打开“项目配置”，Server Web 从项目详情的配置页管理。没有声明字段时仍可添加自定义字段。
+Workflow、Bot、Kanban 使用同一套项目配置。Studio 与 CLI Web 从工具栏打开“项目配置”，Server Web 从项目详情的配置页管理。没有声明字段时仍可添加自定义字段。
 
 ## 声明字段
 
@@ -58,13 +58,13 @@ Studio、独立 CLI 与 CLI Web 共用本机用户级配置存储，严格按 `p
 
 Core Agent 的模型有两种模式：Studio 默认使用设置中的全部内置／自定义模型，项目配置不展示“AI 模型”，也不提供设置模型引用。显式 `modelSource: "project"` 始终使用项目配置；默认或 `modelSource: "user-settings"` 在独立 CLI Web 中自动退化为此模式。项目模式在配置详情第一项展示“AI 模型”，添加／编辑弹窗仅提供“系统 AI”和“第三方 AI”两种来源。取消或按 Escape 只放弃本次模型编辑并恢复焦点。
 
-项目模式下，当前配置的模型列表为空时，Workflow 和 Conversation 输入区显示“配置模型”，点击定位到当前配置的“AI 模型”；保存后恢复模型选择。设置模式的空列表始终进入 Studio 设置。切换宿主仅改变配置展示和实际模型来源，保留本地项目模型供 CLI Web 使用。跳转保留消息草稿和当前运行配置；已有未保存的配置或发布草稿时先保存或放弃。
+项目模式下，当前配置的模型列表为空时，Workflow 和 Bot 输入区显示“配置模型”，点击定位到当前配置的“AI 模型”；保存后恢复模型选择。设置模式的空列表始终进入 Studio 设置。切换宿主仅改变配置展示和实际模型来源，保留本地项目模型供 CLI Web 使用。跳转保留消息草稿和当前运行配置；已有未保存的配置或发布草稿时先保存或放弃。
 
 - 系统 AI：按需读取当前账号订阅，只需依次选择 Provider 和模型，显示名称自动取模型名称，无需填写模型名称。刷新目录保留模型草稿；所选订阅或模型消失时不自动改选，运行时提示检查订阅。没有可用订阅时提示管理订阅；未配置系统 AI 连接时仍可添加第三方模型。
 - 第三方 AI：填写模型名称、模型 ID、API Key、Base URL 与 API 协议。支持 `openai-completions`、`openai-responses`、`anthropic-messages`；API Key 使用密码框，列表不展示密钥。
 - 加入列表后可编辑、删除、设为默认。先应用正在编辑的模型，再保存整套配置；未完成的模型草稿会阻止保存或离开。列表第一项是默认模型，输入框只提供已保存模型的选择，不再管理 Provider。
 
-模型列表使用保留字段 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`）。Core 静态识别 `createAgentNode`、`createAgentConversationProject`、`createAgentProjectParamResolver` 或 `defineAgentConversationExecutor` 的调用后自动补入字段，不执行项目代码。本地配置服务在源码变更后更新识别结果，无需重开面板。间接封装无法被静态识别时，可在 `configuration.json` 显式声明此字段，使用 `secret: true`、`defaultValue: []` 与 `sharing: { "publish": true, "includeValue": false, "editable": true }`。
+模型列表使用保留字段 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`）。Core 静态识别 `createAgentNode`、`defineBot`或 `createAgentProjectParamResolver` 的调用后自动补入字段，不执行项目代码。本地配置服务在源码变更后更新识别结果，无需重开面板。间接封装无法被静态识别时，可在 `configuration.json` 显式声明此字段，使用 `secret: true`、`defaultValue: []` 与 `sharing: { "publish": true, "includeValue": false, "editable": true }`。
 
 项目只允许系统 AI 时，在源码 `configuration.json` 中显式声明模型字段并设置 `allowThirdParty: false`：
 
@@ -91,7 +91,7 @@ Core Agent 的模型有两种模式：Studio 默认使用设置中的全部内�
 
 模型值按命名配置保存并随运行快照冻结。保存非当前配置保留运行选择；下一轮或下一次执行读取当前配置。模型列表与其他配置使用相同的导入导出、版本检查、权限和小助手 CRUD。自动字段默认发布结构而不携带值，API Key 不会自动进入发布模板；完整备份仍包含密钥，须妥善保管。
 
-Conversation 与 Studio 小助手允许在同一会话中更换模型。修改、删除或替换配置中的模型不会隐藏已经完成的回复，也不会更改历史回复记录的模型名称；后续消息使用当前选中的可用模型并保留会话上下文。若新模型启动失败，错误由本次发送操作返回，已完成的历史回复继续正常展示。
+Bot 与 Studio 小助手允许在同一会话中更换模型。修改、删除或替换配置中的模型不会隐藏已经完成的回复，也不会更改历史回复记录的模型名称；后续消息使用当前选中的可用模型并保留会话上下文。若新模型启动失败，错误由本次发送操作返回，已完成的历史回复继续正常展示。
 
 ## 子 Agent 模型单选
 
@@ -118,7 +118,7 @@ SDK 提供 `ProjectConfigurationSnapshot`、`context.config` 和 `steamharness.g
 显式快照也按 `runId` 保存，恢复时可省略 `configuration`，仍使用最初保存的值。宿主为保留同一 `runId` 的持久会话更新配置时，传入新的 `configurationRunId`；之后恢复该代配置需继续传入相同的 `configurationRunId`。本地存储的 `snapshot({ runId, configuration })` 同样只在该身份首次使用时保存传入快照。
 
 - Workflow 开始执行时冻结配置；恢复等待任务继续使用原快照。
-- Conversation 的下一轮执行使用新配置；持久 Agent 等当前任务、排队输入和审批处理结束后停止旧运行，在下一次输入时用新参数重建运行配置，保留会话历史、分支和恢复状态。
+- Bot 的下一轮执行使用新配置；持久 Agent 等当前任务、排队输入和审批处理结束后停止旧运行，在下一次输入时用新参数重建运行配置，保留会话历史、分支和恢复状态。
 - Kanban 保存后更新主页面与资源卡片预览，HTML 仍通过 `window.steamHarnessKanban.getConfiguration().params` 读取原生值，并监听 `steamharness:kanban-configuration-change`。指定配置 ID 的预览引用该配置；配置删除后显示不可用。
 
 项目业务配置不自动读取 `.env`，不使用 `.env.example`，也不回退到进程环境变量。旧项目 env 和旧 Kanban 配置不迁移。请重新在面板填写配置。Server 部署、CI 和 Studio 内部通信变量继续由宿主管理。

@@ -7,7 +7,7 @@ description: "Parses message, images, videos, and files from the default convers
 
 `workflow.parseConversationDefaultInputArgs(args)` parses the fixed `--message`, `--images`, `--videos`, and `--files` parameters written by the default conversation input. It does not read `RunContext` or replace the executor's `createInput`.
 
-Conversation always uses the standard message input without an enable setting. Hosts serialize attachments according to `conversation.attachments`. Call this helper explicitly in `createInput({ args })`.
+Bot uses the standard message input. Core parses text and images automatically; use this helper in `prepareInput` when business logic also needs file or video references.
 
 ## Signature
 
@@ -38,25 +38,11 @@ workflow.parseConversationDefaultInputArgs(
 ## executor Configuration
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
-  projectType: "conversation",
-  workflow: conversationProject,
-  conversation: {
-    attachments: {
-      images: true,
-      videos: true,
-      files: true,
-    },
-  },
-  createInput({ args, conversationId }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
-    return {
-      conversationId,
-      message: defaults.message,
-      images: defaults.images,
-      videos: defaults.videos,
-      files: defaults.files,
-    };
+export const executor = steamharness.defineBot({
+  conversation: { attachments: { images: true, files: true } },
+  async prepareInput(input, context) {
+    const attachments = steamharness.parseConversationDefaultInputArgs(context.args);
+    return { ...input, businessFiles: attachments.files };
   },
 });
 ```

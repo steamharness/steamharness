@@ -54,7 +54,7 @@ export interface McpEntrypointStructure {
 export interface McpStructureReport {
   projectId: string;
   entryId: string;
-  projectType: "workflow" | "conversation" | "kanban" | string;
+  projectType: "workflow" | "bot" | "kanban" | string;
   workflow: { name: string };
   defaultEntrypoint?: string;
   entrypoints?: McpEntrypointStructure[];

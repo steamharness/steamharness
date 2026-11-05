@@ -51,12 +51,16 @@ it('forks through the page protocol without system AI and resumes only when the 
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'fork-fixture', version: '1.0.0',
       devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',
-      entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] }));
+      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
     const source = `
-      const workflow = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [], session: { compaction: { enabled: false } } });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow,
-        conversation: { durable: { enabled: true }, recovery: { enabled: true } }, params: [],
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); } });
+
+      export const executor = steamharness.defineBot({
+agent: {modelSource: 'user-settings',
+tools: [],
+session: { compaction: { enabled: false } }},
+conversation: {recovery: {}},
+params: []
+});
     `;
     await writeFile(path.join(directory, 'index.ts'), source);
     const connection = { serverUrl: origin, accessToken: 'test-account', aiServerUrl: origin, aiAccessToken: 'test-ai' };

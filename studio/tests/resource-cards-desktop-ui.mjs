@@ -18,7 +18,7 @@ import { desktopLocaleLaunch } from './desktop-localization.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const conversationSource = process.env.STUDIO_CARD_PROJECT_DIR
-  ? await realpath(process.env.STUDIO_CARD_PROJECT_DIR) : path.join(root, 'examples/conversation');
+  ? await realpath(process.env.STUDIO_CARD_PROJECT_DIR) : path.join(root, 'examples/bot');
 const core = await import(resolve('steamharness', pathToFileURL(path.join(conversationSource, 'package.json')).href));
 const languages = process.env.STUDIO_CARD_LOCALE ? [process.env.STUDIO_CARD_LOCALE] : ['en', 'zh-cn'];
 const cli = process.env.STUDIO_CARD_CLI_DIR || await realpath(path.join(conversationSource, 'node_modules/@steamharness/cli'));
@@ -43,8 +43,8 @@ for (const language of languages) {
   const remote = fixtureDatabaseHost();
   const runtime = runtimeStorageService();
   const storageDir = path.join(dataDir, 'User/globalStorage/studio.studio-workstation/workflow/web');
-  for (const type of ['conversation', 'kanban']) {
-    const original = type === 'conversation' ? conversationSource : path.join(root, 'examples', type), folder = path.join(directory, type);
+  for (const type of ['bot', 'kanban']) {
+    const original = type === 'bot' ? conversationSource : path.join(root, 'examples', type), folder = path.join(directory, type);
     await cp(original, folder, { recursive: true, filter: entry => !path.relative(original, entry).split(path.sep).some(part =>
       ['node_modules', '.git', 'dist', 'tmp'].includes(part) || part === '.env' || part.startsWith('.env.')) });
     await mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });

@@ -114,7 +114,7 @@ Image workflows can resolve file parameters to `ResolvedFile[]` and pass `readBu
 - Runtime-generated files use server file references. CLI Web and CLI upload them automatically when connected to Server and report an error when no Server connection is available.
 - `GET /api/workflows/files/{fileId}` can read or download the server file.
 
-If a Conversation declares `conversation.attachments`, its standard composer accepts pasted,
+If a Bot declares `conversation.attachments`, its standard composer accepts pasted,
 dropped, or uploaded images, videos, and files using the same file reference protocol. The host
 writes each browser/Electron `File` to the local or server managed file store, then serializes
 the reference under `--images`, `--videos`, or `--files`. The workflow reads these references with

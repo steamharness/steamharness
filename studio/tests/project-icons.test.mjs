@@ -45,7 +45,7 @@ function fixture(t) {
     window: { onDidChangeWindowState: focus.event },
   };
   const module = { exports: {} }, launcher = { analyzeProjectType: async sources => {
-    const declared = new Map(['workflow', 'conversation'].map(type => [executor(type), type]));
+    const declared = new Map(['workflow', 'bot'].map(type => [executor(type), type]));
     const types = new Set(sources.map(source => declared.get(source.text)).filter(Boolean));
     return types.size === 1 ? [...types][0] : undefined;
   } };
@@ -64,19 +64,19 @@ test('native and extension project icons share the existing template glyphs', ()
 test('icons read the default registered entry without analyzing or executing project code', async t => {
   const f = fixture(t);
   f.launcher.analyzeProjectType = () => { throw new Error('Static manifests must not execute an analyzer'); };
-  for (const type of ['workflow', 'conversation', 'kanban']) {
+  for (const type of ['workflow', 'bot', 'kanban']) {
     f.files.set(`file:///${type}/steamharness.json`, manifest(type));
     f.files.set(`file:///${type}/src/main.ts`, executor(type));
   }
-  assert.deepEqual(await f.types('file:///workflow', 'file:///conversation', 'file:///kanban'), {
-    'file:///workflow': 'workflow', 'file:///conversation': 'conversation', 'file:///kanban': 'kanban',
+  assert.deepEqual(await f.types('file:///workflow', 'file:///bot', 'file:///kanban'), {
+    'file:///workflow': 'workflow', 'file:///bot': 'bot', 'file:///kanban': 'kanban',
   });
   const aggregate = declaration('workflow');
   aggregate.entries.push({ entryId: 'chat', root: 'chat' });
-  f.files.set('vscode-remote://host/project/chat/steamharness.json', JSON.stringify({type:'conversation', name:'Chat',entry:'index.ts',databases:[]}));
+  f.files.set('vscode-remote://host/project/chat/steamharness.json', JSON.stringify({type:'bot', name:'Chat',entry:'index.ts',databases:[]}));
   aggregate.defaultEntry = 'chat';
   f.files.set('vscode-remote://host/project/steamharness.json', JSON.stringify(aggregate));
-  assert.deepEqual(await f.types('vscode-remote://host/project'), { 'vscode-remote://host/project': 'conversation' });
+  assert.deepEqual(await f.types('vscode-remote://host/project'), { 'vscode-remote://host/project': 'bot' });
   assert.equal(f.reads.some(name => name.endsWith('.ts')), false);
 });
 
@@ -95,12 +95,12 @@ test('ordinary folders, broken and old declarations, invalid entries and unsuppo
   f.files.set('file:///ordinary/steamharness.json', manifest(undefined, 'not-a-project'));
   f.files.set('file:///ordinary/index.ts', executor('workflow'));
   f.files.set('file:///broken/steamharness.json', '{');
-  f.files.set('file:///text/steamharness.json', JSON.stringify({ id, name: 'Old declaration', version: "0.1.0",  projectType: 'conversation'  }));
-  f.files.set('file:///text/index.ts', '// steamharness.defineExecutor({ projectType: "conversation" })\nconst text = "projectType: workflow";');
-  const duplicate = declaration('workflow'); duplicate.entries.push({ ...duplicate.entries[0], type: 'conversation' });
+  f.files.set('file:///text/steamharness.json', JSON.stringify({ id, name: 'Old declaration', version: "0.1.0",  projectType: 'bot'  }));
+  f.files.set('file:///text/index.ts', '// steamharness.defineExecutor({ projectType: "bot" })\nconst text = "projectType: workflow";');
+  const duplicate = declaration('workflow'); duplicate.entries.push({ ...duplicate.entries[0], type: 'bot' });
   f.files.set('file:///conflict/steamharness.json', JSON.stringify(duplicate));
   f.files.set('file:///conflict/a.ts', executor('workflow'));
-  f.files.set('file:///conflict/b.ts', executor('conversation'));
+  f.files.set('file:///conflict/b.ts', executor('bot'));
   const uris = ['file:///ordinary', 'file:///broken', 'file:///text', 'file:///conflict', 'file:///missing', 'file:///test.code-workspace', 'https://example.com', 'command:run'];
   assert.deepEqual(await f.types(...uris), Object.fromEntries(uris.map(uri => [uri, undefined])));
 });
@@ -128,8 +128,8 @@ test('parallel requests share reads; refresh preserves the last icon on transien
   assert.equal(f.reads.length, 1);
   f.failures.set(pkg, new Error('Temporarily unavailable')); f.icons.refresh();
   assert.deepEqual(await f.types(root), { [root]: 'kanban' });
-  f.failures.clear(); f.files.set(pkg, manifest('conversation')); f.files.set(`${root}/index.ts`, executor('conversation')); f.focus();
-  assert.deepEqual(await f.types(root), { [root]: 'conversation' });
+  f.failures.clear(); f.files.set(pkg, manifest('bot')); f.files.set(`${root}/index.ts`, executor('bot')); f.focus();
+  assert.deepEqual(await f.types(root), { [root]: 'bot' });
   f.files.delete(pkg); f.change(pkg);
   assert.deepEqual(await f.types(root), { [root]: undefined });
 });
@@ -145,8 +145,8 @@ test('stale manifest reads cannot replace newer entry declarations', async t => 
   };
   const previous = f.types(root); await ready;
   f.vscode.workspace.fs.readFile = original;
-  f.files.set(`${root}/steamharness.json`, manifest('conversation')); f.icons.refresh();
-  assert.deepEqual(await f.types(root), { [root]: 'conversation' }); release(); await previous;
-  assert.equal(f.icons.get(root), 'conversation');
+  f.files.set(`${root}/steamharness.json`, manifest('bot')); f.icons.refresh();
+  assert.deepEqual(await f.types(root), { [root]: 'bot' }); release(); await previous;
+  assert.equal(f.icons.get(root), 'bot');
   assert.deepEqual(f.reads, [`${root}/steamharness.json`, `${root}/steamharness.json`]);
 });

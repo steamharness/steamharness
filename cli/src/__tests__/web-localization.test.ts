@@ -49,7 +49,7 @@ it('has complete placeholders and falls back to English for untranslated technic
   expect(t('Unknown diagnostic: {0}', 'custom')).toBe('Unknown diagnostic: custom');
 });
 
-it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh-CN', 'conversation']] as const)(
+it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'bot'], ['zh-CN', 'bot']] as const)(
   'inspects author-provided %s names and storage for %s projects in the Core worker', async (language, projectType) => {
   initI18n({ preference: language });
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-locale-'));
@@ -61,9 +61,9 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
        defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:projectType,root:'.',entry:'index.ts',databases:[]}], projectInfo:{localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }}  }));
     await writeFile(path.join(directory, 'index.ts'), `
       const graph = steamharness.defineProject({ name: 'locale-fixture', async run() { return steamharness.createOutputPayload({ items: [] }); } });
-      export const executor = steamharness.defineExecutor(${projectType === 'workflow' ? `
+      export const executor = steamharness.${projectType === 'workflow' ? 'defineExecutor' : 'defineBot'}(${projectType === 'workflow' ? `
         { projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: graph, createInput: context => context.paramValues })] }`
-        : `{ projectType: 'conversation', workflow: graph, createInput: context => context.paramValues }`});`);
+        : `{}`});`);
     const result = await runtime.inspect([directory]);
     expect(result.errors).toEqual([]);
     expect(result.projects[0].aggregateName).toBe(language === 'en' ? 'English name' : '\u4e2d\u6587\u540d\u79f0');

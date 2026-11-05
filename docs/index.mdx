@@ -13,7 +13,7 @@ SteamHarness 是开发、运行和分发 Agent 项目的平台。它由 Core SDK
 | 类型 | 形态 | 适合 | 入口 |
 | --- | --- | --- | --- |
 | Workflow | 类型化的 TypeScript 工作流 | 自动化、多步骤任务、工具编排 | 入口函数 + 节点 / 执行器 |
-| Conversation | 对话型 Agent 项目 | 对话助手、Agent 会话 | 会话执行器 |
+| Bot | 对话型 Agent 项目 | 对话助手、Agent 会话 | 会话执行器 |
 | Kanban | 静态 HTML / CSS / JavaScript | 看板、可视化、人机协作 | `index.html` |
 
 ### Workflow
@@ -23,9 +23,9 @@ Workflow 用节点和执行器描述一条可运行的任务链：输入、LLM �
 - 典型场景：数据处理、内容生成、工具调用、多步骤自动化。
 - 从 [Workflow 模型](/concepts/workflow-model) 和 [Core API](/core-api/overview) 开始。
 
-### Conversation
+### Bot
 
-Conversation 是面向对话的 Agent 项目，围绕会话轮次、工具调用和会话数据组织执行。它复用同一套 Core Runtime，但入口以消息和会话为单位。
+Bot 是面向对话的 Agent 项目，围绕会话轮次、工具调用和会话数据组织执行。它复用同一套 Core Runtime，但入口以消息和会话为单位。
 
 - 典型场景：对话助手、客服/运营助手、需要持续上下文的 Agent。
 - 从 [数据库与会话](/concepts/database-and-conversation) 和 [Core API](/core-api/overview) 开始。
@@ -60,7 +60,7 @@ Server 不安装项目依赖、不构建、也不加载上传的项目代码。K
 | Workspace CLI | 登录 Server、上传下载源码、发布和切换版本 | [Workspace CLI](/cli/server-workspace) |
 | Store | 浏览、下载和发布项目版本 | [Store 概览](https://docs.steamharness.yuhe.space/enhanced/store/overview) |
 | 系统 AI（增强版） | 共享模型、个人默认模型、供应方偏好、用量与订单 | [系统 AI 指南](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison) |
-| 内置项目 | 开发者小助手、Codex、Conversation、OpenCode、Pi 等开箱即用的项目 | [发布日志](/guides/releases/overview) |
+| 内置项目 | 开发者小助手、Codex、Bot、OpenCode、Pi 等开箱即用的项目 | [发布日志](/guides/releases/overview) |
 
 ## 项目数据与配置
 
@@ -89,16 +89,16 @@ Server 使用账号和固定的项目角色管理权限：
 
 ## 开发流程
 
-1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Conversation 或 Kanban 类型和模板；也可以手动创建目录。
+1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Bot 或 Kanban 类型和模板；也可以手动创建目录。
 根 `steamharness.json.id` 是聚合唯一身份，`steamharness.json.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
-3. **编写入口**：Workflow / Conversation 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
+3. **编写入口**：Workflow / Bot 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
 4. **本地运行**：在 Studio 中打开项目并点击运行，或在终端执行 `steamharness structure .`、`steamharness run .`、`steamharness web .`。
 5. **上传到 Server**：使用 Workspace CLI 登录、打包源码并发布版本，然后在 Server Web 管理端管理项目、成员和数据。
 6. **发布到 Store**（可选）：从 Server 上已有的版本创建 Store 条目，提交审核并上架。
 
 ## 项目结构
 
-一个最小的 Workflow / Conversation 项目通常包含：
+一个最小的 Workflow / Bot 项目通常包含：
 
 ```text
 my-project/
@@ -128,7 +128,7 @@ Studio 自带一组可以直接打开或创建的项目：
 | 开发者小助手（Project Assistant） | 在 Studio 中协助理解项目、生成代码和执行开发任务 |
 | Studio 控制（Studio Control） | 为 Agent 提供受控的 Studio 操作能力 |
 | Studio 分析（Studio Analysis） | 汇总本地项目与运行状态 |
-| Codex / Conversation / OpenCode / Pi | 开箱即用的 Agent / 对话项目 |
+| Codex / Bot / OpenCode / Pi | 开箱即用的 Agent / 对话项目 |
 
 内置项目同样遵循项目类型、版本和权限规则。各项目的版本记录见[发布日志](/guides/releases/overview)。
 

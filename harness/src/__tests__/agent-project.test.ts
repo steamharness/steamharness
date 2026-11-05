@@ -1,3 +1,4 @@
+import { createEmbeddedBotExecutor } from "./bot-test-helper";
 import { createMemoryRuntimePersistence, SnapshotMemoryStorage, type RuntimePersistence } from "../runtime-storage/index";
 import { testConversationStorage } from "./runtime-test-storage";
 import { createTestResources } from "./entry-test-resources";
@@ -10,7 +11,7 @@ import test, { after } from "node:test";
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createAgentConversationProject, createAgentProjectInput, defineAgentConversationExecutor } from "../agent/project";
+import { createCoreBotProject, createAgentProjectInput, } from "../agent/project";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { parseProjectParamValues } from "../executor/params";
 import { AGENT_OUTPUT_KINDS } from "../agent/output-items";
@@ -60,7 +61,7 @@ for (const outcome of ["success", "failed", "error", "length"] as const) {
     ] as never[]);
     await withTempDir(async workdir => {
       const context = createContext(`compact-${outcome}`);
-      const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+      const executor = createEmbeddedBotExecutor({ models, resolvedModel: model });
       await executor.workflow.run({ prompt: "Original goal", workdir, errCode: 0, errMessage: "" }, context);
       const before = await readStoredTranscript(context);
       const node = createAgentNode({ models, resolvedModel: model, ...{ retryDelayMs: 0 } });
@@ -76,7 +77,7 @@ for (const outcome of ["success", "failed", "error", "length"] as const) {
       const stored = await readStoredTranscript(context);
       if (outcome !== "success") { assert.deepEqual(stored, before); }
       else { assert.equal(stored.length, 1); assert.match(JSON.stringify(stored), /Remember the user's goal/); }
-      const reopened = defineAgentConversationExecutor({ models, resolvedModel: model });
+      const reopened = createEmbeddedBotExecutor({ models, resolvedModel: model });
       await reopened.workflow.run({ prompt: "Continue", workdir, errCode: 0, errMessage: "" }, context);
       assert.match(requests[0]?.join("\n") ?? "", outcome === "success" ? /Remember the user's goal/ : /Original answer/);
       if (outcome === "success") { assert.doesNotMatch(requests[0]?.join("\n") ?? "", /Original answer/); }
@@ -103,7 +104,7 @@ test("cancelled context compaction preserves the stored transcript even if the p
   faux.setResponses([ai.fauxAssistantMessage("Original answer")]);
   await withTempDir(async workdir => {
     const context = createContext("compact-cancelled");
-    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ models, resolvedModel: model });
     await executor.workflow.run({ prompt: "Original goal", workdir, errCode: 0, errMessage: "" }, context);
     const before = await readStoredTranscript(context);
     const controller = new AbortController();
@@ -156,7 +157,7 @@ test("context-created sessions bind the host control channel for managed work", 
   const scope = "dynamic-session-controls", context = createContext(scope);
   const host = createAgentSessionHost(scope);
   let created = 0;
-  const project = createAgentConversationProject({ models, resolvedModel: model, createSession: () => {
+  const project = createCoreBotProject({ models, resolvedModel: model, createSession: () => {
     created++;
     return { compaction: { enabled: false }, subagents: { tools: [], definitions: [
       { id: "researcher", description: "Research", systemPrompt: "Research only", tools: [] },
@@ -233,25 +234,25 @@ async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   }
 }
 
-test("defineAgentConversationExecutor produces a complete conversation executor", () => {
-  const executor = defineAgentConversationExecutor({
+test("createEmbeddedBotExecutor produces a complete conversation executor", () => {
+  const executor = createEmbeddedBotExecutor({
     projectName: "Pi",
     executorName: "pi",
-    outputItemId: "pi-answer",
+    outputItemId: "agent-answer",
   });
 
-  assert.equal(executor.projectType, "conversation");
+  assert.equal(executor.projectType, "bot");
   assert.equal(executor.workflow.name, "pi");
   assert.equal("defaultInput" in (executor.conversation ?? {}), false);
   assert.equal(executor.conversation?.inputQueue?.enabled, true);
   assert.equal(executor.conversation?.collapseIntermediate, true);
-  assert.equal(defineAgentConversationExecutor({ collapseIntermediate: false }).conversation?.collapseIntermediate, false);
+  assert.equal(createEmbeddedBotExecutor({ collapseIntermediate: false }).conversation?.collapseIntermediate, false);
   assert.equal(executor.conversation?.openai?.enabled, true);
-  assert.equal(executor.conversation?.openai?.outputItemId, "pi-answer");
+  assert.equal(executor.conversation?.openai?.outputItemId, "agent-answer");
   assert.equal(executor.tokenUsage?.enabled, true);
 
   const toolNames = (executor.tools ?? []).map((tool) => tool.name).sort();
-  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "write"]);
+  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "update_plan", "write"]);
 
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
@@ -261,7 +262,7 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
 });
 
 test("the generated params expose the agent capability in the UI", () => {
-  const executor = defineAgentConversationExecutor({});
+  const executor = createEmbeddedBotExecutor({});
   const normalized = normalizeProjectParamDeclarations(executor.params);
   const params = new Map(normalized.params.map((param) => [param.name, param]));
 
@@ -283,7 +284,7 @@ test("the generated params expose the agent capability in the UI", () => {
 });
 
 test("createInput reads the composer message and the agent params", () => {
-  const executor = defineAgentConversationExecutor({ projectName: "pi", permissionPolicy: "workspace" });
+  const executor = createEmbeddedBotExecutor({ projectName: "pi", permissionPolicy: "workspace" });
   const args = ["--plan", "true", "--effort", "high", "--permission-policy", "read-only", "refactor the parser"];
   const input = executor.createInput({
     args, paramValues: parseProjectParamValues(executor.params, args),
@@ -309,7 +310,7 @@ test("a project-fixed permission reaches the real agent despite an explicit inpu
     offered = [...tools];
     return ai.fauxAssistantMessage("Business answer");
   }]);
-  const project = createAgentConversationProject({ models, resolvedModel: model,
+  const project = createCoreBotProject({ models, resolvedModel: model,
     paramOptions: { fields: { effort: { defaultValue: "medium" }, permissionPolicy: { visible: false, fixedValue: "read-only" } } } });
   await withTempDir(async workdir => {
     const result = await project.run({ errCode: 0, errMessage: "", prompt: "Question", workdir, permissionPolicy: "auto" }, createContext("fixed-policy"));
@@ -333,7 +334,7 @@ test("declared skill roots supply the real skill tool, preserve the custom tool 
         ...(enabled ? [ai.fauxAssistantMessage([ai.fauxToolCall("skill", { action: "read", skill: "alpha" })], { stopReason: "toolUse" })] : []),
         request => { seen.push(JSON.stringify(request)); return ai.fauxAssistantMessage("Done"); },
       ]);
-      const project = createAgentConversationProject({ models, resolvedModel: model, skills: { directories: ["guides"] },
+      const project = createCoreBotProject({ models, resolvedModel: model, skills: { directories: ["guides"] },
         createTools: () => ({ tools: [], close: async () => { closed.push(true); } }) });
       const context = createContext(`skills-${enabled}`);
       context.metadata = { ...context.metadata, entryRootDir: root };
@@ -397,7 +398,7 @@ test("a plan turn pauses for approval and runs the tool once approved", async ()
   responses();
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
       models,
       resolvedModel: model,
@@ -451,7 +452,7 @@ test("a plan turn pauses for approval and runs the tool once approved", async ()
   });
 });
 
-test("a build turn runs the tool that a plan turn would have asked about", async () => {
+test("a low-level Agent workflow retains its explicit Build approval policy", async () => {
   const runs: string[] = [];
   const { ai, faux, models, model } = await createFauxModel();
   faux.setResponses([
@@ -460,7 +461,7 @@ test("a build turn runs the tool that a plan turn would have asked about", async
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const workflow = createCoreBotProject({
       projectName: "pi",
       models,
       resolvedModel: model,
@@ -490,7 +491,7 @@ test("a build turn runs the tool that a plan turn would have asked about", async
 
     // A build turn is executing a plan the user already approved, so even a
     // tool declared as needing approval runs instead of parking the run.
-    const result = await executor.workflow.run(
+    const result = await workflow.run(
       { prompt: "use the tool", agent: "build", errCode: 0, errMessage: "", workdir },
       context,
     );
@@ -512,7 +513,7 @@ test("a tool factory's own resources are released when the run ends", async () =
   await withTempDir(async (workdir) => {
     const abort = new AbortController();
     let failNextRun = false;
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
       models,
       resolvedModel: model,
@@ -559,7 +560,7 @@ test("a resource that will not release does not decide the run", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
       models,
       resolvedModel: model,
@@ -648,7 +649,7 @@ test("an approved plan resumes as a build turn that runs it", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const context = createContext("conv-resume");
     const requestId = "agent-plan-approval:agent";
     await context.conversation.setValue("agent.pendingPlanApproval", {
@@ -684,7 +685,7 @@ test("plan mode shows the plan once, and not in the answer body", async () => {
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("1. read the code\n2. propose")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan" },
       createContext("conv-plan"),
@@ -711,7 +712,7 @@ test("plan introductions stay before the tool and the final plan remains in conv
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const context = createContext("conv-plan-introduction");
     const result = await executor.workflow.run(
       { prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan" }, context,
@@ -738,14 +739,14 @@ test("a host-driven plan streams into its declared answer without a duplicate pl
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("1. read the code\n2. propose")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
-      projectName: "pi", outputItemId: "pi-answer", models, resolvedModel: model,
+    const executor = createEmbeddedBotExecutor({
+      projectName: "pi", outputItemId: "agent-answer", models, resolvedModel: model,
     });
     const result = await executor.workflow.run({
       prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan", hostInput: { messages: [] },
     }, createContext("conv-host-plan"));
 
-    const answer = result.items.find((item) => item.id === "pi-answer");
+    const answer = result.items.find((item) => item.id === "agent-answer");
     assert.equal(answer?.metadata?.["kind"], AGENT_OUTPUT_KINDS.answer);
     assert.equal(answer?.content, "1. read the code\n2. propose");
     assert.equal(result.items.some((item) => item.metadata?.["plan"] === true), false);
@@ -795,7 +796,7 @@ test("the agent emits context usage as a standard ring output pinned to the comp
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "hi", errCode: 0, errMessage: "", workdir },
       createContext("conv-usage"),
@@ -861,7 +862,7 @@ test("context output IDs keep distinct session keys separate", async () => {
     const context = createContext("conv-multiple-agents");
     const ids: string[] = [];
     for (const sessionKey of [...sessionKeys, sessionKeys[0]]) {
-      const executor = defineAgentConversationExecutor({ projectName: "pi", sessionKey, models, resolvedModel: model });
+      const executor = createEmbeddedBotExecutor({ projectName: "pi", sessionKey, models, resolvedModel: model });
       const result = await executor.workflow.run({ prompt: "hi", errCode: 0, errMessage: "", workdir }, context);
       const ring = result.items.find((item) => item.display?.placement === "composer-right");
       assert.ok(ring);
@@ -891,7 +892,7 @@ test("the permission policy decides how far the tools reach", async () => {
     ] as never[]);
 
     await withTempDir(async (workdir) => {
-      const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+      const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model, permissionPolicy: item.policy });
       const result = await executor.workflow.run(
         { prompt: "hi", errCode: 0, errMessage: "", workdir, permissionPolicy: item.policy },
         createContext(`conv-${item.policy}`),
@@ -912,7 +913,7 @@ test("a write runs without asking under the aligned policies", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "write a file", errCode: 0, errMessage: "", workdir, permissionPolicy: "workspace" },
       createContext("conv-write"),
@@ -937,7 +938,7 @@ test("reasoning and tool rows are emitted alongside the answer", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "list the directory", errCode: 0, errMessage: "", workdir },
       createContext("conv-2"),
@@ -971,7 +972,7 @@ test("thinking reaches the host while it happens, not once it is over", async ()
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ projectName: "pi", models, resolvedModel: model });
     const chunks: Array<Record<string, unknown>> = [];
     const context = {
       ...createContext("conv-reasoning"),
@@ -1026,9 +1027,9 @@ test("a conversation run streams its text as a row and appends it to the convers
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("hello from the agent")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1048,7 +1049,7 @@ test("a conversation run streams its text as a row and appends it to the convers
     // text row rather than the declared answer item — that item exists for a
     // host that reads the response text back by id.
     assert.deepEqual(
-      result.items.filter((item) => item.display?.placement !== "composer-right")
+      result.items.filter((item) => item.display?.placement !== "composer-right" && item.metadata?.kind !== "agent-session")
         .map((item) => [item.metadata?.["kind"], item.metadata?.["partType"]]),
       [[AGENT_OUTPUT_KINDS.part, "text"]],
     );
@@ -1070,9 +1071,9 @@ test("a host-input run leaves the workflow conversation alone", async () => {
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("hello from the agent")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1098,7 +1099,7 @@ test("a host-input run leaves the workflow conversation alone", async () => {
     // because the host renders the transcript itself.
     const answer = result.items.find((item) => item.metadata?.["kind"] === AGENT_OUTPUT_KINDS.answer);
     assert.ok(answer, "the answer item must be present");
-    assert.equal(answer.id, "pi-answer");
+    assert.equal(answer.id, "agent-answer");
     assert.equal(answer.content, "hello from the agent");
     assert.equal(answer.collapsed, false);
 
@@ -1118,9 +1119,9 @@ test("a turn that only called tools appends no empty answer", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1139,7 +1140,7 @@ test("a turn that only called tools appends no empty answer", async () => {
     // The tool row is what the turn has to show; an empty follow-up adds no
     // second row of its own.
     assert.deepEqual(
-      result.items.filter((item) => item.display?.placement !== "composer-right")
+      result.items.filter((item) => item.display?.placement !== "composer-right" && item.metadata?.kind !== "agent-session")
         .map((item) => item.metadata?.["kind"]),
       [AGENT_OUTPUT_KINDS.part],
     );
@@ -1164,9 +1165,9 @@ test("a stream cut off mid-answer is continued, and the turn says so", async () 
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1199,7 +1200,7 @@ test("restarted retry sequences keep separate rows after a successful tool reque
     ai.fauxAssistantMessage("Finished"),
   ]);
   await withTempDir(async workdir => {
-    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ models, resolvedModel: model });
     const result = await executor.workflow.run({ prompt: "Inspect then continue", errCode: 0, errMessage: "", workdir }, createContext("retry-reset"));
     const retries = result.items.filter(item => item.metadata?.partType === "retry");
     assert.equal(retries.length, 2);
@@ -1218,7 +1219,7 @@ test("a retry follows interrupted thinking before the resumed answer", async () 
     ai.fauxAssistantMessage("Recovered answer"),
   ] as never[]);
   await withTempDir(async workdir => {
-    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ models, resolvedModel: model });
     const result = await executor.workflow.run({ prompt: "Think then answer", errCode: 0, errMessage: "", workdir }, createContext("thinking-retry"));
     assert.deepEqual(result.items.filter(item => item.metadata?.kind === AGENT_OUTPUT_KINDS.part)
       .map(item => item.metadata?.partType), ["reasoning", "retry", "text"]);
@@ -1231,9 +1232,9 @@ test("a provider failure reaches the host as a failure", async () => {
     ai.fauxAssistantMessage("", { stopReason: "error", errorMessage: "upstream refused the request" })) as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi", ...{ retryDelayMs: 0 },
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1257,9 +1258,9 @@ test("a turn's text stays where it was written, on either side of its tool", asy
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1274,7 +1275,7 @@ test("a turn's text stays where it was written, on either side of its tool", asy
     // the sentence written after the tool comes after it — one row per run of
     // text, in the order the model wrote them.
     assert.deepEqual(
-      result.items.filter((item) => item.display?.placement !== "composer-right")
+      result.items.filter((item) => item.display?.placement !== "composer-right" && item.metadata?.kind !== "agent-session")
         .map((item) => [item.metadata?.["kind"], item.metadata?.["partType"]]),
       [
         [AGENT_OUTPUT_KINDS.part, "text"],
@@ -1302,9 +1303,9 @@ test("a turn the model answered with nothing still says so", async () => {
   faux.setResponses([ai.fauxAssistantMessage([])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1315,7 +1316,7 @@ test("a turn the model answered with nothing still says so", async () => {
     );
 
     assert.equal(result.errCode, 0);
-    const rows = result.items.filter((item) => item.display?.placement !== "composer-right");
+    const rows = result.items.filter((item) => item.display?.placement !== "composer-right" && item.metadata?.kind !== "agent-session");
     assert.equal(rows.length, 1);
     assert.equal(rows[0]?.metadata?.["kind"], AGENT_OUTPUT_KINDS.notice);
   });
@@ -1338,9 +1339,9 @@ test("a second turn in the same conversation sees the first one", async () => {
     // A fresh executor per turn is what the host actually does: every message
     // is a new process, so nothing the first turn held in memory can reach the
     // second one. The conversation store is the only channel between them.
-    const turn = () => defineAgentConversationExecutor({
+    const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1371,9 +1372,9 @@ test("a tool call and its result are still there on the next turn", async () => 
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const turn = () => defineAgentConversationExecutor({
+    const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1409,9 +1410,9 @@ test("a cancelled turn leaves the conversation where it was", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const turn = () => defineAgentConversationExecutor({
+    const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1467,7 +1468,7 @@ test("a plan turn can ask the user, and the answers carry on into the resumed tu
 
   await withTempDir(async (workdir) => {
     const turn = () => createAgentNode({
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1557,9 +1558,9 @@ test("a build turn is never offered the asking tool", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1597,9 +1598,9 @@ test("a plan pause is remembered by the turn that resumes it", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const turn = () => defineAgentConversationExecutor({
+    const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1674,7 +1675,7 @@ test("each revised plan waits for a fresh decision before executing", async () =
       requestInput: async (request: UserInputRequest) => { requests.push(request); },
     };
     const input = { prompt: "plan it", agent: "plan" as const, errCode: 0, errMessage: "", workdir };
-    const turn = () => createAgentNode({ outputItemId: "pi-answer", models, resolvedModel: model });
+    const turn = () => createAgentNode({ outputItemId: "agent-answer", models, resolvedModel: model });
     const outputIds = new Set<string>();
 
     for (let index = 0; index < plans.length; index++) {
@@ -1691,7 +1692,7 @@ test("each revised plan waits for a fresh decision before executing", async () =
       assert.equal(output.items.some((item) => item.title === "Plan declined"), false);
       assert.ok(chunks.some((chunk) => chunk.type === "output_item_start"
         && chunk.item.display?.placement === "composer-right"), "context arrives through the standard stream before approval");
-      for (const item of output.items.filter((item) => item.display?.placement !== "composer-right")) {
+      for (const item of output.items.filter((item) => item.display?.placement !== "composer-right" && item.metadata?.kind !== "agent-session")) {
         assert.equal(outputIds.has(item.id), false, "resumed rows must not replace earlier plans or reasoning");
         outputIds.add(item.id);
       }
@@ -1729,9 +1730,9 @@ test("a pause for approval leaves a transcript that can be sent", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const turn = () => defineAgentConversationExecutor({
+    const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
       createTools: () => [{
@@ -1769,9 +1770,9 @@ test("a host-driven run neither reads nor writes the conversation transcript", a
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("from the gateway")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1806,9 +1807,9 @@ test("a corrupt durable store fails without silently starting a new conversation
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1882,9 +1883,9 @@ test("an image-only turn runs and says how many images it carried", async () => 
   try {
     await withTempDir(async (workdir) => {
       const files = await createFileStore(path.join(workdir, "files"), ["wf-image"]);
-      const executor = defineAgentConversationExecutor({
+      const executor = createEmbeddedBotExecutor({
         projectName: "pi",
-        outputItemId: "pi-answer",
+        outputItemId: "agent-answer",
         models,
         resolvedModel: model,
       });
@@ -1928,9 +1929,9 @@ test("an attachment nothing can read fails the turn instead of vanishing", async
     // The store exists but holds no such file: the old behavior dropped the
     // attachment silently and the model answered as if nothing was attached.
     const files = await createFileStore(path.join(workdir, "files"), []);
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -1957,9 +1958,9 @@ test("a turn with neither text nor attachments is still refused", async () => {
   const { models, model } = await createFauxModel();
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({
+    const executor = createEmbeddedBotExecutor({
       projectName: "pi",
-      outputItemId: "pi-answer",
+      outputItemId: "agent-answer",
       models,
       resolvedModel: model,
     });
@@ -2017,7 +2018,7 @@ test("native searches render activities and escaped source links without exposin
     return stream;
   };
   await withTempDir(async workdir => {
-    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const executor = createEmbeddedBotExecutor({ models, resolvedModel: model });
     const result = await executor.workflow.run({ prompt: "Search", workdir, errCode: 0, errMessage: "" }, createContext("search-output"));
     assert.equal(result.toolCallCount, 1);
     const activity = result.items.find(item => item.metadata?.partType === "tool");

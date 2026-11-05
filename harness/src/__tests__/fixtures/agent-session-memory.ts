@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createAgentNode } from "../../agent/node";
-import { createAgentConversationProject } from "../../agent/project";
+import { createCoreBotProject } from "../../agent/project";
 import { BaseStreamNode } from "../../node/base";
 import type { OutputItemStreamChunk } from "../../node/output/index";
 import { runStreamNode } from "../../workflow/index";
@@ -30,7 +30,7 @@ if (process.argv.includes("project")) {
   // Replace only the producer in this isolated process. The real convenience
   // project's outer output node must also compact snapshots on runStreamNode.
   BaseStreamNode.prototype.stream = produce;
-  output = await createAgentConversationProject({ tools: [] }).run(input, context);
+  output = await createCoreBotProject({ tools: [] }).run(input, context);
 } else {
   node.stream = produce;
   const result = await runStreamNode(node, input, context);

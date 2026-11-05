@@ -19,7 +19,7 @@ const proofDir = path.join(root, '.studio/project-info', language);
 await fs.mkdir(proofDir, { recursive: true });
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-project-info-'));
 const projects = [];
-for (const type of ['workflow', 'conversation', 'kanban']) {
+for (const type of ['workflow', 'bot', 'kanban']) {
   const source = path.join(root, 'examples', type), directory = path.join(dataDir, 'projects-with-long-paths', 'workspace-information-layout-fixtures', type);
   await fs.cp(source, directory, { recursive: true, filter: file => !file.split(path.sep).includes('node_modules') });
   await fs.symlink(path.join(source, 'node_modules'), path.join(directory, 'node_modules'));
@@ -27,7 +27,7 @@ for (const type of ['workflow', 'conversation', 'kanban']) {
   manifest.id = crypto.randomUUID();
   manifest.name = `Info ${type} fixture`;
   manifest.description = 'A lightweight, extensible agent with a project description that remains readable in a narrow sidebar.'
-    + (type === 'conversation' ? ' <img src=x onerror="window.injected=true">' : '');
+    + (type === 'bot' ? ' <img src=x onerror="window.injected=true">' : '');
   manifest.projectInfo = {
     declarations: ['multilingual', 'multiplatform', 'custom-declaration'], localizedNames: { 'zh-CN': `Info ${type}`, en: manifest.name },
     platformSupport: { mode: 'specific', platforms: ['macos', 'windows', 'web'] },

@@ -193,7 +193,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
   if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
-  if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
+  if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
   const applyUserSettings = () => {
     const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
@@ -213,7 +213,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let storageInitialization: { epoch: number; promise: Promise<void> } | undefined;
   let storageReady = Boolean(options.runtimePersistence);
   let storageError: string | undefined;
-  const ownership = project.projectType === 'conversation' ? new ConversationOwnership(() => runtimePersistence,
+  const ownership = project.projectType === 'bot' ? new ConversationOwnership(() => runtimePersistence,
     id => conversationController?.sessions.find(session => session.id === id)?.agentOwnerId ?? id,
     () => { broadcast(); conversationController?.recover(); },
     (scope, error) => {
@@ -646,7 +646,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
     }
     if (message.type === 'project-mention-files') {
-      if (project.projectType !== 'conversation' || typeof message.requestId !== 'string' || message.requestId.length > 256
+      if (project.projectType !== 'bot' || typeof message.requestId !== 'string' || message.requestId.length > 256
         || typeof message.query !== 'string' || message.query.length > 256 || /[\0\r\n]/.test(message.query)) throw new Error('Invalid file reference search.');
       return [{ type: 'project-mention-files-result', requestId: message.requestId, value: await projectMentionFiles(project, message.query) }];
     }
@@ -804,7 +804,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           // Reply to every page; only the newest request may persist shared parameters.
           if (parameterEpochs.get(stateKey) === epoch) {
             const nextStates = mergeProjectParamStates(states, result.params);
-            if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, nextStates, project.conversation?.commands); }
+            if (project.projectType === 'bot') { validateConversationCommandStates(parameters.fields, nextStates, project.conversation?.commands); }
             for (const [name, patch] of Object.entries(result.params ?? {})) {
               if (patch.value === null) { delete values[name]; } else if (patch.value !== undefined) { values[name] = patch.value; }
             }
@@ -819,7 +819,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'command': case 'send': {
         const command = message.type === 'command' ? project.conversation?.commands?.find(entry => entry.command === message.command) : undefined;
         if (message.type === 'command') {
-          if (project.projectType !== 'conversation' || !command) { throw new Error(t("Unknown conversation command.")); }
+          if (project.projectType !== 'bot' || !command) { throw new Error(t("Unknown conversation command.")); }
           if (sessionRunning(current) || current.messages.some(answer => answer.pendingInput) || current.queuedInputs?.length || current.draft?.editingQueueId) { throw new Error(t("The current session is running.")); }
           if (command.action.kind === 'export') {
             const name = `conversation-${current.id}.json`;
@@ -843,7 +843,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
         if (configurationRevision !== parameterRevision) { throw new Error(t('Project configuration changed. Send the message again.')); }
         const states = mergeProjectParamStates(parameterStates.get(stateKey) ?? {}, resolved.params);
-        if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, states, project.conversation?.commands); }
+        if (project.projectType === 'bot') { validateConversationCommandStates(parameters.fields, states, project.conversation?.commands); }
         for (const [name, patch] of Object.entries(resolved.params ?? {})) {
           if (patch.value === null) { delete params[name]; } else if (patch.value !== undefined) { params[name] = patch.value; }
         }

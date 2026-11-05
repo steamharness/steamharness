@@ -38,13 +38,13 @@ async function fixture(kind: ProjectKind, database = true) {
   const settled = async () => { let result: any; await vi.waitFor(async () => { result = await state(); expect(result.serverData.checking).toBe(false); }); return result; };
   return { app, runtime, post, state, settled, directory, project, pkg };
 }
-it.each(['workflow', 'conversation', 'kanban'] as const)('opens an unbound %s knowledge requirement without creating local data', async kind => {
+it.each(['workflow', 'bot', 'kanban'] as const)('opens an unbound %s knowledge requirement without creating local data', async kind => {
   const f = await fixture(kind);
   expect((await f.settled()).serverData).toMatchObject({blocking:true, checks:[{stage:'database',status:'action-required',database:'data'}]});
   if (kind !== 'kanban') expect((await f.post(kind === 'workflow' ? {type:'workflow-run',params:{}} : {type:'send',text:'Run',params:{},attachments:[]})).status).toBe(400);
   expect(f.runtime.run).not.toHaveBeenCalled();
 });
-it.each(['workflow', 'conversation'] as const)('keeps %s drafts when a removed local management request is rejected', async kind => {
+it.each(['workflow', 'bot'] as const)('keeps %s drafts when a removed local management request is rejected', async kind => {
   const f = await fixture(kind); await f.settled();
   await f.post(kind === 'workflow' ? {type:'workflow-draft',params:{subject:'Keep'}} : {type:'draft',text:'Keep',attachments:[]});
   expect((await f.post({type:'databases',action:'request',host:'local',alias:'data',target:{kind:'create',name:'Data'}})).status).toBe(400);
@@ -52,7 +52,7 @@ it.each(['workflow', 'conversation'] as const)('keeps %s drafts when a removed l
   if (kind === 'workflow') expect(state.drafts[''].values.subject).toBe('Keep'); else expect(state.sessions[0].draft.text).toBe('Keep');
   expect(f.runtime.run).not.toHaveBeenCalled();
 });
-it.each(['workflow', 'conversation', 'kanban'] as const)('runs %s without a declared knowledge resource', async kind => {
+it.each(['workflow', 'bot', 'kanban'] as const)('runs %s without a declared knowledge resource', async kind => {
   const f = await fixture(kind, false);
   await writeFile(path.join(f.directory,'config.json'),JSON.stringify({version:1,knowledgeBases:{unused:crypto.randomUUID()}}));
   expect((await f.settled()).serverData).toMatchObject({blocking:false,checks:[]});

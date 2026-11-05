@@ -10,10 +10,10 @@ export const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS = [
     hasExecutor: true,
   },
   {
-    id: "conversation",
-    label: "Conversation",
-    labelKey: "projectTypeConversation",
-    defaultIcon: "message-circle",
+    id: "bot",
+    label: "Bot",
+    labelKey: "projectTypeBot",
+    defaultIcon: "bot",
     defaultIconBackgroundColor: "#0f766e",
     hasExecutor: true,
   },
@@ -56,13 +56,7 @@ const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS_BY_ID = Object.fromEntries(
   >;
 };
 
-export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `steamharness.defineExecutor({
-  projectType: "conversation",
-  conversation: {
-    inputQueue: { enabled: true },
-  },
-  // ...
-})`;
+export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `export const executor = steamharness.defineBot({ name: "bot" });`;
 
 export function isProjectKind(value: unknown): value is ProjectKind {
   return typeof value === "string" && STEAMHARNESS_PROJECT_TYPES.includes(value as ProjectKind);
@@ -116,5 +110,5 @@ export function assertExecutorProjectKind(
 }
 
 export function formatProjectKindMigrationMessage(reason: string): string {
-  return `${reason}. Declare executor projectType as one of: ${STEAMHARNESS_EXECUTOR_PROJECT_TYPES.map((type) => `"${type}"`).join(", ")}.`;
+  return `${reason}. Use defineExecutor({ projectType: "workflow", ... }) for Workflow, or defineBot({ ... }) for Bot.`;
 }

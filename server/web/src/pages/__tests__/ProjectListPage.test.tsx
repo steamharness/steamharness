@@ -36,7 +36,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Conversation Demo",
-          entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
           projectCard: {
             icon: "bot",
             iconUrl: "https://example.test/bot.png",
@@ -47,7 +47,7 @@ describe("ProjectListPage management table", () => {
       ],
     });
 
-    expect(screen.getByText("对话")).toBeTruthy();
+    expect(screen.getByText("Bot")).toBeTruthy();
     const projectIcon = screen.getByTestId("project-card-icon-conversation-demo");
     const svg = decodeURIComponent(projectIcon.querySelector("img")!.getAttribute("src")!.split(",")[1]);
     expect(svg).toContain('fill="#7c3aed"');
@@ -60,16 +60,16 @@ describe("ProjectListPage management table", () => {
       projects: [createProject({
         id: "conversation-localized",
         name: "Conversation Localized",
-        entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+        entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
       })],
     });
 
-    expect(screen.getByText("对话")).toBeTruthy();
+    expect(screen.getByText("Bot")).toBeTruthy();
     try {
       await act(async () => {
         await i18n.changeLanguage("en");
       });
-      expect(screen.getByText("Conversation")).toBeTruthy();
+      expect(screen.getByText("Bot")).toBeTruthy();
     } finally {
       await act(async () => {
         await i18n.changeLanguage("zh-CN");
@@ -186,7 +186,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Chat Runner",
-          entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
           projectCard: {
             icon: "message-circle",
             iconBackgroundColor: "#0f766e",

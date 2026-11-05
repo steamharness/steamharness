@@ -55,7 +55,7 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 });
 ```
 
-`items` is currently the only user-visible output carrier. This array is read by CLI Web and CLI JSON; the full output of assistant messages is also stored in `items` instead of the top-level `content`. In a Conversation project, the default markdown/text assistant answer titled `Output` is rendered directly in the transcript even when it carries a finish reason, token usage, or Provider metadata. Details blocks remain reserved for tool calls, reasoning, diagnostics, structured supporting results, and explicitly customized or collapsed output.
+`items` is currently the only user-visible output carrier. This array is read by CLI Web and CLI JSON; the full output of assistant messages is also stored in `items` instead of the top-level `content`. In a Bot project, the default markdown/text assistant answer titled `Output` is rendered directly in the transcript even when it carries a finish reason, token usage, or Provider metadata. Details blocks remain reserved for tool calls, reasoning, diagnostics, structured supporting results, and explicitly customized or collapsed output.
 
 If the business fails but executor does not crash, you can return a non-zero `errCode` and a readable `errMessage`. The external Dify style API reads the `errCode` in the final report: only executor succeeds and `errCode === 0` is mapped to `succeeded`.
 

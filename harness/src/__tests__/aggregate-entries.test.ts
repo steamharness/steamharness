@@ -1,3 +1,4 @@
+import { withBotRequest } from "../agent/bot-lifecycle";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -25,16 +26,17 @@ test("a child operation signal stops only its entry call while the parent signal
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "aggregate-entries-"));
   const projectId = randomUUID();
-  const entries = ["one", "two", "chat", "board"].map((entryId) => ({ entryId, name: entryId, type: entryId === "chat" ? "conversation" : entryId === "board" ? "kanban" : "workflow", root: ".", entry: `${entryId}.${entryId === "board" ? "html" : "ts"}`, databases: [], configuration: `${entryId}.json` }));
+  const entries = ["one", "two", "chat", "board"].map((entryId) => ({ entryId, name: entryId, type: entryId === "chat" ? "bot" : entryId === "board" ? "kanban" : "workflow", root: ".", entry: `${entryId}.${entryId === "board" ? "html" : "ts"}`, databases: [], configuration: `${entryId}.json` }));
   await writeProjectFixture(path.join(directory, "package.json"), JSON.stringify({ id: projectId, name: "aggregate-test", type: "module", version: "0.1.0",  entries, defaultEntry: "one"  }));
   for (const entry of entries) {
     await writeFile(path.join(directory, entry.configuration), JSON.stringify({ version: 1, fields: [{ name: "label", label: "Label", type: "string", defaultValue: entry.entryId }] }));
     if (entry.type === "kanban") { await writeFile(path.join(directory, entry.entry), "<!doctype html><title>Board</title>"); continue; }
+    if (entry.type === "bot") { await writeFile(path.join(directory, entry.entry), 'export const executor = steamharness.defineBot({});'); continue; }
     const workflow = `const flow = steamharness.defineProject({ name: "${entry.entryId}", async run(input, context) {
       if (input.nested) return context.entries.get("two").runEntrypoint("read");
       return { errCode: 0, errMessage: "", entryId: context.metadata.entryId, label: context.config.label, actor: context.actor };
     }});`;
-    const executor = entry.type === "conversation" ? 'projectType: "conversation", workflow: flow, createInput() { return {}; }' : 'projectType: "workflow", defaultEntrypoint: "read", entrypoints: [steamharness.defineEntrypoint({ id: "read", title: "Read", workflow: flow, createInput(context) { return { nested: context.args.includes("nested") }; } })]';
+    const executor = entry.type === "bot" ? 'projectType: "bot", workflow: flow, createInput() { return {}; }' : 'projectType: "workflow", defaultEntrypoint: "read", entrypoints: [steamharness.defineEntrypoint({ id: "read", title: "Read", workflow: flow, createInput(context) { return { nested: context.args.includes("nested") }; } })]';
     await writeFile(path.join(directory, entry.entry), `${workflow}\nexport const executor = steamharness.defineExecutor({ ${executor} });`);
   }
   return { directory, projectId };
@@ -45,7 +47,7 @@ test("registered modules isolate static analysis even when all entries share a c
   try {
     const structures = inspectAggregateProjectStructure(directory);
     assert.equal(structures.projectId, projectId);
-    assert.deepEqual(structures.entries.map((entry) => entry.projectType), ["workflow", "workflow", "conversation", "kanban"]);
+    assert.deepEqual(structures.entries.map((entry) => entry.projectType), ["workflow", "workflow", "bot", "kanban"]);
     assert.equal(inspectLocalProjectStructure({ projectDir: directory }).entryId, "one");
     const events: any[] = [];
     const report = await runLocalProjectWithReport({ projectDir: directory, entryId: "two", onRuntimeEvent: event => { events.push(event); }, actor: { userId: "caller", isSystemAdmin: false } });
@@ -74,7 +76,7 @@ test("entry configuration identities differ and nested calls load target configu
 });
 
 test('Conversation entry control preserves trusted provenance, permissions and cancellation', async () => {
-  const manifest = { projectId:'aggregate',name:'test',defaultEntry:'chat',entries:[{entryId:'chat',type:'conversation' as const,name:'chat',root:'.',entry:'chat.ts',databases:[]}] };
+  const manifest = { projectId:'aggregate',name:'test',defaultEntry:'chat',entries:[{entryId:'chat',type:'bot' as const,name:'chat',root:'.',entry:'chat.ts',databases:[]}] };
   const abort = new AbortController(), calls: unknown[]=[];
   const identity={actor:{userId:'alice',isSystemAdmin:false},projectId:'aggregate',sourceEntryId:'api',sourceConversationId:'caller',sourceRunId:'turn',abortSignal:abort.signal};
   const entries=createEntriesContext(manifest,identity,{list:async()=>[],run:async()=>{}},{invoke:async(entry,action,input,actor)=>{calls.push({entry,action,input,actor});return {conversationId:'target',requestId:'r',messageId:'r',status:'accepted'};}},{entryId:'board'});
@@ -89,4 +91,15 @@ test('Conversation entry control preserves trusted provenance, permissions and c
   await assert.rejects(unavailable.conversations.get('chat').list(),{code:'ENTRY_RUNTIME_UNAVAILABLE'});
   const disabled=createEntriesContext(manifest,{...identity,abortSignal:undefined,toolPermissions:{getTool:()=>({enabled:false})} as any},{list:async()=>[],run:async()=>{}},{invoke:async()=>{throw new Error('must not execute');}});
   await assert.rejects(disabled.conversations.get('chat').list(),/disabled/);
+});
+
+test("Bot message provenance does not replace a nested Workflow run identity", async () => {
+  const manifest = { projectId: "project", name: "Scopes", defaultEntry: "api", entries: [{ entryId: "api", type: "workflow" as const, name: "API", root: ".", entry: "index.ts", databases: [] }] };
+  for (const sourceEntryId of ["bot", "api"]) {
+    let caller: string | undefined;
+    const entries = createEntriesContext(manifest, { actor: { userId: "alice", isSystemAdmin: false }, projectId: "project", sourceEntryId, sourceRunId: "workflow-run" },
+      { async list() { return []; }, async run(_entry, _operation, _args, identity) { caller = identity.sourceRunId; return {}; } });
+    await withBotRequest("bot-message", () => entries.get("api").runEntrypoint("main"), { projectId: "project", entryId: "bot" });
+    assert.equal(caller, sourceEntryId === "bot" ? "bot-message" : "workflow-run");
+  }
 });

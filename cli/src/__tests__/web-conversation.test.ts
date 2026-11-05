@@ -4,7 +4,7 @@ import { composerOutputItems } from '../web/ui/output-display';
 import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'bot', fields: [], entrypoints: [] };
   const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
     uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(),

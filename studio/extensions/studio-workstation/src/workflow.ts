@@ -249,7 +249,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         return target;
       };
       const openHostedEntry = (entryId: string) => resolveHostedEntry(entryId).then(target => {
-        if (!closed) return createWorkspace(target, undefined, undefined, undefined, undefined, true, target.projectType === 'conversation' ? 'new' : undefined);
+        if (!closed) return createWorkspace(target, undefined, undefined, undefined, undefined, true, target.projectType === 'bot' ? 'new' : undefined);
       });
       const reconnect = (message: Record<string, any>, webview: vscode.Webview) => {
         if (message.type !== 'workflow-reconnect' || message.version !== 1 || typeof message.requestId !== 'string' || message.requestId.length > 64) return false;
@@ -379,7 +379,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
     const project = provider.projects.find(project => project.uri === target?.uri && project.id === target.id && project.entryId === target.entryId);
     if (!project) { throw new Error(t('This project entry is no longer available. Refresh the project windows and try again.')); }
-    await createWorkspace(project, undefined, undefined, undefined, undefined, true, project.projectType === 'conversation' ? 'new' : undefined);
+    await createWorkspace(project, undefined, undefined, undefined, undefined, true, project.projectType === 'bot' ? 'new' : undefined);
   };
   const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL): Promise<void> => {
     const { card, project } = result;
@@ -551,7 +551,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       catch { panel.dispose(); return; }
     }
     if (!project) { panel.dispose(); return; }
-    await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'conversation' ? 'restore' : undefined);
+    await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'bot' ? 'restore' : undefined);
   } };
   context.subscriptions.push(launcher, provider, projectWindows, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
     vscode.window.registerTreeDataProvider('studio.projects', projectWindows),

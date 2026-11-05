@@ -7,7 +7,7 @@ description: "创建一个把 Agent 跑成 workflow 节点的流式节点。"
 
 `workflow.createAgentNode()` 返回一个流式节点，用 `runStreamNode` 执行。它把 [createAgent](./create-agent.mdx) 的运行时接到 workflow 上：工具审批走 `context.toolPermissions`，plan 审批走 `context.userInput`，token usage 走 `context.tokenUsage`，输出项用 `createOutputItemChunk` 的同一套协议产出。
 
-需要自己安排前后节点时用它；整个项目都是 agent 时用 [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) 更省事。
+需要自己安排前后节点时用它；整个项目都是 agent 时用 [defineBot](./define-bot.mdx) 更省事。
 
 未显式提供端点或注入模型集合时，节点优先使用当前项目配置中的 `STEAMHARNESS_AGENT_MODELS` 列表。`model` 指定条目 ID，未指定时选第一项；系统订阅由当前账号重新鉴权，第三方条目直接使用保存的连接。参见[项目配置](/concepts/project-configuration)。
 
@@ -49,7 +49,7 @@ const node = workflow.createAgentNode({
 
 节点类型为 `BaseStreamNode<AgentInput, OutputItemStreamChunk, AgentOutputPayload>`：流出的 chunk 就是 `OutputItemStreamChunk`，`finalize(chunks, context, input)` 用 `createOutputStreamAccumulator` 聚合出 `AgentOutputPayload`。
 
-上下文用量由 Agent 作为标准输出项发送：`display: { type: "ring", placement: "composer-right" }`，`content: { value: used, total, unit: "tokens" }`。该项使用按 `sessionKey` 派生的稳定 id，不同会话键（包括中文和带空格的键）对应独立输出。Conversation 将它固定到输入栏右侧并随会话保存和恢复；等待审批时也可从流式输出保留该项。宿主只消费 [输出展示协议](./create-output-node.mdx)，无需读取 Agent 专用字段。`contextUsage` 仍保留供程序读取。
+上下文用量由 Agent 作为标准输出项发送：`display: { type: "ring", placement: "composer-right" }`，`content: { value: used, total, unit: "tokens" }`。该项使用按 `sessionKey` 派生的稳定 id，不同会话键（包括中文和带空格的键）对应独立输出。Bot 将它固定到输入栏右侧并随会话保存和恢复；等待审批时也可从流式输出保留该项。宿主只消费 [输出展示协议](./create-output-node.mdx)，无需读取 Agent 专用字段。`contextUsage` 仍保留供程序读取。
 
 首次运行在模型响应前就发送该项；正文、reasoning、工具参数与工具结果会在对话过程中更新圆环，压缩后重新校准。上下文占用优先采用最近一次有效模型 usage 加后续消息估算，和按每次模型响应增量上报的累计计费用量独立。[createAgent](./create-agent.mdx) 的 `getContextUsage()` 与 `updateContextUsage()` 提供实时查询和外部测量值更新。
 
@@ -63,7 +63,7 @@ const node = workflow.createAgentNode({
 | --- | --- | --- |
 | `name` | `string` | 节点名，默认 `agent`。 |
 | `outputItemId` | `string` | 正文回答所属输出项的 id。OpenAI / Responses 适配器按 id 查找正文，所以它必须与 `conversation.openai.outputItemId` 相同；不传时 id 按会话派生，适配器无法预先知道。 |
-| `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-agent-conversation-executor.mdx#技能目录与宿主预览)。 |
+| `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-bot.mdx)。 |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | 每次运行前组装内置工具之外的工具。用工厂而不是数组，是因为自带工具要闭包住本轮的 `NodeContext`——它的 storage、审批门和用户输入。要启动有生命周期的东西（例如一个 stdio MCP 子进程）就返回 `{ tools, close?() }`，`close` 会在本轮结束时调用（成功失败都会）。 |
 | `sessionKey` | `string` | 同一项目和会话内的存储隔离键。缺省用 `sessionId`，再缺省用 `agent`；多个 agent 节点须使用不同的值。 |
 | `databasePath` | `string` | 显式指定 Durable SQLite 文件；CLI/Studio 默认由宿主管理本地运行存储，无需指定路径。 |
@@ -87,13 +87,13 @@ const node = workflow.createAgentNode({
 
 ## 会话记录
 
-Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按项目、入口、conversationId 和 sessionKey 选择本地 SQLite 会话，保存消息、工具意图与结果、审批等待和用量记录。普通运行每轮关闭；启用 `session` 的宿主可保持 owner、工具和 AI bridge 存活。Conversation 状态与用量也保存在本地，无需为历史存储登录或连接 Server；可显式注入 Server 仓储或按需后台备份。详见[运行存储](/core-api/runtime-storage)。
+Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按项目、入口、conversationId 和 sessionKey 选择本地 SQLite 会话，保存消息、工具意图与结果、审批等待和用量记录。普通运行每轮关闭；启用 `session` 的宿主可保持 owner、工具和 AI bridge 存活。Bot 状态与用量也保存在本地，无需为历史存储登录或连接 Server；可显式注入 Server 仓储或按需后台备份。详见[运行存储](/core-api/runtime-storage)。
 
 - 同一会话同时只允许一个执行拥有者；本地文件锁在正常关闭或进程退出时释放。显式使用 Server 时，强退后等待租约到期，接管提升 fence 并拒绝旧进程写入。宿主仍须保存工作目录与附件。
-- 节点从原 `runId` 派生稳定 `requestId`。恢复或重发同一运行会重建已有输出，不重新执行已提交结果，也不重复追加 Conversation 消息或计费用量。
+- 节点从原 `runId` 派生稳定 `requestId`。恢复或重发同一运行会重建已有输出，不重新执行已提交结果，也不重复追加 Bot 消息或计费用量。
 - 崩溃时结果不明的工具只有声明 `replay: "safe"` 才能自动重做。默认 `never`；内置写文件、编辑和 bash 都不自动重放，错误结果供模型核查后决定下一步。外部副作用仍需业务幂等保障。
 - 存储或投影失败会终止运行，旧 KV transcript 不再读取；无需迁移旧数据。不会回退为无历史运行。
-- 非 Conversation 节点、或携带 `hostInput` 的网关运行默认使用 MemoryStorage；显式 `databasePath` 可改变存储选择。网关输入不会写入普通 Conversation 历史。
+- 非 Bot 节点、或携带 `hostInput` 的网关运行默认使用 MemoryStorage；显式 `databasePath` 可改变存储选择。网关输入不会写入普通 Bot 历史。
 - 手动 `/compact` 或直接替换上下文必须等待 Durable 活动任务结束。自动压缩在每次模型请求前检查，默认达到窗口的 90% 时执行；工具循环中的压缩与 session compact/reset 都使用 Harness 事务与输入边界协调，不能直接覆盖 transcript。
 
 ## 常驻会话宿主
@@ -160,6 +160,6 @@ return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", wor
 
 ### 按授权配置创建会话
 
-`createSession(context)` 在工具和模型完成宿主授权后创建本轮的 `AgentSessionOptions`；提供工厂时优先于静态 `session`。用它按项目 Ask/Build 配置返回角色、native tools 和任务 registry；Ask 应返回不含采集和写入角色的配置。`defineAgentConversationExecutor`、选定 Core 项目的 `defineExecutor({ workflow })` 或 `defineExecutor({ coreAgent })` 自动继承 durable 与 recovery 声明；手写独立节点的 executor 仍需内联声明控制能力。自定义权限表须包含所有需要的 native tools、`update_plan` 和 `subagent`。
+Bot 项目使用 `defineBot`，Core 自动提供持久会话与恢复。通过 `agent.createSession(context, input)` 配置角色、原生工具和 registry。
 
 `createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。

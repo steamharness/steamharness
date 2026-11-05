@@ -1,6 +1,9 @@
 # Unreleased
 
 - [Fix] Resolve exact CLI versions from the adjacent package in SDK checkouts while retaining host dependency resolution, removing the generator's dependency on the example workspace.
+
+- Breaking: the assistant now uses defineBot while preserving workspace, skills, Studio Control and permission capabilities; generator guidance and examples use the Core Bot contract.
+
 - Generator documents shared Agent recovery for command confirmation, snapshot delivery, and safe tools, including Stop, authorization, and uncertain write boundaries.
 - Project generation documents release commands, entry/configuration selection and distribution validation.
 

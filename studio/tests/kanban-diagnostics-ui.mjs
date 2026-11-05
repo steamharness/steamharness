@@ -92,7 +92,7 @@ try {
   await page.close(); await app.close(); sessions.clear();
   const assistantDir = path.join(root, 'assistant'); await mkdir(assistantDir);
   const assistantId = '364764e9-ef0e-4e86-9e56-77d0410e1723';
-  const assistantEntry = { entryId: 'main', name: 'Assistant', type: 'conversation', root: '.', entry: 'index.ts', databases: [] };
+  const assistantEntry = { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', databases: [] };
   await writeProjectFixture(path.join(assistantDir, 'package.json'), JSON.stringify({ name: 'assistant-fixture', version: '0.1.0', id: assistantId, defaultEntry: 'main', entries: [assistantEntry] }));
   await writeFile(path.join(assistantDir, 'index.ts'), 'export {};');
   await writeFile(path.join(directory, 'index.html'), `<!doctype html><html><head><title>Card fixture</title></head><body><img id="map"><p id="status">Loading</p><script>
@@ -105,7 +105,7 @@ try {
     });
   </script></body></html>`);
   const assistantDescriptor = { ...descriptor, id: assistantId, entryId: 'main', defaultEntry: 'main', folderPath: assistantDir, entryRoot: assistantDir,
-    projectType: 'conversation', entries: [assistantEntry], kanban: undefined };
+    projectType: 'bot', entries: [assistantEntry], kanban: undefined };
   runtime.inspect = async roots => ({ projects: roots[0] === assistantDir ? [assistantDescriptor] : [descriptor], errors: [] });
   runtime.kanbanBridge = async (_project, call) => {
     assert.equal(call.operation, 'files.readFile');

@@ -1,11 +1,11 @@
 {
   "id": "b20a7d1d-b6f5-4b0c-8589-265d56fc879a",
-  "name": "Studio Conversation",
+  "name": "Studio Bot",
   "version": "0.0.1",
   "projectInfo": {
     "localizedNames": {
-      "zh-CN": "对话示例",
-      "en": "Local Conversation Demo"
+      "zh-CN": "Bot 示例",
+      "en": "Local Bot Demo"
     },
     "platformSupport": {
       "mode": "agnostic"
@@ -14,13 +14,11 @@
   "entries": [
     {
       "entryId": "main",
-      "type": "conversation",
-      "name": "Studio Conversation",
+      "type": "bot",
+      "name": "Studio Bot",
       "root": ".",
       "entry": "index.ts",
-      "databases": [
-        "data"
-      ]
+      "databases": []
     }
   ],
   "defaultEntry": "main"

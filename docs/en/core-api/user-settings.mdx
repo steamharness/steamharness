@@ -107,9 +107,8 @@ Core Agents use two exclusive model sources. The default and `modelSource: "user
 
 ```ts
 // Generate overridable model parameters from the user's list and default.
-const project = steamharness.createAgentConversationProject({
-  modelSource: "user-settings",
-  permissionPolicy: "inherit",
+const executor = steamharness.defineBot({
+  agent: { modelSource: "user-settings", permissionPolicy: "inherit" },
 });
 
 // Custom parameter declarations may bind inline:

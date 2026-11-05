@@ -55,7 +55,7 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 });
 ```
 
-`items` 是当前唯一用户可见输出载体。CLI Web 与 CLI JSON 都读取该数组；assistant 消息的完整输出也保存在 `items` 中，而不是顶层 `content`。Conversation 类型项目中，标题为 `Output` 的默认 markdown/text assistant 主回答会直接显示在对话正文中，即使它带有 finish reason、token usage 或 Provider metadata；工具调用、reasoning、诊断、结构化辅助结果以及显式自定义或折叠的输出才使用详情块。
+`items` 是当前唯一用户可见输出载体。CLI Web 与 CLI JSON 都读取该数组；assistant 消息的完整输出也保存在 `items` 中，而不是顶层 `content`。Bot 类型项目中，标题为 `Output` 的默认 markdown/text assistant 主回答会直接显示在对话正文中，即使它带有 finish reason、token usage 或 Provider metadata；工具调用、reasoning、诊断、结构化辅助结果以及显式自定义或折叠的输出才使用详情块。
 
 如果业务失败但 executor 没有崩溃，可以返回非零 `errCode` 和可读 `errMessage`。外部 Dify 风格 API 会读取最终 report 里的 `errCode`：只有 executor 成功且 `errCode === 0` 才映射为 `succeeded`。
 

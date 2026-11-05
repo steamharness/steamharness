@@ -4,7 +4,7 @@
   "entries": [
     {
       "entryId": "main",
-      "type": "conversation",
+      "type": "bot",
       "name": "Conversation migration fixture",
       "root": ".",
       "entry": "index.ts",

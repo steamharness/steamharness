@@ -100,7 +100,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 ```json
 {
-  "type": "conversation",
+  "type": "bot",
   "name": "Chat",
   "entry": "index.ts",
   "databases": []
@@ -373,7 +373,7 @@ export default exampleProject;
 - `steamharness.defineExecutor(...)` 必须接收内联对象字面量，并把返回值作为模块 executor 导出。Workflow 的 `defaultEntrypoint` 必须是命中入口 ID 的静态字符串，`entrypoints` 必须是非空静态数组且每项直接调用 `steamharness.defineEntrypoint({...})`。入口 ID 匹配 `/^[a-z][a-z0-9_-]{0,63}$/`，项目内唯一；标题必填，描述可选。每个入口的 `workflow` 必须引用项目源码中由 `steamharness.defineProject(...)` 定义的标识符；跨文件可通过项目内相对路径使用命名、别名或 default import，不能传入外部包值或动态构造值。旧的 Workflow 顶层 `workflow/params/createInput/...` 已移除。Conversation 保持单入口顶层配置且不接受 entrypoint。
 - `steamharness.getConfig(name)` 为 CLI 和本地宿主 读取运行时配置。
 - `steamharness.getRuntimePlatform()` 返回 `"cli"` 或 `"desktop"`；`steamharness.isCli()` 与 `steamharness.isDesktop()` 是便捷判断函数。
-- `steamharness.getRuntimeLocale()` 返回 `"zh-CN"` 或 `"en"`，用于已明确要求国际化的 Workflow 或 Conversation 项目按宿主语言生成用户可见输出；未注入时回退 `"zh-CN"`。
+- `steamharness.getRuntimeLocale()` 返回 `"zh-CN"` 或 `"en"`，用于已明确要求国际化的 Workflow 或 Bot 项目按宿主语言生成用户可见输出；未注入时回退 `"zh-CN"`。
 - `steamharness.createUserInputNode(...)` 创建可持久化的人工输入暂停。它的表单 `params` 应遵循所选 entrypoint（Conversation 则为 executor）的 params，且每个返回 payload 必须包含 `errCode` 和 `errMessage`。
 - `steamharness.createToolApprovalGate()` 创建工具审批包装器。它依赖所选 entrypoint（Conversation 则为 executor）的 `tools` 注册工具元数据，并复用 user-input 机制暂停和恢复；未自动批准的工具只在 plan 模式的 agent 回合停下来问，build 回合直接执行。
 - 静态结构 report 会在 `definitions.apiCalls` 中列出识别到的 `steamharness.*` 调用。执行序列只记录 `run()` 内由 `steamharness.runNode`、`steamharness.runStreamNode`、`steamharness.runIf`、`steamharness.runFor` 或 `steamharness.runWhile` node hooks 支撑的调用。
@@ -514,7 +514,7 @@ Conversation workflow 在 executor 上启用 conversation state：
 
 ```ts
 export const executor = steamharness.defineExecutor<Input, OutputPayload>({
-  projectType: "conversation",
+  projectType: "bot",
   workflow: conversationProject,
   conversation: {
     attachments: {
@@ -546,7 +546,7 @@ Conversation 始终使用标准主输入框，不提供关闭或自定义主输�
 
 `steamharness.parseConversationDefaultInputArgs(args)` 返回 `{ message, images, videos, files }`。`--images` / `--videos` / `--files` 复用同一套 file reference 协议，既支持 managed file JSON refs，也支持本地 path。只有显式声明 `attachments.videos: true` 的项目才使用 `--videos`；未开启视频附件的项目里，用户拖入的视频继续走 `--files`。阶段一里，普通文件附件只需要做到接收、展示、持久化和回放；只有图片默认进入多模态 LLM 输入，视频和普通文件由项目显式适配到模型支持的输入协议，不要自动当作模型内容处理，除非业务逻辑明确需要。
 
-Conversation 项目可选接入本地宿主提供的 OpenAI Responses 网关（本地宿主和 CLI Web 在用户选择 OpenAI 兼容模型时注入）：
+Bot 项目可选接入本地宿主提供的 OpenAI Responses 网关（本地宿主和 CLI Web 在用户选择 OpenAI 兼容模型时注入）：
 
 ```ts
 conversation: {
@@ -613,7 +613,7 @@ steamharness json . --conversation-id demo -- --message hello
 
 Workflow 的 `params` 必须是 `steamharness.defineEntrypoint({ ... })` 内的静态数组字面量；Conversation 的 `params` 继续位于 `steamharness.defineExecutor({ ... })`。静态结构分析不执行代码。
 
-Workflow 的数组条目是 `ParamDeclaration`，普通主字段可直接声明。Conversation 的数组条目是 `ConversationParamDeclaration`，只允许 Auxiliary、Quick、Mode 和 Slash；标准主输入框始终展示，不声明普通主字段或保留的 `--message`、`--images`、`--videos`、`--files`。Auxiliary 和 Quick 声明 `{ kind, id, label, fields }`，Quick 还要有 `summary`；Conversation 的单击轮换模式直接声明 `{ kind: "mode", name, flag, options }`，Slash 声明 `{ kind: "slash", name, flag, type, options? }` 并出现在 `/` 菜单中。可重复声明多个入口，工具栏按数组顺序从左到右展示。组内字段是普通参数，不能再设置 `panel` 或嵌套分组。所有字段的 `name`、flag 和 Auxiliary/Quick 的 `id` 必须各自唯一。结构报告把字段展平到 `params`，用 `paramLayout.actions` 记录入口归属和顺序；`createInput({ paramValues })` 仍按字段名读取值。
+Workflow 的数组条目是 `ParamDeclaration`，普通主字段可直接声明。Conversation 的数组条目是 `BotParamDeclaration`，只允许 Auxiliary、Quick、Mode 和 Slash；标准主输入框始终展示，不声明普通主字段或保留的 `--message`、`--images`、`--videos`、`--files`。Auxiliary 和 Quick 声明 `{ kind, id, label, fields }`，Quick 还要有 `summary`；Conversation 的单击轮换模式直接声明 `{ kind: "mode", name, flag, options }`，Slash 声明 `{ kind: "slash", name, flag, type, options? }` 并出现在 `/` 菜单中。可重复声明多个入口，工具栏按数组顺序从左到右展示。组内字段是普通参数，不能再设置 `panel` 或嵌套分组。所有字段的 `name`、flag 和 Auxiliary/Quick 的 `id` 必须各自唯一。结构报告把字段展平到 `params`，用 `paramLayout.actions` 记录入口归属和顺序；`createInput({ paramValues })` 仍按字段名读取值。
 
 Conversation 参数示例：
 
@@ -1043,54 +1043,19 @@ const classifyNode = steamharness.createLLMNode<Input, JudgmentPayload>({
 
 ## Agent（pi SDK 能力层）
 
-Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、思考强度、上下文压缩和 plan 审批，等价于内置 OpenCode 项目的能力。**生成 agent 类项目时优先直接使用这三个成员，不要自己实现工具循环、审批、压缩或 output item 拼装。**
+Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 Conversation 项目类型与工厂已删除。
 
-四种用法，按需要选择：
+`agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 
-- `steamharness.createAgentConversationProject({ ... })` 配合项目内联 `steamharness.defineExecutor({ ... })`：生成完整的 Agent Conversation 工作流，让 Core 负责输入/输出节点与 agent 执行，项目只保留静态声明。**新建需要通过 structure 的 Agent 项目首选此组合**；可直接读取 `assets/examples/agent-conversation/index.ts`。
-- `steamharness.defineAgentConversationExecutor({ ... })`：一步构造完整 executor，适合不经过项目结构检查的宿主嵌入或测试。
-- `steamharness.createAgentNode({ ... })`：只取一个 agent 节点，放进自己的 workflow 用 `runNode` / `runStreamNode` 执行。需要自定义前后节点时使用。
-- `steamharness.createAgent({ ... })`：直接拿到一个可编程驱动的 agent 运行时（`async function* run(input, host?)`），不经过 workflow 节点体系；适合脚本化调用。
+Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, context)` 返回扩展的 `AgentInput`，可读取配置、调用聚合入口或加载索引；context 提供资源、取消信号、args 与 paramValues。工具工厂 `agent.createTools(context, input)` 和 session 工厂 `agent.createSession(context, input)` 接收准备后的输入。会话队列、durable、recovery、用量和网关由 Core 固定提供；`conversation` 仅定制展示、命令、输入交互和 `recovery.startup: "automatic" | "manual"`。
 
-**项目形态与嵌入形态不同。** 结构报告由 Core 对 `index.ts` 做静态 AST 分析，不执行项目代码。项目使用内联 `defineExecutor`；`tools`、`conversation`、`tokenUsage` 保持内联字面量。Core Agent 的 `params` 和标准 `resolveParams` 自动继承，不必重复声明；显式 `executor.params` 则完整替换参数表，仍须使用内联数组与对象。不要用返回整个 executor 的工厂替代项目声明。
+`onCompleted({ requestId, output }, context)` 接收成功结果的只读快照，返回 void。按 requestId 幂等保存业务回执，不修改输出或再次运行模型。Core 持久化结果与通知状态；通知失败单独报告，恢复只补通知。持久宿主的后续消息也经过输入钩子与完成通知。`conversationId`、会话历史及 `context.entries.conversations` 继续表示会话。
 
-因此：
-
-- **要过结构校验的项目**（例如内置项目）用下面这组，把声明写在项目里、逻辑留在 Core：
-
-完整、经过类型与结构检查的项目 `index.ts` 见 `assets/examples/agent-conversation/index.ts`。先创建 Conversation scaffold，再以这个示例替换其入口，并按项目需求调整声明。`steamharness` 变量名要保持不变，运行时由宿主注入；只允许从 `steamharness` 导入类型。
-
-  `steamharness.createAgentConversationProject(...)` 返回携带独立参数契约的 workflow。作为 `executor.workflow` 时自动继承；包装业务 workflow 时通过 `executor.coreAgent: coreProject` 引用参数来源，不改变业务流程。默认提供 provider/model Quick、effort Quick（high）、boolean `/plan`（false）和 permissionPolicy Quick（fixed 跟随用户权限设置）。
-
-  `steamharness.createAgentProjectInput(context, options?)` 接收完整 ExecutorContext，消费统一解析的 `paramValues`，保留项目传入的 systemPrompt、workdir、allowedDirectories 等输入默认值。项目可继续追加提示词、hostInput 和业务模式快照。`createAgentProjectInput(args, options?)` 保留直接 argv 调用。
-
-  `AgentProjectOptions.paramOptions.fields` 按 provider/model/effort/plan/permissionPolicy 定制 `defaultValue`、`visible`、`fixedValue`、`userSetting`、`label`、`description` 和 `options`；false 禁用字段，`userSetting: null` 移除绑定。`groups` 用字段名重新编排 Quick / Auxiliary，未分配字段保留原组。`ParamDefinition.visible: false` 隐藏入口但保留解析；`ParamDefinition.fixedValue` 固定项目值，在输入构造及 Core 执行入口覆盖用户设置、argv 与直接输入。显式 `executor.resolveParams` 保留自定义解析；静态分析与运行时使用同一规范化逻辑，参数选项必须能静态读取。
-
-  Context 输入仅消费已启用字段，固定用户设置绑定忽略宿主覆盖；字段定制中的 undefined 保留默认值与原绑定。旧 -m / --agent 参数在继承入口中仍可使用，显式 --plan 优先；不要把消息或附件的值当成参数。静态继承支持 workflow / coreAgent 简写属性及 SDK 命名空间导入。
-
-  自动继承的 resolver 在 Studio 仅使用设置的内置／自定义模型并隐藏项目 AI 字段。默认或 `modelSource: "user-settings"` 在独立 CLI Web 自动退化为项目模式；显式 `modelSource: "project"` 始终仅使用项目模型。两种模式不合并列表，不支持项目引用设置模型。项目模式通过 `STEAMHARNESS_AGENT_MODELS` JSON 列表配置系统 AI／第三方 AI，第一项为默认；系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。模型参数保存条目 ID。Core 静态发现 Agent 工厂，按宿主能力展示 `control: "ai-models"` 字段，切换宿主保留项目模型。系统运行校验当前账号订阅和模型，每轮创建并关闭回环代理；第三方直接使用配置连接。显式 endpoint/models/resolvedModel 保留独立调用语义，system-only 限制仍有效。密钥不进入源码、参数或日志。
-  仅允许系统 AI 时，显式声明模型字段 `allowThirdParty: false`（只允许用于 `control: "ai-models"`）。配置面板隐藏第三方入口，保存和导入拒绝第三方条目；运行快照 `agentModelPolicy` 冻结限制，参数选项跳过旧第三方条目，Core 拒绝直接 URL/API Key、`models` 与 `resolvedModel` 覆盖。完整备份保留旧值供清理；不要为此项目生成自建直连分支。分发模板与 `configuration.json` 通过顶层 `agentModelPolicy` 保留源码限制，即使模型字段不发布也不丢失；旧草稿及模板不能放宽限制。要允许接收者添加系统模型，保留字段的 `sharing.publish: true`。
-
-- **完成后的过程展示。** `conversation.collapseIntermediate: true | false` 是静态可读取的显示默认值；`defineAgentConversationExecutor({ collapseIntermediate })` 默认 `true`。Core Agent 标准输出在未声明默认值时也默认开启；普通 Conversation 默认关闭。成功回合收起中间文字、思考和工具过程，保留最终回复、计划和资源卡片；失败回合收起全部输出，只保留红色失败原因。CLI Web / Studio 读取代码中的显示默认值，并在每轮模型名称与当轮用量后提供展开／收起按钮，不另占一行；运行中、停止、待输入或缺少最终结果／失败原因时不自动隐藏。不要通过删减输出或历史实现折叠。
-
-- **不需要过结构校验的调用方**（宿主嵌入、测试）可以直接用 `steamharness.defineAgentConversationExecutor(...)` 一次拿到完整 executor；它内部复用同一个 workflow 实现。
-
-```ts
-// 宿主嵌入或测试：一次构造 executor，不作为项目的静态声明
-const executor = steamharness.defineAgentConversationExecutor({
-  executorName: "Pi",
-  projectName: "pi",
-  outputItemId: "pi-answer",
-});
-
-// 已有 workflow 需要自定义前后处理时只取 Agent 节点
-const agentNode = steamharness.createAgentNode({ name: "agent", provider: "anthropic" });
-const result = await steamharness.runStreamNode(agentNode, input, context);
-```
+独立 Workflow 需要 Agent 节点时仍可使用 `steamharness.createAgentNode`，脚本嵌入使用 `steamharness.createAgent`；这些能力不创建另一种 Bot 执行协议。Bot 项目示例见 `assets/examples/bot/index.ts`。
 
 输入字段（`AgentInput`）：`prompt`、`images`、`workdir`、`allowedDirectories`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`agent`、`permissionPolicy`、`contextWindow`、`compact`、`hostInput`、`requestId`、`planResume`、`askResume`。
 
-**回答 item 的 id 就是 `outputItemId`。** `createAgentConversationProject({ outputItemId })` 产出的正文 item 使用这个 id 原样（不做前缀、不改写），因此它必须与 `conversation.openai.outputItemId` 是同一个值：OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的，两个值不一致时运行会在适配器一侧以「did not produce output item」失败（本地网关与 CLI 的 `__openai-responses-runner` 都走这条查找）。不传时才会退化成按会话派生的 id，那种 id 适配器无法预先知道。
+Bot 的最终答案 item 固定为 `agent-answer`；OpenAI 适配器使用相同地址，项目不能覆盖。
 
 - `workdir` 与 `allowedDirectories` 合起来决定本轮内置工具能碰哪些路径（相对 `allowedDirectories` 按本轮的 `workdir` 解析，省略时就是 `[workdir]`）。**两者都是逐轮生效的**，所以宿主把外部文件夹挂进工作区时，按这一轮实际的工作区传进来，而不是在建运行时写死。
 - `systemPrompt` 是本轮的系统提示词，逐轮生效并覆盖 `AgentProjectOptions.systemPrompt`。plan 模式下 plan 提示词仍在前，这段内容追加在后，所以 plan 的只读约束不能靠它改掉。
@@ -1101,9 +1066,9 @@ const result = await steamharness.runStreamNode(agentNode, input, context);
   plan 轮的批准请求与内置 OpenCode 项目一致：一个 `decision` 单选（按计划执行 / 先不执行，各自带说明）加一个 `instructions` 文本框（补充要求，可选）。批准后会暂停并在**同一会话**里以 build 模式带着计划原文继续执行——计划会随恢复提示一起重发，中途发生压缩也不会丢。**拒绝不会结束会话**：它保持 plan 模式，把补充要求与这份计划一起交回计划 agent 修订一版（因此不会改动任何文件，但会再产生一轮模型调用）。待批准的计划存在 conversation value `agent.pendingPlanApproval` 里，恢复时按它取回。
 - `permissionPolicy` 取 `"inherit"`、`"read-only"`、`"workspace"`（省略时默认）或 `"auto"`；`inherit` 按上文优先级解析用户快照，底层仍只有三个具体权限：`read-only` 隐藏写入与命令工具；`workspace` 在工作区内自动批准编辑和命令，读写与检索类工具（`read` / `write` / `edit` / `ls` / `grep` / `find`）只能落在工作区与 `allowedDirectories` 内；`auto` 批准一切未被显式拒绝的权限，包括工作区之外的路径。**三者都不会为内置工具弹出审批**——内置工具声明为 `autoApprove: true`，策略只决定「暴露哪些工具」和「工具能走多远」，宿主审批门只对宿主自己声明的工具生效。
   > **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 只是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 之所以更严，是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱，不要指望 `permissionPolicy`。参数面板上那句「工作区之外的路径一律拒绝」指的是文件类工具，**不要**据此认为命令也被关在工作区里。
-- `hostInput` 用于「宿主自己保管这一轮的消息历史」的场景（OpenAI / Responses 网关就是这样）：带上它的一轮**不写 conversation 消息，也不读写下面这份 agent 记录**，与内置 Conversation 项目在 `input.openai !== undefined` 时的处理一致。项目从 `steamharness.readOpenAIConversationHostInput(context)` 拿到宿主输入时，把它一并放进 `AgentInput` 即可。
+- `hostInput` 用于「宿主自己保管这一轮的消息历史」的场景（OpenAI / Responses 网关就是这样）：带上它的一轮**不写 conversation 消息，也不读写下面这份 agent 记录**，与内置 Bot 项目在 `input.openai !== undefined` 时的处理一致。项目从 `steamharness.readOpenAIConversationHostInput(context)` 拿到宿主输入时，把它一并放进 `AgentInput` 即可。
 - **Pi Durable Harness 是唯一执行历史来源。** 固定 Pi SDK / Durable 1.2.0，Node >=22.19.0。Conversation 节点默认按项目、入口、conversationId 和 sessionKey 选择宿主本地 SQLite 会话，实时提交消息、工具意图与结果、审批等待及用量记录；只有显式注入时才使用 Server PostgreSQL。普通模式每轮关闭运行时；session 模式由宿主 lease 保持工具与 AI bridge 存活，前台回答结束后仍能继续输入和执行后台任务。多个 Agent 节点用不同 sessionKey。没有旧 KV transcript 迁移或 fallback。编程式 `steamharness.createAgent({ databasePath })` 显式选择 SQLite，不传则使用 MemoryStorage，同一运行时内审批暂停仍保留原任务。`readTranscript()` 只读模型上下文投影，`restoreTranscript()` 只用于空存储的首轮 seed，不覆盖已有持久历史，不能恢复活动任务。流式回答强杀后把已提交正文和推理纳入持久续写上下文，丢弃未完成工具调用；续写沿用断流预算。运行结束必须 `await runtime.close()`。
-- **会话控制。** `session` 支持 `subagents: { tools, maxAgents?: number | null, modelConfiguration?, model?: { provider, modelId }, models?: [{ provider, modelId }] }`、`nativeTools`、`compaction: { enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`、`planFork: "initial" | "current" | "asOf"`（默认 asOf）。显式工具权限列表须包含 `{ name: "update_plan", enabled: true, autoApprove: true }`，启用委派时再声明 `subagent`；`defineAgentConversationExecutor` 默认补这两项，自定义工具仍须显式声明。子 Agent 只获得父工具与项目白名单的交集，默认继承父模型和凭据（省略 model）。工具说明列出子工具与可用模型覆盖；未配置可用覆盖时不暴露 model 参数，也不可猜测模型名称。内置小助手的只读子工具包含 skill。也可选模型白名单中的精确 provider/modelId；禁止递归，最多 maxAgents（默认 4）个活动委派，显式 maxAgents: null 不设总数量上限，嵌套 `nativeTools` 的 `api.executeTool` 仍经过 caller 限制、审批与取消。后台结果用持久 reporter 和 requestId 自动回传一次。
+Bot 使用 `steamharness.defineBot`，参见本节的固定契约。
 - **崩溃恢复与子任务管理。** 活动 CLI Web / Studio 宿主中的 worker 意外退出最多自动恢复 3 次，沿用既有任务、子会话和已提交工具结果；用户主动停止或宿主强退重开时，未完成业务树仍暂停并等待明确输入。用户队列只由成功用户轮次推进，后台报告不能推进。主 Agent 可用 subagent list/get/wait 查询和等待，send 仅追加到运行中工作，retry 遵守失败类型和重试预算；未知副作用先核验，不用新 workId 绕过限制。
 - **宿主协议。** `steamharness/agent` 导出 `createAgentSessionHost(scopeId)`（启动节点前创建，退出时 close）、`controlAgentSession(scopeId, command)` 和 `AgentSessionSnapshot`。scopeId 是原 workflow conversationId；`targetId` 是快照内数字 conversationId。`AgentRuntime.control` 可在 session 运行期间使用，等待就绪和排队前复制命令，调用方后续修改原对象不会改变操作。命令均带稳定 requestId：submit（steer / followUp / reject）、withdraw（inputId）、promote（inputId，原子将排队项转为 steer 并保存回执，保留原身份和图片）、compact、reset（可选 handoff）、fork（已提交 entryId）、delete（子会话）、configure（expectedVersion、已注册 model / effort）、plan（expectedVersion、items）、cancel（foreground / all / task）和 snapshot。相同身份不同载荷拒绝；撤回或提升已消费输入返回 already_placed / settled，不能撤销已完成副作用或重发消息。默认输入框忙碌时使用 followUp，空闲时直接执行；队列项的立即发送使用 promote。创建 fork 前由宿主显示确认弹窗。
 - **共享自动恢复。** CLI Web / Studio 对 Agent 命令确认超时、暂未就绪和临时连接故障最多自动重试 3 次，每次最多等待 30 秒，沿用原 requestId、targetId 与载荷。命令持久化后即可返回回执，不等待快照发送；需要最新视图时等待相应快照或显式 snapshot。迟到回执与重试结果都核对原输入，项目连接恢复后可恢复 run 沿用原身份继续。快照投影失败及明确 replay: "safe" 的工具执行异常/isError 最多退避重试 3 次，成功后自动继续；工具每次重试重新校验权限。主动停止、宿主关闭、输入校验、权限拒绝、用户交互等待、retryable:false、宿主存储失败及默认/never/unsafe 工具的未知结果保持停止或核对边界，不通过重放已提交写入掩盖故障。
@@ -1133,7 +1098,7 @@ const result = await steamharness.runStreamNode(agentNode, input, context);
 - 总结响应的计费用量同样通过 `host.reportUsage` 上报，包括失败或取消响应中的已消耗 token；不能把它当作总结后的上下文大小。直接调用 `compactAgentMessages` 可传 `onUsage(usage)`，在摘要校验前接收模型返回的 pi `Usage`。
 - **取消运行会中止本轮**：`context.abortSignal` 一触发就调用 pi 侧的 `agent.abort()`，模型流与正在执行的工具一起停下，本轮以 `execution_aborted` 结束（工作流据此把运行标成 aborted，而不是失败），已经花掉的 token 仍会照常上报。
 
-配置对象（`AgentProjectOptions`，三个成员共用）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`createSession`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `executorName`、`projectName`、`outputItemId`、`params`。
+底层 Agent 选项（Bot 通过 `BotAgentOptions` 暴露受限子集）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`createSession`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `executorName`、`projectName`、`outputItemId`、`params`。
 
 内置工具为 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及**只在 plan 模式提供**的 `ask_user`。问答和计划通过 `context.userInput` 暂停，跨进程以原 runId 恢复；工具从原持久意图继续，askResume 回填答案，plan 决定使用稳定续跑身份，旧决定不能批准新 run。文件类工具经 realpath 校验工作区与 allowedDirectories；grep/find 不跟随软链接。bash 以宿主身份执行，不是文件沙箱。工具审批复用 context.toolPermissions，plan 回合才对未自动批准工具提问，build 直接执行，禁用工具仍拒绝。模型用量携带稳定 recordId，Core 原子 upsert，重放不重复累计；上游强杀前未返回的用量须另行对账。
 
@@ -1208,9 +1173,9 @@ const readTask: AgentTool = {
 - 一个服务的工具总数上限 256，超出的分页在合并前就被拒绝；列目录时游标只在「有进展」时推进，重复游标会以循环为由中止。
 - 生命周期是每轮连接、`finally` 关闭。SDK 在 `connectMcpServer` 内部用动态 `import()` 加载，不使用 MCP 的运行时不解析也不加载它。
 
-`defineExecutor` 选定 `createAgentConversationProject` 作为 `workflow` 或包装入口的 `coreAgent` 时，自动继承 `conversation.recovery: { enabled: true }`，运行时与静态报告保持一致，不需要项目重复声明。宿主重启使用原 runId 接回未完成请求，不能通过更换 requestId 或清空数据库绕过 busy；待发队列仅在成功后自动推进，失败、取消和超时保留消息。
+Bot 使用 `steamharness.defineBot`，参见本节的固定契约。
 
-**Core Agent 项目优先声明 `skills: { directories: ["skills"] }`。** `createAgentConversationProject` / `createAgentNode` 相对入口根目录解析路径，自动创建带工具权限校验的 `skill`，无需在 `createTools` 重复创建；仍需在内联 `executor.tools` 保留 `skill` 权限元数据。宿主读取选定 `createAgentConversationProject` 的技能声明（包装 Conversation 通过 `coreAgent` 关联），使用 `listLocalProjectSkills({ projectDir, entryId?, entrypointId? })` 列出真实项目及默认加载的 Core 内置指南（`id/name/description/source`），并用 `readLocalProjectSkill({ projectDir, entryId?, entrypointId?, skillId })` 按目录 ID 读取完整原始 `SKILL.md`（`{ skill, content }`）。预览不运行任务或工具工厂，不接受任意路径；非 Core Agent 返回空目录。同名项目与内置指南保留独立 ID，项目根目录之间仍按先出现者优先。
+Bot 在 `agent.skills.directories` 声明技能目录，Core 自动注册 skill 工具，并通过 `listLocalProjectSkills` / `readLocalProjectSkill` 提供宿主预览。
 
 **技能按需读取，不注入提示词。** `await steamharness.createSkillTools({ directories, approve? })` 返回一个 `skill` 工具：
 
@@ -1469,14 +1434,14 @@ Native tool 用 `steamharness.readAgentWorkContext(api, ctx)` 获取获授权的
 
 ### 按授权配置创建会话
 
-`createSession(context)` 在工具和模型完成宿主授权后创建本轮的 `AgentSessionOptions`；提供工厂时优先于静态 `session`。用它按项目 Ask/Build 配置返回角色、native tools 和任务 registry；Ask 应返回不含采集和写入角色的配置。`defineAgentConversationExecutor`、选定 Core 项目的 `defineExecutor({ workflow })` 或 `defineExecutor({ coreAgent })` 自动继承 durable 与 recovery 声明；手写独立节点的 executor 仍需内联声明控制能力。自定义权限表须包含所有需要的 native tools、`update_plan` 和 `subagent`。
+`agent.createSession(context, input)` 根据已授权配置和准备后的输入创建 session；Bot 自动提供 durable 与 recovery，项目仅配置角色、native tools 和任务 registry。
 
 `createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`steamharness.AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。
 
 - **运行历史仓储。** 默认 `createLocalRuntimePersistence({ directory })` 提供 list(kind)、acquire(scope,onLost)、agentStorage、agentSessions、exportSession、importSession、deleteSession、close；history kind 为 conversation/run/workflow/state，带 revision 与消息、队列、事件和值子记录，删除保留墓碑。本地使用 SQLite 事务与按会话独占文件锁，进程退出自动释放；可信宿主可通过 storage.local.runtimePersistence 或 storage.server.runtimePersistence 注入仓储。显式云端使用 `createServerRuntimePersistence({serverUrl,token,workspace,resolveProject:true})`，仍逐次鉴权并在撤权/租约失效时停止，不静默换后端。测试可显式用 createMemoryRuntimePersistence。按需备份用 `copyRuntimePersistence({ source, target })`，宿主可后台执行并报告失败；源会话须空闲，目标为空，不阻塞本地写入；这是一次性快照复制，不是连续同步，不复制附件和工作区文件。CLI/Studio 不为历史持久化要求联网。
 - **运行存储快照。** 从 steamharness/agent 导入 exportAgentSession({persistence,conversationId}) / importAgentSession({persistence,conversationId,sessionKey,snapshot})，格式为 steamharness.agent-session version 1，保留 commit 顺序、文档历史、ID watermark；活动源 owner 可只读导出，导入要求新会话。forkStoredAgentConversation、isolateStoredAgentConversation、cancelStoredAgentConversation、deleteStoredAgentConversation 替代默认宿主的文件路径助手，不加载模型或迁移旧文件；源活动时 fork 命令仍交给 owner。文件与附件独立保存和备份。
 
-## 本地 Conversation 入口控制
+## 本地 Bot 入口控制
 
 CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Conversation，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
 
@@ -1571,3 +1536,9 @@ entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 
 ## 项目发行
 
 使用 `steamharness release .` 生成 `dist/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
+
+Bot 的 `conversation.collapseIntermediate` 默认 true：成功后收起中间过程，保留最终答案；false 保留过程。它只控制呈现，不删除历史或改变输出。输入钩子可能在宿主恢复时重新调用，应保持幂等；完成通知按稳定 requestId 去重。
+
+工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
+
+`collapseIntermediate` 是会话展示字段，控制完成后是否折叠中间过程。

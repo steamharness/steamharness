@@ -1,38 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAgentConversationProject, createAgentProjectInput } from "../agent/project";
-import { defineProjectExecutor } from "../executor/definition";
+import { defineBot } from "../agent/bot";
 import { analyzeProjectScriptSource } from "../executor/rules";
 
-test("selected Core Agent projects inherit recovery while preserving presentation declarations", () => {
-  const core = createAgentConversationProject({ tools: [] });
-  for (const wrapped of [false, true]) {
-    const executor = defineProjectExecutor({ projectType: "conversation", workflow: core,
-      ...(wrapped ? { coreAgent: core } : {}), conversation: { inputQueue: { enabled: true }, attachments: { images: true } },
-      createInput: createAgentProjectInput });
-    assert.equal(executor.projectType, "conversation");
-    if (executor.projectType !== "conversation") return;
-    assert.deepEqual(executor.conversation, { recovery: { enabled: true }, inputQueue: { enabled: true }, attachments: { images: true } });
+test("Bot runtime and static inspection share mandatory capabilities and manual recovery", () => {
+  for (const startup of ["automatic", "manual"] as const) {
+    const bot = defineBot({ conversation: { recovery: { startup } } });
+    const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ conversation: { recovery: { startup: "${startup}" } } });`);
+    assert.deepEqual(report.executorConfigurationViolations, []);
+    assert.deepEqual(report.executorConversation, bot.conversation);
+    assert.deepEqual(report.executorTokenUsage, bot.tokenUsage);
+    assert.equal(bot.conversation?.durable?.enabled, true);
+    assert.equal(bot.conversation?.inputQueue?.enabled, true);
+    assert.deepEqual(bot.conversation?.openai, { enabled: true, outputItemId: "agent-answer" });
   }
 });
 
-test("static recovery follows the selected Agent, including wrappers with explicit parameters", () => {
-  for (const wrapped of [false, true]) for (const declaration of ["", "conversation: { inputQueue: { enabled: true } }, params: [],"]) {
-    const source = `
-      throw new Error("Static inspection must not execute project code");
-      const core = steamharness.createAgentConversationProject({ tools: [] });
-      const business = steamharness.defineProject({ name: "business", run(input, context) { return core.run(input, context); } });
-      export const executor = steamharness.defineExecutor({ projectType: "conversation",
-        workflow: ${wrapped ? "business, coreAgent: core" : "core"}, ${declaration} createInput: steamharness.createAgentProjectInput });`;
-    const report = analyzeProjectScriptSource(source);
-    assert.deepEqual(report.executorConfigurationViolations, []);
-    assert.deepEqual(report.executorConversation?.recovery, { enabled: true });
-    assert.equal(report.executorConversation?.durable, undefined);
-    if (declaration) assert.deepEqual(report.executorConversation?.inputQueue, { enabled: true });
+test("mandatory host capabilities cannot be overridden", () => {
+  for (const key of ["durable", "inputQueue", "openai"]) {
+    assert.throws(() => defineBot({ conversation: { [key]: { enabled: false } } as never }), /owned by Core/);
   }
-  const report = analyzeProjectScriptSource(`
-    const unrelated = steamharness.createAgentConversationProject();
-    const workflow = steamharness.defineProject({ name: "ordinary", run(input) { return input; } });
-    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow, createInput: steamharness.createAgentProjectInput });`);
-  assert.equal(report.executorConversation?.recovery, undefined);
+  assert.throws(() => defineBot({ conversation: { recovery: { enabled: false } } as never }), /always enabled/);
+});
+
+test("static Bot tools include configured Core capabilities", () => {
+  const agent = { tools: [] as string[], skills: { directories: ["skills"] }, session: { subagents: { tools: ["read"] }, toolSearch: {}, codeMode: {} } };
+  const bot = defineBot({ agent });
+  const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ agent: ${JSON.stringify(agent)} });`);
+  assert.deepEqual(report.executorTools, bot.tools);
 });

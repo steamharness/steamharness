@@ -55,7 +55,7 @@ it('keeps batched resource cards and asynchronous layout changes visible until t
     scrollTop: { get: () => top, set: value => { top = value; clamp(); } },
   });
   const resize = () => { for (const observer of observers) if (observer.targets.has(content) || observer.targets.has(transcript)) observer.callback([], {} as ResizeObserver); };
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/scroll-test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/scroll-test',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'bot', fields: [], entrypoints: [] };
   const message: ConversationMessage = { id: 'answer', role: 'assistant', content: '', status: 'running', items: [] };
   const emit = (activeId = 'session') => {
     window.dispatchEvent(new MessageEvent('message', { data: {

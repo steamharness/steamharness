@@ -22,7 +22,7 @@ function sourceHash(files) {
   return hash.digest('hex');
 }
 
-for (const projectType of ['workflow', 'conversation', 'kanban']) {
+for (const projectType of ['workflow', 'bot', 'kanban']) {
   test(`real workspace CLI uploads and downloads ${projectType} versions`, { skip: !cliEntry }, async t => {
     const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-real-cli-transfer-'));
     t.after(() => fs.rm(directory, { recursive: true, force: true }));

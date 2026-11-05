@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const compiled = await build({ stdin: { contents: "export { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';", resolveDir: root }, bundle: true, platform: 'node', format: 'esm', write: false });
 const { readProjectManifestFromDirectory } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
-for (const relative of ['examples/conversation', 'examples/workflow', 'examples/kanban', 'tests/fixtures/conversation-features', 'tests/fixtures/parameter-layout']) {
+for (const relative of ['examples/bot', 'examples/workflow', 'examples/kanban', 'tests/fixtures/conversation-features', 'tests/fixtures/parameter-layout']) {
   test(`${relative} declares a runnable entry and database aliases`, async () => {
     const directory = path.join(root, relative);
     const manifest = await readProjectManifestFromDirectory(directory, {});

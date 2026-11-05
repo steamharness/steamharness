@@ -10,7 +10,7 @@ import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { runtimeStorageService } from './runtime-storage-service';
 
-it.each(['workflow', 'conversation'] as const)('retains structured remote storage errors through the actual %s worker report', async kind => {
+it.each(['workflow', 'bot'] as const)('retains structured remote storage errors through the actual %s worker report', async kind => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'server-guidance-runtime-')), id = crypto.randomUUID();
   const storageService = runtimeStorageService();
   const server = createServer(async (request, response) => {
@@ -32,9 +32,9 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
       const flow = steamharness.defineProject({ name: 'storage-error', async run(input, context) {
         await context.databases.connect({ kind: 'steamharness.database', version: 1, target: 'node', provider: 'postgresql', alias: 'data', schemaHash: 'a'.repeat(64), metadata: { models: [] }, loadEngine: async () => { throw new Error('Engine must not load before authorization'); } }); return { errCode: 0, errMessage: '' };
       } });
-      export const executor = steamharness.defineExecutor(${kind === 'workflow' ? `{ projectType: 'workflow', defaultEntrypoint: 'main',
+      export const executor = steamharness.${kind === 'workflow' ? 'defineExecutor' : 'defineBot'}(${kind === 'workflow' ? `{ projectType: 'workflow', defaultEntrypoint: 'main',
         entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow, params: [], createInput() { return {}; } })] }`
-        : `{ projectType: 'conversation', workflow: flow, params: [], createInput() { return {}; } }`});
+        : `{ async prepareInput(input, context) { await flow.run(input, context); return { ...input, prompt: 'check' }; } }`});
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const report = await runtime.run({ project: { ...inspected.projects[0], uri: '' }, runId: 'failed-run', conversationId: 'fixture', args: [] }, () => undefined);

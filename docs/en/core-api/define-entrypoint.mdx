@@ -109,7 +109,7 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Entrypoint group expansion | shared runtime UI and CLI Web enable grouped UI only when at least one group is declared. They persist expansion by `projectId + resolved target` under a versioned localStorage key; ungrouped entries use a localized **Ungrouped** group. |
 | Registry and debug node | Only the selected entrypoint's registry is available. |
 | `context.databases` | Current aggregate entry bindings. Internal Workflow operations share them; use separate keys or spaces for business isolation. |
-| Conversation | Does not use `defineEntrypoint` and does not accept entrypoint selection. |
+| Bot | Does not use `defineEntrypoint` and does not accept entrypoint selection. |
 
 ## Errors
 
@@ -119,6 +119,6 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Group is not a static inline object, has invalid fields, or conflicts for one ID | `input_validation` | The runtime rejects the definition; static analysis and the structure report expose a violation at the relevant locations. |
 | Default entrypoint does not exist | `input_validation` | The executor cannot load. |
 | Unknown entrypoint requested | `input_validation` | Error metadata includes the default entrypoint and allowed entrypoints. |
-| Conversation receives an entrypoint argument | `input_validation` | Conversation remains single-entry; the argument is neither ignored nor silently redirected. |
+| Bot receives an entrypoint argument | `input_validation` | Bot remains single-entry; the argument is neither ignored nor silently redirected. |
 
 `entrypointId` identifies an operation inside a Workflow entry. It is distinct from the window `entryId` registered in the root manifest: `steamharness run . --entry database --entrypoint search`.

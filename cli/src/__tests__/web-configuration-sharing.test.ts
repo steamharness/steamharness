@@ -63,7 +63,7 @@ async function fixture() {
   };
 }
 
-for (const kind of ['conversation','workflow','kanban'] as const) it(`${kind} windows share application profiles, values and selection through the live page protocol`, async () => {
+for (const kind of ['bot','workflow','kanban'] as const) it(`${kind} windows share application profiles, values and selection through the live page protocol`, async () => {
   const open = await fixture(), a = await open('first-install',kind), b = await open('second-install',kind);
   const initialA = await a.next(), initialB = await b.next();
   expect(initialB.configurations).toEqual(initialA.configurations);
@@ -91,8 +91,8 @@ for (const kind of ['conversation','workflow','kanban'] as const) it(`${kind} wi
 }, 15_000);
 
 it('assistant windows keep workspace histories separate while synchronizing one application configuration', async () => {
-  const open = await fixture(), a = await open('assistant-a','conversation',undefined,true);
-  const b = await open('assistant-b','conversation',undefined,true,a.directory);
+  const open = await fixture(), a = await open('assistant-a','bot',undefined,true);
+  const b = await open('assistant-b','bot',undefined,true,a.directory);
   const initial = (await a.next()).configurations; await b.next();
   expect(a.app.controller!.activeId).not.toBe(b.app.controller!.activeId);
   const response = await a.post({action:'save',revision:initial.revision,id:initial.activeConfigurationId,values:{label:'assistant',enabled:false}});

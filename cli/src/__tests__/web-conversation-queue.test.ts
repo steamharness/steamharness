@@ -135,6 +135,14 @@ it.each(['queue-promote', 'queue-remove'])('retains a failed %s with its error a
   expect(f.root.children[1].children.map(row => row.dataset.id)).toEqual(['two']);
 });
 
+it('shows queue resume for a paused Bot after its owner has stopped', () => {
+  const f = fixture(true);
+  f.state.session.queuePaused = true; f.update();
+  const resume = f.root.children[0].children[1];
+  expect(resume.hidden).toBe(false); resume.click(); expect(f.resume).toHaveBeenCalledOnce();
+  f.state.session.queuePaused = false; f.update(); expect(resume.hidden).toBe(true);
+});
+
 it('retains editing, reordering, dragging and queue resume for ordinary conversations', () => {
   const f = fixture(false), first = f.row(), second = f.row('two');
   expect(first.edit.hidden).toBe(false); expect(first.up.disabled).toBe(true); expect(second.up.disabled).toBe(false);

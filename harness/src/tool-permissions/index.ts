@@ -3,6 +3,8 @@ import { HarnessError } from "../workflow/errors";
 import { createHash } from "node:crypto";
 
 export interface ToolPermissionDefinition {
+  /** Require confirmation in every agent mode when autoApprove is false. */
+  approvalMode?: "always" | "plan";
   name: string;
   label?: string;
   description?: string;
@@ -18,6 +20,7 @@ export interface ToolPermissionPolicy {
 export type ToolPermissionPolicyMap = Record<string, ToolPermissionPolicy>;
 
 export interface ToolPermissionResolved extends Required<ToolPermissionPolicy> {
+  approvalMode?: "always" | "plan";
   name: string;
   label?: string;
   description?: string;
@@ -141,8 +144,12 @@ export function normalizeToolPermissionDefinitions(
     if (name === undefined || seen.has(name)) {
       continue;
     }
+    if (definition.approvalMode !== undefined && !["always", "plan"].includes(definition.approvalMode)) {
+      throw new HarnessError({ type: "input_validation", message: "Tool approvalMode must be always or plan." });
+    }
     seen.add(name);
     normalized.push({
+      ...(definition.approvalMode === undefined ? {} : { approvalMode: definition.approvalMode }),
       name,
       label: normalizeOptionalText(definition.label),
       description: normalizeOptionalText(definition.description),
@@ -240,7 +247,7 @@ export async function requireProjectToolApproval(
   // A build turn has nothing left to confirm: the tools it reaches for are the
   // ones the plan it is running named, and that plan was already approved. The
   // tool still has to be enabled, which is checked above.
-  if (context.toolPermissions?.requiresUserApproval === false) {
+  if (context.toolPermissions?.requiresUserApproval === false && tool.approvalMode !== "always") {
     return { approved: true };
   }
 
@@ -282,6 +289,7 @@ function resolveToolPermissionDefinition(
     description: definition.description,
     enabled: policy?.enabled ?? definition.enabled ?? true,
     autoApprove: policy?.autoApprove ?? definition.autoApprove ?? false,
+    ...(definition.approvalMode === undefined ? {} : { approvalMode: definition.approvalMode }),
   };
 }
 
@@ -346,6 +354,7 @@ function createToolApprovalRequest(options: {
       version: "1.0.0",
       toolName: options.tool.name,
       toolArguments: options.input.arguments,
+      ...(typeof options.metadata?.botRequestId === "string" ? { botRequestId: options.metadata.botRequestId } : {}),
     },
     createdAt: new Date(),
   };

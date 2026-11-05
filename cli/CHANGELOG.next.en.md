@@ -1,5 +1,10 @@
 # Unreleased
 
+- Fixed Bot Stop preserving queued inputs and showing Resume queue; stopping an exited owner cancels persisted work without restarting its old model.
+- Fixed Bot approval recovery comparing saved model references with restored credentials, so omitted history secrets no longer interrupt plan confirmation as a settings change.
+
+- Breaking: project types, structure reports, templates and the Web host now use Bot; conversation protocols remain, with stable request identities across initial, resumed and subsequent turns.
+
 - Durable Agent commands automatically retry confirmation timeouts, temporary connection failures, and readiness races with the original request ID. Late receipts reconcile pending input, repaired project connections resume the original run, browser deadlines cover recovery, and Stop cancels retries.
 - Add project release builds, compiled execution, entry selection, validated inventories and automatic release uploads.
 

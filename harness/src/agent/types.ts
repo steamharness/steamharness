@@ -7,7 +7,7 @@ import type { FileReference } from "../files/index";
 import type { AgentApiKind } from "./pi";
 import type { OutputItem } from "../node/output/index";
 import type { RunPayload } from "../types/payload";
-import type { ConversationParamDeclaration, ParamOption, UserSettingParamBinding } from "../executor/types";
+import type { BotParamDeclaration, ParamOption, UserSettingParamBinding } from "../executor/types";
 import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 
@@ -512,10 +512,10 @@ export interface AgentProjectParamOptions {
   groups?: ({ kind: "quick"; id: string; label: string; icon?: string; summary: AgentProjectParamName[]; fields: AgentProjectParamName[] }
     | { kind: "auxiliary"; id: string; label: string; fields: AgentProjectParamName[] })[];
 }
-declare const agentConversationProjectBrand: unique symbol;
+declare const coreBotProjectBrand: unique symbol;
 /** A Core conversation project carrying an isolated, non-serialized parameter contract. */
-export interface AgentConversationProject extends Definition<AgentInput, AgentOutputPayload> {
-  readonly [agentConversationProjectBrand]: true;
+export interface CoreBotProject extends Definition<AgentInput, AgentOutputPayload> {
+  readonly [coreBotProjectBrand]: true;
 }
 
 export interface AgentProjectOptions extends AgentNodeOptions {
@@ -527,7 +527,7 @@ export interface AgentProjectOptions extends AgentNodeOptions {
   executorName?: string;
   /** Assistant output item id; must match `conversation.openai.outputItemId`. */
   outputItemId?: string;
-  params?: ConversationParamDeclaration[];
+  params?: BotParamDeclaration[];
   /** Customize the built-in assistant parameters without repeating their declarations. */
   paramOptions?: AgentProjectParamOptions;
 }

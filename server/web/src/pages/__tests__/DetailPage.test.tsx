@@ -8,7 +8,7 @@ import { DetailPage, getDetailNavItems } from '../DetailPage';
 import type { DetailPageProps } from '../detail/types';
 import type { Summary } from '../../types';
 
-const entries = (['conversation','workflow','kanban'] as const).map((type,index) => ({entryId:`entry-${index}`,type,name:`Window ${index}`,root:`entry-${index}`,entry:type==='kanban'?'index.html':'index.ts',databases:[]}));
+const entries = (['bot','workflow','kanban'] as const).map((type,index) => ({entryId:`entry-${index}`,type,name:`Window ${index}`,root:`entry-${index}`,entry:type==='kanban'?'index.html':'index.ts',databases:[]}));
 const project: Summary = {id:'demo',name:'Aggregate',projectCard:{icon:"workflow",iconBackgroundColor:"#2563eb"},projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}},entries,defaultEntry:'entry-0',hasDraft:true,latest:'1.0.0',versions:['1.0.0'],nextVersion:'1.0.1',visibility:'private',access:resolveResourceAccess([{type:'project',id:'demo',role:'owner'}])};
 const props = (overrides: Partial<DetailPageProps> = {}): DetailPageProps => ({project,detail:{versions:null,members:[],invitations:[]},activeTab:'entries',busy:{},onUpdateVisibility:vi.fn(),onSetProjectMember:vi.fn(),onRemoveProjectMember:vi.fn(),onCreateProjectInvitation:vi.fn(),onRevokeProjectInvitation:vi.fn(),onNavigateTab:vi.fn(),onNavigateProjectTab:vi.fn(),sidebarCollapsed:false,onRefresh:vi.fn(),...overrides});
 beforeEach(async()=>{await i18n.changeLanguage('en');});

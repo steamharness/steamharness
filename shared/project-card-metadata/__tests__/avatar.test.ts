@@ -15,6 +15,6 @@ describe("project avatars", () => {
     const svg = projectAvatarSvg({ icon: '<script>' as never, iconColor: '" onload="alert(1)', iconBackgroundColor: "url(https://example.com)", iconUrl: "https://example.com/private.png" });
     expect(svg).not.toMatch(/script|onload|example\.com|<image|url\(/);
     expect(svg).toBe(projectAvatarSvg(undefined));
-    expect(projectAvatarSvg(undefined, "conversation")).not.toBe(svg);
+    expect(projectAvatarSvg(undefined, "bot")).not.toBe(svg);
   });
 });

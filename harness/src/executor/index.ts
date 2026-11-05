@@ -1,3 +1,4 @@
+import { isDefinedBot } from "../agent/bot";
 import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
@@ -860,7 +861,7 @@ async function runLocalProjectWithReportInternal(
       projectName,
     );
     const execution = selected.execution;
-    if (definition.projectType === "conversation") {
+    if (definition.projectType === "bot") {
       projectName = execution.workflow.name || projectName;
     }
     activeEntrypointId = selected.entrypointId;
@@ -1184,7 +1185,7 @@ async function localAgentProjectContract(options: LocalProjectSkillsOptions) {
   const module = await import(pathToFileURL(declaration.modulePath).href);
   const definition = resolveExecutorDefinition(module as ExecutorModule, declaration.registration.name);
   const { execution } = resolveExecutorExecution(definition, options.entrypointId, declaration.registration.name);
-  const source = definition.projectType === "conversation" ? definition.coreAgent ?? execution.workflow : execution.workflow;
+  const source = execution.workflow;
   const contract = readAgentProjectContract(source);
   return contract ? { contract, rootDir: declaration.rootDir } : undefined;
 }
@@ -1208,7 +1209,7 @@ function resolveInspectedProjectType(
   if (inspection.projectType !== undefined) return inspection.projectType;
   return inspection.entrypoints !== undefined || inspection.defaultEntrypoint !== undefined
     ? "workflow"
-    : "conversation";
+    : "bot";
 }
 
 export async function resolveWorkspaceProjectParams(options: {
@@ -1314,7 +1315,7 @@ async function resolveProjectParamsFromModuleInternal(options: {
   });
   if (abortSignal.aborted) throw abortSignal.reason;
   const validated = validateProjectParamResolveResult(execution.params, result);
-  if (definition.projectType === "conversation") {
+  if (definition.projectType === "bot") {
     const params = normalizeProjectParamDeclarations(execution.params).params.map(param => {
       const options = validated.params?.[param.name]?.resolvedOptions;
       return param.panel !== "slash" || !options ? param : { ...param, options: options.map(option => ({ ...option,
@@ -1345,7 +1346,7 @@ function createExecutorConversationContext(options: {
     updatedAt: string;
   }) => Promise<void> | void;
 }): ConversationContext {
-  if (!isConversationProjectType(options.definition.projectType)) {
+  if (!isBotProjectType(options.definition.projectType)) {
     return createDisabledProjectConversationContext();
   }
 
@@ -1374,7 +1375,7 @@ function resolveExecutorConversationId(
   requestedConversationId: string | undefined,
   inputConversationId?: string,
 ): string | undefined {
-  if (!isConversationProjectType(definition.projectType)) {
+  if (!isBotProjectType(definition.projectType)) {
     return undefined;
   }
 
@@ -1693,24 +1694,25 @@ function validateExecutorDefinition(
     : { ...definition, projectType };
 
   switch (projectType) {
-    case "conversation": {
+    case "bot": {
+      if (!isDefinedBot(normalizedDefinition)) throw new HarnessError({ type: "input_validation", message: "Bot executor must be created by defineBot." });
       if (!isProjectDefinition(normalizedDefinition.workflow) || typeof normalizedDefinition.createInput !== "function") {
         throw new HarnessError({
           type: "input_validation",
-          message: `Conversation "${projectName}" must declare workflow and createInput on its executor.`,
+          message: `Bot "${projectName}" has an invalid Core execution contract.`,
           metadata: { project: projectName, projectType },
         });
       }
       if (normalizedDefinition.entrypoints !== undefined || normalizedDefinition.defaultEntrypoint !== undefined) {
         throw new HarnessError({
           type: "input_validation",
-          message: `Conversation "${projectName}" does not support entrypoints. Keep its executor as a single workflow.`,
+          message: `Bot "${projectName}" does not support entrypoints. Use defineBot configuration and hooks.`,
           metadata: { project: projectName, projectType },
         });
       }
       validateConversationOpenAIAdapter(normalizedDefinition.conversation, projectName);
       assertConversationPresentation(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.collapseIntermediate : undefined);
-      assertProjectParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params, "conversation");
+      assertProjectParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params, "bot");
       assertConversationFooter(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.footer : undefined,
         normalizeProjectParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params).params);
       assertConversationCommands(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.commands : undefined,
@@ -1736,7 +1738,7 @@ function validateConversationOpenAIAdapter(value: unknown, projectName: string):
     throw new HarnessError({
       type: "input_validation",
       message: `Conversation "${projectName}" settings must be an object.`,
-      metadata: { project: projectName, projectType: "conversation" },
+      metadata: { project: projectName, projectType: "bot" },
     });
   }
   if (Object.hasOwn(value, "defaultInput")) {
@@ -1755,7 +1757,7 @@ function validateConversationOpenAIAdapter(value: unknown, projectName: string):
     throw new HarnessError({
       type: "input_validation",
       message: `Conversation "${projectName}" openai adapter must declare enabled: true and a non-empty outputItemId.`,
-      metadata: { project: projectName, projectType: "conversation" },
+      metadata: { project: projectName, projectType: "bot" },
     });
   }
 }
@@ -1906,7 +1908,7 @@ function resolveExecutorExecution(
   projectName: string,
 ): ResolvedExecutorExecution {
   const requested = requestedEntrypointId?.trim();
-  if (definition.projectType === "conversation") {
+  if (definition.projectType === "bot") {
     if (requested !== undefined && requested !== "") {
       throw new HarnessError({
         type: "input_validation",
@@ -1944,9 +1946,9 @@ function createProjectTypeValidationMessage(reason: string): string {
   return `${reason}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
 }
 
-function isConversationProjectType(projectType: ExecutorProjectType): boolean {
+function isBotProjectType(projectType: ExecutorProjectType): boolean {
   switch (projectType) {
-    case "conversation":
+    case "bot":
       return true;
     case "workflow":
       return false;

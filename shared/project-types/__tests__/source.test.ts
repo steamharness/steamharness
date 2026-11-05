@@ -9,9 +9,9 @@ describe("project type source inspection", () => {
     expect(readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "workflow",') }]))
       .toBe("workflow");
     expect(readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor(`
-      projectType: "conversation",
+      projectType: "bot",
       conversation: { inputQueue: { enabled: true } },
-    `) }])).toBe("conversation");
+    `) }])).toBe("bot");
   });
 
   it("extracts project type from the named defineProjectExecutor entry", () => {
@@ -28,15 +28,15 @@ describe("project type source inspection", () => {
     expect(readProjectTypeFromSources([{
       fileName: "index.ts",
       sourceText: executor(`
-        "projectType": "conversation",
+        "projectType": "bot",
         "conversation": { "attachments": { images: true } },
       `),
-    }])).toBe("conversation");
+    }])).toBe("bot");
   });
 
   it("rejects missing and unknown project types with a migration example", () => {
     expect(() => readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor("") }]))
-      .toThrow(/Migration example:[\s\S]*projectType: "conversation"/);
+      .toThrow(/Migration example:[\s\S]*defineBot/);
     expect(() => readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "agent",') }]))
       .toThrow(/Unknown executor projectType "agent"/);
   });
@@ -55,7 +55,7 @@ describe("project type source inspection", () => {
   it("rejects conflicting project types across source files", () => {
     const inspection = inspectProjectTypeSources([
       { fileName: "index.ts", sourceText: executor('projectType: "workflow",') },
-      { fileName: "secondary.ts", sourceText: executor('projectType: "conversation",') },
+      { fileName: "secondary.ts", sourceText: executor('projectType: "bot",') },
     ]);
 
     expect(inspection.projectType).toBeUndefined();
@@ -71,11 +71,12 @@ describe("project type source inspection", () => {
 it.each([true, false])("rejects removed defaultInput settings with enabled=%s", enabled => {
   expect(() => readProjectTypeFromSources([{
     fileName: "index.ts",
-    sourceText: executor(`projectType: "conversation", conversation: { defaultInput: { enabled: ${enabled} } },`),
+    sourceText: executor(`projectType: "bot", conversation: { defaultInput: { enabled: ${enabled} } },`),
   }])).toThrow(/conversation\.defaultInput was removed/);
 });
 
 function executor(properties: string): string {
+  if (/"?projectType"?: "bot"/.test(properties)) return `steamharness.defineBot({ ${properties.replace(/"?projectType"?: "bot",?/, "")} });`;
   return `steamharness.defineExecutor({
     ${properties}
     workflow: demo,

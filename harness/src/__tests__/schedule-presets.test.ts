@@ -94,7 +94,7 @@ test("schedule presets must satisfy the selected entrypoint static params", asyn
 });
 
 test("Conversation and Kanban projects reject schedule presets", async () => {
-  const conversationDir = await createScriptProject("conversation", {
+  const conversationDir = await createScriptProject("bot", {
     schedulePresets: [],
   });
   const kanbanDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-kanban-"));
@@ -121,7 +121,7 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
 });
 
 async function createScriptProject(
-  projectType: "workflow" | "conversation",
+  projectType: "workflow" | "bot",
   options: Record<string, unknown>,
 ): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
@@ -160,15 +160,7 @@ async function createScriptProject(
         })],
       });
     ` : `
-      const main = steamharness.defineProject({
-        name: "main",
-        run(input) { return input; },
-      });
-      export const executor = steamharness.defineExecutor({
-        projectType: "conversation",
-        workflow: main,
-        createInput() { return { errCode: 0, errMessage: "" }; },
-      });
+      export const executor = steamharness.defineBot({});
     `),
   ]);
   return projectDir;

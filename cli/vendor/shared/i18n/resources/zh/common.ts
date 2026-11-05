@@ -155,7 +155,7 @@ export const common: typeof Encommon = {
     runTarget: "运行目标",
     projectType: "项目类型",
     projectTypeWorkflow: "工作流",
-    projectTypeConversation: "对话",
+    projectTypeBot: "Bot",
     projectTypeKanban: "看板",
     iconSource: "图标来源",
     themeColor: "主题色",

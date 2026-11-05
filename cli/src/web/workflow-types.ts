@@ -4,7 +4,7 @@ import type { ProjectInfoContract } from '@steamharness/project-info';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import type { PathReference } from './conversation-paths';
 
-export type ProjectKind = 'conversation' | 'workflow' | 'kanban';
+export type ProjectKind = 'bot' | 'workflow' | 'kanban';
 
 export interface Field {
   name: string;
@@ -244,6 +244,8 @@ export interface ConversationMessage {
   configurationSelection?: Run['configurationSelection'];
   contextEpoch?: number;
   sessionRequestId?: string;
+  /** Logical turn owning a resumed durable worker; runId remains the worker identity. */
+  agentAnchorRequestId?: string;
   sessionConversationId?: number;
   entryId?: number;
   id?: string;
@@ -339,7 +341,7 @@ export function sessionRunning(session: ConversationSession): boolean {
 }
 
 export const projectTypeLabels: Record<ProjectKind, string> = {
-  get conversation() { return t("Conversation"); },
+  get bot() { return t("Bot"); },
   get workflow() { return t("Workflow"); },
   get kanban() { return t("Kanban"); },
 };

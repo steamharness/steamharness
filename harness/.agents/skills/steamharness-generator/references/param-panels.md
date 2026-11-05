@@ -56,7 +56,7 @@ Conversation 的 `commands` 是 `conversation.commands` 中的静态执行命令
 
 ## Core Agent 内置参数
 
-`createAgentConversationProject` 直接作为 `defineExecutor.workflow` 时，省略 `params` 与标准 `resolveParams`。业务包装 workflow 使用 `coreAgent` 指向所选 Core 项目；多个 Agent 的契约互相隔离。默认是 Model / Effort / Permission 三个 Quick 和 boolean `/plan`；effort 为 high，Plan 关闭，模型与权限绑定当前用户设置。
+`defineBot` 直接作为 `defineExecutor.workflow` 时，省略 `params` 与标准 `resolveParams`。业务包装 workflow 使用 `coreAgent` 指向所选 Core 项目；多个 Agent 的契约互相隔离。默认是 Model / Effort / Permission 三个 Quick 和 boolean `/plan`；effort 为 high，Plan 关闭，模型与权限绑定当前用户设置。
 
 通过 `paramOptions.fields` 定制字段的默认值、`visible`、`fixedValue` 和 `userSetting`；false 禁用字段，`userSetting: null` 移除用户设置继承。`paramOptions.groups` 用字段名重排，未分配字段保留原组。隐藏字段仍参与解析，固定值不能被用户设置、命令行、传入 paramValues 或直接 AgentInput 覆盖。完整替换使用显式 `executor.params`，定制动态选项使用 `resolveParams`。静态报告读取同一份规范化契约，不执行项目代码。
 

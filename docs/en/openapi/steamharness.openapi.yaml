@@ -5489,7 +5489,7 @@ components:
       type: string
       enum:
         - workflow
-        - conversation
+        - bot
         - kanban
       description: Registered entry type. One aggregate can contain multiple types and repeated types. Server reads
         static entry metadata without executing code.
@@ -8040,7 +8040,7 @@ components:
         type:
           enum:
             - workflow
-            - conversation
+            - bot
             - kanban
         name: {type: string}
         projectCard:

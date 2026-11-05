@@ -1,3 +1,4 @@
+import { createEmbeddedBotExecutor } from "./bot-test-helper";
 import { configurationFixtureId, declareConfigurationFixture, writeConfigurationFixtureManifest, configurationFixtureStore } from "./configuration-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -7,7 +8,7 @@ import os from "node:os";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createPiRuntime } from "../agent/pi";
-import { defineAgentConversationExecutor } from "../agent/project";
+import { } from "../agent/project";
 import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationTemplatePath, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { createAgentProjectParamResolver } from "../agent/system-llm";
 import { resolveAgentSystemAIInput } from "../agent/node";
@@ -150,7 +151,7 @@ test("static Agent discovery adds the first configuration field without executin
 });
 
 test("custom Agent parameter declarations do not receive patches for undeclared fields", async () => {
-  const executor = defineAgentConversationExecutor({ params: [] });
+  const executor = createEmbeddedBotExecutor({ params: [] });
   assert.deepEqual(await executor.resolveParams!({ args: [], config: snapshot([third]).values } as any), { params: {} });
 });
 

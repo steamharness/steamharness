@@ -23,7 +23,7 @@ export interface InfoState {
 
 const declarationNames = new Map([['multilingual', 'Multiple languages'], ['multiplatform', 'Multiple platforms']]);
 const platformNames = new Map([['macos', 'macOS'], ['windows', 'Windows'], ['web', 'Web']]);
-const typeNames = { workflow: 'Workflow', conversation: 'Conversation', kanban: 'Kanban' };
+const typeNames = { workflow: 'Workflow', bot: 'Bot', kanban: 'Kanban' };
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

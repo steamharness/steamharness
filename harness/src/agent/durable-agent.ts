@@ -1,3 +1,6 @@
+import type { ConversationId } from "@earendil-works/pi-durable";
+import { AGENT_PLAN_SYSTEM_PROMPT } from "./plan";
+import { currentBotRequestScope, withBotRequest } from "./bot-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assertCurrentProjectConfigurationAccess } from "../configuration";
@@ -79,6 +82,7 @@ type ApprovalResult = { block: true; reason: string; pause?: HarnessError } | un
 
 /** One Harness owns the transcript. `state` is a disposable projection for Workflow's run policy. */
 export class DurableAgent {
+  private readonly botEntry = currentBotRequestScope();
   // Durable tasks use their own async context. Keep the host's run snapshot for every later check.
   private readonly checkConfigurationAccess = AsyncLocalStorage.bind(assertCurrentProjectConfigurationAccess);
   readonly state: DurableAgentState;
@@ -367,7 +371,11 @@ export class DurableAgent {
     this.session?.setTools(tools);
     const promptSection = section("workflow", async (input, ctx) => {
       const role = await input.read.snapshot(AgentRoleDoc, input.conversationId, ctx);
-      if (typeof role?.definition?.systemPrompt !== "string") return this.state.systemPrompt;
+      if (typeof role?.definition?.systemPrompt !== "string") {
+        const prepared = await this.session?.botSystemPromptFor(input.conversationId);
+        if (prepared === undefined) return this.state.systemPrompt;
+        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT].filter(Boolean).join("\n\n");
+      }
       return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].join("\n\n");
     }, { tag: false });
     this.registry.install(defineExtension({
@@ -650,11 +658,12 @@ export class DurableAgent {
         let progress = Promise.resolve();
         let result;
         try {
-          result = await tool.execute(api.callId, args, callContext.abortSignal, update => {
+          const logicalRequestId = this.session ? await this.session.requestIdFor(api.conversationId) : this.activeRequest;
+          result = await withBotRequest(logicalRequestId, () => tool.execute(api.callId, args, callContext.abortSignal, update => {
             const snapshot = json(update);
             progress = progress.then(() => api.details(snapshot, callContext));
             void progress.catch(error => this.fail(error));
-          });
+          }), this.botEntry);
         } finally { await progress; }
         return {
           output: result.content, isError: result.isError,
@@ -669,7 +678,9 @@ export class DurableAgent {
 
   private async approve(raw: ToolCall, callContext: Context, prefix = ""): Promise<ApprovalResult> {
     const call = prefix ? { ...raw, id: `${prefix}${raw.id}` } : raw;
-    const decision = await this.beforeToolCall?.({ toolCall: call, args: call.arguments });
+    const scopeId = prefix ? Number(prefix.split(":", 1)[0]) as ConversationId : this.root!.id;
+    const requestId = this.session ? await this.session.requestIdFor(scopeId) : this.activeRequest;
+    const decision = await withBotRequest(requestId, () => this.beforeToolCall?.({ toolCall: call, args: call.arguments }), this.botEntry);
     const request = decision?.pause?.metadata?.["request"];
     await this.root!.commit(async tx => {
       const run = await tx.doc(RunDoc, this.root!.id, this.activeRequest, null);

@@ -1,3 +1,4 @@
+import { defineBot } from "../agent/bot";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -76,39 +77,26 @@ test("conversation inputQueue is exposed through structure reports", async () =>
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-conversation-input-"));
   try {
     await Promise.all([
-      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}],
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}],
         name: "conversation-structure-test",
         version: "0.1.0",
         type: "module",
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
-        const conversationProject = steamharness.defineProject({
-          name: "conversation",
-          run(input) { return input; },
+        export const executor = steamharness.defineBot({
+          conversation: { attachments: { images: true, videos: true, files: true } },
         });
-        export const executor = steamharness.defineExecutor({
-          projectType: "conversation",
-          workflow: conversationProject,
-          conversation: {
-            inputQueue: { enabled: true },
-            openai: { enabled: true, outputItemId: "assistant-response" },
-            attachments: { images: true, videos: true, files: true },
-          },
-          createInput() { return { errCode: 0, errMessage: "" }; },
-        });
-        export { conversationProject as workflow };
-        export default conversationProject;
       `, "utf8"),
     ]);
 
     const report = inspectLocalProjectStructure({ projectDir, projectName: "conversation" });
-    assert.equal(report.projectType, "conversation");
+    assert.equal(report.projectType, "bot");
     assert.equal("defaultInput" in (report.conversation ?? {}), false);
     assert.equal(report.conversation?.attachments?.videos, true);
     assert.equal(report.conversation?.inputQueue?.enabled, true);
     assert.deepEqual(report.conversation?.openai, {
       enabled: true,
-      outputItemId: "assistant-response",
+      outputItemId: "agent-answer",
     });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -116,19 +104,15 @@ test("conversation inputQueue is exposed through structure reports", async () =>
 });
 
 test("Conversation needs no input setting and rejects removed input settings", () => {
-  const definition = {
-    projectType: "conversation" as const,
-    workflow: defineProject({ name: "standard-input", run: (input: string) => input }),
-    createInput: ({ args }: { args: string[] }) => parseConversationDefaultInputArgs(args).message,
-  };
-  assert.equal(defineProjectExecutor(definition), definition);
+  const definition = {};
+  assert.equal(defineBot(definition).projectType, "bot");
   for (const enabled of [true, false]) {
-    assert.throws(() => defineProjectExecutor({
+    assert.throws(() => defineBot({
       ...definition,
       conversation: { defaultInput: { enabled } } as never,
-    }), /conversation\.defaultInput was removed/);
+    }), /conversation\.defaultInput/);
     const analysis = analyzeProjectScriptSource(`steamharness.defineExecutor({
-      projectType: "conversation", workflow: flow,
+      projectType: "bot", workflow: flow,
       conversation: { "defaultInput": { enabled: ${enabled} } },
       createInput() { return {}; },
     });`);
@@ -139,15 +123,15 @@ test("Conversation needs no input setting and rejects removed input settings", (
 test("Conversation rejects custom main fields and flags owned by its standard input", () => {
   assert.throws(() => assertProjectParamDeclarations([
     { name: "question", flag: "--question", type: "string", control: "textarea" },
-  ], "conversation"), /standard message input/);
+  ], "bot"), /standard message input/);
   for (const flag of ["--message", "--images", "--videos", "--files"]) {
     assert.throws(() => assertProjectParamDeclarations([{
       kind: "auxiliary", id: "input", label: "Input",
       fields: [{ name: "custom", flag, type: "string" }],
-    }], "conversation"), /reserved for the standard input/);
+    }], "bot"), /reserved for the standard input/);
   }
   const analysis = analyzeProjectScriptSource(`steamharness.defineExecutor({
-    projectType: "conversation", workflow: flow,
+    projectType: "bot", workflow: flow,
     params: [{ name: "question", flag: "--question", type: "string", control: "textarea" }],
     createInput() { return {}; },
   });`);

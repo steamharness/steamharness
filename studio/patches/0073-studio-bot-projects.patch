@@ -1,0 +1,26 @@
+diff --git a/src/vs/workbench/common/studioProjectIcons.ts b/src/vs/workbench/common/studioProjectIcons.ts
+index 57127f09d21..59dea67f583 100644
+--- a/src/vs/workbench/common/studioProjectIcons.ts
++++ b/src/vs/workbench/common/studioProjectIcons.ts
+@@ -7,7 +7,7 @@
+ export function studioProjectIcon(projectType: string | undefined): string | undefined {
+ 	switch (projectType) {
+ 		case 'workflow': return 'run-all';
+-		case 'conversation': return 'comment-discussion';
++		case 'bot': return 'hubot';
+ 		case 'kanban': return 'layout';
+ 		default: return undefined;
+ 	}
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+index d3a8f714e94..914dec9bf75 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -92,7 +92,7 @@ export class StudioProjectCreateDialog extends Disposable {
+ 		const templates = append(this.localFields, $('fieldset.studio-create-templates'));
+ 		append(templates, $('legend', undefined, this.text('template')));
+ 		const options = append(templates, $('.studio-create-options'));
+-		for (const type of ['workflow', 'conversation', 'kanban', 'link']) {
++		for (const type of ['workflow', 'bot', 'kanban', 'link']) {
+ 			const label = append(types, $('label.studio-create-type'));
+ 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
+ 			radio.checked = this.projectType === type;

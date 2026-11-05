@@ -5,7 +5,7 @@ description: "Create tool approval gate, press executor.tools and run policy con
 
 # createToolApprovalGate
 
-`workflow.createToolApprovalGate()` Create a tool to approve the gate. Workflow declares the invokable tool in `tools` of specific entrypoint,Conversation continues to declare it in `tools` of executor, and then uses gate to check the running policy before actually calling the tool.
+`workflow.createToolApprovalGate()` Create a tool to approve the gate. Workflow declares the invokable tool in `tools` of specific entrypoint,Bot continues to declare it in `tools` of executor, and then uses gate to check the running policy before actually calling the tool.
 
 The tool has three results: if it is not registered, the input verification will fail; if it is disabled, the call will be rejected; if it is enabled but not automatically approved, the waiting/recovery protocol of the user input node will be reused to generate an approval request — **only a plan-mode agent turn stops to ask**. A build turn is running a plan the user already approved, so a tool that is not auto-approved runs there.
 
@@ -37,7 +37,7 @@ interface ToolApprovalGate {
 
 ## Tools Registration
 
-The selected Workflow entrypoint or Conversation executor declares the tool default policy through `tools`. The runtime only accepts the override policy of the execution configuration declared tool, and the unknown tool is ignored.
+The selected Workflow entrypoint or Bot executor declares the tool default policy through `tools`. The runtime only accepts the override policy of the execution configuration declared tool, and the unknown tool is ignored.
 
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
@@ -79,7 +79,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 |Input field|Type|Description|
 | --- | --- | --- |
-| `name` | `string` |Tool name, must match the `tools` declaration of the current entrypoint or Conversation executor.|
+| `name` | `string` |Tool name, must match the `tools` declaration of the current entrypoint or Bot executor.|
 | `label` | `string` |The name of this approval is displayed; if it is not passed, use the tool declaration.|
 | `description` | `string` |This approval description; use tool declaration if not passed.|
 | `reason` | `string` |Call reason.|
@@ -125,7 +125,7 @@ Approval requests use `workflow.createUserInputNode()` the same set of recovery 
 
 CLI Web render `tool-approval` as a dedicated decision interface, directly showing tool ID and `arguments` parameter snapshots, and providing "approve and continue" and "reject and end" actions. The interface does not display generic Boolean switches, nor does it implicitly approve tool invocations through Enter.
 
-In Conversation mode, the enablement of the tool is saved with the auto-approval policy by dialog. When you switch back to a conversation, the Tools Permissions panel restores the last state of the conversation, and subsequent runs and approval restores also use the policy snapshot of the conversation. Conversations that are new or do not have a standalone policy use the executor `tools` default value directly and do not inherit overridden values from project-level or other conversations. Plain Workflow Run still uses project-level tool policies.
+In Bot mode, the enablement of the tool is saved with the auto-approval policy by dialog. When you switch back to a conversation, the Tools Permissions panel restores the last state of the conversation, and subsequent runs and approval restores also use the policy snapshot of the conversation. Conversations that are new or do not have a standalone policy use the executor `tools` default value directly and do not inherit overridden values from project-level or other conversations. Plain Workflow Run still uses project-level tool policies.
 
 ## CLI Recovery
 

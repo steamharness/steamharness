@@ -11,12 +11,12 @@ vi.mock('../database-generation', () => ({ generateDatabases: generate }));
 vi.mock('steamharness', () => ({ bindProjectKnowledgeBase: vi.fn() }));
 const request = vi.mocked(databaseManagementRequest);
 const projectRoot = path.resolve('project-cache-fixture');
-const project = () => ({ id: 'project', entryId: 'main', projectType: 'conversation', folderPath: projectRoot, entryRoot: projectRoot,
+const project = () => ({ id: 'project', entryId: 'main', projectType: 'bot', folderPath: projectRoot, entryRoot: projectRoot,
   databases: ['first', 'second'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: 'docs' }], entries: [] } as any);
 const connection = { serverUrl: 'https://server.test', accessToken: 'one' };
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
-  readManifest.mockResolvedValue({ projectId: 'project', entries: [{ entryId: 'main', type: 'conversation', root: '.', databases: ['first', 'second'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: 'docs' }] }] });
+  readManifest.mockResolvedValue({ projectId: 'project', entries: [{ entryId: 'main', type: 'bot', root: '.', databases: ['first', 'second'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: 'docs' }] }] });
   request.mockImplementation(async (_connection, endpoint, _method, _body, kind) => endpoint.startsWith('/bindings?')
     ? (kind === 'databases' ? [{ alias: 'first', databaseId: 'shared' }, { alias: 'second', databaseId: 'shared' }] : [{ alias: 'docs', knowledgeBaseId: 'docs' }]) as any
     : { name: endpoint } as any);
@@ -54,7 +54,7 @@ it('discards a response when the selected account changes during a read', async 
   let current = connection, finish!: (value: any) => void;
   request.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   const p = project(); p.databases = []; p.knowledgeBases = [{ alias: 'docs', knowledgeBaseId: 'docs' }];
-  readManifest.mockResolvedValue({ projectId: 'project', entries: [{ entryId: 'main', type: 'conversation', root: '.', databases: [], knowledgeBases: p.knowledgeBases }] });
+  readManifest.mockResolvedValue({ projectId: 'project', entries: [{ entryId: 'main', type: 'bot', root: '.', databases: [], knowledgeBases: p.knowledgeBases }] });
   const pending = new DatabaseManagement(p, () => current).state();
   await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
   current = { ...connection, accessToken: 'two' }; finish([]);

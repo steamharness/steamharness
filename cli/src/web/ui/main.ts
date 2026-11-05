@@ -272,7 +272,7 @@ function initialize(): void {
   const values = (): ParamValues => paramValues[formKey] ??= {};
   const parametersLoading = (): boolean => resolving && !parametersReady;
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
-  const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
+  const hideComposer = (): boolean => state?.project.projectType === 'bot' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
   const sendBlocked = (): boolean => submitting || pendingSend() && !canQueue();
@@ -307,7 +307,7 @@ function initialize(): void {
     },
   });
   const conversationComposer = new ConversationComposer(textarea, document.querySelector('#slash-menu')!, document.querySelector('#composer-footer')!, {
-    current: () => state ? { scope: formKey, enabled: state.project.projectType === 'conversation', parameters: currentParameters(),
+    current: () => state ? { scope: formKey, enabled: state.project.projectType === 'bot', parameters: currentParameters(),
       values: values(), states: paramStates, footer: state.project.conversation?.footer, commands: state.project.conversation?.commands,
       commandDisabled: !connectionAvailable || !navigationReady() || submitting || pendingSend() || uploading > 0 || draftReferences.length > 0 || !!editingQueueId || state.running || !!currentSession()?.messages.some(message => message.pendingInput),
       disabled: busy(), loading: parametersLoading() } : undefined,
@@ -320,7 +320,7 @@ function initialize(): void {
   });
   const conversationMentions = new ConversationMentions(textarea, {
     current: () => state ? { scope: JSON.stringify([formKey, state.serverInstanceId]), project: state.project,
-      enabled: state.project.projectType === 'conversation', disabled: readOnly() || busy(), groups: state.conversationUi?.mentions } : undefined,
+      enabled: state.project.projectType === 'bot', disabled: readOnly() || busy(), groups: state.conversationUi?.mentions } : undefined,
     load: (type, requestId, query) => state && vscode.postMessage({ type, requestId, query,
       projectUri: state.project.uri, sessionId: state.activeId, entrypointId: entrypoint.value || undefined }),
   });
@@ -514,7 +514,7 @@ function initialize(): void {
       }
       values()[field.name] = projectParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
       fields.set(field.name, createField(field));
-      if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
+      if (project.projectType !== 'bot' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
     }
     const cached = parameterCache.get(formKey);
     if (cached?.signature === parameterSignature()) { paramStates = structuredClone(cached.states); parametersReady = true; }
@@ -612,7 +612,7 @@ function initialize(): void {
   function updateControls(): void {
     if (!state) { return; }
     serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, canCreate: !state.project.assistant, serverUrl: state.account?.serverUrl, entryId: state.project.entryId });
-    const conversation = state.project.projectType === 'conversation';
+    const conversation = state.project.projectType === 'bot';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();
     if (composerArea.hidden !== hidden) {
@@ -1238,7 +1238,7 @@ function initialize(): void {
     if (submissionCount !== submissions.list().length) persist();
     const session = next.sessions.find((entry) => entry.id === next.activeId);
     if (!session) { return; }
-    const conversation = next.project.projectType === 'conversation';
+    const conversation = next.project.projectType === 'bot';
     collapseEnabled = conversation && collapseIntermediateDefault(next.project, session.messages);
     const scope = session.agent?.contexts.find(scope => scope.conversationId === (session.agentConversationId ?? session.agent?.conversationId));
     composerOutput.update(conversation ? composerOutputItems(session.messages, scope?.outputs) : [], `${next.project.uri}:${next.activeId}`);
@@ -1406,10 +1406,10 @@ function initialize(): void {
     if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     if (state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput)) { void stopCurrent(); return; }
-    if (!connectionAvailable || serverBlocked() || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
+    if (!connectionAvailable || serverBlocked() || state.project.projectType !== 'bot' && !navigationReady()) { return; }
     if (!draftReferences.length && conversationComposer.submitCommand()) { return; }
-    if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
-    const validateOnServer = state.project.projectType === 'conversation' && currentParameters().paramResolver?.enabled
+    if (busy() || state.project.projectType !== 'bot' && resolving || uploading || state.project.projectType === 'bot' && !hasInput) { return; }
+    const validateOnServer = state.project.projectType === 'bot' && currentParameters().paramResolver?.enabled
       && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || parameterError.hasError);
     for (const [name, view] of fields) {
       if (validateOnServer) { break; }
@@ -1426,7 +1426,7 @@ function initialize(): void {
     }
     operationError.show();
     stopRequests.delete(`${state.project.uri}:${state.activeId}`);
-    if (state.project.projectType === 'conversation') {
+    if (state.project.projectType === 'bot') {
       const session = currentSession()!;
       const input = { id: crypto.randomUUID(), text: conversationMentions.text(), params: structuredClone(values()), entrypointId: entrypoint.value,
         attachments: structuredClone(draftFiles), ...(draftReferences.length ? { references: structuredClone(draftReferences) } : {}), createdAt: Date.now() };
@@ -1498,7 +1498,7 @@ function initialize(): void {
   textarea.addEventListener('keydown', (event) => {
     if (conversationMentions.handleKeydown(event)) { return; }
     if (conversationComposer.handleKeydown(event)) { return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && state?.project.projectType === 'conversation') { event.preventDefault(); send(); }
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && state?.project.projectType === 'bot') { event.preventDefault(); send(); }
   });
   sendButton.addEventListener('click', send);
   document.querySelector('#new')!.addEventListener('click', () => navigate());
@@ -1734,7 +1734,7 @@ function initialize(): void {
       else if (connectionAvailable) { syncNavigation(); }
       return;
     }
-    if (message.type === 'sent' && message.requestId && state?.project.projectType === 'conversation' && message.projectUri === state.project.uri) {
+    if (message.type === 'sent' && message.requestId && state?.project.projectType === 'bot' && message.projectUri === state.project.uri) {
       const submission = submissions.get(message.requestId);
       if (submission?.sessionId === message.sessionId) {
         if (message.external) { submissions.acknowledgeExternal(message.requestId); render(state, false); }
@@ -1742,7 +1742,7 @@ function initialize(): void {
       }
       persist(); updateControls(); return;
     }
-    if (message.type === 'error' && message.requestType === 'send' && message.requestId && state?.project.projectType === 'conversation') {
+    if (message.type === 'error' && message.requestType === 'send' && message.requestId && state?.project.projectType === 'bot') {
       const submission = submissions.get(message.requestId);
       if (submission?.projectUri === state.project.uri && submission.sessionId === message.sessionId) {
         submissions.fail(message.requestId, message.message); render(state, false); persist();

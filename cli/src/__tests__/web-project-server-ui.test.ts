@@ -10,7 +10,7 @@ afterEach(() => {
   for (const dispose of cleanup.splice(0)) dispose();
   vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren();
 });
-async function fixture(kind: 'workflow' | 'conversation', language: 'en' | 'zh-CN') {
+async function fixture(kind: 'workflow' | 'bot', language: 'en' | 'zh-CN') {
   vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset(); host.getState.mockReset(); host.setState.mockReset();
   document.body.innerHTML = '<div id="app"></div>';
   const add = window.addEventListener.bind(window), remove = window.removeEventListener.bind(window);
@@ -57,7 +57,7 @@ async function fixture(kind: 'workflow' | 'conversation', language: 'en' | 'zh-C
 }
 
 it.each([
-  ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
+  ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
 ] as const)('checks %s silently and only shows failures, including after retry (%s)', async (kind, language) => {
   const f = await fixture(kind, language);
   const guidance = document.getElementById('server-guidance')!;
@@ -102,13 +102,13 @@ it.each([
   expect(retry.disabled).toBe(false);
   await f.render({ checking: false });
   expect(guidance.hidden).toBe(true);
-  if (kind === 'conversation') {
+  if (kind === 'bot') {
     expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe('Original draft');
     expect(document.getElementById('transcript')!.textContent).toContain('Previous result');
   }
 });
 
-it.each(['workflow', 'conversation'] as const)('keeps %s startup guidance after replacement and ignores states from the retired service', async kind => {
+it.each(['workflow', 'bot'] as const)('keeps %s startup guidance after replacement and ignores states from the retired service', async kind => {
   const f = await fixture(kind, 'en');
   const old = await f.render({ checking: false });
   f.emit({ ...old, serverInstanceId: 'replacement', stateRevision: 1,
@@ -122,7 +122,7 @@ it.each(['workflow', 'conversation'] as const)('keeps %s startup guidance after 
   expect(document.getElementById('server-guidance')!.hidden).toBe(false);
 });
 
-it.each(['workflow', 'conversation'] as const)('keeps %s guidance when a child frame posts an application state', async kind => {
+it.each(['workflow', 'bot'] as const)('keeps %s guidance when a child frame posts an application state', async kind => {
   const f = await fixture(kind, 'en');
   const current = await f.render({ checking: false, blocking:true, issue: { kind: 'project-unavailable' } });
   const child = document.createElement('iframe'); document.body.append(child);
@@ -135,7 +135,7 @@ it.each(['workflow', 'conversation'] as const)('keeps %s guidance when a child f
 });
 
 it.each([
-  ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
+  ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
  ] as const)('opens database references from %s guidance and links an approved host ID (%s)', async (kind, language) => {
   const f = await fixture(kind, language);
   await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
@@ -159,7 +159,7 @@ it.each([
 });
 
 it('keeps the database recovery action disabled while disconnected and retries failed management requests in Project information', async () => {
-  const f = await fixture('conversation', 'en');
+  const f = await fixture('bot', 'en');
   await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
   const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
   f.emit({ type: 'connection', status: 'disconnected' }); expect(action.disabled).toBe(true); action.click();
@@ -175,7 +175,7 @@ it('keeps the database recovery action disabled while disconnected and retries f
   expect(requests).toHaveLength(2); expect(requests[1].action).toBe('get'); expect(requests[1].requestId).not.toBe(request.requestId);
 });
 
-it.each(['workflow', 'conversation'] as const)('keeps Stop and recovery settings available in %s for access or Server compatibility problems', async kind => {
+it.each(['workflow', 'bot'] as const)('keeps Stop and recovery settings available in %s for access or Server compatibility problems', async kind => {
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, blocking:true, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
@@ -184,7 +184,7 @@ it.each(['workflow', 'conversation'] as const)('keeps Stop and recovery settings
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, blocking:true, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
   expect(document.getElementById('server-guidance-steps')!.textContent).toContain('Check again');
-  if (kind === 'conversation') {
+  if (kind === 'bot') {
     expect(document.querySelector<HTMLButtonElement>('.queue-heading button')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(3)')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(4)')!.disabled).toBe(false);
@@ -192,7 +192,7 @@ it.each(['workflow', 'conversation'] as const)('keeps Stop and recovery settings
 });
 
 it.each([
-  ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
+  ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
 ] as const)('explains a Server failure and opens the correct %s recovery settings (%s)', async (kind, language) => {
   const f = await fixture(kind, language);
   const failed: ProjectServerState = { checking: false, issue: { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' },
@@ -224,7 +224,7 @@ it.each([
 
 it.each(['javascript:alert(1)', 'https://user:password@server.test', 'https://server.test/?token=private'])(
   'does not offer a Server link for an unsafe address: %s', async serverUrl => {
-    const f = await fixture('conversation', 'en');
+    const f = await fixture('bot', 'en');
     await f.render({ checking: false, issue: { kind: 'setup-required', serverUrl } });
     const link = document.querySelector<HTMLAnchorElement>('#server-guidance-server')!;
     expect(link.hidden).toBe(true); expect(link.hasAttribute('href')).toBe(false);

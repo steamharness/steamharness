@@ -12,7 +12,7 @@ async function fixture(t) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const input = { projectDir: directory, projectId: 'project', entryId: 'map-2d' };
   const session = { ready: { url: 'http://127.0.0.1:43123/entries/agent/#session=private-capability',
-    project: { id: 'project', entries: [{ entryId: 'map-2d', type: 'kanban' }, { entryId: 'agent', type: 'conversation' }] } } };
+    project: { id: 'project', entries: [{ entryId: 'map-2d', type: 'kanban' }, { entryId: 'agent', type: 'bot' }] } } };
   const sessions = new Map([[session, { directory }]]);
   return { directory, input, session, sessions, signal: new AbortController().signal };
 }
@@ -43,7 +43,7 @@ test('never starts a host or reads another project, directory or non-Kanban entr
 
 test('routes card diagnostics through the owning assistant entry without requiring a separate Kanban host', async t => {
   const f = await fixture(t);
-  f.session.ready.project = { id: 'assistant', entries: [{ entryId: 'main', type: 'conversation' }] };
+  f.session.ready.project = { id: 'assistant', entries: [{ entryId: 'main', type: 'bot' }] };
   f.sessions.set(f.session, { directory: f.directory, resourceEntryId: 'main' });
   const value = { available: true, projectId: 'project', entryId: 'map-2d', instances: [{ instanceId: 'card-page' }], requests: [] };
   const result = await readStudioKanbanDiagnostics(f.sessions, f.input, f.signal, async (url, options) => {

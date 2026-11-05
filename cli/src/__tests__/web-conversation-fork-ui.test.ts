@@ -34,7 +34,7 @@ async function fixture() {
   const frame = () => { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); };
   document.body.innerHTML = '<div id="app"></div>'; await import('../web/ui/main');
   const project: Project = { id: 'fork-ui', uri: 'file:///fork-ui', folderPath: '/fork-ui', entryId: 'main', aggregateName: 'Fork', defaultEntry: 'main', entryRoot: '/fork-ui',
-    databases: [], entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }], name: 'Fork', projectType: 'conversation', fields: [], entrypoints: [], conversation: { durable: { enabled: true } } };
+    databases: [], entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }], name: 'Fork', projectType: 'bot', fields: [], entrypoints: [], conversation: { durable: { enabled: true } } };
   const sessions: ConversationSession[] = [
     { id: 'source', title: 'Source', messages: [{ id: 'answer', role: 'assistant', content: 'Selected answer', entryId: 42, status: 'success' }] },
     { id: 'fork', title: 'Fork', agentOwnerId: 'source', agentConversationId: 17, forkSource: { sessionId: 'source', entryId: 42 }, messages: [] },

@@ -43,7 +43,7 @@ export function readPendingProjectSetups(value: unknown): PendingProjectSetup[] 
   return value.filter((item): item is PendingProjectSetup => !!item && typeof item.id === 'string' && /^[a-f0-9-]{36}$/i.test(item.id)
     && (item.projectId === undefined || item.projectId === '' || typeof item.projectId === 'string' && /^[a-f0-9-]{36}$/i.test(item.projectId))
     && typeof item.name === 'string' && !!item.name && typeof item.directory === 'string' && !!item.directory
-    && ['workflow', 'conversation', 'kanban'].includes(item.projectType) && ['failed', 'cancelled'].includes(item.status));
+    && ['workflow', 'bot', 'kanban'].includes(item.projectType) && ['failed', 'cancelled'].includes(item.status));
 }
 
 interface ProjectSource {

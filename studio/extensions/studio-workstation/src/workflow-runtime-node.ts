@@ -162,7 +162,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const types = new Set<ProjectType>();
       for (const source of sources) {
         const type = rules.analyzeProjectScriptSource(source.text, source.name).executorProjectType;
-        if (type === 'workflow' || type === 'conversation') { types.add(type); }
+        if (type === 'workflow' || type === 'bot') { types.add(type); }
       }
       return types.size === 1 ? [...types][0] : undefined;
     },
@@ -250,7 +250,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       try {
         const runtime = await selectedRuntime();
         const result = await inspectProjectCli(directory, runtime.nodePath, controller.signal, directory, assistant, vscode.env.language, false, runtime);
-        if (result.errors.length || !result.projects.some(project => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'conversation')) {
+        if (result.errors.length || !result.projects.some(project => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'bot')) {
           if (assistantApplication === preparation) { assistantApplication = undefined; }
         }
         return { ...result, projects: result.projects.map(project => createAssistantProject({ ...project, uri: '', assistant }, target, folders)) };

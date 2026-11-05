@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(root, 'examples/conversation/node_modules/@steamharness/cli/dist/index.js');
+const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(root, 'examples/bot/node_modules/@steamharness/cli/dist/index.js');
 const data = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-cli-toolbar-'));
 const projectDir = path.join(data, 'project'); await fs.mkdir(projectDir);
 const proofDir = path.join(root, '.studio/cli-toolbar'); await fs.mkdir(proofDir, { recursive: true });
-const exampleManifest = JSON.parse(await fs.readFile(path.join(root, 'examples/conversation/package.json'), 'utf8'));
+const exampleManifest = JSON.parse(await fs.readFile(path.join(root, 'examples/bot/package.json'), 'utf8'));
 const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default project name', version: '1.2.3', type: 'module',
   devDependencies: exampleManifest.devDependencies,
   description: 'Project description <img id="unsafe" src="invalid">',  projectInfo: {
@@ -20,13 +20,13 @@ const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default pr
     declarations: ['multilingual'], platformSupport: { mode: 'specific', platforms: ['macos', 'web'] },
   }  };
 await fs.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(manifest));
-await fs.symlink(await fs.realpath(path.join(root, 'examples/conversation/node_modules')), path.join(projectDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+await fs.symlink(await fs.realpath(path.join(root, 'examples/bot/node_modules')), path.join(projectDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 await fs.writeFile(path.join(projectDir, 'index.ts'), `
   const task = steamharness.defineProject({ name: 'toolbar-test', run(input) {
     return steamharness.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: input.message }] });
   } });
   function credentialsMarker() { return steamharness.getServerLLMCredentials(); }
-  export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: task,
+  export const executor = steamharness.defineExecutor({ projectType: 'bot', workflow: task,
     params: [{ kind: 'quick', id: 'ai', label: 'AI configuration with a very long display name', icon: 'sparkle', summary: ['model', 'effort'], fields: [
       { name: 'model', type: 'string', flag: '--model', label: 'Model', defaultValue: 'long-model', control: 'select', options: [
         { value: 'long-model', label: 'Long model name to verify compact AI configuration' }, { value: 'alternate', label: 'Alternate model' } ] },

@@ -69,7 +69,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       const template = path.join(workstation, 'dist/developer-assistant');
       await rm(template, { recursive: true, force: true }); await mkdir(template);
       await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
-        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}] }));
+        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'bot',name:'Assistant',root:'.',entry:'index.ts',databases:[]}] }));
       await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
     }
     await useCachedLanguagePack(directory, language);
@@ -165,8 +165,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
     await symlink(path.join(sourceRoot, 'harness'), path.join(project, 'node_modules/steamharness'), 'dir');
     await symlink(path.join(sourceRoot, 'cli'), path.join(project, 'node_modules/@steamharness/cli'), 'dir');
-    await copyFile(path.join(ROOT, 'examples/conversation/index.ts'), path.join(project, 'index.ts'));
-    const manifest = JSON.parse(await readFile(path.join(ROOT, 'examples/conversation/package.json'), 'utf8'));
+    await copyFile(path.join(ROOT, 'examples/bot/index.ts'), path.join(project, 'index.ts'));
+    const manifest = JSON.parse(await readFile(path.join(ROOT, 'examples/bot/package.json'), 'utf8'));
     manifest.devDependencies = {
       steamharness: JSON.parse(await readFile(path.join(sourceRoot, 'harness/package.json'), 'utf8')).version,
       '@steamharness/cli': JSON.parse(await readFile(path.join(sourceRoot, 'cli/package.json'), 'utf8')).version,

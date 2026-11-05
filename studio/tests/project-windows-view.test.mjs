@@ -29,7 +29,7 @@ function fixture(language = 'en') {
 }
 
 function project(uri = 'file:///project', id = 'project-id') {
-  const entries = ['main', 'chat', 'board'].map((entryId, index) => ({ entryId, type: ['workflow', 'conversation', 'kanban'][index], name: entryId }));
+  const entries = ['main', 'chat', 'board'].map((entryId, index) => ({ entryId, type: ['workflow', 'bot', 'kanban'][index], name: entryId }));
   return entries.map(entry => ({ uri, id, folderPath: new URL(uri).pathname, aggregateName: 'My Project', defaultEntry: 'main',
     entries, entryId: entry.entryId, name: entry.name, projectType: entry.type, manifest: { version: '1.2.3' },
     aggregateProjectCard: { icon: 'folder', iconColor: '#112233' }, projectCard: { icon: 'database', iconColor: '#445566' } }));
@@ -104,7 +104,7 @@ for (const language of ['en', 'zh-cn']) {
       assert.equal(item.command.command, 'studio.openProjectWindow');
       assert.equal(item.command.arguments[0], entry);
       assert.equal(item.command.title, language === 'en' ? 'Open Project Window' : '打开项目窗口');
-      assert.equal(item.description, (language === 'en' ? ['Workflow', 'Conversation', 'Kanban'] : ['工作流', '对话', '看板'])[projects.indexOf(entry)]);
+      assert.equal(item.description, (language === 'en' ? ['Workflow', 'Bot', 'Kanban'] : ['工作流', 'Bot', '看板'])[projects.indexOf(entry)]);
       assert.equal(item.collapsibleState, 0);
       assert.match(decodeURIComponent(item.iconPath.toString()), /#445566/);
       assert.ok(item.tooltip.includes(entry.folderPath));

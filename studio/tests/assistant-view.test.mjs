@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/assistant-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const folder = path => ({ uri: { scheme: 'file', fsPath: path, toString: () => `file://${path}` }, name: path });
-const descriptor = () => ({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', folderPath: '/assistant/app', name: 'Project Assistant', projectType: 'conversation',
+const descriptor = () => ({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', folderPath: '/assistant/app', name: 'Project Assistant', projectType: 'bot',
   entrypoints: [], fields: [{ name: 'model', defaultValue: 'assistant-model' }], tools: [{ name: 'read' }, { name: 'skill' }],
   assistant: { standalone: true, workdir: '/assistant/workspace', roots: [{ uri: 'file:///assistant/workspace', folderPath: '/assistant/workspace', name: 'Assistant' }] },
 });

@@ -1,3 +1,4 @@
+import { offlineModel } from "./offline-model";
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -29,15 +30,16 @@ async function linkCore(directory: string) {
 describe('project templates', () => {
   it('ships three minimal starters and four independent bilingual examples', async () => {
     const templates = await listProjectTemplates();
-    expect(templates.filter(template => template.kind === 'starter').map(template => template.projectType)).toEqual(['workflow', 'conversation', 'kanban']);
+    expect(templates.filter(template => template.kind === 'starter').map(template => template.projectType)).toEqual(['workflow', 'bot', 'kanban']);
     expect(templates.filter(template => template.kind === 'example').map(template => template.id)).toEqual([
-      'workflow-hello', 'conversation-round-output', 'kanban-default', 'kanban-parameters',
+      'workflow-hello', 'bot-tools', 'kanban-default', 'kanban-parameters',
     ]);
     expect(templates.every(template => template.name.en && template.name['zh-CN'] && template.description.en && template.description['zh-CN'])).toBe(true);
   });
 
   it('generates every template with unique identity, portable dependencies and runnable local entrypoints', async () => {
     const connection = await runtimeStorageService().start();
+    const model = await offlineModel();
     try {
     const parentDirectory = await parent(), ids = new Set<string>();
     for (const template of await listProjectTemplates()) {
@@ -66,28 +68,28 @@ describe('project templates', () => {
         await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: created.directory });
         expect(await readFile(path.join(created.directory, 'dist/steamharness/build/main/board.js'), 'utf8')).toContain('database');
       }
-      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection);
+      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection, { userSettings: () => model.settings });
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
         expect(project.aggregateProjectCard).toMatchObject(card);
         if (template.projectType === 'kanban') { continue; }
-        const execute = (round: number) => runtime.run({ project, conversationId: 'persistent-chat', runId: `round-${round}`,
-          entrypointId: project.defaultEntrypoint, args: template.projectType === 'conversation' ? ['--message', 'Local reply'] : [] }, () => {});
+        const execute = (round: number) => runtime.run({ project: { ...project, conversation: undefined }, conversationId: 'persistent-chat', runId: `round-${round}`,
+          entrypointId: project.defaultEntrypoint, args: template.projectType === 'bot' ? ['--message', 'Local reply'] : [] }, () => {});
         const first = await execute(1); expect(first.status).toBe('success');
-        const output = first.output?.items?.map(item => item.content).join('');
+        const output = first.output?.items?.filter(item => !item.display && item.metadata?.kind !== 'agent-session').map(item => item.content).join('');
         expect(output).toBe(template.id === 'workflow-starter' ? 'Ready' : template.id === 'workflow-hello' ? 'Hello'
-          : template.id === 'conversation-starter' ? 'Local reply' : 'Round 1: Local reply');
-        if (template.projectType === 'conversation') {
-          expect(first.output?.items?.[0]).toMatchObject({ title: 'Output', collapsed: false });
+          : 'Local reply');
+        if (template.projectType === 'bot') {
+          expect(first.output?.items?.find(item => item.id === 'agent-answer')).toMatchObject({ title: 'Output', collapsed: false });
         }
-        if (template.id === 'conversation-round-output') {
-          expect((await execute(2)).output?.items?.[0].content).toBe('Round 2: Local reply');
+        if (template.id === 'bot-tools') {
+          expect((await execute(2)).output?.items?.find(item => item.id === 'agent-answer')?.content).toBe('Local reply');
         }
       } finally { runtime.dispose(); }
     }
     expect(ids.size).toBe(7);
-    } finally { await connection.close(); }
+    } finally { await connection.close(); await model.close(); }
   }, 60_000);
 
   it('preserves authored template sources when preparing the installed runtime', async () => {
@@ -145,7 +147,7 @@ describe('project templates', () => {
   });
 });
 
-it.each(['workflow', 'conversation', 'kanban'] as const)('creates a complete %s project even when Server ID allocation fails', async projectType => {
+it.each(['workflow', 'bot', 'kanban'] as const)('creates a complete %s project even when Server ID allocation fails', async projectType => {
   const parentDirectory = await parent(), name = `allocated-${projectType}`, allocatedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
   const input = { templateId: `${projectType}-starter`, name, parentDirectory, versions };
   const created = await createProjectFromTemplate({ ...input, allocateProjectId: async project => {

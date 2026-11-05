@@ -77,7 +77,7 @@ try {
     };
     const { AssistantViewProvider } = load(extension, vscode);
     const runtime = { available: true, inspectAssistant: async () => ({ projects: [{ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2',
-      name: 'Assistant', folderPath: '/assistant', projectType: 'conversation', fields: report.params, assistant: { standalone: true } }], errors: [] }) };
+      name: 'Assistant', folderPath: '/assistant', projectType: 'bot', fields: report.params, assistant: { standalone: true } }], errors: [] }) };
     let finish;
     const closed = new Promise(resolve => { finish = resolve; });
     const provider = new AssistantViewProvider({ extensionUri: uri, subscriptions: [] }, runtime, { appendLine: line => errors.push(line) }, async (_project, view) => {

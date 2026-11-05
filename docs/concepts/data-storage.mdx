@@ -11,7 +11,7 @@ SteamHarness 将业务模型、知识内容和运行历史分别管理。业务�
 | --- | --- | --- |
 | 自定义业务模型 | 每个显式申请的资源拥有独立 PostgreSQL database 和权限角色 | `context.databases.connect(descriptor)` |
 | 知识文档、分块、搜索索引、附件元数据 | 平台共享关系表，按知识库 UUID 及账号授权隔离 | `context.knowledgeBases.get(alias)` |
-| Conversation、消息、Run、队列、Usage、Agent 状态 | 宿主本地 SQLite，按项目、入口和会话隔离；云端按需备份 | 宿主运行存储 |
+| Bot、消息、Run、队列、Usage、Agent 状态 | 宿主本地 SQLite，按项目、入口和会话隔离；云端按需备份 | 宿主运行存储 |
 | 知识附件正文 | Server 私有文件存储，SQL 保存元数据和校验和 | `knowledge.files` |
 
 新建项目或对话不会自动创建 PostgreSQL database。A、B 项目分别申请业务资源后，可定义结构不同的 `User` 表；共享必须显式绑定到同一资源并获得授权。知识库独立于业务库，不需要项目定义系统知识表。

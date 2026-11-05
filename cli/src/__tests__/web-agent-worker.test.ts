@@ -42,31 +42,33 @@ it('carries host settings into real workers and IPC tools until a durable sessio
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-settings', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-settings', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
       import { writeFileSync } from 'node:fs';
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({ projectName: 'Settings', outputItemId: 'answer',
-          provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline-fixture',
-          baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1', contextWindow: 8192,
-          permissionPolicy: 'inherit', session: { compaction: { enabled: false } },
-          createTools() { return [{ name: 'fixture_settings', label: 'Settings', description: 'Read the active user settings',
+      export const executor = steamharness.defineBot({
+agent: {provider: 'openai',
+model: 'fixture',
+apiKind: 'openai-completions',
+apiKey: 'offline-fixture',
+baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1',
+contextWindow: 8192,
+permissionPolicy: 'inherit',
+session: { compaction: { enabled: false } },
+createTools() { return [{ name: 'fixture_settings', label: 'Settings', description: 'Read the active user settings',
             parameters: { type: 'object', properties: {} } as any,
             async execute() { return { content: [{ type: 'text', text: steamharness.getUserSettings().agent.permissionPolicy }] }; },
-          }]; },
-        }), conversation: { durable: { enabled: true }, recovery: { enabled: true } },
-        tools: [{ name: 'fixture_settings', enabled: true, autoApprove: true }],
-        params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [
-          { name: 'access', flag: '--access', type: 'string', control: 'select',
+          }]; }},
+conversation: {recovery: {}},
+tools: [{ name: 'fixture_settings', enabled: true, autoApprove: true }],
+params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [{ name: 'access', flag: '--access', type: 'string', control: 'select',
             userSetting: { key: 'agent.permissionPolicy', mode: 'fixed' },
-            options: [{ value: 'read-only' }, { value: 'workspace' }, { value: 'auto' }] },
-        ] }],
-        createInput({ args, paramValues }) {
+            options: [{ value: 'read-only' }, { value: 'workspace' }, { value: 'auto' }] }] }],
+prepareInput(input, { args, paramValues }) {
           writeFileSync(new URL('./settings-seen', import.meta.url), steamharness.getUserSettings().agent.permissionPolicy);
-          return { ...steamharness.createAgentProjectInput(args), permissionPolicy: paramValues.access };
-        },
-      });
+          return { ...input, permissionPolicy: paramValues.access };
+        }
+});
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const project = { ...inspected.projects[0], uri: '' };
@@ -131,16 +133,21 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'owner-disconnect', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'owner-disconnect', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({ projectName: 'disconnect', outputItemId: 'answer',
-          provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline-fixture',
-          baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1', contextWindow: 8192,
-          tools: [], session: { compaction: { enabled: false } }, }),
-        conversation: { durable: { enabled: true }, recovery: { enabled: true } }, params: [],
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); }, });
+      export const executor = steamharness.defineBot({
+agent: {provider: 'openai',
+model: 'fixture',
+apiKind: 'openai-completions',
+apiKey: 'offline-fixture',
+baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1',
+contextWindow: 8192,
+tools: [],
+session: { compaction: { enabled: false } }},
+conversation: {recovery: {}},
+params: []
+});
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const project = { ...inspected.projects[0], uri: '' };
@@ -198,18 +205,19 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
     await writeFile(path.join(directory, 'index.ts'), `
-      export const executor = steamharness.defineExecutor({
-        projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({
-          projectName: 'startup', outputItemId: 'answer', provider: 'openai', model: 'fixture',
-          apiKey: 'offline-fixture', baseUrl: 'http://127.0.0.1:1/v1', tools: [], session: {},
-          async createTools() { throw new Error('Fixture tool initialization failed'); },
-        }),
-        conversation: { durable: { enabled: true }, recovery: { enabled: true } }, params: [],
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
-      });
+      export const executor = steamharness.defineBot({
+agent: {provider: 'openai',
+model: 'fixture',
+apiKey: 'offline-fixture',
+baseUrl: 'http://127.0.0.1:1/v1',
+tools: [],
+session: {},
+async createTools() { throw new Error('Fixture tool initialization failed'); }},
+conversation: {recovery: {}},
+params: []
+});
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const events: Record<string, any>[] = [];
@@ -277,7 +285,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     const harnessRoot = await resolveHarnessRoot();
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'agent-ipc', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'agent-ipc', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}] }));
     const declareConfiguration = (label: string) => writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string',defaultValue:label}]}));
     await declareConfiguration('first');
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
@@ -294,25 +302,26 @@ it('controls the real worker over IPC and replays pending commands after reopeni
         } },
         abort: async (_task, api, ctx) => { await api.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx); },
       })] }));
-      export const executor = steamharness.defineExecutor({
-        projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({
-          projectName: 'IPC', projectName: 'ipc', outputItemId: 'answer',
-          provider: 'openai', model: 'ipc-test', apiKind: 'openai-completions',
-          baseUrl: 'http://127.0.0.1:${port}/v1', apiKey: 'offline-fixture', contextWindow: 8192,
-          tools: [], session: { registry, codeMode: {}, compaction: { enabled: false } },
-          async createTools() {
+      export const executor = steamharness.defineBot({
+agent: {provider: 'openai',
+model: 'ipc-test',
+apiKind: 'openai-completions',
+baseUrl: 'http://127.0.0.1:${port}/v1',
+apiKey: 'offline-fixture',
+contextWindow: 8192,
+tools: [],
+session: { registry, codeMode: {}, compaction: { enabled: false } },
+async createTools() {
             writeFileSync(new URL('./configuration-seen', import.meta.url), steamharness.getConfig('label') ?? 'missing');
             const marker = new URL('./started', import.meta.url);
             if (existsSync(marker)) await new Promise(resolve => setTimeout(resolve, 6000));
             else writeFileSync(marker, 'started');
             return { tools: [] };
-          },
-        }),
-        conversation: { durable: { enabled: true }, recovery: { enabled: true } },
-        tools: [{ name: 'update_plan', enabled: true, autoApprove: true }], params: [],
-        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
-      });
+          }},
+conversation: {recovery: {}},
+tools: [{ name: 'update_plan', enabled: true, autoApprove: true }],
+params: []
+});
     `);
     const inspected = await runtime.inspect([directory]);
     expect(inspected.errors).toEqual([]);

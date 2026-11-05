@@ -1,11 +1,11 @@
 ---
 title: "defineExecutor"
-description: "Defines a Workflow project's entrypoints or a Conversation project's single execution configuration."
+description: "Defines a Workflow project's entrypoints or a Bot project's single execution configuration."
 ---
 
 # defineExecutor
 
-`steamharness.defineExecutor<Input, Output>()` declares a project's execution contract. A Workflow executor declares its default entrypoint and independently runnable `entrypoints`; a Conversation executor declares its workflow, parameters, and input construction directly on the executor.
+`steamharness.defineExecutor<Input, Output>()` declares a project's execution contract. A Workflow executor declares its default entrypoint and independently runnable `entrypoints`; Bot projects use the independent `steamharness.defineBot()` factory with fixed Core execution and output.
 
 ## Signature
 
@@ -31,27 +31,11 @@ steamharness.defineExecutor<Input, Output>(
 
 `workflow`, `params`, `createInput`, `resolveParams`, `createContext`, `requiredProviders`, `tools`, `tokenUsage`, and `registry` are entrypoint-specific Workflow fields and cannot appear at the top level of an executor. Hosts display entrypoints in declaration order. Selecting one creates a run for that entrypoint directly; the default entrypoint does not run first.
 
-Workflow can declare the proposed schedule in `steamharness.json.entries[].schedulePresets`. Each entry statically references a entrypoint and contains a IANA time zone, time window, or 5 field Cron, and default parameter values. The directory goes into the Structure report, but the host must display a confirmation interface and cannot automatically create a schedule for importing or publishing a project. Conversation and Kanban declare this field to be rejected by Structure. See [Workflow Timed Run](/en/concepts/workflow-schedules) for the full format and run boundaries.
+Workflow can declare the proposed schedule in `steamharness.json.entries[].schedulePresets`. Each entry statically references a entrypoint and contains a IANA time zone, time window, or 5 field Cron, and default parameter values. The directory goes into the Structure report, but the host must display a confirmation interface and cannot automatically create a schedule for importing or publishing a project. Bot and Kanban declare this field to be rejected by Structure. See [Workflow Timed Run](/en/concepts/workflow-schedules) for the full format and run boundaries.
 
-## Conversation executor
+## Bot
 
-|Field|Type|Description|
-| --- | --- | --- |
-| `projectType` | `"conversation"` |The type tag for the Conversation item. Required.|
-| `workflow` | `Definition<Input, Output>` |Conversation is unique to workflow. Required.|
-| `createInput` | `(context) => Input` |Converts args, configuration snapshots, and session IDs into business inputs. Required.|
-| `resolveParams` | `(context) => ParamResolveResult` |Optional parameter linkage callback.|
-| `createContext` | `(context) => Partial<RunContext>` |Add providers, metadata and hooks.|
-| `requiredProviders` | `ExecutorProviderName[]` |Declares a required provider.|
-| `params` | `ConversationParamDeclaration[]` | Ordered Conversation Auxiliary, Quick, Mode, and Slash entries. |
-| `tools` | `ToolPermissionDefinition[]` |Conversation Callable tools and default policies.|
-| `conversation` | `ConversationDefinition` | Configure attachments, the input queue, and the optional OpenAI gateway. The standard message input needs no configuration. |
-| `tokenUsage` | `TokenUsageDefinition` |Enable token usage statistics.|
-| `registry` | `NodeRegistryEntry[]` |Register nodes that can be debugged individually.|
-
-Conversation does not declare `defaultEntrypoint` or `entrypoints`. CLI rejects a non-empty entrypoint selection instead of silently ignoring it.
-
-Durable Agent projects can declare inline `conversation.recovery: { enabled: true }` and `conversation.durable: { enabled: true }` alongside Agent `session` options. Recovery enables host crash recovery; durable enables the Harness inbox, bidirectional controls and persistent owner in CLI Web / Studio, with complete task views in Studio Trace. Harness persists steer / followUp / reject submissions and withdrawals. `defineAgentConversationExecutor({ session })` adds durable automatically; static structure projects must still declare inline objects. Explicit `tools` lists must include `update_plan` and, when enabled, `subagent`. See [session control](/en/core-api/create-agent#durable-session-control). Local CLI / Studio hosts execute projects; Server only manages projects and data.
+Bot projects use [defineBot](./define-bot.mdx), which owns execution and output. `defineExecutor` only declares Workflow projects.
 
 ## `ExecutorContext`
 
@@ -59,8 +43,8 @@ Durable Agent projects can declare inline `conversation.recovery: { enabled: tru
 | --- | --- | --- |
 | `projectName` | `string` |The current workflow name.|
 | `projectDir` | `string` |The current workflow directory.|
-| `entrypointId` | `string \| undefined` | The selected Workflow entry-point ID; `undefined` for Conversation. |
-| `entrypointTitle` | `string \| undefined` | The selected Workflow entry-point title; `undefined` for Conversation. |
+| `entrypointId` | `string \| undefined` | The selected Workflow entry-point ID; `undefined` for Bot. |
+| `entrypointTitle` | `string \| undefined` | The selected Workflow entry-point title; `undefined` for Bot. |
 | `args` | `string[]` |Original CLI style parameter.|
 | `paramValues` | `Record<string, string \| string[]>` |The structured value after parsing by `params`. A single value holds a string, and multiple values are selected as a string array.|
 | `env` | `NodeJS.ProcessEnv` |A collection of environment variables.|
@@ -70,7 +54,7 @@ Durable Agent projects can declare inline `conversation.recovery: { enabled: tru
 
 ## `ParamDeclaration`
 
-`params` is an ordered declaration array: place it on each Workflow `defineEntrypoint` or on the Conversation `defineExecutor`. Workflow can declare main form fields directly. Conversation always uses the standard message input and only accepts `kind: "auxiliary"`, `kind: "quick"`, `kind: "mode"`, or `kind: "slash"` entries. Multiple toolbar entries appear from left to right in declaration order. Each Auxiliary is an independent parameter panel; each Quick is a summary menu. Both can contain multiple fields. Each Mode is an independent cycling switch. Slash parameters appear in the `/` menu above the input without a toolbar button. Names and flags must be unique across all fields, and Auxiliary/Quick IDs must be unique across both group kinds. Conversation reserves `--message`, `--images`, `--videos`, and `--files` for the standard input.
+`params` is an ordered declaration array: place it on each Workflow `defineEntrypoint` or on `defineBot`. Workflow can declare main form fields directly. Bot always uses the standard message input and only accepts `kind: "auxiliary"`, `kind: "quick"`, `kind: "mode"`, or `kind: "slash"` entries. Multiple toolbar entries appear from left to right in declaration order. Each Auxiliary is an independent parameter panel; each Quick is a summary menu. Both can contain multiple fields. Each Mode is an independent cycling switch. Slash parameters appear in the `/` menu above the input without a toolbar button. Names and flags must be unique across all fields, and Auxiliary/Quick IDs must be unique across both group kinds. Bot reserves `--message`, `--images`, `--videos`, and `--files` for the standard input.
 
 ```ts
 params: [
@@ -82,10 +66,10 @@ params: [
     ],
   },
   {
-    kind: "quick", id: "ai", label: "AI", summary: ["model", "effort"],
+    kind: "quick", id: "knowledge", label: "Knowledge", summary: ["source", "detail"],
     fields: [
-      { name: "model", flag: "--model", type: "string", control: "select", options: [{ value: "sol", label: "Sol" }] },
-      { name: "effort", flag: "--effort", type: "string", control: "select", options: [{ value: "high", label: "High" }] },
+      { name: "source", flag: "--source", type: "string", control: "select", options: [{ value: "docs", label: "Docs" }] },
+      { name: "detail", flag: "--detail", type: "string", control: "select", options: [{ value: "brief", label: "Brief" }] },
     ],
   },
   { kind: "mode", name: "agentMode", flag: "--agent-mode", label: "Mode", options: [{ value: "ask", label: "Ask" }, { value: "build", label: "Build" }] },
@@ -114,15 +98,14 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `audio` | `{ maxDurationSeconds?: number, maxBytes?: number }` |Optional duration and byte limits for one audio file; hosts provide defaults when omitted.|
 | `format` | `"json"` |file param uses the JSON reference format.|
 
-Quick `summary` must list distinct field names from that group in display order. Quick fields must be `type: "string"` enumerations with `control: "select" | "radio" | "checkboxes"`. Mode directly declares `name`, `flag`, optional `label` / `defaultValue`, and at least two distinct, non-empty `options`; it is available only to Conversation. Without `defaultValue`, Mode uses the first option. An explicit default must match an option. Auxiliary accepts ordinary form fields. Fields cannot set `panel` or contain nested groups. Static analysis and runtime reject empty groups, duplicate names/flags/IDs, and invalid summaries.
+Quick `summary` must list distinct field names from that group in display order. Quick fields must be `type: "string"` enumerations with `control: "select" | "radio" | "checkboxes"`. Mode directly declares `name`, `flag`, optional `label` / `defaultValue`, and at least two distinct, non-empty `options`; it is available only to Bot. Without `defaultValue`, Mode uses the first option. An explicit default must match an option. Auxiliary accepts ordinary form fields. Fields cannot set `panel` or contain nested groups. Static analysis and runtime reject empty groups, duplicate names/flags/IDs, and invalid summaries.
 
 ## Slash Menu And Footer Text
 
-Conversation `kind: "slash"` supports single-select `type: "string"` and toggle `type: "boolean"` parameters. Declare `name` and `flag`; omit `control`, `panel`, and `multiple`. A selector requires non-empty `options` and defaults to the first option; an explicit `defaultValue` must match an option. Boolean parameters default to `"false"`, have no `options`, and may set a parameter-level `command` that otherwise defaults to `name`. Commands must be unique within the project and match `/^[a-z][a-z0-9_-]*$/`.
+Bot `kind: "slash"` supports single-select `type: "string"` and toggle `type: "boolean"` parameters. Declare `name` and `flag`; omit `control`, `panel`, and `multiple`. A selector requires non-empty `options` and defaults to the first option; an explicit `defaultValue` must match an option. Boolean parameters default to `"false"`, have no `options`, and may set a parameter-level `command` that otherwise defaults to `name`. Commands must be unique within the project and match `/^[a-z][a-z0-9_-]*$/`.
 
 ```ts
 params: [
-  { kind: "slash", name: "plan", flag: "--plan", type: "boolean", defaultValue: "false", label: "Plan" },
   { kind: "slash", name: "webSearch", flag: "--web-search", type: "boolean", command: "search", label: "Web search" },
 ],
 conversation: {
@@ -181,15 +164,15 @@ Project Assistant defaults to Build and uses a single `/plan` toggle. Its `creat
 
 |Phase|Description|
 | --- | --- |
-|Platform Selection Configuration|Workflow selects an entry by explicit ID or `defaultEntrypoint`;Conversation uses executor itself.|
+|Platform Selection Configuration|Workflow selects an entry by explicit ID or `defaultEntrypoint`;Bot uses defineBot itself.|
 |Create Context|runtime creates a `ExecutorContext` based on args, env, projectName, entry, and conversationId.|
-| `createInput` |Invokes the input construct of the selected entry or Conversation executor.|
+| `createInput` |Invokes the input construct of the selected entry or Bot executor.|
 | `createContext` |An optional context extension that invokes the same execution configuration.|
-| workflow `run` |Execute only the workflow of the selected entry, or the only workflow of Conversation.|
+| workflow `run` |Execute only the workflow of the selected entry, or the only workflow of Bot.|
 
 ## Quick parameters and linkage
 
-Each `kind: "quick"` entry creates one summary trigger. Visibility follows the current `resolveParams` state. With one visible parameter, the trigger opens its options directly, with no parameter list or back button. Single selection closes the menu and restores trigger focus; multiple selection supports consecutive changes. With multiple visible parameters, the first-level menu lists the fields in declaration order; selecting a field opens its single- or multi-select options. Wide layouts place the options beside the menu, while narrow layouts drill into one popover. The menu's **Reset to defaults** action restores only that group's fields and triggers `resolveParams` once. Other Quick, Auxiliary, Mode, Main, unknown Raw arguments, and unsent Conversation text and attachments remain intact. `summary` explicitly selects the fields displayed in the trigger, without special treatment for names such as `model` or `effort`.
+Each `kind: "quick"` entry creates one summary trigger. Visibility follows the current `resolveParams` state. With one visible parameter, the trigger opens its options directly, with no parameter list or back button. Single selection closes the menu and restores trigger focus; multiple selection supports consecutive changes. With multiple visible parameters, the first-level menu lists the fields in declaration order; selecting a field opens its single- or multi-select options. Wide layouts place the options beside the menu, while narrow layouts drill into one popover. The menu's **Reset to defaults** action restores only that group's fields and triggers `resolveParams` once. Other Quick, Auxiliary, Mode, Main, unknown Raw arguments, and unsent Bot text and attachments remain intact. `summary` explicitly selects the fields displayed in the trigger, without special treatment for names such as `model` or `effort`.
 
 Quick accepts an `icon` Codicon name such as `sparkle` or `shield`, defaulting to `settings`. Declare a static string matching `/^[a-z][a-z0-9-]*$/`. CLI Web triggers display the icon and the current `summary` selections without repeating the group label or showing an up arrow. The group label remains in menu titles, tooltips, and accessible names. When toolbar space is limited, Quick text disappears from right to left and returns when space becomes available; collapsed icons still open their menus.
 
@@ -289,65 +272,9 @@ createInput({ paramValues }) {
 
 The mutex example hides and clears the range after selecting a single day, hides and clears a single day after selecting a range; both fields reappear after clearing the current value. If the external args provides both at initialization, the single day is deterministically retained and the range is cleared. Only returning `visible: false` will keep the old value and continue to put it in `args` and `paramValues`, which is not suitable for mutex parameters.
 
-Every executor must declare `projectType` statically. `projectType: "conversation"` enables conversation IDs, context, and session storage; code running in a workflow can call `context.conversation.setTitle(title)` to suggest a readable session title for shared runtime UI or CLI Web. `projectType: "workflow"` prohibits a `conversation` declaration, leaves session context disabled, and requires static `defaultEntrypoint` and `entrypoints`. Missing or unknown types, and the legacy `conversation.enabled`, are rejected as migration errors rather than treated as Workflow projects.
+Workflow executors declare `projectType: "workflow"`, a default entrypoint, and static entrypoints. Bot projects use [defineBot](./define-bot.mdx), which supplies their type and standard input, output, durable queue, recovery and usage tracking. The former `conversation` project type and arbitrary Bot workflow declarations are rejected.
 
-`steamharness.defineExecutor(...)` must receive an inline object literal, and the result must be the module's named or default `executor` export. Do not assign the configuration to a variable first or continue using legacy top-level exports such as `workflow`, `createInput`, or `projectType`. Static structure analysis does not execute configuration code, and runtime does not assemble those fields into an executor.
-
-Conversation always uses the standard message input. It needs no enable setting and cannot be disabled or replaced with a custom main form. Declare optional attachment capabilities directly in `conversation.attachments`. The removed `conversation.defaultInput` configuration is rejected:
-
-```ts
-export const executor = steamharness.defineExecutor<Input, Output>({
-  projectType: "conversation",
-  workflow: conversationProject,
-  conversation: {
-    recovery: { enabled: true },
-    inputQueue: {
-      enabled: true,
-    },
-    attachments: {
-      images: true,
-      videos: true,
-      files: true,
-    },
-  },
-  createInput({ args }) {
-    return steamharness.parseConversationDefaultInputArgs(args);
-  },
-});
-```
-
-The host renders the standard input without automatically modifying `RunContext`. Read its fixed arguments explicitly in `createInput({ args })`:
-
-- Text:`--message`
-- Image Attachment:`--images`
-- Common file attachments:`--files`
-- Video attachments: `--videos` when `attachments.videos: true` is enabled.
-
-Direct use of [`steamharness.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args) is recommended:
-
-```ts
-createInput({ args }) {
-  const defaults = steamharness.parseConversationDefaultInputArgs(args);
-  return {
-    message: defaults.message,
-    images: defaults.images,
-    videos: defaults.videos,
-    files: defaults.files,
-  };
-}
-```
-
-`--images` / `--videos` / `--files` reuse the existing file reference protocol, accepting managed file JSON references or local paths. The host converts pasted, dropped, or uploaded files into managed references. Existing projects with `files: true` and no `videos` capability continue to upload videos under `--files`.
-
-`conversation.recovery: { enabled: true }` declares that the project can recover across processes with its original `runId`, arguments and resolved answers. Enable it only for recoverable execution such as a durable Agent. The flag alone cannot make ordinary Workflows or earlier non-repeatable side effects recoverable. CLI Web / Studio recover at startup and after worker exit, with three automatic retries followed by the original reply's Retry action. Explicit Stop durably cancels work; host closure preserves checkpoints.
-
-Without a Durable session, `conversation.inputQueue: { enabled: true }` lets CLI Web accept new input while the current session is running. The new input enters the shared input queue:
-
-- CLI Web manages input queues; command-line `run` / `json` do not use them.
-- The host persists pending inputs; queues survive reopening or refreshing CLI Web.
-- The restored queue will not continue to run automatically. You need to manually send a new input before the subsequent queued items continue to run in sequence.
-- After the current run completes, fails, or is canceled, the host clears the active run flag for that session; subsequent new inputs revert to normal send and do not continue to the wait queue.
-- Queue items support bootstrapping, editing, deleting, and dragging sort; bootstrapping interrupts the current run before immediately executing the target queue item.
+Both declarations use inline objects so hosts can inspect them without executing project code. Bot input preparation belongs in `prepareInput`; the complete Bot API and attachment configuration are documented on its dedicated page.
 
 After `tokenUsage.enabled` is enabled,runtime writes token usage to platform relational tables and the run aggregation to report. Aggregations contain `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, `cachedInputTokens`, `cacheCreationTokens`, and `calls`. If `display` is omitted, the default value is `enabled`. CLI Web only display badges when `display === true` and data is available. Badges display the total amount by default, and hover/focus displays Input, Output, Reasoning, Cache read, Cache write, and Calls respectively.
 
@@ -400,13 +327,13 @@ export const executor = steamharness.defineExecutor<Input, Output>({
 
 |Rules|Description|
 | --- | --- |
-|`createInput` is required|Each Workflow entrypoint and Conversation executor must be declared.|
+|`createInput` is required|Each Workflow entrypoint and Bot executor must be declared.|
 |`paramValues` is a formal structured value|`createInput` can read parameter values directly;`args` continues to be used in scenarios that require full CLI parameters or unknown parameters.|
 |Workflow The running configuration belongs to entrypoint|The top-level old field gives a migration error and no longer retains the compatible alias.|
-|`tools` must be statically declared|CLI Web can only show the selected entry or Conversation executor statically analyzed tools; the tool name must be stable.|
+|`tools` must be statically declared|CLI Web can only show the selected entry or Bot executor statically analyzed tools; the tool name must be stable.|
 |`tokenUsage.enabled` Off by default|If it is not configured, platform usage records will not be written and the usage will not be displayed. When closed `context.tokenUsage.report()` is no-op.|
 |`registry` for single node debugging|Workflow searches only the registry of the selected portal; nodes that are not registered cannot be run individually through debug API.|
 
 ## Built-in Core Agent parameters
 
-When `workflow` comes from `createAgentConversationProject`, omit `params` and `resolveParams`. A wrapping business workflow specifies its parameter source with `coreAgent`. Explicit tables still replace the defaults, and business `createInput` remains available. A field with `visible: false` is hidden from parameter actions; Core enforces `fixedValue` during parsing and execution. See [Core Agent parameters](/en/core-api/define-agent-conversation-executor#project-parameter-inheritance-and-customization).
+Bot automatically inherits Core parameters. Customize built-in fields through `agent.paramOptions`; top-level `params` adds business fields. See [defineBot](./define-bot.mdx).

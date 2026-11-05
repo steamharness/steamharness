@@ -7,13 +7,13 @@ import { readProjectManifest, normalizeProjectManifest, selectProjectEntry, proj
 import { resolveProjectEntry } from "../node";
 const id = "3bd18168-f4f6-486b-842c-ab9f8098d9d4";
 const entry = (entryId: string, type = "workflow") => ({ entryId, type, name: entryId, root: ".", entry: type === "kanban" ? `dist/steamharness/build/${entryId}/index.html` : "index.ts", databases: [] });
-const pkg = () => ({ id, name: "aggregate", version: "0.1.0",  entries: [entry("agent", "conversation"), entry("one"), entry("two"), entry("board", "kanban")], defaultEntry: "agent"  });
+const pkg = () => ({ id, name: "aggregate", version: "0.1.0",  entries: [entry("agent", "bot"), entry("one"), entry("two"), entry("board", "kanban")], defaultEntry: "agent"  });
 describe("aggregate project manifest", () => {
   it("accepts mixed types and repeated types and selects the default", () => {
     const manifest = readProjectManifest(pkg());
     expect(selectProjectEntry(manifest).entryId).toBe("agent");
     expect(selectProjectEntry(manifest, "two").type).toBe("workflow");
-    expect(projectManifestTypes(manifest)).toEqual(["conversation", "workflow", "kanban"]);
+    expect(projectManifestTypes(manifest)).toEqual(["bot", "workflow", "kanban"]);
     expect(() => selectProjectEntry(manifest, "missing")).toThrow("Unknown project entry");
   });
   it("keeps entry icons independent of the aggregate and preserves them for distribution", () => {

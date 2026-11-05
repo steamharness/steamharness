@@ -9,7 +9,7 @@ Studio 通过项目自身的 CLI 在编辑器标签页中打开 Workflow、Conve
 3. 点击窗口顶部的 **运行项目** 按钮。
 4. 在编辑器标签页中选择入口并运行，或向 Conversation 发送消息。
 
-Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合 checkout 中的小助手位于 `../build-in/build-in-developer-assistant`。
+Studio 的 `examples/bot` 提供不调用模型的本地演示。聚合 checkout 中的小助手位于 `../build-in/build-in-developer-assistant`。
 
 打开聚合根目录时，活动栏中的 **Workflow 项目** 可用于选择项目。扫描覆盖当前文件夹、直接子目录及 `workspace`、`workflow`、`projects`、`examples` 容器，跳过依赖和生成目录。启动入口默认信任打开和后来加入的工作区文件夹。
 

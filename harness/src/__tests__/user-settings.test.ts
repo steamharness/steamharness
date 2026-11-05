@@ -87,7 +87,7 @@ test("user setting parameter declarations reject invalid bindings and ambiguous 
   for (const binding of ['{ key: "invalid" }', '{ key: "agent.permissionPolicy", mode: unknownMode }', 'bindingVariable']) {
     const violations = validateProjectScriptSource(`
       const flow = steamharness.defineProject({ name: 'binding', run(input) { return input; } });
-      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
+      export const executor = steamharness.defineExecutor({ projectType: 'bot', workflow: flow,
         params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [
           { name: 'access', flag: '--access', type: 'string', control: 'select', userSetting: ${binding} }
         ] }], createInput({ paramValues }) { return paramValues; }

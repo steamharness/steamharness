@@ -6,7 +6,7 @@ type Message = Record<string, any>;
 // Only execution data crosses into an embedding host; account and draft state stay here.
 export function traceSnapshot(state: Message): Message | undefined {
   const project = state.project;
-  if (!project || !['conversation', 'workflow'].includes(project.projectType)) { return; }
+  if (!project || !['bot', 'workflow'].includes(project.projectType)) { return; }
   const base = { project: { id: project.id, entryId: project.entryId, name: project.name, projectType: project.projectType }, running: state.running };
   if (project.projectType === 'workflow') {
     return { ...base, runs: state.runs, selectedId: state.selectedId, run: state.run, occupiedRun: state.occupiedRun, history: state.history };
@@ -106,7 +106,7 @@ export class TraceBridge {
     if (!this.state || typeof message.message !== 'string' || !message.message.trim()
       || message.projectUri && message.projectUri !== this.state.project?.uri) return;
     let sessionId = message.sessionId;
-    if (this.state.project?.projectType === 'conversation') {
+    if (this.state.project?.projectType === 'bot') {
       const session = this.state.sessions?.find((session: Message) => sessionId ? session.id === sessionId
         : session.messages?.some((answer: Message) => message.messageId ? answer.id === message.messageId : message.runId && answer.runId === message.runId));
       if (!session) return;

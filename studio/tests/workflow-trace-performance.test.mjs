@@ -29,7 +29,7 @@ test('hidden retained Trace views skip serialization and replay the latest snaps
     onDidChangeVisibility: callback => { events.visibility = callback; return disposable; }, onDidDispose: () => disposable };
   const provider = new module.exports.TraceView({ subscriptions: [], extensionUri: '/extension' }, async () => {}, { appendLine() {} });
   t.after(() => provider.dispose());
-  const project = { id: 'project', uri: 'file:///project', name: 'Project', projectType: 'conversation' };
+  const project = { id: 'project', uri: 'file:///project', name: 'Project', projectType: 'bot' };
   provider.update([project]); provider.resolve(view);
   const binding = provider.bind(project, 1, { postMessage() {} });
   let serializations = 0;

@@ -28,7 +28,7 @@ try {
       assert.equal(JSON.parse(await readFile(path.join(project.directory, 'node_modules', dependency, 'package.json'), 'utf8')).version, version);
     }
     if (template.projectType !== 'kanban') {
-      const args = ['json', project.directory, ...(template.projectType === 'conversation' ? ['--', '--message', 'Local reply'] : [])];
+      const args = ['json', project.directory, ...(template.projectType === 'bot' ? ['--', '--message', 'Local reply'] : [])];
       const run = JSON.parse((await promisify(execFile)(process.execPath, [cli, ...args], { cwd: project.directory, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim());
       await writeFile(path.join(proof, `${template.id}-run.json`), JSON.stringify(run, null, 2));
       assert.equal(run.status, 'success', JSON.stringify(run));

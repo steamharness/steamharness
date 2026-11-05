@@ -91,7 +91,7 @@ describe("OpenAI Responses internal runner", () => {
       readInput: () => JSON.stringify(request),
       writeFrame: (frame) => frames.push(frame),
       inspectProject: (() => ({
-        projectType: "conversation",
+        projectType: "bot",
         conversation: { openai: { enabled: true, outputItemId: "conversation-answer" } },
       })) as never,
       runProject: (async (options: { nodeHooks: { onNodeChunk?: (event: unknown) => void } }) => {
@@ -140,7 +140,7 @@ describe("OpenAI Responses internal runner", () => {
     const exitCode = await runOpenAIResponsesRunner({
       readInput: () => JSON.stringify(request),
       writeFrame: (frame) => frames.push(frame),
-      inspectProject: (() => ({ projectType: "conversation", conversation: {} })) as never,
+      inspectProject: (() => ({ projectType: "bot", conversation: {} })) as never,
       runProject: (async () => {
         throw new Error("must not run");
       }) as never,
@@ -176,7 +176,7 @@ describe("OpenAI Responses internal runner", () => {
       readInput: () => JSON.stringify(request),
       writeFrame: (frame) => frames.push(frame),
       inspectProject: (() => ({
-        projectType: "conversation",
+        projectType: "bot",
         conversation: { openai: { enabled: true, outputItemId: "conversation-answer" } },
       })) as never,
       runProject: (async () => report) as never,

@@ -1,6 +1,6 @@
 ---
 title: "工作流能力工具"
-description: "把项目与知识库、数据库、宿主配置和 Conversation 资源卡片接起来的内置工具。"
+description: "把项目与知识库、数据库、宿主配置和 Bot 资源卡片接起来的内置工具。"
 ---
 
 # 工作流能力工具
@@ -10,7 +10,7 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 | 能力 | MCP 服务 id | 工具 id |
 | --- | --- | --- |
 | 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
-| Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
+| Bot 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
 工具 id 是稳定的：宿主按它授权、审批和恢复，所以不要改名。
 
@@ -60,11 +60,11 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds();
 
 宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isProjectCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
 
-## Conversation 资源卡片
+## Bot 资源卡片
 
 Core 知识库 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID，打开时重新校验权限。
 
-使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和对应别名：知识库使用 `knowledgeBase`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+使用 `createAgentNode` / `defineBot` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和对应别名：知识库使用 `knowledgeBase`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
 
 ```ts
 return {

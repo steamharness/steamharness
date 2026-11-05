@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【破坏性变更】新建项目、项目识别与类型展示统一改为 Bot，模板直接使用 Core Agent；会话、Workflow 和 Kanban 继续使用各自原生界面。
+
 - 新增运行（发行模式）及发行上传；源码只显示本地版本，发行安装检查升级并固定 Steam 模式。
 
 - 内置分析、Kanban 示例和项目模板使用 dist/steamharness 下按源码根归组的构建目录。

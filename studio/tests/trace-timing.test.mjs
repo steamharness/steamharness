@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
 register();
 const { traceRange, traceRows, traceRowEnd } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const client = await build({ entryPoints: ['extensions/studio-workstation/webview/trace.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
-const project = { id: 'project', entryId: 'main', name: 'Project', projectType: 'conversation' };
+const project = { id: 'project', entryId: 'main', name: 'Project', projectType: 'bot' };
 const selection = { sessionId: 'session', messageId: 'answer' };
 function snapshot(timed = true) {
   const item = (id, partType, content, startedAt, endedAt) => ({ id, content,

@@ -105,7 +105,7 @@ Every command has a stable `requestId` and optional numeric `targetId` from the 
 | `snapshot` | Publish the latest complete snapshot. |
 | `task` | `name`, strict JSON `input` (at most 256 KiB), optional `background`; create a project-registered task. The receipt contains `taskId`, and retransmission does not create another task. Date, Map, functions and non-finite numbers are rejected before recording the requestId. |
 
-Conversation cancellation atomically marks the target execution tree and withdraws queued input through Durable, then waits for cleanup before acknowledging. This prevents coordinators from dispatching work between individual cancellation requests. Explicit host run cancellation also includes background tasks; host suspension preserves checkpoints through its separate recovery path.
+Bot cancellation atomically marks the target execution tree and withdraws queued input through Durable, then waits for cleanup before acknowledging. This prevents coordinators from dispatching work between individual cancellation requests. Explicit host run cancellation also includes background tasks; host suspension preserves checkpoints through its separate recovery path.
 
 Snapshots include `version: 1`, an `ownerId` that changes on reopen, increasing `revision`, `contexts`, `tasks/history`, `turns`, `plan`, `records`, `receipts`, and per-conversation `usage`. Treat snapshots as auxiliary state; assistant answers remain inline. Reconnect from a full snapshot, allowing a new owner to restart its revision sequence. Prompt records contain only a digest/version, and configuration records contain no credentials. A durable reporter delivers each background child result once using a stable identity. Usage belongs to individual parent/child conversations and replay does not add it again.
 
@@ -165,7 +165,7 @@ const agent = await workflow.createAgent({ session: { registry } });
 
 While running, the host submits `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`. The receipt contains `taskId`; resending the same command does not create another task. Every phase must commit progress or a terminal outcome. Create dependencies with `tx.createTask()` and commit `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }`. Cancellation drains owned work before `abort`; host shutdown pauses instead of cancelling. A checkpoint's `wakeAt` is an absolute timestamp for display; `runtime.sleep()` controls the actual timer.
 
-Registry publications are immutable. In-flight tools and hooks keep their implementation, and the next task phase may select a compatible replacement. An already running task may keep its old implementation after removal; rescheduling or reopening without a compatible definition leaves it `blocked`. Reinstalling the definition wakes it. Reserved `pi.*` / `workflow.*` tasks and extensions, and duplicate tool names, cannot be replaced. Conversation commands cannot upload extension code.
+Registry publications are immutable. In-flight tools and hooks keep their implementation, and the next task phase may select a compatible replacement. An already running task may keep its old implementation after removal; rescheduling or reopening without a compatible definition leaves it `blocked`. Reinstalling the definition wakes it. Reserved `pi.*` / `workflow.*` tasks and extensions, and duplicate tool names, cannot be replaced. Bot commands cannot upload extension code.
 
 ### Discovery And MCP
 
@@ -321,7 +321,7 @@ None of the three prompts for a built-in tool: the policy decides which tools ex
 
 With `databasePath`, the Harness continuously commits generations, tool intents, results, and task checkpoints. Reopen the same file and reuse `requestId` to recover. Committed tool results are reused. A tool with an unknown outcome defaults to `replay: "never"`: recovery reports an interrupted tool result without repeating its effects. Declare `replay: "safe"` only when repeating the operation is safe. Built-in read/search tools are safe; write, edit, and shell tools default to never. Submission deduplication does not replace business idempotency in external services.
 
-`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing persistent history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires injected local or Server storage, or explicit SQLite. Conversation nodes select isolated local SQLite sessions by default; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
+`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing persistent history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires injected local or Server storage, or explicit SQLite. Bot nodes select isolated local SQLite sessions by default; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
 
 After a process interruption during streaming, recovery includes committed text and reasoning in the continuation context and durably records its continuation prompt. Further interruptions continue from those committed fragments. Incomplete tool calls without committed intents are discarded and never executed or shown as started.
 
@@ -434,7 +434,7 @@ for await (const event of agent.run({ prompt: "Summarize this repository", errCo
 }
 ```
 
-Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) do more of the work for you.
+Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineBot](./define-bot.mdx) do more of the work for you.
 
 
 ## Named agents and durable work queues

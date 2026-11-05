@@ -17,7 +17,7 @@ Declare the entry in `map/steamharness.json`:
 { "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json", "databases": [] }
 ```
 
-`root` identifies the source directory. A Kanban `entry` is relative to the aggregate root and defaults to `dist/steamharness/build/<entryId>/index.html` for root entries or `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html` for child entries when omitted. Workflow/Conversation modules remain relative to their own `root`. Frontend builders clean only their source root's `build/<entryId>/`, preserving database outputs.
+`root` identifies the source directory. A Kanban `entry` is relative to the aggregate root and defaults to `dist/steamharness/build/<entryId>/index.html` for root entries or `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html` for child entries when omitted. Workflow/Bot modules remain relative to their own `root`. Frontend builders clean only their source root's `build/<entryId>/`, preserving database outputs.
 
 Build on the client before upload. Server validates, stores and serves static files without installing dependencies or executing builds. Relative assets and all registered entry artifacts are retained during packaging and installation.
 
@@ -68,17 +68,17 @@ Publish the aggregate as one unit. Requirements travel with the package; binding
 
 Knowledge requires an independent `knowledgeBases: ["docs"]` declaration, a root `knowledgeBases.docs` configuration mapping and a Server binding. Subscribe with `knowledgeBases.get("docs").subscribe(...)`; changes to a relational alias with the same name do not trigger this subscription.
 
-## Aggregate Workflow calls and Conversation subscriptions
+## Aggregate Workflow calls and Bot subscriptions
 
 In local CLI Web or Studio, call a registered Workflow with `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])`. The page cannot select a user or project identity. Keep business writes and message routing in that Workflow.
 
 `await window.steamHarnessKanban.entries.list()` reads the local aggregate catalogue directly and returns `entryId`, `name`, `type`, and `status` without waiting for a business database. Show registered Conversations first, then load saved Bot profiles in the background. An entry does not imply that its profile, binding, or execution permissions are ready. Preserve the local list and retry guidance on failure without presenting unsaved data as saved.
 
-Mount a native private chat with `conversations.mount(container, { entryId, conversationId, draft?, locale? })`. Give the container a usable height and call the returned disposal function when unmounting or changing configurations. The view reuses CLI Web Conversation rendering, Markdown, model parameters, streaming, drafts, FIFO queues, approvals, cancellation, Trace, and retry. It shares its Controller and persisted history with the native Conversation tab. This embed accepts text and parameters; attachment upload, exports, and navigation to conversation branches are currently unavailable.
+Mount a native private chat with `conversations.mount(container, { entryId, conversationId, draft?, locale? })`. Give the container a usable height and call the returned disposal function when unmounting or changing configurations. The view reuses CLI Web Bot rendering, Markdown, model parameters, streaming, drafts, FIFO queues, approvals, cancellation, Trace, and retry. It shares its Controller and persisted history with the native Bot tab. This embed accepts text and parameters; attachment upload, exports, and navigation to conversation branches are currently unavailable.
 
-One Kanban page can mount multiple views of the same Conversation, such as a group composer and a focused Bot conversation. These views share the page’s session writer while keeping UI parameter resolution and drafts separate. Other pages retain independent write isolation. Closing a view releases its claim immediately; the last view releases an idle session, while running tasks retain their execution owner.
+One Kanban page can mount multiple views of the same Bot, such as a group composer and a focused Bot conversation. These views share the page’s session writer while keeping UI parameter resolution and drafts separate. Other pages retain independent write isolation. Closing a view releases its claim immediately; the last view releases an idle session, while running tasks retain their execution owner.
 
-To submit through a business Workflow, provide `submit: { entryId: "api", entrypointId: "message-send", payload: { workspaceId, threadId } }`. The host adds the bound `conversationId` and the current `text`, `params`, and `requestId`, then reads the durable receipt from `{ data: { errCode: 0, errMessage: "", data: [{ id, conversationId }] } }`. The receipt `id` must match the request ID admitted to the Conversation. The native UI correlates optimistic messages with this ID to avoid duplicates. Queue edits, approvals, and cancellation continue through the same native Controller; the business Workflow must reconcile those operations.
+To submit through a business Workflow, provide `submit: { entryId: "api", entrypointId: "message-send", payload: { workspaceId, threadId } }`. The host adds the bound `conversationId` and the current `text`, `params`, and `requestId`, then reads the durable receipt from `{ data: { errCode: 0, errMessage: "", data: [{ id, conversationId }] } }`. The receipt `id` must match the request ID admitted to the Bot. The native UI correlates optimistic messages with this ID to avoid duplicates. Queue edits, approvals, and cancellation continue through the same native Controller; the business Workflow must reconcile those operations.
 
 Projects can supply custom `@` references and display slots to an embedded view. For example, turn project members into mention choices and resolve recipients in a business Workflow:
 
@@ -113,7 +113,7 @@ A business Workflow may return a durable receipt for another target conversation
 
 The native view runs in a separate `allow-scripts` sandbox over the existing Bridge/SSE channel without receiving a host login token. The host binds the project, source entry, user, page, and one conversation, rejecting cross-session and account/project configuration actions. Identity, configuration, or preview changes dispose old views. Each Kanban host permits up to eight views. Pages may retain recently visited views to reduce switching work and should dispose views they no longer need.
 
-Workflow calls have a separate 120-second Bridge deadline for database authorization and durable receipts. Conversation submit, queue resume, input resolution, and cancellation IPC allow the same 120-second budget; ordinary read IPC retains 15 seconds. Receipts never wait for model completion: run model work asynchronously through a durable queue. A timeout may follow a committed write: retain the request ID and query its receipt instead of automatically replaying the write.
+Workflow calls have a separate 120-second Bridge deadline for database authorization and durable receipts. Bot submit, queue resume, input resolution, and cancellation IPC allow the same 120-second budget; ordinary read IPC retains 15 seconds. Receipts never wait for model completion: run model work asynchronously through a durable queue. A timeout may follow a committed write: retain the request ID and query its receipt instead of automatically replaying the write.
 
 Known public database error codes survive node reports and Workflow calls. The Bridge maps only allowlisted codes, such as `DATABASE_UNBOUND`, `DATABASE_BUSY`, and `DATABASE_SCHEMA_MISMATCH`, to fixed guidance. It never exposes underlying connection strings, SQL, file paths, or arbitrary exception text.
 

@@ -5,7 +5,7 @@ description: "创建工具审批 gate，按 executor.tools 与运行策略控制
 
 # createToolApprovalGate
 
-`workflow.createToolApprovalGate()` 创建一个工具审批 gate。Workflow 在具体 entrypoint 的 `tools` 中声明可调用工具，Conversation 继续在 executor 的 `tools` 中声明，再用 gate 在真正调用工具前检查运行策略。
+`workflow.createToolApprovalGate()` 创建一个工具审批 gate。Workflow 在具体 entrypoint 的 `tools` 中声明可调用工具，Bot 继续在 executor 的 `tools` 中声明，再用 gate 在真正调用工具前检查运行策略。
 
 工具有三种结果：未注册会输入校验失败；已禁用会拒绝调用；启用但未自动批准时，会复用用户输入节点的等待/恢复协议生成审批请求——**只有 plan 模式的 agent 回合会停下来询问**。build 回合执行的是用户已经批准的计划，因此其中未自动批准的工具直接执行。
 
@@ -37,7 +37,7 @@ interface ToolApprovalGate {
 
 ## tools 注册
 
-所选 Workflow entrypoint 或 Conversation executor 通过 `tools` 声明工具默认策略。运行时只接受该执行配置已声明工具的覆盖策略，未知工具会被忽略。
+所选 Workflow entrypoint 或 Bot executor 通过 `tools` 声明工具默认策略。运行时只接受该执行配置已声明工具的覆盖策略，未知工具会被忽略。
 
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
@@ -79,7 +79,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 | 输入字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `name` | `string` | 工具名，必须匹配当前 entrypoint 或 Conversation executor 的 `tools` 声明。 |
+| `name` | `string` | 工具名，必须匹配当前 entrypoint 或 Bot executor 的 `tools` 声明。 |
 | `label` | `string` | 本次审批展示名称；未传时使用工具声明。 |
 | `description` | `string` | 本次审批说明；未传时使用工具声明。 |
 | `reason` | `string` | 调用原因。 |
@@ -125,7 +125,7 @@ const result = await searchWithApproval(context, input.query);
 
 CLI Web 会把 `tool-approval` 渲染为专用决策界面，直接展示工具标识与 `arguments` 参数快照，并提供“批准并继续”和“拒绝并结束”操作。该界面不会显示通用布尔开关，也不会通过 Enter 隐式批准工具调用。
 
-在 Conversation 模式下，工具的启用与自动批准策略按对话保存。切换回某个对话时，工具权限面板会恢复该对话上次的状态，后续运行和审批恢复也使用该对话的策略快照。新建或没有独立策略的对话直接使用 executor `tools` 默认值，不继承项目级或其它对话的覆盖值。普通 Workflow Run 仍使用项目级工具策略。
+在 Bot 模式下，工具的启用与自动批准策略按对话保存。切换回某个对话时，工具权限面板会恢复该对话上次的状态，后续运行和审批恢复也使用该对话的策略快照。新建或没有独立策略的对话直接使用 executor `tools` 默认值，不继承项目级或其它对话的覆盖值。普通 Workflow Run 仍使用项目级工具策略。
 
 ## CLI 恢复
 

@@ -54,7 +54,7 @@ test("host configuration views omit project AI while preserving saved models for
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-model-modes-"));
   try {
     await declareConfigurationFixture(directory);
-    await writeFile(path.join(directory, "index.ts"), "throw new Error('do not execute'); steamharness.createAgentConversationProject({ modelSource: 'user-settings' });");
+    await writeFile(path.join(directory, "index.ts"), "throw new Error('do not execute'); steamharness.defineBot({ agent: {modelSource: 'user-settings'} });");
     await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [AGENT_MODELS_CONFIGURATION_FIELD, { name: "title", type: "string" }] }));
     let host = settings();
     const store = await createLocalProjectConfigurationStore(directory, { rootDir: path.join(directory, ".profiles"), userSettings: () => host });
@@ -84,7 +84,7 @@ test("project subagent selectors retain project models in Studio views and froze
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-child-model-modes-"));
   try {
     await declareConfigurationFixture(directory);
-    await writeFile(path.join(directory, "index.ts"), "throw new Error('do not execute'); steamharness.createAgentConversationProject({ modelSource: 'user-settings' });");
+    await writeFile(path.join(directory, "index.ts"), "throw new Error('do not execute'); steamharness.defineBot({ agent: {modelSource: 'user-settings'} });");
     await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [
       { name: "CHILD_MODEL", type: "string", control: "agent-model", defaultValue: "" },
     ] }));
@@ -109,13 +109,13 @@ test("model-source discovery follows static aliases and refreshes without changi
     await declareConfigurationFixture(directory);
     const store = await createLocalProjectConfigurationStore(directory, { rootDir: path.join(directory, ".profiles"), userSettings: () => settings([]) });
     const cases: [string, boolean][] = [
-      ["steamharness.createAgentConversationProject();", false],
+      ["steamharness.defineBot({ agent: {} });", false],
       ["import { createAgentNode as agent } from 'steamharness/agent'; agent({ modelSource: 'project' });", true],
-      ["const mode = 'user-settings' as const; const options = { modelSource: mode }; steamharness.createAgentConversationProject(options);", false],
+      ["const mode = 'user-settings' as const; const options = { modelSource: mode }; steamharness.defineBot({ agent: options });", false],
       ["const options = {modelSource:'project'}; steamharness.createAgentProjectParamResolver({...options, modelSource:'user-settings'});", false],
       ["const options = {modelSource:'project'}; steamharness.createAgentProjectParamResolver({...options, ...{tools:[]}});", true],
-      ["steamharness.createAgentConversationProject(unknownOptions);", true],
-      ["steamharness.createAgentConversationProject({ modelSource:'user-settings' }); steamharness.createAgentNode({modelSource:'project'});", true],
+      ["steamharness.defineBot({ agent: unknownOptions });", true],
+      ["steamharness.defineBot({ agent: {modelSource:'user-settings'} }); steamharness.createAgentNode({modelSource:'project'});", true],
     ];
     for (const [source, expected] of cases) {
       await writeFile(path.join(directory, "index.ts"), source);
@@ -130,7 +130,7 @@ test("verified configuration templates retain their original data while host vie
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-source-template-"));
   try {
     await declareConfigurationFixture(directory);
-    await writeFile(path.join(directory, "index.ts"), "steamharness.createAgentConversationProject({ modelSource:'user-settings' });");
+    await writeFile(path.join(directory, "index.ts"), "steamharness.defineBot({ agent: {modelSource:'user-settings'} });");
     const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD], () => "official")), {
       projectId: await configurationFixtureId(directory), entryId: "main", projectVersion: "1.0.0", sourceHash: "a".repeat(64),
     });
@@ -156,7 +156,7 @@ test("each registered entry discovers its own model mode and imported Agent decl
     const file = path.join(directory, "steamharness.json"), manifest = JSON.parse(await readFile(file, "utf8"));
     manifest.entries.push({ entryId: "project-agent", name: "Project Agent", type: "workflow", root: ".", entry: "project.ts", configuration: "configuration.json", databases: [] });
     await writeFile(file, JSON.stringify(manifest));
-    await writeFile(path.join(directory, "index.ts"), "steamharness.createAgentConversationProject({modelSource:'user-settings'});");
+    await writeFile(path.join(directory, "index.ts"), "steamharness.defineBot({ agent: {modelSource:'user-settings'} });");
     await writeFile(path.join(directory, "project.ts"), "import './project-agent';");
     await writeFile(path.join(directory, "project-agent.ts"), "steamharness.createAgentNode({modelSource:'project'});");
     const options = { rootDir: path.join(directory, ".profiles"), userSettings: () => settings([]) };
