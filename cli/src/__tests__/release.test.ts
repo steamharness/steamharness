@@ -1,3 +1,5 @@
+import { projectDataDirectorySync } from "../web/project-data-directory";
+import { main as runWebCommand } from "../web";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile, cp } from "node:fs/promises";
 import os from "node:os";
@@ -76,6 +78,9 @@ it("isolates configuration state between source and release and retains it acros
   await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [{ name: "label", type: "string" }] }));
   const release = await buildProjectRelease(directory);
   const rootDir = path.join(os.homedir(), "configurations");
+  const dataRoot = path.join(os.homedir(), "web");
+  expect(projectDataDirectorySync(dataRoot, release.directory, id, "main")).toBe(path.join(dataRoot, "release/projects", id, "entries/main"));
+  expect(projectDataDirectorySync(dataRoot, directory, id, "main")).toBe(path.join(dataRoot, "projects", id, "entries/main"));
   const source = await createLocalProjectConfigurationStore(directory, { rootDir });
   const compiled = await createLocalProjectConfigurationStore(release.directory, { rootDir });
   const state = await source.read();
@@ -153,4 +158,10 @@ it('refuses a missing release manifest instead of treating the distribution as s
   const result = await buildProjectRelease(directory);
   await rm(path.join(result.directory, 'steamharness.release.json'));
   await expect(createProjectUploadPlan(result.directory)).rejects.toThrow(/manifest is missing/);
+});
+
+
+it('rejects source-local runtime storage before preparing a release run', async () => {
+  const { directory } = await fixture();
+  await expect(runWebCommand([directory, '--release', '--no-open', '--data-dir', path.join(directory, 'runtime')])).rejects.toThrow(/outside the project/);
 });

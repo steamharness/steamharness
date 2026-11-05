@@ -1,3 +1,4 @@
+import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
 import { prepareReleaseRun } from "./release/build";
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -40,6 +41,7 @@ export async function main(argv: string[]): Promise<number> {
       : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
     return 0;
   }
+  if (options.release && options.dataDir) assertProjectDataDirectory(options.projectDir, options.dataDir);
   if (options.release) options.projectDir = (await prepareReleaseRun(options.projectDir, { progress: message => process.stderr.write(message + '\n') })).directory;
   const input = options.hostStdio ? createInterface({ input: process.stdin, crlfDelay: Infinity }) : undefined;
   const lines = input?.[Symbol.asyncIterator]();
