@@ -5,12 +5,25 @@ description: "Create a file input node and resolve the file param reference to R
 
 # createFileInputNode
 
-`workflow.createFileInputNode()` is used to process the executor param of `type: "file"`. It takes a file reference, JSON string, array, or path string and parses it to `ResolvedFile[]` via `context.files`.
+Use `steamharness.createFileInputNode()` to read executor file parameters. It accepts references, JSON strings, arrays, or paths, resolves them through `context.files`, and returns `ResolvedFile[]`.
+
+## Example
+
+```ts
+const imagesNode = steamharness.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const files = await steamharness.runNode(imagesNode, input.images, context);
+const imageParts = await Promise.all(files.map((file) => file.toLLMImagePart()));
+```
 
 ## Signature
 
 ```ts
-workflow.createFileInputNode(
+steamharness.createFileInputNode(
   options?: FileInputNodeOptions,
 ): BaseNode<unknown, ResolvedFile[]>
 ```
@@ -74,16 +87,3 @@ workflow.createFileInputNode(
 | --- | --- |
 | `context.files` |`FileStore` must be provided. `input_validation` is thrown when there is no file store.|
 | `context.abortSignal` |Optional. Node execution is checked by `runNode`.|
-
-## Example
-
-```ts
-const imagesNode = workflow.createFileInputNode({
-  name: "images",
-  accept: ["image/png", "image/jpeg", "image/webp"],
-  multiple: true,
-});
-
-const files = await workflow.runNode(imagesNode, input.images, context);
-const imageParts = await Promise.all(files.map((file) => file.toLLMImagePart()));
-```

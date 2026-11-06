@@ -1,165 +1,78 @@
 ---
 title: "SteamHarness Studio"
-description: "Open and run local Workflow projects in the VS Code OSS based SteamHarness Studio."
+description: "Find guides for creating, running, configuring, and managing projects."
 ---
 
 # SteamHarness Studio
 
-Studio is based on VS Code OSS and provides Electron and browser workstations. Open folders, edit source, use terminals, and manage extensions through standard editor commands.
+Studio is a workbench for editing and running SteamHarness projects. Complete the [quickstart](/en/guides/quickstart), then choose a guide for your current task.
 
-Click local file links, inline code paths such as `configuration.json`, or plain absolute paths in Agent replies and plans to open the file in the Studio editor. Relative paths resolve from the aggregate project root, or the bound working directory for Assistant. Unicode, spaces, Windows paths and `file://` links are supported. Append `:line:column` or `#LlineCcolumn` to select a source location, for example `src/main.ts:12:3`. Web links open in the browser, document files use Studio document previews, and missing files show an error.
+![Studio start page with projects, recent folders, and common actions.](../../../images/studio/en/start.png)
+
+Studio start page with projects, recent folders, and common actions.
 
 ## IDE and Steam modes
 
-Workflow, Bot and Kanban pages handle project shortcuts first. Unhandled keys use Studio's shortcut configuration, including custom bindings and chords. Text editing, clipboard shortcuts and IME input stay in the project page. Kanban shortcut handlers should call `event.preventDefault()` to prevent the same key from also triggering a Studio shortcut.
+Switch layouts and manage tool instances, files, and shortcuts.
 
-Ordinary folders use IDE mode. Recognized Workflow, Bot and Kanban projects also support Steam mode. Steam hides the navigation and status bars, keeps the running project on the left, and opens tools and additional editors in the right tab workspace. The top-right button hides or restores tools while the project keeps running.
-
-Tools initially occupy one third of the window width. Drag the divider between the running project and tools to resize them. Studio remembers the width per workspace and restores it when reopening tools, switching modes or reloading the window. Narrow windows temporarily constrain the tool area; widening the window restores the saved size.
-
-Native macOS window controls and mode switching sit at the top of the project menu. When the menu is collapsed or the window is narrow, they sit at the left of the project title row. Returning to IDE restores the previous workspace layout and visible areas.
-
-Project configurations, field editors, rename and project information dialogs appear below the window controls. In short windows, dialog content scrolls while headers, close buttons and configuration save actions remain visible. This spacing also applies when the menu or tools are hidden.
-
-In Steam mode, drag an empty area of the project or tool header to move the application window. The **+** on the left opens tools or instances, while the right keeps only the tools visibility toggle. Buttons, tabs and title text retain their normal clicks and text selection.
-
-The tools workspace has two tab rows: the upper row selects a tool, and the lower row manages its instances. Use **+** in the lower row to open more terminals, browsers, database views, project information views, assistants, versions views or run traces. Additional projects also keep separate tabs on the right. Select or close each instance independently; resource queries and browser pages retain their own state. Terminal profiles, splitting and renaming live in the lower-row menu. Closing a terminal instance ends that session; closing the Terminal tool tab only hides the tool, so existing sessions remain available when reopening it or returning to IDE.
-
-Choose **Editor** to browse and edit project files in the current workspace. Files share the lower tab row, where **+** creates an untitled file. Explorer selections, Quick Open and search results open in the right editor. Native Explorer, Search, Source Control and other sidebar tabs sit to the editor's right; drag the divider to resize them. Switching tools or hiding the tool area retains files and unsaved changes. Closing a file or the Editor tool still prompts to save, and returning to IDE keeps the documents available.
+[Read the guide](/en/guides/studio/interface)
 
 ## Start workbench
 
-The editor background shows Start when no file is open. Run **Studio: Open Start** to open a separate Start tab at any time. Untitled uses the native blank text editor; typing, pasting, undoing, and clearing stay in the original document. Double-clicking the editor background or empty tab strip no longer creates Untitled; use the New File command or shortcut to open one.
+Create from a template or import a folder, workspace, or share link.
 
-When multiple editor groups are open, each group has a **Close Group** button in its upper-right corner, including empty groups showing Start. Closing a group with unsaved changes asks whether to save them; cancelling keeps the group and its contents. The button is hidden when only one group remains.
-
-Click **New Project** to open the creation dialog. Choose Workflow, Bot, or Kanban, then select a minimal project or an example for that type. Examples include Hello Workflow, Bot Rounds, Task Board, and Parameterized Board. Enter the project name and parent folder in the same dialog. The default location is `Documents/steamharness-projects` under your home directory; enter another location or use the folder button to browse. Studio creates the default parent folder when needed. The destination project folder must not exist; invalid names and folder conflicts appear inline.
-
-Click **Create**, then choose **Open in New Window** or **Open in Current Window**. Cancelling this choice generates no files. Studio first uses the signed-in account to create a private personal project and apply for a Server-assigned ID, then generates the project source with that ID, opens the project in the selected window, and installs dependencies there using pnpm, falling back to npm when pnpm is absent. Dependencies use exact compatible versions.
-
-Select **Import from Link** on the right side of the **New Project** dialog, paste a Server Web version share link, and select **Import** to use the default project directory without choosing a template or entering a project name. Link import remains available when templates are temporarily unavailable.
-
-The first dependency installation requires access to a package registry. Once installed, all four examples run locally without sign-in or a model: Hello streams text, Bot Rounds persists history and replies with the turn number, Task Board saves tasks, and Parameterized Board uses project parameters for its title and completed column.
-
-Progress, cancellation, and logs appear in the target project window. After installation, Studio matches untouched template source to the installed SDK and validates the project; edited source is preserved. Start distinguishes dependency installation and project validation, with expandable failure details. **Retry Project Setup** skips dependency installation that already succeeded and continues validation. Failed or cancelled setup keeps the source directory; reloading does not retry automatically. Retrying from another window opens the project window first.
-
-New Workflow, Bot, and Kanban projects require sign-in and successful Server ID allocation before local files are written. Project type, avatar, and local storage declarations are retained. **No source is uploaded and no version is published.** Allocation failure, cancellation, or account changes create no local project files. Installation or validation failure preserves the generated source; retrying setup does not allocate another ID. For an existing unregistered project, open its runtime and choose **Apply for a new application ID...**. Confirmation replaces the local ID and opens a new application. Previous Server data and access are not transferred; update bilateral relationship declarations to use the new ID.
-
-**Show Installation Log** opens a persistent `installation.log` file containing installation output, validation diagnostics, and registration results. The log survives retries and reopening the window. Right-click its file tab to copy the path or reveal it in the system file manager. Opening a new window preserves the original workspace and unsaved files; reusing the current window follows the editor's unsaved-file protection.
-
-**Current Projects** shows each project's name, type, version, and folder. **Run Project** opens its runtime; the upload button publishes its source and the code button opens its source. **Recent Projects** shows versions, reopens folders or workspaces, and allows removing entries. Quick access includes folders, workspaces, Download Project, Versions, Project Assistant, SteamHarness Account, and Settings.
-
-Current and recent projects, **Open Recent** (Ctrl+R), and Studio workspaces use the root `steamharness.json.projectCard`. Each entry has its own optional `steamharness.json.entries[].projectCard`, with `icon`, `iconColor` and `iconBackgroundColor`; omitted properties use defaults for its type. Entry tree nodes, native tabs and the window panel display that entry icon. New aggregate projects save randomly generated colors with at least 4.5:1 contrast. Templates use type icons. Studio reads declarations without executing projects or requiring their dependencies.
-
-**System Status** shows Studio, VS Code, the Node executable used for runs, Core/CLI availability, account and server connection, and counts of readable local projects, running tasks, and tasks waiting for input. While Start is visible, history and run counts refresh every five seconds. Deleted folders are automatically removed from recent history and the imported project registry; manually removing or clearing recent entries also removes their corresponding registrations. A failure to read one project leaves other counts available, with details in **Studio Analysis**, without displaying a page-wide refresh failure. If the entire status query fails, Start retains prior results and displays an error. **Open Studio Analysis** provides full history and statistics. CPU, memory, and remote Runner monitoring are not included.
-
-Start follows English or Simplified Chinese, light and dark themes, and narrow editor splits. Text is selectable and scrollbars appear on hover. The first load shows skeleton placeholders and a loading indicator; later refreshes keep existing content. Reduced motion disables loading animations. Disable `studio.startPage.enabled` to hide the Start panel in the empty editor background.
+[Read the guide](/en/guides/studio/create-import)
 
 ## Open a Workflow project
 
-1. Install Core and a CLI version supporting the Web host protocol in your project.
-2. Select **File > Open Folder** in Studio and open the project folder.
-3. Select **Run project** in the title bar to open the project view in an editor tab.
-4. Select an entrypoint, enter parameters, and run it; send messages directly in Bot projects.
+Open the run UI, select an entry and parameters, and inspect results in Trace.
 
-Each project uses its own installed `steamharness` and `@steamharness/cli`. Different entry tabs share one project host. Closing one tab releases only that entry; the last tab releases the host. Reopening restores entry history. Resource and trace panels provide database management, knowledge, and execution diagnostics.
-
-When opening Workflow, Bot or Kanban, project checks run silently in the background. The checks area stays hidden while checks run and after they pass. Only failures show setup guidance and **Check again**; the notice hides once the issue is resolved and checks pass.
-
-Core Agent uses the standard output presentation protocol to pin its context ring to the right of the composer. Hover or keyboard focus opens a light gray tooltip with the percentage and exact token counts. Each conversation retains its own output, including while awaiting confirmation and after reopening history.
-
-Bot and Assistant composers adapt to the available height. In short windows, long drafts, attachments and primary parameters scroll within the input area while Send and parameter controls remain visible. The default Assistant tool and additional Assistant tabs in Steam use the same layout.
-
-
-The built-in assistant uses an independent working directory and offers coding tools, bundled skills and resource cards. Assistant registers the default `main` Bot entry and an embedded `studio-control` Workflow entry under the same projectId, dependency set and installation. It calls the control entry on demand through its own `mcp --entry studio-control`, retaining tool approval and the current run’s permission policy. Open the Assistant project root to run the Workflow entry directly; its subdirectory is not a separate project. Studio Control connects to the VS Code extension host to read the workspace and active editor, inspect errors and warnings, open files at a line and column, select installed themes, open terminals and show Explorer, Search, Source Control or Assistant.
-
-The assistant can inspect an already open local Kanban entry with the read-only `get_kanban_diagnostics` tool. Its `input` is a JSON string: first pass `{ projectDir, entryId }` to read the current configuration, connected page instances and methods, and the latest 50 bridge requests with routing, HTTP status, pending state and safe failure categories. Then pass `call: { instanceId, configurationId, method, args }` using the returned instance and configuration to query methods explicitly declared `readOnly: true`, such as a map's `imageReady` state. Diagnostics do not open or refresh previews or change configurations or data. Closed previews, absent page instances and stale instances return unavailable status or failures. The project's installed CLI must support this capability; reopen the preview after updating it. Upload and backend byte-readback checks do not prove page rendering.
-
-Assistant is a distributed built-in application for all users. It keeps its fixed ID without requiring a personal Server project. History stays in the host user data directory. Server AI still requires account authorization, and the built-in identity does not grant data access to other Server projects.
-
-If Assistant fails to load, **Retry** immediately shows progress and a spinner while preventing duplicate clicks. A successful retry opens the conversation; a failed retry displays the specific reason and enables another attempt.
-
-Open the assistant's **Project information → Skills** to see actual skill names, counts and sources. Select a skill to preview its complete `SKILL.md` and Markdown source in read-only mode, with no enable or auto-approval controls. The assistant reads guides through the `skill` tool: `{"action":"list"}` lists available skills, and `{"action":"read","skill":"steamharness-generator"}` reads the SteamHarness project development guide, using `path` for any needed references. Guides are not installed in the user's global directory. File edits and commands use the corresponding tools. See [createSkillTools](/en/core-api/create-skill-tools) for complete examples.
-
-The built-in assistant enables durable sessions: crashes resume the original run, closing the host preserves checkpoints, and explicit stop persists cancellation. The bottom Trace panel adds Tasks, Plan, Records and Usage alongside the existing execution timeline. Inspect complete task trees and history, open child conversations or fork sources, update plan steps, compact/reset context and stop scoped work. Selecting Trace history does not switch the transcript; the eye marker follows the conversation actually open in the editor. CLI Web no longer shows a task sidebar; queued input, steering, withdrawal and forks remain in the conversation, and main answers stay inline. The project permits up to 4 read-only subagents with one-time result delivery. Studio Control connects on the first search of authorized tools; Code Mode remains host opt-in. See [Durable Agent in Studio Trace](/en/cli/steamharness#durable-agent-in-studio-trace) for controls and behavior.
-
-When subagents run, a **Subagents** entry beside “Responding…” shows running, queued, failed and completed counts. Expand roles, phases, progress, results and errors, or open a child conversation. The entry remains after the parent reply and preserves expansion across subsequent replies. Offline snapshots are identified and navigation pauses until reconnection. Tasks retains full stop, retry and batch management.
-
-The assistant's **Permission** directly shows the current user policy and opens **Settings → Permissions** when clicked. Project authors can instead declare an editable user default, retaining the original three choices with a project override and reset. Change the user default in **Settings → Permissions**; it initially uses `auto` and is stored only in the user setting `studio.agent.permissionPolicy`, which workspace settings cannot override. Read only hides writing, editing, and command tools. Workspace confines file and search tools to workspace and mounted directories, while shell commands run as the host without that path restriction. Auto approve also permits file tools outside the workspace. Coding tools, the prompt, and Studio Control share the effective policy. Changing settings preserves active, background, and child work; subsequent input waits until all work finishes and the session is idle, then adopts the latest settings while preserving history and request identities. See [User settings and permission inheritance](/en/core-api/user-settings).
-
-Editor actions follow tool permissions and Build/Plan approvals; state, diagnostic and entry reads are automatically approved. Opening a terminal never executes commands. Closing the session, removing a root or revoking trust invalidates control. A Node extension host is required; the browser-only extension cannot provide this service. Legacy Desktop Dock, updates and launch-at-login are not offered.
-
-The **Errors** filter in Trace shows run, node and tool failures and model retry reasons by conversation, turn and keyword. Existing diagnostics remain after a successful retry. Execution errors stay out of the alert above the composer; parameter validation, attachment and resource-opening errors remain there with an **×** dismiss button. Hiding a parameter error does not bypass validation.
+[Read the guide](/en/guides/studio/run-debug)
 
 ## Aggregate entries and databases
 
-The Start page shows one card per aggregate; **Run Project** opens `defaultEntry`. **Open Project Window**, below the file tree in Explorer, shows only the current project. Expand its row to see its registered entries; other projects are not listed. Clicking an entry or its open icon creates and activates a separate native tab every time, including for the current entry. Focusing a tool or the Assistant preserves the current project's entry list. Manifest changes refresh the list automatically; the view title also provides a refresh icon. Native tabs are titled “Project name / Entry name”. Entry labels do not display a version; only the aggregate owns one.
+Obtain resource grants and bind entry aliases before using databases or knowledge bases.
 
-Use the **Project windows** icon in the running page toolbar. Compact cards show entry names, types, default/current markers and runtime states. The open icon on the right creates a new native Studio tab every time, including for the current entry. Existing tabs stay open with independent page state and drafts. Multiple tabs for the same entry restore as separate tabs after a restart. Tabs share the aggregate host; closing one leaves the others open, and closing the last native tab releases the host.
-
-Entries opened from the Assistant sidebar also create and activate new native tabs using the current workspace's assistant configuration. In IDE mode they appear in the editor area; in Steam mode they appear under the project category in the right tool workspace. Closing all new tabs leaves the sidebar session running while the Assistant sidebar remains open. Open failures show an error notification, with details available in the Output panel.
-
-Information displays aggregate identity, version, entry type and resource declarations. The database tool separates relational and knowledge resources for the current Server account, merging shared references by resource kind and UUID. Management links open Server Web for account grants, entry bindings, models, table rows, knowledge documents and attachments without including tokens. Knowledge uses independent knowledgeBases declarations; relational definitions are generated from steamharness.database.ts. Persistent data requires reachable Server and PostgreSQL services. KV editors and local/remote KV switching have been removed.
-
-Checks statically validate registered entries. Missing database bindings affect the corresponding data operations while other entries remain accessible. The current protocol requires aggregate projects and a compatible CLI.
+[Read the guide](/en/guides/studio/data)
 
 ## Uploads, downloads, and versions
 
-Exporting a conversation, message or workflow record opens Studio's native save dialog, defaulting to the Downloads folder in your home directory. You can choose another location. After confirmation, a notification in the lower-right corner shows the saved path only once the file is written successfully. Cancellation shows no success notification, and write failures show an error notification.
+Upload and publish a complete project, or download a chosen version.
 
-One aggregate has one version, upload archive and installation directory. The version panel displays the root version and all entries. Build Kanban and validate locally before uploading; Server does not install dependencies or execute code.
-
-Downloads preserve every entry path and database alias-to-ID references while excluding host credentials. References do not grant access; the host still validates the project and entry grant after installation. Source access still checks membership. Transfers require the Node extension host; install dependencies with the project package manager.
+[Read the guide](/en/guides/studio/versions)
 
 ## Local analysis
 
-Run **Workflow: Open Studio Analysis**, or select the chart button in the project list toolbar, to open the built-in `build-in-analysis` Kanban. This repository can also run as a normal Kanban project in Studio.
+Filter local projects and runs to inspect status, success rate, and duration.
 
-The dashboard includes local Workflow, Bot, and Kanban projects in the current workspace and Studio's imported project registry, deduplicated by real folder path and entry. Unimported disk folders are excluded. Projects using Server databases still contribute only their local history; no server data is read.
-
-The overview shows project counts and types, run status distributions, a 14-day trend, running and waiting tasks, queued inputs, success rate, and average duration. Project and run tables provide time, type, project, and status filters, search, pagination, and CSV export. Optional automatic refresh runs every five seconds. Success rate uses completed records in the selected period, excluding unknown, running, and waiting records.
-
-Histories come from Studio's local CLI storage. CLIs with activity recording also provide live states across Studio windows. Unverified runs from older CLIs display an unknown status. Unreadable projects are marked unavailable, and no sample data is substituted. Standalone browsers and CLIs without a Studio connection do not provide this data interface.
-
-Deleted imported folders are automatically removed from both recent history and the imported project registry. Stale imports are no longer counted separately when their folders lack a standalone `steamharness.json` or have become aggregate child entries. Missing folders or manifests in the current workspace, folder permission errors, malformed declarations, identity changes, and history read failures remain unavailable in Analysis while other project counts remain visible on Start. Local analysis reads declarations and local history without resolving deployment database bindings or migrating legacy `package.json` declarations.
+[Read the guide](/en/guides/studio/analysis)
 
 ## Accounts and servers
 
-Use the account entry in the lower left to sign in, verify credentials, or sign out. Select a SteamHarness Server using the application setting `studio.workflow.serverUrl`. VS Code SecretStorage stores credentials outside project source.
+Choose a Server, sign in, and check project identity, ownership, and access.
 
-Server Web manages projects, versions, relational databases and knowledge bases. See [Workspace CLI](/en/cli/server-workspace) for packaging, uploads, and remote management.
+[Read the guide](/en/guides/studio/configuration)
 
 ## Run from source
 
-Studio requires Node 24.18.0 or later 24.x, npm 11 or 12, and native build tools. Run these commands in the Studio repository:
+Install dependencies, build, and launch the desktop or browser workbench.
 
-```sh
-npm ci
-npm run setup
-npm run build
-npm run dev
-```
-
-By default, `setup` skips the NuGet download of the Foundry Local / ONNX native runtime, which is used only for upstream chat's on-device dictation. Studio's editor and Workflow features do not require it, and other native dependencies are still installed normally. To use that dictation feature, set `FOUNDRY_LOCAL_SKIP_INSTALL` to `0` and rerun `npm run setup` with accessible NuGet feeds for the SDK.
-
-Use `npm run dev:web` for the browser workstation. This guide covers source execution; installation packages and release channels are configured separately.
-
-Desktop and Web startup apply kernel patches, then check build fingerprints for sources, dependencies, and the environment. Changes are rebuilt automatically even when the upstream commit is unchanged. After updating source, exit the application and rerun the launch command; reloading a window inside the application does not run this step. A failed build stops startup; fix the error and retry.
+[Read the guide](/en/guides/studio/installation)
 
 ## Project configurations
 
-All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.
+Choose named configurations, edit fields, and import or export settings.
 
-Ownership is selected when creating or reapplying for an application ID. Uploads never create projects or change ownership; unregistered projects must first apply for a new ID in their runtime. Group creation requires developer access without promoting the creator. Permission errors explain that the action is unavailable; retry after access is restored. Private share links offer guest access requests in Server Web.
-
-The default project Server follows the Studio build channel: dev uses `http://localhost:7126`, while alpha and main use their corresponding deployment sites. A Server explicitly selected in settings or at sign-in retains priority.
+[Read the guide](/en/guides/studio/configuration)
 
 ## Model settings
 
-With no available models, the assistant shows **Configure model** with guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the selection list.
+Add models, choose defaults, and understand when settings apply.
 
-Manage models across workspaces in **Settings → Models**. Open-source Studio only supports custom third-party models with keys stored securely on the host. Hosts supporting system AI automatically load every available built-in model from the account, without individual additions. The assistant defaults to the first permitted model, with separate model and effort controls. Model menus group built-ins and custom models, with **Add model** opening settings at the bottom. Changes apply after active and background work finishes. See [user settings](/en/core-api/user-settings) for developer integration and source restrictions.
+[Read the guide](/en/guides/studio/models)
 
-The table has Model, Provider and Actions columns, with collapsible built-in and custom groups in that order. Built-in names come from the catalogue; **Refresh built-in models** updates them. Built-ins cannot be manually edited or deleted; any available model can be the default. Custom models retain add, edit and delete actions. Centered dialogs support Tab navigation and Esc to cancel; only the table scrolls horizontally in narrow windows.
+## Assistant and permissions
 
-Account changes clear the previous built-in catalogue. Ordinary refresh failures preserve the current list with a retry message; stale requests cannot overwrite a new account's catalogue. Outdated custom-model edits from another window report a conflict; reopen the editor and try again. Model menus keep their settings action available during loading and active work; current tasks retain their snapshot.
+Use skills, control tools, and durable tasks; inspect permissions and child Agents.
+
+[Read the guide](/en/guides/studio/assistant)

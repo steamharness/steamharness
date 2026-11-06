@@ -1,16 +1,28 @@
 ---
 title: "steamharness structure"
-description: "Entry structure"
+description: "Inspect the selected entry’s static execution structure."
 ---
 
-# Entry structure
+<span id="entry-structure"></span>
 
-Statically inspect the selected entry, using the default when omitted. `check` validates the whole aggregate.
+# steamharness structure
+
+Use `structure` to inspect declarations and execution structure within registered source roots and entry files. Use `check` to validate the whole aggregate project.
+
+## Commands
 
 ```sh
+pnpm exec steamharness structure .
 pnpm exec steamharness structure . --entry database
+pnpm exec steamharness check .
 ```
 
-`entryId` selects an aggregate entry; `entrypointId` selects an internal Workflow operation. Entries have independent configurations, database requirements and conversation state. Selection defaults to `defaultEntry`; unknown entries fail.
+`--entry` is the manifest entry ID and defaults to `defaultEntry`. Entries of the same type are still checked separately. Unknown IDs fail.
 
-Analysis is scoped to the registered code root and entry file. Different executor types and repeated types are checked independently. Static HTML entries validate built artifacts. Legacy root type and storage declarations are rejected.
+## What is checked
+
+- Workflow: executor, operation catalog, nodes, and static parameters.
+- Bot: executor and conversation parameter declarations.
+- Kanban: the HTML entry and built static resources.
+
+Legacy root types and removed data declarations are rejected. Static validation does not establish runtime behavior or resource authorization. Continue with [run](/en/cli/steamharness/run) to verify results.

@@ -5,7 +5,7 @@ description: "本地持久化对话与 Agent 检查点，并按需异步备份�
 
 # 平台运行存储
 
-`steamharness/runtime-storage` 提供本地 SQLite 和显式选择的 Server PostgreSQL 存储。Agent 仍在 CLI、Studio 或自己的 Node.js 进程执行；Server 只鉴权并读写数据，不接收可执行的项目代码。
+用 `steamharness/runtime-storage` 保存运行历史与 Agent 检查点。它提供本地 SQLite 和显式选择的 Server PostgreSQL 仓储；Agent 代码仍在 CLI、Studio 或宿主 Node.js 进程执行。
 
 ## 默认存储与隔离
 
@@ -57,7 +57,7 @@ const agent = await createAgent({
 });
 ```
 
-`readAccountToken()` 由宿主实现，返回当前账号的 Server Bearer token；不要把它写进项目源码、连接 URL 或模型输入。Server 的管理员密钥不能代替账号身份。`storage` 与 `databasePath` 互斥。模型、工具及会话控制仍按 [createAgent](/core-api/create-agent) 配置。
+`readAccountToken()` 由宿主实现，返回当前账号的 Server Bearer token；不要把它写进项目源码、连接 URL 或模型输入。Server 的管理员密钥不能代替账号身份。模型、工具及会话控制仍按 [createAgent](/core-api/create-agent) 配置。
 
 | 参数 | 说明 |
 | --- | --- |
@@ -112,6 +112,6 @@ Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本
 
 本地与 Server 仓储都支持上述快照和按需备份 API。备份运行数据目录或 PostgreSQL 时，还需保存附件和工作区文件；在线会话控制仍通过活动 owner 执行。
 
-独立编程式 `createAgent()` 不传 storage 或 databasePath 时仍是临时内存实例；需要长期保存时显式注入本地仓储的 `agentStorage(...)` 或 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
+独立编程式 `createAgent()` 不传 `storage` 时仍是临时内存实例；需要长期保存时显式注入本地仓储的 `agentStorage(...)` 或 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
 
-本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](/openapi/steamharness.openapi.yaml)。
+本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](../openapi/steamharness.openapi.yaml)。

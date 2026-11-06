@@ -1,0 +1,84 @@
+---
+title: "Agent 模型与搜索"
+description: "声明模型能力、开启原生搜索并选择思考强度。"
+---
+
+# Agent 模型与搜索
+
+声明模型能力、开启原生搜索并选择思考强度。
+
+先用 [createAgent](/core-api/create-agent) 创建运行时，再按下列规则配置相关选项。
+
+## 模型属性
+
+`modelAttributes` 用来描述一个**自建端点**上的模型——运行时自带目录不认识它，只能由调用方告诉它这个模型是什么：
+
+```ts
+const agent = await steamharness.createAgent({
+  provider: "my-gateway",
+  model: "vendor/model-1",
+  baseUrl: "https://gateway.example.com/v1",
+  modelAttributes: {
+    name: "Vendor Model 1",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+    cost: { input: 0.4, output: 1.6, cacheRead: 0.04, cacheWrite: 0.5 },
+    thinkingLevelMap: { minimal: null, max: "xhigh" },
+  },
+});
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 显示名称；不超过 200 个字符，缺省时用模型 id。 |
+| `reasoning` | `boolean` | 模型自身是否具备推理能力。 |
+| `webSearch` | `boolean` | 端点是否支持原生联网搜索；为 `true` 时默认启用。 |
+| `input` | `("text" \| "image")[]` | 该模型接受的输入模态；`image` 决定本轮会不会把图片交给模型。 |
+| `cost` | `{ input, output, cacheRead, cacheWrite }` | 每百万 token 的价格，四项都是非负数字。 |
+| `contextWindow` | `number` | 上下文窗口。 |
+| `maxTokens` | `number` | 最大输出 token。 |
+| `thinkingLevelMap` | `Record<string, string \| null>` | pi 思考等级到上游取值的映射；`null` 表示该档位不受支持，缺省的档位沿用 pi 自己的映射。`ultra` 不是合法档位，写进映射会被拒绝——它在到达模型前就折算成 `max`。 |
+
+为自建端点填写已知的模型能力。缺少声明且目录无法匹配时，运行时会使用推理、图片输入和零价格等默认值，并按模型 ID 推测窗口；这些值需要与实际服务核对。
+
+显式传入的 `contextWindow` / `maxTokens` 选项仍然高于 `modelAttributes`，因为那是调用方为这一轮特意给出的覆盖。一次运行里传的 `modelAttributes` 覆盖运行时选项里的同名项。
+
+属性写成 JSON 文本时（项目参数或 `--model-attributes`）会先经过校验：出现 `name`、`reasoning`、`webSearch`、`input`、`cost`、`contextWindow`、`maxTokens`、`thinkingLevelMap` 之外的键，或者类型不符、取值越界，都会以 `input_validation` 失败，而不是被静默丢弃——一个拼错的字段被丢掉，运行看起来就像模型忽略了它。编程式调用直接传对象时，Core 不会再替调用方校验一遍，字段按原样交给运行时。
+
+`modelAttributes` 只用于调用方自建端点的模型声明。项目通过配置面板维护系统 AI 与第三方模型列表；自建端点的属性使用显式配置，不读取业务环境变量。
+
+## 联网搜索
+
+Agent 支持 OpenAI Responses 的 `web_search` 和 Anthropic Messages 的 `web_search_20250305`（每次请求最多使用 5 次）。`modelAttributes.webSearch: true` 声明能力后默认开启；运行时选项或本轮 `AgentInput.webSearch: false` 可关闭，本轮值优先。自建端点未声明能力时，显式 `webSearch: true` 也可开启；能力明确为 `false`，或使用其他协议时，开启请求会报 `input_validation`。
+
+```ts
+const agent = await steamharness.createAgent({
+  provider: "openai",
+  model: "your-search-capable-model",
+  baseUrl: "https://api.openai.com/v1",
+  apiKind: "openai-responses",
+  modelAttributes: { webSearch: true },
+});
+try {
+  for await (const event of agent.run({ prompt: "查找最新发布说明并注明来源", errCode: 0, errMessage: "" })) {
+    if (event.type === "web_search") console.log(event.search);
+    if (event.type === "sources") console.log(event.sources);
+  }
+} finally {
+  await agent.close();
+}
+```
+
+开启会在已有本地工具之外添加提供方的搜索工具，由模型决定是否调用。它不强制每轮搜索，也不把搜索交给本地工具执行。端点和所选模型须实际支持该原生工具；OpenAI Chat Completions 协议不支持这条路径。上下文压缩的摘要请求不添加搜索工具。
+
+`web_search` 事件包含 `search: { id, status, query?, sources, error? }`，状态为 `running`、`success` 或 `failed`。`sources` 事件包含 `sources: { url, title?, citedText? }[]`。搜索记录、引用及续聊需要的提供方内容随 assistant 消息保存；关闭下一轮搜索后仍会回传有效历史，切换提供方或模型时不会跨模型回传原生内容。Anthropic 的 `pause_turn` 自动续接，最多 3 次，超出后报错。
+
+便捷 Agent 项目的「模型设置」提供自动、开启、关闭三种选择，对应 `--web-search ""`、`--web-search true`、`--web-search false`。静态内联参数的项目需自行声明该参数。
+
+## 思考强度
+
+`effort` 取 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，也接受 `ultra`（等同 `max`）。取值超出模型支持范围时会自动收敛到该模型支持的档位，不会因为传了模型不支持的档位而失败。
+
+空字符串表示「交给模型决定」：pi 用「不指定档位」表达它，也就是 `off`——OpenAI 类端点因此收不到 `reasoningEffort`，与内置 OpenCode 项目的 Model default 一致；对 Anthropic 这一类会把 `thinking` 显式关掉，想保留推理就挑一个具体档位。完全不传（`undefined`）才表示「没有选择」，沿用运行时/项目自己的档位。

@@ -5,14 +5,36 @@ description: "Create a convenient output node for a standalone collapsible outpu
 
 # createDetailsOutputNode
 
-`workflow.createDetailsOutputNode()` Create a generic output node to convert the title, content, and icon into separate collapsible `OutputItem`.
+Use `steamharness.createDetailsOutputNode()` to combine a title, content, and icon into a collapsible `OutputItem`. Use it for logs, JSON, or supporting information that readers can expand when needed.
 
 This node will still execute as a `output` standard node, so CLI, CLI Web, and log replay will collect its `items` as user-visible output. Ideal for outputting long logs, debug information, structured JSON, executive summary, or optional instructions as independent folding blocks.
+
+## Example: Direct transfer of title/content/icon
+
+```ts
+const detailsNode = steamharness.createDetailsOutputNode();
+
+const output = await steamharness.runNode(detailsNode, {
+  title: "Click to expand",
+  icon: "info",
+  content: [
+    "This content is collapsed.",
+    "",
+    "- List item",
+    "- **Bold text**",
+    "- `Code`",
+  ].join("\n"),
+}, context);
+
+return output;
+```
+
+To expose a runnable example in CLI Web, executor params should directly correspond to these three fields: `icon` uses `control: "radio"` and preset icon options, and `title` / `content` use normal string inputs. This keeps the inputs of the details output node visible to the caller.
 
 ## Signature
 
 ```ts
-workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
+steamharness.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
   options?: DetailsOutputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -82,32 +104,10 @@ Default item structure:
 
 Objects and arrays remain in `content` and are automatically marked as `contentType: "json"`; strings are rendered as `markdown` by default. `video` items render through the native `<video>` player; see [createOutputNode](/en/core-api/create-output-node) for the descriptor and URL safety rules.
 
-## Example: Direct transfer of title/content/icon
-
-```ts
-const detailsNode = workflow.createDetailsOutputNode();
-
-const output = await workflow.runNode(detailsNode, {
-  title: "Click to expand",
-  icon: "info",
-  content: [
-    "This content is collapsed.",
-    "",
-    "- List item",
-    "- **Bold text**",
-    "- `Code`",
-  ].join("\n"),
-}, context);
-
-return output;
-```
-
-To expose a runnable example in CLI Web, executor params should directly correspond to these three fields: `icon` uses `control: "radio"` and preset icon options, and `title` / `content` use normal string inputs. Pass these parameters directly in your own project to verify the details output node's formatting and presentation.
-
 ## Example: Generating a folding block from business input
 
 ```ts
-const debugNode = workflow.createDetailsOutputNode<DebugResult>({
+const debugNode = steamharness.createDetailsOutputNode<DebugResult>({
   name: "output",
   title: "Debug payload",
   icon: "code",
@@ -126,4 +126,4 @@ The example keeps `details.content` as a JSON object and does not stringify it i
 ## Attention
 
 - Do not declare multiple output nodes with the same configuration name in a workflow file; If you want to output multiple folding blocks, you can reuse the same `createDetailsOutputNode` instance multiple times `runNode`, and eventually report will collect each output as an independent item.
-- This node is a normal node and is executed using `workflow.runNode(...)`; `createOutputNode({ stream, format })` is still used when streaming output per chunk is required.
+- This node is a normal node and is executed using `steamharness.runNode(...)`; `createOutputNode({ stream, format })` is still used when streaming output per chunk is required.

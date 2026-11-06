@@ -5,7 +5,7 @@ description: "准备 SteamHarness Server 的本地和生产配置、持久化目
 
 # 部署与发布
 
-SteamHarness Server 可以本地开发，也可以作为自托管服务部署。生产环境应把数据库、运行数据、对象存储和文档静态文件放在明确的持久化目录中。
+部署 Server 前，准备 PostgreSQL、持久数据目录和公开访问地址。项目代码继续在本地宿主执行；Server 保存源码、权限与资源数据。
 
 ## 环境划分
 
@@ -14,19 +14,20 @@ SteamHarness Server 可以本地开发，也可以作为自托管服务部署。
 | 开发环境 | 本地调试 Server | Server 部署变量从 `*.env.example` 复制到本机 `.env`；项目业务值在项目配置面板填写。真实 `.env` 由 Git 忽略。 |
 | 生产环境 | 提供管理端、项目与数据 API | 使用受保护的 CI/CD Variables 或只存在于部署主机的 `.env.production`。 |
 
-首次运行 Server：
+先在开源仓根目录安装依赖，再启动 Server：
 
 ```sh
-pnpm bootstrap
-pnpm dev
+corepack pnpm install --frozen-lockfile
+corepack pnpm -C server dev
 ```
 
-生产构建和启动：
+生产构建和启动也从开源仓根目录执行，先通过宿主配置好下表环境变量：
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build:all
-pnpm start
+corepack pnpm install --frozen-lockfile
+corepack pnpm -C harness build
+corepack pnpm -C server build:all
+corepack pnpm -C server start
 ```
 
 不要提交真实 `.env`、数据库连接串或服务密钥。`*.env.example` 只维护变量结构和占位值。

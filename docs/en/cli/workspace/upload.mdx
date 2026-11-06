@@ -1,16 +1,32 @@
 ---
 title: "workspace upload"
-description: "Upload an aggregate"
+description: "Upload a source archive and wait for static preparation."
 ---
 
-# Upload an aggregate
+<span id="upload-an-aggregate"></span>
+
+# workspace upload
+
+Use `workspace upload` to replace a Server project's source draft. The upload covers every registered entry in the aggregate.
+
+## Command
 
 ```sh
 pnpm exec steamharness workspace upload <project-id> --path .
 ```
 
-One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
+Sign in, confirm project registration and write access, install dependencies, build static entries, and run `steamharness check .` before uploading.
 
-Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
+## Upload options
 
-Use `--file` for an archive and `--no-wait` for asynchronous preparation. Query `preparation <project-id> <job-id>`. Only a statically valid upload replaces the draft. Upload never installs dependencies or executes code.
+| Option | Purpose |
+| --- | --- |
+| `--path` | Pack and upload a source directory |
+| `--file` | Upload an existing archive |
+| `--no-wait` | Return a preparation job; inspect it with `preparation <project-id> <job-id>` |
+
+Server replaces the draft only after static validation succeeds. It installs no dependencies and executes no project code. Continue with [publish](/en/cli/workspace/publish) to create an immutable version.
+
+## Data and credentials
+
+Archives include code, dependency manifests, configuration definitions, and Kanban artifacts, while filtering host credentials and runtime data. Server retains relational bindings; check authorization again after changing accounts or environments. See [pack](/en/cli/workspace/pack) for file rules.

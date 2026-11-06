@@ -5,7 +5,7 @@ description: "Register the skill tool to discover guides and read SKILL.md and r
 
 # createSkillTools
 
-`workflow.createSkillTools()` returns the model-callable `skill` tool, displayed as **List and read skill guides**. The model discovers the project's task guides, reads the selected guide, then reads its reference files as needed. Guide contents enter the context when read.
+Use `steamharness.createSkillTools()` to provide a single `skill` tool for discovering guides, reading `SKILL.md`, and fetching referenced files as needed. Its display name is **List and read skill guides**. Guide content enters model context only after it is read.
 
 The returned array always contains one tool. That entry point can access multiple guides; the actual guide names and count come from `list`.
 
@@ -139,14 +139,14 @@ The offset above is illustrative; use the previous result's actual `nextOffset`.
 
 ```ts
 import path from "node:path";
-import * as workflow from "steamharness";
+const steamharness = globalThis.steamharness;
 
-const approval = workflow.createToolApprovalGate();
+const approval = steamharness.createToolApprovalGate();
 
-const node = workflow.createAgentNode({
+const node = steamharness.createAgentNode({
   provider: "anthropic",
   async createTools(context) {
-    return workflow.createSkillTools({
+    return steamharness.createSkillTools({
       directories: [path.join(import.meta.dirname, "skills")],
       approve: async (toolId, args) => {
         await approval.approve({ name: toolId, arguments: args }, context);
@@ -158,4 +158,4 @@ const node = workflow.createAgentNode({
 
 To use project tool permissions, declare `name: "skill"` in the executor's `tools` with its default enable and auto-approve policies. Enabling this tool allows guide discovery and reads; edits, commands and other actions use their respective tools' permissions.
 
-Host flows such as approval recovery can call `workflow.runSkillAction(directories, args)` to execute the same `list` / `read` action, returning the decoded object shown above. This function performs the file action; the host handles approval before calling it. `createSkillTools()` runs the `approve` hook at the tool-call entry point.
+Host flows such as approval recovery can call `steamharness.runSkillAction(directories, args)` to execute the same `list` / `read` action, returning the decoded object shown above. This function performs the file action; the host handles approval before calling it. `createSkillTools()` runs the `approve` hook at the tool-call entry point.

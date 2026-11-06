@@ -5,7 +5,7 @@ description: "创建一个把 Agent 跑成 workflow 节点的流式节点。"
 
 # createAgentNode
 
-`workflow.createAgentNode()` 返回一个流式节点，用 `runStreamNode` 执行。它把 [createAgent](./create-agent.mdx) 的运行时接到 workflow 上：工具审批走 `context.toolPermissions`，plan 审批走 `context.userInput`，token usage 走 `context.tokenUsage`，输出项用 `createOutputItemChunk` 的同一套协议产出。
+用 `steamharness.createAgentNode()` 将 Agent 接入工作流，再通过 `runStreamNode` 执行。节点使用上下文中的工具审批、用户输入和用量接口，并以标准 `OutputItemStreamChunk` 输出。
 
 需要自己安排前后节点时用它；整个项目都是 agent 时用 [defineBot](./define-bot.mdx) 更省事。
 
@@ -13,13 +13,28 @@ description: "创建一个把 Agent 跑成 workflow 节点的流式节点。"
 
 模型字段声明 `allowThirdParty: false` 时，节点只选择系统模型，同时拒绝显式端点、API Key 或注入模型集合。策略保存在 `ProjectConfigurationSnapshot.agentModelPolicy` 中，恢复运行沿用原快照。
 
-
 `permissionPolicy` 接受三个具体权限及 `inherit`；本轮输入优先于节点默认值，两处都省略时仍为 `workspace`。继承读取当前用户设置，无宿主时回退 `auto`。工具筛选与路径范围共用解析后的值，见[用户设置与权限继承](/core-api/user-settings)。
+
+## 示例
+
+```ts
+const agentNode = steamharness.createAgentNode({ name: "agent", provider: "anthropic", permissionPolicy: "workspace" });
+const result = await steamharness.runStreamNode(agentNode, input, context);
+
+return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
+```
+
+
+### 按授权配置创建会话
+
+`createSession(context)` 在模型与工具授权后创建会话扩展，优先于静态 `session`。可据此按 Ask/Build 配置选择角色和工具。Bot 在 [defineBot](/core-api/define-bot) 中声明 `agent.createSession(context, input)`，由 Core 提供准备后的输入、持久会话和恢复。自定义工具权限写在 `tools` 中。
+
+`createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。
 
 ## 签名
 
 ```ts
-const node = workflow.createAgentNode({
+const node = steamharness.createAgentNode({
   name?: string,
   createSession?: (context: NodeContext) => AgentSessionOptions | Promise<AgentSessionOptions>,
   sessionKey?: string,
@@ -63,10 +78,9 @@ const node = workflow.createAgentNode({
 | --- | --- | --- |
 | `name` | `string` | 节点名，默认 `agent`。 |
 | `outputItemId` | `string` | 正文回答所属输出项的 id。OpenAI / Responses 适配器按 id 查找正文，所以它必须与 `conversation.openai.outputItemId` 相同；不传时 id 按会话派生，适配器无法预先知道。 |
-| `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-bot.mdx)。 |
+| `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-bot.mdx#技能目录与宿主预览)。 |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | 每次运行前组装内置工具之外的工具。用工厂而不是数组，是因为自带工具要闭包住本轮的 `NodeContext`——它的 storage、审批门和用户输入。要启动有生命周期的东西（例如一个 stdio MCP 子进程）就返回 `{ tools, close?() }`，`close` 会在本轮结束时调用（成功失败都会）。 |
 | `sessionKey` | `string` | 同一项目和会话内的存储隔离键。缺省用 `sessionId`，再缺省用 `agent`；多个 agent 节点须使用不同的值。 |
-| `databasePath` | `string` | 显式指定 Durable SQLite 文件；CLI/Studio 默认由宿主管理本地运行存储，无需指定路径。 |
 | `historyLimit` | `number` | 节点执行历史条数上限，默认 50。 |
 
 ## 输出（`AgentOutputPayload`）
@@ -93,7 +107,7 @@ Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按项目、
 - 节点从原 `runId` 派生稳定 `requestId`。恢复或重发同一运行会重建已有输出，不重新执行已提交结果，也不重复追加 Bot 消息或计费用量。
 - 崩溃时结果不明的工具只有声明 `replay: "safe"` 才能自动重做。默认 `never`；内置写文件、编辑和 bash 都不自动重放，错误结果供模型核查后决定下一步。外部副作用仍需业务幂等保障。
 - 存储或投影失败会终止运行，旧 KV transcript 不再读取；无需迁移旧数据。不会回退为无历史运行。
-- 非 Bot 节点、或携带 `hostInput` 的网关运行默认使用 MemoryStorage；显式 `databasePath` 可改变存储选择。网关输入不会写入普通 Bot 历史。
+- 非 Bot 节点、或携带 `hostInput` 的网关运行默认使用 MemoryStorage；显式 `storage` 可提供持久仓储。网关输入不会写入普通 Bot 历史。
 - 手动 `/compact` 或直接替换上下文必须等待 Durable 活动任务结束。自动压缩在每次模型请求前检查，默认达到窗口的 90% 时执行；工具循环中的压缩与 session compact/reset 都使用 Harness 事务与输入边界协调，不能直接覆盖 transcript。
 
 ## 常驻会话宿主
@@ -126,7 +140,9 @@ Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按项目、
 
 自动重试输出使用 `partType: "retry"`，`content.kind` 区分 `dropped`、`recovery`、`length` 和 `lost-call`。CLI Web / Studio 将模型请求重试 `dropped` 显示为中断内容之后、续写内容之前的折叠详情行；其它内部续写静默进行，记录保留在 Trace 和导出中。实时输出、持久会话的 `turns[].items` 和历史恢复保留相同顺序，运行结束不会把该记录再追加到回答末尾。
 
-所有模型请求错误均自动进入最多 10 次兜底重试，不依赖错误文案、HTTP 状态或供应商错误分类；普通流式请求、持久会话、延迟响应和上下文压缩遵循同一规则。每次尝试均保留用量和原始错误原因，使用有上限的指数退避。已有正文和已完成的工具结果继续保留，失败响应中的未完成工具调用不会执行。用户主动停止立即中断请求与退避；宿主配置、权限、存储和回调错误仍直接报告。失败或取消不会推进排队输入，只有当前轮成功后才继续发送队列消息。
+所有模型请求错误均自动进入最多 10 次兜底重试，不依赖错误文案、HTTP 状态或供应商错误分类；普通流式请求、持久会话、延迟响应和上下文压缩遵循同一规则。每次尝试均保留用量和原始错误原因，使用有上限的指数退避。已有正文和已完成的工具结果继续保留，失败响应中的未完成工具调用不会执行。
+
+用户主动停止立即中断请求与退避；宿主配置、权限、存储和回调错误仍直接报告。失败或取消不会推进排队输入，只有当前轮成功后才继续发送队列消息。
 
 模型请求完整成功后重置重试计数；同一回答后续再次失败时从 `Retry 1 / 10` 开始。每段重试保留独立的输出项 ID，编号重新从 1 开始也不会覆盖先前的记录。
 
@@ -140,26 +156,10 @@ Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按项目、
 
 工具审批、问答和 plan 审批通过携带 `request` 的 `user_input_required` 暂停运行。宿主保存已解析答案，并以原 `runId`、参数和请求身份恢复；工具从原持久意图继续执行，问答通过 `askResume` 提交答案，计划决定使用独立且稳定的续跑身份。决定绑定原运行，新的运行不会复用旧批准。
 
-项目内联声明 `conversation.recovery: { enabled: true }` 后，CLI Web 和 Studio 宿主可在 worker 意外退出或重新打开时恢复运行。显式停止须先持久保存取消意图、停止 worker，再调用 `cancelAgentConversation({ agentStoreDir, conversationId })` 清理活动任务，防止重启后复活。该函数从 `steamharness/agent` 导出。
+Bot 通过 `defineBot` 自动启用恢复。worker 中断后，宿主按持久会话恢复。离线停止时先保存取消意图，停止并等待 worker，再调用 `steamharness/agent` 的 `cancelStoredAgentConversation({ persistence, conversationId })`。
 
 活动宿主中的 worker 意外退出最多自动恢复 3 次，包括业务批次与子 Agent。恢复保持原任务、子会话和已提交工具结果；结果未知的副作用仍遵守工具的 replay 策略。宿主自身强退后重新打开含业务任务的会话，仍等待明确输入。恢复期间用户队列暂停，后台子任务或报告完成不能单独推进队列。
 
 主 Agent 可使用 `subagent` 的 `list` / `get` 查询工作状态和失败原因，`wait` 等待完成，`send` 向运行中的子 Agent 追加消息，`retry` 恢复可重试的失败工作，`stop` 停止单项。结束工作不能用 `send` 重启；取消不自动重试，未知写入先核验，重试受角色和项目预算约束。整个执行进程崩溃时，先由宿主恢复执行树，主 Agent 才能继续管理它。
 
 正常错误先输出 `agent-error` 再抛出；暂停和取消直接上抛，不产生错误行。
-
-## 示例
-
-```ts
-const agentNode = workflow.createAgentNode({ name: "agent", provider: "anthropic", permissionPolicy: "workspace" });
-const result = await workflow.runStreamNode(agentNode, input, context);
-
-return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
-```
-
-
-### 按授权配置创建会话
-
-Bot 项目使用 `defineBot`，Core 自动提供持久会话与恢复。通过 `agent.createSession(context, input)` 配置角色、原生工具和 registry。
-
-`createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。

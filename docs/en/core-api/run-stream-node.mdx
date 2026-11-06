@@ -5,12 +5,24 @@ description: "Execute the streaming node, collect chunks, and return the finaliz
 
 # runStreamNode
 
-`workflow.runStreamNode()` executes the streaming node. It iterates through the chunks of the `node.stream(input, context)` output, triggers the chunk hooks one by one, and calls the optional `node.finalize(chunks, context, input)` when it's done.
+Execute a streaming node with `steamharness.runStreamNode()`. It iterates `node.stream(input, context)`, invokes the chunk hook for each value, then calls the optional `node.finalize(chunks, context, input)`.
+
+## Example
+
+```ts
+const result = await steamharness.runStreamNode(streamNode, parsed, context);
+
+return {
+  errCode: 0,
+  errMessage: "",
+  content: result.output ?? "",
+};
+```
 
 ## Signature
 
 ```ts
-workflow.runStreamNode<Input, Chunk, Output>(
+steamharness.runStreamNode<Input, Chunk, Output>(
   node: StreamNodeDefinition<Input, Chunk, Output>,
   input: Input,
   context: NodeContext,
@@ -65,15 +77,3 @@ Core Agent nodes retain only the latest complete `agent-session` snapshot so lon
 | --- | --- | --- |
 |Pre-execution or in-stream interruption|`execution_aborted` or `stream_interrupted`|Interrupts are checked in the streaming traversal.|
 |stream/finalize throw error| `stream_interrupted` |Errors are written to the node execution report.|
-
-## Example
-
-```ts
-const result = await workflow.runStreamNode(streamNode, parsed, context);
-
-return {
-  errCode: 0,
-  errMessage: "",
-  content: result.output ?? "",
-};
-```

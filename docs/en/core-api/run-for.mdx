@@ -5,12 +5,25 @@ description: "Execute the traceable for loop node and let shared runtime UI Diag
 
 # runFor
 
-`workflow.runFor()` is the built-in loop execution node. It first computes an iterable `items` from the current state, then executes the loop body `run` in sequence, returning a new state each time. The runtime will emit start/finish events for `branch-node`, and shared runtime UI Diagram will wrap the loop body node in a loop container with a background color.
+Use `steamharness.runFor()` to process `items` sequentially, carrying each iteration's returned state forward. Runtime emits `branch-node` start and completion events; Diagram groups the body in a loop container.
+
+## Example
+
+```ts
+const finalState = await steamharness.runFor(seed, context, {
+  name: "Round loop",
+  maxIterations: 6,
+  items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
+  async run(state, value, index, loopContext) {
+    return steamharness.runNode(addRoundNode, { ...state, value, index }, loopContext);
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.runFor<State, Item>(
+steamharness.runFor<State, Item>(
   input: State,
   context: RunContext,
   options: {
@@ -54,22 +67,9 @@ workflow.runFor<State, Item>(
 
 `completed` is `false` on failure and retains the number of iterations that have completed.
 
-## Example
-
-```ts
-const finalState = await workflow.runFor(seed, context, {
-  name: "Round loop",
-  maxIterations: 6,
-  items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
-  async run(state, value, index, loopContext) {
-    return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
-  },
-});
-```
-
 ## Diagram
 
-Static structure analysis recognizes `items`, `maxIterations`, and `run` as object literals. `workflow.runNode`, `workflow.runStreamNode`, `workflow.runIf`, `workflow.runFor`, and `workflow.runWhile` in `run` become loop body nodes and are wrapped by the loop container in shared runtime UI Diagram. In order to make Diagram readable, the loop configuration is kept as literal as possible; the dynamic assembly options can still be run, but the static diagram can only show limited information.
+Static structure analysis recognizes `items`, `maxIterations`, and `run` as object literals. `steamharness.runNode`, `steamharness.runStreamNode`, `steamharness.runIf`, `steamharness.runFor`, and `steamharness.runWhile` in `run` become loop body nodes and are wrapped by the loop container in shared runtime UI Diagram. In order to make Diagram readable, the loop configuration is kept as literal as possible; the dynamic assembly options can still be run, but the static diagram can only show limited information.
 
 ## Error
 

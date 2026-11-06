@@ -5,7 +5,7 @@ description: "Prepare local and production configuration, persistent storage, an
 
 # Deployment and release
 
-SteamHarness Server runs locally or as a self-hosted service. Production deployments should put the database, runtime data, object storage, and static documentation in explicit persistent locations.
+Prepare PostgreSQL, persistent data directories, and public addresses before deploying Server. Project code remains on local execution hosts; Server stores source, permissions, and resource data.
 
 ## Environments
 
@@ -17,16 +17,17 @@ SteamHarness Server runs locally or as a self-hosted service. Production deploym
 Start Server for development:
 
 ```sh
-pnpm bootstrap
-pnpm dev
+corepack pnpm install --frozen-lockfile
+corepack pnpm -C server dev
 ```
 
 Build and start a production checkout:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build:all
-pnpm start
+corepack pnpm install --frozen-lockfile
+corepack pnpm -C harness build
+corepack pnpm -C server build:all
+corepack pnpm -C server start
 ```
 
 Never commit real `.env` files, database connection strings, or service keys. `*.env.example` files contain variable names and placeholders only.

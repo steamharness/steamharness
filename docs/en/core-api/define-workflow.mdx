@@ -5,50 +5,7 @@ description: "Define a workflow body, its input and output types, and its main e
 
 # defineProject
 
-Use `workflow.defineProject<Input, Output>()` to define a business workflow. It returns the definition object unchanged; an executor or local CLI runtime performs the actual execution.
-
-## Signature
-
-```ts
-workflow.defineProject<Input, Output>(
-  workflow: Definition<Input, Output>,
-): Definition<Input, Output>
-```
-
-## Parameters
-
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `workflow` | `Definition<Input, Output>` | An executable workflow definition containing its name and main execution function. |
-
-## `Definition` fields
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | `string` | A stable workflow name used by local runtime UI, logs, and structural analysis. |
-| `run` | `(input, context) => Output` | The main execution function. It usually calls `workflow.runNode` or `workflow.runStreamNode`. |
-
-## `run` arguments
-
-| Name | Description |
-| --- | --- |
-| `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; in a Bot project it comes from `executor.createInput(context)`. |
-| `context` | The runtime-provided `RunContext`, including providers, databases, conversation, files, metadata, node hooks, and an abort signal. |
-
-## Return values
-
-| Value | Type | Description |
-| --- | --- | --- |
-| Workflow definition | `Definition<Input, Output>` | The original definition object, for an executor to reference. |
-| `run` result | `Output` | Read by the runtime during execution. Project output payloads must extend `RunPayload`. |
-
-## Execution flow
-
-| Phase | Input | Result |
-| --- | --- | --- |
-| Executor | CLI arguments or form values | `Input` |
-| Workflow `run` | `Input` and `RunContext` | `Output` |
-| Runtime report | `Output` | Standard execution report and final payload |
+Declare a workflow name and `run` function with `steamharness.defineProject<Input, Output>()`. It returns the definition unchanged; an executor or local CLI initiates execution.
 
 ## Example
 
@@ -69,14 +26,57 @@ interface Output extends RunPayload {
   }>;
 }
 
-export const exampleProject = workflow.defineProject<Input, Output>({
+export const exampleProject = steamharness.defineProject<Input, Output>({
   name: "example",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    return workflow.runNode(outputNode, parsed, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    return steamharness.runNode(outputNode, parsed, context);
   },
 });
 ```
+
+## Signature
+
+```ts
+steamharness.defineProject<Input, Output>(
+  workflow: Definition<Input, Output>,
+): Definition<Input, Output>
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `workflow` | `Definition<Input, Output>` | An executable workflow definition containing its name and main execution function. |
+
+## `Definition` fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | A stable workflow name used by local runtime UI, logs, and structural analysis. |
+| `run` | `(input, context) => Output` | The main execution function. It usually calls `steamharness.runNode` or `steamharness.runStreamNode`. |
+
+## `run` arguments
+
+| Name | Description |
+| --- | --- |
+| `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; Core parses and prepares Bot input. |
+| `context` | The runtime-provided `RunContext`, including providers, databases, conversation, files, metadata, node hooks, and an abort signal. |
+
+## Return values
+
+| Value | Type | Description |
+| --- | --- | --- |
+| Workflow definition | `Definition<Input, Output>` | The original definition object, for an executor to reference. |
+| `run` result | `Output` | Read by the runtime during execution. Project output payloads must extend `RunPayload`. |
+
+## Execution flow
+
+| Phase | Input | Result |
+| --- | --- | --- |
+| Executor | CLI arguments or form values | `Input` |
+| Workflow `run` | `Input` and `RunContext` | `Output` |
+| Runtime report | `Output` | Standard execution report and final payload |
 
 ## Notes
 

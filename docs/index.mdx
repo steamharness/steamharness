@@ -1,147 +1,108 @@
 ---
-title: "项目指南"
-description: "从项目类型、主要功能和开发流程了解 SteamHarness。"
+title: "开始使用 SteamHarness"
+description: "创建、运行和管理 Workflow、Bot 与 Kanban 项目。"
 slug: /
 ---
 
-# SteamHarness 指南
+<span id="steamharness-指南"></span>
 
-SteamHarness 是开发、运行和分发 Agent 项目的平台。它由 Core SDK、CLI、Studio 工作站、Server 与 Server Web 管理端组成；项目可以在本地开发，也可以上传到 Server，并发布到 Store。
+# 开始使用 SteamHarness
+
+用 SteamHarness 编写 Agent 项目，在 Studio 或 CLI 中运行，再通过 Server 管理源码、版本和协作权限。
+
+第一次使用，先跟随[快速开始](/guides/quickstart)运行一个 Hello 工作流。已有项目可以直接[在 Studio 中打开](/guides/studio/create-import)。
 
 ## 三种项目类型
 
-| 类型 | 形态 | 适合 | 入口 |
-| --- | --- | --- | --- |
-| Workflow | 类型化的 TypeScript 工作流 | 自动化、多步骤任务、工具编排 | 入口函数 + 节点 / 执行器 |
-| Bot | 对话型 Agent 项目 | 对话助手、Agent 会话 | 会话执行器 |
-| Kanban | 静态 HTML / CSS / JavaScript | 看板、可视化、人机协作 | `index.html` |
+| 你要做什么 | 入口类型 | 从这里开始 |
+| --- | --- | --- |
+| 把输入、模型、工具和条件串成一项任务 | Workflow | [编写工作流](/guides/development/workflow) |
+| 创建能持续接收消息的助手 | Bot | [编写对话项目](/guides/development/conversation) |
+| 展示看板、地图或可交互的数据页面 | Kanban | [编写看板](/guides/development/kanban) |
+
+一个项目可以包含多种入口，共享项目 ID 和版本。运行时选择入口，各入口分别保存配置、草稿和会话状态。
 
 ### Workflow
 
-Workflow 用节点和执行器描述一条可运行的任务链：输入、LLM 调用、工具、条件分支、循环和输出都由 Runtime API 声明。适合把一组需要类型约束和可复用步骤的操作串起来。
-
-- 典型场景：数据处理、内容生成、工具调用、多步骤自动化。
-- 从 [Workflow 模型](/concepts/workflow-model) 和 [Core API](/core-api/overview) 开始。
+用 TypeScript 声明输入、节点和执行顺序，适合数据处理、内容生成和多步骤自动化。需要分支或循环时，使用 [Workflow 模型](/concepts/workflow-model)中的控制结构。
 
 ### Bot
 
-Bot 是面向对话的 Agent 项目，围绕会话轮次、工具调用和会话数据组织执行。它复用同一套 Core Runtime，但入口以消息和会话为单位。
-
-- 典型场景：对话助手、客服/运营助手、需要持续上下文的 Agent。
-- 从 [数据库与会话](/concepts/database-and-conversation) 和 [Core API](/core-api/overview) 开始。
+围绕消息和轮次组织任务，适合持续对话的助手。它使用同一套运行时，通过会话执行器接收输入；历史管理见[数据库与会话](/concepts/database-and-conversation)。
 
 ### Kanban
 
-Kanban 是由 HTML、CSS、JavaScript、图片和字体组成的静态项目，以 `index.html` 为入口，不执行 Runtime API，也不需要执行器。页面可以通过受限 Bridge 访问绑定的关系模型与已授权知识库。
-
-- 典型场景：看板、地图、仪表盘、需要嵌入对话或项目详情页的可视化界面。
-- 从 [Kanban HTML 项目](/concepts/kanban) 开始。
+用 HTML、CSS 和 JavaScript 编写页面，以 `index.html` 为入口。需要读取项目数据时，通过受限 Bridge 访问已绑定、已授权的关系库或知识库。
 
 ## 项目在哪里运行
 
-SteamHarness 把“执行”和“管理”分开：
+| 入口 | 用途 |
+| --- | --- |
+| Studio | 编辑源码、运行本地项目、查看结果和执行轨迹 |
+| 本地 CLI | 在终端运行、检查结构、输出 JSON 或提供 MCP 工具 |
+| Server | 保存源码、版本、成员、数据库、知识库和文件 |
+| Server Web 管理端 | 在浏览器中管理 Server 上的项目与资源 |
+| Store | 浏览、下载和发布项目版本 |
 
-| 位置 | 执行项目代码 | 作用 |
-| --- | --- | --- |
-| Studio / 本地 CLI | 是 | 本地运行、调试、查看执行轨迹 |
-| Server | 否 | 保存源码、版本、成员、数据库、知识库和项目文件 |
-| Server Web 管理端 | 否 | 在浏览器中管理项目、成员和数据 |
-| Store | 否 | 浏览、下载和发布版本归档 |
-
-Server 不安装项目依赖、不构建、也不加载上传的项目代码。Kanban 的预览是绑定项目、用户和版本的静态 iframe，不继承账号凭据，也不等于在 Server 上执行项目。
+项目代码在 Studio 或本地 CLI 所在的机器执行。Server 接收源码归档，不替项目安装依赖或运行代码。Kanban 的服务器预览是受权限约束的静态页面。
 
 ## 主要功能
 
-| 能力 | 说明 | 入口 |
-| --- | --- | --- |
-| Studio 工作站 | 基于 VS Code OSS，打开和运行本地项目、查看执行轨迹、管理版本与账号 | [使用 Studio](/guides/studio/overview) |
-| 本地 CLI | 检查项目结构、运行项目、打开 Web 工作区 | [本地 CLI](/cli/steamharness) |
-| Server 与 Server Web | 管理项目源码、版本、成员、知识库、关系数据库和账号 | [Server Web 管理端](/guides/server/overview) |
-| Workspace CLI | 登录 Server、上传下载源码、发布和切换版本 | [Workspace CLI](/cli/server-workspace) |
-| Store | 浏览、下载和发布项目版本 | [Store 概览](https://docs.steamharness.yuhe.space/enhanced/store/overview) |
-| 系统 AI（增强版） | 共享模型、个人默认模型、供应方偏好、用量与订单 | [系统 AI 指南](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison) |
-| 内置项目 | 开发者小助手、Codex、Bot、OpenCode、Pi 等开箱即用的项目 | [发布日志](/guides/releases/overview) |
+| 当前任务 | 阅读入口 |
+| --- | --- |
+| 熟悉工作台、运行项目 | [Studio 指南](/guides/studio/overview) |
+| 用命令操作项目 | [CLI 总览](/cli/overview) |
+| 编写节点和 Agent | [Core API](/core-api/overview) |
+| 管理项目、成员和数据 | [Server Web](/guides/server/overview) |
+| 打包、上传和发布版本 | [Workspace CLI](/cli/server-workspace) |
+| 部署自己的服务 | [部署 Server](/guides/server/deployment) |
+| 使用系统 AI 或 Store | [增强功能](https://docs.steamharness.yuhe.space/enhanced/) |
 
 ## 项目数据与配置
 
-入口通过 `databases` 声明关系库别名，在 `steamharness.database.ts` 与 `steamharness.schema` 定义业务模型，生成描述符后使用 `context.databases.connect(descriptor)`。Server 按账号、项目、入口、alias 管理绑定。知识库独立声明 `knowledgeBases` 并配置 ID。平台历史使用按账号与项目隔离的共享 PostgreSQL 表。
+业务关系库、知识库和运行历史分别管理。关系库使用 `databases` 声明别名，由 Server 按账号、项目和入口维护绑定；知识库使用 `knowledgeBases` 声明。
 
-配置、快照、会话与草稿按 `projectId + entryId` 管理。配置修改从下一次运行生效。详见 [数据存储](/concepts/data-storage)、[项目配置](/concepts/project-configuration) 和 [数据库与会话](/concepts/database-and-conversation)。
+配置与会话按 `projectId + entryId` 隔离，修改配置从下一次运行生效。继续阅读[项目配置](/concepts/project-configuration)和[数据存储](/concepts/data-storage)。
 
 ## 账号、权限与协作
 
-Server 使用账号和固定的项目角色管理权限：
-
-| 角色 | 能做什么 |
+| 角色 | 主要能力 |
 | --- | --- |
-| `guest` | 查看项目、已发布版本、数据库、知识库、文件和预览；下载已发布源码并本地运行 |
-| `developer` | 编辑草稿、上传和发布版本，修改已授权的知识库和项目文件 |
-| `maintainer` | 管理项目信息、公开状态、官方配置，以及访客和开发者 |
-| `owner` | 分配全部角色、管理所有者、删除项目和转移归属 |
+| `guest` | 查看和下载已发布项目，在本地运行 |
+| `developer` | 编辑草稿、上传、发布，以及修改获授权的数据 |
+| `maintainer` | 管理项目信息、官方配置及访客、开发者 |
+| `owner` | 管理所有角色、项目归属和删除操作 |
 
-项目可以放在组里，组支持多级子组，有效角色取项目直接角色和各级组角色的最高值。公开项目向所有登录用户提供访客权限；私有项目可以通过已发布版本的分享链接申请访问。详见[项目管理](/guides/server/project-management)。
+组支持多级子组，有效角色取项目直接角色和组继承角色的最高值。项目访问权与数据资源授权分别检查，详见[项目管理](/guides/server/project-management)。
 
 ## AI 能力
 
-开源版的项目自己管理模型：在项目中声明 LLM Provider 和 API Key，节点运行时读取配置；Server 不保存或代理第三方模型凭据。详见 [LLM Provider](/concepts/llm-provider)。
+开源版可在 Studio 中添加自定义模型，也可在项目中配置 LLM Provider。接入方式见[模型设置](/guides/studio/models)和 [LLM Provider](/concepts/llm-provider)。
 
-增强版在此基础上提供系统 AI：平台统一维护模型目录、凭据和计费，用户可以选择默认模型、供应方偏好、订阅/余额，并查看用量与订单；Studio 小助手登录项目后直接使用系统 AI。详见[增强版比开源版多了什么：系统 AI 配置](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison)。
+增强版提供账号可用的系统模型、供应方偏好、订阅和用量，见[系统 AI 指南](https://docs.steamharness.yuhe.space/enhanced/ai/overview)。
 
 ## 开发流程
 
-1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Bot 或 Kanban 类型和模板；也可以手动创建目录。
-根 `steamharness.json.id` 是聚合唯一身份，`steamharness.json.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
-3. **编写入口**：Workflow / Bot 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
-4. **本地运行**：在 Studio 中打开项目并点击运行，或在终端执行 `steamharness structure .`、`steamharness run .`、`steamharness web .`。
-5. **上传到 Server**：使用 Workspace CLI 登录、打包源码并发布版本，然后在 Server Web 管理端管理项目、成员和数据。
-6. **发布到 Store**（可选）：从 Server 上已有的版本创建 Store 条目，提交审核并上架。
+1. [创建项目](/guides/studio/create-import)，选择模板并等待依赖安装完成。
+2. 编写入口，检查根 `steamharness.json` 中的 `entries` 和 `defaultEntry`。
+3. [本地运行](/guides/studio/run-debug)，核对结果与执行轨迹。
+4. [上传并发布版本](/guides/studio/versions)，再按需要设置成员权限。
+5. 需要公开分发时，[发布到 Store](https://docs.steamharness.yuhe.space/enhanced/store/publishing)。
 
 ## 项目结构
 
-一个最小的 Workflow / Bot 项目通常包含：
+根 `steamharness.json` 记录项目身份、版本和入口列表。Workflow、Bot 入口指向执行器源码，Kanban 入口指向构建后的 HTML。普通依赖由 `package.json` 和锁文件管理。
 
-```text
-my-project/
-├── steamharness.json  # 项目身份与入口声明
-├── package.json       # npm 依赖与脚本
-├── index.ts       # 入口与执行器
-└── ...
-```
-
-Kanban 项目只需要：
-
-```text
-my-board/
-├── steamharness.json
-├── package.json
-└── index.html
-```
-
-根 `steamharness.json.id` 是聚合唯一身份，`steamharness.json.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
+具体声明见[Workflow 模型](/concepts/workflow-model)。迁移旧项目时，先阅读 [Core 0.2 迁移指南](/guides/migrate-core-0-2)。
 
 ## 内置项目
 
-Studio 自带一组可以直接打开或创建的项目：
-
-| 项目 | 作用 |
-| --- | --- |
-| 开发者小助手（Project Assistant） | 在 Studio 中协助理解项目、生成代码和执行开发任务 |
-| Studio 控制（Studio Control） | 为 Agent 提供受控的 Studio 操作能力 |
-| Studio 分析（Studio Analysis） | 汇总本地项目与运行状态 |
-| Codex / Bot / OpenCode / Pi | 开箱即用的 Agent / 对话项目 |
-
-内置项目同样遵循项目类型、版本和权限规则。各项目的版本记录见[发布日志](/guides/releases/overview)。
+开发者小助手用于代码和开发任务，Studio Control 提供受权限控制的编辑器操作，Studio Analysis 汇总本地运行。Codex、Bot、OpenCode 和 Pi 等内置项目的版本记录见[发布日志](/guides/releases/overview)。
 
 ## 版本、测试与部署
 
-- **版本**：Core、CLI、Server、Server Web 和内置项目各自发版；项目在 `devDependencies` 中固定 Core 与 CLI 版本。兼容性与历史见[发布日志](/guides/releases/overview)和[版本兼容性](/guides/releases/compatibility)。
-- **迁移**：从 Core 0.1 升级到 0.2 见[迁移指南](/guides/migrate-core-0-2)。
-- **测试**：`steamharness structure .` 检查项目结构；项目自己的测试和仓库门禁见[自动化测试](/guides/testing)。
-- **部署**：Server、Server Web 和 Store 的部署见[部署与发布](/guides/server/deployment)。
+项目应固定兼容的 Core 与 CLI 依赖版本。升级前检查[版本兼容性](/guides/releases/compatibility)，开发过程中运行[项目测试与结构检查](/guides/testing)。服务部署步骤见[部署 Server](/guides/server/deployment)。
 
 ## 选择你的下一步
 
-- 第一次使用：从[使用 Studio](/guides/studio/overview)开始。
-- 编写业务逻辑：看 [Core API](/core-api/overview) 和 [Workflow 模型](/concepts/workflow-model)。
-- 管理服务器项目：看 [Workspace CLI](/cli/server-workspace) 和 [Server Web 管理端](/guides/server/overview)。
-- 使用系统 AI 或发布到 Store：看[增强版功能](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison)。
+运行第一个项目，从[快速开始](/guides/quickstart)进入；编写业务逻辑，阅读[开发工作流](/guides/development/workflow)；管理已有项目，打开 [Server Web 指南](/guides/server/overview)。

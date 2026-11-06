@@ -1,0 +1,46 @@
+---
+title: "CLI 数据与运行历史"
+description: "生成模型，管理资源绑定，并区分业务数据与本地历史。"
+---
+
+# CLI 数据与运行历史
+
+生成模型，管理资源绑定，并区分业务数据与本地历史。
+
+
+## 数据库模型与生成
+
+`steamharness database`（简写 `steamharness db`）提供 `init`、`validate`、`generate`，可带项目目录，默认当前目录。项目在 `steamharness.database.ts` 声明多个别名，在 `steamharness.schema` 定义模型；生成无需数据库连接。`workspace pack` 自动为聚合根与注册入口生成并携带 Node/Browser 产物，上传与下载检查静态清单和哈希。
+
+```sh
+pnpm exec steamharness database init .
+pnpm exec steamharness db validate .
+pnpm exec steamharness database generate .
+pnpm exec steamharness database generate . --entry billing
+```
+
+所有生成命令的目录参数均为聚合项目根。`validate`、`generate` 不带 `--entry` 时处理根与所有已声明入口的数据库定义，并按源码根去重；`--entry <id>` 只处理该入口的源码根。`init --entry <id>` 在该源码根创建定义，无需先构建入口。生成和校验的 JSON 返回 `outputs` 数组，每项包含 `sourceRoot`、`databases`；生成还包含 `directory` 和 `cached`。根定义输出到 `dist/steamharness/generated/database/`，子定义输出到 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`。 Kanban 构建与生成代码按源码根归到同一父目录：根入口默认使用 `dist/steamharness/build/<entryId>/index.html`，子入口使用 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`。显式 `dist` 入口也必须位于自己的构建目录，构建器仅清理该目录。
+
+资源与迁移管理还提供 `create / list / inspect / retry / grant / revoke`、`migrate dev / deploy / status`。`migrate dev --draft` 保存可审阅的 SQL、模型快照与校验清单，`deploy` 只应用已有历史；`--database` 指定资源 UUID，`--alias` 指定模型别名（默认 main）。管理命令需要目标 Server 的账号登录，可用 `--server` 和 `--token` 覆盖。详见 [SteamHarness Database](/core-api/database)。关系库使用 `bind [directory] --database <id> [--entry <id>] [--alias main] [--mode read|write]` 绑定入口，`bindings [directory] [--entry <id>]` 查询宿主绑定，`unbind [directory] [--entry <id>] [--alias main]` 解除。绑定按账号、项目、入口和别名保存于 Server，不写回项目文件，也不授予资源权限。Node 入口通过 `context.databases.connect(descriptor)` 查询；Browser 通过 `window.steamHarnessKanban.databases.connect(descriptor)` 使用表级 `rows/insert/update/delete`。旧 KV API 已移除。
+
+Studio 与 CLI Web 的资源启动检查区分网络、登录、权限和绑定问题。Server 暂时不可达时，每 5 秒自动重新检查；恢复连接后清除临时提示。重新检查只读取当前授权与绑定，不重新提交业务操作。
+
+初次检查和正常结果保持静默。自动重试或同账号复查期间保留上次检查结果和页面内容，检查完成后再更新提示；切换账号或 Server 时会清理旧结果并重新校验。失败提示提供 HTTP 状态（如有）、处理步骤和“连接详情”中的服务器、项目 ID 与入口。
+
+通过“账号 / 服务器设置”核对登录，通过“项目信息 → 数据库”检查资源引用，或直接“打开云端项目”核对登记与权限。Server 返回 5xx 时应检查服务器日志及已登记入口；只有需要新建应用时才使用“创建项目”，该操作会申请新 ID，不会迁移原项目的数据与权限。
+
+配置附件上传期间，后台账号校验不会中断上传；实际切换账号或失去登录后，宿主会拒绝旧账号的上传结果，需在当前账号下重新选择文件。
+
+持久 Agent 的命令确认与快照传输分别处理。确认超时或临时连接错误会自动按原请求 ID 重试，最多 3 次；恢复后继续原输入，迟到回执也会核对同一请求。项目连接恢复后，可恢复的运行沿用原 runId 自动继续。主动停止会取消待确认命令的重试；持续失败保留原因及原请求供显式重试。
+
+## 平台运行历史
+
+Bot、Workflow 与助手历史默认持久化到宿主本地 SQLite，包括消息、Run、队列、草稿、参数、用量和 Agent 检查点；重开可恢复，无需为历史存储登录或连接 Server。回复按流式事件展示，历史合并保存，不等待云端上传。系统 AI 和业务资源仍分别校验授权。跨窗口由本地文件锁互斥，进程退出后自动释放。云端存储须显式选择，也可通过 `copyRuntimePersistence` 在会话空闲时后台备份到空目标；已有云端和旧本地记录保留，不自动迁移或覆盖。附件和工作区文件另行备份。详见[运行存储](/core-api/runtime-storage)。
+
+## 知识库与表数据管理
+
+`steamharness knowledge` 提供 `create / list / grants / grant / revoke / bind / unbind / bindings / operation`。绑定使用 `--knowledge-base <UUID>`、`--alias <alias>`、`--entry <entry>`，缺省 alias 为 main。`list --page 2 --page-size 20 --search Docs` 在服务端分页和过滤。`operation <UUID> knowledge.listDocuments < input.json` 接受 JSON 标准输入，操作请求不自动重放；附件正文传输上限 50 MiB。
+
+`steamharness database data <UUID> < request.json` 管理已应用模型的表数据，operation 为 `models / rows / insert / update / delete`。先读取 models 的 schemaHash，后续请求传该值；更新和删除还需要当前 rowVersion 和完整稳定 key。请求输入上限 4 MiB。BigInt、Decimal 使用十进制字符串，DateTime 使用带时区的 ISO 并按 UTC 读写，Bytes 使用 Base64；枚举使用声明值，未提供且无默认值的列表写为空数组。`database list` 也支持上述分页参数。详见 [知识库 API](/core-api/knowledge-documents) 与 [数据库 API](/core-api/database)。
+
+Kanban 可通过聚合宿主调用已登记 Workflow 和订阅原生 Bot，详见 [Kanban](/concepts/kanban) 与 [入口会话控制](/concepts/database-and-conversation#本地-bot-入口控制)。宿主复用各入口原生控制器、执行 owner 与队列；Studio 的同一聚合项目共享此宿主。

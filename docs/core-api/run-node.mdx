@@ -5,12 +5,20 @@ description: "执行普通节点，传入输入和上下文，并触发节点执
 
 # runNode
 
-`workflow.runNode()` 执行普通节点。它负责中断检查、节点开始/结束 hook、执行信息记录和错误包装。
+用 `steamharness.runNode()` 执行普通节点，并取得节点的返回值。它在执行前检查中断，调用开始和结束 hooks，记录执行信息，并包装节点错误。
+
+## 示例
+
+```ts
+const parsed = await steamharness.runNode(inputNode, input, context);
+const answer = await steamharness.runNode(llmNode, parsed, context);
+const output = await steamharness.runNode(outputNode, answer, context);
+```
 
 ## 签名
 
 ```ts
-workflow.runNode<Input, Output>(
+steamharness.runNode<Input, Output>(
   node: NodeDefinition<Input, Output>,
   input: Input,
   context: NodeContext,
@@ -56,14 +64,6 @@ workflow.runNode<Input, Output>(
 | --- | --- | --- |
 | 执行前或执行中中断 | `execution_aborted` | 来自 `context.abortSignal`。 |
 | 节点抛错 | `node_execution` | 未知错误会包装为 `HarnessError`；已有 `HarnessError` 会保留并补充上下文。 |
-
-## 示例
-
-```ts
-const parsed = await workflow.runNode(inputNode, input, context);
-const answer = await workflow.runNode(llmNode, parsed, context);
-const output = await workflow.runNode(outputNode, answer, context);
-```
 
 ## 与 `runStreamNode` 的区别
 

@@ -1,25 +1,37 @@
 ---
-title: "Runtime platform"
-description: "识别本地执行宿主。"
+title: "识别运行平台"
+description: "区分 CLI 与 Studio 宿主，并独立选择存储。"
 ---
 
-# Runtime platform
+<span id="runtime-platform"></span>
+
+# 识别运行平台
+
+运行平台表示代码实际执行的位置。终端和 CLI Web 使用 `cli`，Studio 使用 `desktop`。
+
+## 示例与签名
 
 ```ts
-workflow.getRuntimePlatform(): "cli" | "desktop"
-workflow.isCli(): boolean
-workflow.isDesktop(): boolean
+const platform = steamharness.getRuntimePlatform();
+const local = steamharness.isCli();
 ```
-
-平台表示代码实际执行的宿主。终端与 CLI Web 使用 `cli`；没有宿主标记时默认 `cli`。非空未知标记会抛错。Server 不执行项目，因此没有服务器执行标记或 `isWeb()`。
 
 ```ts
-const platform = workflow.getRuntimePlatform();
-const local = workflow.isCli();
+steamharness.getRuntimePlatform(): "cli" | "desktop"
+steamharness.isCli(): boolean
+steamharness.isDesktop(): boolean
 ```
 
-运行平台不决定存储后端。导入生成的数据库描述符并调用 `context.databases.connect(descriptor)`，Server 根据账号和入口绑定选择独立授权的 PostgreSQL 资源。知识库使用 `context.knowledgeBases.get(alias)`。本地开发可在同一台机器运行 Server 与 Docker PostgreSQL。
+没有宿主标记时默认 `cli`，非空的未知标记会抛错。Server 不执行项目代码，因此没有 Server 执行标记或 `isWeb()`。
+
+## 存储与平台分别配置
+
+业务关系库通过生成的描述符和 `context.databases.connect(descriptor)` 访问，Server 按账号与入口绑定选择获授权 PostgreSQL 资源。知识库使用 `context.knowledgeBases.get(alias)`。
+
+本地开发可以在同一台机器运行 Server 与 Docker PostgreSQL。运行历史的位置由[运行存储](/core-api/runtime-storage)决定，不能仅根据平台名称推断。
 
 ## 宿主资源管理
 
-Studio 和 CLI Web 列出 Server 资源，打开经过鉴权的 Server Web 页面管理模型、数据表、附件及账号权限；链接不含账号 token。宿主持有 SQL 凭据、连接与绑定身份，项目 RPC 和 Browser 页面只接收授权的模型操作。不提供本地数据库目录或 KV 管理上下文。
+Studio 和 CLI Web 通过经过鉴权的 Server Web 页面管理模型、数据、附件与账号权限，链接不含账号 token。
+
+SQL 凭据、连接和绑定身份留在宿主；项目 RPC 与 Browser 页面只获得被允许的模型操作。此接口不提供本地数据库目录或 KV 管理上下文。

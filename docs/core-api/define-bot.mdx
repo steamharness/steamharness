@@ -3,7 +3,7 @@ title: "defineBot"
 description: "声明固定使用 Core Agent 的 Bot 项目。"
 ---
 
-Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 Conversation 项目类型与工厂已删除。
+Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 `conversation` 项目类型与工厂已删除。
 
 `agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 
@@ -25,3 +25,15 @@ export default executor;
 `agent` 默认使用宿主用户模型设置；独立 CLI Web 使用项目模型配置。显式 `modelSource: "project"` 只使用项目模型。工具声明继续经过宿主权限与审批。项目 UUID 和入口 ID 仍由 `steamharness.json` 注册，入口 `type` 必须为 `bot`。
 
 工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
+
+## 技能目录与宿主预览
+
+在 `agent.skills.directories` 中列出技能目录。相对路径按当前入口根目录解析；多个目录包含同名技能时，采用第一个。
+
+Core 自动提供 `skill` 工具，项目可通过 `tools` 调整其权限。宿主预览只读取配置声明，不执行输入钩子或工具工厂。
+
+```ts
+export const executor = steamharness.defineBot({
+  agent: { skills: { directories: ["skills"] } },
+});
+```

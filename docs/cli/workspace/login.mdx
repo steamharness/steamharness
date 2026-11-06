@@ -5,8 +5,7 @@ description: "通过 browser device flow 登录 SteamHarness Server，并保存 
 
 # workspace login
 
-`workspace login` 会向 SteamHarness Server 发起 device flow 登录请求，打开浏览器授权页，等待用户在 Web 端批准后把 CLI 专用 API Key 写入本地 `workflow-auth.json`。无需手工输入 token。
-
+用 `workspace login` 在浏览器中授权 CLI 连接 Server。批准设备登录后，CLI 把专用 API Key、服务器地址和账号信息写入本机 `workflow-auth.json`，无需复制 token。
 
 ## 命令格式
 

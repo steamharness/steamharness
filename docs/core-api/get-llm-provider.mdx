@@ -5,14 +5,26 @@ description: "从 NodeContext 和 provider source 中解析节点实际使用的
 
 # getLLMProvider
 
-`workflow.getLLMProvider()` 是 provider 解析工具。LLM 节点执行时会调用它，业务代码也可以在自定义节点或高级场景中直接使用。
+用 `steamharness.getLLMProvider()` 从节点上下文和 Provider 来源解析实际连接。内置 LLM 节点自动使用它，自定义节点也可以调用它并复用用量统计。
 
 当 executor 配置 `tokenUsage.enabled` 时，通过 `getLLMProvider()` 解析出的 provider 会在 `chat()` 返回或 stream `finish` chunk 携带 usage 时自动上报 token 用量。直接在自定义节点中调用 provider 的 workspace 示例也会走同一条统计链路；没有 usage 的 provider 不会写入统计。上报会读取常见 provider usage 字段，包括 cache read / cache write 或 cache creation token 明细。
+
+## 示例
+
+```ts
+const provider = steamharness.getLLMProvider(
+  context,
+  "answer",
+  steamharness.createLLMProviderRef("default"),
+);
+
+const output = await provider.chat({ prompt: input.message });
+```
 
 ## 签名
 
 ```ts
-workflow.getLLMProvider(
+steamharness.getLLMProvider(
   context: NodeContext,
   nodeName: string,
   source?: LLMProviderSource,
@@ -69,15 +81,3 @@ workflow.getLLMProvider(
 | --- | --- | --- |
 | 绑定的 provider/model 找不到 | `provider_call` | 报错会包含 providerId、modelId 和 nodeName。 |
 | 所有来源都解析失败 | `provider_call` | 当前节点需要 LLM provider，但上下文中没有可用 provider。 |
-
-## 示例
-
-```ts
-const provider = workflow.getLLMProvider(
-  context,
-  "answer",
-  workflow.createLLMProviderRef("default"),
-);
-
-const output = await provider.chat({ prompt: input.message });
-```

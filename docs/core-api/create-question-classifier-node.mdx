@@ -5,12 +5,28 @@ description: "创建问题分类节点，使用 LLM 在固定分类中返回一�
 
 # createQuestionClassifierNode
 
-`workflow.createQuestionClassifierNode()` 创建一个输入为 `string` 的分类节点。它会把问题、分类列表和说明拼成 LLM prompt，并要求模型只返回分类名；如果返回值不在允许分类中，节点输出空字符串。
+用 `steamharness.createQuestionClassifierNode()` 把问题分到预先声明的类别。输入是字符串，节点把问题、分类及说明发送给模型；模型返回的名称不在允许列表中时，输出空字符串。
+
+## 示例
+
+```ts
+const classifier = steamharness.createQuestionClassifierNode({
+  name: "route-question",
+  provider: steamharness.createLLMProviderRef("default"),
+  userDescription: "判断用户是在问技术问题还是闲聊。",
+  categories: [
+    { name: "technical", description: "代码、API、部署或错误排查。" },
+    { name: "chat", description: "普通对话或非技术问题。" },
+  ] as const,
+});
+
+const category = await steamharness.runNode(classifier, input.message, context);
+```
 
 ## 签名
 
 ```ts
-workflow.createQuestionClassifierNode<
+steamharness.createQuestionClassifierNode<
   const Categories extends readonly QuestionClassifierCategory[],
 >(
   options: QuestionClassifierNodeOptions<Categories>,
@@ -58,22 +74,6 @@ workflow.createQuestionClassifierNode<
 | `userDescription` | options | 业务分类说明。 |
 | `categories` | options | 按序号列出允许分类和说明。 |
 | `question` | 节点输入 | 用户问题。 |
-
-## 示例
-
-```ts
-const classifier = workflow.createQuestionClassifierNode({
-  name: "route-question",
-  provider: workflow.createLLMProviderRef("default"),
-  userDescription: "判断用户是在问技术问题还是闲聊。",
-  categories: [
-    { name: "technical", description: "代码、API、部署或错误排查。" },
-    { name: "chat", description: "普通对话或非技术问题。" },
-  ] as const,
-});
-
-const category = await workflow.runNode(classifier, input.message, context);
-```
 
 ## 错误
 

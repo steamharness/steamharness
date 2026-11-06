@@ -5,14 +5,33 @@ description: "启动并连接一个 stdio MCP 服务，拿到它暴露的工具�
 
 # connectMcpServer
 
-`workflow.connectMcpServer()` 启动一个 stdio 子进程形式的 MCP 服务，完成握手并列出它暴露的工具。返回的连接交给 [createMcpTools](./create-mcp-tools.mdx) 就能变成 agent 可以调用的工具。
+用 `steamharness.connectMcpServer()` 启动 stdio MCP 子进程，完成握手并读取工具目录。将连接交给 [createMcpTools](./create-mcp-tools.mdx)，即可向 Agent 提供这些工具。
 
 宿主一般用它把已有的能力交给项目，例如桌面端的控制接口：项目不必知道这些工具是怎么实现的，宿主也不必把实现暴露成 Core 的 API。
+
+## 示例
+
+```ts
+const connection = await steamharness.connectMcpServer(
+  {
+    id: "project-tools",
+    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
+  },
+  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
+);
+
+try {
+  return await steamharness.createMcpTools({ connection });
+} finally {
+  await connection.close();
+}
+```
 
 ## 签名
 
 ```ts
-const connection = await workflow.connectMcpServer(
+const connection = await steamharness.connectMcpServer(
   {
     id: string,
     command: string[],
@@ -62,27 +81,8 @@ const connection = await workflow.connectMcpServer(
 
 服务定义在启动任何子进程之前校验：命令必须是绝对路径、`id` 必须合法且不重复、`timeout` 必须落在范围内、环境变量名必须是合法标识符。一次连接最多 8 个服务，每个服务最多 256 个工具。
 
-需要在启动之前单独校验时用 `workflow.normalizeMcpServers(servers, options?)`，它返回规范化后的定义数组，参数与上面的选项一致。
+需要在启动之前单独校验时用 `steamharness.normalizeMcpServers(servers, options?)`，它返回规范化后的定义数组，参数与上面的选项一致。
 
 ## 生命周期
 
 连接是每轮一次的：运行开始前建立，本轮结束（包括出错）后关闭。`connectMcpServer` 内部用动态 `import()` 加载 MCP SDK，因此不使用 MCP 的运行时不解析也不加载它。
-
-## 示例
-
-```ts
-const connection = await workflow.connectMcpServer(
-  {
-    id: "project-tools",
-    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
-    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
-  },
-  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
-);
-
-try {
-  return await workflow.createMcpTools({ connection });
-} finally {
-  await connection.close();
-}
-```

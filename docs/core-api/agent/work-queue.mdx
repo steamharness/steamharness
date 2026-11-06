@@ -1,0 +1,74 @@
+---
+title: "命名 Agent 与工作队列"
+description: "声明角色、控制并发、报告进度，并恢复失败工作。"
+---
+
+# 命名 Agent 与工作队列
+
+声明角色、控制并发、报告进度，并恢复失败工作。
+
+先用 [createAgent](/core-api/create-agent) 创建运行时，再按下列规则配置相关选项。
+
+## 命名多 Agent 与持久工作队列
+
+在 `session.subagents.definitions` 中由项目代码声明角色；同一父会话下的工作项使用独立子会话，通过 Pi Durable 的任务检查点和 FIFO 队列共享并发槽位。单个 Agent 内的工具继续按原顺序执行。队列每次重新检查槽位时会释放上一轮未命中的任务等待，避免长批次积累订阅。
+
+```ts
+const session = {
+  subagents: {
+    tools: ["read", "grep", "write"],
+    maxAgents: 4,
+    definitions: [
+      { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
+        tools: ["read", "grep"], maxConcurrency: 3 },
+      { id: "writer", description: "Verify and save one draft", systemPrompt: "Save the assigned draft and verify the result.",
+        tools: ["read", "write"], maxConcurrency: 1 },
+    ],
+  },
+};
+```
+
+`maxAgents: null` 不设总并发上限；角色的 `maxConcurrency: null` 不设该角色上限，省略时沿用会话上限。其他项目仍可设置正整数上限并使用持久 FIFO 等待队列。并发数量与工作重试预算独立，写入一致性由项目事务、锁和幂等回执维护。
+
+`AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
+
+项目可设置 `subagents.retry: { maxAttempts: 3, delayMs: 1000 }`，或在角色定义中设置 `retry` 覆盖默认策略。`maxAttempts` 为包含首次在内的总尝试数（1–10），省略策略时不自动重试工作；`delayMs` 为首次退避时间（0–60000 毫秒），之后指数增长且不超过 60 秒。这是整个子工作的重试预算，与模型请求层的重试分别计数。重试在原任务、原子会话中继续，保留已提交的文字、工具结果和业务检查点，使用稳定的逐次请求 ID；
+
+Tasks 的 `attempt` 更新，最终结果只回传一次。达到上限后停止并报告原因，`retry` 管理命令不能绕过配置上限。重开宿主不重置次数；明确恢复时按保存检查点继续，当前项目收紧的上限仍生效，主动取消不重试。
+
+需要业务完成回执的角色设置 `requireProgress: true`，或仅在项目调用 `enqueueAgentWork(s)` 时给工作项设置该字段。只有 `AgentWorkProgressDoc.total > 0`、`completed >= total` 且 `error` 为空才成功，纯文本“已完成”不算完成。工具可写入 `retryable: false` 阻止自动重试，例如付费请求或正文写入结果未知、索引需修复；核对完成后再清除错误并设置 `retryable: true`。明确证明请求未发出的工具故障（如素材下载 HTTP 403）可用 `retryable: true` 允许下一次工作修复输入；权限拒绝、无效凭据、费用不足、取消和结果未知仍阻止自动重试。自动重试期间等待原任务，耗尽后不创建新 workId 或批次规避限制。
+
+项目可在 `configuration.json` 声明单选模型字段：
+
+```json
+{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "label": "子 Agent 模型", "defaultValue": "" }
+```
+
+在上述 `subagents` 中设置 `modelConfiguration: "SUBAGENT_MODEL"`。配置面板复用 `STEAMHARNESS_AGENT_MODELS`，提供“跟随主模型”（空字符串）或一个模型条目 ID。指定模型统一用于新建的命名与匿名子任务，优先于角色模型；主模型不变。空值恢复代码中的角色默认值，未定义角色模型时跟随主模型。修改配置从下一次执行创建的子任务开始生效；恢复沿用原快照。即使主模型来自 Studio 设置，也保留项目模型列表供子模型使用。无效、删除或未授权的模型明确报错，系统 AI 限制照常生效；连接、凭据和代理独立管理，effort 按子模型能力收紧。
+
+开发者也可直接设置 `subagents.model: { provider, modelId }`，并在注册的 `subagents.models` 中授权它；无需配置控件。设置 `modelConfiguration` 后以字段值为准，选择“跟随主模型”会清除这个统一覆盖。已有子会话保留创建时模型。
+
+`AgentSessionCommand` 的 `type: "subagent"` 支持以下 action，所有命令均携带稳定 `requestId`：
+
+| action | 参数和结果 |
+| --- | --- |
+| `spawn` | `agentId`、`workId`、`prompt`，可选 `label`、JSON `metadata`、`background`、`reportToParent`。相同 workId 复用任务，冲突载荷拒绝。 |
+| `list` | 列出当前父会话工作项。 |
+| `get` / `wait` | `taskId`；查询或等待结果，等待不阻塞停止命令。 |
+| `send` | `taskId`、`prompt`，可选 `mode: "steer" \| "followUp"`。已接受的追加消息完成后才释放槽位。排队、收尾或已结束时返回当前工作项和 `messageDelivery: { status: "not_running", nextAction: "wait" \| "get" \| "retry" }`，命令回执为 `settled`，不会重新启动任务。已接受时为 `{ status: "accepted" }`。 |
+| `stop` | `taskId`；只取消该工作项及其执行树，不自动重试。 |
+| `retry` | `taskId`；为失败或取消项新建关联 attempt，保留原历史，从最新已提交上下文继续。所属批次已停止时须先恢复批次。 |
+
+回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
+
+`send` 遇到正常的生命周期变化会返回送达回执，工具调用不因此报错；应先检查 `messageDelivery`，不能把 `not_running` 当成消息已送达。完成项用 `get` 读取结果，失败或取消项明确 `retry` 后继续。批次任务 ID 不能用于子 Agent 管理，应使用项目的批次工具。直接向已结束子会话提交输入仍会拒绝，避免绕过并发槽位或取消状态。
+
+原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
+
+显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。
+
+业务 durable task 或 native tool 可在事务中调用公开 `enqueueAgentWork(tx, registry, input, options)` / `enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
+
+Native tool 用 `readAgentWorkContext(api, ctx)` 获取获授权的角色、workId、attempt、父会话与 metadata。进度保存在会话级 family 文档，结束后仍可读取：`tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`，更新 `completed`、`total`、`phase` 及可选 JSON `data`。非空 `error` 表示业务核验失败；重试成功时清空它，不能把仅结束模型输出视为业务完成。跨入口调用使用 `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`，工作项取消与父宿主取消共同生效。
+
+重试不能证明外部副作用失败。付费请求或写入结果未知时，先读取服务状态或业务回执；保留稳定业务 ID、草稿和阶段检查点，索引冲突仅重试索引阶段，不重放已提交正文。

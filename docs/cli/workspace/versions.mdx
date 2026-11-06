@@ -1,14 +1,24 @@
 ---
 title: "workspace versions"
-description: "查看不可变源码版本及 latest。"
+description: "查询发布版本、源码哈希及下载次数。"
 ---
 
 # workspace versions
 
-```bash
-steamharness workspace versions <project>
+用 `workspace versions` 查看项目的 `latest`、`nextVersion` 和历史发布记录。
+
+## 命令
+
+```sh
+pnpm exec steamharness workspace versions <project-id>
 ```
 
-请求 `GET /api/workflows/{workflow}/versions`，返回 `latest`、`nextVersion` 及历史版本。每个版本包含版本号、发布者、发布时间、发布说明、源码 SHA-256、依赖锁、`latest` 标记和累计下载量 `downloadCount`。下载量按 Server 成功发送的源码响应累计，同一用户重复下载会重复计数，`latest` 下载归入实际版本。
+命令读取 `GET /api/projects/{projectId}/versions`。请求失败时输出错误 JSON，以退出码 `1` 结束。
 
-版本没有执行状态或上下线操作。使用 [download --target](/cli/workspace/download) 下载历史快照；使用 [publish](/cli/workspace/publish) 创建新版本。请求失败输出错误 JSON 并以状态码 1 退出。
+## 返回内容
+
+每个版本包含版本号、发布者、时间、说明、源码 SHA-256、依赖锁、`latest` 标记和 `downloadCount`。
+
+下载次数按 Server 成功发送的源码响应累计，同一用户重复下载也计数；通过 `latest` 下载会计入实际版本。
+
+版本记录没有执行状态或上下线操作。用 [download](/cli/workspace/download) 取回快照，用 [publish](/cli/workspace/publish) 创建新版本。

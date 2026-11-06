@@ -1,0 +1,41 @@
+---
+title: "Inspect local run statistics"
+description: "Filter projects and history, and understand status and success-rate calculations."
+---
+
+# Inspect local run statistics
+
+Run **Workflow: Open Studio Analysis**, or select **Open Studio Analysis** on the start page, to inspect local projects and run history.
+
+## Inspect and filter
+
+| Area | Contents |
+| --- | --- |
+| Overview | Project counts and types, status distribution, and a 14-day trend |
+| Active tasks | Running tasks, waiting input, and queued input |
+| Result statistics | Success rate and average duration |
+| Project and run tables | Time, type, project, and status filters, search, pagination, and CSV export |
+
+Automatic refresh runs every five seconds and can be disabled. Success rate uses only finished records in the selected time range. Unknown, running, and waiting-input records are excluded from its denominator.
+
+## Included projects
+
+Analysis includes the current workspace and Workflow, Bot, and Kanban projects imported into Studio, deduplicated by directory and entry. Other folders on disk are excluded.
+
+Even for projects using Server databases, Analysis reads only local run history. It does not query server tasks or monitor CPU, memory, or remote Runners. The built-in `build-in-analysis` can also be opened as a regular Kanban project.
+
+## Status meanings
+
+| Status | Meaning |
+| --- | --- |
+| Live activity | Synchronized across windows when the installed CLI supports activity records |
+| Unknown | An older CLI cannot confirm the current state of a historical run |
+| Unavailable | A declaration, permission, project identity, or history read failed |
+
+Data comes from the project CLI's local storage. Failed reads do not substitute sample records. Standalone browsers and CLI sessions without a Studio connection cannot access this analysis API.
+
+## Missing or unreadable projects
+
+Deleting an imported directory removes its recent entry and import registration. A directory no longer containing an independent `steamharness.json`, or now serving as another aggregate's child entry, is no longer counted separately.
+
+Missing current-workspace directories, damaged declarations, permission errors, identity changes, and history failures remain visible as unavailable. Other projects still count. Analysis reads declarations and history without resolving deployment bindings or migrating legacy `package.json` declarations.

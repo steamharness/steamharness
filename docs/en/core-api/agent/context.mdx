@@ -1,0 +1,76 @@
+---
+title: "Agent permissions, context, and plans"
+description: "Configure tool scope, persist context, and handle compaction, cancellation, and plan approval."
+---
+
+# Agent permissions, context, and plans
+
+Configure tool scope, persist context, and handle compaction, cancellation, and plan approval.
+
+Create the runtime with [createAgent](/en/core-api/create-agent). The sections below describe its related options and behavior.
+
+## Your own tools
+
+Local coding-tool `read` bounds output by bytes and can reach lines beyond 8 MiB. Continue complete lines with `offset: nextOffset`, or long lines and raw text with `byteOffset: nextByteOffset` (UTF-8 bytes), omitting line `offset` and `limit`. With `session.environment`, the same byte reads use that environment, including read-only children without shell access. `grep`, `find` and `ls` report truncation and `nextOffset`; long matching lines are previews that can be read in full with `read`. Shell output is bounded by UTF-8 bytes with an explicit truncation marker; timeout and cancellation diagnostics remain visible. Redirect verbose commands to a file when their complete output is needed.
+
+
+The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find` and `ls`, plus `ask_user` in plan mode only — the model uses it to put a question to the user mid-turn (one or more questions, each with optional choices, optionally multi-select, optionally accepting the user's own words); the run pauses for the answer and carries on with the same plan. To add more, use `extraTools` on a programmatic runtime, or [createAgentNode](/en/core-api/create-agent-node)'s `createTools` inside a workflow.
+
+- **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
+- To reach a stdio MCP server a host provides, open it with [connectMcpServer](/en/core-api/connect-mcp-server) and turn its tools into yours with [createMcpTools](/en/core-api/create-mcp-tools).
+
+## Permission policy
+
+Turn input takes precedence over developer defaults; omitting both still selects `workspace`. Explicit `inherit` reads `steamharness.getUserSettings().agent.permissionPolicy`, falling back to `auto` without a host. It is a configuration choice; execution still uses the three concrete policies below. Parameters and sessions retain the original `inherit`. See [User settings and permission inheritance](/en/core-api/user-settings).
+
+| Value | Behaviour |
+| --- | --- |
+| `read-only` | `write`, `edit` and `bash` are disabled; the model never sees them. |
+| `workspace` | Every tool is available. The file tools (`read`/`write`/`edit`/`ls`/`grep`/`find`) can only reach inside `workdir` and `allowedDirectories`, and that check is made after `fs.realpath`, so a symlink inside the workspace cannot carry them out; `grep` and `find` do not follow symlinks at all. The default. |
+| `auto` | As `workspace`, but the file tools may also reach paths outside the workspace. |
+
+None of the three prompts for a built-in tool: the policy decides which tools exist and how far they reach, and only the host's own declared tools go through the approval chain.
+
+> **`bash` is not path-confined.** Commands run as the host process with the working directory as their `cwd`, which is not a sandbox: they can read and write anywhere. `read-only` is stricter only because it does not expose `bash` in the first place. Containing a command is a job for a sandbox on the host side.
+
+## The transcript
+
+With persistent `storage`, the Harness continuously commits generations, tool intents, results, and task checkpoints. Reopen the same file and reuse `requestId` to recover. Committed tool results are reused. A tool with an unknown outcome defaults to `replay: "never"`: recovery reports an interrupted tool result without repeating its effects. Declare `replay: "safe"` only when repeating the operation is safe. Built-in read/search tools are safe; write, edit, and shell tools default to never. Submission deduplication does not replace business idempotency in external services.
+
+`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing persistent history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires injected local or Server storage, or explicit SQLite. Bot nodes select isolated local SQLite sessions by default; see [createAgentNode](/en/core-api/create-agent-node). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
+
+After a process interruption during streaming, recovery includes committed text and reasoning in the continuation context and durably records its continuation prompt. Further interruptions continue from those committed fragments. Incomplete tool calls without committed intents are discarded and never executed or shown as started.
+
+Streaming preserves the original indices of thinking, text and tool blocks, applying block starts and subsequent deltas together. Main answers stay inline. A runtime or output projection exception cancels unfinished tasks, including independent forks, and queued inputs under the same execution owner, persists the failure, and publishes final task state from durable records. Reopening does not automatically continue a reported failure. Normal host shutdown and unexpected process exit still preserve checkpoint recovery. Tool business errors remain tool results that the model can handle.
+
+A node run carrying `hostInput` uses an in-memory Harness by default because the gateway owns its history; it writes no workflow conversation history.
+
+Custom tools follow Pi's `AgentTool` contract: `prepareArguments` repairs arguments before validation; `outputSchema` validates `structuredContent`. Throw or return `isError: true` on failure. Tool usage is separate from main-model context usage. The tool round ends when every result sets `terminate: true`. Recovery rechecks current permissions.
+
+## Context compaction
+
+When the prompt is exactly `/compact` or `/summarize`, or `compact: true` is passed, the turn immediately replaces the existing context with a model-written summary, even below the automatic compaction threshold. An empty context emits only an end event. A running summary emits `compaction` start followed by end; the Agent node displays running and completed states, retaining the original context on failure. The summary replaces the actual Agent transcript, is saved with the session, and is read by subsequent turns while the original conversation body remains. The public `compactAgentMessages({ ..., force: true })` also forces summarization of all existing messages.
+
+Only a non-empty summary from a normally completed model response replaces the context. Provider failures, truncated output, or incomplete responses fail manual summarization and retain the original transcript. Cancellation ends with `execution_aborted`; a summary returned after cancellation is never saved.
+
+Summary responses report model usage through `host.reportUsage`, including tokens consumed by failed or cancelled responses. Billed usage does not become the compacted context occupancy. Direct callers of `compactAgentMessages` can pass `onUsage(usage)` to receive the model's pi `Usage` before summary validation, for every attempt. Manual compaction and direct `compactAgentMessages` calls also retry transient failures. `retryDelayMs` adjusts the base backoff (500 ms by default, capped at 8 seconds per wait), with a fixed ten-retry budget. Automatic compaction uses the durable scheduler to avoid stacking request retry budgets.
+
+**Context is compacted automatically at 90% of the window.** Ordinary Agents and durable sessions check occupancy before every model request, including requests following tool execution in the same turn. At the threshold, older history is compacted before execution continues. A `contextWindow` override also controls this check. Events have `auto: true`, with start when compaction begins and end after success. Failure or cancellation preserves the original history; a compaction failure ends the run with its cause.
+
+If the provider still returns an explicit context overflow error, the runtime attempts compaction and retries once. Another overflow reports the error instead of retrying indefinitely. History already beyond the window is summarized in bounded chunks and then merged, reserving output space for each summary request and billing every call. Automatic compaction retains recent messages and complete tool call/result pairs. If a remaining input or tool result alone exceeds the window, shorten that input or output.
+
+Automatic compaction summarizes only the older part: the split point walks back from the end by token window and aligns to a user turn; when the kept window holds no user turn, it falls back to the nearest assistant turn, and the newest message is always kept. Explicit summarization includes the full context and preserves the goal, decisions, and unresolved work in its summary.
+
+## Cancelling
+
+When `context.abortSignal` fires the turn is stopped: the model stream and any tool mid-execution end together, the turn finishes as `execution_aborted` (the workflow reports the run as aborted rather than failed), and the tokens it did spend are still reported.
+
+## Plan mode
+
+With `agent: "plan"` the system prompt switches to the plan contract and the write tools are unavailable. While planning, the model can put a question to the user with `ask_user` (see the built-in tools above): the run pauses through `user_input_required` the same way, carries on in the same turn once answered, and keeps the question and the answer in `pendingUserInput` and `resolvedUserInputs` respectively.
+
+The turn then pauses through `user_input_required` for approval; the host resumes it on the same `requestId`, and the resume payload carries the plan text so a compaction in between cannot lose it. Declining does not end the session: it stays in plan mode and hands the plan back to the plan agent to revise with whatever instructions came with the decision, so no file is touched but another model turn does run.
+
+Each new plan uses an independent approval `requestId`. A completed revision waits for another decision, even if its text is unchanged; the previous answer cannot automatically approve or decline it. Resuming an existing paused approval still uses that request's original `requestId`.
+
+Question pauses and plan approval are separate stages: `ask_user` itself neither emits a `plan` event nor requests plan approval. The runtime emits `plan` events and calls `host.approvePlan` only when a turn finishes normally with nonempty plan text after the last tool call. Text before tools is excluded from that plan. Failed, cancelled, or question-paused turns do not submit leftover text as a plan.

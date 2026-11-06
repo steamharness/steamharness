@@ -5,14 +5,14 @@ description: "定义 Workflow 项目中可独立运行的类型安全入口。"
 
 # defineEntrypoint
 
-`workflow.defineEntrypoint<Input, Output>()` 定义 Workflow 项目中的一个可独立运行入口。每个入口拥有自己的 workflow、参数、输入构造、工具、token usage、调试 registry 和上下文扩展；平台选择入口后只执行该入口，不会先执行默认入口。
+用 `steamharness.defineEntrypoint()` 为 Workflow 声明可独立运行的操作。每个操作拥有自己的流程、参数、输入构造、工具、用量、registry 和上下文扩展；选中后只执行该操作。
 
-入口是同一项目下的扁平运行目录，不表示父子调用关系。需要把多个业务流程组合在一次 run 中时，应在 workflow 内显式调用 [`workflow.runProject()`](/core-api/run-workflow)。
+入口是同一项目下的扁平运行目录，不表示父子调用关系。需要把多个业务流程组合在一次 run 中时，应在 workflow 内显式调用 [`steamharness.runProject()`](/core-api/run-workflow)。
 
 ## 签名
 
 ```ts
-workflow.defineEntrypoint<Input, Output>(
+steamharness.defineEntrypoint<Input, Output>(
   definition: EntrypointDefinition<Input, Output>,
 ): EntrypointDefinition<Input, Output>
 ```
@@ -36,7 +36,7 @@ interface EntrypointGroupDefinition {
 | `description` | `string` | 可选的入口说明。 |
 | `group` | `EntrypointGroupDefinition` | 可选的入口分区。相同分区 `id` 的入口必须使用完全一致的 `title` 和 `order`。 |
 | `workflow` | `Definition<Input, Output>` | 该入口实际执行的 workflow。必填。 |
-| `params` | `ParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/define-executor#projectparamdeclaration)。 |
+| `params` | `ParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/executor/parameters#paramdeclaration)。 |
 | `createInput` | `(context) => Input` | 把该入口的 args 和 `paramValues` 转成 workflow input。必填。 |
 | `resolveParams` | `(context) => ParamResolveResult` | 该入口的参数联动回调。 |
 | `requiredProviders` | `ExecutorProviderName[]` | 该入口需要的 provider；当前内置名称只有 `"llm"`。 |
@@ -52,11 +52,11 @@ interface EntrypointGroupDefinition {
 Workflow executor 必须声明一个静态默认入口和非空入口数组：
 
 ```ts
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<MainInput, MainOutput>({
+    steamharness.defineEntrypoint<MainInput, MainOutput>({
       id: "main",
       title: "完整流程",
       group: { id: "operations", title: "业务操作", order: 10 },
@@ -66,7 +66,7 @@ export const executor = workflow.defineExecutor({
         return { errCode: 0, errMessage: "" };
       },
     }),
-    workflow.defineEntrypoint<ValidateInput, ValidateOutput>({
+    steamharness.defineEntrypoint<ValidateInput, ValidateOutput>({
       id: "validate",
       title: "数据校验",
       description: "仅执行校验阶段。",
@@ -88,11 +88,11 @@ export const executor = workflow.defineExecutor({
 `steamharness structure` 不执行配置代码，因此入口目录必须可以静态读取：
 
 - `entrypoints` 必须是非空数组字面量。
-- 每一项必须直接调用 `workflow.defineEntrypoint({ ... })`。
+- 每一项必须直接调用 `steamharness.defineEntrypoint({ ... })`。
 - `id`、`title`、可选 `description` 和 `defaultEntrypoint` 必须是静态字符串。
 - `group` 必须是静态内联对象；`id`、`title` 必须是非空静态字符串，`order`（如果存在）必须是非负整数。
 - 同一个 `group.id` 的所有入口必须完全一致地声明 `title` 和 `order`，包括 `order` 未设置与已设置的差异。
-- `workflow` 必须引用项目源码中由 `workflow.defineProject(...)` 定义的标识符；可以通过项目内相对路径使用命名、别名或 default import。Structure 会按实际 import/export 绑定解析定义，未引用的同名定义、外部包值或动态构造值都会产生 violation。
+- `workflow` 必须引用项目源码中由 `steamharness.defineProject(...)` 定义的标识符；可以通过项目内相对路径使用命名、别名或 default import。Structure 会按实际 import/export 绑定解析定义，未引用的同名定义、外部包值或动态构造值都会产生 violation。
 - ID 必须合法且不能重复；`defaultEntrypoint` 必须命中其中一项。
 - Workflow executor 不再接受顶层 `workflow`、`params`、`createInput`、`resolveParams`、`requiredProviders`、`tools`、`tokenUsage`、`registry` 或 `createContext`。这些字段必须移动到具体入口。
 

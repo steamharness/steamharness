@@ -5,12 +5,29 @@ description: "创建流式 LLM 节点，产出 LLMStreamChunk 并聚合文本输
 
 # createLLMStreamNode
 
-`workflow.createLLMStreamNode()` 创建流式 LLM 调用节点。节点执行时调用 `provider.stream(llmInput)`，产出 `LLMStreamChunk`，`runStreamNode` 会收集 chunks 并返回聚合文本。
+用 `steamharness.createLLMStreamNode()` 调用 `provider.stream(llmInput)` 并逐步接收 `LLMStreamChunk`。通过 `runStreamNode` 执行，得到 chunk 集合与聚合文本。
+
+## 示例
+
+```ts
+const streamNode = steamharness.createLLMStreamNode<ParsedInput>({
+  name: "draft-stream",
+  provider: steamharness.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      prompt: input.message,
+      temperature: 0.3,
+    };
+  },
+});
+
+const { chunks, output } = await steamharness.runStreamNode(streamNode, parsed, context);
+```
 
 ## 签名
 
 ```ts
-workflow.createLLMStreamNode<Input>(
+steamharness.createLLMStreamNode<Input>(
   options: Pick<
     LLMNodeOptions<Input>,
     "name" | "provider" | "mapInput" | "historyLimit" | "metadata"
@@ -47,7 +64,7 @@ workflow.createLLMStreamNode<Input>(
 
 | 返回 | 类型 | 说明 |
 | --- | --- | --- |
-| 节点对象 | `BaseStreamNode<Input, LLMStreamChunk, string>` | 可通过 `workflow.runStreamNode` 执行。 |
+| 节点对象 | `BaseStreamNode<Input, LLMStreamChunk, string>` | 可通过 `steamharness.runStreamNode` 执行。 |
 | chunks | `LLMStreamChunk[]` | `runStreamNode` 收集到的所有 chunk。 |
 | output | `string` | 节点 `finalize` 会拼接所有 `text-delta.text`。 |
 
@@ -61,23 +78,6 @@ workflow.createLLMStreamNode<Input>(
 | `mapInput` | `Input`、`NodeContext` | `LLMChatInput` |
 | provider `stream` | `LLMChatInput` | `AsyncIterable<LLMStreamChunk>` |
 | `runStreamNode` | chunks | `{ chunks, output: string }` |
-
-## 示例
-
-```ts
-const streamNode = workflow.createLLMStreamNode<ParsedInput>({
-  name: "draft-stream",
-  provider: workflow.createLLMProviderRef("default"),
-  mapInput(input) {
-    return {
-      prompt: input.message,
-      temperature: 0.3,
-    };
-  },
-});
-
-const { chunks, output } = await workflow.runStreamNode(streamNode, parsed, context);
-```
 
 ## 与 `createLLMNode` 的区别
 

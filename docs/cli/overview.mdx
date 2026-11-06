@@ -1,48 +1,50 @@
 ---
 title: "CLI 总览"
-description: "steamharness 统一 CLI 的本地与服务端 workspace 命令。"
+description: "选择本地运行、结构检查或 Server 项目管理命令。"
 ---
 
 # CLI 总览
 
-`@steamharness/cli` 只暴露一个 `steamharness` 命令，并按用途分为两个命令组：
+安装 `@steamharness/cli` 后，通过 `steamharness` 操作项目。在项目目录推荐使用 `pnpm exec steamharness`，确保调用项目安装的版本。
 
-| 命令组 | 用途 |
+## 选择命令组
+
+| 任务 | 命令组 |
 | --- | --- |
-| [`steamharness`](/cli/steamharness) | 在本地 workflow 目录运行、输出 JSON 报告、检查结构，或启动 stdio MCP Server。 |
-| [`steamharness workspace` / `pnpm exec steamharness workspace`](/cli/server-workspace) | 连接 SteamHarness Server，完成登录、打包、上传、发布、下载和版本查询。 |
+| 本地运行、结构检查、JSON 报告、MCP | [本地 CLI](/cli/steamharness) |
+| 登录 Server、打包、上传、发布、下载 | [Workspace CLI](/cli/server-workspace) |
 
 ## 命令索引
 
-| CLI | 命令 |
+| 目标 | 命令 |
 | --- | --- |
-| `steamharness` | [`run`](/cli/steamharness/run)、[`json`](/cli/steamharness/json)、[`structure`](/cli/steamharness/structure)、[`resolve-params`](/cli/steamharness/resolve-params)、[`mcp`](/cli/steamharness/mcp)、[`help`](/cli/steamharness/help) |
-| workspace | [`login`](/cli/workspace/login)、[`logout`](/cli/workspace/logout)、[`status`](/cli/workspace/status)、[`health`](/cli/workspace/health)、[`pack`](/cli/workspace/pack)、[`upload`](/cli/workspace/upload)、[`publish`](/cli/workspace/publish)、[`versions`](/cli/workspace/versions)、[`download`](/cli/workspace/download)、[`help`](/cli/workspace/help) |
+| 执行与检查 | [run](/cli/steamharness/run)、[json](/cli/steamharness/json)、[structure](/cli/steamharness/structure) |
+| 参数与工具 | [resolve-params](/cli/steamharness/resolve-params)、[mcp](/cli/steamharness/mcp)、[help](/cli/steamharness/help) |
+| 账号与服务 | [login](/cli/workspace/login)、[logout](/cli/workspace/logout)、[status](/cli/workspace/status)、[health](/cli/workspace/health) |
+| 源码与版本 | [pack](/cli/workspace/pack)、[upload](/cli/workspace/upload)、[publish](/cli/workspace/publish)、[versions](/cli/workspace/versions)、[download](/cli/workspace/download) |
 
 ## 典型工作流
 
-本地开发时，先用 `steamharness` 在 workflow 目录验证运行结果和结构，再用 workspace CLI 上传到 server。
+先在本地检查和运行，确认结果后再上传：
 
-以下命令中的 `./my-project` 指你已创建并注册入口的本地项目目录。
-
-```bash
-steamharness run ./my-project -- --message "hello"
-steamharness json ./my-project -- --message "hello"
-steamharness structure ./my-project
-steamharness mcp ./my-project
+```sh
+pnpm exec steamharness check .
+pnpm exec steamharness structure .
+pnpm exec steamharness run .
+pnpm exec steamharness json .
 ```
 
-发布到 server 时，先检查服务状态，再登录、上传、发布和下载。
+连接 Server 时明确选择地址。下面的 `<project-id>` 应替换为已注册项目 ID：
 
-```bash
+```sh
 pnpm exec steamharness workspace health --server http://localhost:7126
 pnpm exec steamharness workspace login --server http://localhost:7126
-pnpm exec steamharness workspace upload hello
-pnpm exec steamharness workspace publish hello --release-log "初始发布"
+pnpm exec steamharness workspace upload <project-id> --path .
+pnpm exec steamharness workspace publish <project-id> --release-log "初始发布"
 ```
-
-开发环境可以使用本地 server 地址；部署环境建议显式使用正式域名或你的生产端口。
 
 ## 数据库与入口
 
-所有本地命令从聚合根读取 entries。使用 `--entry` 选择入口；`check` 默认检查全部入口。业务关系库通过生成的描述符访问，先在 Server 创建资源、授权、迁移并绑定入口；知识库使用独立的 knowledgeBases 声明和绑定。CLI Web、Studio 共用用户级本地注册表。详见 [CLI](/cli/steamharness) 和 [项目数据存储](/concepts/data-storage)。
+本地命令从聚合根读取 `entries`；`--entry` 选择入口，`check` 默认检查全部入口。关系库先创建资源、授权、迁移并绑定，知识库使用独立声明与绑定。
+
+CLI Web 与 Studio 共用用户级项目登记。各类数据的存放与权限见[数据存储](/concepts/data-storage)。

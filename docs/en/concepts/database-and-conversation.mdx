@@ -5,11 +5,15 @@ description: "Separate business models, knowledge resources, and platform runtim
 
 # Databases and conversations
 
-Business models, knowledge bases, and runtime records have independent resources and lifecycles. Creating a project or conversation never provisions a business database automatically.
+Business databases, knowledge bases, and conversation history have separate storage and access rules. Creating a project or conversation does not allocate a business database. Request a resource, migrate its model, and bind the entry before using business tables.
 
 ## Business tables
 
-Define aliases in `steamharness.database.ts` and models in `steamharness.schema`. List the aliases in the entry's `databases`. Server stores bindings by account, project, entry, and alias; project configuration contains no business database IDs or credentials.
+1. Declare aliases in the entry's `steamharness.database.ts` and models in `steamharness.schema`.
+2. List the required aliases in the entry's `databases` declaration.
+3. Bind the account, project, entry, and alias on Server, then connect through the generated descriptor.
+
+Project configuration does not store business database IDs or credentials.
 
 ```ts
 import { main } from "./dist/steamharness/generated/database/node/index.js";
@@ -40,6 +44,8 @@ Conversations, messages, input queues, drafts, runs, usage and Agent checkpoints
 
 Local persistent history requires no platform login or network connection; system AI and business resources retain their own authorization. Trusted hosts can explicitly select Server storage or use `copyRuntimePersistence` to copy idle sessions to an empty cloud destination in the background. This is an on-demand snapshot backup rather than continuous synchronization. Back up attachments and workspace files separately. Existing cloud and legacy local records are preserved without automatic reads, migration or dual writes; KV and PersistentValue remain removed. See [runtime storage](/en/core-api/runtime-storage).
 
+<span id="local-conversation-entry-control"></span>
+
 ## Local Bot entry control
 
 The CLI Web / Studio aggregate host provides `context.entries.conversations.get(entryId)` for registered Bot entries. It reuses the native controller, execution owner, persisted FIFO input queue, and Core history:
@@ -54,8 +60,26 @@ const snapshot = await bot.snapshot(receipt.conversationId);
 // cancel({ conversationId, requestId }), resumeQueue({ conversationId, requestId }).
 ```
 
-`submit` returns `{ conversationId, requestId, messageId, status }` after persisting the input, without waiting for the model. Repeating the same conversation/request ID and content does not execute twice; different content is rejected. Omitted parameters reuse the conversation parameters and host model defaults. Failure, stop, and restart retain queued inputs for explicit `resumeQueue`. Set `conversation.recovery: { enabled: true, startup: "manual" }` to also park interrupted turns after restart. The default `automatic` retains existing recovery behavior.
+### Submit and resume queued input
 
-Snapshots include `ownerId`, increasing `revision`, messages, pending confirmations, run state, and FIFO queue positions. Consumers reject older revisions and retire previous owners after an owner change. Host credentials, user settings, and run arguments are excluded. Business projections and receipts may be stored separately; Core remains authoritative for execution history.
+`submit` returns `{ conversationId, requestId, messageId, status }` after persisting input, without waiting for the model. Omitted parameters reuse the conversation parameters and host model defaults.
 
-`context.entries.caller` exposes trusted immediate provenance `{ entryId, conversationId?, runId? }`, supplied by Core or the host. Derive Bot identity from it and controlled conversation links, never from business parameters. Calls preserve user, project, permissions, and cancellation and recheck target authorization. Standalone commands and Server static previews have no execution host and return `ENTRY_RUNTIME_UNAVAILABLE`. Server never executes project code.
+| Condition | Result |
+| --- | --- |
+| Same conversation, request ID, and content submitted again | No duplicate execution |
+| Same conversation and request ID, different content | Submission rejected |
+| Failure, stop, or restart | Queue retained until an explicit `resumeQueue` |
+| `conversation.recovery: { enabled: true, startup: "manual" }` | Interrupted turns also wait for recovery after restart |
+| Default `startup: "automatic"` | Automatic recovery behavior retained |
+
+### Consume conversation snapshots
+
+Snapshots contain `ownerId`, increasing `revision`, messages, pending confirmations, run state, and FIFO queue positions. Reject older revisions and discard results from retired owners after an owner change.
+
+The projection excludes host credentials, user settings, and run arguments. Business chat can store projections and receipts separately; Core remains the authority for execution history.
+
+### Identify the caller and host
+
+`context.entries.caller` provides trusted immediate provenance: `{ entryId, conversationId?, runId? }`. Core or the host sets it. Derive Bot identity from this provenance and controlled conversation links, not from identity claims in business parameters.
+
+Calls retain the user, project, permissions, and cancellation signal and recheck target authorization. Standalone commands and Server static previews have no execution host and return `ENTRY_RUNTIME_UNAVAILABLE`. Server does not execute project code.

@@ -6,6 +6,20 @@ import { validateDocs, validateStandaloneDocsSource } from "../validate-docs.mjs
 
 const root = path.resolve(import.meta.dirname, "../..");
 
+test("Bot declarations use Core while conversation protocol terms remain valid", () => {
+  for (const source of [
+    'projectType: "conversation"',
+    'steamharness.createAgentConversationProject({})',
+    'steamharness.defineAgentConversationExecutor({})',
+    'steamharness.defineExecutor({ projectType: "bot", workflow: custom })',
+  ]) {
+    assert.throws(() => validateStandaloneDocsSource("guide.mdx", source), /removed Bot declaration/u);
+    assert.doesNotThrow(() => validateStandaloneDocsSource("guides/releases/core/v0.1.0.mdx", source));
+  }
+  assert.doesNotThrow(() => validateStandaloneDocsSource("guide.mdx",
+    'steamharness.defineBot({}); conversationId; context.entries.conversations; presentation: "conversation"'));
+});
+
 test("current documentation rejects old project and storage contracts while preserving release history", () => {
   for (const source of ["steamHarness.projectType", "projectInfo.relatedProjects", "context.storage.local", "--project-group", "dataStorage.mode"]) {
     assert.throws(() => validateStandaloneDocsSource("concepts/example.mdx", source), /removed single-entry project/);
@@ -51,9 +65,15 @@ test("Studio documentation replaces Desktop navigation in both languages", async
   assert.doesNotMatch(navigation, /guides\/(?:desktop\/|releases\/(?:desktop|downloads))/u);
   for (const prefix of ["", "en/"]) {
     assert.ok(navigation.includes(`${prefix}guides/studio/overview`));
-    const source = await readFile(path.join(root, prefix, "guides/studio/overview.mdx"), "utf8");
-    assert.match(source, /@steamharness\/cli/u);
-    assert.match(source, /npm run dev:web/u);
+    const overview = await readFile(path.join(root, prefix, "guides/studio/overview.mdx"), "utf8");
+    for (const page of ["run-debug", "installation"]) {
+      assert.ok(overview.includes(`/${prefix}guides/studio/${page}`));
+      assert.ok(navigation.includes(`${prefix}guides/studio/${page}`));
+    }
+    const runtime = await readFile(path.join(root, prefix, "guides/studio/run-debug.mdx"), "utf8");
+    const installation = await readFile(path.join(root, prefix, "guides/studio/installation.mdx"), "utf8");
+    assert.match(runtime, /@steamharness\/cli/u);
+    assert.match(installation, /npm run dev:web/u);
   }
 });
 

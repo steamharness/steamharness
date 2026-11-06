@@ -2,44 +2,44 @@ openapi: 3.1.0
 info:
   title: steamharness API
   version: 0.1.0
-  description: SteamHarness Server 管理聚合项目静态元数据、不可变源码和独立数据库空间。入口运行由 CLI 或 Studio 负责。
+  description: "SteamHarness Server 管理项目声明、不可变源码版本、账号和数据资源。项目入口由 CLI 或 Studio 执行。"
 servers:
   - url: http://localhost:7126
-    description: Local SteamHarness Server (dev default)
+    description: "本地 Server，dev 默认地址。"
   - url: http://localhost:7130
-    description: Deployed SteamHarness Server (release default)
+    description: "已部署的 Server，发布通道默认地址。"
 security:
   - BearerAuth: []
 tags:
   - name: Health
-    description: 健康检查。
+    description: "检查服务健康状态。"
   - name: Auth & Accounts
-    description: 登录、账号状态、系统管理员、会话与 API Key。
+    description: "登录、会话、设备授权、账号、角色和 API Key。"
   - name: Admin Projects
-    description: 项目源码、版本与静态元数据管理。
+    description: "管理项目源码、版本和静态信息。"
   - name: Admin Files
-    description: 项目文件上传、读取、下载与删除。
+    description: "上传、读取、下载和删除项目文件。"
   - name: Projects & Groups
-    description: 固定角色、多级组继承、成员、邀请和归属管理。 / Fixed roles, hierarchy and membership.
+    description: "固定角色、组继承、成员与邀请。"
   - name: Runtime Storage
-    description: Account-private Agent records, execution leases and relational checkpoints.
+    description: "账号私有的 Agent 记录、执行租约和关系型检查点。"
   - name: Relational Databases
-    description: Independent PostgreSQL resources, account sharing and immutable model migrations.
+    description: "独立 PostgreSQL 资源、账号共享和不可变模型迁移。"
   - name: Knowledge Bases
-    description: Independent knowledge resources, account grants, versioned documents and private files.
+    description: "独立知识库、账号授权、文档版本和私有附件。"
 paths:
   /api/knowledge-bases:
     get:
       tags: [Knowledge Bases]
-      summary: "List accessible knowledge resources"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "列出可访问的知识库"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":1000000,"default":1}},{"name":"pageSize","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}},{"name":"search","in":"query","required":false,"schema":{"type":"string","maxLength":256}}]
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"total":{"type":"integer"},"page":{"type":"integer"},"pageSize":{"type":"integer"}},"required":["items","total","page","pageSize"]}},"required":["errCode","errMessage","data"]}
@@ -47,8 +47,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Create an independent knowledge resource"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "创建独立知识库"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -59,7 +59,7 @@ paths:
             schema: {"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","minLength":1,"maxLength":128},"requestId":{"type":"string","format":"uuid"}},"required":["name","requestId"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"required":["errCode","errMessage","data"]}
@@ -68,15 +68,15 @@ paths:
   /api/knowledge-bases/bindings:
     get:
       tags: [Knowledge Bases]
-      summary: "List current account knowledge bindings"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "列出当前账号的知识库绑定"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"projectId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"entryId","in":"query","required":true,"schema":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"}}]
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"array","items":{"type":"object"}}},"required":["errCode","errMessage","data"]}
@@ -84,8 +84,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Bind an entry to an authorized knowledge resource"
-      description: "Binding cannot grant access. Registered projects require writeData capability and a matching knowledge declaration. Local unregistered project IDs are account-scoped. Unchanged bindings keep their revision."
+      summary: "将入口绑定到获授权知识库"
+      description: "绑定只选择资源，不授予访问权。已注册项目需要 writeData 能力及匹配的知识库声明；未注册本地项目按账号隔离。重复绑定相同目标保留原修订号。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -96,7 +96,7 @@ paths:
             schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"},"mode":{"enum":["read","write"]}},"required":["projectId","entryId","alias","knowledgeBaseId"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["errCode","errMessage","data"]}
@@ -104,8 +104,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags: [Knowledge Bases]
-      summary: "Unbind a knowledge alias"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "解除知识库别名绑定"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -116,7 +116,7 @@ paths:
             schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"}},"required":["projectId","entryId","alias"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -125,8 +125,8 @@ paths:
   /api/knowledge-bases/bindings/resolve:
     post:
       tags: [Knowledge Bases]
-      summary: "Resolve and authorize a knowledge binding"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "解析并校验知识库绑定"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -137,7 +137,7 @@ paths:
             schema: {"$ref":"#/components/schemas/KnowledgeBaseIdentity"}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["errCode","errMessage","data"]}
@@ -146,15 +146,15 @@ paths:
   /api/knowledge-bases/{baseId}:
     get:
       tags: [Knowledge Bases]
-      summary: "Describe an accessible knowledge base"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "查看可访问知识库"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"required":["errCode","errMessage","data"]}
@@ -163,15 +163,15 @@ paths:
   /api/knowledge-bases/{baseId}/grants:
     get:
       tags: [Knowledge Bases]
-      summary: "List knowledge account grants as owner"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "由所有者列出知识库账号授权"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"array","items":{"type":"object"}}},"required":["errCode","errMessage","data"]}
@@ -179,8 +179,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Knowledge Bases]
-      summary: "Grant or replace knowledge account access"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "授予或更新知识库访问权"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -192,7 +192,7 @@ paths:
             schema: {"type":"object","additionalProperties":false,"properties":{"userId":{"type":"string","minLength":1,"maxLength":256},"mode":{"enum":["read","write"]}},"required":["userId","mode"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -201,15 +201,15 @@ paths:
   /api/knowledge-bases/{baseId}/grants/{userId}:
     delete:
       tags: [Knowledge Bases]
-      summary: "Revoke knowledge account access"
-      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      summary: "撤销知识库访问权"
+      description: "需要账号身份。系统管理密钥不能代替账号授权，响应不缓存。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"userId","in":"path","required":true,"schema":{"type":"string"}}]
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -218,8 +218,8 @@ paths:
   /api/knowledge-bases/{baseId}/operations:
     post:
       tags: [Knowledge Bases]
-      summary: "Operate on a declared knowledge resource"
-      description: "Rechecks account, binding ID/revision/accessRevision and registered project capability in the operation. Writes require write mode. Stale document expectedRevision returns 409. Search cursors are tied to resource revision and query. Body limit 70 MiB; file contents up to 50 MiB. No KV fallback or mutation replay."
+      summary: "操作已声明的知识库"
+      description: "每次操作重新检查账号、绑定 ID、revision、accessRevision 及已注册项目权限。写入要求 write 模式，文档 expectedRevision 过期返回 409。\n\n搜索游标绑定资源修订号和查询条件。请求体最多 70 MiB，附件内容最多 50 MiB。不回退到 KV，不自动重放写入。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -228,10 +228,10 @@ paths:
         required: true
         content:
           application/json:
-            schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"},"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"Operation-specific input. Documents use documentId (create may use id), title, markdown and optional positive expectedRevision. Lists use pageSize/cursor; search uses query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches. Files use fileId or name/mimeType/kind/base64. files.list uses page/pageSize. Base64 is transported only; contents are stored privately."},"binding":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["projectId","entryId","alias","knowledgeBaseId","operation","input","binding"]}
+            schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"},"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"输入由操作决定。文档使用 documentId（创建时也可用 id）、title、markdown 及可选的正数 expectedRevision；列表使用 pageSize/cursor。\n\n搜索接受 query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches。附件使用 fileId 或 name/mimeType/kind/base64，files.list 使用 page/pageSize。Base64 仅用于传输，正文保存在私有存储。"},"binding":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["projectId","entryId","alias","knowledgeBaseId","operation","input","binding"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -240,8 +240,8 @@ paths:
   /api/knowledge-bases/{baseId}/manage:
     post:
       tags: [Knowledge Bases]
-      summary: "Manage knowledge documents and private attachments"
-      description: "Account read/write grants authorize management without a consumer binding. Mutations do not retry. Documents use optimistic expectedRevision; attachment contents remain outside SQL."
+      summary: "管理知识文档和私有附件"
+      description: "管理操作直接检查账号 read/write 授权，无需消费入口绑定。写入不自动重试；文档用 expectedRevision 检查并发，附件正文不保存在 SQL 中。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -253,7 +253,7 @@ paths:
             schema: {"$ref":"#/components/schemas/KnowledgeBaseOperation"}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -262,8 +262,8 @@ paths:
   /api/databases/{databaseId}/data:
     post:
       tags: [Relational Databases]
-      summary: "Manage applied model rows"
-      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01. Enums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. Concurrent requests queue before SQL execution, with a 5-second wait per database lock and DATABASE_BUSY on timeout. Executed writes are not replayed. No raw SQL or relation mutation input is accepted."
+      summary: "管理已应用模型的表行"
+      description: "账号授权允许在受限 SQL 角色下执行表级操作。models 返回模型和 schemaHash，其他操作必须带该指纹。rows 支持服务端分页、搜索和标量等值过滤；update/delete 要求完整稳定键及 xmin rowVersion，旧版本编辑会失败。\n\nBigInt、Decimal 使用十进制字符串；DateTime 必须带时区并按 UTC 处理；Bytes 使用 Base64。日期返回 UTC 零点，只有时间的类型使用 1970-01-01；枚举使用声明名称，由 Server 处理数据库映射。\n\n无默认值且未提供的列表写为空数组。cuid 等客户端生成的默认值需显式填写，数据库默认值及 @updatedAt 自动应用。每个数据库锁最多等 5 秒，超时返回 DATABASE_BUSY。已执行写入不重放，不接受原始 SQL 或关系写入。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -275,7 +275,7 @@ paths:
             schema: {"$ref":"#/components/schemas/RelationalTableRequest"}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -284,8 +284,8 @@ paths:
   /api/databases/{databaseId}/query:
     post:
       tags: [Relational Databases]
-      summary: "Query rows through a pinned consumer binding"
-      description: "Same bounded table operations as data, additionally requiring the current account/project/entry/alias binding. Read bindings cannot write. The generated Browser table client uses this structured protocol; accessRevision invalidates clients after grant changes. Concurrent requests queue on binding and resource locks for up to 5 seconds per lock; DATABASE_BUSY means the wait expired before execution. Binding, access revision and schema are revalidated after waiting; executed writes are never replayed."
+      summary: "通过固定入口绑定查询表行"
+      description: "支持与 data 相同的表级操作，并要求当前账号、项目、入口、别名绑定有效。只读绑定不能写入，accessRevision 在授权变化后使旧客户端失效。\n\n并发请求等待绑定和资源锁，每个锁最多 5 秒；超时在执行前返回 DATABASE_BUSY。取得锁后再次检查绑定、授权版本和模型，已执行写入不重放。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -297,7 +297,7 @@ paths:
             schema: {"type":"object","additionalProperties":false,"properties":{"consumer":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"},"binding":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":1}},"required":["id","revision"]},"accessRevision":{"type":"integer","minimum":1}},"required":["projectId","entryId","alias","schemaHash","binding","accessRevision"]},"request":{"$ref":"#/components/schemas/RelationalTableRequest"}},"required":["consumer","request"]}
       responses:
         "200":
-          description: Successful resource response.
+          description: "资源操作成功。"
           content:
             application/json:
               schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
@@ -306,15 +306,15 @@ paths:
   /api/databases:
     get:
       tags: [Relational Databases]
-      summary: List owned and granted database resources
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "列出拥有或获授权的数据库"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
       parameters: [{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":1000000,"default":1}},{"name":"pageSize","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}},{"name":"search","in":"query","required":false,"schema":{"type":"string","maxLength":256}}]
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "object", "additionalProperties": false, "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "total": {"type":"integer"}, "page": {"type":"integer"}, "pageSize": {"type":"integer"}}, "required": ["items", "total", "page", "pageSize"]}}, "required": ["errCode", "errMessage", "data"]}
@@ -322,8 +322,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Request and provision an independent database
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "申请并创建独立数据库"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -334,19 +334,19 @@ paths:
             schema: {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 128}, "requestId": {"type": "string", "format": "uuid"}}, "required": ["name", "requestId"]}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
         default:
           $ref: "#/components/responses/HarnessError"
   /api/databases/bindings/resolve:
-    post: {"tags":["Relational Databases"],"summary":"Resolve an entry alias for a generated Browser table client","description":"Pins binding identity, mode, schemaHash and account accessRevision. Concurrent resolutions queue for up to 5 seconds per binding or resource lock before returning DATABASE_BUSY. No SQL credential is returned. Rebinding, unbinding, revocation and model changes invalidate old clients.","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"Success.","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
+    post: {"tags":["Relational Databases"],"summary":"为 Browser 表客户端解析入口别名","description":"固定绑定身份、模式、schemaHash 和账号 accessRevision。每个绑定或资源锁最多等待 5 秒，超时返回 DATABASE_BUSY；不返回 SQL 凭据。重绑、解绑、撤权或模型变化后，旧客户端失效。","security":[{"BearerAuth":[]},{"SessionCookie":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["projectId","entryId","alias","schemaHash"]}}}},"responses":{"200":{"description":"请求成功。","content":{"application/json":{"schema":{"type":"object","properties":{"errCode":{"const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,62}$"},"databaseId":{"type":"string","format":"uuid"},"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string"},"revision":{"type":"integer","minimum":1},"accessRevision":{"type":"integer","minimum":1},"mode":{"enum":["read","write"]},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["id","alias","databaseId","revision","accessRevision","mode","schemaHash"]}},"required":["errCode","errMessage","data"]}}}},"default":{"$ref":"#/components/responses/HarnessError"}}}
   /api/databases/bindings:
     get:
       tags: [Relational Databases]
-      summary: List database bindings for the current account and entry
-      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      summary: "列出当前账号和入口的数据库绑定"
+      description: "绑定按账号隔离，只选择已获授权的资源，不赋予权限，也不写入项目源码。重绑或解绑会撤销已有 SQL 连接。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -361,7 +361,7 @@ paths:
           schema: {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}}}, "required": ["errCode", "errMessage", "data"]}
@@ -369,8 +369,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Bind a generated entry alias to an accessible resource
-      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      summary: "将生成的入口别名绑定到可访问资源"
+      description: "绑定按账号隔离，只选择已获授权的资源，不赋予权限，也不写入项目源码。重绑或解绑会撤销已有 SQL 连接。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -381,7 +381,7 @@ paths:
             schema: {"$ref": "#/components/schemas/RelationalDatabaseBindRequest"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}}, "required": ["errCode", "errMessage", "data"]}
@@ -389,8 +389,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags: [Relational Databases]
-      summary: Unbind an entry alias and revoke its SQL connections
-      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      summary: "解除入口别名绑定并撤销 SQL 连接"
+      description: "绑定按账号隔离，只选择已获授权的资源，不赋予权限，也不写入项目源码。重绑或解绑会撤销已有 SQL 连接。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -401,7 +401,7 @@ paths:
             schema: {"$ref": "#/components/schemas/RelationalDatabaseConsumer"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
@@ -410,8 +410,8 @@ paths:
   /api/databases/connections:
     post:
       tags: [Relational Databases]
-      summary: Issue a temporary connection for a bound native entry
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Independent native workers may issue credentials concurrently for the same binding using shared read locks. Every operation validates account access and the current entry binding after a bounded lock wait; binding changes, migrations and revocation retain exclusive locks and may return DATABASE_BUSY.
+      summary: "为已绑定原生入口签发临时连接"
+      description: "仅供原生 Node 宿主使用，需要账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。SQL 凭据不能传入项目 RPC。\n\n同一绑定的多个 worker 可并发签发连接，鉴权使用共享读锁。每次操作在有界等待后检查账号授权与入口绑定；重绑、迁移、撤权使用排他锁，繁忙时可能返回 DATABASE_BUSY。"
       security:
         - BearerAuth: []
       requestBody:
@@ -421,7 +421,7 @@ paths:
             schema: {"$ref": "#/components/schemas/RelationalDatabaseConnectionRequest"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseConnectionLease"}}, "required": ["errCode", "errMessage", "data"]}
@@ -430,8 +430,8 @@ paths:
   /api/databases/connections/{credentialId}/authorize:
     post:
       tags: [Relational Databases]
-      summary: Revalidate a connection before a query or transaction commit
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding. Authorization uses shared binding and resource locks so concurrent checks can proceed together; binding changes and migrations retain exclusive locks. Each lock waits up to five seconds before returning DATABASE_BUSY, and the binding is revalidated after the locks are acquired.
+      summary: "在查询或事务提交前重新验证连接"
+      description: "仅供原生 Node 宿主使用，需要账号 Bearer API Key，拒绝 Cookie 和浏览器 Origin。SQL 凭据不能传入项目 RPC。\n\n每次操作检查账号授权和入口绑定。鉴权共享绑定与资源读锁，管理变更使用排他锁；每个锁最多等 5 秒，超时返回 DATABASE_BUSY，取得锁后重新校验绑定。"
       security:
         - BearerAuth: []
       parameters:
@@ -446,7 +446,7 @@ paths:
             schema: {"$ref": "#/components/schemas/RelationalDatabaseAuthorizeRequest"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
@@ -455,8 +455,8 @@ paths:
   /api/databases/connections/{credentialId}:
     delete:
       tags: [Relational Databases]
-      summary: Release a native connection and terminate its SQL sessions
-      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      summary: "释放原生连接并终止 SQL 会话"
+      description: "仅供原生 Node 宿主使用，需要账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。每次检查账号授权和当前绑定，SQL 凭据不得传入项目 RPC。"
       security:
         - BearerAuth: []
       parameters:
@@ -466,7 +466,7 @@ paths:
           schema: {"type": "string", "format": "uuid"}
       responses:
         "200":
-          description: Successful database host response.
+          description: "数据库宿主操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
@@ -475,8 +475,8 @@ paths:
   /api/databases/{databaseId}:
     get:
       tags: [Relational Databases]
-      summary: Inspect an accessible database resource
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "查看可访问数据库"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -487,7 +487,7 @@ paths:
           schema: {"type": "string", "format": "uuid"}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
@@ -496,8 +496,8 @@ paths:
   /api/databases/{databaseId}/retry:
     post:
       tags: [Relational Databases]
-      summary: Retry failed database provisioning
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "重试失败的数据库创建"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -513,7 +513,7 @@ paths:
             schema: {"type": "object", "additionalProperties": false, "properties": {}}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
@@ -522,8 +522,8 @@ paths:
   /api/databases/{databaseId}/grants:
     get:
       tags: [Relational Databases]
-      summary: List database account grants
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "列出数据库账号授权"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -534,7 +534,7 @@ paths:
           schema: {"type": "string", "format": "uuid"}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseGrant"}}}, "required": ["errCode", "errMessage", "data"]}
@@ -542,8 +542,8 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags: [Relational Databases]
-      summary: Grant or narrow database read or write access
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "授予或收窄数据库读写权限"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -559,7 +559,7 @@ paths:
             schema: {"type": "object", "additionalProperties": false, "properties": {"userId": {"type": "string", "minLength": 1, "maxLength": 256}, "mode": {"type": "string", "enum": ["read", "write"]}}, "required": ["userId", "mode"]}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseGrant"}}, "required": ["errCode", "errMessage", "data"]}
@@ -568,8 +568,8 @@ paths:
   /api/databases/{databaseId}/grants/{userId}:
     delete:
       tags: [Relational Databases]
-      summary: Revoke access and terminate issued connections
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "撤销访问权并终止已签发连接"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -584,7 +584,7 @@ paths:
           schema: {"type": "string"}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
@@ -593,8 +593,8 @@ paths:
   /api/databases/{databaseId}/migrations:
     get:
       tags: [Relational Databases]
-      summary: Read immutable applied migration history
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "读取已应用的不可变迁移历史"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -605,7 +605,7 @@ paths:
           schema: {"type": "string", "format": "uuid"}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/DatabaseMigrationState"}}}, "required": ["errCode", "errMessage", "data"]}
@@ -614,8 +614,8 @@ paths:
   /api/databases/{databaseId}/migrations/plan:
     post:
       tags: [Relational Databases]
-      summary: Validate history and generate a migration against current models
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "校验历史并根据当前模型生成迁移"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -631,7 +631,7 @@ paths:
             schema: {"type": "object", "additionalProperties": false, "properties": {"schema": {"type": "string", "minLength": 1, "maxLength": 1048576}, "migrations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/DatabaseMigration"}}}, "required": ["schema", "migrations"]}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/DatabaseMigrationPlan"}}, "required": ["errCode", "errMessage", "data"]}
@@ -640,8 +640,8 @@ paths:
   /api/databases/{databaseId}/migrations/deploy:
     post:
       tags: [Relational Databases]
-      summary: Replay shadow history and transactionally deploy pending migrations
-      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      summary: "重放影子库历史并事务部署待执行迁移"
+      description: "需要账号身份。资源所有权决定授权及迁移能力，响应不返回数据库凭据。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -657,7 +657,7 @@ paths:
             schema: {"type": "object", "additionalProperties": false, "properties": {"migrations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/DatabaseMigration"}}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "acceptDataLoss": {"type": "boolean", "default": false}}, "required": ["migrations", "schemaHash"]}
       responses:
         "200":
-          description: Successful database management response.
+          description: "数据库管理操作成功。"
           content:
             application/json:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/DatabaseMigrationState"}}}, "required": ["errCode", "errMessage", "data"]}
@@ -667,10 +667,8 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Register or find an account-private Agent workspace
-      description: Requires an account Bearer token or account session cookie. An administrator key alone is insufficient. Project workspaces require
-        current project read access and a registered entry. Local/Assistant workspaces support unpublished projects without granting access to
-        registered project data.
+      summary: "登记或查找账号私有 Agent 工作区"
+      description: "需要账号 Bearer token 或会话 Cookie，仅有系统管理密钥不够。项目工作区要求当前项目读取权限和已注册入口；本地/小助手工作区支持未发布项目，但不会授予已注册项目数据权限。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -682,7 +680,7 @@ paths:
               $ref: "#/components/schemas/RuntimeWorkspaceInput"
       responses:
         "200":
-          description: Existing or newly registered account-private workspace.
+          description: "返回已有或新登记的账号私有工作区。"
           content:
             application/json:
               schema:
@@ -692,8 +690,8 @@ paths:
   /api/runtime-storage/workspaces/resolve:
     post:
       tags: [Runtime Storage]
-      summary: Resolve registered project or private unpublished workspace
-      description: Existing projects require current read access and a registered entry. Only a missing project resolves to a private local workspace; forbidden access never falls back. Assistant identity remains separate.
+      summary: "解析已注册项目或私有本地工作区"
+      description: "已存在的项目要求当前读取权限和已注册入口。只有项目不存在时才解析为私有本地工作区；拒权不会回退。小助手身份单独管理。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -705,7 +703,7 @@ paths:
               $ref: "#/components/schemas/RuntimeWorkspaceInput"
       responses:
         "200":
-          description: Account-private resolved workspace.
+          description: "返回解析后的账号私有工作区。"
           content:
             application/json:
               schema:
@@ -716,8 +714,8 @@ paths:
     get:
       tags:
         - Runtime Storage
-      summary: Read an account-owned Agent workspace
-      description: Other accounts receive 404, including system administrators. Project access and entry registration are rechecked.
+      summary: "读取账号拥有的 Agent 工作区"
+      description: "其他账号收到 404，系统管理员也不例外。每次重新检查项目权限和入口注册。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -730,7 +728,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Account-owned workspace.
+          description: "返回当前账号的工作区。"
           content:
             application/json:
               schema:
@@ -741,9 +739,8 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Acquire an exclusive Agent execution lease
-      description: The workspace and sessionKey identify persistent history. Repeating an active ownerToken returns the same lease. Another active owner
-        receives 409. Takeover after expiry increments the fence. Owner tokens are stored only as hashes.
+      summary: "取得 Agent 独占执行租约"
+      description: "工作区和 sessionKey 定位历史。相同活动 ownerToken 返回原租约，其他活动 owner 收到 409。过期接管提升 fence；owner token 只保存哈希。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -769,7 +766,7 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 512
-                  description: Stable host identity without NUL.
+                  description: "不含 NUL 的稳定宿主身份。"
                 ownerToken:
                   type: string
                   minLength: 32
@@ -777,7 +774,7 @@ paths:
                   writeOnly: true
       responses:
         "200":
-          description: Session lease, 30 seconds by default.
+          description: "会话租约，默认有效期 30 秒。"
           content:
             application/json:
               schema:
@@ -792,8 +789,8 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/history/{kind}:
     get:
       tags: [Runtime Storage]
-      summary: Read committed platform history
-      description: Returns account-owned ordered messages, queues, events and values. Project access and entry registration are rechecked. Reads do not acquire execution ownership.
+      summary: "读取已提交的运行历史"
+      description: "返回当前账号的有序消息、队列、事件和值，重新检查项目权限和入口注册。读取不会取得执行所有权。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -811,7 +808,7 @@ paths:
             $ref: "#/components/schemas/RuntimeHistoryKind"
       responses:
         "200":
-          description: Committed account-owned data.
+          description: "当前账号已提交的数据。"
           content:
             application/json:
               schema:
@@ -828,8 +825,8 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/agent-sessions:
     get:
       tags: [Runtime Storage]
-      summary: List stored Agent session identities
-      description: Returns non-deleted session keys in the account-owned workspace whose literal prefix matches the query.
+      summary: "列出已存储的 Agent 会话身份"
+      description: "返回账号工作区中未删除且匹配字面前缀的 sessionKey。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -849,7 +846,7 @@ paths:
             maxLength: 512
       responses:
         "200":
-          description: Committed account-owned data.
+          description: "当前账号已提交的数据。"
           content:
             application/json:
               schema:
@@ -866,8 +863,8 @@ paths:
   /api/runtime-storage/workspaces/{workspaceId}/snapshot:
     get:
       tags: [Runtime Storage]
-      summary: Read a versioned committed Agent session snapshot
-      description: Uses a consistent database snapshot without acquiring or resuming the source execution. An active owner may continue. Deleted sessions return 404.
+      summary: "读取带版本的 Agent 会话快照"
+      description: "使用一致性数据库快照，不接管或恢复源执行。活动 owner 可以继续运行；已删除会话返回 404。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -887,7 +884,7 @@ paths:
             maxLength: 512
       responses:
         "200":
-          description: Committed account-owned data.
+          description: "当前账号已提交的数据。"
           content:
             application/json:
               schema:
@@ -903,11 +900,8 @@ paths:
     post:
       tags:
         - Runtime Storage
-      summary: Execute a typed Agent storage operation under the current lease
-      description: Account ownership, current project access, owner token, lease expiry and fence are verified for every request. Maximum body is 16 MiB.
-        Mutable operations persist requestId and result in the same transaction. Read queries such as submissionByRequest are never cached as mutations. Retrying identical content returns the original result; changing content
-        for an existing ID returns 409. No SQL or executable code is accepted. Errors include RUNTIME_STORAGE_LEASE_LOST, RUNTIME_STORAGE_OWNER_CONFLICT
-        RUNTIME_STORAGE_REVISION_CONFLICT and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code.
+      summary: "在当前租约下执行 Agent 存储操作"
+      description: "每次检查账号所有权、项目权限、owner token、租约有效期和 fence，请求体最多 16 MiB。写操作在同一事务保存 requestId 与结果；submissionByRequest 等读取不作为写回执缓存。\n\n同一 ID 重试相同内容返回原结果，不同内容返回 409。拒绝 SQL 和可执行代码。错误在 data.code 中返回租约丢失、所有权、修订号或幂等冲突等 RUNTIME_STORAGE_* 代码。"
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -941,7 +935,7 @@ paths:
                   $ref: "#/components/schemas/RuntimeStorageOperation"
       responses:
         "200":
-          description: Record, page, commit sequence, ID, renewed lease or null.
+          description: "返回记录、分页结果、提交序号、ID、续期租约或 null。"
           content:
             application/json:
               schema:
@@ -952,13 +946,13 @@ paths:
     get:
       tags:
         - Health
-      summary: 健康检查
+      summary: "检查服务健康"
       security: []
       parameters:
         - in: header
           name: X-SteamHarness-Locale
           required: false
-          description: 返回内容语言。支持 `zh-CN` 和 `en`；未提供时保持 Server 既有英文默认。
+          description: "响应语言支持 zh-CN 和 en；未指定时保留 Server 的英文默认值。"
           schema:
             type: string
             enum:
@@ -968,7 +962,7 @@ paths:
         - in: query
           name: locale
           required: false
-          description: WebSocket 或无法设置自定义请求头的调用方可使用的语言回退；`X-SteamHarness-Locale` 存在时以请求头为准。
+          description: "供无法设置请求头的调用方或 WebSocket 使用的语言参数。X-SteamHarness-Locale 请求头优先。"
           schema:
             type: string
             enum:
@@ -1035,12 +1029,11 @@ paths:
                                 type: string
                               body:
                                 type: string
-                                description: 按请求语言返回的 Markdown 格式完整更新说明；旧 metadata 没有本地化字段时回退到 `releaseNotes.body`。
+                                description: "所选语言的完整 Markdown 发布说明；旧元数据回退到 releaseNotes.body。"
                               docsUrl:
                                 type: string
                                 format: uri
-                                description: 当前版本或部署的同语言完整更新记录地址。部署可提供当前环境内的相对日志路径。 / Localized version or deployment notes in the current
-                                  environment.
+                                description: "当前 Server 版本对应语言的独立发布日志地址。"
                                 example: https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.1.3
                             required:
                               - summary
@@ -1058,9 +1051,9 @@ paths:
   /api/auth/browser-session:
     post:
       tags: [Auth & Accounts]
-      summary: Reuse a native client login in Server Web
+      summary: "在 Server Web 复用原生客户端登录"
       operationId: createBrowserSession
-      description: Issue a single-use code valid for 60 seconds using an account API key. The destination must be a local absolute path. No new account session or API key is created. The code retains the original account and key permissions; responses are not cached. Limited to 20 requests per key per minute.
+      description: "使用账号 API Key 签发单次使用、60 秒有效的跳转码，目标必须是站内绝对路径。不会创建新账号会话或 API Key，权限沿用原账号与密钥；响应不缓存，每个密钥每分钟最多 20 次。"
       security:
         - BearerAuth: []
       requestBody:
@@ -1074,7 +1067,7 @@ paths:
                 returnTo: {type: string, maxLength: 2048, example: /databases}
       responses:
         "200":
-          description: Short-lived browser handoff code; never returns the original token.
+          description: "返回短期网页跳转码，不返回原 token。"
           content:
             application/json:
               schema:
@@ -1093,9 +1086,9 @@ paths:
           $ref: "#/components/responses/HarnessError"
     get:
       tags: [Auth & Accounts]
-      summary: Consume a browser handoff and open its destination
+      summary: "消费跳转码并打开目标页面"
       operationId: consumeBrowserSession
-      description: Consumes the code once, revalidates the original API key and sets a signed HttpOnly SameSite=Lax cookie before redirecting. The original key remains authoritative on every request, including revocation, expiry and disabled accounts. Expired or reused codes fail with 401. Responses use no-store and no-referrer.
+      description: "单次消费跳转码，复查原 API Key，设置签名 HttpOnly、SameSite=Lax Cookie 后重定向。每次请求仍检查原密钥的撤销、过期及账号停用状态。\n\n过期或重复使用返回 401，响应使用 no-store 和 no-referrer。"
       security: []
       parameters:
         - name: code
@@ -1104,13 +1097,13 @@ paths:
           schema: {type: string}
       responses:
         "303":
-          description: Browser authentication established with the native client's account and key permissions.
+          description: "已建立使用原客户端账号与密钥权限的浏览器登录态。"
           headers:
             Location:
-              description: Local destination supplied when the code was issued.
+              description: "签发跳转码时指定的站内目标。"
               schema: {type: string}
             Set-Cookie:
-              description: Signed HttpOnly authentication cookie; Secure on HTTPS requests.
+              description: "签名 HttpOnly Cookie；HTTPS 请求同时设置 Secure。"
               schema: {type: string}
         default:
           $ref: "#/components/responses/HarnessError"
@@ -1118,12 +1111,12 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: 读取当前浏览器或 Bearer 登录态
+      summary: "读取当前登录状态"
       operationId: getAuthSession
       security: []
       responses:
         "200":
-          description: "未登录时返回 `authenticated: false`；已登录时带上 principal 摘要。"
+          description: "未登录返回 authenticated: false；已登录返回当前身份摘要。"
           content:
             application/json:
               schema:
@@ -1132,12 +1125,12 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: 检查管理员密钥是否已配置
+      summary: "检查是否配置管理员密钥"
       operationId: getAdminKeyHealth
       security: []
       responses:
         "200":
-          description: 返回当前服务端是否配置了 `STEAMHARNESS_SERVER_ADMIN_KEY`。
+          description: "返回当前 Server 是否配置 STEAMHARNESS_SERVER_ADMIN_KEY。"
           content:
             application/json:
               schema:
@@ -1146,10 +1139,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 通过管理员密钥建立恢复会话
-      description: |
-        用于首个管理员恢复、无账号时的恢复登录以及权限恢复。
-        若同时配置了账号系统，服务端会优先尝试把当前管理员密钥映射为带 `builtin_admin` 的浏览器会话。
+      summary: "用管理员密钥建立恢复会话"
+      description: "用于首次管理员恢复、没有账号时的恢复登录或权限恢复。已配置账号系统时，优先把当前管理密钥映射到 builtin_admin 浏览器会话。"
       operationId: createAdminKeySession
       security: []
       requestBody:
@@ -1160,7 +1151,7 @@ paths:
               $ref: "#/components/schemas/AdminKeySessionRequest"
       responses:
         "200":
-          description: 登录成功并写入 httpOnly cookie。
+          description: "登录成功并写入 HttpOnly Cookie。"
           content:
             application/json:
               schema:
@@ -1171,14 +1162,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 通过邮箱密码建立账号会话
-      description: |
-        普通账号和管理员账号统一使用这一入口登录。
-        如果请求中的邮箱和密码匹配 `STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL` / `STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD`，
-        服务端只会在账号表为空时创建该 `builtin_admin`；后续登录验证数据库中的当前密码，不会用环境变量覆盖改密或禁用状态。
-        显示名称以数据库中保存的用户资料为准；登录不会用初始化默认名称或旧认证名称覆盖修改后的名称。
-        账号、密码哈希、会话与邀请都保存在 `STEAMHARNESS_DATABASE_URL` 指向的 PostgreSQL 中。
-        密码使用 scrypt 加随机盐；浏览器 Cookie 只保存签名后的刷新 token，数据库只保存 token 哈希。
+      summary: "使用邮箱和密码登录"
+      description: "普通用户与管理员共用此入口。仅账号表为空时，匹配初始化邮箱和密码才会创建 builtin_admin；之后按数据库中的当前密码和账号状态验证，不用环境值覆盖。\n\n显示名称沿用已保存资料。账号、密码哈希、会话和邀请保存在配置的 PostgreSQL 中；密码采用带随机盐的 scrypt，浏览器只保存签名刷新 token，数据库只保存 token 哈希。"
       operationId: createPasswordSession
       security: []
       requestBody:
@@ -1189,7 +1174,7 @@ paths:
               $ref: "#/components/schemas/PasswordLoginRequest"
       responses:
         "200":
-          description: 登录成功并写入 httpOnly cookie。
+          description: "登录成功并写入 HttpOnly Cookie。"
           content:
             application/json:
               schema:
@@ -1204,12 +1189,12 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 清理当前浏览器会话
+      summary: "退出当前浏览器会话"
       operationId: logoutAuthSession
       security: []
       responses:
         "200":
-          description: 无论当前是否存在会话，都会尝试清理 cookie。
+          description: "无论当前是否有会话，都尝试清理 Cookie。"
           content:
             application/json:
               schema:
@@ -1219,7 +1204,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: 读取账号邀请信息
-      description: 返回邀请邮箱、显示名称、24 小时有效期和可选接受时间，不返回数据库中的 token 哈希。管理员重新生成邀请后，旧链接立即失效。
+      description: "返回邀请邮箱、显示名称、24 小时有效期及可选接受时间，不暴露 token 哈希。重新生成邀请立即使旧链接失效。"
       operationId: getAccountInvitation
       security: []
       parameters:
@@ -1230,7 +1215,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 返回可用于设置初始密码的邀请信息。
+          description: "返回设置初始密码所需的邀请信息。"
           content:
             application/json:
               schema:
@@ -1242,7 +1227,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: 接受账号邀请并设置初始密码
-      description: 接受一次性邀请、设置密码并撤销该账号已有的浏览器会话。
+      description: "接受单次邀请、设置密码并撤销该账号已有的浏览器会话。"
       operationId: acceptAccountInvitation
       security: []
       parameters:
@@ -1259,7 +1244,7 @@ paths:
               $ref: "#/components/schemas/AcceptAccountInvitationRequest"
       responses:
         "200":
-          description: 接受邀请、激活账号并写入 30 天 httpOnly 会话 Cookie。
+          description: "激活账号并设置 30 天有效的 HttpOnly 会话 Cookie。"
           content:
             application/json:
               schema:
@@ -1277,9 +1262,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: 创建设备登录请求
-      description: |
-        CLI / Desktop / Web 先调用此接口获取 device code、user code 与浏览器批准地址，
-        之后由已登录的浏览器会话访问 `/login/device` 批准。
+      description: "客户端先获取 device code、user code 和浏览器批准地址，再由已登录浏览器访问 /login/device 完成批准。"
       operationId: startDeviceFlow
       security: []
       requestBody:
@@ -1290,7 +1273,7 @@ paths:
               $ref: "#/components/schemas/DeviceFlowStartRequest"
       responses:
         "200":
-          description: 返回本次 device flow 所需的设备码、验证码与轮询间隔。
+          description: "返回设备码、用户验证码和轮询间隔。"
           content:
             application/json:
               schema:
@@ -1303,11 +1286,8 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 轮询 device flow 结果并换取 API Key
-      description: |
-        返回 `authorization_pending` 时继续按 `intervalSeconds` 轮询；
-        返回 `slow_down` 时应读取 `Retry-After` 或 `data.retryAfterSeconds` 做退避；
-        返回 `expired_token` 表示当前 device code 已过期或已被消费。
+      summary: "轮询设备授权并换取 API Key"
+      description: "authorization_pending 时按 intervalSeconds 继续轮询。slow_down 时读取 Retry-After 或 data.retryAfterSeconds 退避；expired_token 表示设备码已过期或已消费。"
       operationId: pollDeviceFlowToken
       security: []
       requestBody:
@@ -1318,7 +1298,7 @@ paths:
               $ref: "#/components/schemas/DeviceFlowTokenRequest"
       responses:
         "200":
-          description: 批准成功后返回一次性明文 API Key 与账号信息。
+          description: "批准成功后只返回一次明文 API Key 及账号信息。"
           content:
             application/json:
               schema:
@@ -1339,7 +1319,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 在浏览器中批准一次 device 登录
+      summary: "在浏览器批准设备登录"
       operationId: approveDeviceFlow
       security:
         - SessionCookie: []
@@ -1351,7 +1331,7 @@ paths:
               $ref: "#/components/schemas/DeviceFlowDecisionRequest"
       responses:
         "200":
-          description: 批准成功，轮询端随后可换取 API Key。
+          description: "批准成功后，轮询客户端可以换取 API Key。"
           content:
             application/json:
               schema:
@@ -1370,7 +1350,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 在浏览器中拒绝一次 device 登录
+      summary: "拒绝设备登录"
       operationId: denyDeviceFlow
       security:
         - SessionCookie: []
@@ -1382,7 +1362,7 @@ paths:
               $ref: "#/components/schemas/DeviceFlowDecisionRequest"
       responses:
         "200":
-          description: 请求被拒绝，轮询端会收到 `access_denied`。
+          description: "拒绝请求，轮询客户端收到 access_denied。"
           content:
             application/json:
               schema:
@@ -1406,8 +1386,7 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: 返回当前 principal 以及用户资料；管理员密钥登录时 `profile` 为 `null`。Desktop API Key 成功鉴权时，`principal.expiresAt`
-            返回滑动续期后的到期时间。
+          description: "返回当前身份与资料，管理员密钥登录的 profile 为 null。Studio API Key 验证成功后，principal.expiresAt 包含滑动续期后的有效期。"
           content:
             application/json:
               schema:
@@ -1418,7 +1397,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: 更新当前账号资料
-      description: 显示名称修改同时保存到认证账号和用户资料，重新登录或会话续期后保留；仅修改头像、邮箱或密码不会恢复旧名称。
+      description: "显示名称同时更新认证账号与用户资料，后续登录和续期保留该名称。单独修改头像、邮箱或密码不会覆盖名称。"
       operationId: updateCurrentAccount
       security:
         - SessionCookie: []
@@ -1431,7 +1410,7 @@ paths:
               $ref: "#/components/schemas/UpdateMeRequest"
       responses:
         "200":
-          description: 返回更新后的用户资料。
+          description: "更新后的用户资料。"
           content:
             application/json:
               schema:
@@ -1442,14 +1421,14 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: 列出当前可管理的 API Key
+      summary: "列出可管理的 API Key"
       operationId: listAccountApiKeys
       security:
         - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
-          description: 普通用户默认查看自己的 API Key；管理员或带 `api_keys.manage_all` 的 principal 可查看全部。
+          description: "普通用户查看自己的密钥；系统管理员或具有 api_keys.manage_all 能力的身份可查看全部。"
           content:
             application/json:
               schema:
@@ -1461,7 +1440,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 创建新的 API Key
+      summary: "创建 API Key"
       operationId: createAccountApiKey
       security:
         - SessionCookie: []
@@ -1474,7 +1453,7 @@ paths:
               $ref: "#/components/schemas/CreateApiKeyRequest"
       responses:
         "201":
-          description: 返回新的 API Key 记录和只显示一次的明文 token。
+          description: "返回密钥记录和仅展示一次的明文 token。"
           content:
             application/json:
               schema:
@@ -1491,7 +1470,7 @@ paths:
     delete:
       tags:
         - Auth & Accounts
-      summary: 撤销一个 API Key
+      summary: "撤销 API Key"
       operationId: revokeAccountApiKey
       security:
         - SessionCookie: []
@@ -1513,7 +1492,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: 列出账号和聚合权限摘要
+      summary: "列出账号及权限摘要"
       operationId: listAccountUsers
       security:
         - SessionCookie: []
@@ -1523,7 +1502,7 @@ paths:
           in: query
           schema:
             type: string
-          description: 按邮箱、显示名称或角色名称搜索。
+          description: "按邮箱、显示名称或角色搜索。"
         - name: status
           in: query
           schema:
@@ -1532,7 +1511,7 @@ paths:
               - active
               - disabled
               - invited
-          description: 按 SteamHarness 账号状态筛选。
+          description: "按账号状态筛选。"
         - name: page
           in: query
           schema:
@@ -1560,7 +1539,7 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: 邀请一个新用户
+      summary: "邀请新用户"
       operationId: inviteAccountUser
       security:
         - SessionCookie: []
@@ -1573,7 +1552,7 @@ paths:
               $ref: "#/components/schemas/InviteUserRequest"
       responses:
         "201":
-          description: 默认返回用户资料和 Server 生成的 `/account/invite/:token` 完整邀请链接；兼容请求仍可返回临时密码信息。
+          description: "默认返回用户资料及 Server 生成的完整邀请地址；兼容请求可能仍返回临时密码信息。"
           content:
             application/json:
               schema:
@@ -1588,7 +1567,7 @@ paths:
     get:
       tags:
         - Auth & Accounts
-      summary: 为已有受邀用户重新生成邀请链接
+      summary: "重新生成待接受的账号邀请"
       operationId: regenerateAccountInvitationLink
       security:
         - SessionCookie: []
@@ -1597,7 +1576,7 @@ paths:
         - $ref: "#/components/parameters/UserId"
       responses:
         "200":
-          description: 返回新的 24 小时邀请链接。
+          description: "返回有效期 24 小时的新邀请地址。"
           content:
             application/json:
               schema:
@@ -1612,7 +1591,7 @@ paths:
     patch:
       tags:
         - Auth & Accounts
-      summary: 更新用户邮箱、显示名称、临时密码或启停状态
+      summary: "更新用户邮箱、名称、密码或启停状态"
       operationId: updateAccountUser
       security:
         - SessionCookie: []
@@ -1627,7 +1606,7 @@ paths:
               $ref: "#/components/schemas/UpdateAdminUserRequest"
       responses:
         "200":
-          description: 返回更新后的用户资料。
+          description: "更新后的用户资料。"
           content:
             application/json:
               schema:
@@ -1646,7 +1625,7 @@ paths:
       operationId: listProjects
       responses:
         "200":
-          description: 项目摘要分页列表；条目和总数均排除缺少 entries 或 defaultEntry 的旧格式记录，保留其数据库记录与关联数据。
+          description: "项目摘要列表。"
           content:
             application/json:
               schema:
@@ -1690,16 +1669,12 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/ProjectRole"
-      description: 先按登录账号权限筛选，再执行搜索与分页。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。 / Authorization precedes
-        pagination. Public projects grant signed-in users implicit guest access.
+      description: "先按登录账号权限筛选，再执行搜索与分页。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。"
     post:
       tags:
         - Admin Projects
-      summary: 新建应用并由 Server 分配 UUID
-      description: 登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。 / Signed-in
-        users may create personal projects as owners. Group projects require developer access and do not
-        promote the creator. Server assigns a fresh UUID; client-selected projectId is rejected. No source
-        upload is required.
+      summary: "创建由 Server 分配 UUID 的项目"
+      description: "登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。"
       operationId: createProject
       requestBody:
         required: true
@@ -1729,7 +1704,7 @@ paths:
               defaultEntry: main
       responses:
         "201":
-          description: 创建新应用成功，返回 Server 分配的新 UUID、项目类型、完整声明和可见性。
+          description: "返回新项目 UUID、类型、完整声明和可见性。"
           content:
             application/json:
               schema:
@@ -1746,7 +1721,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 读取系统 token 用量
+      summary: "读取系统 Token 用量"
       operationId: getSystemTokenUsage
       parameters:
         - name: pageSize
@@ -1762,18 +1737,18 @@ paths:
             type: string
       responses:
         "200":
-          description: 由各项目总量聚合的系统总量，以及项目 token 用量分页。
+          description: "返回项目总量汇总及分页的项目用量。"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenUsagePageResponse"
         "501":
-          description: 当前 storage 不支持 PostgreSQL KV inspection。
+          description: "当前存储不支持此用量查询。"
   /api/audit-events:
     get:
       tags:
         - Admin Projects
-      summary: 读取全局审计日志
+      summary: "读取系统审计日志"
       operationId: listAuditEvents
       parameters:
         - name: pageSize
@@ -1790,7 +1765,7 @@ paths:
           example: 2026-06-18T16:00:00.000Z::audit-1
         - name: from
           in: query
-          description: ISO 8601 起始时间，包含边界。
+          description: "ISO 8601 开始时间，包含边界。"
           schema:
             type: string
             format: date-time
@@ -1826,13 +1801,13 @@ paths:
             $ref: "#/components/schemas/AuditOutcome"
       responses:
         "200":
-          description: 审计事件分页，结构化上下文已脱敏。
+          description: "分页返回审计事件，结构化上下文已脱敏。"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditEventPageResponse"
         "403":
-          description: 当前 principal 缺少 `audit.read`。
+          description: "当前身份缺少 audit.read。"
   /api/projects/{projectId}/init:
     post:
       tags:
@@ -1862,7 +1837,7 @@ paths:
                   content: export default {};
       responses:
         "200":
-          description: 初始化与静态文件校验结果。
+          description: "静态文件处理结果。"
           content:
             application/json:
               schema:
@@ -1871,13 +1846,13 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 查询最新服务器准备任务
+      summary: "查询最新准备任务"
       operationId: getLatestProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
-          description: 最新准备任务。
+          description: "最新的准备任务。"
           content:
             application/json:
               schema:
@@ -1888,7 +1863,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 查询服务器准备任务
+      summary: "查询指定准备任务"
       operationId: getProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1900,7 +1875,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: 准备任务当前状态。
+          description: "准备任务的当前状态。"
           content:
             application/json:
               schema:
@@ -1911,7 +1886,7 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: 上传项目压缩包
+      summary: "上传项目归档"
       operationId: uploadProjectPackage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1922,7 +1897,7 @@ paths:
           example: hello.tgz
         - name: mode
           in: query
-          description: 设置为 `create` 时只创建，不按普通上传覆盖。
+          description: "create 模式用于创建项目，普通上传不会替换既有身份。"
           schema:
             type: string
             enum:
@@ -1936,7 +1911,7 @@ paths:
               format: binary
       responses:
         "202":
-          description: 源码归档已持久化，并创建异步准备任务。
+          description: "已保存源码归档并创建异步准备任务。"
           content:
             application/json:
               schema:
@@ -1945,17 +1920,15 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 读取项目源文件
-      description: 仅有源码下载授权的账号只能读取已发布版本；读取 draft 还需要项目管理权限，避免暴露未发布的配置字段和默认值。
+      summary: "读取项目源码文件"
+      description: "访客可下载已发布版本；读取草稿需要开发者或更高权限，未发布配置字段和值不会向访客开放。"
       operationId: getProjectFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
         - name: includeBinary
           in: query
-          description: |
-            设为 `true` 时，Kanban 项目的非文本静态资源以 base64 返回并标记
-            `encoding: base64`。默认响应只包含可编辑文本文件。
+          description: "includeBinary 为 true 时，以 Base64 返回 Kanban 非文本静态资源，并标记 encoding: base64；默认只返回可编辑文本。"
           schema:
             type: boolean
             default: false
@@ -1997,7 +1970,7 @@ paths:
               format: binary
       responses:
         "200":
-          description: 已保存文件引用。
+          description: "已保存的文件引用。"
           content:
             application/json:
               schema:
@@ -2016,9 +1989,7 @@ paths:
       tags:
         - Admin Projects
       summary: 上传项目卡片图片
-      description: |
-        上传客户端完成 1:1 裁剪后生成的 WebP。调用方必须具备项目管理权限。
-        Server 校验格式与大小后按内容哈希保存，并返回公开、不可变的图片 URL。
+      description: "上传客户端完成 1:1 裁剪后生成的 WebP，需要项目管理权限。Server 校验格式和大小后按内容哈希保存，返回公开、不可变的图片地址。"
       operationId: uploadProjectCardImage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2031,7 +2002,7 @@ paths:
               format: binary
       responses:
         "201":
-          description: 图片已保存；相同内容会复用相同 URL。
+          description: "图片已保存，相同内容复用相同地址。"
           content:
             application/json:
               schema:
@@ -2052,9 +2023,8 @@ paths:
     put:
       tags:
         - Admin Projects
-      summary: 更新项目卡片元数据
-      description: Update display metadata only. Entry types come from steamharness.json entries and cannot be changed
-        through this API.
+      summary: "更新项目展示信息"
+      description: "只更新展示信息。入口类型来自 steamharness.json，不通过此接口修改。"
       operationId: updateProjectCard
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2071,7 +2041,7 @@ paths:
                 - projectCard
       responses:
         "200":
-          description: 返回规范化后的项目卡片元数据。
+          description: "规范化后的项目卡片信息。"
           content:
             application/json:
               schema:
@@ -2090,14 +2060,14 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 下载可本地化的已发布源码快照
-      description: 下载已发布不可变源码快照，独立校验源码下载权限，无平台限制。成功发送 GET 响应后为实际返回的精确版本累加一次下载量；HEAD、失败和中断响应不计数。
+      summary: "下载已发布源码快照"
+      description: "按项目权限下载不可变的已发布源码，无平台限制。成功发送的 GET 计入实际版本下载量；HEAD、失败和中断响应不计数。"
       operationId: getDownloadableSourceFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
-          description: 精确已发布版本或 latest，不接受 draft。
+          description: "精确发布版本或 latest，不接受 draft。"
           schema:
             type: string
             default: latest
@@ -2109,15 +2079,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/DownloadableSourceFilesResultResponse"
         "403":
-          description: 当前身份没有项目源码下载权限。
+          description: "当前身份无权下载项目源码。"
         "409":
-          description: 版本源码不可用。
+          description: "该发布版本的源码快照不可用。"
   /project-card-images/{projectId}/{fileName}:
     get:
       tags:
         - Admin Projects
       summary: 读取公开项目卡片图片
-      description: 读取按内容哈希保存的不可变 WebP；用于项目列表和 Desktop 展示。
+      description: "按内容哈希读取不可变 WebP，用于项目列表及 Studio 展示。"
       security: []
       operationId: getProjectCardImage
       parameters:
@@ -2135,7 +2105,7 @@ paths:
             pattern: ^[a-f0-9]{64}\.webp$
       responses:
         "200":
-          description: 项目卡片 WebP 图片，响应可长期公开缓存。
+          description: "项目卡片 WebP，可公开长期缓存。"
           headers:
             Cache-Control:
               schema:
@@ -2155,9 +2125,8 @@ paths:
     get:
       tags:
         - Admin Account
-      summary: 读取本地对象存储中的公开头像
-      description: 仅在 Server 以 STEAMHARNESS_STORAGE_DRIVER=local 运行时挂载。按内容哈希读取不可变头像； 该路由只服务头像，`storage/workflows/**`
-        始终不可达。
+      summary: "读取公开头像"
+      description: "仅在 local 存储驱动下提供内容哈希寻址的不可变头像。该路由只暴露头像，不能访问项目源码或其他业务文件目录。"
       security: []
       operationId: getLocalStorageAvatar
       parameters:
@@ -2175,7 +2144,7 @@ paths:
             pattern: ^[a-f0-9]{64}\.(png|jpe?g|gif|webp)$
       responses:
         "200":
-          description: 头像图片，响应可长期公开缓存。
+          description: "头像图片，可公开长期缓存。"
           headers:
             Cache-Control:
               schema:
@@ -2248,9 +2217,7 @@ paths:
       tags:
         - Admin Projects
       summary: 读取 Kanban 工作区
-      description: |
-        读取固定 target 的静态产物目录、HTML 入口、清单、当前用户隔离的命名配置和短期预览 capability。
-        参数化项目第一次读取时会原子创建“默认配置”；无参数项目返回空配置列表。
+      description: "返回固定版本的静态目录、HTML 入口、清单、当前账号命名配置及短期预览凭据。有参数的项目首次读取时原子创建默认配置；无参数项目返回空列表。"
       operationId: getKanbanWorkspace
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2263,7 +2230,7 @@ paths:
             pattern: ^[a-z][a-z0-9_-]{0,63}$
       responses:
         "200":
-          description: Kanban 工作区和短期预览地址。
+          description: "Kanban 工作区与短期预览地址。"
           content:
             application/json:
               schema:
@@ -2274,11 +2241,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: 调用 Kanban 项目数据 Bridge
-      description: Use entryId for the registered Kanban entry. Data and attachment calls require input.database and
-        current project and space authorization. target selects a static declaration version; draft data
-        access can use a registered entry before source upload. No project execution occurs.
-        Local entries.* and conversations.* operations return 409 with metadata.code ENTRY_RUNTIME_UNAVAILABLE; use CLI Web or Studio.
+      summary: "调用 Kanban 数据 Bridge"
+      description: "entryId 指向已登记的 Kanban 入口。关系数据和附件要求 input.database 及当前项目、资源授权；target 选择静态声明版本，草稿数据访问可先于源码上传。\n\nServer 不执行项目。entries.*、conversations.* 等本地执行操作返回 409 和 ENTRY_RUNTIME_UNAVAILABLE，请使用 CLI Web 或 Studio。"
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2290,7 +2254,7 @@ paths:
               $ref: "#/components/schemas/KanbanStudioBridgeRequest"
       responses:
         "200":
-          description: Bridge 操作结果；不存在的 KV 可以省略 data，不存在的知识文档返回 null。
+          description: "返回操作结果，无返回值时 data 可为空，不存在的知识文档返回 null。"
           content:
             application/json:
               schema:
@@ -2309,21 +2273,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 读取 capability 保护的 Kanban 静态资源
-      description: >-
-        使用工作区接口签发的短期 capability 读取固定版本资源。`assetPath` 可以表示
-
-        配置的 HTML 入口或产物目录内的多段相对路径；目录穿越、符号链接、敏感文件和目录外文件均被拒绝。
-
-        HTML 入口响应会注入带 nonce 的配置与项目数据 Bridge，并返回只允许产物同源资源、data 与 blob 的离线 CSP。
-
-        capability 本身是限定项目、用户、固定目标与有效期的临时凭据，因此 sandbox iframe 加载 ES module、WASM
-
-        和项目内数据文件时不需要登录 Cookie 或 API Key；其它项目 API 仍要求登录鉴权。
-
-
-        预览凭据不替代账号权限；每次请求重新校验账号状态、当前成员关系及目标版本权限。 / Preview credentials never replace authorization; each
-        request checks current account and membership state.
+      summary: "读取受能力凭据保护的 Kanban 静态资源"
+      description: "使用工作区接口签发的短期 capability 读取固定版本资源。`assetPath` 可以表示 配置的 HTML 入口或产物目录内的多段相对路径；目录穿越、符号链接、敏感文件和目录外文件均被拒绝。 HTML 入口响应会注入带 nonce 的配置与项目数据 Bridge，并返回只允许产物同源资源、data 与 blob 的离线 CSP。 capability 本身是限定项目、用户、固定目标与有效期的临时凭据，因此 sandbox iframe 加载 ES module、WASM 和项目内数据文件时不需要登录 Cookie 或 API Key；\n\n其它项目 API 仍要求登录鉴权。\n\n预览凭据不替代账号权限；每次请求重新校验账号状态、当前成员关系及目标版本权限。"
       security: []
       operationId: getKanbanPreviewAsset
       parameters:
@@ -2350,7 +2301,7 @@ paths:
             type: string
       responses:
         "200":
-          description: HTML、CSS、JavaScript、图片、字体或其它允许的项目内静态资源。
+          description: "项目允许访问的 HTML、CSS、JavaScript、图片、字体或其他静态资源。"
           headers:
             Content-Security-Policy:
               schema:
@@ -2374,7 +2325,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read an immutable published configuration template
+      summary: "读取不可变的发布配置模板"
       operationId: getProjectConfigurationTemplate
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2385,8 +2336,7 @@ paths:
           schema: *a2
       responses:
         "200":
-          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read
-            or source-download permission. Missing templates return null data.
+          description: "返回过滤后的版本字段、值、规则和附件哈希，要求项目读取或源码下载权限。模板不存在时 data 为 null。"
           content:
             application/json:
               schema:
@@ -2402,10 +2352,9 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Upload a personal configuration attachment after checking field permissions
+      summary: "按字段权限上传个人配置附件"
       operationId: uploadProjectConfigurationFile
-      description: Set target to the installed published version to check its field permissions. Omitting target
-        uses the author's draft or the recipient's latest published template.
+      description: "target 指定安装的发布版本；省略时使用作者草稿或接收者的最新已发布模板。"
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
@@ -2426,8 +2375,7 @@ paths:
             type: string
         - in: query
           name: field
-          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most
-            8192 characters.
+          description: "可选的自定义文件字段 JSON 描述，最多 8192 字符，不能覆盖作者字段。"
           schema:
             type: string
             maxLength: 8192
@@ -2440,8 +2388,7 @@ paths:
               format: binary
       responses:
         "200":
-          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned
-            reference in a separate configuration mutation.
+          description: "返回一个服务器文件引用。附件按账号隔离，最多 50 MiB；另行保存配置引用后生效。"
         "400":
           $ref: "#/components/responses/HarnessError"
         "403":
@@ -2450,7 +2397,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read an allowed personal or immutable version attachment
+      summary: "读取获准的个人或版本附件"
       operationId: readProjectConfigurationFile
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2466,8 +2413,7 @@ paths:
           schema: *a2
       responses:
         "200":
-          description: File bytes. Source-download access grants only the template attachments; personal uploads are
-            restricted to their uploading account.
+          description: "返回文件内容。源码下载权限只开放模板附件，个人上传文件仅允许上传账号读取。"
           content:
             application/octet-stream:
               schema:
@@ -2479,15 +2425,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: Read account-scoped configurations for any project type
-      description: Requires project read or source-download access and an account identity. Values are isolated by
-        project and account. Download access only exposes the version template and permitted personal values.
-        Official drafts require an actual maintainer, owner or system administrator. For v2 projects,
-        non-managers use the latest published template for default or draft targets even with source-draft
-        read access. Unpublished role-controlled configurations return a publication-required error. The
-        Server never executes project code. A temporary role fallback changes the response view while
-        preserving the account's saved selection; access recovery reuses it. Saving fallback values
-        preserves that selection, while an explicit select action updates it.
+      summary: "读取账号隔离的项目配置"
+      description: "需要账号身份及项目读取或源码下载权限。值按项目、入口和账号隔离，下载权限只开放版本模板及允许的个人值。官方草稿要求维护者、所有者或系统管理员。\n\nv2 项目的非管理者默认读取最新已发布模板，即使能读取源码草稿也不开放未发布配置；未发布的角色配置会提示先发布。\n\n临时权限回退只改变返回视图，保留账号已保存的选择。权限恢复后继续使用原选择，保存回退配置的值也不覆盖它；显式 select 才更改选择。Server 不执行项目代码。"
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2498,7 +2437,7 @@ paths:
           schema: *a2
       responses:
         "200":
-          description: Current fields, profiles, selection and revision. Cache-Control is no-store.
+          description: "当前字段、配置、选择与修订号；响应使用 no-store。"
           content:
             application/json:
               schema:
@@ -2510,12 +2449,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Manage or export account-scoped project configurations
-      description: 个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。 / Guests may manage their
-        own configurations subject to published field rules and revision checks. Official publication.*
-        actions require maintainer or owner access. For v2 personal configurations, default or draft targets
-        resolve to the latest published template for non-managers; role-controlled projects must be published
-        first.
+      summary: "管理或导出项目配置"
+      description: "个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。"
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2537,7 +2472,7 @@ paths:
                 - entryId
       responses:
         "200":
-          description: Committed state, or portable export for the export action. Cache-Control is no-store.
+          description: "返回已提交状态，export 操作返回可导入的配置文件；响应使用 no-store。"
           content:
             application/json:
               schema:
@@ -2549,7 +2484,7 @@ paths:
         "403":
           $ref: "#/components/responses/HarnessError"
         "409":
-          description: Revision conflict; data.code is CONFIGURATION_CONFLICT and no mutation was committed.
+          description: "修订冲突，data.code 为 CONFIGURATION_CONFLICT，未提交任何修改。"
           content:
             application/json:
               schema:
@@ -2558,7 +2493,7 @@ paths:
     put:
       tags:
         - Admin Projects
-      summary: 保存 server draft 文件
+      summary: "保存源码草稿文件"
       operationId: saveDraftFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2581,7 +2516,7 @@ paths:
                 - files
       responses:
         "200":
-          description: 保存与静态文件校验结果。
+          description: "静态文件保存结果。"
           content:
             application/json:
               schema:
@@ -2591,8 +2526,7 @@ paths:
       tags:
         - Admin Projects
       summary: 克隆项目
-      description: 仅有源码下载授权的账号只能克隆已发布版本；克隆 draft 还需要原项目的管理权限。新副本的所有权不授予原项目的配置发布权限。目标 ID 由 Server 分配，禁止指定
-        targetProjectName 或 projectId。 / Server assigns the target UUID; client-selected IDs are rejected.
+      description: "仅有源码下载授权的账号只能克隆已发布版本；克隆 draft 还需要原项目的管理权限。新副本的所有权不授予原项目的配置发布权限。目标 ID 由 Server 分配，禁止指定 targetProjectName 或 projectId。"
       operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2631,9 +2565,7 @@ paths:
       tags:
         - Admin Projects
       summary: 同步项目默认名称和展示声明
-      description: |
-        把本地 `steamharness.json` 的 `name` 与 `projectInfo` 同步到已绑定项目。
-        展示声明和平台只用于展示，不限制源码上传或下载。
+      description: "把本地根 steamharness.json 的 name 与 projectInfo 同步到已绑定项目。平台声明只影响展示，不限制源码上传或下载。"
       operationId: updateProjectInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2654,7 +2586,7 @@ paths:
                 - projectInfo
       responses:
         "200":
-          description: 已保存的默认名称和项目展示信息。
+          description: "已保存的默认名称与展示信息。"
           content:
             application/json:
               schema:
@@ -2669,7 +2601,7 @@ paths:
     patch:
       tags:
         - Admin Projects
-      summary: 更新项目显示信息
+      summary: "更新项目展示信息"
       operationId: updateProjectDisplayInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2713,7 +2645,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 读取项目和有效权限 / Read project and effective access
+      summary: "读取项目和有效权限"
       operationId: getProject
       parameters:
         - name: projectId
@@ -2723,7 +2655,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -2748,7 +2680,7 @@ paths:
       tags:
         - Admin Projects
       summary: 发布项目版本
-      description: 以 draft 的 package 版本发布不可变源码快照并更新 latest。重复版本返回 409，不安装、构建或加载项目代码。
+      description: "把准备完成的草稿发布为不可变快照并更新 latest。重复版本返回 409；不会安装、构建或加载项目代码。"
       operationId: publishProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2764,11 +2696,11 @@ paths:
                   example: 初始发布
                 expectedVersion:
                   type: string
-                  description: 可选的预期草稿版本；不匹配时返回 409，防止发布其他操作替换的草稿。
+                  description: "可选的预期草稿版本。不匹配返回 409，防止发布已被替换的草稿。"
                   pattern: ^\d+\.\d+\.\d+$
                 expectedSourceHash:
                   type: string
-                  description: 上传处理结果 sourceHash；使用发布配置草稿时必填。源码变化时返回 409，不创建版本。
+                  description: "配置发布草稿要求提交准备时的源码哈希；源码变化返回 409，不创建版本。"
                   pattern: ^[a-f0-9]{64}$
                 expectedConfigurationRevisions:
                   type: object
@@ -2777,7 +2709,7 @@ paths:
                     minimum: 0
                     maximum: 9007199254740991
                   example: { users: 0, board: 3 }
-                  description: 按 entryId 提交各入口发布配置草稿版本，值必须是 JSON 非负安全整数（初始为 0）。必须匹配草稿版本；草稿所引用的个人配置版本也必须保持不变。
+                  description: "按 entryId 提交发布草稿修订号，为非负 JSON 安全整数，初始值 0。每项及其引用的个人配置修订号必须仍匹配。"
       responses:
         "200":
           description: 发布结果。
@@ -2791,11 +2723,9 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 列出直接与继承成员 / List direct and inherited members
+      summary: "列出项目成员"
       operationId: listprojectMembers
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - name: projectId
           in: path
@@ -2824,7 +2754,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "返回直接及继承的 guest、developer、maintainer、owner 角色与来源。"
           content:
             application/json:
               schema:
@@ -2848,11 +2778,9 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: 设置直接成员角色 / Set direct member role
+      summary: "设置项目成员角色"
       operationId: setprojectMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "维护者只能授予 guest 或 developer，并管理有效角色低于维护者的用户。所有者可管理全部角色；最后一名活跃所有者受保护。"
       parameters:
         - &a3
           name: projectId
@@ -2878,7 +2806,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "更新后的成员记录。"
           content:
             application/json:
               schema:
@@ -2909,11 +2837,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: 移除直接成员 / Remove direct membership
+      summary: "移除项目成员"
       operationId: removeprojectMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - *a3
         - name: userId
@@ -2923,7 +2849,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "删除结果。"
           content:
             application/json:
               schema:
@@ -2952,10 +2878,9 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 列出邀请 / List invitations
+      summary: "列出项目邀请"
       operationId: listprojectInvitations
-      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only;
-        owners and system administrators can list every role.
+      description: "维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。"
       parameters: &a4
         - name: projectId
           in: path
@@ -2964,7 +2889,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "项目的待接受、已接受、已撤销和已过期邀请。"
           content:
             application/json:
               schema:
@@ -2989,11 +2914,9 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: 创建角色邀请 / Create role invitation
+      summary: "创建项目邀请"
       operationId: createprojectInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "按当前可授予角色生成一次性邀请，有效期 7 天。维护者可邀请访客或开发者，所有者可邀请全部角色；接受时重新检查邀请者权限。使用返回的 token 构造站内邀请链接。"
       parameters: *a4
       requestBody:
         required: true
@@ -3008,7 +2931,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3040,11 +2963,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: 撤销邀请 / Revoke invitation
+      summary: "撤销未接受的邀请"
       operationId: revokeprojectInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - name: projectId
           in: path
@@ -3058,7 +2979,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "撤销结果。"
           content:
             application/json:
               schema:
@@ -3087,9 +3008,8 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 查看邀请详情
-      description: 需要登录才能查看邀请；资源可为项目或组，project 字段显示对应资源的 ID 和名称。 / Sign-in required; resourceType identifies project
-        or group.
+      summary: "读取邀请详情"
+      description: "接受前先检查 token 是否有效。邀请 token 本身是临时访问凭据，未登录用户可读取项目名称和邀请角色，再登录接受。"
       operationId: lookupProjectInvitation
       parameters:
         - name: token
@@ -3111,8 +3031,7 @@ paths:
       tags:
         - Admin Projects
       summary: 接受项目邀请
-      description: 接受时重新校验邀请者当前权限、接收者活跃状态及邀请有效性；不会降低已有直接或继承角色。 / Acceptance rechecks current roles, active account
-        status and invitation validity; higher roles are preserved.
+      description: "需要登录账号，成功后按邀请角色加入项目且不降低已有高角色。每个 token 只能接受一次，重复接受返回 409。"
       operationId: acceptProjectInvitation
       parameters:
         - name: token
@@ -3122,7 +3041,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 接受成功，包含邀请记录与已写入的成员记录。
+          description: "邀请已接受，返回邀请及成员记录。"
           content:
             application/json:
               schema:
@@ -3134,7 +3053,7 @@ paths:
         "409":
           $ref: "#/components/responses/HarnessError"
         "410":
-          description: 邀请已过期或被撤销。
+          description: "邀请已过期或撤销。"
           content:
             application/json:
               schema:
@@ -3162,7 +3081,7 @@ paths:
               visibility: public
       responses:
         "200":
-          description: 更新后的 workflow 摘要。
+          description: "更新后的项目摘要。"
           content:
             application/json:
               schema:
@@ -3175,7 +3094,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 列出项目 版本
+      summary: "列出项目版本"
       operationId: listProjectVersions
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -3190,7 +3109,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 读取项目 token 用量
+      summary: "读取项目 Token 用量"
       operationId: getProjectTokenUsage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -3198,41 +3117,40 @@ paths:
           in: query
           schema:
             type: string
-          description: 传入后同时返回该 conversation 聚合。
+          description: "指定 conversationId 时返回对应会话汇总。"
         - name: includeEntries
           in: query
           schema:
             type: boolean
-          description: 和 conversationId 一起使用，返回 `tokenUsage.entry.*` 明细。
+          description: "与 conversationId 一起使用，返回 tokenUsage.entry.* 明细。"
       responses:
         "200":
-          description: 项目 token 用量详情。
+          description: "项目 Token 用量明细。"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenUsageDetailResponse"
         "501":
-          description: 当前 storage 不支持 PostgreSQL KV inspection。
+          description: "当前存储不支持此用量查询。"
   /api/projects/{projectId}/source-share:
     get:
       tags:
         - Admin Projects
-      summary: 读取分享版本的静态元数据
-      description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为
-        /share/projects/{projectId}/{version}，不携带凭据或授予权限。
+      summary: "读取分享版本的静态信息"
+      description: "需要登录和项目源码下载权限。读取精确发布版本，不加载项目代码，也不计下载次数。分享链接采用 /share/projects/{projectId}/{version}，不携带凭据或额外授权。"
       operationId: getProjectSourceShare
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           required: true
-          description: 精确已发布版本，不接受 latest 或 draft。
+          description: "精确发布版本，不接受 latest 或 draft。"
           schema:
             type: string
             pattern: ^\d+\.\d+\.\d+$
       responses:
         "200":
-          description: 已授权的版本元数据，Cache-Control 为 no-store。
+          description: "获授权的版本信息，响应使用 no-store。"
           content:
             application/json:
               schema:
@@ -3242,8 +3160,7 @@ paths:
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
-          description: 需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。 / Access required; data.requestUrl provides a
-            short-lived request link for guest membership.
+          description: "需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。"
           content:
             application/json:
               schema:
@@ -3273,19 +3190,19 @@ paths:
       tags:
         - Admin Projects
       summary: 下载不可变源码归档
-      description: 成功发送 GET 响应后为实际返回的精确版本累加一次下载量；latest 归入解析后的版本。HEAD、失败和中断响应不计数。
+      description: "成功发送的 GET 计入实际版本下载量，latest 计入解析后的版本；HEAD、失败和中断响应不计数。"
       operationId: downloadProjectSourceArchive
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
-          description: 精确已发布版本或 latest，不接受 draft。
+          description: "精确发布版本或 latest，不接受 draft。"
           schema:
             type: string
             default: latest
       responses:
         "200":
-          description: 已发布版本的源码 tar.gz 归档。
+          description: "发布源码的 tar.gz 归档。"
           headers:
             Content-Disposition:
               schema:
@@ -3303,9 +3220,9 @@ paths:
     put:
       tags:
         - Auth & Accounts
-      summary: 设置系统管理员 / Set system administrator
+      summary: "设置系统管理员身份"
       operationId: setSystemAdministrator
-      description: 仅系统管理员可操作；禁止取消最后一名活跃系统管理员。 / System administrators only; the last active administrator is protected.
+      description: "仅系统管理员可操作；禁止取消最后一名活跃系统管理员。"
       parameters:
         - name: userId
           in: path
@@ -3325,7 +3242,7 @@ paths:
                 - isSystemAdmin
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3354,13 +3271,13 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 列出项目访问申请 / List project access requests
+      summary: "列出项目访问申请"
       operationId: listSourceAccessRequests
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
-          description: 维护者或所有者可列出项目访问申请。 / Maintainer or owner access required.
+          description: "维护者或所有者可列出项目访问申请。"
           content:
             application/json:
               schema:
@@ -3369,10 +3286,9 @@ paths:
     patch:
       tags:
         - Admin Projects
-      summary: 审批项目访问申请
+      summary: "批准或拒绝项目访问申请"
       operationId: resolveSourceAccessRequest
-      description: 维护者、所有者或系统管理员可审批；系统管理员密钥使用相同的全局管理权限。 / Maintainers, owners and system administrators may review
-        requests, including system administrators using an admin key.
+      description: "维护者、所有者或系统管理员可审批；系统管理员密钥使用相同的全局管理权限。"
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: requestId
@@ -3397,8 +3313,7 @@ paths:
                 - status
       responses:
         "200":
-          description: 批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。 / Approval adds a guest without lowering existing roles;
-            permissions and account status are checked in the transaction.
+          description: "批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。"
           content:
             application/json:
               schema:
@@ -3409,7 +3324,7 @@ paths:
     get:
       tags:
         - Admin Projects
-      summary: 解析短期源码申请链接
+      summary: "读取访问申请入口"
       operationId: getSourceAccessLink
       parameters:
         - name: token
@@ -3430,7 +3345,7 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: 申请项目访客权限 / Request project guest access
+      summary: "提交项目访问申请"
       operationId: createSourceAccessRequest
       parameters:
         - name: token
@@ -3464,10 +3379,9 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: 转移项目归属 / Transfer project ownership
+      summary: "转移项目所属组"
       operationId: transferProject
-      description: 需同时拥有项目、来源组（如有）和目标组的所有者权限；转为个人项目时确保至少一名活跃直接所有者。 / Requires owner access to the resource, source
-        and destination; personal resources retain an active direct owner.
+      description: "需同时拥有项目、来源组（如有）和目标组的所有者权限；转为个人项目时确保至少一名活跃直接所有者。"
       parameters:
         - name: projectId
           in: path
@@ -3489,7 +3403,7 @@ paths:
                 - groupId
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3517,7 +3431,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 列出可访问组 / List visible groups
+      summary: "列出可访问的组"
       operationId: listGroups
       parameters:
         - name: page
@@ -3551,7 +3465,7 @@ paths:
             $ref: "#/components/schemas/ProjectRole"
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3574,10 +3488,9 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: 创建顶级组或子组 / Create group
+      summary: "创建组"
       operationId: createGroup
-      description: 登录用户可创建顶级组并成为所有者；在组内创建子组需要维护者权限，创建者不自动升级。 / Any signed-in user can own a top-level group;
-        subgroups require maintainer access without promotion.
+      description: "登录用户可创建顶级组并成为所有者；在组内创建子组需要维护者权限，创建者不自动升级。"
       parameters: []
       requestBody:
         required: true
@@ -3596,7 +3509,7 @@ paths:
                 - name
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3620,7 +3533,7 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 读取组 / Read group
+      summary: "读取组详情"
       operationId: getGroup
       parameters:
         - name: groupId
@@ -3630,7 +3543,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3653,10 +3566,9 @@ paths:
     patch:
       tags:
         - Projects & Groups
-      summary: 修改或转移组 / Update or transfer group
+      summary: "更新组信息"
       operationId: updateGroup
-      description: 修改信息需要维护者权限；移动需要来源和目标所有者权限，禁止循环嵌套。 / Settings require maintainer access. Moving requires source
-        and destination owners; cycles are rejected.
+      description: "修改信息需要维护者权限；移动需要来源和目标所有者权限，禁止循环嵌套。"
       parameters:
         - name: groupId
           in: path
@@ -3680,7 +3592,7 @@ paths:
               required: []
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3703,9 +3615,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: 删除空组 / Delete empty group
+      summary: "删除空组"
       operationId: deleteGroup
-      description: 仅所有者可删除；含项目或子组时返回 409。 / Owners only; nonempty groups return 409.
+      description: "仅所有者可删除；含项目或子组时返回 409。"
       parameters:
         - name: groupId
           in: path
@@ -3714,7 +3626,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3743,11 +3655,9 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 列出直接与继承成员 / List direct and inherited members
+      summary: "列出组成员"
       operationId: listgroupMembers
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - name: groupId
           in: path
@@ -3776,7 +3686,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3800,11 +3710,9 @@ paths:
     put:
       tags:
         - Projects & Groups
-      summary: 设置直接成员角色 / Set direct member role
+      summary: "设置组成员角色"
       operationId: setgroupMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - &a8
           name: groupId
@@ -3830,7 +3738,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3861,11 +3769,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: 移除直接成员 / Remove direct membership
+      summary: "移除组成员"
       operationId: removegroupMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - *a8
         - name: userId
@@ -3875,7 +3781,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3904,10 +3810,9 @@ paths:
     get:
       tags:
         - Projects & Groups
-      summary: 列出邀请 / List invitations
+      summary: "列出组邀请"
       operationId: listgroupInvitations
-      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only;
-        owners and system administrators can list every role.
+      description: "维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。"
       parameters: &a9
         - name: groupId
           in: path
@@ -3916,7 +3821,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3941,11 +3846,9 @@ paths:
     post:
       tags:
         - Projects & Groups
-      summary: 创建角色邀请 / Create role invitation
+      summary: "创建组邀请"
       operationId: creategroupInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters: *a9
       requestBody:
         required: true
@@ -3960,7 +3863,7 @@ paths:
                 - role
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -3992,11 +3895,9 @@ paths:
     delete:
       tags:
         - Projects & Groups
-      summary: 撤销邀请 / Revoke invitation
+      summary: "撤销组邀请"
       operationId: revokegroupInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
-        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
-        Owners manage all roles; the last active owner is protected.
+      description: "有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。"
       parameters:
         - name: groupId
           in: path
@@ -4010,7 +3911,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 成功 / Success
+          description: "成功"
           content:
             application/json:
               schema:
@@ -4039,9 +3940,8 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Read an independent knowledge resource through an entry alias
-      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
-        widens requested permissions.
+      summary: "通过入口别名读取知识库"
+      description: "需要认证，每次检查当前账号和有效授权。批准不能扩大申请的权限。"
       parameters:
         - name: projectId
           in: path
@@ -4068,7 +3968,7 @@ paths:
               additionalProperties: false
       responses:
         "200":
-          description: Success.
+          description: "请求成功。"
           content:
             application/json:
               schema:
@@ -4084,24 +3984,24 @@ paths:
                   - errMessage
                   - data
         "400":
-          description: Invalid request, rejected transition or approval authority.
+          description: "请求、状态变更或批准权限无效。"
         "401":
-          description: Authentication required.
+          description: "需要认证。"
         "403":
-          description: Project role or active host database grant denies access.
+          description: "项目角色或有效数据库授权不允许访问。"
         "404":
-          description: Resource or registered entry unavailable.
+          description: "资源或已登记入口不可用。"
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
-      description: 使用 `STEAMHARNESS_SERVER_ADMIN_KEY` 或已创建的账号 API Key。
+      description: "使用系统管理密钥或已创建的账号 API Key，具体接口仍按其身份要求验证。"
     SessionCookie:
       type: apiKey
       in: cookie
       name: steamharness_auth_session
-      description: 通过密码登录或管理员密钥登录建立的 httpOnly 浏览器会话。
+      description: "通过账号或管理密钥登录建立的 HttpOnly 浏览器会话。"
   parameters:
     ProjectName:
       name: projectName
@@ -4155,7 +4055,7 @@ components:
       example: user-001
   responses:
     HarnessError:
-      description: steamharness 标准错误响应。
+      description: "SteamHarness 标准错误响应。"
       content:
         application/json:
           schema:
@@ -4164,14 +4064,14 @@ components:
     KnowledgeBaseResource: {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"ownerUserId":{"type":"string"},"revision":{"type":"integer"},"createdAt":{"type":"string","format":"date-time"},"mode":{"enum":["read","write"]},"canManage":{"type":"boolean"}},"required":["id","name","ownerUserId","revision","createdAt"]}
     KnowledgeBaseIdentity: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"}},"required":["projectId","entryId","alias","knowledgeBaseId"]}
     KnowledgeBaseBinding: {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":1},"knowledgeBaseId":{"type":"string","format":"uuid"},"mode":{"enum":["read","write"]},"accessRevision":{"type":"integer","minimum":0}},"required":["id","revision","knowledgeBaseId","mode","accessRevision"]}
-    KnowledgeBaseOperation: {"type":"object","additionalProperties":false,"properties":{"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"Operation-specific input. Documents use documentId (create may use id), title, markdown and optional positive expectedRevision. Lists use pageSize/cursor; search uses query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches. Files use fileId or name/mimeType/kind/base64. files.list uses page/pageSize. Base64 is transported only; contents are stored privately."}},"required":["operation","input"]}
+    KnowledgeBaseOperation: {"type":"object","additionalProperties":false,"properties":{"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"输入由操作决定。文档使用 documentId（创建时也可用 id）、title、markdown 及可选的正数 expectedRevision；列表使用 pageSize/cursor。\n\n搜索接受 query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches。附件使用 fileId 或 name/mimeType/kind/base64，files.list 使用 page/pageSize。Base64 仅用于传输，正文保存在私有存储。"}},"required":["operation","input"]}
     RelationalTableRequest: {"type":"object","additionalProperties":false,"properties":{"operation":{"enum":["models","rows","insert","update","delete"]},"model":{"type":"string","maxLength":128},"page":{"type":"integer","minimum":1,"maximum":1000000},"pageSize":{"type":"integer","minimum":1,"maximum":100},"search":{"type":"string","maxLength":500},"where":{"type":"object"},"data":{"type":"object"},"key":{"type":"object"},"rowVersion":{"type":"string","pattern":"^[0-9]{1,20}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"},"orderBy":{"type":"object","additionalProperties":{"enum":["asc","desc"]}}},"required":["operation"]}
     RelationalDatabaseConsumer: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}}, "required": ["projectId", "entryId", "alias"]}
     RelationalDatabaseBinding: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}}, "required": ["projectId", "entryId", "alias", "id", "databaseId", "mode", "revision"]}
     RelationalDatabaseBindRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "required": ["projectId", "entryId", "alias", "databaseId", "schemaHash"]}
     RelationalDatabaseConnectionRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "binding": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "revision": {"type": "integer", "minimum": 1}}, "required": ["id", "revision"]}}, "required": ["projectId", "entryId", "alias", "schemaHash"]}
     RelationalDatabaseAuthorizeRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "binding": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "revision": {"type": "integer", "minimum": 1}}, "required": ["id", "revision"]}}, "required": ["projectId", "entryId", "alias", "schemaHash", "binding"]}
-    RelationalDatabaseCredential: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "schemaHash": {"type": ["string", "null"]}, "expiresAt": {"type": "string", "format": "date-time"}, "connectionString": {"type": "string", "description": "Sensitive temporary SQL URL. Native host only; never forward to a browser or project RPC."}}, "required": ["id", "databaseId", "mode", "revision", "schemaHash", "expiresAt", "connectionString"]}
+    RelationalDatabaseCredential: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "schemaHash": {"type": ["string", "null"]}, "expiresAt": {"type": "string", "format": "date-time"}, "connectionString": {"type": "string", "description": "敏感的临时 SQL 地址，仅供原生宿主使用，不能传给浏览器或项目 RPC。"}}, "required": ["id", "databaseId", "mode", "revision", "schemaHash", "expiresAt", "connectionString"]}
     RelationalDatabaseConnectionLease: {"type": "object", "additionalProperties": false, "properties": {"binding": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}, "credential": {"$ref": "#/components/schemas/RelationalDatabaseCredential"}}, "required": ["binding", "credential"]}
     RelationalDatabaseResource: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "name": {"type": "string"}, "ownerUserId": {"type": "string"}, "migrationOwnerUserId": {"type": "string"}, "status": {"type": "string", "enum": ["requested", "provisioning", "ready", "failed"]}, "stage": {"type": "string", "enum": ["requested", "roles", "database", "permissions", "ready"]}, "failureCode": {"type": ["string", "null"]}, "schemaHash": {"type": ["string", "null"]}, "migrationName": {"type": ["string", "null"]}, "migrationStatus": {"type": "string", "enum": ["idle", "running", "failed"]}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}}, "required": ["id", "name", "ownerUserId", "migrationOwnerUserId", "status", "stage", "failureCode", "schemaHash", "migrationName", "migrationStatus", "createdAt", "updatedAt"]}
     RelationalDatabaseGrant: {"type": "object", "additionalProperties": false, "properties": {"databaseId": {"type": "string", "format": "uuid"}, "userId": {"type": "string"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "revoked": {"type": "boolean"}}, "required": ["databaseId", "userId", "mode", "revision", "revoked"]}
@@ -4206,7 +4106,7 @@ components:
           type: string
           minLength: 1
           maxLength: 512
-          description: Stable host identity without NUL.
+          description: "不含 NUL 的稳定宿主身份。"
       oneOf:
         - properties:
             kind:
@@ -4264,7 +4164,7 @@ components:
           type: string
           const: ""
         data:
-          description: Typed operation result. Missing records and void results use null; pages contain items and optional next cursor.
+          description: "带类型的操作结果；记录缺失或无返回值时为 null，分页含 items 和可选的下页游标。"
     RuntimeWorkspaceResponse:
       allOf:
         - $ref: "#/components/schemas/RuntimeStorageResponse"
@@ -4337,7 +4237,7 @@ components:
       type: object
       additionalProperties: false
       required: [kind, key, scope, revision, state, messages, queue, events, values]
-      description: Ordered collections have unique item IDs. Writes require host scope ownership and the exact current revision. Deletions retain a revision tombstone.
+      description: "有序集合中的 item ID 唯一。写入需要宿主作用域所有权和当前精确修订号；删除保留修订墓碑。"
       properties:
         kind:
           $ref: "#/components/schemas/RuntimeHistoryKind"
@@ -4380,7 +4280,7 @@ components:
       type: object
       additionalProperties: false
       required: [format, version, nextId, commits]
-      description: Storage snapshot distinct from the UI AgentSessionSnapshot. Preserves historical document commits and reserved IDs without owner credentials. Import requires a new empty session and contiguous sequences.
+      description: "存储快照保留历史文档提交和预留 ID，不包含 owner 凭据，与界面 AgentSessionSnapshot 不同。导入要求空的新会话和连续提交序号。"
       properties:
         format:
           type: string
@@ -4407,12 +4307,12 @@ components:
                 maxItems: 10000
                 items:
                   type: object
-                  description: Typed AgentStorageWrite, identical to commit operation writes.
+                  description: "带类型的 AgentStorageWrite，与 commit 操作的写入格式相同。"
     RuntimeUsageEntry:
       type: object
       additionalProperties: false
       required: [id, projectId, runId, sequence, createdAt, inputTokens, outputTokens, totalTokens, reasoningTokens, cachedInputTokens, cacheCreationTokens]
-      description: Receipt belongs to this workspace project and its core run/conversation lease. An existing ID cannot be reused for a different run or conversation.
+      description: "回执属于当前工作区项目及其运行/会话租约，同一 ID 不能改用于其他运行或会话。"
       properties:
         id:
           type: string
@@ -4471,8 +4371,7 @@ components:
           type: object
           additionalProperties: true
     RuntimeStorageOperation:
-      description: Core RuntimeStorageOperation contract. Record and query fields are validated per kind; use the SDK for complete typed record/document
-        definitions. Invalid fields, record types, cursors and scan orders are rejected. No SQL or executable project code is accepted.
+      description: "Core RuntimeStorageOperation 协议按类型校验记录和查询。完整定义见 SDK；无效字段、记录类型、游标或扫描顺序会被拒绝，不接受 SQL 或项目代码。"
       oneOf:
         - type: object
           additionalProperties: false
@@ -4567,16 +4466,16 @@ components:
                       - document.retire
                   value:
                     type: object
-                    description: Typed conversation/entry/task/submission record with numeric ID.
+                    description: "带数字 ID 的会话、entry、task 或 submission 类型记录。"
                   record:
                     type: object
-                    description: Document creation metadata.
+                    description: "文档创建信息。"
                   content:
                     type: object
-                    description: Versioned JSON object base or Chord delta.
+                    description: "带版本的 JSON 对象基线或 Chord 增量。"
                   source:
                     type: object
-                    description: Copy source document ID and historical point.
+                    description: "要复制的源文档 ID 与历史位置。"
                   id:
                     $ref: "#/components/schemas/RuntimeStorageId"
         - type: object
@@ -4661,14 +4560,14 @@ components:
                 - documents
             query:
               type: object
-              description: Kind-specific filters and order. Entry scans require conversationId; document scans require scope and at.
+              description: "按类型指定筛选与排序；entry 扫描需 conversationId，文档扫描需 scope 和 at。"
             limit:
               type: integer
               minimum: 1
               maximum: 10000
             cursor:
               type: object
-              description: Opaque next cursor from the preceding page.
+              description: "上一页返回的不透明游标，原样传回。"
         - type: object
           additionalProperties: false
           required:
@@ -4697,7 +4596,7 @@ components:
                 - findDocument
             address:
               type: object
-              description: Document kind, scope and optional key.
+              description: "文档类型、作用域和可选 key。"
             at:
               $ref: "#/components/schemas/RuntimeStoragePoint"
         - type: object
@@ -4742,7 +4641,7 @@ components:
       type: string
       enum:
         - system.admin
-      description: 仅用于系统管理，不表示项目业务权限。 / System administration only.
+      description: "仅用于系统管理，不表示项目业务权限。"
     AuthPrincipalKind:
       type: string
       enum:
@@ -4773,7 +4672,7 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: 当前 API Key 的到期时间；Desktop Key 成功鉴权时会滑动续期。
+          description: "当前 API Key 有效期；成功验证的 Studio Key 使用滑动续期。"
         isSystemAdmin:
           type: boolean
       required:
@@ -4976,7 +4875,7 @@ components:
           $ref: "#/components/schemas/AuthPrincipal"
         accessToken:
           type: string
-          description: 非 Web 客户端请求 `source=desktop` 或 `source=cli` 时返回的 API Key 明文，仅返回一次。
+          description: "非 Web 客户端指定 source=desktop 或 source=cli 时返回一次明文 API Key。"
         apiKey:
           $ref: "#/components/schemas/ApiKeyRecord"
         user:
@@ -5292,10 +5191,10 @@ components:
           enum:
             - desktop
             - cli
-          description: 非 Web 客户端可指定来源以同时签发 Bearer API Key；Desktop Key 初始有效期为 90 天。
+          description: "非 Web 客户端可指定 source 同时签发 Bearer API Key，Studio Key 初始有效期为 90 天。"
         clientName:
           type: string
-          description: 签发的 API Key 显示名称。
+          description: "签发密钥的展示名称。"
       required:
         - email
         - password
@@ -5407,7 +5306,7 @@ components:
           type: string
           enum:
             - base64
-          description: 二进制静态资源使用 base64 编码时填写；省略时 content 按 UTF-8 文本处理。
+          description: "文本文件使用 UTF-8，二进制资源通过 Base64 传输。"
       required:
         - path
         - content
@@ -5424,7 +5323,7 @@ components:
           type: string
           enum:
             - base64
-          description: 存在时表示 `content` 是原始文件字节的 base64 编码，而不是可编辑文本。
+          description: "存在时表示 content 是原始字节的 Base64，而非可编辑文本。"
       required:
         - path
         - content
@@ -5435,8 +5334,7 @@ components:
         - workflow
         - bot
         - kanban
-      description: Registered entry type. One aggregate can contain multiple types and repeated types. Server reads
-        static entry metadata without executing code.
+      description: "已登记入口类型；同一聚合可包含多种或重复类型。Server 只读静态信息，不执行入口。"
     ProjectCardMetadata:
       type: object
       properties:
@@ -5458,13 +5356,11 @@ components:
         iconUrl:
           type: string
           format: uri
-          description: |
-            Optional legacy image URL retained for backward compatibility. Server Web and Studio
-            render project avatars from icon, iconColor, and iconBackgroundColor instead.
+          description: "保留用于兼容的旧图片 URL。Server Web 和 Studio 使用 icon、iconColor、iconBackgroundColor 显示项目头像。"
         iconColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$
-          description: Optional built-in icon foreground color. Defaults to white for older metadata.
+          description: "可选图标前景色，旧元数据默认白色。"
         iconBackgroundColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$
@@ -5518,7 +5414,7 @@ components:
       properties:
         id:
           type: string
-          description: 项目 UUID，同时也是 server 权限与上传校验边界。
+          description: "项目 UUID，也是服务端权限和上传校验边界。"
         name:
           type: string
         projectCard:
@@ -5527,7 +5423,7 @@ components:
           $ref: "#/components/schemas/ProjectInfoContract"
         ownerUserId:
           type: string
-          description: 历史创建者字段，不用于授权。 / Historical creator; never an authorization source.
+          description: "历史创建者字段，不用于授权。"
         visibility:
           $ref: "#/components/schemas/Visibility"
         createdByUserId:
@@ -5543,7 +5439,7 @@ components:
         hasDraft:
           type: boolean
         latest:
-          description: 最新不可变已发布源码版本。
+          description: "最新不可变发布版本。"
           type:
             - string
             - "null"
@@ -5606,10 +5502,10 @@ components:
           type: string
         email:
           type: string
-          description: Optional email address for the profile summary.
+          description: "资料摘要中的可选邮箱。"
         avatarUrl:
           type: string
-          description: Optional avatar image URL or data URL for the uploader profile.
+          description: "上传者资料中的可选头像 URL 或 data URL。"
       required:
         - userId
         - displayName
@@ -5622,7 +5518,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: 该精确版本成功发送源码下载响应的累计次数，从统计功能启用后开始记录，不按用户去重，不代表客户端已写盘。
+          description: "自启用统计以来，该版本成功发送的源码下载响应累计值，不按用户去重，也不证明客户端已保存文件。"
         createdAt:
           type: string
           format: date-time
@@ -5691,7 +5587,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: 当前项目所有已发布版本的累计下载量合计。
+          description: "项目全部发布版本的累计下载量。"
         versions:
           type: array
           items:
@@ -5747,10 +5643,10 @@ components:
       properties:
         allowed:
           type: boolean
-          description: 当前身份是否具备下载项目源码的权限。
+          description: "当前身份是否可下载项目源码。"
         available:
           type: boolean
-          description: latest 版本是否保留原始源码。
+          description: "最新版本是否保留源码。"
         target:
           type:
             - string
@@ -5982,8 +5878,7 @@ components:
             - data
     CreateProjectRequest:
       type: object
-      description: Server 分配新应用 ID，拒绝客户端传入 projectId。 / The Server assigns a new application ID; client-selected
-        projectId is rejected.
+      description: "Server 分配新项目 ID，拒绝客户端指定 projectId。"
       not:
         required:
           - projectId
@@ -6074,8 +5969,7 @@ components:
           additionalProperties: false
     ProjectInfoContract:
       type: object
-      description: "Display metadata only: localized names, declarations and platform support. Database requirements
-        belong to registered entries."
+      description: "仅用于本地化名称、声明和平台支持等展示信息；数据库需求属于入口。"
       properties:
         localizedNames:
           type: object
@@ -6130,8 +6024,7 @@ components:
         - developer
         - maintainer
         - owner
-      description: 权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。 / Cumulative guest, developer,
-        maintainer and owner roles.
+      description: "权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。"
     InvitationRole:
       $ref: "#/components/schemas/ProjectRole"
     ProjectInvitation:
@@ -6143,7 +6036,7 @@ components:
           type: string
         token:
           type: string
-          description: 服务端签发的邀请 token，前端使用 `${origin}/invite/${token}` 拼接完整链接。
+          description: "服务端签发的邀请 token，用于拼接站内 /invite/{token} 链接。"
         role:
           $ref: "#/components/schemas/InvitationRole"
         createdBy:
@@ -6589,11 +6482,7 @@ components:
             - time
             - datetime
             - date-range
-          description: |
-            Shared form control hint. Date-related controls keep string values:
-            date uses YYYY-MM-DD, time uses HH:mm:ss, datetime uses local
-            YYYY-MM-DDTHH:mm:ss, and date-range uses inclusive
-            YYYY-MM-DD/YYYY-MM-DD. Date controls do not support panel=quick.
+          description: "表单控件提示。日期保持字符串：date 为 YYYY-MM-DD，time 为 HH:mm:ss，datetime 为本地 YYYY-MM-DDTHH:mm:ss，date-range 为闭区间 YYYY-MM-DD/YYYY-MM-DD；日期控件不用于 Quick。"
         panel:
           type: string
           enum:
@@ -6603,8 +6492,7 @@ components:
             - mode
         resolveOnInput:
           type: boolean
-          description: Whether main composer input changes trigger the selected entrypoint resolver (or the Conversation
-            executor resolver). Defaults to false.
+          description: "主输入变化是否触发操作或 Conversation resolver，默认 false。"
         options:
           type: array
           items:
@@ -6690,7 +6578,7 @@ components:
           maxLength: 200
         profileKey:
           type: string
-          description: Stable source-declared role profile.
+          description: "源码声明的稳定角色配置。"
         values:
           type: object
           additionalProperties: true
@@ -6701,15 +6589,13 @@ components:
     AgentModelPolicy:
       type: object
       additionalProperties: false
-      description: Source-declared restriction retained independently of published field visibility. Draft and
-        template metadata cannot relax the current source restriction.
+      description: "源码限制独立于发布字段可见性保存，草稿与模板不能放宽当前源码策略。"
       properties:
         allowThirdParty:
           type: boolean
     ConfigurationProfilePolicy:
       type: object
-      description: Source-owned role policy. Client labels, role claims and personal metadata never grant authority.
-        Projects without this policy keep their existing behavior.
+      description: "角色策略由源码拥有，客户端标签、角色声明和个人信息不能授予权限。未声明策略的项目保留原行为。"
       properties:
         version:
           type: integer
@@ -6717,7 +6603,7 @@ components:
             - 1
         defaultProfileKey:
           type: string
-          description: Must identify a guest profile.
+          description: "必须指向访客可用的基础配置。"
         manageMinimumRole:
           $ref: "#/components/schemas/ProjectRole"
         profiles:
@@ -6767,7 +6653,7 @@ components:
         configurationAccountId:
           type: string
           readOnly: true
-          description: Server-assigned source account for personal revision checks; client values do not grant authority.
+          description: "服务端指定的源账号用于个人修订号检查，客户端值不授予权限。"
         fields:
           type: array
           items:
@@ -6787,10 +6673,7 @@ components:
         - defaultConfigurationId
     ProjectConfigurationTemplate:
       type: object
-      description: Version 3 freezes role policies and is rejected by unsupported hosts. Immutable, filtered version
-        data; defaultValue is omitted. Arrays are indivisible. Excluded names are represented only by opaque
-        deny hashes. The authenticated download validates source and attachment hashes before caching outside
-        project source.
+      description: "版本 3 固定角色策略，不支持的宿主应拒绝加载。返回不可变、已过滤的版本数据，不包含 defaultValue；数组作为整体。排除名称只保留不可读拒绝哈希。\n\n下载时验证源码和附件哈希，再缓存到项目源码之外。"
       properties:
         version:
           type: integer
@@ -6886,14 +6769,14 @@ components:
         description:
           type: string
         defaultValue:
-          description: Native JSON default. Never store real secrets in source declarations.
+          description: "原生 JSON 默认值，源码中不得保存真实密钥。"
         required:
           type: boolean
         secret:
           type: boolean
         multiple:
           type: boolean
-          description: String arrays for string fields; up to 32 server file references for file fields.
+          description: "字符串字段为字符串数组；文件字段最多 32 个服务器文件引用。"
         control:
           type: string
           enum:
@@ -6904,21 +6787,13 @@ components:
             - checkboxes
             - ai-models
             - agent-model
-          description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name,
-            model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and
-            apiKey. Values are private unless explicitly included in publication.
-            agent-model is a non-secret, single string selector without static options. Empty follows the main
-            model; otherwise the value is one stable ID from STEAMHARNESS_AGENT_MODELS.
+          description: "ai-models 仅用于 STEAMHARNESS_AGENT_MODELS JSON 字段。条目含 id、name、model、source；系统条目用 credentialId，第三方条目用 apiKind、baseUrl、apiKey，除非显式发布否则值保持私有。\n\nagent-model 是无静态选项、非敏感的单字符串选择器；空值跟随主模型，非空值是模型列表中的稳定条目 ID。"
         allowThirdParty:
           type: boolean
-          description: Only valid for ai-models. Set false in configuration.json to allow only system AI. Saves and
-            imports cannot add third-party entries or relax the project's declared policy. Omitted or true
-            allows both sources.
+          description: "仅用于 ai-models。configuration.json 中设 false 只允许系统 AI，保存和导入不能加入第三方或放宽策略；省略或 true 允许两种来源。"
         accept:
           type: array
-          description: File fields only. Accepted MIME types or extensions. Files upload through POST
-            /api/projects/{projectId}/configurations/files and values contain server metadata, never file
-            bytes.
+          description: "仅用于文件字段，限定 MIME 类型或扩展名。通过配置文件接口上传后保存服务器元数据，不保存文件字节。"
           items:
             type: string
         options:
@@ -6936,12 +6811,11 @@ components:
           $ref: "#/components/schemas/ConfigurationSharingRule"
         paths:
           type: object
-          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence.
-            Excluding the whole field excludes every descendant.
+          description: "JSON Pointer 规则继承父路径，具体路径优先；排除整个字段会排除所有后代。"
           additionalProperties:
             $ref: "#/components/schemas/ConfigurationSharingRule"
         omittedPaths:
-          description: Generated opaque deny hashes for omitted JSON paths, without private path names.
+          description: "被省略 JSON 路径的不可读拒绝哈希，不包含私有路径名。"
           type: array
           items:
             type: string
@@ -6953,8 +6827,7 @@ components:
       type: object
       properties:
         deletedPaths:
-          description: Personal JSON deletion overlays; managed by the service and rechecked against each version's
-            permissions.
+          description: "个人 JSON 删除覆盖，由服务维护并按每个版本权限重新校验。"
           type: object
           additionalProperties:
             type: array
@@ -6988,7 +6861,7 @@ components:
         - updatedAt
     ProjectConfigurationState:
       type: object
-      description: Role-filtered personal state. Guests receive only accessible base profiles and attachments.
+      description: "按角色过滤的个人状态；访客只收到可访问的基础配置与附件。"
       properties:
         profilePolicy:
           $ref: "#/components/schemas/ConfigurationProfilePolicy"
@@ -7010,8 +6883,7 @@ components:
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
         shadowedCustomFields:
-          description: Custom definitions temporarily hidden by same-name project declarations, retained for later
-            restoration.
+          description: "被同名项目声明暂时隐藏的自定义字段，保留以便之后恢复。"
           type: array
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
@@ -7027,7 +6899,7 @@ components:
               type: boolean
             subject:
               type: string
-              description: Host-verified application account scope; not an authorization input.
+              description: "宿主验证的应用账号作用域，不能作为客户端授权输入。"
             reason:
               type: string
         configurationCapabilities:
@@ -7071,12 +6943,10 @@ components:
           type: boolean
         sourceHash:
           type: string
-          description: 当前所选源码的摘要；读取已发布版本不会要求草稿存在。 / Hash of the selected source; reading a published version does not
-            require a draft.
+          description: "当前所选源码的摘要；读取已发布版本不会要求草稿存在。"
         publicationRevision:
           type: integer
-          description: 仅开发者及以上读取草稿时提供，用于发布并发校验。 / Provided to developers and above when reading the draft for
-            publication concurrency checks.
+          description: "仅开发者及以上读取草稿时提供，用于发布并发校验。"
         fieldCapabilities:
           type: object
           additionalProperties:
@@ -7090,7 +6960,7 @@ components:
                       $ref: "#/components/schemas/ProjectConfigurationCapability"
         conflicts:
           type: array
-          description: Preserved personal drafts whose field types changed on upgrade.
+          description: "升级后字段类型变化时保留的个人草稿。"
           items:
             type: object
             properties:
@@ -7149,11 +7019,7 @@ components:
         - configurations
     ProjectConfigurationAction:
       type: object
-      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create
-        takes optional name. Save merges typed values and removes overrides named in unset. Field edits use
-        field and optional old key. Import takes a complete document. Export optionally filters by id and
-        always applies the current role. Fixed values and base names cannot be changed. Unauthorized batches
-        are rejected atomically.
+      description: "请求最多 1 MiB，每次修改必须带 revision。配置操作需 id，create 可带 name；save 合并类型化值并移除 unset 指定的覆盖。字段编辑使用 field 和可选旧 key。\n\n`import` 接收完整文档，`export` 可按 id 筛选且始终应用当前角色。固定值和基础配置名称不可修改，无权执行的批次整体拒绝。"
       properties:
         action:
           type: string
@@ -7182,7 +7048,7 @@ components:
           maxLength: 200
         profileKey:
           type: string
-          description: Base policy inherited by a newly created personal configuration.
+          description: "新建个人配置继承的基础策略。"
         values:
           type: object
           additionalProperties: true
@@ -7223,13 +7089,13 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: Studio 短期静态预览 capability 的到期时间；宿主会在到期前自动换发。
+          description: "Studio 或 Server Web 短期静态预览凭据的过期时间，宿主在过期前自动续期。"
       required:
         - nonce
         - url
     KanbanBridgeCall:
       type: object
-      description: Relational operations require input.database, schemaHash and a pinned binding. Knowledge operations require input.knowledgeBase. The host fixes account, project and entry and checks current grants and access revision. Runtime operations do not access data.
+      description: "关系操作要求 input.database、schemaHash 和固定绑定，知识操作要求 input.knowledgeBase。宿主固定账号、项目和入口，检查当前授权及访问版本。运行操作不通过此接口访问数据。"
       properties:
         requestId:
           type: string
@@ -7282,7 +7148,7 @@ components:
         - type: object
           properties:
             data:
-              description: KV 值、知识库结果、null，或无返回值操作的空数据。
+              description: "关系操作或知识库结果，无记录或无返回值时为 null 或空数据。"
     KanbanWorkspaceState:
       type: object
       properties:
@@ -7420,7 +7286,7 @@ components:
       properties:
         id:
           type: string
-          description: 可选文档 id。省略时 server 根据 title 生成。
+          description: "可选文档 ID，省略时由 Server 根据标题生成。"
         title:
           type: string
         markdown:
@@ -7794,15 +7660,15 @@ components:
               example: abcdef123456
             deploymentId:
               type: string
-              description: 可选的部署标识，同产品版本的不同部署可独立识别。 / Optional deployment identifier, independent of product version.
+              description: "可选的部署标识，同产品版本的不同部署可独立识别。"
             docsPath:
               type: string
-              description: 当前语言的站内日志路径，仅允许以单个斜线开头的相对路径。 / Localized notes path within the documentation site.
+              description: "当前语言的站内日志路径，仅允许以单个斜线开头的相对路径。"
             components:
               type: object
               additionalProperties:
                 type: string
-              description: 此发布内置的组件版本，例如 Server 内置 Core 版本。
+              description: "该版本附带的组件版本，例如 Server 内置 Core 版本。"
             releaseNotes:
               oneOf:
                 - type: "null"
@@ -7813,7 +7679,7 @@ components:
                       const: markdown
                     body:
                       type: string
-                      description: 按请求语言返回的 Markdown 发布说明；旧 metadata 回退到默认正文。
+                      description: "所选语言的 Markdown 发布说明，旧元数据回退到默认正文。"
                   required:
                     - format
                     - body
@@ -7989,10 +7855,10 @@ components:
           $ref: "#/components/schemas/ProjectCardMetadata"
         root:
           type: string
-          description: Safe code directory relative to the aggregate root. No traversal or absolute paths.
+          description: "相对聚合根的安全源码目录，不允许越界或绝对路径。"
         entry:
           type: string
-          description: Module or built HTML path relative to root.
+          description: "Workflow/Conversation 模块相对入口源码根解析；Kanban HTML 相对聚合根解析。"
         configuration: {type: string}
         databases:
           type: array

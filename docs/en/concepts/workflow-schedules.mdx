@@ -5,7 +5,9 @@ description: "Configure time-window or Cron schedules for Workflow entrypoints a
 
 # Scheduled Workflow Runs
 
-A schedule runs a selected Workflow entrypoint according to a fixed rule. Bot and Kanban projects cannot be scheduled. Each fire creates an independent run for the selected entrypoint; it does not run the default entrypoint first.
+A schedule invokes a Workflow operation according to time rules, creating an independent run for each fire. Bot and Kanban cannot be scheduled targets. The selected operation does not first execute the default operation.
+
+Current CLI and Studio support preset declarations and structure checks, without a schedule-management page. Trigger, overlap, and history rules below describe a scheduling host integration. Server does not execute schedules.
 
 ## Trigger rules
 
@@ -36,18 +38,23 @@ A Workflow can provide recommendations through `steamharness.json.entries[].sche
 
 ```json
 {
-  "entryId": "database",
   "type": "workflow",
   "name": "Database",
-  "root": "database",
   "entry": "index.ts",
   "databases": [],
-  "schedulePresets": [{
-    "id": "hourly", "title": "Hourly sync", "entrypointId": "sync",
-    "timezone": "Asia/Shanghai",
-    "trigger": { "kind": "cron", "expression": "0 * * * *" },
-    "paramValues": {}
-  }]
+  "schedulePresets": [
+    {
+      "id": "hourly",
+      "title": "Hourly sync",
+      "entrypointId": "sync",
+      "timezone": "Asia/Shanghai",
+      "trigger": {
+        "kind": "cron",
+        "expression": "0 * * * *"
+      },
+      "paramValues": {}
+    }
+  ]
 }
 ```
 

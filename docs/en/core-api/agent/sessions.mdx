@@ -1,0 +1,74 @@
+---
+title: "Agent session control"
+description: "Submit commands, read snapshots, and distinguish task, turn, and conversation usage."
+---
+
+# Agent session control
+
+Submit commands, read snapshots, and distinguish task, turn, and conversation usage.
+
+Create the runtime with [createAgent](/en/core-api/create-agent). The sections below describe its related options and behavior.
+
+## Durable session control
+
+`session: {}` enables the Harness session protocol. During `run()`, call `runtime.control(command)` and consume `session` events carrying `AgentSessionSnapshot`. Calls outside a run fail with `AGENT_NOT_READY`. Programmatic runs wait for background work to settle; workflow hosts that keep resources alive between inputs use the host lease described in [createAgentNode](/en/core-api/create-agent-node).
+
+| `session` field | Meaning |
+| --- | --- |
+| `subagents` | Opt in with `{ tools: string[], maxAgents?: number \| null, modelConfiguration?: string, model?: { provider, modelId }, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model or use a shared child selection. Code-defined models must match an allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations; set `maxAgents: null` explicitly to remove the total limit. |
+| `nativeTools` | Pi Durable `ToolRegistration[]`. Nested `api.executeTool()` calls retain caller restrictions, approval hooks, and cancellation propagation. |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`. Check before every model request and compact at 90% of the context window by default. `reserveTokens` can reserve space earlier; `backgroundTokens` can start background compaction earlier. `enabled: false` disables automatic threshold and overflow recovery while retaining manual compaction. |
+| `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
+
+The `subagent` tool describes its child tool allowlist and exact usable model overrides. Without configured usable overrides, its schema omits `model`; omit it to inherit the parent's model and credentials. Rejected overrides explain how to retry without `model`. The built-in assistant includes `skill` in its read-only child subset, allowing paged access to bundled guides without granting shell or editing tools. Large foreground and background child results use JSON pages with a `taskId`.
+
+Continue through `subagent` with `{ resultTaskId: taskId, resultOffset: nextOffset, resultHash }`, omitting `task`, `background` and `model`. Reads access an existing delegation owned by this conversation and never create another child. Concatenate `content` in order and parse the complete JSON; each page fits within 40,000 UTF-8 bytes. Failed or cancelled children return `isError: true` to foreground callers; failed delegations remain failed, and background failures explicitly notify the parent.
+
+Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
+
+| `type` | Fields and effect |
+| --- | --- |
+| `submit` | `prompt`, optional `images`, and `mode: "steer" \| "followUp" \| "reject"`. Steer applies at a tool boundary; followUp queues another turn; reject refuses busy input. An idle steer becomes an ordinary answered turn. |
+| `withdraw` | `inputId` is the input requestId. Consumed inputs return `already_placed` / `settled`; withdrawal never undoes side effects. |
+| `promote` | `inputId` is a queued input's requestId. Atomically change it to steer and save the receipt, retaining its identity and images for the next tool boundary. Consumed inputs return `already_placed` / `settled` and are never resent. |
+| `compact` | Optional `instructions`; create a background compaction task coordinated with active work. |
+| `reset` | Optional `handoff`; start a new context epoch at an input boundary, retaining visible history and the task plan. |
+| `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same persistent session. Active tasks and approvals are not copied. The receipt contains `forkId`. |
+| `delete` | Cancel and hide a child conversation. The host deletes the main session and its store. |
+| `configure` | `expectedVersion`, optional `model: { provider, modelId }` / `effort`; CAS update a registered model for the next request. Child model restrictions still apply. |
+| `plan` | `expectedVersion`, `items: { id, text, status }[]`, where status is pending / in_progress / completed; CAS update the transactional plan. |
+| `cancel` | `scope: "foreground" \| "all" \| "task"`; task requires `taskId`. Foreground preserves background subtrees; all includes owned children but excludes independent forks. Task ownership is checked. |
+| `snapshot` | Publish the latest complete snapshot. |
+| `task` | `name`, strict JSON `input` (at most 256 KiB), optional `background`; create a project-registered task. The receipt contains `taskId`, and retransmission does not create another task. Date, Map, functions and non-finite numbers are rejected before recording the requestId. |
+
+Bot cancellation atomically marks the target execution tree and withdraws queued input through Durable, then waits for cleanup before acknowledging. This prevents coordinators from dispatching work between individual cancellation requests. Explicit host run cancellation also includes background tasks; host suspension preserves checkpoints through its separate recovery path.
+
+Snapshots include `version: 1`, an `ownerId` that changes on reopen, increasing `revision`, `contexts`, `tasks/history`, `turns`, `plan`, `records`, `receipts`, and per-conversation `usage`. Treat snapshots as auxiliary state; assistant answers remain inline. Reconnect from a full snapshot, allowing a new owner to restart its revision sequence. Prompt records contain only a digest/version, and configuration records contain no credentials. A durable reporter delivers each background child result once using a stable identity. Usage belongs to individual parent/child conversations and replay does not add it again.
+
+Delegations in `tasks/history` expose `childConversationId` after a child is created, for both anonymous and named `subagent` work. The link survives settlement and reopening; deleted children omit it. Hosts can open that child from the snapshot without inferring identity from task labels.
+
+Optional `startedAt` / `endedAt` on `tasks/history` provide persisted execution spans. Delegations start when their child input is placed, exclude admission queue time and freeze on settlement. A delegation's `usage` is the committed `TokenUsageAggregate` of its owned child tree, including failed attempts; work that has not started has zero usage. Snapshot `capturedAt` is Unix time in milliseconds for freezing the last known span on disconnection or interruption. Show unknown duration for legacy records without reliable timestamps.
+
+`contexts[].tokenUsage` totals the current conversation and its owned child tree from persisted model and tool usage, including retries, spend before cancellation or reset, and idle compaction. Each child is counted once under its execution owner; independent forks have separate totals. Hiding a child does not subtract spent tokens. Replace the total from the full snapshot rather than adding child usage or `token_usage_updated` again. Display it separately from the turn's own `turns[].usage` and current context occupancy in `contextUsage`.
+
+`turns[].startedAt` is the Unix time in milliseconds when the input was placed for execution; queued input omits it. `endedAt` comes from the persisted end time of the turn's execution task and is absent while running. Hosts use these timestamps for elapsed time, preserving it when first opening subagents, refreshing or reopening history. The span includes waits and recovery. Both fields are optional; do not fabricate historical durations from view-opening times when older records lack reliable timestamps.
+
+Optional `startedAt` / `endedAt` in `turns[].items[].metadata` provide Unix millisecond timestamps for traces. Reasoning and text share their model request's span, including time to first token; these are not separate generation times for individual text blocks. Tool items use their corresponding persisted task spans, matching reused call IDs separately for each assistant response. Studio's axis includes the full turn duration even when legacy items lack timing data, avoiding a misleading 1 ms range. Unrecorded model spans remain unknown.
+
+`turns[].reason` is the reason code for an unanswered turn, and `turns[].detail` preserves the model error or retry exhaustion message. Hosts must display failures such as `model_error` and their details even while the owner stays resident; `aborted` indicates durable cancellation. Exhausted continuations also report failure rather than successful completion.
+
+`turns[].usage` totals returned model responses for that turn, including tool rounds, failed retries and compaction responses during the turn. It contains `inputTokens`, `outputTokens`, `totalTokens`, `cachedInputTokens`, `cacheCreationTokens`, `reasoningTokens` and `calls`. Inherited fork history, other turns and other conversations are not charged to this answer again. Idle background compaction remains in per-conversation `usage` without changing completed answers. `contexts[].contextUsage` instead describes the current model context as `{ used, total }`, including streamed content. It updates after follow-ups, forks, compaction and resets independently of cumulative consumption.
+
+`tasks` contains only active tasks, while `history` contains terminal tasks. `stopping` means cancellation was requested but the task has not settled. Historical tasks always have `stopping: false` and retain their actual outcome in `status`, including completed or aborted. Reopened sessions follow the same rule.
+
+Tool tasks expose `arguments` in both active and completed history: the arguments submitted by the model or calling tool, rather than an audit of subsequent argument repair or hook transformations. History resolves each tool against its committed assistant entry, so call IDs reused across turns cannot overwrite older tasks. Streaming tool events use a stable presentation `toolCallId`; treat it as opaque. Approval identities bind the durable conversation, task, and call ID: a paused call retains its decision on recovery, while a later independent call with the same ID and arguments requires its own permission check.
+
+Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, model?: { provider, modelId } })`. Explicit `toolDefinitions` / executor `tools` lists must declare their permissions along with any native tools; the convenience executor adds update_plan/subagent by default. Foreground completion, background execution, and client connectivity are independent states.
+
+Hosts using local or Server storage use `forkStoredAgentConversation({ persistence, conversationId, command })` to fork committed history without loading a model or resuming tasks when no owner is active. Active owners receive fork through the control channel. `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` copies the receipt's forkId into an independent root session, preserving historical document checkpoints without tasks, approvals, queued inputs or usage. Consistent source snapshots can be read while the owner is active. Stop, deletion and model choices remain independent. Copy attachments separately and rewrite file references with replacements. See [platform runtime storage](/en/core-api/runtime-storage) for import, export and cancellation APIs.
+
+Use the persistence-based fork and isolation APIs above for CLI and Studio histories; project code does not need a storage file path.
+
+A command receipt confirms durable acceptance; session snapshots are delivered independently. Consumers needing a refreshed view wait for the matching snapshot or issue a `snapshot` command. CLI Web / Studio wait 30 seconds per confirmation attempt and retry temporary timeouts, connection errors, 408/429/5xx responses, and readiness races up to three times using the same request ID, target, and payload. Late receipts end the wait and execution continues automatically. Stop, host shutdown, and exhausted budgets end automatic recovery.
+
+Session snapshot projection failures retry with backoff up to three times without replaying models or committed tools; persistent failure still terminates the run with its diagnostic. Tools explicitly declaring `replay: "safe"` retry execution exceptions or `isError` results up to three times with the same invocation identity, rechecking authorization before each attempt. A successful result automatically continues the model loop. Authorization denial, input validation, user interaction, cancellation, `retryable: false`, and host storage failures remain barriers. Default and `never`/`unsafe` tools require reconciling unknown results; a timeout does not prove a write did not occur.

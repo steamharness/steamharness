@@ -5,12 +5,28 @@ description: "Create a problem classification node, using LLM to return a name i
 
 # createQuestionClassifierNode
 
-`workflow.createQuestionClassifierNode()` Creates a classification node with input `string`. It spelled the question, category list, and description into a LLM prompt, and asked the model to return only the category name; if the return value is not in the allowed categories, the node outputs an empty string.
+Use `steamharness.createQuestionClassifierNode()` to assign a question to a declared category. It sends the input string, categories, and descriptions to a model. A reply outside the allowed category names produces an empty string.
+
+## Example
+
+```ts
+const classifier = steamharness.createQuestionClassifierNode({
+  name: "route-question",
+  provider: steamharness.createLLMProviderRef("default"),
+  userDescription: "Classify whether the user is asking a technical question or making casual conversation.",
+  categories: [
+    { name: "technical", description: "Code, APIs, deployment, or error troubleshooting." },
+    { name: "chat", description: "General conversation or a non-technical question." },
+  ] as const,
+});
+
+const category = await steamharness.runNode(classifier, input.message, context);
+```
 
 ## Signature
 
 ```ts
-workflow.createQuestionClassifierNode<
+steamharness.createQuestionClassifierNode<
   const Categories extends readonly QuestionClassifierCategory[],
 >(
   options: QuestionClassifierNodeOptions<Categories>,
@@ -58,22 +74,6 @@ workflow.createQuestionClassifierNode<
 | `userDescription` | options |Business classification description.|
 | `categories` | options |List allowable classifications and descriptions by serial number.|
 | `question` |Node Input|User issues.|
-
-## Example
-
-```ts
-const classifier = workflow.createQuestionClassifierNode({
-  name: "route-question",
-  provider: workflow.createLLMProviderRef("default"),
-  userDescription: "Classify whether the user is asking a technical question or making casual conversation.",
-  categories: [
-    { name: "technical", description: "Code, APIs, deployment, or error troubleshooting." },
-    { name: "chat", description: "General conversation or a non-technical question." },
-  ] as const,
-});
-
-const category = await workflow.runNode(classifier, input.message, context);
-```
 
 ## Error
 

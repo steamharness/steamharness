@@ -5,14 +5,74 @@ description: "Invoke another workflow in the current RunContext while reusing th
 
 # runProject
 
-Use `workflow.runProject()` to invoke an imported `Definition<Input, Output>` from another workflow. It reuses the parent `RunContext`, making it suitable for composing reusable workflows as part of a larger workflow.
+Use `steamharness.runProject()` to call an imported `Definition<Input, Output>` within a run. The child workflow reuses the parent `RunContext`, making it useful for shared business steps.
 
 This is distinct from a project entrypoint. An entrypoint is a flat target that CLI and local hosts can start directly. `runProject()` composes business logic inside one run. Running an entrypoint never runs the default or another entrypoint automatically. When a main flow needs to invoke a child flow, the selected entrypoint's workflow explicitly calls `runProject(childProject, ...)`.
+
+## Example
+
+```ts
+import { openaiAgentsProject } from "../openai-agents/index";
+
+const agentOutput = await steamharness.runProject(
+  openaiAgentsProject,
+  {
+    message: input.query,
+    defaultTools: false,
+    memoryTools: false,
+    testTool: false,
+    writeConversation: false,
+    writeAgentState: false,
+    customTools: deltaforceTools,
+  },
+  context,
+  {
+    name: "OpenAI Agents core",
+    conversationMode: "shared-readonly",
+    outputVisibility: "hidden",
+  },
+);
+
+return steamharness.runNode(parentOutputNode, {
+  query: input.query,
+  answer: agentOutput.items[0]?.content,
+}, context);
+```
+
+Example: streaming bridge
+
+```ts
+const outputNode = steamharness.createOutputNode({
+  name: "output",
+  async *stream(input, context) {
+    // createAsyncQueue is an illustrative helper. Implement it in your
+    // workflow or replace it with an existing async iterable or queue utility.
+    const queue = createAsyncQueue();
+
+    const childRun = steamharness.runProject(childProject, input, context, {
+      conversationMode: "shared-readonly",
+      outputVisibility: "hidden",
+      onOutputChunk(chunk) {
+        queue.push(chunk);
+      },
+      onOutput(output) {
+        queue.push(output);
+      },
+    }).finally(() => queue.end());
+
+    yield* queue;
+    await childRun;
+  },
+  format(stream) {
+    return steamharness.createOutputPayload({ items: stream.items });
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.runProject<Input, Output>(
+steamharness.runProject<Input, Output>(
   workflow: Definition<Input, Output>,
   input: Input,
   context: RunContext,
@@ -74,67 +134,7 @@ To display a called workflow's output unchanged, invoke `runProject` from a pare
 
 `onOutputChunk` and `onOutput` are part of execution semantics. If either handler throws, `runProject` fails early and stops bridging later output. The error metadata includes `outputBridgeFailed: true`.
 
-Static structural analysis recognizes `workflow.runProject(childProject, input, context, options)` as a `run-workflow` execution node. Dynamically assembled workflow references still run, but Diagram can show them only as expressions.
-
-## Example
-
-```ts
-import { openaiAgentsProject } from "../openai-agents/index";
-
-const agentOutput = await workflow.runProject(
-  openaiAgentsProject,
-  {
-    message: input.query,
-    defaultTools: false,
-    memoryTools: false,
-    testTool: false,
-    writeConversation: false,
-    writeAgentState: false,
-    customTools: deltaforceTools,
-  },
-  context,
-  {
-    name: "OpenAI Agents core",
-    conversationMode: "shared-readonly",
-    outputVisibility: "hidden",
-  },
-);
-
-return workflow.runNode(parentOutputNode, {
-  query: input.query,
-  answer: agentOutput.items[0]?.content,
-}, context);
-```
-
-Example: streaming bridge
-
-```ts
-const outputNode = workflow.createOutputNode({
-  name: "output",
-  async *stream(input, context) {
-    // createAsyncQueue is an illustrative helper. Implement it in your
-    // workflow or replace it with an existing async iterable or queue utility.
-    const queue = createAsyncQueue();
-
-    const childRun = workflow.runProject(childProject, input, context, {
-      conversationMode: "shared-readonly",
-      outputVisibility: "hidden",
-      onOutputChunk(chunk) {
-        queue.push(chunk);
-      },
-      onOutput(output) {
-        queue.push(output);
-      },
-    }).finally(() => queue.end());
-
-    yield* queue;
-    await childRun;
-  },
-  format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
-  },
-});
-```
+Static structural analysis recognizes `steamharness.runProject(childProject, input, context, options)` as a `run-workflow` execution node. Dynamically assembled workflow references still run, but Diagram can show them only as expressions.
 
 ## Errors
 

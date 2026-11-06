@@ -5,16 +5,30 @@ description: "Create an input parsing node and convert workflow input to the dat
 
 # createInputNode
 
-`workflow.createInputNode()` Create a normal input node. It is usually placed in the first step of workflow and is used to trim, verify, convert, or complete the input constructed by executor.
+Use `steamharness.createInputNode()` to convert executor input into values for subsequent nodes. Place it near the start of a workflow to trim text, validate fields, convert types, or supply defaults.
+
+## Example
+
+```ts
+const inputNode = steamharness.createInputNode<Input, ParsedInput>({
+  name: "parse-input",
+  parse(input) {
+    return {
+      message: input.message.trim(),
+      count: Number(input.count ?? 1),
+    };
+  },
+});
+```
 
 ## Signature
 
 ```ts
-workflow.createInputNode<Input>(
+steamharness.createInputNode<Input>(
   options?: InputNodeOptions<Input, Input>,
 ): BaseNode<Input, Input>
 
-workflow.createInputNode<Input, Output>(
+steamharness.createInputNode<Input, Output>(
   options: InputNodeOptions<Input, Output> & {
     parse: InputParser<Input, Output>;
   },
@@ -47,7 +61,7 @@ workflow.createInputNode<Input, Output>(
 
 |Return|Type|Description|
 | --- | --- | --- |
-|Node Object| `BaseNode<Input, Output>` |Execute via `workflow.runNode(inputNode, input, context)`.|
+|Node Object| `BaseNode<Input, Output>` |Execute via `steamharness.runNode(inputNode, input, context)`.|
 |Node output| `Output` |`parse` returns the value as input to the downstream node.|
 
 ## Analysis process
@@ -58,25 +72,11 @@ workflow.createInputNode<Input, Output>(
 | `createInputNode` node | `Input`, `NodeContext` | `Output` |
 |Downstream node| `Output` |Continue processing or enter the LLM/output node|
 
-## Example
-
-```ts
-const inputNode = workflow.createInputNode<Input, ParsedInput>({
-  name: "parse-input",
-  parse(input) {
-    return {
-      message: input.message.trim(),
-      count: Number(input.count ?? 1),
-    };
-  },
-});
-```
-
 ## Common Usage
 
 |Scene|Method|
 | --- | --- |
 |Cleanup String|In `parse` `trim()`.|
 |Convert type|Convert the string constructed by executor to number/boolean/object.|
-|Input verification|`workflow.HarnessError` is thrown when the verification fails, and the type is usually `input_validation`.|
+|Input verification|`steamharness.HarnessError` is thrown when the verification fails, and the type is usually `input_validation`.|
 |Direct pass-through|Do not pass `parse`, node output is equal to input.|

@@ -1,0 +1,50 @@
+---
+title: "CLI data and runtime history"
+description: "Generate models, manage resource bindings, and distinguish business data from local history."
+---
+
+# CLI data and runtime history
+
+Generate models, manage resource bindings, and distinguish business data from local history.
+
+
+## Database models and generation
+
+`steamharness database` (short form `steamharness db`) provides `init`, `validate`, and `generate`. An optional project directory defaults to the current directory. Declare multiple aliases in `steamharness.database.ts` and models in `steamharness.schema`; generation requires no database connection. `workspace pack` generates and includes Node/Browser artifacts for the aggregate root and registered entries. Upload and download verify static inventories and hashes.
+
+```sh
+pnpm exec steamharness database init .
+pnpm exec steamharness db validate .
+pnpm exec steamharness database generate .
+pnpm exec steamharness database generate . --entry billing
+```
+
+Directory arguments always select the aggregate project root. Without `--entry`, `validate` and `generate` process the root and all declared entry definitions, deduplicating source roots. `--entry <id>` selects that entry's source root. `init --entry <id>` creates definitions there without requiring a built entry. JSON results contain an `outputs` array with `sourceRoot` and `databases`; generation also returns `directory` and `cached`. Root definitions use `dist/steamharness/generated/database/`; child definitions use `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/`. Kanban builds share the source root's parent directory with generated code: root entries default to `dist/steamharness/build/<entryId>/index.html`, and child entries use `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`. Explicit entries under `dist` must also use their own build directory; builders clean only that directory.
+
+Resource and migration management also provides `create / list / inspect / retry / grant / revoke` and `migrate dev / deploy / status`. `migrate dev --draft` saves reviewable SQL, a model snapshot and checksums; `deploy` applies existing history only. `--database` selects a resource UUID and `--alias` a model declaration (default main). Management commands require a target Server account login; `--server` and `--token` override the target. See [SteamHarness Database](/en/core-api/database). Bind relational resources with `bind [directory] --database <id> [--entry <id>] [--alias main] [--mode read|write]`, list mappings with `bindings [directory] [--entry <id>]`, and remove them with `unbind [directory] [--entry <id>] [--alias main]`.
+
+Server stores bindings by account, project, entry and alias without modifying project files or granting permissions. Node entries query through `context.databases.connect(descriptor)`. Browser entries import generated browser descriptors and use the host table proxy through databases.connect, with rows/insert/update/delete delegates. Legacy KV and local KV APIs are removed.
+
+Studio and CLI Web resource startup checks distinguish transport, login, access and binding failures. Temporary Server outages trigger a read-only check every 5 seconds, and recovery clears the temporary guidance. Checks never resubmit business operations.
+
+Initial checks and successful results stay silent. Automatic retries and same-account verification retain the last completed result and page content until the check finishes; changing accounts or Servers clears the previous result and verifies the new identity. Failures include the HTTP status when available, recovery steps, and connection details showing the Server, project ID, and entry.
+
+Use Account / Server settings to check sign-in, Project information → Databases to check resource references, or Open Server project to inspect registration and access. Server 5xx responses require checking Server logs and registered entries. Use Create project only when starting a new application: it allocates a new ID and does not transfer existing data or access.
+
+Background account checks keep configuration attachment uploads active. After the account changes or authentication is lost, the host rejects the previous account's upload result; select the file again under the current account.
+
+Durable Agent command confirmation is independent of snapshot delivery. Confirmation timeouts and temporary connection failures retry automatically up to three times with the original request ID; recovery and late receipts reconcile the same input. Once project access recovers, recoverable runs continue with the original run ID. Stop cancels pending command recovery. Persistent failures retain their diagnostic and request identity for an explicit retry.
+
+## Platform runtime history
+
+Bot, Workflow and assistant history persist to host-local SQLite by default, including messages, runs, queues, drafts, parameters, usage and Agent checkpoints. Reopening restores committed history without a Server login or connection for storage. Replies stream immediately while host history writes are coalesced, without waiting for cloud uploads. System AI and business resources retain separate authorization. Local file locks coordinate windows and release on process exit.
+
+Select cloud storage explicitly, or use `copyRuntimePersistence` to back up an idle session to an empty destination in the background. Existing cloud and legacy local records are preserved without automatic migration or overwrite. Back up attachments and workspace files separately. See [runtime storage](/en/core-api/runtime-storage).
+
+## Knowledge and table management
+
+`steamharness knowledge` provides `create / list / grants / grant / revoke / bind / unbind / bindings / operation`. Bind with `--knowledge-base <UUID>`, `--alias <alias>` and `--entry <entry>`; alias defaults to main. `list --page 2 --page-size 20 --search Docs` paginates and filters on Server. `operation <UUID> knowledge.listDocuments < input.json` reads JSON from stdin without replaying mutations. Attachment contents allow 50 MiB.
+
+`steamharness database data <UUID> < request.json` manages applied models with `models / rows / insert / update / delete`. Read schemaHash from models and send it on later requests. Updates and deletes also require the current rowVersion and complete stable key. Stdin is limited to 4 MiB. Encode BigInt and Decimal as decimal strings, DateTime as ISO with a timezone and Bytes as Base64. Dates use UTC, enums use authored names, and omitted lists without defaults become empty arrays. `database list` accepts the same pagination options. See [Knowledge API](/en/core-api/knowledge-documents) and [Database API](/en/core-api/database).
+
+Kanban can invoke registered Workflows and subscribe to native Conversations through the aggregate host. See [Kanban](/en/concepts/kanban) and [Bot entry control](/en/concepts/database-and-conversation#local-bot-entry-control). Each entry reuses its native controller, execution owner, and queue. Studio shares this host for the same aggregate project.

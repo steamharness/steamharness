@@ -1,0 +1,58 @@
+---
+title: "Build a Bot"
+description: "Configure a Core Agent that accepts messages, uses tools, and retains conversation context."
+---
+
+# Build a Bot
+
+A Bot uses the Core Agent to handle messages and retain context. Create a Bot project in Studio, install its dependencies, and configure an available model.
+
+## Declare the entry
+
+Put this code in the Bot entry file. It adds one business parameter; Core supplies the model, Effort, Plan, and permission controls.
+
+```ts
+import type { RuntimeApi } from "steamharness/runtime-api";
+declare const steamharness: RuntimeApi;
+
+export const executor = steamharness.defineBot({
+  name: "Release helper",
+  agent: { tools: [], systemPrompt: "You are a project assistant. Answer from the current conversation." },
+  params: [{
+    kind: "auxiliary", id: "business", label: "Business settings",
+    fields: [{ name: "projectName", flag: "--project-name", type: "string", defaultValue: "Release helper" }],
+  }],
+  prepareInput(input, context) {
+    return { ...input, systemPrompt: `You are a project assistant. The project is named ${context.paramValues.projectName}. Answer from the current conversation.` };
+  },
+});
+export default executor;
+```
+
+Register the entry with `type: "bot"` in `steamharness.json`. Keep the project UUID and entry ID created by the project template.
+
+## Verify a continuing conversation
+
+1. Open the run page and select an available model.
+2. Send “Remember that the project is named Release helper.”
+3. Ask “What is the project name?” in the same conversation and check whether the reply uses the earlier message.
+4. Close and reopen the project, then confirm that the history remains available.
+
+![Two messages and replies remain in the same Bot conversation.](../../../images/studio/en/conversation.png)
+
+Continuing messages in one Bot conversation. The replies shown are examples.
+
+## Input, output, and business hooks
+
+| Setting | Purpose |
+| --- | --- |
+| `agent` | Prompts, model source, permissions, skills, and tool extensions |
+| `params` | Append business fields; customize built-in fields through `agent.paramOptions` |
+| `prepareInput(input, context)` | Add business context after Core parses text and images |
+| `onCompleted(result, context)` | Persist a receipt after success and return `void` |
+
+Core supplies output, history, usage, approval, queues, and recovery. The final answer item is `agent-answer`. A Bot cannot replace `workflow`, `createInput`, or the output type.
+
+Persist completion receipts idempotently using `result.requestId`. If notification fails, recovery retries the notification without rerunning the completed Agent.
+
+Use `--entry` to select a Bot in an aggregate; `--entrypoint` applies to Workflow only. See [defineBot](/en/core-api/define-bot) for the contract and [assistant tasks](/en/guides/studio/assistant) for queue and recovery controls.

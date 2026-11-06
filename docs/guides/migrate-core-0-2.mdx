@@ -5,7 +5,9 @@ description: "全新聚合声明"
 
 # 全新聚合声明
 
-当前模型要求全新声明和数据，不提供旧项目模型的兼容读取、自动迁移或数据导入。
+先为项目建立根身份，再登记入口并拆出子入口声明。当前协议要求全新声明与数据，不提供旧模型的兼容读取或自动迁移。
+
+## 声明示例
 
 `package.json`
 
@@ -63,10 +65,7 @@ description: "全新聚合声明"
   "entry": "index.ts",
   "configuration": "configuration.json",
   "databases": [
-    {
-      "alias": "data",
-      "databaseId": "00000000-0000-4000-8000-000000000001"
-    }
+    "data"
   ]
 }
 ```
@@ -87,3 +86,10 @@ description: "全新聚合声明"
 用 `context.entries.get(entryId)` 调用聚合内 Workflow。关系模型定义并生成描述符后，通过 `context.databases.connect(descriptor)` 连接，绑定由 Server 按账号、项目、入口管理。知识库使用 `context.knowledgeBases.get(alias)` 及独立声明与配置。旧 KV 数据不迁移。
 
 删除旧项目身份的数据时只清理相应旧模型记录，不清空宿主其他业务数据。新项目不会读取旧数据。详见 [Workflow 模型](/concepts/workflow-model) 和 [项目数据存储](/concepts/data-storage)。
+
+## 验证与绑定
+
+1. 运行 `steamharness check .`，检查根清单和全部子声明。
+2. 为关系库生成模型，显式创建或选择获授权资源。
+3. 使用 `database bind` 在 Server 上保存账号与入口绑定，声明中的 `databases` 只保留别名字符串。
+4. 分别运行每个入口，再测试数据读写和会话隔离。

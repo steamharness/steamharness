@@ -5,12 +5,39 @@ description: "把 MCP 服务暴露的工具变成 agent 可以调用的工具。
 
 # createMcpTools
 
-`workflow.createMcpTools()` 把一个 MCP 连接暴露的每个工具变成一个 agent 工具，交给 [createAgent](./create-agent.mdx) 的 `extraTools` 或 [createAgentNode](./create-agent-node.mdx) 的 `createTools` 使用。连接的建立见 [connectMcpServer](./connect-mcp-server.mdx)。
+用 `steamharness.createMcpTools()` 把 MCP 连接中的工具转换为 Agent 工具。结果可传给 [createAgent](./create-agent.mdx) 的 `extraTools`，或 [createAgentNode](./create-agent-node.mdx) 的 `createTools`；先用 [connectMcpServer](./connect-mcp-server.mdx) 建立连接。
+
+## 示例
+
+```ts
+const approval = steamharness.createToolApprovalGate();
+
+const node = steamharness.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    const connection = await steamharness.connectMcpServer({
+      id: "project-tools",
+      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    });
+
+    try {
+      return await steamharness.createMcpTools({
+        connection,
+        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      });
+    } finally {
+      await connection.close();
+    }
+  },
+});
+```
+
+Tools built this way must be declared in the executor's `tools`（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。
 
 ## 签名
 
 ```ts
-const tools: AgentTool[] = await workflow.createMcpTools({
+const tools: AgentTool[] = await steamharness.createMcpTools({
   connection: McpServerConnection,
   approve?: (toolId: string, args: unknown) => Promise<void>,
   createToolId?: (serverId: string, toolName: string) => string,
@@ -37,30 +64,3 @@ const tools: AgentTool[] = await workflow.createMcpTools({
 ## 工具审批
 
 `createMcpTools` 产出的工具不受 `permissionPolicy` 约束：策略只决定内置工具暴露哪些、能走多远。这些工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待用户批准（走 `context.toolPermissions`），且只在 plan 模式的回合停下来问——build 回合直接执行。
-
-## 示例
-
-```ts
-const approval = workflow.createToolApprovalGate();
-
-const node = workflow.createAgentNode({
-  provider: "anthropic",
-  async createTools(context) {
-    const connection = await workflow.connectMcpServer({
-      id: "project-tools",
-      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
-    });
-
-    try {
-      return await workflow.createMcpTools({
-        connection,
-        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
-      });
-    } finally {
-      await connection.close();
-    }
-  },
-});
-```
-
-Tools built this way must be declared in the executor's `tools`（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。

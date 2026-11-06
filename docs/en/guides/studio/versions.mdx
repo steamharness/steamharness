@@ -1,0 +1,43 @@
+---
+title: "Uploads, downloads, and versions"
+description: "Publish a complete project, download versions, and export run records."
+---
+
+# Uploads, downloads, and versions
+
+An aggregate project has one version, source archive, and installation directory. A release includes every registered entry. Server stores static source without installing dependencies or executing projects.
+
+## Upload and publish
+
+1. Finish local edits and update the root project version.
+2. Install dependencies, build static entries such as Kanban, and run `steamharness check .`.
+3. Sign in to the correct Server. Verify that the project identity is registered and the account can publish.
+4. Select **Upload Project**, wait for preparation and publication, then check the version panel.
+
+Use the [Workspace CLI](/en/cli/server-workspace) to pack locally or separate upload from publication. Published snapshots are immutable; a version cannot be published twice.
+
+## Download a version
+
+1. Open **Versions** and select a version, or start a download from the start page.
+2. Wait for download and validation.
+3. Choose the current window or a new window.
+4. Install dependencies in the project terminal and check resource grants and entry bindings.
+
+Downloads preserve every entry's relative path. The default destination is `Documents/steamharness-projects/<name>-<version>` under your home directory. A conflicting folder name gets a numeric suffix rather than overwriting existing files.
+
+Archives retain resource declarations but exclude host credentials and business data. Server maintains account-specific relational bindings; check them again under the current identity. Source downloads also require project membership or approved access.
+
+## Export run content
+
+Exporting a conversation, message, or workflow record opens the native save dialog, initially in Downloads. Studio reports the destination only after a successful write. Canceling produces no success notice; write failures show an error.
+
+## Troubleshooting
+
+| Problem | Check |
+| --- | --- |
+| Project is not registered | Apply for an application ID in the run UI |
+| Version already exists | Update the project version before publishing again |
+| Downloaded project will not run | Install dependencies and check entry files and resource grants |
+| Database is unavailable | Check account grants, bindings, and Server/PostgreSQL connectivity |
+
+Uploads and downloads require the Node extension host. Project tabs, recent projects, and resource views show the local version; the version panel shows Server history.

@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { contentQualityIssues, renderedInternalLinks, validateImages, validateNavigationCoverage } from "./content-quality.mjs";
 
 /**
  * 公开文档的内容校验器。这里不依赖 Docusaurus 或任何 npm 包：
@@ -11,6 +12,7 @@ const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localh
 const REMOVED_DESKTOP_IDENTITY_TERMS = /guides\/(?:releases\/)?app(?:\/|\b)|STEAMHARNESS_APP_|workflow-app\.json|@steamharness\/app\b|\bminAppVersion\b|\bappVersion\b|\bisApp\b|\/app\/(?:stable|v)|\bapp\/v\d|source\s*=\s*["'`]?app\b|source=app\b|STEAMHARNESS_RUNTIME_PLATFORM=app\b/iu;
 const LEGACY_MONOREPO_REFERENCES = /packages\/(?:steamharness|cli)|app\/builtin-projects|pnpm\s+-C\s+(?:app|server\/web|workspace)\b|pnpm\s+(?:run\s+)?app:[\w:-]+/u;
 const REMOVED_PROJECT_MODEL = /steamHarness\.projectType|\bdataStorage\b|\brelatedProjects\b|related[ -]projects?|关联项目|context\.storage\.(?:local|server)|--(?:related-project|project-group|publish-group)\b/iu;
+const REMOVED_BOT_DECLARATIONS = /\b(?:createAgentConversationProject|defineAgentConversationExecutor)\s*\(|projectType\s*:\s*["']conversation["']|\bdefineExecutor(?:<[^>]*>)?\s*\(\s*\{\s*projectType\s*:\s*["']bot["']/u;
 const RELEASE_PAGE_PATH = /^(?:en\/)?guides\/releases\/[^/]+\.mdx$/u;
 const ISO_DISPLAY_TIMESTAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/u;
 const GENERATED_MDX_DIRECTORIES = new Set(["reference", "en/reference"]);
@@ -30,6 +32,9 @@ export function validateStandaloneDocsSource(relativeFile, source, options = {})
   }
   if (!/^(?:en\/)?guides\/releases\//u.test(relativeFile) && REMOVED_PROJECT_MODEL.test(source)) {
     throw new Error(`${relativeFile} still documents the removed single-entry project or relationship model.`);
+  }
+  if (!/^(?:en\/)?guides\/releases\//u.test(relativeFile) && REMOVED_BOT_DECLARATIONS.test(source)) {
+    throw new Error(`${relativeFile} documents a removed Bot declaration. Use defineBot and the fixed Core contract.`);
   }
   if (RELEASE_PAGE_PATH.test(relativeFile) && ISO_DISPLAY_TIMESTAMP.test(source)) {
     throw new Error(`${relativeFile} displays an ISO timestamp instead of YYYY-MM-DD HH:mm:ss.`);
@@ -85,11 +90,15 @@ export async function validateDocs(options = {}) {
     ...zhPages.map((page) => `${page}.mdx`),
     ...enPages.map((page) => `en/${page}.mdx`),
   ];
+  validateNavigationCoverage(languages, allMdx);
+  const qualityIssues = [];
   for (const relativeFile of allMdx) {
     const source = await readFile(path.join(root, relativeFile), "utf8");
     validateStandaloneDocsSource(relativeFile, source, {
       generated: isGeneratedReleasePage(relativeFile),
     });
+    qualityIssues.push(...contentQualityIssues(relativeFile, source, { historical: isGeneratedReleasePage(relativeFile) }));
+    await validateImages({ file: path.join(root, relativeFile), source, publicImages: path.join(root, "images") });
     for (const link of readInternalLinks(source)) {
       const normalized = link.replace(/^\//u, "").split(/[?#]/u, 1)[0].replace(/\/$/u, "");
       if (normalized === "" || normalized.startsWith("images/") || normalized.startsWith("assets/")) continue;
@@ -105,6 +114,8 @@ export async function validateDocs(options = {}) {
       }
     }
   }
+
+  if (qualityIssues.length) throw new Error(`Documentation readability checks failed (${qualityIssues.length}):\n${qualityIssues.join("\n")}`);
 
   const openapiFiles = ["openapi/steamharness.openapi.yaml", "en/openapi/steamharness.openapi.yaml"];
   for (const relativeFile of openapiFiles) {
@@ -123,7 +134,7 @@ export async function validateDocs(options = {}) {
 }
 
 function readInternalLinks(source) {
-  return [...source.matchAll(/(?:\]\(|href=["'])(\/[^)"'\s]+)(?:\)|["'])/gu)].map((match) => match[1]);
+  return renderedInternalLinks(source);
 }
 
 async function anyFile(candidates) {

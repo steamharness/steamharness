@@ -5,7 +5,9 @@ description: "RunPayload、执行结果和错误报告的当前约束。"
 
 # Payload 与错误
 
-所有节点间传递的数据类型，也就是 workflow payload，都必须继承 `RunPayload`。该类型来自核心包：
+工作流的对外输出使用 `RunPayload` 表达成功或失败，界面内容放在 `items`。普通节点的中间输入、输出由各自泛型定义，不要求所有中间值都是 `RunPayload`。
+
+标准结果类型来自核心包：
 
 ```ts
 export interface RunPayload {
@@ -40,10 +42,10 @@ interface OutputPayload extends RunPayload {
   items: OutputItem[];
 }
 
-const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Parsed, OutputPayload>({
   name: "output",
   format(result) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: [{
         title: "Result",
         content: result,
@@ -113,7 +115,7 @@ Runtime event 会发出 `user_input_requested` 和 `user_input_resolved`。等�
 
 ## HarnessError
 
-可以主动抛出 `workflow.HarnessError`，附带类型、消息、节点和 metadata。框架也会把普通异常转换成 `HarnessError`。
+可以主动抛出 `steamharness.HarnessError`，附带类型、消息、节点和 metadata。框架也会把普通异常转换成 `HarnessError`。
 
 常见错误类型包括：
 

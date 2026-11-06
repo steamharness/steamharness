@@ -5,16 +5,39 @@ description: "创建非流式 LLM 调用节点，并把业务输入映射为 LLM
 
 # createLLMNode
 
-`workflow.createLLMNode()` 创建一次性 LLM 调用节点。节点执行时会先解析 provider，再调用 `provider.chat(llmInput)`，最后可通过 `mapOutput` 把 LLM 输出转换为业务 payload。
+用 `steamharness.createLLMNode()` 发起一次非流式模型调用。节点解析 Provider 后调用 `provider.chat(llmInput)`；需要业务格式时，用 `mapOutput` 转换返回值。
+
+## 示例
+
+```ts
+const llmNode = steamharness.createLLMNode<ParsedInput, AnswerPayload>({
+  name: "answer",
+  provider: steamharness.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      system: "You answer briefly.",
+      prompt: input.message,
+      temperature: 0.2,
+    };
+  },
+  mapOutput(output) {
+    return {
+      errCode: 0,
+      errMessage: "",
+      content: output.text,
+    };
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.createLLMNode<Input>(
+steamharness.createLLMNode<Input>(
   options: LLMNodeOptions<Input, LLMChatOutput>,
 ): BaseNode<Input, LLMChatOutput>
 
-workflow.createLLMNode<Input, Output>(
+steamharness.createLLMNode<Input, Output>(
   options: LLMNodeOptions<Input, Output> & {
     mapOutput: LLMOutputMapper<Input, Output>;
   },
@@ -92,26 +115,3 @@ workflow.createLLMNode<Input, Output>(
 | `mapInput` | `Input`、`NodeContext` | `LLMChatInput` |
 | provider `chat` | `LLMChatInput` | `LLMChatOutput` |
 | `mapOutput` | `LLMChatOutput`、`Input`、`NodeContext` | `Output` |
-
-## 示例
-
-```ts
-const llmNode = workflow.createLLMNode<ParsedInput, AnswerPayload>({
-  name: "answer",
-  provider: workflow.createLLMProviderRef("default"),
-  mapInput(input) {
-    return {
-      system: "You answer briefly.",
-      prompt: input.message,
-      temperature: 0.2,
-    };
-  },
-  mapOutput(output) {
-    return {
-      errCode: 0,
-      errMessage: "",
-      content: output.text,
-    };
-  },
-});
-```

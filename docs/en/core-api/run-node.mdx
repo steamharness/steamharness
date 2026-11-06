@@ -5,12 +5,20 @@ description: "Execute a normal node, pass in the input and context, and trigger 
 
 # runNode
 
-`workflow.runNode()` executes a normal node. It is responsible for interrupt checking, node start/end hooks, execution information logging, and error wrapping.
+Execute an ordinary node with `steamharness.runNode()` and receive its result. The runner checks cancellation, invokes start and end hooks, records execution details, and wraps node errors.
+
+## Example
+
+```ts
+const parsed = await steamharness.runNode(inputNode, input, context);
+const answer = await steamharness.runNode(llmNode, parsed, context);
+const output = await steamharness.runNode(outputNode, answer, context);
+```
 
 ## Signature
 
 ```ts
-workflow.runNode<Input, Output>(
+steamharness.runNode<Input, Output>(
   node: NodeDefinition<Input, Output>,
   input: Input,
   context: NodeContext,
@@ -56,14 +64,6 @@ workflow.runNode<Input, Output>(
 | --- | --- | --- |
 |Break before or during execution| `execution_aborted` |From `context.abortSignal`.|
 |Node throw error| `node_execution` |Unknown errors are wrapped as `HarnessError`; existing `HarnessError` is preserved and the context is supplemented.|
-
-## Example
-
-```ts
-const parsed = await workflow.runNode(inputNode, input, context);
-const answer = await workflow.runNode(llmNode, parsed, context);
-const output = await workflow.runNode(outputNode, answer, context);
-```
 
 ## The difference from `runStreamNode`
 

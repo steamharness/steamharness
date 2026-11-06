@@ -1,18 +1,30 @@
 ---
 title: "workspace publish"
-description: "发布不可变聚合版本"
+description: "从准备完成的草稿创建不可变项目版本。"
 ---
 
-# 发布不可变聚合版本
+<span id="发布不可变聚合版本"></span>
+
+# workspace publish
+
+用 `workspace publish` 发布 Server 上已准备完成的草稿。整个聚合项目共享版本和源码哈希。
+
+## 命令
 
 ```sh
 pnpm exec steamharness workspace publish <project-id> --release-log "Update entries"
 ```
 
-一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
+先完成本地检查与 [upload](/cli/workspace/upload)。发布读取根 `steamharness.json.version`，同一版本不能再次发布。
 
-归档过滤凭据、宿主运行数据、Git 和 node_modules，保留数据库别名和模型定义；业务库绑定由 Server 按账号、项目、入口和别名管理，归档不携带连接凭据或业务数据。使用其他账号或 Server 时，重新申请资源权限并绑定入口。
+## 并发检查
 
-发布从已准备草稿读取根 `steamharness.json.version`，创建不可变快照；同一版本不能重发。所有入口共享该版本及源码哈希。Server 只处理静态数据。
+CLI 提交源码哈希和各入口的 `expectedConfigurationRevisions`。修订号为非负安全整数，初始为 `0`；准备期间源码或配置被修改时，Server 拒绝发布。
 
-CLI 发布前读取各入口配置，并提交按 `entryId` 索引的 `expectedConfigurationRevisions`（JSON 非负安全整数，初始为 0）及源码哈希；源码或配置发生并发修改时，Server 拒绝发布。
+发生冲突后重新读取草稿与配置，确认差异，再重新上传或发布。不要只重复提交旧的修订号。
+
+## 发布包含什么
+
+版本包含全部入口代码、依赖声明、配置定义、模型和静态产物。它不携带宿主凭据、运行数据或业务数据；接收方按自己的账号申请资源权限并绑定入口。
+
+Server 只处理静态快照。发布后用 [versions](/cli/workspace/versions) 核对版本和源码哈希。

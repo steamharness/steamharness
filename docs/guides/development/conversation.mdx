@@ -1,0 +1,58 @@
+---
+title: "编写一个 Bot"
+description: "配置 Core Agent，在标准会话中接收消息、调用工具并保留上下文。"
+---
+
+# 编写一个 Bot
+
+Bot 使用 Core Agent 处理消息，适合需要持续上下文的助手。先在 Studio 新建 Bot 项目，安装依赖，并配置一个可用模型。
+
+## 声明入口
+
+把下面的代码放入 Bot 入口文件。它只追加一个业务参数；模型、Effort、Plan 和权限控件由 Core 提供。
+
+```ts
+import type { RuntimeApi } from "steamharness/runtime-api";
+declare const steamharness: RuntimeApi;
+
+export const executor = steamharness.defineBot({
+  name: "发布助手",
+  agent: { tools: [], systemPrompt: "你是项目助手，请根据当前会话回答。" },
+  params: [{
+    kind: "auxiliary", id: "business", label: "业务配置",
+    fields: [{ name: "projectName", flag: "--project-name", type: "string", defaultValue: "发布助手" }],
+  }],
+  prepareInput(input, context) {
+    return { ...input, systemPrompt: `你是项目助手。项目名称是${context.paramValues.projectName}。请根据当前会话回答。` };
+  },
+});
+export default executor;
+```
+
+入口在 `steamharness.json` 中注册为 `type: "bot"`。保留创建项目时生成的项目 UUID 和入口 ID。
+
+## 验证连续对话
+
+1. 打开运行页面，确认已选择可用模型。
+2. 发送“请记住项目名称是发布助手”。
+3. 在同一会话中继续问“项目名称是什么？”，核对回复是否利用了前文。
+4. 关闭并重新打开项目，确认历史仍可读取。
+
+![同一 Bot 会话保留两条消息和回复。](../../images/studio/zh-cn/conversation.png)
+
+同一 Bot 会话中的连续消息。截图中的答复仅作示例。
+
+## 输入、输出与业务处理
+
+| 配置 | 用途 |
+| --- | --- |
+| `agent` | 提示词、模型来源、权限、技能和工具扩展 |
+| `params` | 追加业务字段；内置字段通过 `agent.paramOptions` 定制 |
+| `prepareInput(input, context)` | 在 Core 解析文本和图片后补充业务上下文 |
+| `onCompleted(result, context)` | 成功后保存业务回执，返回 `void` |
+
+Core 固定提供输出、会话历史、用量、审批、队列与恢复；最终正文标识为 `agent-answer`。Bot 不能替换 `workflow`、`createInput` 或输出类型。
+
+完成通知应按 `result.requestId` 幂等保存。通知失败后，恢复只补发通知，不重新运行已经完成的 Agent。
+
+聚合项目用 `--entry` 选择 Bot；`--entrypoint` 只适用于 Workflow。完整开发契约见 [defineBot](/core-api/define-bot)，队列与恢复操作见[小助手与持久任务](/guides/studio/assistant)。

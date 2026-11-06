@@ -5,7 +5,11 @@ description: "Kanban 入口"
 
 # Kanban 入口
 
-Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。聚合根先注册源码目录：
+Kanban 用静态 HTML 展示项目界面，不导出执行器。入门示例见[编写 Kanban](/guides/development/kanban)；下文说明入口声明、配置和宿主 Bridge。
+
+## 注册与构建入口
+
+聚合根只登记子入口的 ID 与源码目录：
 
 ```json
 { "entries": [{ "entryId": "map", "root": "map" }] }
@@ -16,6 +20,8 @@ Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。聚合根�
 ```json
 { "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json", "databases": [] }
 ```
+
+### 入口路径
 
 `root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/steamharness/build/<entryId>/index.html`（根入口）或 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`（子入口）。Workflow/Bot 的源码入口仍相对各自 `root`。前端只清理当前源码根下的 `build/<entryId>/`，保留数据库生成目录。
 
@@ -74,11 +80,17 @@ CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；S
 
 `await window.steamHarnessKanban.entries.list()` 直接读取本地聚合入口目录，返回 `entryId`、`name`、`type` 和 `status`，不等待业务数据库。可以先显示本地 Bot，再后台读取已保存的 Bot 档案。入口存在不代表档案、绑定或执行权限已经就绪；加载失败时保留本地列表及重试指引，禁止伪装成已保存。
 
+### 挂载原生 Bot
+
 需要原生私聊时，用 `conversations.mount(container, { entryId, conversationId, draft?, locale? })` 挂载 CLI Web Bot，并保存返回的释放函数，在卸载或切换配置时调用。容器应有确定的可用高度。它复用原生正文、Markdown、模型参数、流式输出、草稿、FIFO 队列、审批、停止、Trace 与重试；同一会话与原生 Bot 标签共享 Controller 和持久历史。此嵌入接口接受文本与参数，暂不提供附件上传、导出或跨会话分支导航。
 
 同一 Kanban 页面可以为同一个 Bot 挂载多个视图，例如群输入区与目标 Bot 的完整对话。它们共享该页面的会话写入权，各自保留界面参数解析与草稿状态；其它页面仍遵循独立的写入隔离。关闭视图会立即释放其占用，最后一个视图关闭后释放空闲会话；正在运行的任务保留执行 owner。
 
+### 经业务 Workflow 提交
+
 发送需要先经过业务 Workflow 时，可传 `submit: { entryId: "api", entrypointId: "message-send", payload: { workspaceId, threadId } }`。宿主在 payload 上追加可信目标 `conversationId` 和本次 `text`、`params`、`requestId`，调用 Workflow 后读取 `{ data: { errCode: 0, errMessage: "", data: [{ id, conversationId }] } }` 中的持久回执；`id` 必须与提交给 Bot 的请求 ID 相同。原生 UI 用它关联乐观消息，避免重复显示。队列编辑、审批及停止继续使用同一原生 Controller；业务 Workflow 应对账这些原生操作。
+
+### 自定义提及与消息区
 
 项目可以给嵌入界面提供自定义 `@` 内容和展示插槽。例如，由项目把 Bot 成员转换为提及选项，并在业务 Workflow 中解析目标：
 
@@ -106,16 +118,23 @@ await view.update({ presentation: "composer", mentions: updatedGroups });
 
 默认 `presentation: "conversation"` 保留完整原生消息区。`"composer"` 隐藏原生消息区，由 `slots.transcript` 展示项目消息；原生输入区按内容自适应高度，`@` 菜单在其上方展开。三个可选插槽都由项目提供 DOM 节点，留在 Kanban 文档中，项目自行渲染、订阅与处理审批、停止和各成员的队列。插槽不会把 HTML 或执行函数传入原生 sandbox。`onSubmitted` 在取得持久回执后通知页面，不能作为模型完成通知。
 
+### 跟踪提交与重试
+
 `onSubmission` 提供同一 `requestId` 的 `sending`、`accepted`、`failed` 生命周期；`sending` 只表示本地正在提交，不能显示为投递成功。`accepted.result` 是当前用户经授权的 submit Workflow 返回数据，可直接更新业务消息和订阅目标会话，避免串行等待全量重读；仍需按请求 ID 与持久记录对账。失败后可由用户调用 `view.retry(requestId)`，复用原生提交身份与参数，保留当前草稿；不会自动重放。完整原生消息区继续负责自身的即时消息展示。
 
 业务 Workflow 可以返回其它目标会话的持久回执，例如在当前话题中定向触发另一位参与者。宿主确认回执后释放本地提交状态；跨目标回复由项目消息区订阅展示。成员资格、权限、幂等、目标会话隔离和投递状态由业务 Workflow 校验，提及菜单本身不授予执行权限。
 
+### 隔离与释放视图
 
 原生界面在独立 `allow-scripts` sandbox 中运行，沿已有 Bridge/SSE 通信，不接收宿主登录 token。宿主绑定项目、来源入口、用户、页面和单一会话，拒绝跨会话或账号/项目配置操作；身份、配置或预览变化后释放旧界面。每个 Kanban 宿主最多保留八个界面，页面可保留最近访问的界面以减少切换开销，但应释放不再需要的界面。
+
+### 超时与错误
 
 Workflow 调用独立使用 120 秒 Bridge 时限，供数据库授权及持久回执完成；Bot 的提交、恢复队列、确认输入和停止 IPC 同样允许最多 120 秒，普通只读 IPC 保持 15 秒。回执不等待模型完成，耗时模型工作由持久队列异步执行。超时可能已有副作用，页面应保留请求 ID 并查询回执，不自动重放写入。
 
 数据库错误的已知公开 `code` 会跨节点报告及 Workflow 调用保留。Bridge 仅将白名单代码映射为固定提示（如 `DATABASE_UNBOUND`、`DATABASE_BUSY`、`DATABASE_SCHEMA_MISMATCH`），不向页面暴露底层连接串、SQL、文件路径或任意异常文本。
+
+### 订阅快照
 
 `conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
 

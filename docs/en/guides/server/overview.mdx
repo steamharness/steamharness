@@ -1,42 +1,56 @@
 ---
-title: "Manage projects and data with Server Web"
-description: "Manage cloud projects, source versions, members, knowledge bases, and relational data."
+title: "Manage projects and data in Server Web"
+description: "Find projects, manage versions and access, and open data resources."
 ---
 
-# Manage projects and data with Server Web
+<span id="manage-projects-and-data-with-server-web"></span>
+<span id="project-workspace"></span>
 
-Server Web is the browser administration client for SteamHarness Server. After signing in, you can find Workflow, Bot, and Kanban projects, manage source versions, and manage project data. Local CLI or Studio performs project execution.
+# Manage projects and data in Server Web
 
-## Project workspace
+Server Web is SteamHarness's browser management console for projects, versions, members, and data. Project code executes locally in Studio or the CLI.
 
-Project lists display type sets and match any entry type. Details expose entries, entry configurations, versions and membership. Independent relational and knowledge management provides explicit creation, account read/write grants, entry bindings and data browsing.
+## Project workbench
 
-Uploaded packages must register nonempty `steamharness.json.entries` and a valid `defaultEntry`. Names and display platforms belong to projectInfo. Entries declare relational and knowledge aliases in steamharness.json. Server stores relational resource bindings by account, project, entry and alias; root config.json stores knowledge alias-to-ID mappings under knowledgeBases.
+1. Sign in, then search projects by name or filter by entry type.
+2. Open a project to inspect entries, configuration, versions, and members.
+3. Download a version, install dependencies locally, and run it.
+
+A project can contain several entry types; a filter matches any included type. Uploaded archives need nonempty `entries` and a valid `defaultEntry`. Names and presentation come from project declarations.
 
 ## Projects and data
 
-- Use [Workspace CLI](/en/cli/server-workspace) to create, upload, publish, and download projects.
-- Configure membership and group ownership in [Project management](/en/guides/server/project-management), and grants on the database page.
-- Relational resources provide account grants, model migrations and table data management. Knowledge resources provide documents, search, revision checks and private attachments. Platform relational tables retain runtime history.
-- Kanban keeps static previews, configuration, and the data Bridge. A preview uses a short-lived capability bound to a project, user, and version; its iframe does not inherit account credentials.
+| Task | Location |
+| --- | --- |
+| Members, group ownership, and access requests | [Project management](/en/guides/server/project-management) |
+| Upload drafts, publish, or download | [Workspace CLI](/en/cli/server-workspace) |
+| Create databases, grant access, migrate models, and edit rows | Relational resource details in the database directory |
+| Manage documents, search, revisions, and attachments | Knowledge resource details in the database directory |
+
+Relational and knowledge resources are created, granted, and bound separately. Server maintains relational bindings by account, project, entry, and alias. Knowledge resources also use the root configuration's alias mapping. Membership alone grants no data access.
+
+Kanban previews run in permission-constrained static iframes using short-lived capabilities rather than inherited account credentials. Use a local host for executable project operations.
 
 ## Accounts and settings
 
-Server Web supports password sign-in, device authorization, member invitations, project and group roles, API keys, audit logs, and theme settings. Server validates account, project, and data permissions; credentials appear only in redacted form in the console and audit records.
+Settings include profiles, API keys, and themes. Authorized accounts can also manage users, groups, invitations, and audits. Menus reflect capabilities, and the service checks every operation again.
 
-Opening a database or selecting “Manage resources in Server” while signed in to Studio uses the current Studio account and permissions without another password prompt. A single-use credential valid for one minute establishes browser authentication without putting the long-lived token in the address. Revoking the Studio credential or disabling the account also removes browser access. Database sidebar buttons, filters and helper text follow the current Studio theme.
+Opening a resource-management link from signed-in Studio reuses its account without another password prompt. The one-use handoff lasts one minute and contains no long-lived token. Revoking the original credential or disabling the account also invalidates browser access.
 
-Account sessions determine sign-in status independently. If the project list fails to load, you remain signed in and the project workspace shows an error with a refresh action. This is not reported as a password or sign-in failure. Release announcement failures also do not block sign-in; signing in again is only required after the account session expires.
+Project-list or release-notice failures can be retried in their respective areas while retaining sign-in. Only session expiry requires another login.
 
+### Change an avatar
 
-Choose an avatar in Settings → Profile or user management to crop with a fixed 1:1 square selection. Move or resize the selection; Reset selection restores the largest centered square. Source images have no file size, dimension, or aspect ratio restriction. The preview fits the dialog proportionally and enlarges small images for easier cropping; exported images are never upscaled. After confirmation, the browser compresses the square avatar; Save profile uploads the result. Canceling retains the previous avatar, and processing failures can be retried. GIF images become static avatars. Profile settings, account menus, user lists, memberships, audit entries and profile details use consistent 1:1 avatars with rounded corners. Existing images are centered and cropped to fill without stretching. Click the avatar preview in user management or the avatar inside a profile dialog to view a larger image that fits the viewport. Close it with the close button, backdrop or Escape; keyboard focus returns to the avatar.
+1. Choose an image in **Settings → Profile**.
+2. Move or resize the square crop; use **Reset crop** when needed.
+3. Confirm cropping, then select **Save profile** to upload.
 
-Settings and Admin Center expand submenus in the main sidebar. Selecting a page keeps Project Workbench and the other entries available. Admin Center only shows entries the current account can access; opening a page directly expands its group and highlights the current page.
+Preview scales to the dialog, but export does not upscale the original. The client compresses the square avatar and converts GIFs to still images. Canceling retains the old avatar; failed processing can be retried. Profile avatars support a larger preview, closed with Esc, the close button, or the overlay, restoring focus.
 
-Upload failures show the processing stage and reason without replacing saved drafts or historical versions. Server does not install dependencies, build, or load uploaded project code.
+Older avatars use a centered crop to avoid distortion. Settings and management subpages preserve other sidebar entries while expanding and highlighting the active group.
 
 ## Display
 
-The console supports mobile layouts, light, dark, and system themes. Times use the browser time zone and full timestamps use `YYYY-MM-DD HH:mm:ss`; APIs retain ISO timestamps.
+The console supports light, dark, system themes, and narrow layouts. Tables scroll within their area; mobile navigation uses a drawer. The upper-right refresh button updates the current page.
 
-Each administration page has one top-right refresh action. Mobile navigation opens in a drawer, and tables scroll inside their own region.
+UI times use the browser timezone and `YYYY-MM-DD HH:mm:ss`; APIs retain ISO timestamps. Upload failures report the stage and preserve existing drafts and releases.

@@ -5,8 +5,7 @@ description: "Log on to SteamHarness Server by browser device flow, and save the
 
 # workspace login
 
-`workspace login` will initiate a device flow login request to SteamHarness Server, open the browser authorization page, and wait for the user to write the CLI dedicated API Key to the local `workflow-auth.json` after approval on the Web side. The CLI saves its own credentials and does not require manual token entry.
-
+Use `workspace login` to authorize the CLI in a browser. After you approve the device request, the CLI saves its dedicated API key, Server address, and account details in local `workflow-auth.json`. You do not need to copy a token.
 
 ## Command Format
 

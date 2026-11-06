@@ -1,86 +1,59 @@
 ---
 title: "Release overview"
-description: "Release overview generated from each unit's CHANGELOG.md and release metadata."
+description: "Find component history and verify installed or deployed versions."
 ---
+
+<span id="public-endpoints"></span>
+<span id="latest-stable-artifacts"></span>
+<span id="steamharness"></span>
+<span id="steamharness-cli"></span>
+<span id="server"></span>
+<span id="server-web"></span>
+<span id="builtin-conversation"></span>
+<span id="builtin-codex"></span>
+<span id="builtin-opencode"></span>
+<span id="builtin-developer-assistant"></span>
 
 # Release overview
 
-Version history comes from each release unit's `CHANGELOG.en.md`. Release metadata adds exact publication times, component versions, targets, and artifacts. The public `/health` endpoint also reports the currently deployed Server and Server Web versions.
-
-> Sources: local package.json and each release unit's CHANGELOG.en.md preview
->
-> - Generated: 2026-08-10 15:36:54
-> - SteamHarness Server health snapshot: skipped for this generation
+Choose a component to inspect version changes and migration requirements. This site records release history; check the current package and target service when installing or deploying.
 
 ## All release units
 
-Built-in projects keep one index per release channel: the table below lists the stable channel (`builtin-projects/<project>/index.json`); the Alpha channel lives at `alpha/index.json` beside it.
-
-| Release unit | Stable | Latest | Target | Package / endpoint | Release notes |
-| --- | --- | --- | --- | --- | --- |
-| `steamharness` | v0.1.3<br />2026-08-07 | v0.1.3<br />2026-08-07 | npm | [`steamharness`](https://www.npmjs.com/package/steamharness) | [Release notes](/en/guides/releases/core) |
-| `steamharness-cli` | v0.1.3<br />2026-08-07 | v0.1.3<br />2026-08-07 | npm | [`@steamharness/cli`](https://www.npmjs.com/package/@steamharness/cli) | [Release notes](/en/guides/releases/cli) |
-| `server` | v0.1.4<br />2026-08-07 | v0.1.4<br />2026-08-07 | Current device | [steamharness.yuhe.space](https://steamharness.yuhe.space) | [Release notes](/en/guides/releases/server) |
-| `server-web` | v0.1.4<br />2026-08-07 | v0.1.4<br />2026-08-07 | Current device | [steamharness.yuhe.space](https://steamharness.yuhe.space) | [Release notes](/en/guides/releases/server-web) |
-| `builtin-conversation` | v0.1.4<br />2026-07-22 | v0.1.4<br />2026-07-22 | Built-in project updates | [Release index](https://updates.steamharness.yuhe.space/builtin-projects/conversation/index.json) | [Release notes](/en/guides/releases/builtin-conversation) |
-| `builtin-codex` | v0.1.2<br />2026-07-22 | v0.1.2<br />2026-07-22 | Built-in project updates | [Release index](https://updates.steamharness.yuhe.space/builtin-projects/codex/index.json) | [Release notes](/en/guides/releases/builtin-codex) |
-| `builtin-opencode` | v0.1.4<br />2026-07-30 | v0.1.4<br />2026-07-30 | Built-in project updates | [Release index](https://updates.steamharness.yuhe.space/builtin-projects/opencode/index.json) | [Release notes](/en/guides/releases/builtin-opencode) |
-| `builtin-developer-assistant` | v0.1.1<br />2026-07-30 | v0.1.1<br />2026-07-30 | Built-in project updates | [Release index](https://updates.steamharness.yuhe.space/builtin-projects/developer-assistant/index.json) | [Release notes](/en/guides/releases/builtin-developer-assistant) |
-
-## NPM packages
-
-| Release unit | Package | Current stable | Published | Release notes |
-| --- | --- | --- | --- | --- |
-| `steamharness` | [`steamharness`](https://www.npmjs.com/package/steamharness) | v0.1.3 | 2026-08-07 | [Release notes](/en/guides/releases/core) |
-| `steamharness-cli` | [`@steamharness/cli`](https://www.npmjs.com/package/@steamharness/cli) | v0.1.3 | 2026-08-07 | [Release notes](/en/guides/releases/cli) |
-
-## Current deployments
-
-| Service | Current stable | Health / details | Endpoint |
-| --- | --- | --- | --- |
-| `server` | Not collected | Not collected | [steamharness.yuhe.space/health](https://steamharness.yuhe.space/health) |
-| `server-web` | Not collected | Not collected | [steamharness.yuhe.space](https://steamharness.yuhe.space) |
-
-## Public endpoints
-
-Default release domains use `yuhe.space` subdomains. The previous `hookcode.win` domains remain compatibility routes to the same services.
-
-| Purpose | Default endpoint | Compatibility domain |
+| Component | Purpose | History |
 | --- | --- | --- |
-| Workflow console | [steamharness.yuhe.space](https://steamharness.yuhe.space) | `workflow.hookcode.win` |
-| Workflow API | [api.steamharness.yuhe.space](https://api.steamharness.yuhe.space) | `api.hookcode.win` |
-| Docs | [docs.steamharness.yuhe.space](https://docs.steamharness.yuhe.space) | `docs.hookcode.win` |
+| Core SDK | Workflow and Agent runtime | [Core](/en/guides/releases/core) |
+| CLI | Local execution and project transfer | [CLI](/en/guides/releases/cli) |
+| Server | Account, project, and data services | [Server](/en/guides/releases/server) |
+| Server Web | Browser management console | [Server Web](/en/guides/releases/server-web) |
+| Developer Assistant | Studio development tasks | [Developer Assistant](/en/guides/releases/builtin-developer-assistant) |
+| Conversation | Conversation project | [Conversation](/en/guides/releases/builtin-conversation) |
+| Codex | Codex project | [Codex](/en/guides/releases/builtin-codex) |
+| OpenCode | OpenCode project | [OpenCode](/en/guides/releases/builtin-opencode) |
+| Pi | Pi project | [Pi](/en/guides/releases/builtin-pi) |
 
-## Latest stable artifacts
+<span id="current-deployments"></span>
 
-### `steamharness`
+## npm packages
 
-No artifacts are available.
+The public packages are [`steamharness`](https://www.npmjs.com/package/steamharness) and [`@steamharness/cli`](https://www.npmjs.com/package/@steamharness/cli). Check installed versions in the project directory:
 
-### `steamharness-cli`
+```sh
+pnpm list steamharness @steamharness/cli --depth 0
+```
 
-No artifacts are available.
+Projects pin exact versions. Check [compatibility](/en/guides/releases/compatibility) before upgrading.
 
-### `server`
+## Current deployment
 
-No artifacts are available.
+Read the target Server's `/health` and inspect product version, `deploymentId`, and `commitSha`. A product version can be deployed more than once. The response also provides full release notes and a localized documentation link.
 
-### `server-web`
+## Public entry points
 
-No artifacts are available.
+Use the service addresses configured by your Server and Studio. See [environments and updates](https://docs.steamharness.yuhe.space/en/enhanced/management/deployment) for the enhanced edition or [deployment](/en/guides/server/deployment) for self-hosting.
 
-### `builtin-conversation`
+## Stable artifacts
 
-No artifacts are available.
+Use the package registry's release information for npm packages. Built-in projects use their release indexes: `builtin-projects/<project>/index.json` for production and the neighboring `alpha/index.json` for alpha. Check channel, version, and integrity before downloading.
 
-### `builtin-codex`
-
-No artifacts are available.
-
-### `builtin-opencode`
-
-No artifacts are available.
-
-### `builtin-developer-assistant`
-
-No artifacts are available.
+Version detail pages preserve their historical release facts. See the [complete index](/en/guides/releases/changelog).

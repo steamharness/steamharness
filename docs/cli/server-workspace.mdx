@@ -1,11 +1,15 @@
 ---
 title: "Server Workspace CLI"
-description: "Workspace 静态项目管理"
+description: "管理 Server 上的源码草稿、发布版本和下载。"
 ---
 
-# Workspace 静态项目管理
+<span id="workspace-静态项目管理"></span>
 
-`steamharness workspace` 管理 Server 上的聚合项目源码与不可变版本。Server 不安装项目依赖、不构建、不执行项目。
+# Server Workspace CLI
+
+`steamharness workspace` 管理 Server 上的项目源码与不可变版本。项目在本地安装依赖、构建和运行，Server 处理静态归档。
+
+## 从登录到下载
 
 ```sh
 pnpm exec steamharness workspace login --server <server-url>
@@ -17,19 +21,23 @@ pnpm exec steamharness workspace versions <project-id>
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-整个聚合是一个上传、版本与下载单元。打包包含全部注册入口代码、各包依赖声明和 Kanban 构建产物；排除 Git、node_modules、运行数据和凭据。保留数据库 `alias → databaseId` 映射，授权与凭据由宿主维护。
+一个归档覆盖全部注册入口、依赖声明和 Kanban 产物，排除 Git、`node_modules`、运行数据与凭据。下载后安装依赖，再检查入口的资源权限和绑定。
 
 ## 注册与归属
 
-使用客户端的创建项目流程申请 Server 身份。`upload --create` 显式创建并替换本地聚合身份；`--group-id` 选择权限组归属。项目成员、组继承与源码访问申请仍使用固定角色，与数据库申请分别管理。
+客户端创建流程会申请 Server 身份。CLI 的 `upload --create` 可显式创建项目并替换本地聚合身份，`--group-id` 选择归属组；操作前确认要使用的身份与归属。
+
+项目成员和组继承使用固定角色。关系库或知识库的访问授权单独管理，不随源码下载自动取得。
 
 ## 传输与配置
 
-`upload --file` 接受已打包归档，`--no-wait` 返回准备任务，`preparation` 查询静态准备结果。`file-upload/file-download/file-delete` 管理业务文件。`--server`、`--token` 可覆盖保存的登录信息；不要把凭据加入 manifest。
+| 操作 | 用途 |
+| --- | --- |
+| `upload --file` | 上传已打包的归档 |
+| `upload --no-wait`、`preparation` | 提交准备任务，再查询结果 |
+| `file-upload`、`file-download`、`file-delete` | 管理业务文件 |
+| `--server`、`--token` | 显式覆盖连接设置 |
 
+配置模板、方案、快照和附件按入口保存。关系库绑定由 Server 按账号、项目、入口和别名维护，归档不携带账号绑定。知识库按声明与授权连接。凭据应留在宿主配置中。
 
-配置模板、方案、快照与附件按入口保存。关系库通过 Server Web 或 CLI database 命令创建、授权、迁移并绑定入口；下载项目不会携带账号绑定，使用前检查当前账号的资源权限与入口绑定。知识库按 knowledgeBases 配置和授权连接。
-
-## 发行包上传
-
-`pack` 与 `upload` 支持 `--mode auto|source|release`。auto 检测发行配置或产物后自动构建并上传发行目录。详见[项目发行模式](/cli/steamharness#项目发行模式)。
+完整命令列表见 [workspace help](/cli/workspace/help)。

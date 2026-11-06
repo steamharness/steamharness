@@ -1,46 +1,68 @@
 ---
-title: "自动化测试"
-description: "SteamHarness 的离线测试、构建与临时测试夹具。"
+title: "验证项目与改动"
+description: "先检查结构与可重复的本地结果，再验证实际宿主和服务。"
 ---
 
-# 自动化测试
+<span id="自动化测试"></span>
+<span id="跨仓改动"></span>
 
-SteamHarness 的各仓库独立安装依赖并执行自己的质量门禁。默认测试以离线可复现为第一层保障，不连接生产 PostgreSQL、真实 OSS、LLM、GitLab、Electron 或远程服务器；Server 的 PostgreSQL 集成测试使用一次性的隔离 PostgreSQL 15 容器。真实环境验证应由对应仓库显式启用。
+# 验证项目与改动
 
-以下命令都从对应仓库根目录执行。所有仓库都维护 `dev`、`alpha`、`main` 三条分支，日常开发在 `dev` 上进行；分支差异不改变本地门禁，只有发布态的引用规则不同（见[兼容性](releases/compatibility.mdx)）。
+项目测试先验证输入、输出和错误路径，再验证宿主界面与外部服务。使用隔离的示例数据，明确记录哪些检查实际执行过。
+
+## 检查自己的项目
+
+在项目根目录执行：
+
+```sh
+pnpm exec steamharness check .
+pnpm exec steamharness structure .
+pnpm exec steamharness run .
+pnpm exec steamharness json .
+```
+
+聚合项目逐个验证 Workflow、Bot 和 Kanban 入口。结构检查不执行用户代码；运行成功后，还需确认页面或调用方实际收到了预期结果。
 
 ## 测试分层
 
-| 仓库 | 命令 | 用途 |
-| --- | --- | --- |
-| Core | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build && pnpm test:agent-dist` | 检查 Core API、脚本、npm 构建和构建产物；普通测试覆盖运行时与最小临时夹具。 |
-| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查本地 CLI 与 `steamharness workspace`。发布前再执行 `pnpm pack --pack-destination .release`。 |
-| Studio | `npm run check && npm run build:extension` | 检查工作站扩展、类型和离线测试。 |
-| Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | 同时检查 Server API 与仓库内 `web/` 管理端。 |
-| Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查共享源码包和可供宿主同步的源码产物。 |
-| Docs | `node scripts/validate-docs.mjs && node --test scripts/__tests__/*.test.mjs` | 检查双语导航、链接和 OpenAPI 内容。 |
-| 每个内置项目 | `pnpm typecheck && pnpm test && pnpm coverage && pnpm build` | 独立检查 Bot、Codex、OpenCode、Developer Assistant。 |
+| 层次 | 验证内容 |
+| --- | --- |
+| 纯逻辑 | 参数解析、类型转换、业务计算、错误条件 |
+| 执行器 | 入口选择、参数、输出、等待输入与取消 |
+| 资源 | 授权、绑定、并发版本、断连和存储失败 |
+| 宿主 | 真实页面、输出顺序、队列、恢复和中英文显示 |
+
+模型测试先用确定性的测试 Provider，文件使用固定样本。真实模型、数据库、外部进程和可见窗口需要单独的验证环境与明确启用。
+
+<span id="workspace-workflow-契约"></span>
 
 ## 给新代码补测试
 
-- 修改 Core 仓库 `src/**` 时，优先补 Core 单元测试和 npm exports/pack 回归测试。
-- 修改 Server 仓库 `src/**` 时，优先补 routes、storage、权限和错误码测试，并用 stub storage 保持离线。
-- 修改 CLI 仓库 `src/**` 时，把参数解析、路径处理、输出格式和错误码拆成可 import helper，再补 Vitest。
-- 修改 Server 仓库 `web/**` 时，覆盖 API client、路由、loading、empty、error、disabled 和关键组件交互。
-- 修改 Shared 仓库 `run-workspace-input/**` 时，覆盖输入、conversation、附件、Markdown/output item、图片预览、Enter 发送、菜单、标题锁定和响应式状态。
-- Core 节点与运行时行为使用 `src/__tests__/*.test.ts` 和 `node:test`，纳入常规测试及覆盖率；结构分析直接使用代码片段。
-- 修改任一内置项目时，在该项目自己的 `__tests__/` 中覆盖入口参数、运行结果、错误路径和结构快照。
+- 节点与执行器：覆盖正常结果、校验失败、取消和恢复。
+- 配置与数据：覆盖版本冲突、权限撤销以及失败后草稿保留。
+- 页面：覆盖加载、空状态、失败、禁用与关键交互。
+- 异步会话：用请求或消息 ID 匹配完成，不能依赖数组最后一项。
 
-## 测试夹具
+## 示例项目的文件
 
-通用能力直接构造节点、Workflow 定义和内存上下文。等待与恢复、流式取消、知识库共享和授权必须有明确行为断言，不依赖实际业务工程。
+| 文件 | 用途 |
+| --- | --- |
+| `__fixtures__/smoke.json` | 输入、会话 ID、预期输出和所需节点 |
+| `__snapshots__/structure.json` | 精简的入口、参数、节点和分支结构 |
+| `__tests__/` | 项目逻辑与工具测试 |
 
-加载器、入口发现、Kanban HTML、打包和 CLI 执行需要文件系统时，在系统临时目录生成最小清单与源码，测试结束后清理。使用现有夹具工具和仓库依赖，不保留常驻测试工程、独立 lockfile，也不为夹具执行安装。CLI 命令测试归 CLI 测试套件。
+依赖真实服务的示例应注明前提和单独运行方式。跳过的用例保留原因，不把静态校验作为实际服务验证。
 
-外部依赖默认 mock：LLM 使用测试 provider，文件输入使用临时内容；真实 SDK、远程服务或外部进程只能通过显式启用的专项测试验证。
+## 修改 SteamHarness 源码
 
-## 跨仓改动
+以下命令从开源仓根目录执行，只运行改动涉及的包：
 
-Shared 变化需要在 Shared 自身通过门禁后，再在实际消费它的 Server、Core 或 CLI 仓库执行对应门禁。Core API 变化还应验证 CLI、Server 和相关内置项目的消费者测试；CLI 变化应验证 Studio 与 CLI 的命令回归。每个仓库通过同级目录或提交的 `vendor/shared` 准备共享源码，但 CI 不依赖外层多仓目录存在。
+| 范围 | 检查 |
+| --- | --- |
+| SDK | `corepack pnpm -C harness typecheck`、`corepack pnpm -C harness test`、`corepack pnpm -C harness build` |
+| CLI | `corepack pnpm -C cli typecheck`、`corepack pnpm -C cli test` |
+| Server 与 Web | `corepack pnpm -C server typecheck:all`、`corepack pnpm -C server test`、`corepack pnpm -C server build:all` |
+| Studio 扩展 | `npm --prefix studio run check`、`npm --prefix studio run build:extension` |
+| 文档内容 | `node docs/scripts/validate-docs.mjs`、`node --test docs/scripts/__tests__/*.test.mjs` |
 
-真实 Server、数据库、LLM、Electron 窗口或浏览器验证只在明确启用时执行，不代替上述离线测试。若环境仍无法完成应跑门禁，应记录阻塞原因、影响范围和替代验证。
+Server 集成测试使用隔离的 PostgreSQL 容器，执行前检查 Docker。共享接口修改后还需验证消费它的 SDK、CLI、Server 或 Studio；站点构建由消费文档内容的工作区完成。

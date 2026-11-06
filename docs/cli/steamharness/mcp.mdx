@@ -1,16 +1,24 @@
 ---
 title: "steamharness mcp"
-description: "入口 MCP 服务"
+description: "通过 stdio 向 MCP 客户端提供 Workflow 操作。"
 ---
 
-# 入口 MCP 服务
+<span id="入口-mcp-服务"></span>
 
-通过 stdio 暴露所选 Workflow 的操作、参数与执行结果。
+# steamharness mcp
+
+用 `mcp` 把已注册 Workflow 的操作、参数和结果提供给 MCP 客户端。进程通过标准输入输出通信。
+
+## 命令
 
 ```sh
 pnpm exec steamharness mcp . --entry database
 ```
 
-`entryId` 定位聚合入口，`entrypointId` 定位 Workflow 内部操作。同一项目的多个入口分别持有配置、数据库需求和会话状态。默认使用 `defaultEntry`，未知入口直接报错。
+项目需声明 `database` 入口；不传 `--entry` 时使用 `defaultEntry`。客户端调用的 `entrypointId` 指向 Workflow 内部操作，不能替代聚合的 `entryId`。
 
-每个 MCP 请求和恢复句柄绑定项目与入口。工具权限、当前用户、配置快照和取消信号沿调用链传递；恢复到其他入口会拒绝。数据库仍须先在宿主申请和获批，MCP 不能自动创建空间。
+## 权限与恢复
+
+每个请求和恢复句柄都绑定项目与入口。当前用户、工具权限、配置快照和取消信号随调用传递，跨入口恢复会被拒绝。
+
+入口各自保存配置、资源需求和会话状态。MCP 不会自动创建数据库；先在宿主申请资源、获得授权并绑定入口。未知入口会直接报错。

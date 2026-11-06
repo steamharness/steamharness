@@ -5,14 +5,74 @@ description: "在当前 RunContext 中调用另一个 workflow，并复用父级
 
 # runProject
 
-`workflow.runProject()` 用于在一个 workflow 内调用另一个已 import 的 `Definition<Input, Output>`。它复用父级 `RunContext`，适合把通用 workflow 当作另一个 workflow 的方法来组合。
+用 `steamharness.runProject()` 在一次运行中调用已导入的 `Definition<Input, Output>`。子流程复用父级 `RunContext`，适合复用公共业务步骤。
 
 它与项目 entrypoint 是两层不同概念：entrypoint 是本地 CLI 可直接启动的一层扁平目录；`runProject()` 是一次 run 内部的业务组合。运行某个 entrypoint 不会自动运行默认入口或其它入口。需要“主流程调用子流程”时，由所选入口的 workflow 显式调用 `runProject(childProject, ...)`。
+
+## 示例
+
+```ts
+import { openaiAgentsProject } from "../openai-agents/index";
+
+const agentOutput = await steamharness.runProject(
+  openaiAgentsProject,
+  {
+    message: input.query,
+    defaultTools: false,
+    memoryTools: false,
+    testTool: false,
+    writeConversation: false,
+    writeAgentState: false,
+    customTools: deltaforceTools,
+  },
+  context,
+  {
+    name: "OpenAI Agents core",
+    conversationMode: "shared-readonly",
+    outputVisibility: "hidden",
+  },
+);
+
+return steamharness.runNode(parentOutputNode, {
+  query: input.query,
+  answer: agentOutput.items[0]?.content,
+}, context);
+```
+
+流式桥接示例：
+
+```ts
+const outputNode = steamharness.createOutputNode({
+  name: "output",
+  async *stream(input, context) {
+    // createAsyncQueue 是示意 helper，需要在 workflow 中自行实现，
+    // 或替换成项目已有的 async iterable/queue 工具。
+    const queue = createAsyncQueue();
+
+    const childRun = steamharness.runProject(childProject, input, context, {
+      conversationMode: "shared-readonly",
+      outputVisibility: "hidden",
+      onOutputChunk(chunk) {
+        queue.push(chunk);
+      },
+      onOutput(output) {
+        queue.push(output);
+      },
+    }).finally(() => queue.end());
+
+    yield* queue;
+    await childRun;
+  },
+  format(stream) {
+    return steamharness.createOutputPayload({ items: stream.items });
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.runProject<Input, Output>(
+steamharness.runProject<Input, Output>(
   workflow: Definition<Input, Output>,
   input: Input,
   context: RunContext,
@@ -79,67 +139,7 @@ runtime 默认会在父 trace 中增加一个 `run-workflow` 包裹节点，`nam
 
 `onOutputChunk` / `onOutput` 属于执行语义的一部分。如果 handler 抛错，`runProject` 会尽早失败并停止继续桥接后续 output；错误 metadata 中会带 `outputBridgeFailed: true`。
 
-静态结构分析会把 `workflow.runProject(childProject, input, context, options)` 识别为 `run-workflow` 执行节点。动态拼装 workflow 引用仍可运行，但 Diagram 只能显示表达式形式的子 workflow 引用。
-
-## 示例
-
-```ts
-import { openaiAgentsProject } from "../openai-agents/index";
-
-const agentOutput = await workflow.runProject(
-  openaiAgentsProject,
-  {
-    message: input.query,
-    defaultTools: false,
-    memoryTools: false,
-    testTool: false,
-    writeConversation: false,
-    writeAgentState: false,
-    customTools: deltaforceTools,
-  },
-  context,
-  {
-    name: "OpenAI Agents core",
-    conversationMode: "shared-readonly",
-    outputVisibility: "hidden",
-  },
-);
-
-return workflow.runNode(parentOutputNode, {
-  query: input.query,
-  answer: agentOutput.items[0]?.content,
-}, context);
-```
-
-流式桥接示例：
-
-```ts
-const outputNode = workflow.createOutputNode({
-  name: "output",
-  async *stream(input, context) {
-    // createAsyncQueue 是示意 helper，需要在 workflow 中自行实现，
-    // 或替换成项目已有的 async iterable/queue 工具。
-    const queue = createAsyncQueue();
-
-    const childRun = workflow.runProject(childProject, input, context, {
-      conversationMode: "shared-readonly",
-      outputVisibility: "hidden",
-      onOutputChunk(chunk) {
-        queue.push(chunk);
-      },
-      onOutput(output) {
-        queue.push(output);
-      },
-    }).finally(() => queue.end());
-
-    yield* queue;
-    await childRun;
-  },
-  format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
-  },
-});
-```
+静态结构分析会把 `steamharness.runProject(childProject, input, context, options)` 识别为 `run-workflow` 执行节点。动态拼装 workflow 引用仍可运行，但 Diagram 只能显示表达式形式的子 workflow 引用。
 
 ## 错误
 

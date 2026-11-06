@@ -5,14 +5,26 @@ description: "The LLM Context actually used by the node is resolved from the Nod
 
 # getLLMProvider
 
-`workflow.getLLMProvider()` is a provider parsing tool. The LLM node is called when it is executed, and the business code can also be used directly in custom nodes or advanced scenarios.
+Use `steamharness.getLLMProvider()` to resolve a connection from node context and a provider source. Built-in LLM nodes call it automatically; custom nodes can use it to retain the same usage reporting.
 
 When executor is configured with `tokenUsage.enabled`, the token usage is automatically reported when the provider parsed by `getLLMProvider()` is returned by `chat()` or when the stream `finish` chunk carries usage. workspace examples that call provider directly in custom nodes will also follow the same statistics link; provider without usage will not write statistics. The report will read the usage field of common provider, including cache read / cache write or cache creation token details.
+
+## Example
+
+```ts
+const provider = steamharness.getLLMProvider(
+  context,
+  "answer",
+  steamharness.createLLMProviderRef("default"),
+);
+
+const output = await provider.chat({ prompt: input.message });
+```
 
 ## Signature
 
 ```ts
-workflow.getLLMProvider(
+steamharness.getLLMProvider(
   context: NodeContext,
   nodeName: string,
   source?: LLMProviderSource,
@@ -69,15 +81,3 @@ workflow.getLLMProvider(
 | --- | --- | --- |
 |Bound provider/model not found| `provider_call` |Error reporting will include providerId, modelId and nodeName.|
 |Failed to parse all sources| `provider_call` |The current node requires an LLM provider, but no provider is available in the context.|
-
-## Example
-
-```ts
-const provider = workflow.getLLMProvider(
-  context,
-  "answer",
-  workflow.createLLMProviderRef("default"),
-);
-
-const output = await provider.chat({ prompt: input.message });
-```

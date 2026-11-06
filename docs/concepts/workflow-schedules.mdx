@@ -5,7 +5,9 @@ description: "为 Workflow entrypoint 配置时间窗口或 Cron 计划，并理
 
 # Workflow 定时运行
 
-定时任务用于按固定规则直接运行某个 Workflow entrypoint。Bot 和 Kanban 不能作为调度目标；任一 fire 只创建所选入口的独立 run，不会先运行默认入口。
+定时计划按时间规则调用一个 Workflow 操作，每次触发创建独立运行。Bot 与 Kanban 不能作为调度目标，所选操作也不会先执行默认操作。
+
+当前 CLI 和 Studio 提供预设声明与结构检查，不提供计划管理页面。以下触发、重叠和历史规则用于接入调度的宿主；Server 不运行计划。
 
 ## 触发规则
 
@@ -28,26 +30,31 @@ type ScheduleTrigger =
     };
 ```
 
-保存计划时，宿主会校验时区、窗口、Cron、目标入口和参数，并展示未来 5 次触发时间。参数只接受入口现有的静态参数值，不支持日期占位模板；需要“当天”等动态日期时，应在 Workflow 内按业务时区读取当前时间。
+宿主实现计划保存时，应校验时区、窗口、Cron、目标入口和参数，并展示未来 5 次触发时间。参数只接受入口现有的静态参数值，不支持日期占位模板；需要“当天”等动态日期时，应在 Workflow 内按业务时区读取当前时间。
 
 ## 声明建议计划
 
-Workflow 可以在 `steamharness.json.entries[].schedulePresets` 中提供建议配置：
+根入口把 `schedulePresets` 写在内联入口中，子入口写在自己目录的 `steamharness.json` 中。例如子入口配置：
 
 ```json
 {
-  "entryId": "database",
   "type": "workflow",
   "name": "Database",
-  "root": "database",
   "entry": "index.ts",
   "databases": [],
-  "schedulePresets": [{
-    "id": "hourly", "title": "Hourly sync", "entrypointId": "sync",
-    "timezone": "Asia/Shanghai",
-    "trigger": { "kind": "cron", "expression": "0 * * * *" },
-    "paramValues": {}
-  }]
+  "schedulePresets": [
+    {
+      "id": "hourly",
+      "title": "Hourly sync",
+      "entrypointId": "sync",
+      "timezone": "Asia/Shanghai",
+      "trigger": {
+        "kind": "cron",
+        "expression": "0 * * * *"
+      },
+      "paramValues": {}
+    }
+  ]
 }
 ```
 
@@ -74,7 +81,7 @@ Server 保存项目与数据，不调度或执行项目。本地应用可以使�
 }
 ```
 
-计划页会显示启用状态、规则、时区、版本、入口、下次触发、最近结果、跳过原因，并可立即触发一次和查看 fire 历史。手动立即触发仍遵循同一计划的重叠规则。
+宿主的计划页应显示启用状态、规则、时区、版本、入口、下次触发、最近结果、跳过原因，并可立即触发一次和查看 fire 历史。手动立即触发仍遵循同一计划的重叠规则。
 
 存在 `pending`、`running` 或 `waiting_for_input` fire 时不能编辑或删除计划，避免恢复中的 fire 改用新版本、入口或参数，也避免运行仍在继续但对应的计划和 fire 历史已经消失。先等待 run 结束或完成等待输入，再修改计划。
 

@@ -1,0 +1,276 @@
+{
+  "formatVersion": 1,
+  "skills": [
+    {
+      "name": "humanize-it",
+      "repository": "https://github.com/smallnest/goal-workflow",
+      "revision": "b06ab3c1c147dcf7ef8dd62a8927cd506d098135",
+      "path": "skills/humanize-it",
+      "license": "MIT",
+      "licenseFile": "humanize-it/LICENSE",
+      "dependencies": [
+        "humanizer-zh",
+        "technical-writing",
+        "humanize-chinese"
+      ],
+      "files": [
+        {
+          "path": "LICENSE",
+          "gitBlob": "5aaeebe5a002b151e690af7a37c12203aaa4d607",
+          "mode": "100644"
+        },
+        {
+          "path": "SKILL.md",
+          "gitBlob": "a6a916abd4935a868950481049e6a359032b7879",
+          "mode": "100644"
+        }
+      ]
+    },
+    {
+      "name": "humanizer-zh",
+      "repository": "https://github.com/op7418/Humanizer-zh",
+      "revision": "f4518a8eab97b8bfebc66a89d34320a89bef6930",
+      "path": ".",
+      "license": "MIT",
+      "licenseFile": "humanizer-zh/LICENSE",
+      "files": [
+        {
+          "path": ".gitignore",
+          "gitBlob": "bebd5947cb1573e872255233c1cc9d222ea9ecc0",
+          "mode": "100644"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "gitBlob": "0d3baa3141530723c7e1b016c8ffe65f7f8fe3b2",
+          "mode": "100644"
+        },
+        {
+          "path": "LICENSE",
+          "gitBlob": "e43848adc64286ff652e9be646e18ae0606162c7",
+          "mode": "100644"
+        },
+        {
+          "path": "README.md",
+          "gitBlob": "fc4d0389efd586e4c468bcee1793d060c4ece28c",
+          "mode": "100644"
+        },
+        {
+          "path": "SKILL.md",
+          "gitBlob": "ef07b54da21a41d4a7e4fe0b0afb928f597eb684",
+          "mode": "100644"
+        },
+        {
+          "path": "tests/README.md",
+          "gitBlob": "00568235a2cb53f2d5f517bcebd5e5e5a8ff62dd",
+          "mode": "100644"
+        },
+        {
+          "path": "tests/check_structure.py",
+          "gitBlob": "5429b8bc34382bce2ff7852ff6217b80acaf57fb",
+          "mode": "100644"
+        },
+        {
+          "path": "tests/fixtures/cases.json",
+          "gitBlob": "7cc4a236437bb1670ea52cdc7a739eddd0e07a93",
+          "mode": "100644"
+        },
+        {
+          "path": "tests/fixtures/structure.md",
+          "gitBlob": "5c90a33fc7837c3f63c2beb5254ff8b32315e2db",
+          "mode": "100644"
+        }
+      ]
+    },
+    {
+      "name": "technical-writing",
+      "repository": "https://github.com/luoling8192/technical-writing",
+      "revision": "5f684e950319bee8f773c3b5f5265c8bdda2900a",
+      "path": ".",
+      "license": "MIT",
+      "licenseFile": "technical-writing/LICENSE",
+      "files": [
+        {
+          "path": ".gitignore",
+          "gitBlob": "52b5fcfe0ef7f2afb7906f665f2047ce08947b33",
+          "mode": "100644"
+        },
+        {
+          "path": "LICENSE",
+          "gitBlob": "2562d6e7f841183a1772fa6613a6acdf8a52859e",
+          "mode": "100644"
+        },
+        {
+          "path": "README.md",
+          "gitBlob": "328fa5d685b9bbef25b772a3a72b2176dffb4da9",
+          "mode": "100644"
+        },
+        {
+          "path": "SKILL.md",
+          "gitBlob": "b2f6bf1435b01d17c397597afc81aeb3b7938a9c",
+          "mode": "100644"
+        },
+        {
+          "path": "agents/openai.yaml",
+          "gitBlob": "3968a09f7ec5004c9d666c75ede800f827e24bab",
+          "mode": "100644"
+        }
+      ]
+    },
+    {
+      "name": "humanize-chinese",
+      "repository": "https://github.com/swaylq/humanize-chinese",
+      "revision": "18516887e788fc9e03e10ff330c61fae4be0f676",
+      "path": ".",
+      "license": "MIT as declared in this revision's README",
+      "licenseFile": "humanize-chinese/README.md",
+      "note": "Pinned before the upstream non-commercial license change. This revision has no standalone LICENSE file. Preserve its original README declaration; do not substitute the current upstream license or add later code.",
+      "files": [
+        {
+          "path": ".gitignore",
+          "gitBlob": "e30f246a5c148e14e5998a19b71864cd6e6e4520",
+          "mode": "100644"
+        },
+        {
+          "path": "README.md",
+          "gitBlob": "dd29296f08c2481891527c2ddab38e6e65f97f58",
+          "mode": "100644"
+        },
+        {
+          "path": "SKILL.md",
+          "gitBlob": "073ef0d57fe8033679f66afb41a41fdf789ec808",
+          "mode": "100644"
+        },
+        {
+          "path": "claude-code/README.md",
+          "gitBlob": "b7d932f5f52c1ad9e7f152a928aa54a1ce4bbb13",
+          "mode": "100644"
+        },
+        {
+          "path": "claude-code/academic.md",
+          "gitBlob": "7e0ec5e0f476110379fbe89e3095bf8f1be01cc6",
+          "mode": "100644"
+        },
+        {
+          "path": "claude-code/detect.md",
+          "gitBlob": "31503ac42da5bbcacda613c60c1760a056530768",
+          "mode": "100644"
+        },
+        {
+          "path": "claude-code/humanize.md",
+          "gitBlob": "d2f5dc97fc193f60d1c0287d8dc71aa0ec452913",
+          "mode": "100644"
+        },
+        {
+          "path": "claude-code/style.md",
+          "gitBlob": "1f7a46b120b4521f879b877dc704210a77975881",
+          "mode": "100644"
+        },
+        {
+          "path": "evals/evals.json",
+          "gitBlob": "f9217cc753ed10e5934c8f920fb5b00d1361bf50",
+          "mode": "100644"
+        },
+        {
+          "path": "evals/oracles/__init__.py",
+          "gitBlob": "75a802e65454f3ddbc42adbc222099454acfce5b",
+          "mode": "100644"
+        },
+        {
+          "path": "evals/oracles/paperpass_adapter.py",
+          "gitBlob": "f9e67f683bf419798900ed2a983b48eac00b4d0b",
+          "mode": "100644"
+        },
+        {
+          "path": "evals/oracles/zhuque_adapter.py",
+          "gitBlob": "628a2895b20e51ba10b5d59f6ee0a123aa60bc71",
+          "mode": "100644"
+        },
+        {
+          "path": "evals/run_hc3_benchmark.py",
+          "gitBlob": "438dc36ea83951c17df1b8201bffc13c4647db03",
+          "mode": "100644"
+        },
+        {
+          "path": "examples/sample_academic.txt",
+          "gitBlob": "a7defd4dd564e83a4825a8fd5344a82542ecde97",
+          "mode": "100644"
+        },
+        {
+          "path": "examples/sample_general.txt",
+          "gitBlob": "16b64e00c1566b7274bbe0c7e6e611194b7b7e9a",
+          "mode": "100644"
+        },
+        {
+          "path": "examples/sample_social.txt",
+          "gitBlob": "87a271c34dcb6c556583ae03a9a5776201b7cd59",
+          "mode": "100644"
+        },
+        {
+          "path": "humanize",
+          "gitBlob": "6c375304d7ee64009e09a4b2f11769d2f8f68d01",
+          "mode": "100755"
+        },
+        {
+          "path": "package.json",
+          "gitBlob": "8175ef3c206ac3a0b4585acd9ee84df2d70c8b72",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/academic_cn.py",
+          "gitBlob": "c7807a0a7d5713de50153d9a43487e196e2848d9",
+          "mode": "100755"
+        },
+        {
+          "path": "scripts/cilin_synonyms.json",
+          "gitBlob": "3dbe90996818b177750e9577f9071af876c28427",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/compare_cn.py",
+          "gitBlob": "e1fdccdc7d0f477e3bba7ebd35bcaccdc345762d",
+          "mode": "100755"
+        },
+        {
+          "path": "scripts/detect_cn.py",
+          "gitBlob": "e4b6abf7682d2c4688925bc84b83c5c8d8927ed0",
+          "mode": "100755"
+        },
+        {
+          "path": "scripts/humanize.py",
+          "gitBlob": "22c9083b3608c3a0ab205e1952ef3d768974dc06",
+          "mode": "100755"
+        },
+        {
+          "path": "scripts/humanize_cn.py",
+          "gitBlob": "d6d39b20ff94a51ee247c4bf876f9e053a98f7b5",
+          "mode": "100755"
+        },
+        {
+          "path": "scripts/ngram_freq_cn.json",
+          "gitBlob": "8998a2917d79c2f419bdeae647037af291b758ac",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/ngram_model.py",
+          "gitBlob": "5145019046bf33118d6aa2f22589d4b4c7139d66",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/patterns_cn.json",
+          "gitBlob": "02e5e08873d165e23bf971987026846b2d215ead",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/restructure_cn.py",
+          "gitBlob": "9c650c2ca4914936e8a4c3559b5a9e0d52d0aba0",
+          "mode": "100644"
+        },
+        {
+          "path": "scripts/style_cn.py",
+          "gitBlob": "1fa8de384d30b93eea01c109122c26455a14cb92",
+          "mode": "100755"
+        }
+      ]
+    }
+  ]
+}

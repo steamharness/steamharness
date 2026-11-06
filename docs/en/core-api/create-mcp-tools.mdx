@@ -5,12 +5,39 @@ description: "Turn the tools an MCP server exposes into tools an agent can call.
 
 # createMcpTools
 
-`workflow.createMcpTools()` turns every tool exposed by an MCP connection into an agent tool, to be handed to [createAgent](./create-agent.mdx)'s `extraTools` or [createAgentNode](./create-agent-node.mdx)'s `createTools`. Establishing the connection is [connectMcpServer](./connect-mcp-server.mdx)'s job.
+Convert tools from an MCP connection into Agent tools with `steamharness.createMcpTools()`. Pass the result to [createAgent](./create-agent.mdx) through `extraTools`, or to [createAgentNode](./create-agent-node.mdx) through `createTools`. Establish the connection with [connectMcpServer](./connect-mcp-server.mdx) first.
+
+## Example
+
+```ts
+const approval = steamharness.createToolApprovalGate();
+
+const node = steamharness.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    const connection = await steamharness.connectMcpServer({
+      id: "project-tools",
+      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    });
+
+    try {
+      return await steamharness.createMcpTools({
+        connection,
+        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      });
+    } finally {
+      await connection.close();
+    }
+  },
+});
+```
+
+Tools built this way must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.
 
 ## Signature
 
 ```ts
-const tools: AgentTool[] = await workflow.createMcpTools({
+const tools: AgentTool[] = await steamharness.createMcpTools({
   connection: McpServerConnection,
   approve?: (toolId: string, args: unknown) => Promise<void>,
   createToolId?: (serverId: string, toolName: string) => string,
@@ -37,30 +64,3 @@ A tool is named `<serverId>_<toolName>` by default, as in `project-tools_project
 ## Tool approval
 
 The tools `createMcpTools` produces are not governed by `permissionPolicy`, which only decides which built-in tools exist and how far they reach. The host's own tool catalogue governs them: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (through `context.toolPermissions`), in a plan-mode turn only — a build turn runs the tool.
-
-## Example
-
-```ts
-const approval = workflow.createToolApprovalGate();
-
-const node = workflow.createAgentNode({
-  provider: "anthropic",
-  async createTools(context) {
-    const connection = await workflow.connectMcpServer({
-      id: "project-tools",
-      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
-    });
-
-    try {
-      return await workflow.createMcpTools({
-        connection,
-        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
-      });
-    } finally {
-      await connection.close();
-    }
-  },
-});
-```
-
-Tools built this way must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.

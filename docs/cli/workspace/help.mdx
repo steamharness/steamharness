@@ -5,7 +5,7 @@ description: "查看 Server Workspace CLI 帮助信息。"
 
 # workspace help
 
-workspace CLI 在未传命令、传 `help`、`--help` 或 `-h` 时输出帮助。帮助内容来自 CLI 仓库 `src/workspace.ts` 的 `printUsage()`。
+运行 `steamharness workspace help` 查看 Server 项目管理命令。使用 `--help`、`-h` 或省略子命令也会显示同一份帮助。
 
 ## 命令格式
 
@@ -21,7 +21,7 @@ pnpm exec steamharness workspace
 | 内容 | 说明 |
 | --- | --- |
 | Usage | workspace CLI 基础调用格式。 |
-| Commands | login、logout、status、health、pack、upload、download、publish、run、debug-node、versions。 |
+| Commands | login、logout、status、health、pack、upload、preparation、download、publish、versions 和 file-upload/file-download/file-delete。 |
 | Options | `--server` 和 `--token` 的默认来源。 |
 
 ## 行为

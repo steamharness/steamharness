@@ -5,14 +5,12 @@ description: "Parses message, images, videos, and files from the default convers
 
 # parseConversationDefaultInputArgs
 
-`workflow.parseConversationDefaultInputArgs(args)` parses the fixed `--message`, `--images`, `--videos`, and `--files` parameters written by the default conversation input. It does not read `RunContext` or replace the executor's `createInput`.
-
-Bot uses the standard message input. Core parses text and images automatically; use this helper in `prepareInput` when business logic also needs file or video references.
+This low-level helper reads message and attachment flags from CLI-style arguments without accessing `RunContext`. Hosts and Workflow adapters can use it when they construct their own inputs. Bot projects use [defineBot](/en/core-api/define-bot): Core parses their input automatically before `prepareInput`.
 
 ## Signature
 
 ```ts
-workflow.parseConversationDefaultInputArgs(
+steamharness.parseConversationDefaultInputArgs(
   args: string[],
 ): {
   message: string;
@@ -35,30 +33,25 @@ workflow.parseConversationDefaultInputArgs(
 
 `--images`, `--videos`, and `--files` accept file reference JSON or local path strings using `parseProjectFileReferences()`, just like the file input node. Only projects with `attachments.videos: true` use `--videos`; existing projects with only `files: true` continue to serialize videos under `--files`.
 
-## executor Configuration
+## Example
 
 ```ts
-export const executor = steamharness.defineBot({
-  conversation: { attachments: { images: true, files: true } },
-  async prepareInput(input, context) {
-    const attachments = steamharness.parseConversationDefaultInputArgs(context.args);
-    return { ...input, businessFiles: attachments.files };
-  },
-});
+const input = steamharness.parseConversationDefaultInputArgs(["--message", "Hello"]);
+console.log(input.message); // Hello
 ```
 
 ## with file input node
 
-The helper only resolves the parameter to `FileReference[]`. If you need to read the contents of the file, pass the reference to `workflow.createFileInputNode()`:
+The helper only resolves the parameter to `FileReference[]`. If you need to read the contents of the file, pass the reference to `steamharness.createFileInputNode()`:
 
 ```ts
-const imageInputNode = workflow.createFileInputNode({
+const imageInputNode = steamharness.createFileInputNode({
   name: "images",
   accept: ["image/png", "image/jpeg", "image/webp"],
   multiple: true,
 });
 
-const images = await workflow.runNode(imageInputNode, input.images, context);
+const images = await steamharness.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
@@ -68,5 +61,5 @@ const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart())
 | --- | --- |
 |Multiple `--message`|Returns the last value suitable for the host to overwrite the previous draft with the next input.|
 |Multiple attachments|`--images`, `--videos`, and `--files` each merge all occurrences.|
-|Enable default input box|You still need to explicitly call the helper in `createInput`.|
+| Bot standard input | Core parses it automatically; business customization uses `prepareInput`. |
 |CLI Manual debugging|Pass `--message`, `--images`, `--videos`, and `--files` to simulate the default input box.|

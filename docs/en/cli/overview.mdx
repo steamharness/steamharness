@@ -1,48 +1,50 @@
 ---
-title: "CLI Overview"
-description: "steamharness unifies the local and server-side workspace commands of CLI."
+title: "CLI overview"
+description: "Choose commands for local execution, inspection, or Server project management."
 ---
 
-# CLI Overview
+# CLI overview
 
-`@steamharness/cli` Only one `steamharness` command is exposed, and it is divided into two command groups based on their respective purposes:
+Install `@steamharness/cli` to use `steamharness`. Inside a project, prefer `pnpm exec steamharness` so commands use the version installed by that project.
 
-|Command Group|Purpose|
+## Choose a command group
+
+| Task | Group |
 | --- | --- |
-| [`steamharness`](/en/cli/steamharness) |Run in a local workflow directory, print JSON reports, inspect structure, or start a stdio MCP Server.|
-| [`steamharness workspace` / `pnpm exec steamharness workspace`](/en/cli/server-workspace) |Connect SteamHarness Server to log in, package, upload, publish, download, and version query.|
+| Local execution, inspection, JSON reports, MCP | [Local CLI](/en/cli/steamharness) |
+| Server sign-in, packing, upload, publication, download | [Workspace CLI](/en/cli/server-workspace) |
 
-## Command Index
+## Command index
 
-| CLI |Command|
+| Goal | Commands |
 | --- | --- |
-| `steamharness` | [`run`](/en/cli/steamharness/run), [`json`](/en/cli/steamharness/json), [`structure`](/en/cli/steamharness/structure), [`resolve-params`](/en/cli/steamharness/resolve-params), [`mcp`](/en/cli/steamharness/mcp), [`help`](/en/cli/steamharness/help) |
-| workspace | [`login`](/en/cli/workspace/login), [`logout`](/en/cli/workspace/logout), [`status`](/en/cli/workspace/status), [`health`](/en/cli/workspace/health), [`pack`](/en/cli/workspace/pack), [`upload`](/en/cli/workspace/upload), [`publish`](/en/cli/workspace/publish), [`versions`](/en/cli/workspace/versions), , , [`download`](/en/cli/workspace/download), [`help`](/en/cli/workspace/help) |
+| Execute and inspect | [run](/en/cli/steamharness/run), [json](/en/cli/steamharness/json), [structure](/en/cli/steamharness/structure) |
+| Parameters and tools | [resolve-params](/en/cli/steamharness/resolve-params), [mcp](/en/cli/steamharness/mcp), [help](/en/cli/steamharness/help) |
+| Account and service | [login](/en/cli/workspace/login), [logout](/en/cli/workspace/logout), [status](/en/cli/workspace/status), [health](/en/cli/workspace/health) |
+| Source and versions | [pack](/en/cli/workspace/pack), [upload](/en/cli/workspace/upload), [publish](/en/cli/workspace/publish), [versions](/en/cli/workspace/versions), [download](/en/cli/workspace/download) |
 
-## Typical Workflow
+## Typical workflow
 
-For local development, use `steamharness` to verify the running results and structure in the workflow directory, and then use the workspace CLI to upload to the server.
+Inspect and execute locally before uploading:
 
-In these commands, `./my-project` is your own local project with registered entries.
-
-```bash
-steamharness run ./my-project -- --message "hello"
-steamharness json ./my-project -- --message "hello"
-steamharness structure ./my-project
-steamharness mcp ./my-project
+```sh
+pnpm exec steamharness check .
+pnpm exec steamharness structure .
+pnpm exec steamharness run .
+pnpm exec steamharness json .
 ```
 
-When deploying to the server, first check the service status, then log in, upload files, publish a version, and download it.
+Choose the Server address explicitly. Replace `<project-id>` below with a registered project ID:
 
-```bash
+```sh
 pnpm exec steamharness workspace health --server http://localhost:7126
 pnpm exec steamharness workspace login --server http://localhost:7126
-pnpm exec steamharness workspace upload hello
-pnpm exec steamharness workspace publish hello --release-log "Initial release"
+pnpm exec steamharness workspace upload <project-id> --path .
+pnpm exec steamharness workspace publish <project-id> --release-log "Initial release"
 ```
-
-In the development environment, you can use the local server address; in the production environment, it is recommended to explicitly use the official domain name or your production port.
 
 ## Databases and entries
 
-Local commands read entries from the aggregate root. Select with `--entry`; `check` validates all entries by default. Relational databases use generated descriptors after Server resource creation, account grants, migration and entry binding. Knowledge bases use independent knowledgeBases declarations and bindings. CLI Web and Studio share the user-level local registry. See [CLI](/en/cli/steamharness) and [Project storage](/en/concepts/data-storage).
+Local commands read `entries` from the aggregate root. `--entry` selects an entry, while `check` validates all entries by default. Create, grant, migrate, and bind relational resources before use. Knowledge resources use separate declarations and bindings.
+
+CLI Web and Studio share user-level project registration. See [data storage](/en/concepts/data-storage) for storage locations and access rules.

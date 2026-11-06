@@ -5,7 +5,7 @@ description: "Declare multiple relational databases, validate models, and genera
 
 # SteamHarness Database
 
-`steamharness/database` defines project databases and their types. Models use Prisma schema syntax, with public files named `steamharness.database.ts` and `steamharness.schema`. Applications do not author a `PrismaClient`, datasource, or generator.
+Define project business databases and generate typed clients with `steamharness/database`. Models use Prisma schema syntax in `steamharness.database.ts` and `steamharness.schema`, without handwritten PrismaClient, datasource, or generator declarations.
 
 ## Single and multiple databases
 
@@ -163,9 +163,15 @@ export async function createUser(context: RunContext) {
 
 Queries and results retain model inference. Clients expose model CRUD, relation queries, aggregation and `transaction(callback)`. Raw SQL, engine extensions and connection lifecycle methods are unavailable. Exceptions, query errors, authorization changes and cancellation roll transactions back. A transaction object expires when its callback finishes. Each client uses at most 2 pooled connections. SQL statements and transactions have a 30-second limit; transaction connection waits have a 30-second limit. Keep user input and long external requests outside transactions.
 
+### Connection lifetime and concurrency
+
 Every model operation and transaction commit revalidates the host binding, account access and model fingerprint. Missing bindings return `DATABASE_UNBOUND`; mismatched deployed models return `DATABASE_SCHEMA_MISMATCH`. Rebinding or unbinding terminates old connections. Existing clients return `DATABASE_BINDING_CHANGED`; explicitly call `connect()` again. Revoking or narrowing access terminates affected SQL sessions. Revoked clients never automatically acquire new permissions. Query failures use `DATABASE_QUERY_FAILED`; known constraint errors include `queryCode`, such as `P2002`, without connection URLs or engine invocations in reports.
 
-SQL identities normally expire after 5 minutes and renew before subsequent operations when less than 90 seconds remain, leaving time for authorization, pool acquisition and commit while retaining their original binding identity. For short leases issued by custom hosts, the renewal lead time is capped at half the lifetime remaining when the connection opens. Sent queries and transactions are never automatically replayed. Core releases run connections on success, failure, input waits and cancellation. Network failures stop operations without falling back to local KV; expiry cleanup reclaims temporary identities when release cannot reach Server. Relational access requires the configured Server and PostgreSQL to be reachable; a local development Server can also connect to remote PostgreSQL.
+SQL identities normally expire after 5 minutes and renew before subsequent operations when less than 90 seconds remain, leaving time for authorization, pool acquisition and commit while retaining their original binding identity. For short leases issued by custom hosts, the renewal lead time is capped at half the lifetime remaining when the connection opens. Sent queries and transactions are never automatically replayed. Core releases run connections on success, failure, input waits and cancellation.
+
+Network failures stop operations without falling back to local KV; expiry cleanup reclaims temporary identities when release cannot reach Server. Relational access requires the configured Server and PostgreSQL to be reachable; a local development Server can also connect to remote PostgreSQL.
+
+### Custom hosts
 
 Custom Node hosts can import `createRemoteRelationalDatabaseHost` and `createDatabaseConnector` from `steamharness`, supplying an account API key and project/entry identity. Always `await connector.close()` at the end. Keep account and temporary SQL credentials inside the trusted host, outside project parameters, model inputs and Browser code. SQL credential HTTP endpoints accept account Bearer API keys only and reject Cookie sessions and browser Origin headers.
 
@@ -193,4 +199,6 @@ This API defines project business models. [Platform runtime storage](/en/core-ap
 
 The catalog supports server pagination, search and explicit creation. Resource details manage account grants, entry bindings, applied models and rows; Studio and CLI Web browsing opens this page. Row reads support pagination, literal text search and scalar equality. Updates and deletes require a complete stable key and rowVersion. Reload models when schemaHash changes. Conflicts retain drafts.
 
-JSON transports BigInt and Decimal as lossless strings. DateTime input requires an ISO string with a timezone, and reads and writes use UTC; native dates return UTC midnight, while time-only types use 1970-01-01 as their date. Enums use authored names, with database values from @map converted by Server. Bytes use Base64; lists and JSON retain their structure, and omitted lists without defaults are inserted as empty arrays. Database defaults and @updatedAt are applied automatically; model-client defaults such as cuid()/uuid() must be supplied explicitly for management SQL inserts. This structured table API shares the Browser client boundary and does not expose relation writes, raw SQL or Browser transactions. Knowledge uses the separate [Knowledge API](/en/core-api/knowledge-documents).
+JSON transports BigInt and Decimal as lossless strings. DateTime input requires an ISO string with a timezone, and reads and writes use UTC; native dates return UTC midnight, while time-only types use 1970-01-01 as their date. Enums use authored names, with database values from @map converted by Server. Bytes use Base64; lists and JSON retain their structure, and omitted lists without defaults are inserted as empty arrays.
+
+Database defaults and @updatedAt are applied automatically; model-client defaults such as cuid()/uuid() must be supplied explicitly for management SQL inserts. This structured table API shares the Browser client boundary and does not expose relation writes, raw SQL or Browser transactions. Knowledge uses the separate [Knowledge API](/en/core-api/knowledge-documents).

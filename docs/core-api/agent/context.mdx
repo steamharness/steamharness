@@ -1,0 +1,74 @@
+---
+title: "Agent 权限、上下文与计划"
+description: "配置工具范围，保存上下文，并处理压缩、停止与计划审批。"
+---
+
+# Agent 权限、上下文与计划
+
+配置工具范围，保存上下文，并处理压缩、停止与计划审批。
+
+先用 [createAgent](/core-api/create-agent) 创建运行时，再按下列规则配置相关选项。
+
+## 自带工具
+
+默认本机编码工具的 `read` 按字节限制输出，可读取 8 MiB 之后的行。完整行用 `offset: nextOffset` 续读，超长行或原始文本用 `byteOffset: nextByteOffset`（UTF-8 字节偏移），此模式省略行 `offset` 和 `limit`。配置 `session.environment` 时，同一字节续读入口通过该环境读取，也适用于没有 shell 的只读子代理。`grep`、`find`、`ls` 返回截断标记与 `nextOffset`；长匹配行只返回预览，可用 `read` 获取全文。`bash` 输出按 UTF-8 字节限制并明确标记截断，超时或取消说明保留在尾部；需要完整日志时先重定向到文件再读取。
+
+
+内置工具只有 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及只在 plan 模式提供的 `ask_user`——模型用它中途向用户提问（一次可问多个问题，每题可选选项、可多选、可再附一个自定义回答输入框），运行暂停等回答，回答后同一份计划继续。要在它们之外再加工具，编程式运行时用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
+
+- **自带工具不受 `permissionPolicy` 约束。** 策略只决定内置工具暴露哪些、能走多远；自带工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待批准（仅 plan 模式的回合；build 回合直接执行）。
+- 要连接宿主提供的 stdio MCP 服务，先用 [connectMcpServer](/core-api/connect-mcp-server) 建立连接，再用 [createMcpTools](/core-api/create-mcp-tools) 把它暴露的工具转成自带工具。
+
+## 权限策略
+
+本轮输入优先于开发者默认配置，两者都省略时仍为 `workspace`。显式 `inherit` 读取 `steamharness.getUserSettings().agent.permissionPolicy`，无宿主时回退 `auto`；它是配置选项，执行层仍只使用下表的三个具体权限。参数及会话保留原始 `inherit`。参见[用户设置与权限继承](/core-api/user-settings)。
+
+| 取值 | 行为 |
+| --- | --- |
+| `read-only` | 禁用 `write`、`edit`、`bash`，模型看不到这些工具。 |
+| `workspace` | 全部工具可用。文件类工具（`read`/`write`/`edit`/`ls`/`grep`/`find`）只能落在 `workdir` 与 `allowedDirectories` 内，且这一判断在 `fs.realpath` 解析之后做出，工作区里的软链接不能把它们带出去；`grep`/`find` 不跟随软链接。默认值。 |
+| `auto` | 与 `workspace` 相同，但文件类工具也可以访问工作区之外的路径。 |
+
+三者都不会为内置工具弹出审批——策略决定的是「暴露哪些工具」和「工具能走多远」，只有宿主自己声明的自带工具才会走审批链。
+
+> **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 更严是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱。
+
+## 上下文记录
+
+配置持久 `storage` 后，Harness 持续提交模型轮次、工具意图、结果和任务检查点；重新打开同一运行仓储并使用原 `requestId` 可以恢复。已提交的工具结果直接复用。结果未知的工具默认 `replay: "never"`，恢复时向模型返回中断错误，不自动重复副作用；只有确认可安全重复的工具声明 `replay: "safe"`。内置读取和检索工具声明 safe，写入、编辑和 shell 默认 never。`requestId` 去重不能替代外部服务的业务幂等。
+
+`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有持久历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须注入本地或 Server 仓储，或显式 SQLite 才能恢复。会话节点默认选择独立本地 SQLite 会话，参见 [createAgentNode](/core-api/create-agent-node)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
+
+进程在流式回答中断后，恢复会把已提交的正文和推理片段纳入续写上下文，持久保存续写提示；反复中断仍从已提交片段继续。没有提交完整意图的工具调用会被丢弃，不执行也不显示为已开始。
+
+流式消息保留思考、正文及工具块的原始索引，开始事件与后续增量一起投影；主回答保持正文展示。运行时或输出投影抛出异常时，Agent 会取消同一执行 owner 下尚未结束的任务（包括独立 fork）及排队输入，保存失败原因，并从持久记录发布最终任务状态。已报告失败的运行不会在重开时自动继续；正常关闭宿主和进程意外退出仍按检查点恢复，不等同于运行失败。工具返回的业务错误继续作为工具结果交给模型处理。
+
+带 `hostInput` 的节点运行由网关管理历史，默认使用本轮的内存 Harness，不写工作流会话历史。
+
+自带工具沿用 Pi `AgentTool` 契约：`prepareArguments` 在校验前修复参数，`outputSchema` 校验 `structuredContent`，失败应 throw 或设置 `isError: true`。工具用量与主模型上下文用量分开；所有工具都返回 `terminate: true` 时结束当前工具轮。工具恢复时重新检查当前权限。
+
+## 上下文压缩
+
+prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时，本轮立即把已有上下文替换成模型生成的摘要，即使未达到自动压缩阈值也执行。空上下文只产出结束事件。执行时先输出 `compaction` start，再输出 end；Agent 节点展示执行中与完成状态，失败时保留原始上下文。摘要写入实际 Agent transcript 并随会话保存，后续回合读取摘要，原对话正文仍保留。公开 `compactAgentMessages({ ..., force: true })` 同样可强制总结全部已有消息。
+
+只有模型正常结束且摘要非空时才替换上下文。模型失败、输出截断或未完成时，手动总结报错并保留原始 transcript；取消以 `execution_aborted` 结束，即使模型在取消后返回摘要也不会写入。
+
+总结请求的模型 usage 通过 `host.reportUsage` 上报，包含失败或取消响应已经消耗的 token；这份计费用量不作为总结后的上下文占用。直接调用 `compactAgentMessages` 时，可传 `onUsage(usage)` 接收模型返回的 pi `Usage`，回调在摘要校验前执行，摘要请求的每次尝试都会报告用量。手动压缩和直接调用 `compactAgentMessages` 也会重试暂态失败；可用 `retryDelayMs` 调整基础退避（默认 500 毫秒，单次上限 8 秒），重试预算固定为 10 次。自动压缩由持久调度器管理重试，避免叠加请求预算。
+
+**达到上下文窗口的 90% 时自动压缩。** 普通 Agent 与持久会话都会在每次模型请求前检查当前占用，包括同一轮中工具执行后的下一次请求。达到阈值先压缩较早的历史，再继续运行；`contextWindow` 覆盖值同样用于压缩判断。事件与手动压缩同形但 `auto: true`，执行时发送 start，成功后发送 end。压缩失败或取消时保留原记录，压缩失败会结束本次运行并报告原因。
+
+如果提供方仍返回明确的上下文超限错误，运行时会尝试一次压缩后重试；再次超限会报告错误，不无限重试。已经超限的历史会分块生成摘要，再合并摘要，每次摘要请求都为输出预留空间，所有摘要调用均计入用量。自动压缩保留最近的消息及完整的工具调用与结果；若剩余单条输入或工具结果本身仍超出窗口，需要缩短输入或工具输出。
+
+自动压缩的摘要只覆盖较早的部分：切分点从末尾按 token 窗口回退，并对齐到用户轮次；最近的窗口里没有用户轮次时退到最近的 assistant 轮次，最新一条消息永远保留。手动总结覆盖完整已有上下文，在摘要中保留目标、已做决策和未完成工作。
+
+## 取消
+
+`context.abortSignal` 触发时会中止本轮：模型流与正在执行的工具一起停下，本轮以 `execution_aborted` 结束（工作流据此把运行标成 aborted 而不是失败），已经花掉的 token 仍然照常上报。
+
+## plan 模式
+
+`agent: "plan"` 时系统提示词切到 plan 约定，写操作不可用。计划过程中模型可以用 `ask_user` 中途提问（见上方内置工具），运行同样以 `user_input_required` 暂停，回答后同一轮继续，问题和回答分别留在 `pendingUserInput` 与 `resolvedUserInputs` 里。本轮结束后运行进入暂停，通过 `user_input_required` 请求批准；宿主批准后按同一 `requestId` 恢复，恢复载荷里带上计划正文，因此中途发生压缩也不会丢失计划。拒绝不会结束会话：它保持 plan 模式，把这份计划连同补充要求交回计划 agent 修订一版——不会改动任何文件，但会再产生一轮模型调用。
+
+每轮新计划使用独立的审批 `requestId`，修订完成后会再次等待用户确认；即使修订后的正文没有变化，也不会复用上轮答案自动批准或拒绝。恢复已暂停的审批时仍提交该次请求的原 `requestId`。
+
+提问暂停与计划审批是两个独立阶段：`ask_user` 本身不会产出 `plan` 事件或请求计划审批。只有本轮正常结束、最后一次工具调用之后产出了非空的计划正文时，才发送 `plan` 事件并交给 `host.approvePlan`；工具前的说明不属于这份计划。失败、取消或仍在等待用户回答时不会把残留文字提交为计划。

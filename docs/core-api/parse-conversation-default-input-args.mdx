@@ -5,14 +5,12 @@ description: "解析 conversation 默认输入框序列化出来的 message、im
 
 # parseConversationDefaultInputArgs
 
-`workflow.parseConversationDefaultInputArgs(args)` 解析 conversation 默认输入框写入的固定参数。它只读取 `--message`、`--images`、`--videos` 和 `--files`，不会自动读取 `RunContext`，也不会替代 executor 的 `createInput`。
-
-Bot 始终使用标准主输入框。Core 自动解析文本与图片；业务输入钩子需要额外处理文件或视频时，可调用本 helper 读取宿主附件引用。
+这个底层辅助函数从 CLI 风格参数中读取消息和附件，不访问 `RunContext`。宿主或 Workflow 适配器可用它构造输入。Bot 使用 [defineBot](/core-api/define-bot)，Core 会在 `prepareInput` 前自动解析输入。
 
 ## 签名
 
 ```ts
-workflow.parseConversationDefaultInputArgs(
+steamharness.parseConversationDefaultInputArgs(
   args: string[],
 ): {
   message: string;
@@ -35,30 +33,25 @@ workflow.parseConversationDefaultInputArgs(
 
 `--images`、`--videos` 和 `--files` 复用文件引用协议，参数值可以是文件引用 JSON 或本地路径字符串。解析逻辑与文件输入节点相同，底层使用 `parseProjectFileReferences()`。只有显式启用 `attachments.videos: true` 的项目使用 `--videos`；旧项目仅启用 `files: true` 时，视频继续使用 `--files`。
 
-## executor 配置
+## 示例
 
 ```ts
-export const executor = steamharness.defineBot({
-  conversation: { attachments: { images: true, files: true } },
-  async prepareInput(input, context) {
-    const attachments = steamharness.parseConversationDefaultInputArgs(context.args);
-    return { ...input, businessFiles: attachments.files };
-  },
-});
+const input = steamharness.parseConversationDefaultInputArgs(["--message", "你好"]);
+console.log(input.message); // 你好
 ```
 
 ## 与文件输入节点配合
 
-helper 只把参数解析成 `FileReference[]`。如果需要读取文件内容，再把引用传给 `workflow.createFileInputNode()`：
+helper 只把参数解析成 `FileReference[]`。如果需要读取文件内容，再把引用传给 `steamharness.createFileInputNode()`：
 
 ```ts
-const imageInputNode = workflow.createFileInputNode({
+const imageInputNode = steamharness.createFileInputNode({
   name: "images",
   accept: ["image/png", "image/jpeg", "image/webp"],
   multiple: true,
 });
 
-const images = await workflow.runNode(imageInputNode, input.images, context);
+const images = await steamharness.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
@@ -68,5 +61,5 @@ const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart())
 | --- | --- |
 | 多次传 `--message` | 返回最后一个值，适合宿主用后一次输入覆盖前一次草稿。 |
 | 多次传附件 | `--images` / `--videos` / `--files` 各自合并所有出现次数。 |
-| 标准主输入框 | 由 Core 自动解析；额外业务附件可在 `prepareInput` 中读取。 |
+| Bot 标准输入 | Core 自动解析，业务定制使用 `prepareInput`。 |
 | CLI 手动调试 | 可以直接传 `--message`、`--images`、`--videos`、`--files` 模拟默认输入框。 |

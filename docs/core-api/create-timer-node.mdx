@@ -5,19 +5,49 @@ description: "创建业务计时节点，并用 endTimer 结束计时。"
 
 # createTimerNode
 
-`workflow.createTimerNode()` 创建一个普通节点，用于在业务 workflow 中启动一段可见计时。计时开始和结束会进入 runtime events、最终 report，以及 CLI Web 本地回放里的计时卡片。
+用 `steamharness.createTimerNode()` 开始一段业务计时，完成后调用 `endTimer`。起止事件进入运行事件、最终报告和 CLI Web 的计时卡片。
+
+## 示例
+
+```ts
+const timerNode = steamharness.createTimerNode({
+  title: "外部接口调用",
+});
+
+export const demo = steamharness.defineProject<Input, OutputPayload>({
+  name: "demo",
+  async run(input, context) {
+    const timer = await steamharness.runNode(timerNode, {
+      timerId: `api-${Date.now()}`,
+      metadata: { provider: "example" },
+    }, context);
+
+    try {
+      const result = await callExternalApi(input);
+      await steamharness.endTimer(timer, context, { message: "接口调用完成" });
+      return createOutput(result);
+    } catch (error) {
+      await steamharness.endTimer(timer, context, {
+        status: "failed",
+        message: error instanceof Error ? error.message : "接口调用失败",
+      });
+      throw error;
+    }
+  },
+});
+```
 
 ## 签名
 
 ```ts
-workflow.createTimerNode(options?: {
+steamharness.createTimerNode(options?: {
   name?: string;
   title?: string;
   historyLimit?: number;
   metadata?: NodeMetadataInput;
 }): BaseNode<TimerNodeInput | undefined, TimerPayload>
 
-workflow.endTimer(
+steamharness.endTimer(
   timer: TimerPayload | string,
   context: RunContext,
   options?: {
@@ -48,42 +78,12 @@ interface TimerRecord extends TimerPayload {
 
 `createTimerNode` 默认 `name: "timer"`、`standardName: "timer"`。成功启动时返回 `errCode: 0`、`errMessage: ""` 的可序列化 payload。
 
-## 示例
-
-```ts
-const timerNode = workflow.createTimerNode({
-  title: "外部接口调用",
-});
-
-export const demo = workflow.defineProject<Input, OutputPayload>({
-  name: "demo",
-  async run(input, context) {
-    const timer = await workflow.runNode(timerNode, {
-      timerId: `api-${Date.now()}`,
-      metadata: { provider: "example" },
-    }, context);
-
-    try {
-      const result = await callExternalApi(input);
-      await workflow.endTimer(timer, context, { message: "接口调用完成" });
-      return createOutput(result);
-    } catch (error) {
-      await workflow.endTimer(timer, context, {
-        status: "failed",
-        message: error instanceof Error ? error.message : "接口调用失败",
-      });
-      throw error;
-    }
-  },
-});
-```
-
 ## 运行行为
 
 | 行为 | 说明 |
 | --- | --- |
 | 启动计时 | 执行 timer node 后发送 `timer_started` runtime event，并在 live report 中写入 `running` timer。 |
-| 结束计时 | `workflow.endTimer(timer, context)` 默认写入 `success`；传 `status: "failed"` 时写入失败计时。 |
+| 结束计时 | `steamharness.endTimer(timer, context)` 默认写入 `success`；传 `status: "failed"` 时写入失败计时。 |
 | 自动清理 | workflow 收尾前会把仍处于 `running` 的 timer 标记为 `cleared`，发送 `timer_finished`，最终 report 不保留 running timer。 |
 | 重复结束 | 同一个 timer 已结束后再次调用 `endTimer` 会抛出 workflow execution 错误。 |
 

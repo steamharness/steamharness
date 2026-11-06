@@ -1,16 +1,24 @@
 ---
 title: "steamharness mcp"
-description: "Entry MCP server"
+description: "Expose Workflow operations to an MCP client over stdio."
 ---
 
-# Entry MCP server
+<span id="entry-mcp-server"></span>
 
-Expose the selected Workflow operations, parameters and results through stdio MCP.
+# steamharness mcp
+
+Use `mcp` to expose a registered Workflow's operations, parameters, and results. The process communicates through standard input and output.
+
+## Command
 
 ```sh
 pnpm exec steamharness mcp . --entry database
 ```
 
-`entryId` selects an aggregate entry; `entrypointId` selects an internal Workflow operation. Entries have independent configurations, database requirements and conversation state. Selection defaults to `defaultEntry`; unknown entries fail.
+The project must declare the `database` entry. Without `--entry`, it uses `defaultEntry`. A client's `entrypointId` selects an operation within that Workflow and does not replace the aggregate `entryId`.
 
-MCP requests and recovery handles bind to both project and entry. Tool permissions, actor, configuration snapshot and cancellation follow the call chain. Resuming in a different entry fails. Request and approve databases in the host first; MCP cannot create spaces implicitly.
+## Permissions and recovery
+
+Every request and resume handle is bound to a project and entry. User identity, tool permissions, configuration snapshots, and cancellation propagate through calls. Resuming into another entry is rejected.
+
+Entries retain their own configuration, resource requirements, and conversation state. MCP does not allocate databases: create or obtain access to resources and bind the entry first. Unknown entries fail explicitly.

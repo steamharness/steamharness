@@ -3,13 +3,13 @@ title: "defineBot"
 description: "Declare a Bot project with a fixed Core Agent runtime."
 ---
 
-`steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })` returns a `BotExecutorDefinition` with `projectType: "bot"`. The output is always `AgentOutputPayload`; the final answer item is `agent-answer`. Custom workflows, coreAgent wrappers, createInput, tokenUsage and outputItemId overrides are rejected. The former Conversation project type and factories are removed.
+`steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })` returns a `BotExecutorDefinition` with `projectType: "bot"`. The output is always `AgentOutputPayload`; the final answer item is `agent-answer`. Custom workflows, coreAgent wrappers, createInput, tokenUsage and outputItemId overrides are rejected. The former `conversation` project type and factories are removed.
 
 Configure models, prompts, skills, permissions, tools and sessions through `agent`. Core provides Model, Effort, Plan and permission parameters. Customize them through `agent.paramOptions`; top-level `params` adds business fields without replacing reserved fields. Fixed values remain enforced after input preparation.
 
-Core parses text, image attachments and OpenAI host input. `prepareInput(input, context)` returns an extended `AgentInput` and can read configuration, call aggregate operations and load business context. Its context includes resources, cancellation, args and paramValues. `agent.createTools(context, input)` and `agent.createSession(context, input)` receive prepared input. Queueing, durability, recovery, usage and gateway output are supplied by Core. Conversation options customize presentation, commands, input interactions and `recovery.startup: "automatic" | "manual"`.
+Core parses text, image attachments and OpenAI host input. `prepareInput(input, context)` returns an extended `AgentInput` and can read configuration, call aggregate operations and load business context. Its context includes resources, cancellation, args and paramValues. `agent.createTools(context, input)` and `agent.createSession(context, input)` receive prepared input. Queueing, durability, recovery, usage and gateway output are supplied by Core. Bot options customize presentation, commands, input interactions and `recovery.startup: "automatic" | "manual"`.
 
-`onCompleted({ requestId, output }, context)` receives a read-only successful result and returns void. Save business receipts idempotently by requestId. Core persists the result and notification status; notification failures are reported separately and recovery retries notification without repeating the model call. Subsequent inputs under a durable owner also pass through the hooks. Conversation IDs, history and `context.entries.conversations` keep their session meaning.
+`onCompleted({ requestId, output }, context)` receives a read-only successful result and returns void. Save business receipts idempotently by requestId. Core persists the result and notification status; notification failures are reported separately and recovery retries notification without repeating the model call. Subsequent inputs under a durable owner also pass through the hooks. `conversationId`, history and `context.entries.conversations` keep their session meaning.
 
 ```ts
 export const executor = steamharness.defineBot({
@@ -25,3 +25,15 @@ export default executor;
 Models default to host settings, or project configuration in standalone CLI Web. Set `agent.modelSource: "project"` to require project models. Tool declarations retain host approval and permission checks. Register the project UUID and entry in `steamharness.json` with `type: "bot"`.
 
 Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
+
+## Skills and host previews
+
+List skill directories under `agent.skills.directories`. Relative paths resolve from the current entry root. When directories contain skills with the same name, the first one wins.
+
+Core supplies the `skill` tool automatically; projects can adjust its permissions through `tools`. Host previews read configuration declarations without executing input hooks or tool factories.
+
+```ts
+export const executor = steamharness.defineBot({
+  agent: { skills: { directories: ["skills"] } },
+});
+```

@@ -1,0 +1,58 @@
+---
+title: "Install and start Studio"
+description: "Prepare the source environment and launch the workbench."
+---
+
+# Install and start Studio
+
+These instructions run Studio from source. Prepare Node and native build tools, then install and build the workbench.
+
+## Requirements
+
+| Tool | Requirement |
+| --- | --- |
+| Node.js | 24.18.0 or a newer 24.x release |
+| npm | 11 or 12 |
+| Git and curl | Source, submodules, and downloads |
+| Native build tools | Xcode Command Line Tools on macOS; VS Code source-build prerequisites on other platforms |
+
+## Start the desktop workbench
+
+Run these commands in the open-source repository's `studio` directory:
+
+```sh
+npm ci
+npm run setup
+npm run build
+npm run dev
+```
+
+`setup` installs required dependencies and prepares extensions. The first desktop launch downloads Electron. Use `npm run dev -- <project-directory>` to open an existing project.
+
+Source setup needs access to package registries and download hosts. Fix the error reported in the terminal, then rerun the failed installation or build step.
+
+## Browser workbench
+
+```sh
+npm run dev:web
+```
+
+The command prints a local address for development. Files and terminals belong to the machine running the service. For Server's browser management interface, see [Server Web](/en/guides/server/overview).
+
+## Change the display language
+
+For Simplified Chinese, install **Chinese (Simplified) Language Pack** (`MS-CEINTL.vscode-language-pack-zh-hans`), run **Configure Display Language**, choose Simplified Chinese, and restart. Desktop and browser workbenches manage extensions separately, so configure each one.
+
+## Restart after updates
+
+Exit the application and rerun the launch command. Startup applies kernel patches and checks fingerprints for source, dependencies, and environment, rebuilding when needed. Reloading only the application window does not run that process.
+
+A build failure stops startup. Fix it and retry before using the application to verify updated features.
+
+## Optional speech dependency
+
+Setup skips the Foundry Local / ONNX NuGet download by default. These libraries support upstream chat's local speech dictation; the editor and Workflow features do not require them.
+
+For local dictation, set `FOUNDRY_LOCAL_SKIP_INSTALL=0`, rerun `npm run setup`, and ensure that its NuGet source is reachable. Other native dependencies are installed normally.
+
+Once Studio opens, follow the [quickstart](/en/guides/quickstart) to create a project.

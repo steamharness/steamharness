@@ -5,17 +5,29 @@ description: "The standard workflow error class for serializable error reporting
 
 # HarnessError
 
-`workflow.HarnessError` is the standard error class used by the business workflow and runtime. It keeps the error type, node name, metadata, and cleaned cause, which eventually goes into the execution report.
+Use `steamharness.HarnessError` to attach a serializable type, node name, metadata, and sanitized cause to a business failure. The runtime carries these fields into execution reports for display and classification.
 
 When execution fails, `ExecutionReport.error` retains the serializable structured error, while `result.data` provides the standard `errCode`, `errMessage`, and `output`. Hosts read `report.error.metadata` to identify Server project or data-resource authorization failures. Successful reports omit `error`.
 
-
 `ErrorCause.code?: DatabaseResourceErrorCode` retains only known public database codes on `DatabaseResourceError`, including across node wrapping and JSON reports. Custom codes on arbitrary errors are omitted. This code is separate from the numeric payload `errCode`.
+
+## Example
+
+```ts
+throw new steamharness.HarnessError({
+  type: "input_validation",
+  message: "message is required.",
+  nodeName: "parse-input",
+  metadata: {
+    field: "message",
+  },
+});
+```
 
 ## Signature
 
 ```ts
-new workflow.HarnessError(options: ErrorOptions)
+new steamharness.HarnessError(options: ErrorOptions)
 ```
 
 ## Parameter
@@ -82,19 +94,6 @@ Running the report maps the failure type to payload `errCode`.
 | `provider_call` | `502` |
 | `node_execution` | `500` |
 | `project_execution` | `500` |
-
-## Example
-
-```ts
-throw new workflow.HarnessError({
-  type: "input_validation",
-  message: "message is required.",
-  nodeName: "parse-input",
-  metadata: {
-    field: "message",
-  },
-});
-```
 
 ## When to use
 

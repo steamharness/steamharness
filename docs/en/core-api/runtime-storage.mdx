@@ -5,7 +5,7 @@ description: "Persist conversations and Agent checkpoints locally, with optional
 
 # Platform runtime storage
 
-`steamharness/runtime-storage` provides local SQLite persistence and explicitly selected Server PostgreSQL storage. Agents execute in CLI, Studio or your Node.js process. Server authenticates data access and never loads executable project code.
+Use `steamharness/runtime-storage` to persist run history and Agent checkpoints. It provides local SQLite and explicitly selected Server PostgreSQL repositories. Agent code still executes in CLI, Studio, or the host Node.js process.
 
 ## Default storage and isolation
 
@@ -57,7 +57,7 @@ const agent = await createAgent({
 });
 ```
 
-The host implements `readAccountToken()` to return the current account's Server Bearer token. Keep it out of project source, connection URLs and model input. An administrator key does not replace account authentication. `storage` and `databasePath` are mutually exclusive. Configure models, tools and session controls as described in [createAgent](/en/core-api/create-agent).
+The host implements `readAccountToken()` to return the current account's Server Bearer token. Keep it out of project source, connection URLs and model input. An administrator key does not replace account authentication.  Configure models, tools and session controls as described in [createAgent](/en/core-api/create-agent).
 
 | Option | Meaning |
 | --- | --- |
@@ -97,12 +97,12 @@ The following helpers are exported from steamharness/agent and accept persistenc
 
 | Helper | Purpose |
 | --- | --- |
-| exportAgentSession({ persistence, conversationId }) | Read a consistent committed snapshot, including while the source owner is active, without loading a model. |
-| importAgentSession({ persistence, conversationId, sessionKey, snapshot }) | Import into a new empty session without overwriting existing or deleted sessions. |
-| forkStoredAgentConversation({ persistence, conversationId, command }) | Fork committed history under an idle owner with durable receipts; use the control channel for an active owner. |
-| isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? }) | Create an independent session with cutoff history and document policies, preserving document version changes and replacement identities even when content is equal, excluding tasks, approvals, queues and usage. |
-| cancelStoredAgentConversation({ persistence, conversationId }) | Cancel a stored execution tree without an active owner. |
-| deleteStoredAgentConversation({ persistence, conversationId }) | Cancel and delete Agent sessions and Bot state. |
+| `exportAgentSession({ persistence, conversationId })` | Read a consistent committed snapshot, including while the source owner is active, without loading a model. |
+| `importAgentSession({ persistence, conversationId, sessionKey, snapshot })` | Import into a new empty session without overwriting existing or deleted sessions. |
+| `forkStoredAgentConversation({ persistence, conversationId, command })` | Fork committed history under an idle owner with durable receipts; use the control channel for an active owner. |
+| `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` | Create an independent session with cutoff history and document policies, preserving document version changes and replacement identities even when content is equal, excluding tasks, approvals, queues and usage. |
+| `cancelStoredAgentConversation({ persistence, conversationId })` | Cancel a stored execution tree without an active owner. |
+| `deleteStoredAgentConversation({ persistence, conversationId })` | Cancel and delete Agent sessions and Bot state. |
 
 The storage snapshot is `{ format: "steamharness.agent-session", version: 1, nextId, commits }`. It preserves commit order, historical documents and reserved IDs, and differs from the AgentSessionSnapshot UI projection. Forking requires no system AI. Stop, background ownership and queue pause semantics are preserved. Crash recovery resumes with the original runId and requestId; failed turns do not advance queued input. Explicit Server storage still waits for the previous lease to expire.
 
@@ -114,4 +114,4 @@ Both local and Server repositories support the snapshot and optional backup APIs
 
 Standalone createAgent() without storage remains a temporary memory instance; inject local.agentStorage(conversationId, sessionKey) or createServerAgentStorage for persistence. Project business models are a separate API.
 
-See [Deployment and release](/en/guides/server/deployment) for local development and [OpenAPI](/en/openapi/steamharness.openapi.yaml) for HTTP details.
+See [Deployment and release](/en/guides/server/deployment) for local development and [OpenAPI](../openapi/steamharness.openapi.yaml) for HTTP details.

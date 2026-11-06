@@ -1,25 +1,37 @@
 ---
-title: "Runtime platform"
-description: "Identify the local execution host."
+title: "Identify the runtime platform"
+description: "Distinguish CLI and Studio hosts independently of storage selection."
 ---
 
-# Runtime platform
+<span id="runtime-platform"></span>
+
+# Identify the runtime platform
+
+The runtime platform identifies where code executes. Terminals and CLI Web use `cli`; Studio uses `desktop`.
+
+## Example and signatures
 
 ```ts
-workflow.getRuntimePlatform(): "cli" | "desktop"
-workflow.isCli(): boolean
-workflow.isDesktop(): boolean
+const platform = steamharness.getRuntimePlatform();
+const local = steamharness.isCli();
 ```
-
-Platforms describe where code executes. Terminal and CLI Web use `cli`; an absent marker defaults to `cli`. Unknown nonempty markers throw. Server does not execute projects and provides no server execution marker or `isWeb()`.
 
 ```ts
-const platform = workflow.getRuntimePlatform();
-const local = workflow.isCli();
+steamharness.getRuntimePlatform(): "cli" | "desktop"
+steamharness.isCli(): boolean
+steamharness.isDesktop(): boolean
 ```
 
-Runtime platform does not select a storage backend. Import a generated database descriptor and call `context.databases.connect(descriptor)`; the Server account and entry binding choose an independently authorized PostgreSQL resource. Knowledge uses `context.knowledgeBases.get(alias)`. Local development can run Server and Docker PostgreSQL on the same machine.
+An absent host marker defaults to `cli`; an unknown nonempty marker throws. Server does not execute project code, so there is no Server execution marker or `isWeb()`.
+
+## Configure storage separately
+
+Use generated descriptors with `context.databases.connect(descriptor)` for business databases. Server resolves an authorized PostgreSQL resource from the account and entry binding. Knowledge access uses `context.knowledgeBases.get(alias)`.
+
+Local development can run Server and Docker PostgreSQL on one machine. [Runtime storage](/en/core-api/runtime-storage) determines where history persists; do not infer it from the platform name.
 
 ## Host resource management
 
-Studio and CLI Web list Server resources and open authenticated Server Web pages for model, table, attachment and account access management. Links contain no account token. The host retains SQL credentials, connections and binding identities; project RPC and Browser pages receive only authorized model operations. There is no local database registry or KV management context.
+Studio and CLI Web open authenticated Server Web pages for models, data, attachments, and account grants. Links contain no account token.
+
+SQL credentials, connections, and binding identities remain in the host. Project RPC and Browser pages receive only authorized model operations. This API exposes neither local database directories nor a KV management context.

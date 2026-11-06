@@ -1,0 +1,42 @@
+---
+title: "Agent errors and retries"
+description: "Model errors, continuation budgets, and cancellation."
+---
+
+# Agent errors and retries
+
+Model failures use the same bounded retry policy regardless of HTTP status, provider, or error wording. An explicit user cancellation is terminal.
+
+## Error types
+
+| Situation | Error type | Description |
+| --- | --- | --- |
+| No model configured | `input_validation` | No `model` is given and the provider has no default model. |
+| Invalid model attributes | `input_validation` | JSON-form attributes with an unknown key, a mistyped value, or an out-of-range number; the field is never silently dropped. |
+| Waiting for approval | `user_input_required` | The run is paused until the host resumes it. |
+| Empty compaction summary | plain `Error` | The model produced no usable summary. |
+
+## Retry and continuation
+
+| Situation | Handling |
+| --- | --- |
+| Model error before output | At most 10 additional requests, exponential backoff, and at most eight seconds per wait |
+| Failure after partial text | Keep committed text and tool results; durable execution continues with at most 10 connection recoveries |
+| `max_output_tokens` reached | Continue from preserved text with a separate budget of two; exhaustion asks for a larger `maxTokens` or a smaller request |
+| Tool-use stop reason with no tool block | Continue as `lost-call`, sharing the connection budget |
+| Explicit user stop | Interrupt model, tools, and backoff; do not resume automatically |
+| Storage, permission, configuration, or host-callback failure | Report directly instead of retrying as a model failure |
+
+Model errors during request creation, stream iteration, result retrieval, summarization, and deferred response retrieval are handled at the call boundary. Errors retain upstream reasons and bounded `code`, `status`, `statusCode`, and `cause` fields without serializing headers or complete request/response objects.
+
+## Preserved state
+
+Committed text, reasoning fragments, and tool results remain available. Incomplete tool calls from a failed response are not executed. A retry cannot establish that an external write failed; inspect a business receipt before repeating an unknown side effect.
+
+Usage is retained for every attempt. A fully successful model request resets consecutive-failure counters. Partial output or reopening an unfinished run does not reset them, and reused attempt numbers do not overwrite history.
+
+## Events and display
+
+`retry.kind` distinguishes `dropped`, `recovery`, `length`, and `lost-call`. `attempt` and `maxAttempts` describe the relevant budget. CLI Web and Studio display network retries in the conversation; other continuations remain in Trace and exports.
+
+Budget exhaustion displays the final failure reason. Failure and cancellation preserve pending input. Only a successful user round advances the queue.

@@ -5,7 +5,7 @@ description: "Relational resources, independent knowledge bases and runtime stor
 
 # Project storage
 
-SteamHarness separates business models, knowledge content and runtime history. Server authorizes business and knowledge resources; runtime history defaults to host-local SQLite without a Server connection for storage.
+Choose a storage API by distinguishing business data, knowledge content, and run history. Server authorizes business and knowledge resources. Run history defaults to host-local SQLite and does not require a Server connection.
 
 | Data | Storage and isolation | Project API |
 | --- | --- | --- |
@@ -14,7 +14,12 @@ SteamHarness separates business models, knowledge content and runtime history. S
 | Conversations, messages, runs, queues, usage and Agent state | Host-local SQLite by project, entry and session; cloud backup on demand | Host runtime storage |
 | Knowledge attachment contents | Private Server file storage; SQL retains metadata and checksums | `knowledge.files` |
 
-Creating a project or conversation does not create a physical database. Projects A and B can request separate resources and define different `User` tables. Sharing requires explicit binding to the same resource and authorization. Knowledge bases do not require a project-defined schema.
+Choose bindings according to the required isolation:
+
+- Creating a project or conversation does not allocate a PostgreSQL database.
+- Separate resources let two projects define different schemas for the same table name, such as `User`.
+- To share data, bind both projects to the same resource and grant access to each consumer.
+- Knowledge bases are independent resources and need no project-defined system tables.
 
 ## Artifacts and runtime data
 
@@ -28,15 +33,31 @@ Keep every rebuildable output in the aggregate project root's `dist/`, including
 | Compiled child entry code and static pages | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
 | Tool caches, test reports, and packages | `dist/cache/`, `dist/reports/`, and `dist/release/` |
 
-Encode the complete `entry.root`: `apps/board` becomes `apps%2Fboard`. Entries sharing a source root share its generated database code, with separate entry ID directories under the same parent's `build/`. Each builder cleans only its own subdirectory. Keep authored code, configuration, models, and migrations in source directories, and ignore `/dist/` in the root `.gitignore`.
+Directory layout follows source roots and entry IDs. URL-encode the whole `entry.root`: for example, `apps/board` becomes `apps%2Fboard`. Entries under the same source root share generated code and write their builds to separate `build/<entryId>/` directories.
+
+A builder may clean only its own subdirectory. Keep authored source, configuration, models, and migrations outside generated directories, and ignore `/dist/` in the root `.gitignore`.
 
 An `entryId` cannot use the managed directory names `steamharness`, `cache`, `reports`, `release`, or `tmp`, or Windows device names `con`, `prn`, `aux`, `nul`, `com1`–`com9`, or `lpt1`–`lpt9`. An explicit entry path inside `dist/` must use the current source root's `build/<entryId>/`, protecting `generated/` and other entries' outputs.
 
-Store sessions, checkpoints, login state, and other persistent data in the host application's data directory or the user directory, outside source and `dist/`. The standalone SDK defaults to `~/.steamharness/runtime/<projectId>/<entryId>/`; CLI Web also requires `--data-dir` to be outside the project. Deleting `dist/` requires regeneration and rebuilding only; external runtime data remains intact. Old paths are not read, migrated, or used as fallbacks. Close the host before moving existing data offline and preserve file permissions.
+### Keep persistent data outside the project
+
+Put sessions, checkpoints, and login state in the host application's data directory or the user directory, outside source and `dist/`.
+
+| Host | Location requirement |
+| --- | --- |
+| Standalone SDK | Defaults to `~/.steamharness/runtime/<projectId>/<entryId>/` |
+| CLI Web | `--data-dir` must be outside the project |
+
+After deleting `dist/`, regenerate and rebuild outputs; external runtime data is unaffected. Old paths are not read, migrated, or used as fallbacks. To move existing persistent data, close the host first, move it offline, and preserve file permissions.
 
 ## Business databases
 
-Declare aliases in `steamharness.database.ts` and models in `database/<alias>/steamharness.schema`. CLI generates typed Node/Browser descriptors. Use `steamharness database` for creation, grants, migrations and binding. Relational bindings are stored on Server by account, project, entry and alias, independently of legacy `config.databases`. Connecting does not create or migrate resources.
+1. Declare aliases in `steamharness.database.ts` and models in `database/<alias>/steamharness.schema`.
+2. Generate typed Node/Browser descriptors with the CLI.
+3. Use `steamharness database` to create a resource, grant access, migrate, and bind it.
+4. Connect through the generated descriptor in your runtime code.
+
+Server stores bindings by account, project, entry, and alias, outside legacy `config.databases`. Connecting does not create a database or apply migrations.
 
 ```ts
 import { main } from "./dist/steamharness/generated/database/node/index.js";
@@ -72,20 +93,50 @@ const doc = await knowledge.createDocument({ title: "Guide", markdown: "# Guide"
 await knowledge.editDocument({ id: doc.id, markdown: "# Updated", expectedRevision: doc.revision });
 ```
 
-Server checks account grants and consumer bindings. Registered projects additionally require membership capabilities and matching entry declarations. After changing an ID, establish a matching Server binding and reopen the entry. Old clients cannot write a draft to a replacement resource. Grant changes and revocation invalidate clients too. `knowledge unbind` removes the Server binding while retaining the declaration for later rebinding. See [Knowledge API](/en/core-api/knowledge-documents).
+When replacing a knowledge resource:
+
+1. Update its configured ID and establish the matching consumer binding on Server.
+2. Confirm account grants. Registered projects also require membership capabilities and an entry declaration.
+3. Reopen the entry to load the new binding.
+
+An old client cannot write its draft into the replacement resource. Revocation and grant-version changes also invalidate clients. `knowledge unbind` removes the Server binding but keeps the declaration for later reuse. See the [Knowledge API](/en/core-api/knowledge-documents).
 
 ## Management
 
-Server Web offers relational and knowledge catalogs with server pagination, search and resource creation. Resource pages manage account grants and project entry bindings. Relational pages show applied models, fingerprints and table data; knowledge pages manage documents and attachments. Row mutations require a complete stable key and current row version. Conflicts retain drafts; navigation protects unsaved edits.
+Open **Databases** in Server Web, choose relational or knowledge resources, then search or create a resource.
+
+| Page | Available actions |
+| --- | --- |
+| Resource details | Manage account grants and project entry bindings |
+| Relational database | Inspect applied models, fingerprints, and paginated table data |
+| Knowledge base | Manage documents and attachments |
+
+Row edits require a complete stable key and the current row version. Conflicts retain your draft, and navigation protects unsaved edits.
 
 Studio's database view and CLI Web's project database panel show resource references and open the corresponding Server Web page without putting account tokens in links. These interfaces no longer expose KV editing or a local/remote KV switch. Legacy KV runtime and local storage APIs are removed without compatibility or automatic migration.
 
 ## Client caches
 
-Personal configuration, user model settings and runtime history stay on the host. System AI catalogues use a 30-second process cache scoped to service URL and account. CLI resource references and Studio resource views reuse display snapshots for 5 seconds. Concurrent reads are merged; manual refreshes and edits invalidate the relevant display cache, and account changes clear old state. Execution still verifies bindings online.
+Personal configuration, user model settings, and run history remain on the host. Display data uses these caches:
+
+| Data | Scope and lifetime |
+| --- | --- |
+| System AI catalogue | Current process, scoped to service URL and account, 30 seconds |
+| CLI resource references and Studio resource views | Display snapshots reused for 5 seconds |
+
+Concurrent reads are merged. Refreshing or editing invalidates the relevant display cache; switching accounts clears old state. Execution checks bindings online, so a cached view is not proof of permission.
 
 Configuration templates and attachments retain their verified local snapshots and content caches. Knowledge text, search, publication, grants, resource creation and migrations require online confirmation. Attachment content can reuse bounded memory snapshots or conditional requests after online access checks. Sensitive catalogue credentials stay in memory. Caching does not add automatic uploads, offline authorization or background business writes.
 
 ## Persistent history and failures
 
-Runtime history defaults to local persistence independently of business and knowledge grants and lifecycles. Events reach the view while history persists locally; on-demand backup runs in the background. System AI or business-resource failures can affect those operations without blocking saved-history reads. Explicit Server storage fails on disconnection, revocation or lease loss. Existing cloud and legacy local records are preserved without automatic overwrite. Deleting a project does not automatically delete independent resources. See [runtime storage](/en/core-api/runtime-storage).
+Bot history uses local runtime storage by default, independently of business and knowledge resource grants and lifecycles. The view receives run events while history persists locally; on-demand backup runs in the background.
+
+| Situation | Effect on existing history |
+| --- | --- |
+| System AI or a business resource disconnects | That operation may fail, but saved history remains readable |
+| Explicit Server storage loses its connection, grant, or lease | Storage operations fail explicitly |
+| Cloud or legacy local records already exist | They are retained without automatic overwrite |
+| A project is deleted | Independent resources are not automatically deleted |
+
+See [runtime storage](/en/core-api/runtime-storage) for interfaces and backup behavior.

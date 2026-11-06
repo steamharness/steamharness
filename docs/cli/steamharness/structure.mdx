@@ -1,16 +1,28 @@
 ---
 title: "steamharness structure"
-description: "逐入口静态结构"
+description: "检查所选入口的静态执行结构。"
 ---
 
-# 逐入口静态结构
+<span id="逐入口静态结构"></span>
 
-静态分析所选入口，省略入口时使用默认入口。`check` 检查整个聚合。
+# steamharness structure
+
+用 `structure` 查看入口声明和执行结构。它分析已注册源码根与入口文件；检查整个聚合项目时使用 `check`。
+
+## 命令
 
 ```sh
+pnpm exec steamharness structure .
 pnpm exec steamharness structure . --entry database
+pnpm exec steamharness check .
 ```
 
-`entryId` 定位聚合入口，`entrypointId` 定位 Workflow 内部操作。同一项目的多个入口分别持有配置、数据库需求和会话状态。默认使用 `defaultEntry`，未知入口直接报错。
+`--entry` 是清单中的入口 ID，省略时选择 `defaultEntry`。同一类型的多个入口也分别检查，未知 ID 会报错。
 
-分析范围是注册的代码根目录及入口文件。聚合中可存在不同类型的 executor；同类型多入口也分别检查。静态 HTML 入口验证已构建产物，旧根类型和数据声明被拒绝。
+## 检查范围
+
+- Workflow：执行器、操作目录、节点和静态参数。
+- Bot：执行器及对话参数声明。
+- Kanban：静态 HTML 入口和已构建资源。
+
+旧根类型与已移除的数据声明会被拒绝。静态检查不代替真实运行或资源授权验证，完成后继续用 [run](/cli/steamharness/run) 验证结果。

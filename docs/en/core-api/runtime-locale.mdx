@@ -5,34 +5,21 @@ description: "Read the Simplified Chinese or English language selected by the cu
 
 # Runtime locale
 
-`workflow.getRuntimeLocale()` returns the language selected for the current run by its CLI or local host. Explicitly localized Workflow and Bot projects use it consistently for visible output, errors, date formatting, and number formatting.
-
-## Signature
-
-```ts
-workflow.getRuntimeLocale(): "zh-CN" | "en"
-```
-
-## Return value
-
-| Return value | Description |
-| --- | --- |
-| `"zh-CN"` | Simplified Chinese. This is the default when a host does not inject a language, sends an unknown value, or is an older host without this capability. |
-| `"en"` | English. The current CLI or local host injects this selected language. |
+Use `steamharness.getRuntimeLocale()` to read the host-selected language for the current run. Internationalized Workflow and Bot projects can use it for output, errors, and date or number formatting.
 
 ## Example
 
 ```ts
-const outputNode = workflow.createOutputNode<Input, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Input, OutputPayload>({
   name: "localized-output",
   format(input) {
-    const locale = workflow.getRuntimeLocale();
+    const locale = steamharness.getRuntimeLocale();
     const message = locale === "en"
       ? `Imported ${input.count} records.`
       : `已导入 ${input.count} 条记录。`;
 
-    return workflow.createOutputPayload({
-      items: [workflow.createOutputItem({
+    return steamharness.createOutputPayload({
+      items: [steamharness.createOutputItem({
         title: "Output",
         content: message,
         contentType: "text",
@@ -41,6 +28,19 @@ const outputNode = workflow.createOutputNode<Input, OutputPayload>({
   },
 });
 ```
+
+## Signature
+
+```ts
+steamharness.getRuntimeLocale(): "zh-CN" | "en"
+```
+
+## Return value
+
+| Return value | Description |
+| --- | --- |
+| `"zh-CN"` | Simplified Chinese. This is the default when a host does not inject a language, sends an unknown value, or is an older host without this capability. |
+| `"en"` | English. The current CLI or local host injects this selected language. |
 
 ## Notes
 
