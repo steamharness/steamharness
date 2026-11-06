@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
+import type { ConversationAccess } from '../web/conversation-ownership';
 import type { ConversationSession, Project } from '../web/workflow-types';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
@@ -37,14 +38,34 @@ async function fixture(query = '', saved?: object) {
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
   const emit = (message: object) => window.dispatchEvent(new MessageEvent('message', { data: message }));
-  const receive = (sessions: ConversationSession[], activeId = 'running') => {
-    emit({ type: 'state', project, sessions, activeId, running: activeId === 'running', conversationAccess: { readOnly: activeId === 'running' } });
+  const receive = (sessions: ConversationSession[], activeId = 'running', conversationAccess: ConversationAccess = { readOnly: activeId === 'running' }) => {
+    emit({ type: 'state', project, sessions, activeId, running: activeId === 'running', conversationAccess });
     const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0);
   };
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate');
   const savedState = () => host.setState.mock.calls.at(-1)?.[0];
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
+
+it.each([false, true])('does not flash an ownership warning when leaving a populated conversation (readOnly=%s)', async readOnly => {
+  const f = await fixture();
+  const original: ConversationSession = { ...session('previous'), messages: [{ id: 'reply', role: 'assistant', content: 'Previous answer', status: 'success' }] };
+  const blank = session('blank'), notice = document.querySelector<HTMLElement>('.conversation-access')!;
+  f.receive([original, blank], original.id, { readOnly, reason: readOnly ? 'opened' : undefined });
+  expect(notice.hidden).toBe(!readOnly);
+  document.querySelector<HTMLButtonElement>('#new')!.click();
+  expect(f.requests().at(-1)).toMatchObject({ id: blank.id });
+  expect(document.querySelector('#transcript-content')!.textContent).not.toContain('Previous answer');
+  expect(notice.hidden).toBe(true);
+  f.receive([original, blank], original.id, { readOnly: true, reason: 'opened' });
+  expect(notice.hidden).toBe(true);
+  f.receive([original, blank], blank.id, { readOnly: true, reason: 'pending' });
+  expect(notice.hidden).toBe(true); expect(f.input.disabled).toBe(true);
+  f.receive([original, blank], blank.id, { readOnly: false });
+  expect(notice.hidden).toBe(true); expect(f.input.disabled).toBe(false);
+  f.receive([original, blank], blank.id, { readOnly: true, reason: 'opened' });
+  expect(notice.hidden).toBe(false); expect(f.input.disabled).toBe(true);
+});
 
 it('restores a compact file reference but saves and submits its complete path after editing surrounding text', async () => {
   const f = await fixture(), source = '@file:/project/deeply/nested/package.json ';

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed CLI Web briefly showing the open-in-another-window warning while checking ownership after switching Bot conversations. Confirmed conflicts still show the read-only warning.
+
 - Fixed Bot Stop preserving queued inputs and showing Resume queue; stopping an exited owner cancels persisted work without restarting its old model.
 - Fixed Bot approval recovery comparing saved model references with restored credentials, so omitted history secrets no longer interrupt plan confirmation as a settings change.
 

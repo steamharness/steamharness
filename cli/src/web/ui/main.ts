@@ -2,6 +2,7 @@ import { mountAggregateToolbar } from './aggregate';
 import { mountProjectConfigurations } from './project-configurations';
 import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
+import type { ConversationAccess } from '../conversation-ownership';
 import type { ProjectServerState } from '../project-server-state';
 import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
@@ -90,7 +91,7 @@ function initialize(): void {
   });
   const aggregateToolbar = mountAggregateToolbar(vscode);
 
-  interface State { conversationUi?: KanbanConversationUi; serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
+  interface State { conversationUi?: KanbanConversationUi; serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -654,7 +655,7 @@ function initialize(): void {
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
-    accessNotice.hidden = !readOnly();
+    accessNotice.hidden = !readOnly() || state.conversationAccess?.reason === 'pending';
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
@@ -848,7 +849,8 @@ function initialize(): void {
     preferredSessionId = session.id;
     navigationNeeded = session.id !== serverSessionId || localSessions.has(session.id);
     render({ ...state, sessions: state.sessions.some(entry => entry.id === session.id) ? state.sessions : [...state.sessions, session],
-      activeId: session.id, running: sessionRunning(session), parameterValues: session.parameterValues ?? {} }, false);
+      activeId: session.id, running: sessionRunning(session), parameterValues: session.parameterValues ?? {},
+      conversationAccess: session.id === state.activeId ? state.conversationAccess : undefined }, false);
     persist(); syncNavigation();
   }
 

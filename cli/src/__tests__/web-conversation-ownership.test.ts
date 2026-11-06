@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createMemoryRuntimePersistence, type RuntimePersistence } from 'steamharness/runtime-storage';
 import { ConversationOwnership } from '../web/conversation-ownership';
 const owners: ConversationOwnership[] = [];
@@ -17,6 +17,44 @@ it('admits one process and one page per conversation while allowing independent 
   await two.assertWritable('different', 'page-c');
   expect(two.select('page-c', 'different').readOnly).toBe(false);
   await one.close(); await two.assertWritable('same', 'page-c');
+});
+it('keeps navigation pending until the new conversation lease is acquired', async () => {
+  const persistence = createMemoryRuntimePersistence();
+  let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const changed = vi.fn();
+  const backend: RuntimePersistence = { ...persistence, acquire: async (scope, onLost) => {
+    if (scope === 'new') await gate;
+    return persistence.acquire(scope, onLost);
+  } };
+  const owner = new ConversationOwnership(() => backend, undefined, changed); owners.push(owner);
+  await owner.assertWritable('previous', 'page'); owner.select('page', 'previous'); changed.mockClear();
+  try {
+    expect(owner.select('page', 'new')).toEqual({ readOnly: true, reason: 'pending' });
+    expect(owner.select('page', 'new')).toEqual({ readOnly: true, reason: 'pending' });
+    expect(changed).not.toHaveBeenCalled();
+  } finally { finish(); await owner.acquire('new'); }
+  expect(changed).toHaveBeenCalledOnce();
+  expect(owner.select('page', 'new')).toEqual({ readOnly: false });
+});
+it('notifies a confirmed ownership conflict once and clears it after acquisition or reset', async () => {
+  const f = fixture(), other = f.owner(), changed = vi.fn();
+  const owner = new ConversationOwnership(() => f.persistence, undefined, changed); owners.push(owner);
+  await other.assertWritable('occupied', 'other-page');
+  expect(owner.select('page', 'occupied')).toEqual({ readOnly: true, reason: 'pending' });
+  await owner.acquire('occupied');
+  expect(changed).toHaveBeenCalledOnce();
+  expect(owner.select('page', 'occupied')).toEqual({ readOnly: true, reason: 'opened' });
+  await owner.acquire('occupied');
+  expect(changed).toHaveBeenCalledOnce();
+  await owner.reset();
+  expect(owner.select('page', 'occupied')).toEqual({ readOnly: true, reason: 'pending' });
+  await owner.acquire('occupied'); await other.close();
+  await owner.acquire('occupied');
+  expect(owner.select('page', 'occupied')).toEqual({ readOnly: false });
+  owner.detach('page');
+  expect(owner.select('page', 'occupied')).toEqual({ readOnly: true, reason: 'pending' });
+  await owner.acquire('occupied');
 });
 it('retains the execution owner after navigation and releases idle scopes', async () => {
   const f = fixture(), one = f.owner(), two = f.owner();

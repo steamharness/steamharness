@@ -1,13 +1,14 @@
 import type { RuntimeHistoryLease, RuntimePersistence } from 'steamharness/runtime-storage';
 import { t } from './localization';
 
-export interface ConversationAccess { readOnly: boolean; reason?: 'opened' | 'running' }
+export interface ConversationAccess { readOnly: boolean; reason?: 'pending' | 'opened' | 'running' }
 interface Owner { lease: RuntimeHistoryLease; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
 
 /** Persistence owners protect execution across windows, processes and restarts. */
 export class ConversationOwnership {
   private readonly owners = new Map<string, Owner>();
   private readonly pending = new Map<string, Promise<Owner | undefined>>();
+  private readonly conflicts = new Set<string>();
   private readonly releasing = new Map<string, Promise<void>>();
   private readonly selections = new Map<string, string>();
   private readonly writerGroups = new Map<string, string>();
@@ -58,9 +59,15 @@ export class ConversationOwnership {
       if (!lease) return;
       if (this.closed || epoch !== this.epoch) { await lease.close(); return; }
       const owner = { lease, clients: new Map<string, string>(), executing: false, running: false, retained: 0 };
+      this.conflicts.delete(scope);
       this.owners.set(scope, owner); this.acquired.add(scope); this.changed(); return owner;
     }).catch(error => {
-      if (epoch === this.epoch && (error as { code?: string }).code !== 'RUNTIME_STORAGE_OWNER_CONFLICT') this.lost(scope, error);
+      if (epoch === this.epoch) {
+        if ((error as { code?: string }).code === 'RUNTIME_STORAGE_OWNER_CONFLICT') {
+          // Publish the confirmed conflict once; subsequent snapshots may retry acquisition.
+          if (!this.conflicts.has(scope)) { this.conflicts.add(scope); this.changed(); }
+        } else this.lost(scope, error);
+      }
       return undefined;
     }).finally(() => { if (this.pending.get(scope) === pending) this.pending.delete(scope); });
     this.pending.set(scope, pending); return pending;
@@ -75,7 +82,7 @@ export class ConversationOwnership {
         if (this.selections.get(clientId) === id && !owner.clients.has(id)) owner.clients.set(id, this.writer(clientId));
         else if (!owner.clients.size && !owner.executing && !owner.retained) this.release(this.scope(id));
       });
-      return { readOnly: true, reason: 'opened' };
+      return { readOnly: true, reason: this.conflicts.has(this.scope(id)) ? 'opened' : 'pending' };
     }
     const owner = this.owners.get(this.scope(id))!;
     const writer = owner.clients.get(id);
@@ -143,7 +150,7 @@ export class ConversationOwnership {
     this.releasing.set(id, closing);
   }
   async reset(): Promise<void> {
-    this.epoch++; this.scopes.clear(); this.acquired.clear(); this.selections.clear(); this.writerGroups.clear();
+    this.epoch++; this.scopes.clear(); this.acquired.clear(); this.conflicts.clear(); this.selections.clear(); this.writerGroups.clear();
     const owners = [...this.owners.values()]; this.owners.clear();
     const pending = [...this.pending.values()]; this.pending.clear();
     const releasing = [...this.releasing.values()];

@@ -402,6 +402,37 @@ describe('steamharness web', () => {
     expect(stop).toHaveBeenCalledWith(target);
   });
 
+  it('reports pending access when navigating from a populated conversation to an unclaimed blank conversation', async () => {
+    const { app, directory, post } = await fixture();
+    const clientId = crypto.randomUUID(), original = app.controller!.activeId;
+    await post({ type: 'ready', clientId });
+    await post({ type: 'send', clientId, sessionId: original, text: 'Previous conversation', params: {}, attachments: [] });
+    await app.controller!.idle();
+    const blank: ConversationSession = { id: crypto.randomUUID(), title: 'New conversation', createdAt: 1, updatedAt: 1, messages: [], draft: { text: '', attachments: [] } };
+    await seedTestSessions(testDataDirectory(directory), [blank], false);
+    const persistence = temporaryRuntimePersistence(testDataDirectory(directory));
+    const acquire = persistence.acquire.bind(persistence);
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    vi.spyOn(persistence, 'acquire').mockImplementation(async (scope, onLost) => {
+      if (scope === blank.id) await gate;
+      return acquire(scope, onLost);
+    });
+    try {
+      await post({ type: 'ready', clientId });
+      const response = await post({ type: 'navigate', clientId, requestId: 1, id: blank.id,
+        updates: [{ id: original, draft: { text: '', attachments: [] } }] });
+      expect(response.status).toBe(200);
+      const state = (await response.json()).messages.find((message: any) => message.type === 'state');
+      expect(state).toMatchObject({ activeId: blank.id, conversationAccess: { readOnly: true, reason: 'pending' } });
+      expect(state.sessions.find((session: ConversationSession) => session.id === blank.id).messages).toEqual([]);
+      expect(state.sessions.find((session: ConversationSession) => session.id === original).messages[0].content).toBe('Previous conversation');
+    } finally { finish(); }
+    const ready = await post({ type: 'ready', clientId });
+    expect((await ready.json()).messages.find((message: any) => message.type === 'state'))
+      .toMatchObject({ activeId: blank.id, conversationAccess: { readOnly: false } });
+  });
+
   it('keeps page selections independent and routes sends to their explicit conversations', async () => {
     const { app, cookie, post, runtime } = await fixture();
     const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID();
