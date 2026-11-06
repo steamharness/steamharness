@@ -12,6 +12,24 @@ async function fixture(run: (tools: ReturnType<typeof createBuiltinAgentTools>, 
   finally { await rm(directory, { recursive: true, force: true }); }
 }
 
+test("sleep waits without shell access, validates its duration and cancels immediately", async () => {
+  await fixture(async tools => {
+    const sleep = tools.find(tool => tool.name === "sleep")!;
+    const start = Date.now();
+    const result = await sleep.execute("pause", { seconds: 0.025 });
+    assert.ok(Date.now() - start >= 20);
+    assert.match(JSON.stringify(result.content), /Waited 0.025 seconds/);
+    for (const seconds of [-1, Infinity, NaN, 3601, "180"]) {
+      await assert.rejects(sleep.execute("invalid", { seconds }), /seconds between/);
+    }
+    const abort = new AbortController();
+    const waiting = sleep.execute("stop", { seconds: 180 }, abort.signal);
+    abort.abort();
+    await assert.rejects(waiting, /abort/i);
+    await assert.rejects(sleep.execute("already-stopped", { seconds: 180 }, abort.signal), /abort/i);
+  });
+});
+
 test("read reaches requested lines beyond 8 MiB and bounds a long UTF-8 line with recoverable byte offsets", async () => {
   await fixture(async (tools, directory) => {
     const read = tools.find(tool => tool.name === "read")!;

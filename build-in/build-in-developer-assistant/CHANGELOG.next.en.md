@@ -1,5 +1,7 @@
 # Unreleased
 
+- The assistant uses the default of three concurrent child agents, durable queuing and cancellable sleep. Generator documents bounded run configuration checks and filtering of disabled tools.
+
 - [Fix] Resolve exact CLI versions from the adjacent package in SDK checkouts while retaining host dependency resolution, removing the generator's dependency on the example workspace.
 
 - Breaking: the assistant now uses defineBot while preserving workspace, skills, Studio Control and permission capabilities; generator guidance and examples use the Core Bot contract.

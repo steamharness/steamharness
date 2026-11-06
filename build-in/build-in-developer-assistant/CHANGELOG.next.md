@@ -1,5 +1,7 @@
 # Unreleased
 
+- 小助手沿用子 Agent 默认 3 个并发与持久排队，提供可取消的 sleep 等待工具；Generator 同步运行配置授权有界重试和禁用工具过滤契约。
+
 - 【修复】Generator 的 SDK 开发布局从相邻 CLI 包解析精确版本，宿主布局继续使用依赖声明，不再依赖示例 workspace。
 
 - 【破坏性变更】小助手迁移到 defineBot，保留工作区、技能、Studio Control 与权限能力；生成规范和示例统一使用新的 Core Bot 契约。

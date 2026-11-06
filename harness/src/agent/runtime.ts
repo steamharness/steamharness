@@ -97,6 +97,8 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   externalTools?: PiAgentTool[];
   /** Base delay for the Harness's persisted provider retries. */
   retryDelayMs?: number;
+  /** The workflow host may further narrow the tools offered to the model. */
+  isToolEnabled?: (name: string) => boolean;
 }
 
 /**
@@ -867,7 +869,7 @@ function applyRunConfiguration(
     ...allTools.filter((tool) => active.has(tool.name)),
     ...askTool,
     ...externalTools,
-  ];
+  ].filter(tool => options.isToolEnabled?.(tool.name) !== false);
 }
 
 function clampThinkingLevel(pi: PiRuntime, effort: AgentParsedInput["effort"]): AgentThinkingLevel {

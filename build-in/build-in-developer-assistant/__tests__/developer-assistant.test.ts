@@ -13,7 +13,7 @@ const RUN_SCOPED_CORE_TOOL_NAMES = [
   "workflow-knowledge_knowledge_documents",
   "workflow-kv_kv_store",
 ];
-const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls"];
+const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls", "sleep"];
 const CONTROL_TOOL_NAMES = ["workflow-studio_get_configurations", "workflow-studio_manage_configurations", "workflow-studio_open_configurations", "workflow-studio_studio_state", "workflow-studio_get_entries", "workflow-studio_get_diagnostics", "workflow-studio_get_kanban_diagnostics", "workflow-studio_open_file",
   "workflow-studio_set_theme", "workflow-studio_open_terminal", "workflow-studio_show_view"];
 const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"];

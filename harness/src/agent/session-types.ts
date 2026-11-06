@@ -71,7 +71,7 @@ export interface AgentSessionOptions {
   subagents?: {
     /** Explicit subset of the parent's tools. Subagents cannot delegate again. */
     tools: string[];
-    /** Active delegations. Defaults to 4; null explicitly removes the limit. */
+    /** Active delegations. Defaults to 3; excess work queues durably. null explicitly removes the limit. */
     maxAgents?: number | null;
     /** Default work retry policy; a role may override it. Separate from model transport retries. */
     retry?: { maxAttempts: number; delayMs?: number };

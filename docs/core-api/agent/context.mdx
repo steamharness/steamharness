@@ -14,7 +14,9 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 默认本机编码工具的 `read` 按字节限制输出，可读取 8 MiB 之后的行。完整行用 `offset: nextOffset` 续读，超长行或原始文本用 `byteOffset: nextByteOffset`（UTF-8 字节偏移），此模式省略行 `offset` 和 `limit`。配置 `session.environment` 时，同一字节续读入口通过该环境读取，也适用于没有 shell 的只读子代理。`grep`、`find`、`ls` 返回截断标记与 `nextOffset`；长匹配行只返回预览，可用 `read` 获取全文。`bash` 输出按 UTF-8 字节限制并明确标记截断，超时或取消说明保留在尾部；需要完整日志时先重定向到文件再读取。
 
 
-内置工具只有 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及只在 plan 模式提供的 `ask_user`——模型用它中途向用户提问（一次可问多个问题，每题可选选项、可多选、可再附一个自定义回答输入框），运行暂停等回答，回答后同一份计划继续。要在它们之外再加工具，编程式运行时用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
+内置工具包括 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`sleep`，以及只在 plan 模式提供的 `ask_user`。模型用 `ask_user` 中途向用户提问，运行暂停等回答，回答后继续同一份计划；每次可问多题，每题可带选项、多选或自定义回答。添加工具时，编程式运行用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
+
+`sleep({ seconds })` 等待 0–3600 秒，支持小数秒和取消，不执行 shell 命令。持久会话保存等待截止时间，重开后只等待剩余时间。它在 `read-only` 策略下也可用；宿主仍可在 `executor.tools` 中禁用它。宿主禁用的内置工具和自带工具会从模型工具列表中移除，调用时继续校验权限。
 
 - **自带工具不受 `permissionPolicy` 约束。** 策略只决定内置工具暴露哪些、能走多远；自带工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待批准（仅 plan 模式的回合；build 回合直接执行）。
 - 要连接宿主提供的 stdio MCP 服务，先用 [connectMcpServer](/core-api/connect-mcp-server) 建立连接，再用 [createMcpTools](/core-api/create-mcp-tools) 把它暴露的工具转成自带工具。

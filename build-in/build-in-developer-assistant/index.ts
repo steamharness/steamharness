@@ -36,7 +36,7 @@ export const executor = steamharness.defineBot<AgentInput>({
   agent: {
   modelSource: "user-settings",
   skills: { directories: [SKILLS_DIRECTORY] },
-  session: { subagents: { tools: ["read", "grep", "find", "ls", "skill"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
+  session: { subagents: { tools: ["read", "grep", "find", "ls", "skill"] }, planFork: "asOf", toolSearch: {} },
   async createTools(context, input): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {

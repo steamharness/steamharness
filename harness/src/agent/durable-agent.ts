@@ -30,7 +30,8 @@ import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
-import { AGENT_PROVIDER_MAX_RETRIES } from "./provider-retry";
+import { AGENT_PROVIDER_MAX_RETRIES, retryAgentConfigurationAccess } from "./provider-retry";
+import { agentSleepSeconds, waitForAgentSleep } from "./tools";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 import { AgentRoleDoc } from "./subagents";
@@ -169,7 +170,7 @@ export class DurableAgent {
       await this.resources.install(this.registry, tool => this.adaptTool(tool));
       const registry = mergeAgentRegistries(this.registry, this.options.session?.registry,
         async (name, args, api, callContext) => {
-          await this.checkConfigurationAccess();
+          await this.authorizeConfiguration(api, callContext);
           await this.session?.authorizeChild(api.conversationId, name);
           const prefix = `${api.conversationId}:${api.taskId}:`;
           if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
@@ -455,7 +456,7 @@ export class DurableAgent {
           return continuation === undefined ? undefined : { continue: continuation };
         },
         beforeRequest: async (request, api, requestContext) => {
-          await this.checkConfigurationAccess();
+          await this.authorizeConfiguration(api, requestContext);
           await this.session?.authorizeChild(api.conversationId);
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
@@ -540,7 +541,7 @@ export class DurableAgent {
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
-          await this.checkConfigurationAccess();
+          await this.authorizeConfiguration(api, callContext);
           await this.session?.authorizeChild(api.conversationId, call.name);
           const decision = await this.approve(call, callContext, `${api.conversationId}:${api.taskId}:`);
           return decision?.block ? { block: decision.reason } : undefined;
@@ -646,7 +647,7 @@ export class DurableAgent {
       structuredOutputSchema: tool.outputSchema,
       ...(["read", "bash", "grep", "find", "ls"].includes(tool.name) ? { outputLimits: { maxLines: 40_000 } } : {}),
       execute: async (args, api, callContext) => {
-        await this.checkConfigurationAccess();
+        await this.authorizeConfiguration(api, callContext);
         const prefix = `${api.conversationId}:${api.taskId}:`;
         if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
           const decision = await this.approve({ type: "toolCall", id: api.callId, name: tool.name, arguments: json(args) as JsonObject }, callContext, prefix);
@@ -654,6 +655,14 @@ export class DurableAgent {
         }
         if (tool.name === "ask_user" && this.askResume !== undefined) {
           return { output: [{ type: "text", text: JSON.stringify(this.askResume.answers) }] };
+        }
+        if (tool.name === "sleep") {
+          const seconds = agentSleepSeconds(args);
+          // Recovery waits only the remaining time, using the committed deadline.
+          const wakeAt = await api.memo("wakeAt", Date.now() + seconds * 1000, callContext);
+          await api.details({ seconds, wakeAt }, callContext);
+          await waitForAgentSleep(wakeAt, callContext.abortSignal);
+          return { output: [{ type: "text", text: `Waited ${seconds} seconds.` }], details: { seconds, wakeAt } };
         }
         let progress = Promise.resolve();
         let result;
@@ -674,6 +683,19 @@ export class DurableAgent {
         };
       },
     };
+  }
+
+  private async authorizeConfiguration(api: Pick<HookApi, "conversationId">, callContext: Context): Promise<void> {
+    await retryAgentConfigurationAccess(() => awaitWithContext(this.checkConfigurationAccess(), callContext), {
+      signal: callContext.abortSignal, delayMs: this.options.retryDelayMs,
+      onRetry: async (attempt, error) => {
+        await this.harness!.commit(async tx => {
+          await tx.appendEntry(api.conversationId, { kind: "project.retry", data: {
+            attempt, maxAttempts: AGENT_PROVIDER_MAX_RETRIES, kind: "dropped", reason: error.message,
+          } });
+        }, callContext);
+      },
+    });
   }
 
   private async approve(raw: ToolCall, callContext: Context, prefix = ""): Promise<ApprovalResult> {

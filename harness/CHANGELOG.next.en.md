@@ -1,5 +1,8 @@
 # Unreleased
 
+- [Fix] Default child-agent concurrency to three, durably queue excess work and fill released slots. Retry run configuration authorization up to ten times before continuing the same task.
+- [New] Add cancellable `sleep({ seconds })` with a persisted deadline so recovery waits only the remaining time. Remove host-disabled built-in and custom tools from model tool lists.
+
 - Added declared read-only Workflow operations for local knowledge cards and Kanban previews, with per-request host checks that reject preview writes.
 
 - [Fix] Resolve the generator's exact CLI version from the adjacent CLI package without depending on bundled examples, keeping SDK and CLI versions independent.

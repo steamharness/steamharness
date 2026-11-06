@@ -25,9 +25,12 @@ Model failures use the same bounded retry policy regardless of HTTP status, prov
 | `max_output_tokens` reached | Continue from preserved text with a separate budget of two; exhaustion asks for a larger `maxTokens` or a smaller request |
 | Tool-use stop reason with no tool block | Continue as `lost-call`, sharing the connection budget |
 | Explicit user stop | Interrupt model, tools, and backoff; do not resume automatically |
-| Storage, permission, configuration, or host-callback failure | Report directly instead of retrying as a model failure |
+| Run configuration authorization failure (`CONFIGURATION_FORBIDDEN`) | Refresh current access and validate the original configuration, with at most 10 retries, exponential backoff and at most eight seconds per wait; no model request or tool execution proceeds before validation succeeds |
+| Other storage, tool permission, configuration, or host-callback failure | Report directly instead of retrying as a model failure |
 
 Model errors during request creation, stream iteration, result retrieval, summarization, and deferred response retrieval are handled at the call boundary. Errors retain upstream reasons and bounded `code`, `status`, `statusCode`, and `cause` fields without serializing headers or complete request/response objects.
+
+`This run configuration is not available to this account.` uses the configuration authorization budget, separate from model and child-work retries. Every check validates the original configuration snapshot. The same task continues after access recovers; a persistent denial reports the original error. Cancellation interrupts backoff. Retries never relax authorization or replay completed tools.
 
 ## Preserved state
 

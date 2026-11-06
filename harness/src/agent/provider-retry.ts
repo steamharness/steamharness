@@ -1,8 +1,27 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { normalizeAssistantError } from "./stream-error";
+import { ProjectConfigurationError } from "../configuration";
 
 /** One initial model request plus at most ten fallback requests. */
 export const AGENT_PROVIDER_MAX_RETRIES = 10;
+
+/** Revalidate the same frozen configuration before allowing a model or tool request. */
+export async function retryAgentConfigurationAccess(check: () => Promise<void>, options: {
+  signal?: AbortSignal; delayMs?: number; onRetry?: (attempt: number, error: Error) => Promise<void>;
+} = {}): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    options.signal?.throwIfAborted();
+    try { await check(); options.signal?.throwIfAborted(); return; }
+    catch (error) {
+      options.signal?.throwIfAborted();
+      if (!(error instanceof ProjectConfigurationError) || error.code !== "CONFIGURATION_FORBIDDEN"
+        || attempt >= AGENT_PROVIDER_MAX_RETRIES) throw error;
+      await options.onRetry?.(attempt + 1, error);
+      await waitBeforeRetry(attempt + 1, options.signal, options.delayMs);
+      options.signal?.throwIfAborted();
+    }
+  }
+}
 
 /** Retry decisions use the response state, never provider-specific error text. */
 export async function retryAssistantResponse(

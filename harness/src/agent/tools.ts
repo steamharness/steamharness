@@ -9,6 +9,7 @@ import {
 } from "./ask";
 import type { AgentQuestion } from "./types";
 import { pageInteger } from "./result-pages";
+import { setTimeout as delay } from "node:timers/promises";
 
 /**
  * The subset of TypeBox this module needs. Passed in by the runtime so the SDK
@@ -48,12 +49,13 @@ export const BUILTIN_AGENT_TOOL_NAMES = [
   "grep",
   "find",
   "ls",
+  "sleep",
 ] as const;
 
 export type BuiltinAgentToolName = (typeof BUILTIN_AGENT_TOOL_NAMES)[number];
 
 /** Tools that only observe the workspace; the `read-only` policy keeps just these. */
-export const READ_ONLY_AGENT_TOOL_NAMES: readonly string[] = ["read", "grep", "find", "ls"];
+export const READ_ONLY_AGENT_TOOL_NAMES: readonly string[] = ["read", "grep", "find", "ls", "sleep"];
 
 /** Tools whose effect leaves the process; these always pause for approval under `workspace`. */
 export const MUTATING_AGENT_TOOL_NAMES: readonly string[] = ["write", "edit", "bash"];
@@ -81,6 +83,7 @@ export const BUILTIN_AGENT_TOOL_CATALOG: readonly BuiltinAgentToolDescriptor[] =
   { name: "grep", label: "Search", description: "按正则表达式搜索文件内容。" },
   { name: "find", label: "Find files", description: "按路径子串查找文件。" },
   { name: "ls", label: "List", description: "列出目录内容。" },
+  { name: "sleep", label: "Sleep", description: "等待指定秒数，可取消，不执行 shell 命令。" },
 ];
 
 const DEFAULT_READ_LIMIT = 400;
@@ -150,7 +153,34 @@ export function createBuiltinAgentTools(input: {
     createGrepTool(input),
     createFindTool(input),
     createLsTool(input),
+    createSleepTool(input),
   ].map(tool => ({ ...tool, replay: READ_ONLY_AGENT_TOOL_NAMES.includes(tool.name) ? "safe" : "never" })) as unknown as AgentTool[];
+}
+
+export function agentSleepSeconds(args: unknown): number {
+  const seconds = (args as { seconds?: unknown } | null)?.seconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0 || seconds > 3600) {
+    throw new Error("sleep requires seconds between 0 and 3600.");
+  }
+  return seconds;
+}
+
+export async function waitForAgentSleep(wakeAt: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  await delay(Math.max(0, wakeAt - Date.now()), undefined, { signal });
+}
+
+function createSleepTool({ Type }: { Type: TypeboxLike }) {
+  return {
+    name: "sleep", label: "Sleep",
+    description: "Wait for seconds (0-3600) without running shell commands. Cancellable. Use for a timed pause before checking background work. For a named subagent's result, prefer subagent action=wait with its taskId.",
+    parameters: Type.Object({ seconds: Type.Number({ minimum: 0, maximum: 3600, description: "Seconds to wait; fractional values are allowed." }) }),
+    async execute(_id: string, args: unknown, signal?: AbortSignal) {
+      const seconds = agentSleepSeconds(args);
+      await waitForAgentSleep(Date.now() + seconds * 1000, signal);
+      return { content: [{ type: "text" as const, text: `Waited ${seconds} seconds.` }], details: { seconds } };
+    },
+  };
 }
 
 export function selectAgentToolNames(

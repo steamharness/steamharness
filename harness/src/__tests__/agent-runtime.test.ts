@@ -524,7 +524,7 @@ test("a read-only policy offers the model no mutating tools", async () => {
     const agent = (runtime as unknown as { agent?: { state: { tools: Array<{ name: string }> } } }).agent;
     assert.ok(agent, "runtime must have created an agent");
     const names = agent.state.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["find", "grep", "ls", "read"]);
+    assert.deepEqual(names, ["find", "grep", "ls", "read", "sleep"]);
     assert.deepEqual(seen, []);
   });
 });

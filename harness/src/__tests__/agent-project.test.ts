@@ -252,7 +252,7 @@ test("createEmbeddedBotExecutor produces a complete conversation executor", () =
   assert.equal(executor.tokenUsage?.enabled, true);
 
   const toolNames = (executor.tools ?? []).map((tool) => tool.name).sort();
-  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "update_plan", "write"]);
+  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "sleep", "update_plan", "write"]);
 
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
@@ -320,6 +320,28 @@ test("a project-fixed permission reaches the real agent despite an explicit inpu
     assert.equal(offered.includes("bash"), false);
     assert.ok(JSON.stringify(result.items).includes("Business answer"));
   });
+});
+
+test("host-disabled tools stay out of model requests while sleep remains usable", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  const requests: string[] = [];
+  faux.setResponses([
+    request => { requests.push(JSON.stringify(request)); return ai.fauxAssistantMessage([ai.fauxToolCall("sleep", { seconds: 0.001 })], { stopReason: "toolUse" }); },
+    request => { requests.push(JSON.stringify(request)); return ai.fauxAssistantMessage("Waited"); },
+  ]);
+  const context = createContext("host-disabled-shell");
+  context.toolPermissions = createProjectToolPermissionContext({ definitions: [
+    ...readAgentToolDefinitions().map(tool => ({ ...tool, enabled: tool.name === "sleep" })),
+    { name: "disabled_custom", enabled: false, autoApprove: true },
+  ], projectName: "disabled-tools", runId: "disabled-tools" });
+  const project = createCoreBotProject({ models, resolvedModel: model, createTools: () => [{
+    name: "disabled_custom", label: "Disabled", description: "Disabled custom tool", parameters: ai.Type.Object({}),
+    execute: async () => { assert.fail("Disabled custom tools must never run"); },
+  }] });
+  const result = await project.run({ errCode: 0, errMessage: "", prompt: "Wait for background progress", permissionPolicy: "auto" }, context);
+  assert.equal(result.toolCallCount, 1);
+  assert.match(requests.join(""), /Waited 0.001 seconds/);
+  assert.doesNotMatch(requests.join(""), /"name":"(?:bash|read|write|edit|grep|find|ls|disabled_custom)"/);
 });
 
 test("declared skill roots supply the real skill tool, preserve the custom tool lifecycle and obey disabled permissions", async () => {

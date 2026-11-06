@@ -1075,7 +1075,8 @@ Bot 使用 `steamharness.defineBot`，参见本节的固定契约。
 - **不依赖 AI 的存储分叉。** 没有活动 owner 时，宿主可调用 `steamharness.forkStoredAgentConversation({ persistence, conversationId, command: { type: "fork", requestId, entryId, targetId? } })`，其中 conversationId 是 workflow 会话 ID。该 API 要求恰有一个服务端 Agent session 并取得执行租约，与活动 fork 共用文档继承及持久回执，不加载项目、不校验 AI 凭据、不恢复待执行任务。活动 owner 使用原控制通道执行 fork；不要为分叉重新运行工作流。
 - **独立对话分支。** Core 的 fork 保留同库历史关系；CLI Web / Studio 用户创建的分支必须再通过 `steamharness.isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 复制成新 workflow 会话的独立根服务端会话。targetId 使用 forkId；该 API 一致读取源库而不执行恢复，保留可见历史与 asOf 文档检查点，即使内容相同也保留文档版本变化和删除后重建身份，不导入任务、提交队列、审批、provider 身份或用量。宿主独立复制附件并用 replacements 更新文件 ID/路径；无活动 owner 可 retireSource，有 owner 通过控制通道 delete 旧内部分支。新的分支模型、Plan、权限、停止、删除、执行锁和恢复独立于原会话；来源元数据仅用于导航，不作执行 owner。
 - **重连与占用。** 重连已有 session 时使用 `createAgentSessionHost(scopeId, { resume: true })`，只重建工具、控制通道并恢复任务，不重发 workflow 初始消息；新输入使用 submit 命令。忙碌拒绝不持久化为原任务失败。Plan 审批和 hostInput 不使用此重连模式。CLI Web / Studio 对重复打开的同一会话显示只读提示，不同会话可并行；同一服务端会话的内部分叉由同一 owner 调度。 宿主失去控制连接时调用返回对象的 `suspend()`，等待 workflow 退出并释放资源，保留未完成输入与检查点；`close()` 等待当前工作结束，主动停止使用 `cancel`，不得把断开控制连接当作取消。
-- **模型兜底重试。** 所有模型请求错误统一最多重试 10 次，不按错误文本、HTTP 状态或供应商错误码筛选；流式、持久会话、延迟响应与压缩摘要均适用。保留每次用量、已生成正文和已完成工具结果；失败响应内的工具调用不执行，失败和取消不推进队列。主动停止立即打断退避。配置、权限、存储和宿主回调错误直接报告，不将其包装成模型错误，也不借重试绕过权限或重放结果未知的外部写入。
+- **模型兜底重试。** 所有模型请求错误统一最多重试 10 次，不按错误文本、HTTP 状态或供应商错误码筛选；流式、持久会话、延迟响应与压缩摘要均适用。保留每次用量、已生成正文和已完成工具结果；失败响应内的工具调用不执行，失败和取消不推进队列。主动停止立即打断退避。运行配置授权校验失败（CONFIGURATION_FORBIDDEN）单独重新读取权限并校验原快照，最多额外重试 10 次，退避上限 8 秒；成功前不执行模型或工具请求，持续拒绝仍报告原错误。其他配置、工具权限、存储和宿主回调错误直接报告，不借重试放宽权限或重放未知写入。
+- **等待与工具禁用。** 内置 `sleep({ seconds })` 接受 0–3600 秒（可带小数），可取消，不执行 shell。持久化截止时间，恢复只等剩余时间；read-only 下仍可用，宿主可明确禁用。等待命名工作优先 `subagent({ action: "wait", taskId })`，定时查询批次前用 sleep，不用 bash sleep 或高频轮询。宿主禁用的内置及自带工具不提供给模型，调用仍校验权限。
 - **快照与界面。** `session` 事件或 `metadata.kind: "agent-session"` 辅助输出提供 version、ownerId/revision、tasks/history、turns、contexts、plan、records、receipts、usage 和配置/提示摘要。宿主按 ownerId/revision 接受完整快照，以 receipt 补回丢失确认，不把快照当正文。Studio Trace 提供轨迹、任务、计划、记录、用量五个视图；CLI Web 保留正文、队列与分叉入口，正文 markdown 始终平铺。工具任务 arguments 保存提交参数（非修复或 hooks 后的审计），活动和完成历史均可逐层查看。历史工具按 assistant entry 关联，跨轮复用 call ID 不串任务；流式工具事件 toolCallId 是稳定的不透明展示身份。审批绑定持久 conversation/task/call ID，暂停恢复沿用原决定，后续同 ID、同参数的独立调用重新校验权限。reset 在输入边界进入新世代，保留旧正文；fork 在同一存储会话内新建独立 Harness conversation、provider 身份和队列，不复制活动任务或审批，计划依 planFork 继承。取消 foreground 不跨后台边界，all 包含 owned 子会话但不跨独立 fork，task 校验所属会话。删除子视图会取消并隐藏该子会话，根会话删除才回收底层存储。 未完成轮次的 `reason` 为原因码，`detail` 保留具体模型错误或重试耗尽原因；`model_error` 等显示失败，只有持久取消 `aborted` 显示已停止。未取消请求收到 provider aborted 按断流预算恢复，真实 Stop 不重试。
 - **session 的配置与压缩。** 普通 Agent 与 session 都通过 Durable 阈值/溢出压缩事务在每次模型请求前检查，默认达到窗口的 90% 时先压缩；compact 可在活动任务期间提交并与其协调。运行中不允许通过 CLI 参数切换模型、权限或工作目录，空闲后提交会重建工具和 bridge；fork/子视图在主会话修改这些工作流参数。Core configure 使用版本 CAS，仅切换已注册模型/effort，在下一请求生效，不序列化凭据；提示只记录摘要和版本。Plan 模式及 hostInput 不持有 session lease，审批仍按原流程暂停。
 - **持久扩展与任务。** 用 `steamharness.createAgentRegistry()`、`steamharness.defineAgentTask<Input, Checkpoint, Result>()`、`steamharness.defineAgentExtension()` 创建项目 registry，通过 `session.registry` 安装；`steamharness.defineAgentDoc()` 声明同事务业务文档，`steamharness.agentHook(steamharness.AgentToolTask / steamharness.AgentGenerationTask, hooks)` 安装工具或模型 hooks。任务定义必须提供稳定 name/version、initial、各 phase 和 abort；每个 phase 通过 `runtime.commit()` 保存进度或终态，依赖用 waiting/on/policy，定时用 `runtime.sleep(绝对毫秒时间, context)`，将同一时间存入 checkpoint.wakeAt 供侧栏展示。宿主 `task` 命令带 name、严格 JSON input（最多 256 KiB）及可选 background；Date、Map、函数、非有限数等在记录 requestId 前拒绝，receipt 与创建任务原子保存，同 requestId 不重复创建。不要覆盖 `pi.*`、`steamharness.*` 名称或已有工具。registry 热更新采用不可变快照，在途工具/hook 固定实现；定义缺失或不兼容在重新调度/重开时 blocked，重新安装兼容定义后唤醒。
@@ -1385,7 +1386,7 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 const session = {
   subagents: {
     tools: ["read", "grep", "write"],
-    maxAgents: 4,
+    maxAgents: 3,
     definitions: [
       { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
         tools: ["read", "grep"], maxConcurrency: 3 },
@@ -1396,7 +1397,7 @@ const session = {
 };
 ```
 
-`maxAgents: null` 不设总并发上限；角色的 `maxConcurrency: null` 不设该角色上限，省略时沿用会话上限。正整数上限仍使用持久 FIFO 队列；工作重试预算独立计数，写入一致性由事务、锁和幂等回执维护。
+省略 `maxAgents` 默认同一父会话最多执行 3 个子 Agent，其余为 queued，不启动子模型；结束后按 FIFO 自动补位。命名、匿名和业务批量委派共用槽位。`maxAgents: null` 显式取消总上限；角色 `maxConcurrency: null` 只取消角色上限，总上限仍有效。省略角色上限时沿用会话上限；工作重试预算独立，写入一致性由事务、锁和幂等回执维护。
 
 `AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
 

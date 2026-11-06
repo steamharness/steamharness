@@ -31,7 +31,7 @@ const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
 const validConcurrency = (value: number | null | undefined) => value == null || Number.isSafeInteger(value) && value > 0;
-const concurrencyLimit = (value: number | null | undefined) => value === null ? Infinity : value ?? 4;
+const concurrencyLimit = (value: number | null | undefined) => value === null ? Infinity : value ?? 3;
 const validWorkRetry = (retry: AgentDefinition["retry"]) => !retry || Number.isSafeInteger(retry.maxAttempts)
   && retry.maxAttempts >= 1 && retry.maxAttempts <= 10 && Number.isSafeInteger(retry.delayMs ?? 1000)
   && (retry.delayMs ?? 1000) >= 0 && (retry.delayMs ?? 1000) <= 60_000;
@@ -118,6 +118,7 @@ export class DurableAgentSession {
     if (this.options.subagents) tools.push({
       name: "subagent", description: [
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
+        "Excess work queues automatically. Use action=wait with taskId for named work, or sleep for a timed pause before checking background progress; do not use bash to sleep.",
         ...(definitions.length ? ["Named work: action=spawn, agentId, stable workId, task, background=true. Capacity limits queue work durably.",
           "Management actions: list; get/wait/stop/retry with taskId; send with taskId, task and mode (steer/followUp). Retry continues committed context and requires reconciliation of uncertain side effects.",
           "Project-configured automatic work retries are bounded. Wait while they run; after the budget is exhausted, report the failure and stop retrying. Do not create a new workId or batch to bypass the limit.",

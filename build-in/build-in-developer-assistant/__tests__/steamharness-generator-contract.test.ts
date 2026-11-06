@@ -154,7 +154,7 @@ describe("steamharness-generator contract", () => {
       when: { param: "plan", value: "true" } }]);
     expect(structure.conversation?.commands?.map(command => command.command)).toEqual(["export", "compact"]);
     expect(structure.conversation?.userInput).toEqual({ effects: [{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }] });
-    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls", "update_plan"]);
+    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls", "sleep", "update_plan"]);
     expect(structure.conversation?.openai?.outputItemId).toBe("agent-answer");
     expect(structure.conversation?.recovery).toEqual({ enabled: true, startup: "automatic" });
     expect(structure.tokenUsage).toEqual({ enabled: true, display: true });

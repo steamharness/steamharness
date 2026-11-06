@@ -17,7 +17,7 @@ description: "声明角色、控制并发、报告进度，并恢复失败工作
 const session = {
   subagents: {
     tools: ["read", "grep", "write"],
-    maxAgents: 4,
+    maxAgents: 3,
     definitions: [
       { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
         tools: ["read", "grep"], maxConcurrency: 3 },
@@ -28,7 +28,9 @@ const session = {
 };
 ```
 
-`maxAgents: null` 不设总并发上限；角色的 `maxConcurrency: null` 不设该角色上限，省略时沿用会话上限。其他项目仍可设置正整数上限并使用持久 FIFO 等待队列。并发数量与工作重试预算独立，写入一致性由项目事务、锁和幂等回执维护。
+省略 `maxAgents` 时，同一父会话最多并行执行 3 个子 Agent。超出上限的工作保持 `queued`，不启动子模型；活动工作结束后按 FIFO 顺序自动补位。命名角色、匿名委派和业务批量派发共用上限，主 Agent 不占子 Agent 槽位。
+
+`maxAgents: null` 显式取消总并发上限；角色的 `maxConcurrency: null` 只取消该角色的上限，总上限仍生效。省略角色上限时沿用会话上限。并发数量与工作重试预算独立，写入一致性由项目事务、锁和幂等回执维护。
 
 `AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
 
@@ -64,6 +66,8 @@ Tasks 的 `attempt` 更新，最终结果只回传一次。达到上限后停止
 `send` 遇到正常的生命周期变化会返回送达回执，工具调用不因此报错；应先检查 `messageDelivery`，不能把 `not_running` 当成消息已送达。完成项用 `get` 读取结果，失败或取消项明确 `retry` 后继续。批次任务 ID 不能用于子 Agent 管理，应使用项目的批次工具。直接向已结束子会话提交输入仍会拒绝，避免绕过并发槽位或取消状态。
 
 原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
+
+等待单个命名工作时调用 `subagent({ action: "wait", taskId })`；需要过一段时间再查询批次进度时，调用 `sleep({ seconds: 180 })`。`sleep` 支持取消，不需要启用 `bash`，等待期间后台子 Agent 继续执行。
 
 显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。
 

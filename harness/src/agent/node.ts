@@ -15,6 +15,7 @@ import type { NodeContext, UserInputRequest } from "../types/index";
 import { createToolApprovalGate } from "../tool-permissions/index";
 import { HarnessError } from "../workflow/errors";
 import { assertCurrentProjectConfigurationAccess } from "../configuration";
+import { retryAgentConfigurationAccess } from "./provider-retry";
 import { resolveAgentSystemAIInput } from "./model-resolution";
 export { resolveAgentSystemAIInput } from "./model-resolution";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
@@ -242,7 +243,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     // provider and model come from the host's catalogue names a credential,
     // not a provider the SDK knows, so building the runtime from the raw input
     // would fail on an "unknown model" before the bridge is ever considered.
-    await assertCurrentProjectConfigurationAccess();
+    await retryAgentConfigurationAccess(assertCurrentProjectConfigurationAccess, { signal: context.abortSignal });
     const system = await resolveAgentSystemAIInput({ ...input,
       requestId: input.requestId ?? `${String(context.metadata?.["runId"] ?? randomUUID())}:${this.name}`,
     }, this.options, context.abortSignal);
@@ -698,6 +699,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       modelAttributes: input.modelAttributes ?? this.options.modelAttributes,
       sessionId: key,
       permissionPolicy: resolveAgentPermissionPolicySetting(input.permissionPolicy ?? this.options.permissionPolicy),
+      isToolEnabled: name => context.toolPermissions?.getTool(name)?.enabled !== false,
     };
 
     return createAgentRuntime({

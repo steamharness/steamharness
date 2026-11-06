@@ -9,6 +9,7 @@ import { DurableAgent } from "../agent/durable-agent";
 import type { AgentSessionSnapshot } from "../agent/session-types";
 import { projectSessionEntries, projectSessionUsage } from "../agent/session";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "../agent/web-search";
+import { createBuiltinAgentTools } from "../agent/tools";
 
 function latch() {
   let resolve!: () => void;
@@ -31,6 +32,34 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("sleep resumes its committed deadline after a host restart without starting the full delay again", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-sleep-recovery-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite");
+  const sleep = createBuiltinAgentTools({ Type: ai.Type, scope: { workdir: directory, allowedDirectories: [directory] } }).find(tool => tool.name === "sleep")!;
+  const first = session({ compaction: { enabled: false } }, database);
+  first.instance.state.tools = [sleep];
+  first.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("sleep", { seconds: 180 })], { stopReason: "toolUse" })]);
+  const running = first.instance.prompt("Wait for progress");
+  t.after(async () => { first.suspend.resolve(); await running; await first.instance.close(); });
+  await until(() => JSON.stringify(first.snapshot() ?? {}).includes("wakeAt"));
+  const wakeAt = Number(/"wakeAt":(\d+)/.exec(JSON.stringify(first.snapshot()))![1]);
+  first.suspend.resolve(); await running; await first.instance.close();
+  const realNow = Date.now.bind(Date);
+  t.mock.method(Date, "now", () => realNow() + 181_000);
+  const second = session({ compaction: { enabled: false } }, database, true);
+  second.instance.state.tools = [sleep];
+  second.faux.setResponses([request => {
+    assert.match(JSON.stringify(request.messages), /Waited 180 seconds/);
+    return ai.fauxAssistantMessage("Finished waiting");
+  }]);
+  const resumed = second.instance.prompt("Do not submit this bootstrap");
+  t.after(async () => { second.lease.resolve(); await resumed; await second.instance.close(); });
+  await until(() => second.snapshot()?.turns[0]?.status === "done");
+  assert.equal(second.faux.state.callCount, 1);
+  assert.ok(wakeAt < Date.now(), "The original persisted deadline has elapsed");
+});
 
 test("restored failed responses never display unexecuted tool calls as running", () => {
   const failed = ai.fauxAssistantMessage([ai.fauxText("Retained output"), ai.fauxToolCall("inspect", {})], {

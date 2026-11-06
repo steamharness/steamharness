@@ -40,7 +40,7 @@ test("admission races release losing task subscriptions on every wakeup and on f
   }
   await assert.rejects(waitForAgentWorkChange(ids, async () => { throw new Error("storage unavailable"); }, BACKGROUND_CONTEXT), /storage unavailable/);
 });
-function fixture(databasePath?: string, definitions = roles, resumeSession = false, interruptSession = false, allowedModels: { provider: string; modelId: string }[] = [], nativeTools: AgentSessionOptions["nativeTools"] = [], maxAgents: number | null = 4) {
+function fixture(databasePath?: string, definitions = roles, resumeSession = false, interruptSession = false, allowedModels: { provider: string; modelId: string }[] = [], nativeTools: AgentSessionOptions["nativeTools"] = [], maxAgents?: number | null) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 200 }, { id: "alternate", reasoning: true, contextWindow: 100_000, maxTokens: 200 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch(), suspend = latch();
@@ -100,8 +100,45 @@ test("named management uses its action when a gateway populates legacy result fi
   assert.equal(f.snapshot().agents?.length, 0, "Listing must never spawn the filled placeholder work");
 });
 
+test("13 delegations default to three active children and automatically admit queued work", async t => {
+  const gates = Array.from({ length: 13 }, latch), started: number[] = [];
+  let active = 0, maximum = 0;
+  const f = fixture(undefined, [{ ...roles[0], maxConcurrency: null }], false, false, [], [{
+    name: "research", description: "Research", parameters: ai.Type.Object({ index: ai.Type.Number() }), replay: "safe",
+    execute: async (args) => {
+      const index = (args as { index: number }).index;
+      started.push(index); maximum = Math.max(maximum, ++active);
+      try { await gates[index].promise; return { output: [ai.fauxText("Done")] }; }
+      finally { active--; }
+    },
+  }]);
+  f.faux.setResponses(Array.from({ length: 50 }, () => (request: ai.TranscriptContext) => {
+    const work = request.messages.find(message => message.role === "user" && /^source-\d+$/.test(String(message.content)));
+    if (work && !request.messages.some(message => message.role === "toolResult")) {
+      return ai.fauxAssistantMessage([ai.fauxToolCall("research", { index: Number(String(work.content).slice(7)) })], { stopReason: "toolUse" });
+    }
+    return ai.fauxAssistantMessage("Finished");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { gates.forEach(gate => gate.resolve()); f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const ids: number[] = [];
+  for (let index = 0; index < 13; index++) ids.push((await f.agent.control({ type: "subagent", action: "spawn", requestId: `default-${index}`,
+    agentId: "researcher", workId: `default-${index}`, prompt: `source-${index}`, background: true })).taskId!);
+  await until(() => active === 3 && f.snapshot().agents?.filter(work => work.status === "queued").length === 10);
+  assert.deepEqual([...started].sort(), [0, 1, 2]);
+  assert.ok(f.snapshot().agents!.filter(work => work.status === "queued").every(work => work.childConversationId === undefined), "Queued work must not create a child or call its model");
+  await f.agent.control({ type: "subagent", action: "stop", requestId: "cancel-last", taskId: ids[12] });
+  gates[0].resolve();
+  await until(() => started.includes(3));
+  assert.equal(active, 3); assert.equal(started.length, 4);
+  gates.forEach(gate => gate.resolve());
+  await until(() => f.snapshot().agents?.filter(work => work.status === "completed").length === 12);
+  assert.equal(maximum, 3); assert.equal(new Set(started).size, 12); assert.ok(!started.includes(12));
+});
+
 test("30 named work items overlap at 3 researchers and 1 writer, with durable FIFO admission and isolated prompts", async t => {
-  const f = fixture(), gate = latch(); let researchers = 0, writers = 0, maxResearchers = 0, maxWriters = 0;
+  const f = fixture(undefined, roles, false, false, [], [], 4), gate = latch(); let researchers = 0, writers = 0, maxResearchers = 0, maxWriters = 0;
   const finished: string[] = [];
   for (const [name, writer] of [["research", false], ["record", true]] as const) f.agent.state.tools.push({
     name, label: name, description: name, replay: "safe", parameters: ai.Type.Object({ id: ai.Type.String() }),
