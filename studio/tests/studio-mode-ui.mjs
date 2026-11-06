@@ -267,16 +267,20 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         return animate.call(this, frames, options);
       };
     });
-    await steam.click(); await page.locator('.studio-steam-tools').waitFor({ timeout: 90_000 });
+    await steam.click(); await page.locator('.studio-steam-tools').waitFor({ state: 'attached', timeout: 90_000 });
     await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
     assert.equal(await page.locator('.studio-steam-tool').count(), 10);
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
-    assert.equal(during.auxiliarybar.visible, true);
+    assert.equal(during.auxiliarybar.visible, false);
     assert.equal(during.titlebar.visible, false); assert.equal(during.statusbar.visible, false);
     assert.equal(await layoutButtons.count(), 0);
     const toggleTools = page.locator('.studio-steam-toggle-tools');
     await toggleTools.waitFor();
+    assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Show Tools' : '显示工具区');
+    assert.equal(await toggleTools.getAttribute('aria-expanded'), 'false');
+    await toggleTools.click();
+    await until(partState, state => state.auxiliarybar.visible, 'Tools did not open on request');
     assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Hide Tools' : '隐藏工具区');
     assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
     const trailingControl = await toggleTools.evaluate(toggle => {
@@ -757,9 +761,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         assert.equal(restored[part].visible, before[part].visible, part);
         if (before[part].visible) { assert.ok(Math.abs(restored[part].width - before[part].width) < 2, part); }
       }
-      await command('studio.enterSteamMode'); await assertToolsWidth(600);
+      await command('studio.enterSteamMode'); await command('studio.openSteamTools'); await assertToolsWidth(600);
       await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse before leaving Steam');
-      await command('studio.enterIdeMode'); await command('studio.enterSteamMode'); await assertToolsWidth(600);
+      await command('studio.enterIdeMode'); await command('studio.enterSteamMode'); await command('studio.openSteamTools'); await assertToolsWidth(600);
       check(`${language}: opening tools and files or switching modes preserves both the Steam preference and the separate IDE layout`);
       for (const [preferred, narrow, hidden] of [[630, false, false], [700, true, true]]) {
         await resizeTools(preferred);
@@ -1209,6 +1213,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await command('studio.enterIdeMode'); await command('studio.enterSteamMode');
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: reduced motion skips transition effects`);
+    await command('studio.internalOpenSteamTool', 'editor');
     await call({ action: 'file', path: toolsFile, column: 1 });
     await instanceList.locator('.tab').filter({ hasText: 'tools-only.txt' }).waitFor();
     await page.locator('.studio-steam-editors:visible .view-line').first().click({ trial: true });

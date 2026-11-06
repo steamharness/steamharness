@@ -1,5 +1,7 @@
 # Unreleased
 
+- Align Steam mode project icons and toolbar buttons. The tools area starts collapsed when entering Steam mode or reopening a window, while manual opening retains its tabs and width.
+
 - Open Server project in connection guidance now uses the Studio host and current sign-in, with visible errors when opening fails, fixing navigation blocked by the embedded page.
 - Breaking: project creation, discovery and type labels now use Bot, with templates built directly on Core Agent and native conversation, Workflow and Kanban views.
 
