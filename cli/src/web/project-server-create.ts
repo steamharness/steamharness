@@ -30,7 +30,7 @@ export class ProjectServerCreation {
     private readonly identity: () => string, private readonly issue: () => ProjectServerIssue | undefined,
     private readonly beforeIdentityChange: () => Promise<void> = async () => {}) {}
 
-  async prepare(): Promise<ProjectServerCreateContext> {
+  async prepare(personal = false): Promise<ProjectServerCreateContext> {
     const connection = this.connection(), identity = this.identity(), issue = this.issue(), generation = this.generation;
     if (!connection || !identity) throw new Error(t('Sign in with an account before creating a Server project.'));
     if (this.project.assistant || issue?.kind !== 'project-unavailable' || issue.projectId && issue.projectId.toLowerCase() !== this.project.id.toLowerCase()) {
@@ -44,7 +44,7 @@ export class ProjectServerCreation {
     const existing = await this.request(connection, `/api/projects/${encodeURIComponent(this.project.id)}`, abort.signal, true);
     if (existing.status !== 404) throw new Error(t('The project is already available or needs access. Choose Check again before continuing.'));
     const groups: ProjectServerCreateContext['groups'] = [];
-    for (let page = 1; ; page++) {
+    for (let page = 1; !personal; page++) {
       const result = await this.request(connection, `/api/groups?minRole=developer&pageSize=100&page=${page}`, abort.signal);
       const data = result.data;
       if (!Array.isArray(data?.items) || !Number.isInteger(data.total) || data.total < 0 || page > 100) throw new Error(t('Could not load project groups. Try again.'));
@@ -59,7 +59,7 @@ export class ProjectServerCreation {
     for (const [token, confirmation] of this.confirmations) if (confirmation.expiresAt <= Date.now()) { confirmation.abort.abort(); this.confirmations.delete(token); }
     if (this.confirmations.size >= 8) throw new Error(t('Close an existing project creation dialog and try again.'));
     const context = { token: randomBytes(24).toString('hex'), serverUrl: connection.serverUrl, projectId: this.project.id,
-      projectType: this.project.projectType, name: this.project.name, groups };
+      projectType: this.project.projectType, name: this.project.aggregateName ?? this.project.name, groups };
     this.confirmations.set(context.token, { context, connection, identity, projectInfo, expiresAt: Date.now() + 10 * 60_000, busy: false, abort });
     return context;
   }

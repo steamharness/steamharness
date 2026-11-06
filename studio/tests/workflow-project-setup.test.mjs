@@ -25,6 +25,29 @@ test('native export support forwards content only from the trusted project frame
   assert.deepEqual(JSON.parse(JSON.stringify(exports())), [data]);
 });
 
+test('cloud project navigation uses the trusted host bridge and reports its outcome to the frame', () => {
+  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Bot', 'file:///project', 'dark', 'nonce');
+  const listeners = {}, sent = [], frameMessages = [], child = { postMessage: value => frameMessages.push(value) };
+  const frame = { contentWindow: child, addEventListener: (type, callback) => { listeners[type] = callback; }, set src(_value) { listeners.load(); } };
+  runInNewContext(html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1], {
+    URL, acquireVsCodeApi: () => ({ setState() {}, postMessage: value => sent.push(value) }),
+    document: { documentElement: { dataset: {} }, getElementById: () => frame },
+    addEventListener: (type, callback) => { listeners[type] = callback; },
+  });
+  assert.equal(frameMessages[0].serverProjectVersion, 1);
+  const data = { type: 'workflow-server-project', version: 1, requestId: 'open', projectId: 'current' };
+  const opened = () => sent.filter(message => message.type === 'workflow-server-project');
+  listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data });
+  listeners.message({ source: child, origin: 'http://foreign.test', data });
+  listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: { ...data, version: 2 } });
+  assert.equal(opened().length, 0);
+  listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data });
+  assert.deepEqual(JSON.parse(JSON.stringify(opened())), [data]);
+  const result = { type: 'workflow-host', serverProjectOpened: { version: 1, requestId: 'open' } };
+  listeners.message({ source: {}, data: result });
+  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages.at(-1))), result);
+});
+
 for (const enabled of [false, true]) {
   test(`project upload navigation is explicit and bound to the trusted project frame (enabled=${enabled})`, () => {
     const html = projectFrameHtml('http://127.0.0.1:3000/', 'Map', 'file:///map', 'dark', 'nonce', 'en', undefined, undefined, enabled);

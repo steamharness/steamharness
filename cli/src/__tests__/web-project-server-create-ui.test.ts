@@ -57,3 +57,15 @@ it('discards late preparation and account changes before confirmation', async ()
   await f.dialog.open(); f.state(2); expect(document.querySelector('dialog')).toBeNull();
   expect(f.request.mock.calls.some(([message]) => message.type === 'project-server-create-confirm')).toBe(false);
 });
+
+it('creates a personal cloud project in one click without a group dialog or duplicate submission', async () => {
+  const f = fixture();
+  const first = f.dialog.create(), duplicate = f.dialog.create();
+  expect(duplicate).toBe(first);
+  await first;
+  expect(document.querySelector('dialog')).toBeNull();
+  expect(f.request.mock.calls.map(([message]) => message)).toEqual([
+    { type: 'project-server-create-prepare', personal: true },
+    { type: 'project-server-create-confirm', token: 'confirmation', confirmed: true, name: '<Local map>' },
+  ]);
+});

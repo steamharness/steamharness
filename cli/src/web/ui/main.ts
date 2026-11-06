@@ -65,7 +65,7 @@ function initialize(): void {
   app.innerHTML = `
     <header class="toolbar">
       <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span><button id="conversation-source" class="conversation-source" hidden></button></div><span id="project-name" class="project-name"></span></div>
-      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
+      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="server-stop" class="icon-button" title="${t('Stop')}" aria-label="${t('Stop')}" hidden>${icon('debug-stop')}</button><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
@@ -114,10 +114,11 @@ function initialize(): void {
   let checkingServer = false;
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
-    create: () => { vscode.postMessage({ type: 'open-project-create' }); },
+    create: () => vscode.postMessage({ type: 'create-cloud-project' }),
     databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
     account: () => { vscode.postMessage({ type: 'open-account' }); },
     information: () => { if (state) dialogs.projectInfo(state.project); },
+    open: () => vscode.postMessage({ type: 'open-server-project' }),
     retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
   });
   let renderedProject = '';
@@ -615,7 +616,8 @@ function initialize(): void {
     serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, canCreate: !state.project.assistant, serverUrl: state.account?.serverUrl, entryId: state.project.entryId });
     const conversation = state.project.projectType === 'bot';
     const durable = state.project.conversation?.durable?.enabled === true;
-    const hidden = hideComposer();
+    const hidden = hideComposer() || serverBlocked() && !!state.serverData?.issue;
+    app.classList.toggle('project-server-blocked', serverBlocked() && !!state.serverData?.issue);
     if (composerArea.hidden !== hidden) {
       composerArea.hidden = hidden;
       if (hidden) {
@@ -645,6 +647,10 @@ function initialize(): void {
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
+    const serverStop = document.querySelector<HTMLButtonElement>('#server-stop')!;
+    serverStop.hidden = !serverBlocked() || !state.serverData?.issue || !state.running;
+    serverStop.disabled = !connectionAvailable || readOnly() || pendingStop;
+    serverStop.onclick = () => { void stopCurrent(); };
     const stop = state.conversationUi?.presentation !== 'composer' && state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput);
     updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : sendBlocked() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
     sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");

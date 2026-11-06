@@ -45,6 +45,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   };
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let projectSetupHost = false, userSettingsHost = false;
+  let serverProjectHost = false;
+  let currentProjectId: string | undefined;
+  const serverProjectRequests = new Map<string, { resolve(): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  addEventListener('pagehide', () => {
+    for (const pending of serverProjectRequests.values()) { clearTimeout(pending.timer); pending.reject(new Error(t('Connection interrupted.'))); }
+    serverProjectRequests.clear();
+  });
   let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false, downloadHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
@@ -147,6 +154,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let applicationId: string | undefined;
   const connection = new BrowserConnection(message => {
     if (message.type === 'state' && typeof message.project?.id === 'string') {
+      currentProjectId = message.project.id;
       if (applicationId && applicationId !== message.project.id) { location.reload(); return; }
       applicationId = message.project.id;
     }
@@ -209,6 +217,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       emit({ type: 'paths-dropped', target: dropTarget, paths: event.data.drop.paths });
     }
     if (event.data.projectSetupVersion !== undefined) { projectSetupHost = event.data.projectSetupVersion === 1; emit({ type: 'project-setup-available', upload: projectSetupHost }); }
+    if (event.data.serverProjectVersion === 1) serverProjectHost = true;
+    if (event.data.serverProjectOpened?.version === 1) {
+      const result = event.data.serverProjectOpened, pending = serverProjectRequests.get(result.requestId);
+      if (pending) { clearTimeout(pending.timer); serverProjectRequests.delete(result.requestId); result.error ? pending.reject(new Error(result.error)) : pending.resolve(); }
+    }
     if (event.data.resourceVersion === 1) { resourceHost = true; }
     if (event.data.databaseVersion !== undefined) databaseHost = event.data.databaseVersion === 1;
     if (event.data.databaseOpened?.version === 1) emit({ type: 'database-open-result', ...event.data.databaseOpened });
@@ -303,6 +316,27 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     postMessage: async (message) => {
       if (message.type === 'open-account') { accountPanel?.open(); return; }
       if (message.type === 'open-project-create') { void projectCreation.open(); return; }
+      if (message.type === 'create-cloud-project') { await projectCreation.create(); return; }
+      if (message.type === 'open-server-project') {
+        if (serverProjectHost && currentProjectId) {
+          const requestId = crypto.randomUUID();
+          return new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => { serverProjectRequests.delete(requestId); reject(new Error(t('Could not open the cloud project. Check your Server connection and try again.'))); }, 20_000);
+            serverProjectRequests.set(requestId, { resolve, reject, timer });
+            window.parent.postMessage({ type: 'workflow-server-project', version: 1, requestId, projectId: currentProjectId }, '*');
+          });
+        }
+        const popup = window.open('', '_blank');
+        if (!popup) throw new Error(t('Allow this page to open a new tab, then try again.'));
+        popup.opener = null;
+        try {
+          const replies = await connection.request({ type: 'project-server-open' });
+          const address = replies.find(reply => reply.type === 'project-server-open-url')?.url;
+          if (typeof address !== 'string' || !/^https?:\/\//.test(address)) throw new Error(t('Could not open the cloud project. Check your Server connection and try again.'));
+          popup.location.href = address;
+        } catch (error) { popup.close(); throw error; }
+        return;
+      }
       if (message.type === 'open-project-upload') {
         if (projectSetupHost) window.parent.postMessage({ type: 'workflow-project-upload', version: 1 }, '*');
         return;

@@ -9,6 +9,7 @@ export class ProjectServerCreateDialog {
   private dialog?: HTMLDialogElement;
   private identity?: string;
   private generation = 0;
+  private creating?: Promise<void>;
   constructor(private readonly request: (message: Message) => Promise<Message[]>) {}
   update(message: Message): void {
     if (message.type !== 'state') return;
@@ -17,6 +18,23 @@ export class ProjectServerCreateDialog {
     this.identity = identity;
   }
   close(): void { this.dialog?.close(); this.generation++; }
+  create(): Promise<void> {
+    if (this.creating) return this.creating;
+    const generation = this.generation;
+    const creating = (async () => {
+      const replies = await this.request({ type: 'project-server-create-prepare', personal: true });
+      const context = replies.find(reply => reply.type === 'project-server-create-context')?.context as ProjectServerCreateContext | undefined;
+      if (!context) throw new Error(t('The project or account changed. Check the connection again.'));
+      if (generation !== this.generation) {
+        await this.request({ type: 'project-server-create-cancel', token: context.token });
+        throw new Error(t('The project or account changed. Check the connection again.'));
+      }
+      const result = await this.request({ type: 'project-server-create-confirm', token: context.token, confirmed: true, name: context.name });
+      if (!result.some(reply => reply.type === 'project-server-created')) throw new Error(t('Could not create the Server project. Check the Server and project group, then try again.'));
+    })().finally(() => { if (this.creating === creating) this.creating = undefined; });
+    this.creating = creating;
+    return creating;
+  }
   async open(): Promise<void> {
     if (this.dialog) { this.dialog.focus(); return; }
     const generation = ++this.generation;

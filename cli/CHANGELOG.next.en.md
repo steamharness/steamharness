@@ -1,5 +1,6 @@
 # Unreleased
 
+- Server connection guidance now shows actions for the reported failure, supports one-click cloud project creation, and groups typed project/database checks. Blocking failures hide Bot input, Workflow forms, and Kanban controls while preserving drafts; cloud project navigation uses the host or an authenticated browser handoff.
 - Fixed CLI Web briefly showing the open-in-another-window warning while checking ownership after switching Bot conversations. Confirmed conflicts still show the read-only warning.
 
 - Fixed Bot Stop preserving queued inputs and showing Resume queue; stopping an exited owner cancels persisted work without restarting its old model.

@@ -263,11 +263,11 @@ it.each(['en', 'zh-CN'] as const)('offers recovery settings and explains project
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
   const guidance = document.getElementById('server-guidance')!;
   expect(guidance.hidden).toBe(false);
-  expect(guidance.textContent).toContain(language === 'en' ? 'new application with a new ID' : '用新 ID 新建应用');
-  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-account', 'server-guidance-information', 'server-guidance-retry']);
-  expect(document.getElementById('server-guidance-account')!.textContent).toBe(language === 'en' ? 'Account / Server settings' : '账号 / 服务器设置');
+  expect(guidance.textContent).toContain(language === 'en' ? 'new project ID' : '新的项目 ID');
+  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
+  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create project' : '创建项目');
+  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create cloud project' : '创建云端项目');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
   expect(document.getElementById('database-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
@@ -292,7 +292,7 @@ it.each(['en', 'zh-CN'] as const)('opens database management directly from block
   sendState(1, 'blocked', { kind: 'setup-required', database: 'annotations' });
   const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
   expect(action.hidden).toBe(false); expect(action.disabled).toBe(false);
-  expect(action.textContent).toBe(language === 'en' ? 'View linked databases' : '查看关联数据库');
+  expect(action.textContent).toBe(language === 'en' ? 'Configure database' : '配置数据库');
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message).toMatchObject({ type: 'databases', action: 'get' });
@@ -311,7 +311,7 @@ it('offers project creation without host upload support and hides it when access
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-upload')).toBeNull();
-  expect(document.getElementById('server-guidance-account')!.hidden).toBe(false);
+  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
@@ -325,13 +325,44 @@ it.each(['en', 'zh-CN'] as const)('keeps Kanban failure guidance stable while re
   const guidance = document.getElementById('server-guidance')!;
   const row = guidance.querySelector('li');
   const title = document.getElementById('server-guidance-title')!.textContent;
-  const information = document.getElementById('server-guidance-information')!; information.focus();
+  const information = document.getElementById('server-guidance-server')!; information.focus();
   sendState(2, 'blocked', undefined, { ...failed, checking: true });
   expect(guidance.hidden).toBe(false); expect(guidance.querySelector('li')).toBe(row);
   expect(document.getElementById('server-guidance-title')!.textContent).toBe(title);
   expect(document.activeElement).toBe(information);
-  expect(document.querySelector<HTMLAnchorElement>('#server-guidance-server')!.href).toBe('https://server.test/detail/map');
+  expect(document.getElementById('server-guidance-server')!.hidden).toBe(false);
+  expect(document.getElementById('methods')!.hidden).toBe(true);
   expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
   sendState(3, 'ready', undefined, { checking: false });
   expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+});
+
+it('opens the cloud project through the Studio host and shows navigation errors next to its action', async () => {
+  const { sendState } = await fixture('en');
+  const parent = { postMessage: vi.fn() }; vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
+  const popup = vi.spyOn(window, 'open');
+  window.dispatchEvent(new MessageEvent('message', { source: parent as unknown as Window, data: { type: 'workflow-host', serverProjectVersion: 1 } }));
+  sendState(1, 'failed', { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' });
+  const button = document.querySelector<HTMLButtonElement>('#server-guidance-server')!; button.click();
+  const request = parent.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'workflow-server-project');
+  expect(request).toMatchObject({ version: 1, projectId: 'map' }); expect(button.disabled).toBe(true); expect(popup).not.toHaveBeenCalled();
+  window.dispatchEvent(new MessageEvent('message', { source: parent as unknown as Window,
+    data: { type: 'workflow-host', serverProjectOpened: { version: 1, requestId: request.requestId, error: 'Unable to open Server Web' } } }));
+  await vi.waitFor(() => expect(document.getElementById('server-guidance-action-error')!.textContent).toBe('Unable to open Server Web'));
+  expect(button.disabled).toBe(false);
+});
+
+it('opens a standalone Server project tab using the authenticated handoff returned by its host', async () => {
+  const { sendState, fetcher } = await fixture('en');
+  sendState(1, 'failed', { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' });
+  const popup = { opener: window, location: { href: '' }, close: vi.fn() };
+  vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+  const url = `https://server.test/api/auth/browser-session?code=${'a'.repeat(43)}`;
+  fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
+    expect(JSON.parse(options.body).type).toBe('project-server-open');
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'project-server-open-url', url }] }) };
+  });
+  document.querySelector<HTMLButtonElement>('#server-guidance-server')!.click();
+  await vi.waitFor(() => expect(popup.location.href).toBe(url));
+  expect(popup.opener).toBeNull(); expect(popup.close).not.toHaveBeenCalled();
 });

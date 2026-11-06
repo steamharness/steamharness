@@ -76,3 +76,16 @@ button.project-check-row:focus-visible { outline: 1px solid var(--vscode-focusBo
   .project-check-row { grid-template-columns: 16px minmax(0, 1fr); }
   .project-check-result { grid-column: 2; text-align: left; }
 }
+.project-server-checks { margin: 18px 0; padding: 12px 16px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.project-server-checks h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.project-server-check-label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.project-server-check-name { font-weight: 500; }
+.project-server-check-kind { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.project-server-check-status { white-space: nowrap; }
+.project-server-check[data-status="passed"] .project-server-check-status { color: var(--vscode-testing-iconPassed, var(--vscode-descriptionForeground)); }
+.project-server-guidance-actions button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: transparent; }
+.project-server-guidance-actions button[hidden] { display: none; }
+.project-server-connection-details { margin-top: 16px; font-size: 12px; }
+.project-server-guidance .project-server-action-error { color: var(--vscode-errorForeground); }
+.project-server-blocked .project-server-guidance { max-height: none; }
+.project-server-blocked .composer-area[hidden], .project-server-blocked #workflow-form[hidden], .project-server-blocked #entrypoints[hidden], .project-server-blocked .toolbar-actions [hidden] { display: none; }

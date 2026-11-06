@@ -89,7 +89,7 @@ it.each([
   expect(retry.disabled).toBe(true);
   const row = guidance.querySelector('li');
   const title = document.getElementById('server-guidance-title')!.textContent;
-  const information = document.getElementById('server-guidance-information')!;
+  const information = document.getElementById('server-guidance-create')!;
   information.focus();
   await f.render({ ...failed, checking: true });
   expect(guidance.hidden).toBe(false);
@@ -183,7 +183,7 @@ it.each(['workflow', 'bot'] as const)('keeps Stop and recovery settings availabl
   const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, blocking:true, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
-  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('Check again');
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('registration');
   if (kind === 'bot') {
     expect(document.querySelector<HTMLButtonElement>('.queue-heading button')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(3)')!.disabled).toBe(true);
@@ -200,16 +200,15 @@ it.each([
   await f.render(failed);
   const guidance = document.getElementById('server-guidance')!;
   expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
-  expect(document.getElementById('server-guidance-steps')!.textContent).toContain(language === 'en' ? 'registered entries' : '已登记的入口');
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain(language === 'en' ? 'registration' : '项目登记');
   expect(document.getElementById('server-guidance-project-id')!.textContent).toBe(f.project.id);
   expect(document.getElementById('server-guidance-entry-id')!.textContent).toBe('main');
-  const link = document.querySelector<HTMLAnchorElement>('#server-guidance-server')!;
-  expect(link.href).toBe(`https://server.test/detail/${f.project.id}`);
-  expect(link.rel).toContain('noopener');
-  document.getElementById('server-guidance-account')!.click();
-  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-account' });
-  document.getElementById('server-guidance-information')!.click();
-  expect(document.querySelector<HTMLDialogElement>('.project-information-dialog')!.open).toBe(true);
+  const link = document.querySelector<HTMLButtonElement>('#server-guidance-server')!;
+  link.click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-server-project' });
+  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-information')).toBeNull();
+  expect(document.querySelector<HTMLElement>(kind === 'bot' ? '.composer-area' : '#workflow-form')!.hidden).toBe(true);
 
   const details = guidance.querySelector('details')!; details.open = true;
   const row = guidance.querySelector('li');
@@ -231,3 +230,23 @@ it.each(['javascript:alert(1)', 'https://user:password@server.test', 'https://se
     expect(document.getElementById('server-guidance-server-url')!.textContent).not.toMatch(/password|token|alert/);
   },
 );
+
+it.each(['bot', 'workflow'] as const)('separates typed checks from instructions and restores %s controls after recovery', async kind => {
+  const f = await fixture(kind, 'zh-CN');
+  const failed: ProjectServerState = { checking: false, blocking: true, issue: { kind: 'project-unavailable' }, checks: [
+    { id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required' },
+    { id: 'knowledge-bases:docs', projectId: f.project.id, stage: 'database', database: 'docs', status: 'passed' },
+  ] };
+  await f.render(failed);
+  const checks = document.querySelector('.project-server-checks')!;
+  expect(checks.querySelector('h3')!.textContent).toBe('连接检查');
+  expect(checks.textContent).toContain('知识库（数据库）');
+  expect(checks.textContent).toContain('docs');
+  expect(document.querySelector('#server-guidance-create')!.classList.contains('primary')).toBe(true);
+  document.querySelector<HTMLButtonElement>('#server-guidance-create')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'create-cloud-project' });
+  const controls = document.querySelector<HTMLElement>(kind === 'bot' ? '.composer-area' : '#workflow-form')!;
+  expect(controls.hidden).toBe(true);
+  await f.render({ ...failed, checking: true }); expect(controls.hidden).toBe(true);
+  await f.render({ checking: false }); expect(controls.hidden).toBe(false);
+});

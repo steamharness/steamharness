@@ -48,3 +48,15 @@ Existing model setup shortcuts open Project configurations inside this panel.
 Select **Project information → Databases** to view relational and knowledge resource references, status and sharing entries. Binding follows each resource type's rules; browsing opens the Server Web resource page without account tokens in the URL. Create resources, manage grants and edit data in Server Web or CLI management commands.
 
 Entries declare `databases` and `knowledgeBases` aliases separately in `steamharness.json`. Server stores relational bindings by account, project, entry and alias. Root `config.json.knowledgeBases` stores knowledge alias-to-UUID mappings with `STEAMHARNESS_PROJECT_CONFIG` overrides. Entries may use multiple resources; binding grants no access. See [Project storage](/en/concepts/data-storage).
+
+## When the Server connection fails
+
+Guidance shows actions for the reported failure. Project registration and database results appear in a separate Connection checks panel. Knowledge resources are labelled Knowledge database; table resources are labelled Relational database.
+
+- **Project not found or inaccessible:** check whether the project should already exist. To start a new one, select the highlighted Create cloud project button. It creates a private project under your current account and opens it automatically, using a new Server-assigned ID. Existing data and permissions are not transferred, and this action does not upload source files.
+- **Sign-in or database authorization required:** choose Sign in or Configure database, then Check again after resolving the issue.
+- **HTTP 500 or another Server error:** choose Open Server project to inspect its registration. If the management page also fails, give the administrator the Server, project ID, and entry shown in Connection details. Checks retry automatically; a Server error does not create a new project.
+
+Blocking failures temporarily hide the Bot composer, Workflow execution form, and Kanban controls. History and drafts stay available, and running tasks can still be stopped. Controls return when the connection recovers. Rechecks retain the existing guidance and layout.
+
+Studio opens cloud projects through its host using the current sign-in. Standalone CLI Web opens an authenticated browser tab; allow popups and retry if the browser blocks it. Navigation errors appear below the action buttons.

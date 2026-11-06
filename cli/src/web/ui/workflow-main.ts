@@ -67,10 +67,11 @@ let errorScope = 0, checkingServer = false;
 const stateRevisions = new StateRevisions();
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  create: () => { host.postMessage({ type: 'open-project-create' }); },
+  create: () => host.postMessage({ type: 'create-cloud-project' }),
   databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
   account: () => { host.postMessage({ type: 'open-account' }); },
   information: () => { if (state) dialogs.projectInfo(state.project); },
+  open: () => host.postMessage({ type: 'open-server-project' }),
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
 let paramStates: Record<string, ParamState> = {};
@@ -176,6 +177,12 @@ function renderEntrypoints(): void {
 function controls(): void {
   dialogs.updatePermissions?.();
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
+  const blocked = serverBlocked() && !!state?.serverData?.issue;
+  element('workflow-form').hidden = blocked;
+  element('entrypoints').hidden = blocked;
+  element('rerun').hidden = blocked;
+  element('run-prompt').hidden = blocked;
+  app.classList.toggle('project-server-blocked', blocked);
   serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant, serverUrl: state?.account.serverUrl, entryId: state?.project.entryId });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
   element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();

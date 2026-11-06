@@ -266,6 +266,20 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
+        if (message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
+          const open = async () => {
+            // One-click creation can replace the local ID while this tab stays open.
+            const current = message.projectId === project.id || project.assistant ? project : await resolveProjectTab(vscode.Uri.parse(project.uri), project.entryId);
+            if (closed || message.projectId !== current.id) throw new Error(t('This project entry is no longer available. Refresh the project windows and try again.'));
+            await account.openServerPage(`/detail/${encodeURIComponent(current.id)}`);
+          };
+          void open().then(() => {
+            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', serverProjectOpened: { version: 1, requestId: message.requestId } });
+          }).catch(error => {
+            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', serverProjectOpened: { version: 1, requestId: message.requestId, error: error instanceof Error ? error.message : String(error) } });
+          });
+          return;
+        }
         if (message?.type === 'workflow-database' && message.version === 1 && message.projectUri === project.uri && typeof message.alias === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
           void databases.openProjectDatabase(project, message.alias).then(() => {
             if (!closed) void panel.webview.postMessage({ type: 'workflow-host', databaseOpened: { version: 1, requestId: message.requestId } });

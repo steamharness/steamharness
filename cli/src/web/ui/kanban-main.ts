@@ -58,10 +58,11 @@ let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 let methodPublishTimer: ReturnType<typeof setTimeout> | undefined;
 const methodCalls = new Map<string, AbortController>();
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  create: () => { void host.postMessage({ type: 'open-project-create' }); },
+  create: () => host.postMessage({ type: 'create-cloud-project' }),
   databases: () => { if (project) dialogs.projectInfo(project, 'databases'); },
   account: () => { void host.postMessage({ type: 'open-account' }); },
   information: () => { if (project) dialogs.projectInfo(project); },
+  open: () => host.postMessage({ type: 'open-server-project' }),
   retry: () => { void checkApplication(); },
 });
 function persist(): void { host.setState({ mode, sizes }); }
@@ -79,6 +80,10 @@ function request(message: Message): Promise<Message> {
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
+  const blocked = previewBlocked && !!(serverData?.issue || state?.serverDataIssue);
+  app.classList.toggle('project-server-blocked', blocked);
+  for (const id of ['preview-modes', 'dimensions', 'refresh', 'methods']) element(id).hidden = blocked || id === 'dimensions' && mode === 'fullscreen';
+  if (blocked) for (const id of ['methods-dialog', 'dimensions-dialog']) { const dialog = element<HTMLDialogElement>(id); if (dialog.open) dialog.close(); }
   serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking, canCreate: !project?.assistant, serverUrl, entryId: project?.entryId });
   for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
   element<HTMLButtonElement>('methods').disabled = !connected || previewBlocked || !methodSession?.getState().ready;
@@ -142,7 +147,7 @@ frame.addEventListener('load', () => { configurationKey = ''; inject(); });
 addEventListener('workflow-keyboard-host-change', inject);
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
-  element('dimensions').hidden = mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
+  element('dimensions').hidden = previewBlocked || mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
   for (const button of Array.from(element('preview-modes').children)) { button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.mode === mode)); }
   if (mode === 'fullscreen') { viewport.style.cssText = ''; frame.style.width = '100%'; frame.style.height = '100%'; frame.style.transform = ''; }
   else {

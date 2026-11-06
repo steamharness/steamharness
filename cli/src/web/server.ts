@@ -45,6 +45,7 @@ import { defaultServerUrl } from '../service-url';
 import { ProjectServerConnection, projectServerAccessFailure, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
 import { projectStartupInspector } from './project-startup-checks';
 import { ProjectServerCreation } from './project-server-create';
+import { projectServerBrowserLink } from './project-server-link';
 import { DatabaseManagement } from './database-management';
 import { projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
@@ -619,7 +620,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await projectServer?.settled();
       return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
     }
-    if (message.type === 'project-server-create-prepare') return [{ type: 'project-server-create-context', context: await projectCreation.prepare() }];
+    if (message.type === 'project-server-open') {
+      if (!connection) throw new Error(t('Please sign in to the project Server.'));
+      const selected = connection;
+      const url = await projectServerBrowserLink(selected, project.id);
+      if (connection?.serverUrl !== selected.serverUrl || connection.accessToken !== selected.accessToken) throw new Error(t('The project or account changed. Check the connection again.'));
+      return [{ type: 'project-server-open-url', url }];
+    }
+    if (message.type === 'project-server-create-prepare') return [{ type: 'project-server-create-context', context: await projectCreation.prepare(message.personal === true) }];
     if (message.type === 'project-server-create-cancel') { projectCreation.cancel(message.token); return []; }
     if (message.type === 'project-server-create-confirm') {
       replacementId = await projectCreation.confirm(message);
