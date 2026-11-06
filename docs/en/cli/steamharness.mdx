@@ -25,6 +25,22 @@ Entry IDs and paths follow the [reserved artifact name rules](/en/concepts/data-
 
 Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects host text without altering business parameters.
 
+## Build and run a release
+
+Build a release from the aggregate root, or prepare the latest release when starting an entry:
+
+```sh
+pnpm exec steamharness release . --json
+pnpm exec steamharness run . --release --entry database --entrypoint search -- --query example
+pnpm exec steamharness web . --release --entry agent
+```
+
+The release project is written to `dist/release/project/`, with its archive under `dist/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
+
+In Studio, click **Run (Release Mode)** beside the Run button. Studio saves the project files, builds the release, and opens a new window rooted at the release run directory with the selected entry. That entry must be included in the release configuration.
+
+The release window shows the aggregate project's logo and name in the upper left, stays in Steam mode, and omits Editor and Assistant from the tools area. Source windows show the version declared in source. Opening a release project shows its installed version and checks for upgrades.
+
 ## CLI Web
 
 See [Use CLI Web](/en/cli/web).

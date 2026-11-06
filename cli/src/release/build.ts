@@ -16,6 +16,7 @@ import { readProjectDeclarationFromDirectory, readProjectDocument } from "@steam
 import { projectEntryFilePath, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
 import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRelease } from "@steamharness/project-manifest/release-node";
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
+import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { generateDatabases } from "../database-generation";
 
 export interface ProjectReleaseResult { directory: string; archive: string; buildId: string; entries: string[]; cached: boolean }
@@ -264,15 +265,27 @@ export async function resolveProjectDistribution(directory: string, mode: Projec
   return { directory: root, mode: "source" };
 }
 
-export async function prepareReleaseRun(directory: string, options: ReleaseOptions = {}): Promise<ProjectReleaseResult> {
+export async function prepareReleaseRun(directory: string, options: ReleaseOptions & { entryId?: string } = {}): Promise<ProjectReleaseResult> {
   const result = await buildProjectRelease(directory, options);
+  const declaration = await readProjectDeclarationFromDirectory(result.directory);
+  const entryId = options.entryId ?? declaration.defaultEntry;
+  if (!declaration.entries.some(entry => entry.entryId === entryId)) throw new Error(`Entry is not included in this release: ${entryId}`);
   const sourceRoot = await realpath(path.resolve(directory));
   if (sourceRoot === result.directory) return result;
-  const snapshot = path.join(sourceRoot, "dist/release/snapshots", result.buildId);
+  const snapshotParent = `dist/release/snapshots/${result.buildId}`;
+  const snapshot = path.join(sourceRoot, snapshotParent, entryId);
   if (!await exists(snapshot)) {
-    await regularDirectories(sourceRoot, "dist/release/snapshots");
+    await regularDirectories(sourceRoot, snapshotParent);
     const temporary = `${snapshot}.${randomUUID()}`;
-    try { await cp(result.directory, temporary, { recursive: true, errorOnExist: true }); readProjectReleaseSync(temporary); await rename(temporary, snapshot); }
+    try {
+      await cp(result.directory, temporary, { recursive: true, errorOnExist: true });
+      const manifest = readProjectReleaseSync(temporary)!;
+      const document = await readProjectDocument(temporary);
+      const defaultType = declaration.entries.find(entry => entry.entryId === declaration.defaultEntry)!.type;
+      await writeJson(temporary, "steamharness.json", { ...document, projectCard: readProjectCardMetadata(document, defaultType), defaultEntry: entryId });
+      sealProjectRelease(temporary, manifest);
+      await rename(temporary, snapshot);
+    }
     catch (error) { if (!await exists(snapshot)) throw error; }
     finally { await rm(temporary, { recursive: true, force: true }); }
   }
@@ -280,6 +293,6 @@ export async function prepareReleaseRun(directory: string, options: ReleaseOptio
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Release snapshots must use regular directories.");
   const verified = readProjectReleaseSync(snapshot);
   const current = readProjectReleaseSync(result.directory);
-  if (!verified || verified.buildId !== result.buildId || verified.projectId !== current?.projectId) throw new Error("Release snapshot identity mismatch.");
+  if (!verified || verified.buildId !== result.buildId || verified.projectId !== current?.projectId || (await readProjectDeclarationFromDirectory(snapshot)).defaultEntry !== entryId) throw new Error("Release snapshot identity mismatch.");
   return { ...result, directory: snapshot };
 }

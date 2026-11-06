@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
+export interface StudioProjectIdentity { name: string; avatarUrl: string }
 
 /** Publish inspected project availability and host-localized labels to the native workbench. */
 export class StudioModeController {
@@ -7,6 +8,7 @@ export class StudioModeController {
   private projectUri?: string;
   private ready?: boolean;
   private releaseOnly = false;
+  private projectIdentity?: string;
 
   constructor(context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
     for (const [command, native] of [
@@ -26,13 +28,15 @@ export class StudioModeController {
     }
   }
 
-  update(available: boolean, projectUri?: string, ready = false, releaseOnly = false): void {
-    if (available === this.available && projectUri === this.projectUri && ready === this.ready && releaseOnly === this.releaseOnly) { return; }
+  update(available: boolean, projectUri?: string, ready = false, releaseOnly = false, project?: StudioProjectIdentity): void {
+    const identity = JSON.stringify(project);
+    if (available === this.available && projectUri === this.projectUri && ready === this.ready && releaseOnly === this.releaseOnly && identity === this.projectIdentity) { return; }
     this.available = available;
     this.projectUri = projectUri;
     this.ready = ready;
     this.releaseOnly = releaseOnly;
-    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, releaseOnly, labels: {
+    this.projectIdentity = identity;
+    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, releaseOnly, project, labels: {
       mode: t('Workspace Mode'), ide: 'IDE', steam: 'Steam',
       switchToIde: t('Switch to IDE Mode'), switchToSteam: t('Switch to Steam Mode'),
       loading: t('Loading project...'),

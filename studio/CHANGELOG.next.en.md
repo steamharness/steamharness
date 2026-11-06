@@ -3,7 +3,7 @@
 - Open Server project in connection guidance now uses the Studio host and current sign-in, with visible errors when opening fails, fixing navigation blocked by the embedded page.
 - Breaking: project creation, discovery and type labels now use Bot, with templates built directly on Core Agent and native conversation, Workflow and Kanban views.
 
-- Add Run (Release Mode) and release uploads; source projects show their local version, while release installations check upgrades and stay in Steam mode.
+- Add Run (Release Mode) and release uploads. Release runs open the selected entry in a new window rooted at its release directory, with the project logo and name in the upper left and no Editor or Assistant tools. Source projects show their local version, while release installations check upgrades and stay in Steam mode.
 
 - Built-in analysis, Kanban examples, and project templates use build directories grouped by source root under dist/steamharness.
 

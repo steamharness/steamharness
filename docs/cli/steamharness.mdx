@@ -25,6 +25,22 @@ pnpm exec steamharness mcp . --entry database
 
 `--` 后的参数原样传给 Workflow。`--locale zh-CN|en` 控制宿主文案语言，不改变业务参数。
 
+## 发行构建与运行
+
+在聚合根构建发行版，或在运行时自动准备最新发行结果：
+
+```sh
+pnpm exec steamharness release . --json
+pnpm exec steamharness run . --release --entry database --entrypoint search -- --query example
+pnpm exec steamharness web . --release --entry agent
+```
+
+发行项目保存在 `dist/release/project/`，压缩包保存在 `dist/release/`。`run`、`json` 和 `web` 的 `--release` 只运行发行配置中包含的入口；构建失败会报告错误，保留上一次完整产物。
+
+在 Studio 中，点击运行按钮右侧的**运行（发行模式）**。Studio 保存项目文件、构建发行版，再以发行运行目录为根打开新窗口并启动当前入口。该入口必须包含在发行配置中。
+
+发行窗口左上角显示聚合项目的图标和名称，固定使用 Steam 模式，右侧工具区不提供编辑器和小助手。源码窗口只显示源码中的版本；打开发行项目时显示已安装版本，并检查是否可以升级。
+
 ## CLI Web
 
 完整操作见[使用 CLI Web](/cli/web)。

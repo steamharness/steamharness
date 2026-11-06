@@ -237,10 +237,10 @@ export async function requestProjectCliConfiguration(projectDir: string, nodePat
 }
 
 /** Build through the project CLI so desktop and command-line distribution use one contract. */
-export async function prepareProjectDistributionCli(directory: string, nodePath: string, snapshot: boolean, signal: AbortSignal, progress: (message: string) => void, runtime?: NodeRuntime): Promise<{ directory: string; mode: 'source' | 'release'; buildId?: string; entries?: string[] }> {
+export async function prepareProjectDistributionCli(directory: string, nodePath: string, snapshot: boolean, signal: AbortSignal, progress: (message: string) => void, runtime?: NodeRuntime, entryId?: string): Promise<{ directory: string; mode: 'source' | 'release'; buildId?: string; entries?: string[] }> {
   const cli = await resolveProjectCli(directory);
   return new Promise((resolve, reject) => {
-    const child = spawn(nodePath, [cli.entry, '--locale', currentLocale(), 'release', directory, '--json', snapshot ? '--snapshot' : '--inspect'], { cwd: directory, env: environment(undefined, runtime), shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], signal });
+    const child = spawn(nodePath, [cli.entry, '--locale', currentLocale(), 'release', directory, '--json', snapshot ? '--snapshot' : '--inspect', ...(snapshot && entryId ? ['--entry', entryId] : [])], { cwd: directory, env: environment(undefined, runtime), shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], signal });
     let output = '', error = '';
     child.stdout.on('data', bytes => { output += bytes; if (output.length > 2_000_000) child.kill(); });
     child.stderr.on('data', bytes => { error = (error + bytes).slice(-12_000); progress(String(bytes).trim()); });

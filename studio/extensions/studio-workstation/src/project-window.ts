@@ -17,3 +17,11 @@ export async function openProjectFolder(uri: vscode.Uri, isActive: () => boolean
   const options = await chooseProjectWindow();
   if (options && isActive()) { await vscode.commands.executeCommand('vscode.openFolder', uri, options); }
 }
+
+/** A release application owns a separate window rooted at its immutable distribution. */
+export async function openReleaseProjectWindow(directory: string, sourceUri: string, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  const source = vscode.Uri.parse(sourceUri), local = vscode.Uri.file(directory);
+  const folder = source.scheme === 'vscode-remote' ? source.with({ path: local.path, query: '', fragment: '' }) : local;
+  await vscode.commands.executeCommand('vscode.openFolder', folder, { forceNewWindow: true, forceReuseWindow: false });
+}

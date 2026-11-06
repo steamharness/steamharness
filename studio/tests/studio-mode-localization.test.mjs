@@ -54,5 +54,16 @@ for (const language of ['en', 'zh-cn']) {
     controller.update(true, 'file:///project-one', true);
     controller.update(true, 'file:///project-two', false);
     assert.deepEqual(calls.slice(-2).map(call => [call[1].projectUri, call[1].ready]), [['file:///project-one', true], ['file:///project-two', false]]);
+    const identity = { name: 'My Project', avatarUrl: 'data:image/svg+xml;base64,PHN2Zy8+' };
+    controller.update(true, 'file:///release', true, true, identity);
+    controller.update(true, 'file:///release', true, true, identity);
+    assert.equal(calls.at(-1)[1].project.name, identity.name);
+    assert.equal(calls.at(-1)[1].project.avatarUrl, identity.avatarUrl);
+    controller.update(true, 'file:///release', true, true, { ...identity, name: 'Renamed' });
+    assert.equal(calls.at(-1)[1].project.name, 'Renamed');
+    const beforeBlocked = calls.length;
+    await callbacks.get('studio.enterIdeMode')();
+    await callbacks.get('studio.toggleMode')();
+    assert.equal(calls.length, beforeBlocked);
   });
 }
