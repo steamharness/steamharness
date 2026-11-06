@@ -260,6 +260,16 @@ describe('Kanban CLI Web workspace', () => {
     expect(app.project.kanban).toEqual(artifact);
     expect((await state()).kanban).toEqual(before);
   });
+  it('does not reload compiled previews for data writes, and still reloads changed browser assets', async () => {
+    const { app, state, directory } = await fixture({ artifact: true });
+    const original = (await state()).kanban.preview.nonce;
+    await mkdir(path.join(directory, 'maps', 'fixture'), { recursive: true });
+    await writeFile(path.join(directory, 'maps', 'fixture', 'map.json'), '{"name":"saved map"}');
+    await new Promise(resolve => setTimeout(resolve, 700));
+    expect((await state()).kanban.preview.nonce).toBe(original);
+    await writeFile(path.join(directory, 'dist/steamharness/build/main/pages/board.js'), 'window.updated = true;');
+    await vi.waitFor(async () => expect((await state()).kanban.preview.nonce).not.toBe(original), { timeout: 3000 });
+  });
   it('serves nonced HTML and relative assets from the declared artifact with sandbox CORS', async () => {
     const { app, state, directory } = await fixture({ artifact: true }); const preview = (await state()).kanban.preview;
     const response = await fetch(`${app.origin}${preview.url}`); expect(response.status).toBe(200);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed compiled Kanban previews reloading during local data writes. Only artifact and entry declaration changes trigger preview reloads, preserving active edits when images or JSON are saved elsewhere in the project.
+
 - Knowledge cards now use descriptive titles and retain search and document selections when opening, refreshing, and returning to results.
 
 - Added declared read-only Workflow operations for local knowledge cards and Kanban previews, with per-request host checks that reject preview writes.

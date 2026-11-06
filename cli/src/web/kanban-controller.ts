@@ -23,6 +23,7 @@ export class KanbanController {
   databaseWarning = '';
   serverDataIssue?: ProjectServerIssue;
   private watcher?: FSWatcher;
+  private previewDeclarations = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
   private poll?: ReturnType<typeof setInterval>;
   private polling = false;
@@ -53,6 +54,8 @@ export class KanbanController {
       this.watcher = watch(this.project.folderPath, { recursive: true }, (_event, filename) => {
         const file = String(filename).replaceAll('\\', '/');
         if (!file || file.split('/').some(part => part.startsWith('.') || part === 'node_modules')) return;
+        const artifact = path.posix.normalize(this.project.kanban?.artifactDir ?? '.');
+        if (artifact !== '.' && file !== artifact && !file.startsWith(`${artifact}/`) && !this.previewDeclarations.has(file)) return;
         clearTimeout(this.timer); this.timer = setTimeout(() => void this.refresh().catch(error => this.hooks.log(String(error))), 400);
       });
       this.watcher.on('error', error => this.hooks.log(String(error)));
@@ -61,6 +64,10 @@ export class KanbanController {
   }
   async refresh(checkConnections = false): Promise<void> {
     const declaration = resolveProjectEntrySync(this.project.folderPath, this.project.entryId);
+    this.previewDeclarations = new Set([
+      path.join(this.project.folderPath, 'steamharness.json'), path.join(this.project.folderPath, 'package.json'),
+      path.join(declaration.rootDir, 'steamharness.json'), path.join(declaration.rootDir, 'package.json'), declaration.configurationPath,
+    ].filter((file): file is string => typeof file === 'string').map(file => path.relative(this.project.folderPath, file).replaceAll('\\', '/')));
     this.project.entryRoot = declaration.rootDir;
     this.project.databases = declaration.registration.databases;
     this.project.knowledgeBases = declaration.registration.knowledgeBases ?? [];
