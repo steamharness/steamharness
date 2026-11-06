@@ -1,9 +1,20 @@
 /* The native host draws the controls. This slot gives them a home in the project's own header. */
 #app[data-studio-window-chrome] > .toolbar {
   min-height: var(--studio-window-chrome-height);
+  height: var(--studio-window-chrome-height);
+  align-items: center;
   padding-top: 0;
   padding-bottom: 0;
   padding-right: calc(16px + var(--studio-window-chrome-right));
+}
+#app[data-studio-window-chrome] > .toolbar .icon-button > .codicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  line-height: 1;
 }
 #app[data-studio-window-chrome] .studio-window-controls-slot {
   flex: 0 0 var(--studio-window-chrome-left);
@@ -25,7 +36,7 @@
 :root[data-studio-window-chrome] .image-dialog .dialog-body { display: flex; flex-direction: column; }
 
 @media (max-width: 480px) {
-  #app[data-studio-window-chrome] > .toolbar { flex-wrap: wrap; row-gap: 0; }
+  #app[data-studio-window-chrome] > .toolbar { height: auto; flex-wrap: wrap; row-gap: 0; }
   #app[data-studio-window-chrome] > .toolbar > .project-title { flex-basis: 100%; flex-wrap: wrap; }
   #app[data-studio-window-chrome] > .toolbar > .toolbar-actions { margin-left: auto; }
 }

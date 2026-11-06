@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "824b5245e976ba9dbe106b855582e43100fb29a6",
+  "commit": "c05be479a0afdae2bdeaf09e4fa9f6511b59cec2",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -76,6 +76,7 @@
     "0071-studio-server-resource-management.patch": "e381df9d22a35909114016d6c36dfa7d64a7febc4b5347d591fef9ad9caf1913",
     "0072-studio-project-release.patch": "4214ce53be25650812c26fd43426104e789ad6b8b4edac0d30a74c48ffcf85e8",
     "0073-studio-bot-projects.patch": "493ed3a3e5fb0ad0ecd281c4a2f5e5f5af2c0e7021cbba8a0d70a1c3e2c8034f",
-    "0074-studio-release-window.patch": "6539de37e2645ce08eeaecddb749747263fd37af9e1d3432c91a0822ff2ca2aa"
+    "0074-studio-release-window.patch": "6539de37e2645ce08eeaecddb749747263fd37af9e1d3432c91a0822ff2ca2aa",
+    "0075-studio-steam-header-alignment.patch": "e52a0f0ffb0b2008aeba3a9845addc0b5363a77e5460409fc74ac2717d562c80"
   }
 }

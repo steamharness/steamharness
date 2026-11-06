@@ -1,0 +1,65 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 6b8d6f6c6bf2273eb59bbd4a02c731103dce9dac..c253f231d7bd016abf2fdc8ac6553c5a99dfdab1 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -96,7 +96,16 @@
+ 	margin-right: var(--vscode-spacing-size80);
+ 	padding: var(--vscode-spacing-size60);
+ }
+-.monaco-workbench.studio-steam-mode :is(.studio-steam-tabs, .studio-steam-toggle-tools) .codicon {
++.monaco-workbench .studio-steam-toggle-tools > .codicon {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	width: var(--vscode-codiconFontSize);
++	height: var(--vscode-codiconFontSize);
++	font-size: var(--vscode-codiconFontSize);
++	line-height: 1;
++}
++.monaco-workbench.studio-steam-mode .studio-steam-tabs .codicon {
+ 	font-size: var(--vscode-codiconFontSize-compact);
+ }
+ .monaco-workbench.studio-steam-mode .titlebar-right > .window-controls-container { order: 2; }
+@@ -385,21 +394,22 @@
+ 
+ .monaco-workbench .studio-mode-switcher.studio-release-caption {
+ 	width: auto;
++	height: var(--vscode-spacing-size280);
+ 	max-width: min(320px, calc(100vw - 160px));
+-	padding: 0 6px;
+-	border-color: transparent;
++	padding: 0;
++	border: 0;
+ 	background: transparent;
+ 	color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground));
+ }
+ .monaco-workbench .studio-release-project {
+ 	display: flex;
+ 	align-items: center;
+-	gap: 8px;
++	gap: var(--vscode-spacing-size80);
+ 	height: 100%;
+ 	min-width: 0;
+ }
+ .monaco-workbench .studio-release-project[hidden] { display: none; }
+-.monaco-workbench .studio-release-project-logo { width: 24px; height: 24px; object-fit: contain; flex: 0 0 auto; }
+-.monaco-workbench .studio-release-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
++.monaco-workbench .studio-release-project-logo { width: var(--vscode-spacing-size200); height: var(--vscode-spacing-size200); object-fit: contain; flex: 0 0 auto; }
++.monaco-workbench .studio-release-project-name { font-size: var(--vscode-fontSize-body1); line-height: var(--vscode-spacing-size200); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+ 
+ .monaco-workbench .studio-mode-switcher.studio-release-caption .studio-mode-toggle { display: none; }
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 5b95041638e39bc1fbf5da288ab82637f2b18d7f..e7172e25c118e1f6ef5dc107100f5a1a31fdae45 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -304,7 +304,9 @@ export class StudioModeContribution extends Disposable {
+ 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
+ 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
+ 		await this.workspace.activate(projectUri);
+-		this.restoreToolsWidth();
++		// Restoring a tool tab can reveal the bar. Start focused on the project;
++		// explicit tool commands reveal it and restore its independent width.
++		this.layout.setPartHidden(true, Parts.AUXILIARYBAR_PART);
+ 	}
+ 
+ 	private restoreToolsWidth(): void {
