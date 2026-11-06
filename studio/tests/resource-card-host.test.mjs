@@ -42,3 +42,11 @@ test('closing or rebinding a conversation cancels a pending resource open', asyn
   binding.receive({ type: 'workflow-resource', version: 1, request: { type: 'resource', cardId: 'card', action: 'window' } }); binding.dispose();
   finish(new Response(JSON.stringify({ messages: [result] }))); await tick(); assert.equal(opened.length, 0);
 });
+
+test('a slow previous card cannot replace the latest side preview or report an obsolete error',async()=>{
+ const responses=[];const {binding,opened,messages}=fixture(()=>new Promise(resolve=>responses.push(resolve)));
+ for(const cardId of ['old','latest'])binding.receive({type:'workflow-resource',version:1,request:{type:'resource',cardId,action:'window'}});
+ responses[1](new Response(JSON.stringify({messages:[{...result,action:'window',card:{...result.card,title:'Latest'}}]})));await tick();
+ responses[0](new Response(JSON.stringify({message:'Old error'}),{status:403}));await tick();
+ assert.equal(opened.length,1);assert.equal(opened[0].card.title,'Latest');assert.equal(messages.length,0);binding.dispose();
+});

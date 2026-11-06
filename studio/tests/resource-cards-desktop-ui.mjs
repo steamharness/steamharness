@@ -236,19 +236,33 @@ for (const language of languages) {
     await card('server-doc').scrollIntoViewIfNeeded(); await screenshot('cards-narrow-dark');
     await page.setViewportSize({ width: 1440, height: 1000 });
     const before = new Set(browser.contexts()[0].pages());
+    const groupsBefore = await page.locator('.editor-group-container').count();
+    const sideFrame = async () => {
+      for (let attempt = 0; attempt < 250; attempt++) {
+        for (const candidate of page.frames()) {
+          if (!candidate.url().includes('/resource/') || new URL(candidate.url()).searchParams.get('resourcePresentation') === 'card') continue;
+          if (await candidate.locator('.resource-preview-app').isVisible().catch(() => false)) return candidate;
+        }
+        await pause(100);
+      }
+      throw new Error('Side editor preview unavailable.');
+    };
     await card('local-doc').locator('[data-action=window]').click();
-    let separate;
-    for (let attempt = 0; attempt < 250; attempt++) { separate = browser.contexts()[0].pages().find(candidate => !before.has(candidate) && !candidate.isClosed()); if (separate) { break; } await pause(100); }
-    assert.ok(separate, 'Resource action opens a real auxiliary VS Code window');
-    const preview = await frameFor('.resource-preview-app', separate);
+    const preview = await sideFrame();
     await preview.locator('.markdown h1').filter({ hasText: 'conversation guide' }).waitFor();
-    await separate.screenshot({ path: path.join(proofDir, `${language}-new-window.png`) }); proof.screenshots.push(`${language}-new-window.png`);
-    await separate.close(); await page.bringToFront();
+    const groupsAfter = await page.locator('.editor-group-container').count();
+    assert.equal(groupsAfter, Math.max(2, groupsBefore));
+    assert.equal(browser.contexts()[0].pages().length, before.size, 'Resource previews stay inside the current Studio window');
+    await card('server-doc').locator('[data-action=window]').click();
+    await (await sideFrame()).locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();
+    assert.equal(await page.locator('.editor-group-container').count(), groupsAfter, 'The existing split is reused');
+    assert.equal(browser.contexts()[0].pages().length, before.size);
+    await screenshot('side-editor-preview');
     await card('map').locator('.codicon-folder-opened').click();
     const boardFrame = await frameFor('#kanban-title');
     await boardFrame.frameLocator('#kanban-preview').locator('.task h3').filter({ hasText: 'Saved map marker' }).waitFor();
     assert.equal(await boardFrame.locator('#workflow-param-title').inputValue(), 'Saved map');
-    proof.checks.push('wide and narrow themes preserve card layout; separate preview uses a real VS Code window; Open Project navigates to the target board with its saved configuration');
+    proof.checks.push('wide and narrow themes preserve card layout; side previews reuse one split editor without creating a window; Open Project navigates to the target board with its saved configuration');
     await page.getByRole('tab', { name: conversation.manifest.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     const serverPreview = card('server-doc').frameLocator('.resource-inline > iframe');

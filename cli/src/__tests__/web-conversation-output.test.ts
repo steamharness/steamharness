@@ -80,3 +80,14 @@ it('keeps the retry at its interruption point through completion, expansion and 
     if (!replay) { message.status = 'success'; message.items = items; }
   }
 });
+
+it.each(['en', 'zh-CN'] as const)('labels the second resource action for a side editor in %s', async language => {
+  const { initI18n } = await import('@steamharness/i18n'); initI18n({preference:language});
+  const root=document.createElement('div');document.body.append(root);const resource=vi.fn();
+  const output=new ConversationOutput(root,{copy(){},plan(){},file(){},image(){},resource});outputs.push(output);
+  output.update({role:'assistant',status:'success',content:'',items:[{id:'tool',metadata:{kind:'agent-part',partType:'tool'},content:{type:'tool',tool:'kb_get_document',status:'success',input:{},output:{details:{resourceCard:{kind:'knowledge',title:'Guide',target:{source:'local',projectId:'project',entryId:'main',knowledgeBase:'docs',documentId:'guide'}}}}}}]},'project','main','session',[]);
+  const button=root.querySelector<HTMLButtonElement>('[data-action=window]')!;
+  expect(button.title).toBe(language==='en'?'Open beside':'在侧边编辑器中打开');
+  expect(button.getAttribute('aria-label')).toBe(button.title);button.click();expect(resource).toHaveBeenCalledWith(expect.objectContaining({kind:'knowledge'}),'window');
+  initI18n({preference:'en'});
+});

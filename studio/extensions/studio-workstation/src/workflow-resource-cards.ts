@@ -10,6 +10,7 @@ export interface ResourceCardResult { id: string; url: string; action: 'open' | 
 export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: string | (() => string), open: (result: ResourceCardResult) => Promise<void>) {
   const controller = new AbortController();
   let pending = 0;
+  let sideSelection = 0;
   return {
     receive(message: Record<string, any> | undefined): boolean {
       if (message?.type !== 'workflow-resource' || message.version !== 1) { return false; }
@@ -18,6 +19,7 @@ export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: st
         || typeof request.cardId !== 'string' || request.cardId.length > 32_768 || pending >= 8) { return true; }
       const action = { type: 'resource', action: request.action ?? 'open', cardId: request.cardId, messageId: request.messageId,
         runId: request.runId, sessionId: request.sessionId, projectUri: request.projectUri };
+      const selection = action.action === 'window' ? ++sideSelection : undefined;
       pending++;
       void (async () => {
         const url = new URL(typeof sessionUrl === 'function' ? sessionUrl() : sessionUrl), token = new URLSearchParams(url.hash.slice(1)).get('session');
@@ -29,9 +31,10 @@ export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: st
         const result = payload.messages?.find((reply: { type?: string }) => reply.type === 'resource-preview');
         if (!result || !/^\/entries\/[a-z][a-z0-9_-]{0,63}\/resource\/[a-f\d-]{36}(?:\?|$)/.test(result.url)) { throw new Error(t('Unable to open the resource.')); }
         controller.signal.throwIfAborted();
+        if (selection !== undefined && selection !== sideSelection) return;
         await open(result);
       })().catch(async error => {
-        if (!controller.signal.aborted) { await webview.postMessage({ type: 'workflow-host', resourceError: { type: 'error', errorSource: 'request', requestType: 'resource',
+        if (!controller.signal.aborted && (selection === undefined || selection === sideSelection)) { await webview.postMessage({ type: 'workflow-host', resourceError: { type: 'error', errorSource: 'request', requestType: 'resource',
           projectUri: action.projectUri, sessionId: action.sessionId, messageId: action.messageId, message: error.message } }); }
       }).finally(() => pending--);
       return true;

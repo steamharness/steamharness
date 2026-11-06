@@ -14,7 +14,7 @@ const chinese = JSON.parse(await readFile(new URL('../extensions/studio-workstat
 const source = ts.createSourceFile('workflow.ts', await readFile(new URL('../extensions/studio-workstation/src/workflow.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const initializers = new Map();
 function visit(node) {
-  if (ts.isVariableDeclaration(node) && ['findProject', 'findWorkspace', 'projectSerializer', 'revealProject', 'createWorkspace', 'openProject', 'openProjectWindow'].includes(node.name.getText(source))) {
+  if (ts.isVariableDeclaration(node) && ['findProject', 'findWorkspace', 'projectSerializer', 'revealProject', 'createWorkspace', 'openProject', 'openProjectWindow', 'openCard'].includes(node.name.getText(source))) {
     initializers.set(node.name.getText(source), node.initializer.getText(source));
   }
   ts.forEachChild(node, visit);
@@ -318,4 +318,23 @@ test('restoring multiple native panels for the same entry keeps every panel and 
   for (const panel of panels) { assert.equal(f.workspaces.get(panel).project.entryId, project.entryId); panel.dispose(); }
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(f.leases.map(lease => lease.closes), [1, 1]);
+});
+
+test('side resource tabs replace their content and dispose previous session bindings without creating a window',async()=>{
+ const closed=new Set(), oldExit=new Set(), newExit=new Set(), columns=[],frames=[],commands=[];
+ const subscribe=set=>callback=>{set.add(callback);return{dispose:()=>set.delete(callback)};};
+ const preview={webview:{options:{},onDidReceiveMessage:()=>({dispose(){}}),postMessage:async()=>true},onDidDispose:subscribe(closed),dispose(){for(const callback of [...closed])callback();}};
+ const resourceBindings=new Map();
+ const open=load('openCard',{
+   vscode:{ViewColumn:{Active:-1},ThemeIcon:class{},env:{language:'en'},commands:{executeCommand:async name=>commands.push(name)},window:{createWebviewPanel(){throw new Error('must reuse side tab');},onDidChangeActiveColorTheme:()=>({dispose(){}})}},
+   sideResourcePreview:{open(title,column){preview.title=title;columns.push(column);return preview;}},resourceBindings,
+   bindProjectClipboard:()=>({receive(){},dispose(){}}),theme:()=> 'dark',projectFrameHtml:(...args)=>{frames.push(args);return args[0];},
+ });
+ const session=exits=>({ready:{url:'http://127.0.0.1:3333/#session=trusted'},onExit:subscribe(exits)});
+ const result={action:'window',url:'/entries/main/resource/first',card:{title:'First',kind:'knowledge',target:{}}};
+ await open(result,{uri:'file:///project'},session(oldExit),new URL('http://127.0.0.1:3333'),1);
+ await open({...result,url:'/entries/main/resource/second',card:{...result.card,title:'Second'}},{uri:'file:///project'},session(newExit),new URL('http://127.0.0.1:3333'),1);
+ assert.deepEqual(columns,[1,1]);assert.equal(preview.title,'Second');assert.equal(oldExit.size,0);assert.equal(newExit.size,1);assert.equal(resourceBindings.size,1);
+ assert.match(preview.webview.html,/resource\/second#session=trusted/);assert.deepEqual(commands,[]);
+ for(const exit of [...newExit])exit();assert.equal(resourceBindings.size,0);
 });

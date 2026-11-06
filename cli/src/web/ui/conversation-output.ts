@@ -432,7 +432,7 @@ export class ConversationOutput {
       this.options.resource(card, 'inline', requestId);
     });
     toggle.setAttribute('aria-expanded', 'false'); toggle.dataset.action = 'inline';
-    const separate = iconButton('open-preview', t('Open in new window'), () => this.options.resource(card, 'window'));
+    const separate = iconButton('open-preview', t('Open beside'), () => this.options.resource(card, 'window'));
     separate.dataset.action = 'window'; row.append(button, toggle, separate); root.append(row, preview);
     if (card.kind === 'project' || card.kind === 'kanban') { row.append(iconButton('folder-opened', t('Open project'), () => this.options.resource(card, 'project'))); }
     if (item) {

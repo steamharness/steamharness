@@ -26,6 +26,7 @@ import { openProjectFolder, openReleaseProjectWindow } from './project-window';
 import { StudioModeController } from './studio-mode';
 import { chooseProjectTab } from './project-tabs';
 import { ProjectWindowsProvider } from './project-windows-view';
+import { SideResourcePreview } from './workflow-resource-preview';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -66,6 +67,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const provider = new ProjectCatalog();
   const projectWindows = new ProjectWindowsProvider();
   const fileIcons = new ProjectFileIcons();
+  const sideResourcePreview = new SideResourcePreview();
+  const resourceBindings = new Map<vscode.WebviewPanel, vscode.Disposable[]>();
+  context.subscriptions.push(sideResourcePreview);
   context.subscriptions.push(fileIcons);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 110);
   status.command = 'studio.openProject';
@@ -238,7 +242,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const fileIconsBinding = fileIcons.bind(panel.webview);
       const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
         if (closed) { throw new Error(t('Unable to open the resource.')); }
-        await openCard(result, project, session, address);
+        await openCard(result, project, session, address, 'viewColumn' in panel ? panel.viewColumn : undefined);
       });
       const resolveHostedEntry = async (entryId: string): Promise<Project> => {
         if (!project.entries.some(entry => entry.entryId === entryId)) throw new Error('Unknown project entry.');
@@ -400,7 +404,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (!project) { throw new Error(t('This project entry is no longer available. Refresh the project windows and try again.')); }
     await createWorkspace(project, undefined, undefined, undefined, undefined, true, project.projectType === 'bot' ? 'new' : undefined);
   };
-  const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL): Promise<void> => {
+  const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL, sourceColumn?: vscode.ViewColumn): Promise<void> => {
     const { card, project } = result;
     if (result.action === 'open' || result.action === 'project') {
       if (card.kind === 'file' && project?.folderPath) {
@@ -415,26 +419,21 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         return;
       }
     }
-    const preview = vscode.window.createWebviewPanel('studio.resourcePreview', card.title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+    const preview = result.action === 'window' ? sideResourcePreview.open(card.title, sourceColumn)
+      : vscode.window.createWebviewPanel('studio.resourcePreview', card.title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+    for (const listener of resourceBindings.get(preview) ?? []) listener.dispose();
     const url = new URL(result.url, origin); url.hash = new URL(session.ready.url).hash;
     preview.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(origin.port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
-    const ready = result.action === 'window' ? new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => { listener.dispose(); disposal.dispose(); reject(new Error(t('Unable to open the resource.'))); }, 20_000);
-      const listener = preview.webview.onDidReceiveMessage(message => {
-        if (message?.type === 'workflow-frame-ready') { clearTimeout(timer); listener.dispose(); disposal.dispose(); resolve(); }
-      });
-      const disposal = preview.onDidDispose(() => { clearTimeout(timer); listener.dispose(); disposal.dispose(); reject(new Error(t('Unable to open the resource.'))); });
-    }) : Promise.resolve();
     preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : 'preview');
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];
-    preview.onDidDispose(() => { for (const listener of subscriptions) { listener.dispose(); } });
+    resourceBindings.set(preview, subscriptions);
+    subscriptions.push(preview.onDidDispose(() => {
+      for (const listener of subscriptions) listener.dispose();
+      if (resourceBindings.get(preview) === subscriptions) resourceBindings.delete(preview);
+    }));
     preview.webview.html = projectFrameHtml(url.href, card.title, owner.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
-    if (result.action === 'window') {
-      try { await ready; preview.reveal(); await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow'); }
-      catch (error) { preview.dispose(); throw error; }
-    }
   };
   const assistant = new AssistantViewProvider(context, launcher, output,
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));

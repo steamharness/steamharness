@@ -68,3 +68,5 @@ A knowledge card can supply `reader: { entrypointId, args? }` to invoke a read o
 A knowledge card with a reader does not require a knowledgeBase alias. Existing Server cards continue to use that alias. Kanban cards can call declared read operations in the same aggregate through `entries.get(id).runEntrypoint(...)`. The host rejects preview writes and cancels reads when the preview closes or its access identity changes.
 
 A custom tool can store a local knowledge card’s search term in `details.resourceCard.target.query`. The host appends the current selection as `--document-id <id>` and `--query <query>` when invoking its reader. Readers should let these trailing values override saved initial arguments; an empty documentId returns to the result list. A reader may return `title` to name the preview. Documents use their titles, while searches and directories have descriptive labels; identifiers remain in card details.
+
+In Studio, a card’s **Open beside** button uses an existing editor group beside the conversation, creating a split when needed. Later cards update the same preview tab without opening a separate native window.
