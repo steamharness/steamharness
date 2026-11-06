@@ -84,3 +84,18 @@ describe('custom tool resource cards', () => {
     expect(conversationResourceCards([legacy], projectId, 'main', conversationId)).toEqual([]);
   });
 });
+
+it('repairs historical search and line-reader names without changing their saved card ids', () => {
+  const projectId = '6337b9e2-4881-4d20-b829-5f62f8555530';
+  const target = {source:'current',projectId,entryId:'database'};
+  const reader = {entrypointId:'knowledge-preview',args:['--payload','{}']};
+  const old = {id:'tool',metadata:{kind:'agent-part',partType:'tool'},content:{tool:'kb_search_documents',status:'success',input:{query:'干员'},output:{content:[{type:'text',text:JSON.stringify({query:'干员',matches:[]})}],details:{resourceCard:{kind:'knowledge',target,reader}}}}} as unknown as OutputItem;
+  const card = conversationResourceCards([old],projectId,'agent','conversation')[0];
+  expect(card.title).toBe('Knowledge search: 干员');expect(card.target.query).toBe('干员');
+  expect(card.id).toBe(`knowledge:${JSON.stringify({...target,source:'local'})}:${JSON.stringify(reader)}`);
+  const line = structuredClone(old);const content=line.content as any;
+  content.tool='kb_read_document_lines';content.input={id:'guide'};
+  content.output.content[0].text=JSON.stringify({documentId:'guide',title:'知识库阅读说明',lines:[]});
+  content.output.details.resourceCard.target.documentId='guide';
+  expect(conversationResourceCards([line],projectId,'agent','conversation')[0].title).toBe('知识库阅读说明');
+});

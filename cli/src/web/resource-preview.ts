@@ -17,6 +17,7 @@ import { KanbanMethodHub } from './kanban-methods';
 import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
 import { t, locale } from './localization';
 import { readLocalWorkflowResource } from './local-resource-reader';
+import { selectedKnowledgeReader } from './resource-reader-contract';
 
 export interface ResourcePreviewData {
   card: ResourceCard;
@@ -143,9 +144,10 @@ export class ResourcePreviews {
     if (card.kind === 'knowledge') {
       if (card.reader) {
         if (target.source === 'server' || project!.id !== this.owner.id) throw new Error('Resource readers must target the current local project.');
-        const result = await readLocalWorkflowResource(this.runtime, project!, project!.entryId, card.reader, this.lifetime.signal) as { errCode?: number; format?: string; content?: unknown };
+        const result = await readLocalWorkflowResource(this.runtime, project!, project!.entryId, selectedKnowledgeReader(card.reader, target), this.lifetime.signal) as { errCode?: number; format?: string; content?: unknown; title?: string };
         if (!result || result.errCode !== 0 || !['markdown', 'json'].includes(result.format ?? '')) throw new Error('Invalid resource reader result.');
         data.content = result.content; data.format = result.format as 'markdown' | 'json';
+        if (typeof result.title === 'string' && result.title.trim()) data.card = { ...card, title: result.title.trim().slice(0, 200) };
       } else {
       data.content = target.source==='server'
         ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,knowledgeBase:target.knowledgeBase,documentId:target.documentId})})

@@ -529,3 +529,15 @@ it('refreshes a board map card after its configuration changes through another s
   const refreshed=await previews.open(card('kanban',{source:'local',projectId:board.id}));
   expect(refreshed.data.kanban?.configuration.params.label).toBe('updated');
 });
+
+it('local knowledge selection reaches the reader and uses its resolved document name',async()=>{
+ const {owner,runtime,previews,card}=await fixture();
+ const database={...owner,entryId:'database',projectType:'workflow',entrypoints:[{id:'knowledge-preview',readOnly:true}]} as Project;
+ vi.mocked(runtime.inspect).mockResolvedValue({projects:[database],errors:[]});
+ runtime.run=vi.fn(async()=>({status:'success',result:{data:{errCode:0,output:{errCode:0,title:'知识库阅读说明',format:'markdown',content:'# 正文'}}}}));
+ const savedReader={entrypointId:'knowledge-preview',args:['--payload','{}']};
+ const result=await previews.open(card('knowledge',{source:'local',projectId:owner.id,entryId:'database',documentId:'guide',query:'干员'},{reader:savedReader}));
+ expect(result.data.card.title).toBe('知识库阅读说明');
+ expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({args:['--payload','{}','--document-id','guide','--query','干员'],readOnly:true}),expect.any(Function));
+ expect(savedReader.args).toEqual(['--payload','{}']);
+});

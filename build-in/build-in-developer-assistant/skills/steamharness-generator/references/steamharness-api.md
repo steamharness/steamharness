@@ -1548,3 +1548,5 @@ Bot 的 `conversation.collapseIntermediate` 默认 true：成功后收起中间�
 Workflow entrypoint 可声明静态 `readOnly: true`，类型为可选 boolean，默认 false。可信宿主的 runLocalProjectWithReport({ readOnly: true }) 在执行前核对实际定义，并传递限制至嵌套入口；不允许修改 Bot 会话。这是作者对代码行为的声明，不是文件系统沙箱。
 
 知识卡片可声明 reader: { entrypointId, args? }，调用卡片所指向的同一聚合本地 Workflow，只读操作返回 { errCode: 0, errMessage: "", format: "markdown" | "json", content }。有 reader 时可省略 target.knowledgeBase；远程知识卡片仍使用原别名。Kanban 只读预览允许 entries.list 和对已声明 readOnly 操作的 runEntrypoint，不接受写操作。
+
+自定义工具的 details.resourceCard 可用 target.query 为本地知识卡片保留关键词。宿主在 reader.args 后追加当前 --document-id 与 --query，reader 以末尾选择覆盖初始值；空 documentId 返回搜索或目录。reader 返回的可选 title 用于预览标题。卡片应使用文档真实 title 或搜索/目录名称，不以项目 UUID 作为显示名。

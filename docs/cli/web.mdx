@@ -62,3 +62,5 @@ Studio 通过宿主打开云端项目，并沿用当前登录状态。独立 CLI
 知识卡片可提供 `reader: { entrypointId, args? }`，调用当前本地聚合中目标 Workflow 入口的只读操作。该操作须声明 `readOnly: true`，返回 `{ errCode: 0, errMessage: "", format: "markdown" | "json", content }`。Markdown 的 content 为正文字符串，JSON 为待展示的数据。reader 不用于 Server 资源或其它项目。
 
 声明 reader 后，知识卡片不需要 knowledgeBase 别名；原有 Server 知识卡片仍使用该别名。地图等 Kanban 卡片可通过现有 `entries.get(id).runEntrypoint(...)` 读取同一聚合中声明只读的操作。宿主拒绝预览写操作，并在卡片关闭或访问身份变化后取消读取。
+
+自定义工具的本地知识卡片可用 `details.resourceCard.target.query` 保存搜索关键词。打开时，宿主把当前选择追加为 `--document-id <id>` 与 `--query <query>`；reader 应以这些末尾参数覆盖保存的初始参数。空 documentId 表示返回结果列表。reader 可返回 `title` 更新预览名称。文档使用真实标题，搜索和目录使用各自名称；标识仍保留在卡片详情中。

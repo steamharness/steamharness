@@ -23,3 +23,12 @@ describe('local resource readers',()=>{
     expect(conversationResourceCards(card({entrypointId:'../escape'}) as any,'project','agent','conversation')).toEqual([]);
   });
 });
+
+it('binds document selection and search query without rewriting the saved reader arguments',async()=>{
+ const {selectedKnowledgeReader}=await import('../web/resource-reader-contract');
+ const reader={entrypointId:'preview',args:['--payload','{"query":"干员"}']};
+ const selected=selectedKnowledgeReader(reader,{documentId:'guide',query:'干员'});
+ expect(selected.args).toEqual([...reader.args,'--document-id','guide','--query','干员']);
+ expect(reader.args).toEqual(['--payload','{"query":"干员"}']);
+ expect(selectedKnowledgeReader(reader,{documentId:'',query:'干员'}).args).toContain('');
+});

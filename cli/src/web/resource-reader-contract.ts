@@ -8,3 +8,11 @@ export function parseWorkflowResourceReader(value: unknown): WorkflowResourceRea
   return { entrypointId: item.entrypointId, args: [...(item.args ?? [])] };
 }
 
+
+/** Knowledge readers accept resource selection separately from their saved arguments. */
+export function selectedKnowledgeReader(reader: WorkflowResourceReader, target: Record<string, string>): WorkflowResourceReader {
+  const args = [...(reader.args ?? [])];
+  if (Object.hasOwn(target, 'documentId')) args.push('--document-id', target.documentId);
+  if (target.query) args.push('--query', target.query);
+  return parseWorkflowResourceReader({ entrypointId: reader.entrypointId, args });
+}

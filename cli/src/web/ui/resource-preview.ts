@@ -15,6 +15,7 @@ app.innerHTML = '<header class="resource-preview-toolbar"><div><h1></h1><span></
 const host = acquireProjectHost({ live: false }), status = app.querySelector<HTMLElement>('.resource-preview-status')!, content = app.querySelector<HTMLElement>('.resource-preview-content')!;
 let id = location.pathname.split('/').at(-1)!, connected = false, data: ResourcePreviewData | undefined, frame: HTMLIFrameElement | undefined;
 let reference: ResourceCardReference | undefined, selection: Message | undefined;
+let collectionSelection: Message | undefined;
 try { reference = JSON.parse(new URL(location.href).searchParams.get('resourceRef') ?? 'null') ?? undefined; } catch { /* Older preview URLs have no saved-card reference. */ }
 let readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0, epoch = 0, authRevision: number | undefined, resourceRevision: number | undefined;
 const pending = new Map<string, { resolve(message: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
@@ -68,6 +69,12 @@ function render(next: ResourcePreviewData): void {
   data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;
   selection = next.card.kind === 'knowledge' ? next.card.target : undefined;
   app.querySelector('header a')?.remove();
+  app.querySelector('.resource-preview-back')?.remove();
+  if (next.card.kind === 'knowledge' && next.format === 'markdown' && collectionSelection) {
+    const back = document.createElement('button'); back.type = 'button'; back.className = 'resource-preview-back';
+    back.textContent = collectionSelection.query ? t('Back to results') : t('Back to documents');
+    back.onclick = () => void load(collectionSelection); app.querySelector('header')!.append(back);
+  }
   app.dataset.format = next.format;
   app.querySelector('h1')!.textContent = next.card.title;
   app.querySelector('.resource-preview-toolbar span')!.textContent = [next.card.target.source === 'server' ? t('Server') : t('Local'), next.project?.name].filter(Boolean).join(' / ');
@@ -96,12 +103,23 @@ function render(next: ResourcePreviewData): void {
   const value = next.content as any;
   const items = Array.isArray(value) ? value : value?.items ?? value?.documents;
   if (Array.isArray(items) && next.card.kind === 'knowledge') {
+    collectionSelection = { ...next.card.target, documentId: '' };
     const list = document.createElement('div'); list.className = 'resource-preview-list';
+    const summary = document.createElement('p'); summary.className = 'resource-preview-list-summary';
+    summary.textContent = t('{0} documents', items.length); list.append(summary);
     for (const item of items) {
+      const documentId = item.documentId ?? item.id;
+      if (typeof documentId !== 'string' || !documentId) continue;
       const button = document.createElement('button'); button.type = 'button';
-      button.textContent = item.title ?? item.id; button.onclick = () => void load({ documentId: item.documentId ?? item.id }); list.append(button);
+      const title = document.createElement('strong'); title.textContent = typeof item.title === 'string' && item.title.trim() ? item.title : t('Knowledge document');
+      button.append(title);
+      const excerpt = item.markdownPreview ?? item.excerpt;
+      if (typeof excerpt === 'string' && excerpt.trim()) { const description = document.createElement('span'); description.className = 'resource-preview-list-excerpt'; description.textContent = excerpt.slice(0, 320); button.append(description); }
+      button.onclick = () => void load({ ...collectionSelection, documentId }); list.append(button);
     }
-    if (!items.length) { list.textContent = t('No resources'); } content.append(list);
+    if (!items.length) { const empty = document.createElement('p'); empty.className = 'resource-preview-empty'; empty.textContent = value?.query ? `${t('No matching documents')} · ${t('Try a different keyword.')}` : t('No resources'); list.append(empty); }
+    if (value?.matchesTruncated) { const notice = document.createElement('p'); notice.className = 'resource-preview-list-summary'; notice.textContent = t('More matches exist; refine the search to narrow results.'); list.append(notice); }
+    content.append(list);
   } else if (next.format === 'markdown') { const article = document.createElement('article'); article.className = 'markdown'; article.innerHTML = markdownHtml(typeof value === 'string' ? value : value.markdown); content.append(article); }
   else { const pre = document.createElement('pre'); pre.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); content.append(pre); }
 }

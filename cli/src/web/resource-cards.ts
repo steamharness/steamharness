@@ -1,4 +1,5 @@
 import { isConfigurationValue, type ConfigurationValues } from "@steamharness/project-configuration";
+import { t } from './localization';
 import type { OutputItem } from './workflow-types';
 import { parseWorkflowResourceReader, type WorkflowResourceReader } from './resource-reader-contract';
 
@@ -87,7 +88,17 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
       } catch { continue; }
     }
     const id = string(descriptor.cardId) ?? `${kind}:${JSON.stringify(target)}${reader ? `:${JSON.stringify(reader)}` : ""}`;
-    const title = (string(descriptor.title) ?? string(record(output?.document)?.title) ?? target.key ?? target.documentId ?? target.filePath ?? target.url ?? target.projectId ?? kind).slice(0, 200);
+    // Keep saved-card identities stable while repairing older display metadata.
+    if (kind === 'knowledge' && reader && !target.documentId) target.query ??= string(input.query) ?? string(output?.query) ?? '';
+    if (!target.query) delete target.query;
+    const explicitTitle = string(descriptor.title);
+    const humanTitle = explicitTitle !== target.projectId && explicitTitle !== target.documentId ? explicitTitle : undefined;
+    const knowledgeTitle = string(record(output?.document)?.title) ?? string(output?.title) ?? string(input.title);
+    const fallback = kind === 'knowledge'
+      ? knowledgeTitle ?? (target.query ? t('Knowledge search: {0}', target.query) : target.documentId ? t('Knowledge document') : t('Knowledge documents'))
+      : kind === 'file' ? target.filePath?.split(/[\\/]/).at(-1) ?? t('File')
+      : kind === 'browser' ? target.url ?? t('Browser') : kind === 'kanban' ? t('Kanban') : t('Project');
+    const title = (humanTitle ?? fallback).slice(0, 200);
     const kanban = record(descriptor.kanban), values = record(kanban?.values);
     cards.set(id, { id, kind, title, target, itemId: item.id ?? String(index),
       ...(reader ? { reader } : {}),

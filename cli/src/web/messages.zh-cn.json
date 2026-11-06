@@ -1018,5 +1018,14 @@
   "The database resource or its authorization is not ready.": "数据库资源或当前账号的访问授权尚未就绪。",
   "The project or account changed. Check the connection again.": "项目或账号已变化，请重新检查连接。",
   "Could not open the cloud project. Check your Server connection and try again.": "无法打开云端项目，请检查服务器连接后重试。",
-  "Allow this page to open a new tab, then try again.": "请允许此页面打开新标签页，然后重试。"
+  "Allow this page to open a new tab, then try again.": "请允许此页面打开新标签页，然后重试。",
+  "Knowledge search: {0}": "知识搜索 · {0}",
+  "Knowledge document": "知识文档",
+  "Knowledge documents": "知识库目录",
+  "Back to results": "返回搜索结果",
+  "Back to documents": "返回文档列表",
+  "{0} documents": "{0} 篇文档",
+  "No matching documents": "没有找到匹配的文档",
+  "Try a different keyword.": "可以换个关键词再搜索。",
+  "More matches exist; refine the search to narrow results.": "还有更多匹配内容，可以缩小关键词范围。"
 }

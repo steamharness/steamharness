@@ -158,3 +158,20 @@ it('lets slow file reads finish after 30 seconds and keeps their original bridge
   await Promise.resolve(); await Promise.resolve();
   expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: KANBAN_BRIDGE_RESPONSE_MESSAGE, requestId: 'file-read', ok: true, value: { base64: 'original-image' } }), '*');
 });
+
+it('shows named search results, opens a document and returns to the retained search',async()=>{
+ const f=await fixture();const card={id:'search',kind:'knowledge',title:'Knowledge search: 干员',target:{source:'local',entryId:'database',query:'干员'}};
+ await f.reply({type:'resource-data',data:{card,format:'json',content:{query:'干员',items:[{id:'doc-hash',title:'女医技能详解',markdownPreview:'治疗烟雾的原文证据'}]}}});
+ expect(document.querySelector('h1')?.textContent).toBe('Knowledge search: 干员');
+ expect(document.querySelector('.resource-preview-list-summary')?.textContent).toBe('1 documents');
+ expect(document.querySelector('.resource-preview-list button strong')?.textContent).toBe('女医技能详解');
+ expect(document.querySelector('.resource-preview-list-excerpt')?.textContent).toContain('治疗烟雾');
+ document.querySelector<HTMLButtonElement>('.resource-preview-list button')!.click();
+ expect(f.last().selection).toMatchObject({documentId:'doc-hash',query:'干员'});
+ await f.reply({type:'resource-data',id:'doc-preview',data:{card:{...card,title:'女医技能详解',target:{...card.target,documentId:'doc-hash'}},format:'markdown',content:'# 女医技能详解\n\n完整正文'}});
+ expect(document.querySelector('article')?.textContent).toContain('完整正文');
+ document.querySelector<HTMLButtonElement>('.resource-preview-back')!.click();
+ expect(f.last().selection).toMatchObject({documentId:'',query:'干员'});
+ await f.reply({type:'resource-data',data:{card,format:'json',content:{query:'干员',items:[]}}});
+ expect(document.querySelector('.resource-preview-empty')?.textContent).toContain('No matching documents');
+});

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Knowledge cards now use descriptive titles and retain search and document selections when opening, refreshing, and returning to results.
+
 - Added declared read-only Workflow operations for local knowledge cards and Kanban previews, with per-request host checks that reject preview writes.
 
 - Server connection guidance now shows actions for the reported failure, supports one-click cloud project creation, and groups typed project/database checks. Blocking failures hide Bot input, Workflow forms, and Kanban controls while preserving drafts; cloud project navigation uses the host or an authenticated browser handoff.
