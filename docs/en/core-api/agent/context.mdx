@@ -18,6 +18,8 @@ The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` and
 
 `sleep({ seconds })` waits for 0–3600 seconds, accepting fractional seconds and cancellation, without running shell commands. Durable sessions save the deadline and wait only the remaining time after reopening. Sleep is also available under `read-only`; the host can disable it through `executor.tools`. Host-disabled built-in and custom tools are removed from model tool lists, and calls still pass permission checks.
 
+Progress includes the expected end time when waiting starts. The completed result retains both expected and actual end times. CLI Web / Studio activity rows and details use the browser's local timezone, including history replay. Raw results use UTC; `details.wakeAt` and `details.endedAt` are millisecond timestamps.
+
 - **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
 - To reach a stdio MCP server a host provides, open it with [connectMcpServer](/en/core-api/connect-mcp-server) and turn its tools into yours with [createMcpTools](/en/core-api/create-mcp-tools).
 

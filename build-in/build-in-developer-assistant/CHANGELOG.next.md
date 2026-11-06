@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator 补充 sleep 的预计和实际结束时间，以及对话中的本地时区展示。
+
 - 小助手沿用子 Agent 默认 3 个并发与持久排队，提供可取消的 sleep 等待工具；Generator 同步运行配置授权有界重试和禁用工具过滤契约。
 
 - 【修复】Generator 的 SDK 开发布局从相邻 CLI 包解析精确版本，宿主布局继续使用依赖声明，不再依赖示例 workspace。

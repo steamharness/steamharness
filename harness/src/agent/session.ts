@@ -1002,7 +1002,7 @@ export class DurableAgentSession {
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
           ...(failure ? { reason: "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),
-          ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId, allTasks),
+          ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId, allTasks, live?.tools),
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }
       for (const entry of entries) if (entry.kind.startsWith("project.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
@@ -1070,7 +1070,7 @@ function aggregateUsage(usages: readonly Usage[]): TokenUsageAggregate {
 
 /** Reuse the existing output contract: answers stay flat; reasoning and tools stay details. */
 export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string,
-  tasks: readonly TaskRecord<JsonValue, JsonValue, JsonValue>[] = []): RunOutputItemInput[] {
+  tasks: readonly TaskRecord<JsonValue, JsonValue, JsonValue>[] = [], liveTools: readonly { taskId?: number; details?: unknown }[] = []): RunOutputItemInput[] {
   const items: RunOutputItemInput[] = [];
   const calls = new Map<string, RunOutputItemInput>();
   const toolTasks = new Map(tasks.flatMap(task => {
@@ -1094,7 +1094,10 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text", status, ...timing } });
       else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning", status, ...timing } });
       else if (block.type === "toolCall" && message.stopReason !== "error" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
-        const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running", ...span(toolTasks.get(`${id}:${block.id}`)) } };
+        const task = toolTasks.get(`${id}:${block.id}`);
+        const progress = task && task.state?.status !== "terminal" ? liveTools.find(slot => slot.taskId === task.id)?.details : undefined;
+        const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running",
+          ...(progress === undefined ? {} : { output: progress }) }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running", ...span(task) } };
         calls.set(block.id, item); items.push(item);
       }
     }

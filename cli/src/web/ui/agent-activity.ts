@@ -1,4 +1,4 @@
-import { t } from '../localization';
+import { locale, t } from '../localization';
 import type { ConversationMessage, OutputItem } from '../workflow-types';
 
 export type ActivityStatus = 'running' | 'success' | 'failed' | 'stopped' | 'waiting';
@@ -31,6 +31,7 @@ function toolAction(toolName: string, input: Record<string, unknown>): Pick<Agen
   const path = first(input, 'filePath', 'file_path', 'path', 'file');
   const directory = first(input, 'path', 'directory', 'dir', 'workdir', 'cwd');
   const query = first(input, 'pattern', 'query', 'search', 'text');
+  if (tool === 'sleep') { return { kind: 'sleep', icon: 'clock', action: t("Wait"), target: typeof input.seconds === 'number' ? t("{0}s", input.seconds) : undefined }; }
   if (matches(tool, 'read')) { return { kind: 'read', icon: 'book', action: t("Read"), target: path ?? t("File") }; }
   if (matches(tool, 'grep', 'glob', 'search', 'codesearch', 'code_search')) {
     const quoted = query && `\u201c${query}\u201d`;
@@ -90,11 +91,22 @@ export function agentActivity(item: OutputItem, message?: ConversationMessage): 
   const status = activityStatus(item.metadata?.status ?? content.status, message);
   const sections: AgentActivity['sections'] = [];
   let descriptor: Pick<AgentActivity, 'kind' | 'icon' | 'action' | 'target'>;
+  let sleepTitle: string | undefined;
   if (type === 'tool') {
     const input = record(content.input) ?? {};
     descriptor = toolAction(text(content.tool) ?? item.title ?? 'tool', input);
     if (Object.keys(input).length) { sections.push({ label: t("Parameters"), value: input }); }
     else if (content.rawInput !== undefined) { sections.push({ label: t("Parameters"), value: content.rawInput }); }
+    if (descriptor.kind === 'sleep') {
+      const output = record(content.output), details = record(output?.details) ?? output;
+      const formatTime = (value: unknown): string | undefined => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(new Date(value).getTime())
+        ? new Date(value).toLocaleString(locale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' }) : undefined;
+      const expectedEnd = formatTime(details?.wakeAt), actualEnd = formatTime(details?.endedAt ?? item.metadata?.endedAt);
+      if (expectedEnd) { sections.push({ label: t("Expected end time"), value: expectedEnd }); }
+      if (actualEnd) { sections.push({ label: t("Actual end time"), value: actualEnd }); }
+      if (status === 'running' && expectedEnd) { sleepTitle = t("Waiting until {0}", expectedEnd); }
+      if (status === 'success' && actualEnd) { sleepTitle = t("Wait completed at {0}", actualEnd); }
+    }
     if (content.output !== undefined) { sections.push({ label: t("Result"), value: content.output }); }
     if (content.error !== undefined) { sections.push({ label: t("Error"), value: content.error, error: true }); }
     if (Array.isArray(content.attachments) && content.attachments.length) { sections.push({ label: t("Attachment"), value: content.attachments }); }
@@ -121,7 +133,7 @@ export function agentActivity(item: OutputItem, message?: ConversationMessage): 
     if (type === 'file') { descriptor = { ...descriptor, target: first(content, 'filename', 'path', 'name') }; }
   }
   const resolvedStatus = type === 'error' ? 'failed' : status;
-  return { ...descriptor, status: resolvedStatus, label: statusTitle(descriptor.action, undefined, resolvedStatus), title: statusTitle(descriptor.action, descriptor.target, resolvedStatus), sections };
+  return { ...descriptor, status: resolvedStatus, label: statusTitle(descriptor.action, undefined, resolvedStatus), title: sleepTitle ?? statusTitle(descriptor.action, descriptor.target, resolvedStatus), sections };
 }
 
 export function activeAgentActivity(message: ConversationMessage): AgentActivity | undefined {
@@ -132,9 +144,10 @@ export function activeAgentActivity(message: ConversationMessage): AgentActivity
 }
 
 export function activityGroupSummary(activities: AgentActivity[]): { title: string; status: ActivityStatus } {
+  if (activities.length === 1 && activities[0].kind === 'sleep') { return { title: activities[0].title, status: activities[0].status }; }
   const active = [...activities].reverse().find((activity) => activity.status === 'running' || activity.status === 'waiting');
   const completed = activities.filter((activity) => activity.status === 'success').length;
-  if (active) { return { title: t("{0} \u00B7 {1}/{2} items", statusTitle(active.action, undefined, active.status), completed, activities.length), status: active.status }; }
+  if (active) { return { title: t("{0} \u00B7 {1}/{2} items", active.kind === 'sleep' ? active.title : statusTitle(active.action, undefined, active.status), completed, activities.length), status: active.status }; }
   const failures = activities.filter((activity) => activity.status === 'failed').length;
   const stopped = activities.some((activity) => activity.status === 'stopped');
   const labels: Record<string, string> = { read: t("Read file"), search: t("Search content"), list: t("List files"), command: t("Run command"), edit: t("Edit file"), write: t("Write file"), patch: t("Apply changes") };

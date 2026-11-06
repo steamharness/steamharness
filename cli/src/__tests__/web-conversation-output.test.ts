@@ -6,6 +6,35 @@ import type { Attachment, ConversationMessage, OutputItem } from '../web/workflo
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
 
+it.each(['en', 'zh-CN'] as const)('shows sleep end times during the wait and after completion and replay in %s', async language => {
+  const { initI18n } = await import('@steamharness/i18n'); initI18n({ preference: language });
+  try {
+    const wakeAt = Date.parse('2026-11-06T10:03:00Z'), endedAt = wakeAt + 125;
+    const item = (status: 'running' | 'success'): OutputItem => ({ id: 'sleep', title: 'sleep', metadata: { kind: 'agent-part', partType: 'tool', status },
+      content: { tool: 'sleep', input: { seconds: 180 }, output: { content: [{ type: 'text', text: status === 'running' ? 'Waiting' : 'Finished' }],
+        details: { seconds: 180, wakeAt, ...(status === 'success' ? { endedAt } : {}) } } } });
+    const root = document.createElement('div'); document.body.append(root);
+    const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
+    output.update({ role: 'assistant', status: 'running', content: '', items: [item('running')] }, 'project', 'main', 'session', []);
+    const waiting = root.querySelector<HTMLDetailsElement>('[data-kind=sleep]')!;
+    expect(waiting.querySelector('summary')?.textContent).toContain(language === 'en' ? 'Waiting until' : '预计结束');
+    expect(waiting.querySelector('summary')?.textContent).toContain('2026');
+    expect(waiting.querySelector('summary')?.getAttribute('aria-label')).toContain(language === 'en' ? 'Waiting until' : '预计结束');
+    waiting.open = true; waiting.dispatchEvent(new Event('toggle'));
+    expect(waiting.textContent).toContain(language === 'en' ? 'Expected end time' : '预计结束时间');
+    expect(waiting.textContent).not.toContain(language === 'en' ? 'Actual end time' : '实际结束时间');
+    const message: ConversationMessage = { role: 'assistant', status: 'success', content: '', items: [item('success')] };
+    output.update(message, 'project', 'main', 'session', []);
+    expect(root.querySelector('[data-kind=sleep]')).toBe(waiting);
+    expect(waiting.querySelector('summary')?.textContent).toContain(language === 'en' ? 'Wait completed at' : '结束时间');
+    expect(waiting.textContent).toContain(language === 'en' ? 'Actual end time' : '实际结束时间');
+    const replayRoot = document.createElement('div'); document.body.append(replayRoot);
+    const replay = new ConversationOutput(replayRoot, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(replay);
+    replay.update(message, 'project', 'main', 'session', []);
+    expect(replayRoot.querySelector('summary')?.textContent).toBe(root.querySelector('summary')?.textContent);
+  } finally { initI18n({ preference: 'en' }); }
+});
+
 it('keeps file links actionable through streaming, collapsed output and history replay', () => {
   const root = document.createElement('div'), path = vi.fn(); document.body.append(root);
   const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, path, image() {}, resource() {} }); outputs.push(output);

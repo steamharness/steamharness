@@ -344,6 +344,24 @@ test("host-disabled tools stay out of model requests while sleep remains usable"
   assert.doesNotMatch(requests.join(""), /"name":"(?:bash|read|write|edit|grep|find|ls|disabled_custom)"/);
 });
 
+test("sleep streams its expected end time before returning its actual completion time", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxToolCall("sleep", { seconds: 0.15 })], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage("Wait complete"),
+  ]);
+  const context = createContext("sleep-stream-times");
+  const node = createAgentNode({ models, resolvedModel: model });
+  const chunks: OutputItemStreamChunk[] = [];
+  for await (const chunk of node.stream({ errCode: 0, errMessage: "", prompt: "Wait" }, context)) chunks.push(chunk);
+  const progress = chunks.filter(chunk => chunk.type === "output_item_delta" && chunk.item?.metadata?.partType === "tool"
+    && chunk.item.metadata.status === "running" && JSON.stringify(chunk.item.content).includes("Expected end:"));
+  assert.ok(progress.length > 0, "The node must forward tool progress before completion");
+  assert.ok(progress.every(chunk => !JSON.stringify(chunk).includes('"endedAt"')));
+  const final = [...chunks].reverse().find(chunk => chunk.type === "output_item_delta" && chunk.item?.metadata?.partType === "tool" && chunk.item.metadata.status === "success");
+  assert.match(JSON.stringify(final), /Ended at:/);
+});
+
 test("declared skill roots supply the real skill tool, preserve the custom tool lifecycle and obey disabled permissions", async () => {
   await withTempDir(async root => {
     await mkdir(path.join(root, "guides/alpha"), { recursive: true });

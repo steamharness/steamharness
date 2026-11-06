@@ -16,9 +16,17 @@ test("sleep waits without shell access, validates its duration and cancels immed
   await fixture(async tools => {
     const sleep = tools.find(tool => tool.name === "sleep")!;
     const start = Date.now();
-    const result = await sleep.execute("pause", { seconds: 0.025 });
+    const progress: unknown[] = [];
+    const result = await sleep.execute("pause", { seconds: 0.025 }, undefined, update => { progress.push(update); });
     assert.ok(Date.now() - start >= 20);
     assert.match(JSON.stringify(result.content), /Waited 0.025 seconds/);
+    const times = result.details as { wakeAt: number; endedAt: number };
+    assert.ok(times.wakeAt >= start + 25); assert.ok(times.endedAt >= times.wakeAt - 1);
+    assert.match(JSON.stringify(result.content), new RegExp(new Date(times.endedAt).toISOString().replaceAll('.', '\\.')));
+    assert.equal(progress.length, 1);
+    assert.match(JSON.stringify(progress), /Expected end:/);
+    assert.ok(!JSON.stringify(progress).includes('"endedAt"'), "An expected deadline must not be labelled as actual completion");
+    assert.equal((progress[0] as { details: { wakeAt: number } }).details.wakeAt, times.wakeAt);
     for (const seconds of [-1, Infinity, NaN, 3601, "180"]) {
       await assert.rejects(sleep.execute("invalid", { seconds }), /seconds between/);
     }

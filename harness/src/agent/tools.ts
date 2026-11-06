@@ -170,15 +170,25 @@ export async function waitForAgentSleep(wakeAt: number, signal?: AbortSignal): P
   await delay(Math.max(0, wakeAt - Date.now()), undefined, { signal });
 }
 
+export function agentSleepResult(seconds: number, wakeAt: number, endedAt?: number) {
+  const deadline = `Expected end: ${new Date(wakeAt).toISOString()}.`;
+  const text = endedAt === undefined ? `Waiting ${seconds} seconds. ${deadline}`
+    : `Waited ${seconds} seconds. ${deadline} Ended at: ${new Date(endedAt).toISOString()}.`;
+  return { content: [{ type: "text" as const, text }], details: { seconds, wakeAt, ...(endedAt === undefined ? {} : { endedAt }) } };
+}
+
 function createSleepTool({ Type }: { Type: TypeboxLike }) {
   return {
     name: "sleep", label: "Sleep",
     description: "Wait for seconds (0-3600) without running shell commands. Cancellable. Use for a timed pause before checking background work. For a named subagent's result, prefer subagent action=wait with its taskId.",
     parameters: Type.Object({ seconds: Type.Number({ minimum: 0, maximum: 3600, description: "Seconds to wait; fractional values are allowed." }) }),
-    async execute(_id: string, args: unknown, signal?: AbortSignal) {
+    async execute(_id: string, args: unknown, signal?: AbortSignal, onUpdate?: (result: ReturnType<typeof agentSleepResult>) => void) {
       const seconds = agentSleepSeconds(args);
-      await waitForAgentSleep(Date.now() + seconds * 1000, signal);
-      return { content: [{ type: "text" as const, text: `Waited ${seconds} seconds.` }], details: { seconds } };
+      signal?.throwIfAborted();
+      const wakeAt = Date.now() + seconds * 1000;
+      onUpdate?.(agentSleepResult(seconds, wakeAt));
+      await waitForAgentSleep(wakeAt, signal);
+      return agentSleepResult(seconds, wakeAt, Date.now());
     },
   };
 }

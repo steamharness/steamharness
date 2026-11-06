@@ -1,5 +1,7 @@
 # Unreleased
 
+- Sleep activity rows and details show expected and actual end times in the browser’s local timezone, retaining them after completion and history replay.
+
 - Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.
 
 - Fixed compiled Kanban previews reloading during local data writes. Only artifact and entry declaration changes trigger preview reloads, preserving active edits when images or JSON are saved elsewhere in the project.

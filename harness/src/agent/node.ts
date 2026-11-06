@@ -499,7 +499,8 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
               toolName: event.toolName,
               status: event.phase === "end" ? (event.isError === true ? "failed" : "success") : "running",
               input: toolInput,
-              ...(event.phase === "end" ? { output: event.result, error: event.isError === true ? event.result : undefined } : {}),
+              ...(event.result === undefined ? {} : { output: event.result }),
+              ...(event.phase === "end" && event.isError === true ? { error: event.result } : {}),
               started: event.phase === "update",
             });
             break;

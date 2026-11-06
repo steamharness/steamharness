@@ -44,6 +44,9 @@ test("sleep resumes its committed deadline after a host restart without starting
   const running = first.instance.prompt("Wait for progress");
   t.after(async () => { first.suspend.resolve(); await running; await first.instance.close(); });
   await until(() => JSON.stringify(first.snapshot() ?? {}).includes("wakeAt"));
+  const progress = first.snapshot().turns[0].items.find(item => item.title === "sleep")!;
+  assert.match(JSON.stringify(progress.content), /Waiting 180 seconds.*Expected end:/);
+  assert.equal(progress.metadata?.status, "running");
   const wakeAt = Number(/"wakeAt":(\d+)/.exec(JSON.stringify(first.snapshot()))![1]);
   first.suspend.resolve(); await running; await first.instance.close();
   const realNow = Date.now.bind(Date);
@@ -59,6 +62,10 @@ test("sleep resumes its committed deadline after a host restart without starting
   await until(() => second.snapshot()?.turns[0]?.status === "done");
   assert.equal(second.faux.state.callCount, 1);
   assert.ok(wakeAt < Date.now(), "The original persisted deadline has elapsed");
+  const output = second.snapshot().turns[0].items.find(item => item.title === "sleep")!;
+  assert.equal(output.metadata?.status, "success");
+  assert.match(JSON.stringify(output.content), /Ended at:/);
+  assert.match(JSON.stringify(output.content), new RegExp(`"wakeAt":${wakeAt}`));
 });
 
 test("restored failed responses never display unexecuted tool calls as running", () => {

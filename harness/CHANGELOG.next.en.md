@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improve] Show the expected sleep end time while waiting and retain the actual completion time in results. Include live tool progress in conversation output and durable snapshots, retaining the original deadline after recovery.
+
 - [Fix] Default child-agent concurrency to three, durably queue excess work and fill released slots. Retry run configuration authorization up to ten times before continuing the same task.
 - [New] Add cancellable `sleep({ seconds })` with a persisted deadline so recovery waits only the remaining time. Remove host-disabled built-in and custom tools from model tool lists.
 
