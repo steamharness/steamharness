@@ -1092,11 +1092,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (call.action === 'workflow') {
         if (project.projectType !== 'workflow') throw new Error('The target is not a Workflow.');
         const operation = String(call.input.entrypointId);
-        if (!project.entrypoints.some(entry => entry.id === operation)) throw new Error('Unknown Workflow operation.');
+        if (!project.entrypoints.some(entry => entry.id === operation && (!call.readOnly || entry.readOnly === true))) throw new Error('A declared read-only Workflow operation is required.');
         const args = call.input.args;
         if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) throw new Error('Invalid Workflow arguments.');
         const runId = globalThis.crypto.randomUUID();
-        const report = await runtime.run({ project, abortSignal: call.abortSignal, runId, conversationId: runId, args, entrypointId: operation,
+        const report = await runtime.run({ project, readOnly: call.readOnly, abortSignal: call.abortSignal, runId, conversationId: runId, args, entrypointId: operation,
           entryCall: { entryId: call.sourceEntryId, conversationId: call.sourceConversationId, runId: call.sourceRunId } }, () => {});
         if (report.status !== 'success') throw new Error(report.error?.message ?? report.result?.error?.message ?? 'Workflow operation failed.',
           { cause: report.error ?? report.result?.error });

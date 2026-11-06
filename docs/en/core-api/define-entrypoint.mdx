@@ -122,3 +122,9 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Bot receives an entrypoint argument | `input_validation` | Bot remains single-entry; the argument is neither ignored nor silently redirected. |
 
 `entrypointId` identifies an operation inside a Workflow entry. It is distinct from the window `entryId` registered in the root manifest: `steamharness run . --entry database --entrypoint search`.
+
+## Read operations for resource previews
+
+Declare a static `readOnly: true` on operations used by local resource cards in CLI Web or Studio. Omitted or false operations cannot run through a read-only preview. The host checks the declaration on each request, propagates the restriction to nested Workflow calls, and rejects Bot mutations.
+
+The flag is an author declaration, not a JavaScript filesystem sandbox. Implementations must still use read-only queries and file handles. Trusted hosts can require the check with `runLocalProjectWithReport({ readOnly: true, ... })`.

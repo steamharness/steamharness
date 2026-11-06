@@ -171,7 +171,7 @@ try {
           projectCard: registration.projectCard,
           aggregateProjectCard: readProjectCardMetadata(pkg, manifest.entries.find(entry => entry.entryId === manifest.defaultEntry).type),
           ...parameters(structure),
-          entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, title: entry.title, group: entry.group, description: entry.description, execution: entry.execution, ...parameters(entry) })),
+          entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, readOnly: entry.readOnly, title: entry.title, group: entry.group, description: entry.description, execution: entry.execution, ...parameters(entry) })),
           definitions: structure.definitions,
           execution: structure.execution,
           diagnostics: structure.diagnostics,
@@ -326,6 +326,7 @@ try {
       const running = runLocalProjectWithReport({
         entryConversationHost,
         entryCall: request.entryCall,
+        readOnly: request.readOnly === true,
         configuration,
         configurationRunId: request.configurationRunId,
         projectDir: request.project.folderPath,

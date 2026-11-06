@@ -1542,3 +1542,9 @@ Bot 的 `conversation.collapseIntermediate` 默认 true：成功后收起中间�
 工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
 
 `collapseIntermediate` 是会话展示字段，控制完成后是否折叠中间过程。
+
+## 本地 Workflow 资源读取
+
+Workflow entrypoint 可声明静态 `readOnly: true`，类型为可选 boolean，默认 false。可信宿主的 runLocalProjectWithReport({ readOnly: true }) 在执行前核对实际定义，并传递限制至嵌套入口；不允许修改 Bot 会话。这是作者对代码行为的声明，不是文件系统沙箱。
+
+知识卡片可声明 reader: { entrypointId, args? }，调用卡片所指向的同一聚合本地 Workflow，只读操作返回 { errCode: 0, errMessage: "", format: "markdown" | "json", content }。有 reader 时可省略 target.knowledgeBase；远程知识卡片仍使用原别名。Kanban 只读预览允许 entries.list 和对已声明 readOnly 操作的 runEntrypoint，不接受写操作。

@@ -67,6 +67,7 @@ export type ExecutionItem =
   | { kind: 'loop'; loopId: string; label?: string; condition?: string; decision?: Extract<ExecutionItem, { kind: 'node' }>; children: ExecutionItem[] };
 
 export interface Entrypoint extends Parameters {
+  readOnly?: boolean;
   id: string;
   title?: string;
   description?: string;
@@ -195,6 +196,7 @@ export interface Report {
 }
 
 export interface Run {
+  readOnly?: boolean;
   /** Local host cancellation; never serialized to project workers. */
   abortSignal?: AbortSignal;
   entryCall?: import('steamharness').EntryCallSource;

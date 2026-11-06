@@ -362,6 +362,7 @@ export interface StructureInspection {
 
 export interface StructureEntrypoint {
   id: string;
+  readOnly?: boolean;
   title: string;
   description?: string;
   group?: EntrypointGroupDefinition;
@@ -681,6 +682,7 @@ function createProjectStructureInspection(options: {
   );
   const entrypoints = options.analysis.executorEntrypoints?.map((entrypoint) => ({
     id: entrypoint.id,
+    ...(entrypoint.readOnly === undefined ? {} : { readOnly: entrypoint.readOnly }),
     title: entrypoint.title,
     ...(entrypoint.description === undefined ? {} : { description: entrypoint.description }),
     ...(entrypoint.group === undefined ? {} : { group: entrypoint.group }),
@@ -2188,8 +2190,15 @@ function analyzeSourceFile(
         continue;
       }
       const paramDeclarations = readEntrypointParams(entrypointObject);
+      const readOnlyProperty = findStaticPropertyAssignment(entrypointObject, "readOnly");
+      if (readOnlyProperty && readOnlyProperty.initializer.kind !== ts.SyntaxKind.TrueKeyword && readOnlyProperty.initializer.kind !== ts.SyntaxKind.FalseKeyword) {
+        analysis.executorConfigurationViolations.push({ type: "invalid_project_entrypoints", name: id,
+          message: "Workflow entrypoint readOnly must be a static boolean literal.",
+          locations: [createLocation(cwd, filePath, sourceFile, readOnlyProperty)] });
+      }
       entrypoints.push({
         id,
+        ...(readOnlyProperty ? { readOnly: readOnlyProperty.initializer.kind === ts.SyntaxKind.TrueKeyword } : {}),
         title,
         description: readStringProperty(entrypointObject, "description"),
         group: group?.definition,

@@ -122,3 +122,9 @@ export const executor = steamharness.defineExecutor({
 | Bot 接收入口参数 | `input_validation` | Bot 保持单入口，不会忽略或回退该参数。 |
 
 `entrypointId` 是 Workflow 入口内部的操作 ID，不能替代根 manifest 中选择窗口的 `entryId`。CLI 示例：`steamharness run . --entry database --entrypoint search`。
+
+## 供资源预览读取
+
+操作可声明静态 `readOnly: true`，供 CLI Web 和 Studio 的本地资源卡片读取。省略或 false 时不能由只读预览调用。宿主每次读取重新检查声明，嵌套 Workflow 调用也必须声明只读；只读读取不能修改 Bot 会话。
+
+这是项目作者对操作行为的声明，不是 JavaScript 文件系统沙箱。代码仍须使用只读查询和只读文件句柄。可信宿主可通过 `runLocalProjectWithReport({ readOnly: true, ... })` 要求此检查。

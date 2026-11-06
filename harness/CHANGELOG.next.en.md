@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added declared read-only Workflow operations for local knowledge cards and Kanban previews, with per-request host checks that reject preview writes.
+
 - [Fix] Resolve the generator's exact CLI version from the adjacent CLI package without depending on bundled examples, keeping SDK and CLI versions independent.
 
 - Breaking: replaced Conversation projects with Core Agent Bots declared through defineBot; standardized input, output and durable sessions, with input preparation, persistent completion receipts and tool policies that can require approval in every mode.

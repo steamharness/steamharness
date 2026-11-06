@@ -822,3 +822,18 @@ async function createConversationProject(): Promise<string> {
   await writeFile(path.join(projectDir, "index.ts"), botFixtureSource({ properties: 'name: "conversation-flow",' }));
   return projectDir;
 }
+
+test('resource readers preserve static readOnly metadata and reject undeclared operations before execution', async () => {
+  const projectDir = await createEntrypointProject();
+  try {
+    const filename = path.join(projectDir, 'index.ts');
+    await writeFile(filename, (await readFile(filename, 'utf8')).replace('id: "validate",', 'id: "validate", readOnly: true,'));
+    const inspected = inspectLocalProjectStructure({ projectDir });
+    assert.equal(inspected.entrypoints?.find(entry => entry.id === 'validate')?.readOnly, true);
+    const allowed = await runLocalProjectWithReport({ projectDir, entrypointId: 'validate', readOnly: true, storage: testExecutionStorage(), args: [] });
+    assert.equal(allowed.status, 'success');
+    const denied = await runLocalProjectWithReport({ projectDir, entrypointId: 'main', readOnly: true, storage: testExecutionStorage(), args: [] });
+    assert.equal(denied.status, 'failed');
+    assert.match(JSON.stringify(denied), /declared read-only/);
+  } finally { await rm(projectDir, { recursive: true, force: true }); }
+});

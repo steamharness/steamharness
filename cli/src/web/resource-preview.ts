@@ -16,6 +16,7 @@ import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
 import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
 import { t, locale } from './localization';
+import { readLocalWorkflowResource } from './local-resource-reader';
 
 export interface ResourcePreviewData {
   card: ResourceCard;
@@ -25,6 +26,7 @@ export interface ResourcePreviewData {
   kanban?: { url: string; nonce: string; configuration: KanbanInjectedConfiguration };
 }
 interface PreviewEntry {
+  controller?: AbortController;
   data: ResourcePreviewData;
   file?: { root: string; filename: string; mimeType: string };
   local?: KanbanPreview;
@@ -47,6 +49,7 @@ function insideProject(root: string, filename: string): boolean {
 export class ResourcePreviews {
   private readonly entries = new Map<string, PreviewEntry>();
   private generation = 0;
+  private lifetime = new AbortController();
   private poll?: ReturnType<typeof setInterval>;
   private polling = false;
   private readonly configurationReaders = new Map<string, { read(): Promise<ProjectConfigurationState>; revision: number }>();
@@ -58,10 +61,10 @@ export class ResourcePreviews {
   private remove(id: string): void {
     const entry = this.entries.get(id);
     this.entries.delete(id);
-    entry?.methods?.clear(); entry?.diagnostics?.clear();
+    entry?.controller?.abort(); entry?.methods?.clear(); entry?.diagnostics?.clear();
     for (const client of entry?.clients?.values() ?? []) client.disconnect();
   }
-  clear(): void { this.generation++; for (const id of this.entries.keys()) this.remove(id); this.configurationReaders.clear(); }
+  clear(): void { this.generation++; this.lifetime.abort(); this.lifetime = new AbortController(); for (const id of this.entries.keys()) this.remove(id); this.configurationReaders.clear(); }
   close(): void { this.clear(); clearInterval(this.poll); }
   private watchConfiguration(key: string, revision: number, read: () => Promise<ProjectConfigurationState>): void {
     this.configurationReaders.set(key, { read, revision });
@@ -135,14 +138,21 @@ export class ResourcePreviews {
   async open(card: ResourceCard): Promise<{ id: string; data: ResourcePreviewData; url: string }> {
     const generation = this.generation;
     const project = await this.resolve(card);
-    const id = randomUUID(), data: ResourcePreviewData = { card, project }, entry: PreviewEntry = { data };
+    const id = randomUUID(), data: ResourcePreviewData = { card, project }, entry: PreviewEntry = { data, controller: new AbortController() };
     const target = card.target, scopeId = target.conversationId ?? '';
     if (card.kind === 'knowledge') {
+      if (card.reader) {
+        if (target.source === 'server' || project!.id !== this.owner.id) throw new Error('Resource readers must target the current local project.');
+        const result = await readLocalWorkflowResource(this.runtime, project!, project!.entryId, card.reader, this.lifetime.signal) as { errCode?: number; format?: string; content?: unknown };
+        if (!result || result.errCode !== 0 || !['markdown', 'json'].includes(result.format ?? '')) throw new Error('Invalid resource reader result.');
+        data.content = result.content; data.format = result.format as 'markdown' | 'json';
+      } else {
       data.content = target.source==='server'
         ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,knowledgeBase:target.knowledgeBase,documentId:target.documentId})})
         : await this.runtime.readResource(project!, scopeId, card.kind, target);
       if (card.kind === 'knowledge' && (data.content === null || data.content === undefined)) { throw new Error(t('This resource no longer exists.')); }
       data.format = card.kind === 'knowledge' && typeof (data.content as { markdown?: unknown }).markdown === 'string' ? 'markdown' : 'json';
+      }
     } else if (card.kind === 'file') {
       if (target.source === 'server') { throw new Error(t('Server source files cannot be previewed by this card.')); }
       const root = await realpath(project!.assistant?.workdir ?? project!.folderPath);
@@ -305,6 +315,14 @@ export class ResourcePreviews {
     const generation = this.generation;
     const data = this.get(id), project = data.project, call = parseKanbanBridgeCall(value);
     if (data.format !== 'kanban' || !project) { throw new Error(t('This project does not provide a Kanban preview.')); }
+    if (call.operation === 'entries.list') {
+      if (data.card.target.source === 'server' || project.id !== this.owner.id) throw new Error('A local project is required.');
+      return (await this.runtime.inspect([project.folderPath])).projects.map(entry => ({ entryId: entry.entryId, name: entry.name, type: entry.projectType, status: 'ready' }));
+    }
+    if (call.operation === 'entries.runEntrypoint') {
+      if (data.card.target.source === 'server' || project.id !== this.owner.id) throw new Error('A local project is required.');
+      return readLocalWorkflowResource(this.runtime, project, String(call.input.entryId), { entrypointId: call.input.entrypointId, args: call.input.args }, this.entries.get(id)?.controller?.signal ?? this.lifetime.signal);
+    }
     // Card previews are temporary and cannot mutate the target's stored data.
     if (!(call.operation === 'database.query' && call.input.request && (call.input.request as { operation?: string }).operation === 'rows') && !['runtime.getLocale', 'database.resolve', 'knowledge.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
       throw new Error(t('This resource preview is read-only.'));

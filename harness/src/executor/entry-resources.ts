@@ -45,6 +45,7 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
         return readEntrypointOutput(report.result.data);
       },
     }, options.entryConversationHost && { async invoke(entryId, action, input, identity) {
+      if (options.readOnly && action !== "list" && action !== "snapshot") throw new Error("Resource readers cannot mutate conversations.");
       await options.authorizeEntry?.(entryId, action, identity.actor);
       identity.abortSignal?.throwIfAborted();
       return options.entryConversationHost!.invoke(entryId, action, input, identity);

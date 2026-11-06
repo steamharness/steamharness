@@ -4,6 +4,7 @@ import type { ConversationController } from './conversation-controller';
 import { isDeepStrictEqual } from 'node:util';
 
 export interface AggregateEntryCall {
+  readOnly?: boolean;
   entryId: string;
   action: EntryConversationAction | 'workflow';
   input: Record<string, unknown>;

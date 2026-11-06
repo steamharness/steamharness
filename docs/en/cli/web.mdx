@@ -60,3 +60,9 @@ Guidance shows actions for the reported failure. Project registration and databa
 Blocking failures temporarily hide the Bot composer, Workflow execution form, and Kanban controls. History and drafts stay available, and running tasks can still be stopped. Controls return when the connection recovers. Rechecks retain the existing guidance and layout.
 
 Studio opens cloud projects through its host using the current sign-in. Standalone CLI Web opens an authenticated browser tab; allow popups and retry if the browser blocks it. Navigation errors appear below the action buttons.
+
+## Local resource previews
+
+A knowledge card can supply `reader: { entrypointId, args? }` to invoke a read operation on its target Workflow entry in the same local aggregate. The operation must declare `readOnly: true` and return `{ errCode: 0, errMessage: "", format: "markdown" | "json", content }`. Markdown content is a string; JSON content is the data to display. Readers cannot target Server resources or another project.
+
+A knowledge card with a reader does not require a knowledgeBase alias. Existing Server cards continue to use that alias. Kanban cards can call declared read operations in the same aggregate through `entries.get(id).runEntrypoint(...)`. The host rejects preview writes and cancels reads when the preview closes or its access identity changes.

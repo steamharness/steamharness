@@ -131,6 +131,8 @@ import {
 } from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceProjectOptions {
+  /** Trusted host restriction; nested entry calls inherit it. */
+  readOnly?: boolean;
   entryConversationHost?: import('../entries/index').EntryConversationHost;
   entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
@@ -168,6 +170,8 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  /** Require an author-declared read-only Workflow operation. Not a JavaScript sandbox. */
+  readOnly?: boolean;
   entryConversationHost?: import('../entries/index').EntryConversationHost;
   entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
@@ -315,6 +319,7 @@ async function runWorkspaceProjectWithReportInternal(
       options.projectName,
     );
     const execution = selected.execution;
+    if (options.readOnly && (execution as { readOnly?: boolean }).readOnly !== true) throw new HarnessError({ type: "tool_permission_denied", message: "Resource previews require a declared read-only Workflow operation." });
     activeEntrypointId = selected.entrypointId;
     activeEntrypointTitle = selected.entrypointTitle;
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
@@ -528,6 +533,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       options.projectName,
     );
     const execution = selected.execution;
+    if (options.readOnly && (execution as { readOnly?: boolean }).readOnly !== true) throw new HarnessError({ type: "tool_permission_denied", message: "Resource previews require a declared read-only Workflow operation." });
     activeEntrypointId = selected.entrypointId;
     activeEntrypointTitle = selected.entrypointTitle;
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
@@ -861,6 +867,7 @@ async function runLocalProjectWithReportInternal(
       projectName,
     );
     const execution = selected.execution;
+    if (options.readOnly && (execution as { readOnly?: boolean }).readOnly !== true) throw new HarnessError({ type: "tool_permission_denied", message: "Resource previews require a declared read-only Workflow operation." });
     if (definition.projectType === "bot") {
       projectName = execution.workflow.name || projectName;
     }

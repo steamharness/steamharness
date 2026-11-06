@@ -292,6 +292,8 @@ export interface EntrypointGroupDefinition {
 export interface EntrypointDefinition<Input = unknown, Output = unknown>
   extends ExecutionDefinition<Input, Output> {
   id: string;
+  /** Author-declared read operation, eligible for host resource previews. */
+  readOnly?: boolean;
   title: string;
   description?: string;
   group?: EntrypointGroupDefinition;

@@ -17,6 +17,7 @@ export interface PresentationCardToolArgs {
   pinned?: boolean;
   preview?: boolean;
   title?: string;
+  reader?: { entrypointId: string; args?: string[] };
   kanban?: {
     mode: "preview";
     values: Record<string, unknown>;
@@ -47,7 +48,7 @@ export async function runPresentationCardAction(
   }
   if (args.action === "remove") {
     if (args.kind !== undefined || args.target !== undefined || args.kanban !== undefined || args.preview !== undefined
-      || args.pinned !== undefined || args.title !== undefined) {
+      || args.pinned !== undefined || args.title !== undefined || args.reader !== undefined) {
       throw new Error("Removing a card accepts only its card id.");
     }
     return { action: "remove", cardId: args.cardId };
@@ -55,7 +56,16 @@ export async function runPresentationCardAction(
   if (!CARD_KINDS.has(args.kind as PresentationCardKind)) {
     throw new Error("Card kind is invalid.");
   }
-  const target = readTarget(args.kind!,args.target);
+  const target = readTarget(args.kind!,args.target, args.reader !== undefined);
+  let reader: PresentationCardToolArgs["reader"];
+  if (args.reader !== undefined) {
+    const value = args.reader;
+    if (args.kind !== "knowledge" || target.source === "server" || !isRecord(value) || Object.keys(value).some(key => !["entrypointId", "args"].includes(key))
+      || typeof value.entrypointId !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(value.entrypointId)
+      || value.args !== undefined && (!Array.isArray(value.args) || value.args.length > 256 || !value.args.every(arg => typeof arg === "string"))
+      || JSON.stringify(value).length > 262_144) throw new Error("Knowledge card readers require a local Workflow operation and bounded string arguments.");
+    reader = { entrypointId: value.entrypointId, ...(value.args === undefined ? {} : { args: [...value.args] }) };
+  }
   if(target.source === "current") { target.projectId ??= context.projectId; target.entryId ??= context.entryId; }
   if (args.pinned !== undefined && typeof args.pinned !== "boolean") {
     throw new Error("Card pinned must be a boolean.");
@@ -97,10 +107,11 @@ export async function runPresentationCardAction(
     ...(args.pinned === undefined ? {} : { pinned: args.pinned }),
     ...(args.preview === undefined || !supportsPreview ? {} : { preview: args.preview }),
     ...(kanban === undefined ? {} : { kanban }),
+    ...(reader === undefined ? {} : { reader }),
   };
 }
 
-function readTarget(kind: PresentationCardKind, value: unknown): Record<string, string> {
+function readTarget(kind: PresentationCardKind, value: unknown, hasReader = false): Record<string, string> {
   if (!isRecord(value)) throw new Error("Card target must be an object.");
   const target: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -121,7 +132,7 @@ function readTarget(kind: PresentationCardKind, value: unknown): Record<string, 
       throw new Error("Card target source is invalid.");
     }
     if (target.source !== "current" && (!target.projectId || !target.entryId)) throw new Error("Card target requires projectId and entryId.");
-    if (kind === "knowledge" && !target.knowledgeBase) throw new Error("Knowledge cards require a declared knowledgeBase alias.");
+    if (kind === "knowledge" && !target.knowledgeBase && !hasReader) throw new Error("Knowledge cards require a declared knowledgeBase alias.");
     if (kind === "file" && (!target.filePath || target.filePath.startsWith("/")
       || /^[A-Za-z]:[\\/]/.test(target.filePath) || target.filePath.includes("\0")
       || target.filePath.replaceAll("\\", "/").split("/").some((segment) => segment === ".." || segment === ""))) {
@@ -159,6 +170,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
         }])),
         description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. Knowledge: source, projectId, entryId, knowledgeBase, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
       },
+      reader: { type: "object", additionalProperties: false, properties: { entrypointId: { type: "string" }, args: { type: "array", items: { type: "string" }, maxItems: 256 } }, required: ["entrypointId"], description: "Knowledge cards may read a declared readOnly Workflow operation on their local target entry." },
       pinned: { type: "boolean" },
       preview: { type: "boolean", description: "Only Kanban, project or browser cards. Omit for file and knowledge cards; false is ignored for those kinds." },
       title: { type: "string", minLength: 1, maxLength: 200 },

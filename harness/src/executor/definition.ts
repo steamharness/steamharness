@@ -11,6 +11,7 @@ export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 export function defineProjectEntrypoint<Input, Output>(
   definition: EntrypointDefinition<Input, Output>,
 ): EntrypointDefinition<Input, Output> {
+  if (definition.readOnly !== undefined && typeof definition.readOnly !== "boolean") throw new HarnessError({ type: "input_validation", message: "Entrypoint readOnly must be a boolean." });
   assertProjectEntrypointDefinition(definition);
   return definition;
 }

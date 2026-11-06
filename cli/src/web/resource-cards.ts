@@ -1,5 +1,6 @@
 import { isConfigurationValue, type ConfigurationValues } from "@steamharness/project-configuration";
 import type { OutputItem } from './workflow-types';
+import { parseWorkflowResourceReader, type WorkflowResourceReader } from './resource-reader-contract';
 
 export interface ResourceCardReference {
   cardId: string;
@@ -9,6 +10,7 @@ export interface ResourceCardReference {
 }
 
 export interface ResourceCard {
+  reader?: WorkflowResourceReader;
   id: string;
   kind: 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
   title: string;
@@ -73,14 +75,22 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     } else {
       target.source ??= 'local'; target.projectId ??= projectId;
       if (target.projectId === projectId) target.entryId ??= entryId;
-      if (!target.entryId || kind === 'knowledge' && !target.knowledgeBase) continue;
+      if (!target.entryId || kind === 'knowledge' && !target.knowledgeBase && !descriptor.reader) continue;
       if (target.scope === 'conversation') { target.conversationId ??= conversationId; }
       if (kind === 'file' && (!target.filePath || /^(?:[\\/]|[a-z]:)|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(target.filePath))) { continue; }
     }
-    const id = string(descriptor.cardId) ?? `${kind}:${JSON.stringify(target)}`;
+    let reader: WorkflowResourceReader | undefined;
+    if (descriptor.reader !== undefined) {
+      try {
+        if (kind !== 'knowledge' || target.source !== 'local' || target.projectId !== projectId) continue;
+        reader = parseWorkflowResourceReader(descriptor.reader);
+      } catch { continue; }
+    }
+    const id = string(descriptor.cardId) ?? `${kind}:${JSON.stringify(target)}${reader ? `:${JSON.stringify(reader)}` : ""}`;
     const title = (string(descriptor.title) ?? string(record(output?.document)?.title) ?? target.key ?? target.documentId ?? target.filePath ?? target.url ?? target.projectId ?? kind).slice(0, 200);
     const kanban = record(descriptor.kanban), values = record(kanban?.values);
     cards.set(id, { id, kind, title, target, itemId: item.id ?? String(index),
+      ...(reader ? { reader } : {}),
       ...(typeof descriptor.preview === 'boolean' ? { preview: descriptor.preview } : {}),
       ...(typeof descriptor.pinned === 'boolean' ? { pinned: descriptor.pinned } : {}),
       ...(kind === 'kanban' && ['preview', 'save'].includes(String(kanban?.mode)) && values && Object.keys(values).length <= 100

@@ -51,6 +51,22 @@ function largePng(): Buffer {
 }
 
 describe('resource previews', () => {
+  it('reads local knowledge and Kanban data through declared Workflow operations and cancels closed previews', async () => {
+    const { owner, board, runtime, previews, card } = await fixture();
+    board.id = owner.id; owner.folderPath = board.folderPath; owner.entryId = 'agent';
+    const database = { ...owner, entryId: 'database', projectType: 'workflow', entrypoints: [{ id: 'read', readOnly: true }, { id: 'write' }] } as Project;
+    vi.mocked(runtime.inspect).mockImplementation(async (_paths, entryId) => ({ projects: entryId === 'database' ? [database] : [board], errors: [] }));
+    runtime.run = vi.fn(async () => ({ status: 'success', result: { data: { errCode: 0, output: { errCode: 0, format: 'markdown', content: '# Local knowledge' } } } }));
+    const knowledge = await previews.open(card('knowledge', { source: 'local', projectId: owner.id, entryId: 'database' }, { reader: { entrypointId: 'read' } }));
+    expect(knowledge.data.content).toBe('# Local knowledge');
+    const preview = await previews.open(card('kanban', { source: 'local', projectId: owner.id, entryId: 'main' }));
+    const call = { requestId: 'read', operation: 'entries.runEntrypoint', input: { entryId: 'database', entrypointId: 'read', args: [], requestId: 'read' } };
+    expect(await previews.bridge(preview.id, call)).toMatchObject({ content: '# Local knowledge' });
+    await expect(previews.bridge(preview.id, { ...call, input: { ...call.input, entrypointId: 'write' } })).rejects.toThrow('read-only');
+    const signal = vi.mocked(runtime.run).mock.calls.at(-1)![0].abortSignal!;
+    previews.close(); expect(signal.aborted).toBe(true);
+  });
+
   it('diagnoses the card instance and its reads, with read-only calls isolated by target and preview lifetime', async () => {
     const { previews, card, board, runtime } = await fixture();
     const preview = await previews.open(card('kanban', { source: 'local', projectId: board.id }));
