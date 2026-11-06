@@ -63,6 +63,23 @@ it("serializes concurrent builds and preserves the previous release after build 
   expect(readProjectReleaseSync(first.directory)?.buildId).toBe(first.buildId);
   await expect(resolveProjectDistribution(directory)).rejects.toThrow();
 });
+
+it("prepares entry-specific launch folders while retaining the original release identity", async () => {
+  const { directory, declaration } = await fixture();
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration,
+    projectCard: { icon: "boxes", iconBackgroundColor: "#123456" }, entries: [...declaration.entries, { ...declaration.entries[0], entryId: "other" }] }));
+  const release = await buildProjectRelease(directory);
+  const initial = await readFile(path.join(release.directory, "steamharness.json"), "utf8");
+  const selected = await prepareReleaseRun(directory, { entryId: "other" });
+  const defaultRun = await prepareReleaseRun(directory, { entryId: "main" });
+  expect(selected.directory).not.toBe(defaultRun.directory);
+  const document = JSON.parse(await readFile(path.join(selected.directory, "steamharness.json"), "utf8"));
+  expect(document.defaultEntry).toBe("other"); expect(document.id).toBe(id);
+  expect(document.projectCard.icon).toBe("boxes");
+  expect(readProjectReleaseSync(selected.directory)?.buildId).toBe(release.buildId);
+  expect(await readFile(path.join(release.directory, "steamharness.json"), "utf8")).toBe(initial);
+  await expect(prepareReleaseRun(directory, { entryId: "missing" })).rejects.toThrow(/not included/);
+});
 it("rejects release assets that expose source or escape the project", async () => {
   const { directory, declaration } = await fixture();
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, release: { files: ["index.ts"] } }));

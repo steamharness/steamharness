@@ -6,7 +6,7 @@
 - Breaking: project types, structure reports, templates and the Web host now use Bot; conversation protocols remain, with stable request identities across initial, resumed and subsequent turns.
 
 - Durable Agent commands automatically retry confirmation timeouts, temporary connection failures, and readiness races with the original request ID. Late receipts reconcile pending input, repaired project connections resume the original run, browser deadlines cover recovery, and Stop cancels retries.
-- Add project release builds, compiled execution, entry selection, validated inventories and automatic release uploads.
+- Add project release builds, compiled execution, entry selection, validated inventories and automatic release uploads. Release run snapshots keep the project identity and logo while selecting a separate default entry for each Studio window.
 
 - Conversation views within one Kanban page can share a session writer while retaining separate parameter and draft state. Closing a view releases its claim immediately; reopened views remain editable and running tasks retain their execution owner.
 - The Conversation composer becomes editable after its first session state arrives, preventing newly typed drafts from being cleared by the initial snapshot.

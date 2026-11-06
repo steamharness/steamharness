@@ -180,7 +180,7 @@ function fixture(t, saved = new Map()) {
     getWindow: () => ({ ResizeObserver: class { observe() {} disconnect() {} } }), SplitView, Orientation: { HORIZONTAL: 1 }, Event: { None: noEvent.event },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, EditorsOrder: {}, GroupsOrder: {}, Parts: { AUXILIARYBAR_PART: 'auxiliary' },
     EditorResourceAccessor: { getOriginalUri: editor => editor.resource }, SideBySideEditor: { PRIMARY: 1 },
-    studioModeState: state, studioSteamToolDefinitions: tools, studioSteamWorkspaceState: workspaceState, registerEditorOpenTarget: policy.registerEditorOpenTarget,
+    studioModeState: state, isStudioSteamToolAvailable: id => !state.state.releaseOnly || !['editor', 'assistant'].includes(id), studioSteamToolDefinitions: tools, studioSteamWorkspaceState: workspaceState, registerEditorOpenTarget: policy.registerEditorOpenTarget,
   });
   workspace = new exports.StudioSteamWorkspace(parent, groups, views, { getViewContainerByViewId: () => ({}) }, layout, storage, commands, terminals, terminalGroups, editors);
   t.after(() => workspace.dispose());
@@ -479,4 +479,19 @@ test('failed transfer back to IDE reports the failure and retains the live dirty
   const f = fixture(t); await f.workspace.activate(); const source = file('dirty.ts'); source.dirty = true; await f.open(source);
   f.right.moveVeto = true; await assert.rejects(f.workspace.deactivate(f.left), /Unable to move/);
   assert.equal(f.right.contains(source), true); assert.equal(source.isDirty(), true);
+});
+
+test('release workspaces omit restored authoring tools and reject their launch commands', async t => {
+  const saved = new Map([['studio.workbenchMode', 'steam'], ['studio.steamWorkspaceTabs', {
+    tools: ['editor', 'assistant', 'info'], parts: ['editor', 'assistant'], defaultViews: ['assistant', 'info'], active: 'assistant',
+  }]]);
+  const f = fixture(t, saved); f.state.state.releaseOnly = true;
+  await f.workspace.activate();
+  assert.ok(!f.tabs.some(tab => tab.id === 'editor' || tab.id === 'assistant'));
+  assert.ok(f.tabs.some(tab => tab.id === 'info'));
+  const before = f.calls.length;
+  await f.workspace.openTool('editor'); await f.workspace.openTool('assistant');
+  await f.workspace.newInstance('editor'); await f.workspace.newInstance('assistant');
+  assert.equal(f.calls.length, before);
+  assert.ok(!saved.get('studio.steamWorkspaceTabs').tools.includes('assistant'));
 });

@@ -22,7 +22,7 @@ import { openProjectUserSettings } from './workflow-user-settings';
 import { ProjectFileIcons } from './workflow-file-icons';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import type { ProjectIcons } from './project-icons';
-import { openProjectFolder } from './project-window';
+import { openProjectFolder, openReleaseProjectWindow } from './project-window';
 import { StudioModeController } from './studio-mode';
 import { chooseProjectTab } from './project-tabs';
 import { ProjectWindowsProvider } from './project-windows-view';
@@ -51,7 +51,7 @@ class ProjectCatalog {
   private published = '';
   projects: Project[] = [];
   refresh(): void {
-    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, manifest }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, version: manifest?.version })));
+    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, manifest, distribution }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, distribution, version: manifest?.version })));
     if (signature === this.published) { return; }
     this.published = signature;
     this.change.fire();
@@ -153,7 +153,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
     void vscode.commands.executeCommand('setContext', 'studio.projectReleaseAvailable', !!target && target.distribution !== 'release' && !!launcher.prepareDistribution);
     const workspace = target ? findWorkspace(target) : undefined;
-    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted, target?.uri, !!workspace?.running && workspace.loaded, target?.distribution === 'release'); }
+    const windowRoot = vscode.workspace.workspaceFolders?.[0]?.uri.toString();
+    const releaseProject = provider.projects.find(project => project.uri === windowRoot && project.distribution === 'release' && project.entryId === project.defaultEntry);
+    const headerProject = releaseProject ?? target;
+    const headerWorkspace = releaseProject ? findWorkspace(releaseProject) : workspace;
+    if (projectScanReady) { mode.update(!!headerProject && vscode.workspace.isTrusted, headerProject?.uri, !!headerWorkspace?.running && headerWorkspace.loaded, !!releaseProject,
+      releaseProject ? { name: releaseProject.aggregateName, avatarUrl: projectAvatarDataUrl(releaseProject.aggregateProjectCard ?? releaseProject.projectCard, releaseProject.projectType) } : undefined); }
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
     status.tooltip = target.folderPath; status.show();
@@ -588,14 +593,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         const abort = new AbortController(), subscription = token.onCancellationRequested(() => abort.abort());
         try {
           const built = await launcher.prepareDistribution!(source, true, abort.signal, message => progress.report({ message }));
-          const inspected = await launcher.inspect([built.directory]);
-          const entries = inspected.projects.map(entry => ({ ...entry, uri: vscode.Uri.file(built.directory).toString(), distribution: 'release' as const, releasePreview: true, sourceUri: source.uri }));
-          const project = entries.find(entry => entry.entryId === source.entryId);
-          if (!project) throw new Error(t('This entry is not included in the release.'));
-          for (const entry of entries) externalProjects.set(projectWindowKey(entry), entry);
-          await openProject(project, undefined, abort.signal);
-          mode.update(true, project.uri, !!findWorkspace(project)?.loaded, true);
-          await vscode.commands.executeCommand('studio.enterSteamMode');
+          if (built.mode !== 'release' || !built.entries?.includes(source.entryId)) throw new Error(t('This entry is not included in the release.'));
+          await openReleaseProjectWindow(built.directory, source.uri, abort.signal);
         } finally { subscription.dispose(); }
       });
     }),

@@ -190,7 +190,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     prepareProjectTemplate: async (directory, signal) => { const runtime = await selectedRuntime(); return templates.prepare(directory, runtime.nodePath, AbortSignal.any([signal, controller.signal]), runtime); },
     prepareDistribution: async (project, snapshot, signal, progress) => {
       assertAvailable(); const runtime = await selectedRuntime();
-      return prepareProjectDistributionCli(project.folderPath, runtime.nodePath, snapshot, AbortSignal.any([signal, controller.signal]), progress, runtime);
+      return prepareProjectDistributionCli(project.folderPath, runtime.nodePath, snapshot, AbortSignal.any([signal, controller.signal]), progress, runtime, snapshot ? project.entryId : undefined);
     },
     uploadProject: (project, releaseLog, signal, progress) => {
       assertAvailable();

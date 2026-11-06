@@ -136,7 +136,7 @@ function fixture(t, saved = new Map()) {
     MenuRegistry: { appendMenuItem: () => ({ dispose() {} }) }, MenuId: { EditorTitle: 'editorTitle' },
     CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true, and: () => true, or: () => true, equals: () => true, notEquals: () => true },
     SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
-    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state, studioWindowChrome: {},
+    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state, isStudioSteamToolAvailable: id => !state.state.releaseOnly || !['editor', 'assistant'].includes(id), studioWindowChrome: {},
     studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({
       id: { 'studio.projectInfo': 'info', 'studio.developerAssistant': 'assistant' }[view] ?? view.replace('studio.', ''), view,
     })).concat([{ id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }]),
