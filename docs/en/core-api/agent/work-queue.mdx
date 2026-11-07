@@ -70,6 +70,10 @@ Normal lifecycle changes return a delivery receipt instead of failing the `send`
 
 To await one named work item, call `subagent({ action: "wait", taskId })`. To pause before checking batch progress, call `sleep({ seconds: 180 })`. Sleep supports cancellation and works with `bash` disabled; background children continue running during the pause.
 
+Core resumes the parent once all current child work has ended and none remains queued. An active sleep returns early; an idle parent can also continue. Each drained queue receives one notification, retaining its identity across recovery. The notification cannot independently restart a failed or stopped parent. Running, queued and automatically retrying work prevents the notification.
+
+Internal inputs carry `turns[].hiddenInput: true` for context and audit. Hosts omit their user bubbles and queue rows while retaining normal assistant continuations. Their completion does not independently advance a paused user queue. An idle child queue does not prove that a business batch is complete; the parent must inspect its status and receipts.
+
 Anonymous `subagent({ task, background?, model? })` and historical tasks remain supported. Named tool calls use `{ action: "spawn", agentId, workId, task, background: true }`; management actions use taskId. Tool background work reports to the parent by default. Commands and business tasks may set `reportToParent: false` to consume receipts themselves.
 
 An explicit `action` selects named management and ignores legacy result pagination fields populated by a model. Tool arguments still cannot override a named role's model.

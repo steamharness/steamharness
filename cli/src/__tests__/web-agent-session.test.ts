@@ -33,6 +33,34 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
   return { controller, runtime, runs, snapshot, emit, start, finish, save };
 }
 
+it.each([true, false])('hides internal completion inputs and retains their assistant continuation (busy=%s)', async busy => {
+  const f = fixture(); await f.start(busy ? 'placed' : 'done');
+  const initial = f.snapshot();
+  const original = { ...initial.turns[0], status: busy ? 'placed' as const : 'done' as const };
+  f.controller.current.queuePaused = true;
+  f.controller.current.queuedInputs = [{ id: 'user-queue', text: 'Wait for my next action', params: {}, attachments: [], createdAt: 1, hostQueued: true }];
+  const notice: AgentSessionTurn = { requestId: 'subagents-idle:1:42', conversationId: 1, prompt: 'Internal queue completion notice',
+    mode: busy ? 'steer' : 'followUp', hiddenInput: true, status: 'queued', epoch: 0, items: [] };
+  f.emit({ ...initial, revision: 2, turns: [original, notice] });
+  expect(f.controller.current.queuedInputs?.map(input => input.text)).toEqual(['Wait for my next action']);
+  const items: AgentSessionTurn['items'] = busy ? [] : [{ id: 'continued', title: 'Output', content: 'All child receipts checked', contentType: 'markdown' }];
+  f.emit({ ...initial, revision: 3, turns: [original, { ...notice, status: 'placed', entryId: 3, items }] });
+  f.emit({ ...initial, revision: 4, turns: [original, { ...notice, status: 'done', entryId: 3, answerId: 4, items }] });
+  await Promise.resolve();
+  expect(f.controller.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['First']);
+  expect(f.controller.current.messages.some(message => message.status === 'steer')).toBe(false);
+  expect(f.controller.current.messages.filter(message => message.role === 'assistant')).toHaveLength(busy ? 1 : 2);
+  if (!busy) expect(f.controller.current.messages.at(-1)?.items?.[0]?.content).toBe('All child receipts checked');
+  expect(f.controller.current.queuePaused).toBe(true);
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  f.controller.current.queuedInputs = [];
+  await f.finish();
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.current.id, selectionVersion: 1 });
+  const reopened = new ConversationController(f.controller.project, f.runtime, saved, { save: vi.fn(), changed: vi.fn(), log: vi.fn() }); controllers.push(reopened);
+  expect(reopened.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['First']);
+  expect(reopened.current.messages.some(message => message.content === notice.prompt)).toBe(false);
+});
+
 it.each([
   { status: 'placed', reason: undefined, expected: 'running' },
   { status: 'done', reason: undefined, expected: 'success' },

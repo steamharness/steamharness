@@ -163,7 +163,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
   async function completed(snapshot: AgentSessionSnapshot, input: AgentInput, context: NodeContext): Promise<void> {
     if (!options.onCompleted) return;
     for (const turn of snapshot.turns) {
-      if (turn.conversationId !== snapshot.conversationId || turn.status !== "done" || turn.mode === "report" || turn.mode === "steer") continue;
+      if (turn.conversationId !== snapshot.conversationId || turn.status !== "done" || turn.mode === "report" || turn.mode === "steer" || turn.hiddenInput) continue;
       const requestId = input.requestId && turn.requestId.startsWith(`${input.requestId}:plan:`) ? input.requestId : turn.requestId;
       if (completionStates.get(completionKey(requestId, context))?.notified) continue;
       const items = turn.items.map((item, index) => ({ ...item, id: item.id ?? `bot-part-${index}` }));

@@ -17,7 +17,9 @@ import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
 import type { AgentSearchMessage } from "./web-search";
 import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn, AgentSubagentAction, AgentWorkInfo } from "./session-types";
-import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentWorkRetryDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
+import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentWorkRetryDoc, AgentSessionLifecycleDoc, AgentWorkIdleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
+import { awaitWithContext, withCancel } from "@earendil-works/chord/context";
+import { waitForAgentSleep } from "./tools";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 import { SessionDoc, canonical, forkSessionConversation, sessionTarget } from "./session-state";
 import { waitBeforeRetry } from "./provider-retry";
@@ -32,6 +34,7 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
 const validConcurrency = (value: number | null | undefined) => value == null || Number.isSafeInteger(value) && value > 0;
 const concurrencyLimit = (value: number | null | undefined) => value === null ? Infinity : value ?? 3;
+type WorkIdleNotice = { version: number; taskIds: number[]; completed: number; failed: number; stopped: number };
 const validWorkRetry = (retry: AgentDefinition["retry"]) => !retry || Number.isSafeInteger(retry.maxAttempts)
   && retry.maxAttempts >= 1 && retry.maxAttempts <= 10 && Number.isSafeInteger(retry.delayMs ?? 1000)
   && (retry.delayMs ?? 1000) >= 0 && (retry.delayMs ?? 1000) <= 60_000;
@@ -63,6 +66,7 @@ export class DurableAgentSession {
   private notify?: () => void;
   private readonly planDoc;
   private readonly delegation;
+  private readonly idleNotification;
   private readonly replays = new Map<string, "safe" | "never">();
   private readonly submissions = new Map<number, SubmissionRecord>();
   private readonly tables = new Map<number, { entries: Map<number, EntryRecord>; tasks: Map<number, TaskRecord<JsonValue, JsonValue, JsonValue>> }>();
@@ -77,6 +81,7 @@ export class DurableAgentSession {
     private readonly contextWindow: (provider: string, model: string) => number | undefined = (provider, model) => models.getModel(provider, model)?.contextWindow,
     private readonly retryDelayMs = 500) {
     this.planDoc = options.planFork === "initial" ? PlanInitial : options.planFork === "current" ? PlanCurrent : PlanAsOf;
+    this.idleNotification = this.createIdleNotificationTask();
     this.delegation = this.createDelegationTask();
   }
 
@@ -192,7 +197,7 @@ export class DurableAgentSession {
         return delegationOutput(id, result.state.outcome, {});
       },
     });
-    registry.install(defineExtension({ name: "project.session", tools, tasks: [this.delegation] }));
+    registry.install(defineExtension({ name: "project.session", tools, tasks: [this.delegation, this.idleNotification] }));
     this.tools = tools;
     this.setTools(tools);
   }
@@ -398,7 +403,10 @@ export class DurableAgentSession {
             await parent.submit({ type: "input", content: `Subagent ${failed ? "failed" : "result"} (${childId}, resultTaskId=${task.id}):\n${output.output[0]!.text}`, whenBusy: "followUp", requestId: `report:${task.id}`,
               entry: { kind: "project.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
           }
-          await runtime.commit(() => ({ status: "terminal", outcome: failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer } }), ctx);
+          await runtime.commit(async tx => {
+            await this.notifyIdleWork(tx, task.conversationId, { id: task.id, status: failed ? "failed" : "completed" });
+            return { status: "terminal", outcome: failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer } };
+          }, ctx);
         },
         retry: async (task, runtime, ctx) => {
           const { childId, attempt, wakeAt } = task.state.checkpoint;
@@ -418,6 +426,99 @@ export class DurableAgentSession {
       },
       abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
     });
+  }
+
+  /** Record the empty-queue transition in the same commit as the final child outcome. */
+  private async notifyIdleWork(tx: Tx, conversationId: ConversationId, settling?: { id: number; status: "completed" | "failed" }): Promise<boolean> {
+    const tasks = await scanAll(cursor => tx.scanTasks({ conversationId, kind: "project.delegation" }, 100, cursor));
+    if (!tasks.length || tasks.some(task => task.id !== settling?.id && task.state.status !== "terminal")
+      || tasks.some(task => task.id === settling?.id && task.abortRequested)) return false;
+    const lifecycle = await tx.doc(AgentSessionLifecycleDoc, conversationId);
+    if (lifecycle.interrupted) return false;
+    const idle = await tx.doc(AgentWorkIdleDoc, conversationId);
+    const version = tasks.reduce((latest, task) => Math.max(latest, task.id), 0);
+    if (idle.version < version) {
+      const work = tasks.filter(task => task.id > idle.version);
+      const notice: WorkIdleNotice = { version, taskIds: work.slice(-50).map(task => task.id), completed: 0, failed: 0, stopped: 0 };
+      for (const task of work) {
+        const status = task.id === settling?.id ? settling.status : task.state.status === "terminal" ? task.state.outcome.status : undefined;
+        if (status === "completed") notice.completed++;
+        else if (status === "aborted" || status === "orphaned") notice.stopped++;
+        else notice.failed++;
+      }
+      idle.version = version;
+      await tx.createTask(this.idleNotification, notice, { conversationId, ownership: { kind: "conversation" }, background: true });
+    }
+    return idle.deliveredVersion >= version;
+  }
+
+  private createIdleNotificationTask() {
+    return defineTask<WorkIdleNotice, { phase: "notify" }, null>({
+      name: "project.subagents-idle", version: 1, initial: () => ({ phase: "notify" }),
+      phases: { notify: async (task, runtime, ctx) => {
+        let send = false;
+        await runtime.commit(async tx => {
+          const tasks = await scanAll(cursor => tx.scanTasks({ conversationId: task.conversationId, kind: "project.delegation" }, 100, cursor));
+          const lifecycle = await tx.doc(AgentSessionLifecycleDoc, task.conversationId);
+          const idle = await tx.doc(AgentWorkIdleDoc, task.conversationId);
+          const live = await tx.doc(LiveDoc, task.conversationId);
+          const latestInput = [...this.submissions.values()].filter(input => input.conversationId === task.conversationId && input.type === "input" && input.entry !== undefined)
+            .sort((left, right) => right.id - left.id)[0];
+          const failedParent = !live.run && latestInput?.status === "unanswered";
+          send = !lifecycle.interrupted && idle.version === task.input.version && idle.deliveredVersion < task.input.version
+            && !failedParent && tasks.every(work => work.state.status === "terminal");
+          if (!send) return { status: "terminal", outcome: { status: "completed", result: null } };
+        }, ctx);
+        if (!send) return;
+        const requestId = `subagents-idle:${task.conversationId}:${task.input.version}`;
+        const parent = (await runtime.conversation(task.conversationId, ctx))!;
+        await parent.submit({ type: "input", whenBusy: "steer", requestId,
+          content: `The subagent queue is idle: no children are running or queued. Since the previous idle notification: ${task.input.completed} completed, ${task.input.failed} failed, ${task.input.stopped} stopped. Recent work task IDs: ${task.input.taskIds.join(", ")}. Inspect their results and any business batch receipts, then continue the existing user's request. Do not keep sleeping for these settled agents. This is an internal status notification, not a new user request or permission to expand the task; failures and stopped work are not successful completion.`,
+          entry: { kind: "project.subagents-idle", data: { requestId, mode: "steer", hiddenInput: true, version: task.input.version } },
+        }, ctx);
+        await runtime.commit(async tx => {
+          const idle = await tx.doc(AgentWorkIdleDoc, task.conversationId);
+          idle.deliveredVersion = Math.max(idle.deliveredVersion, task.input.version);
+          return { status: "terminal", outcome: { status: "completed", result: null } };
+        }, ctx);
+      } },
+      abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
+    });
+  }
+
+  /** A timed pause may end early once the corresponding child work has drained. */
+  async sleep(api: import("@earendil-works/pi-durable").ToolExecutionApi, wakeAt: number, ctx: typeof context): Promise<boolean> {
+    if (!this.options.subagents) { await waitForAgentSleep(wakeAt, ctx.abortSignal); return false; }
+    const scope = await api.memo("subagent-wait-scope", await api.commit(async tx => {
+      const live = await tx.doc(LiveDoc, api.conversationId);
+      const input = live.run?.inputs[0];
+      const tasks = await scanAll(cursor => tx.scanTasks({ conversationId: api.conversationId, kind: "project.delegation" }, 100, cursor));
+      return { after: (input === undefined ? undefined : this.submissions.get(input)?.entry) ?? tasks.reduce((latest, task) => Math.max(latest, task.id), 0),
+        activeIds: tasks.filter(task => task.state.status !== "terminal").map(task => task.id as number) };
+    }, ctx), ctx);
+    const waiting = withCancel(ctx);
+    let revision = 0, changed: (() => void) | undefined;
+    const unsubscribe = this.harness.subscribeCommits(publication => {
+      if (publication.changes.some(change => change.type === "task" && change.value.conversationId === api.conversationId
+        && ["project.delegation", "project.subagents-idle"].includes(change.value.kind))) { revision++; changed?.(); }
+    });
+    const queue = (async () => {
+      while (true) {
+        waiting.context.abortSignal?.throwIfAborted();
+        const seen = revision;
+        const ready = await api.commit(async tx => {
+          const tasks = await scanAll(cursor => tx.scanTasks({ conversationId: api.conversationId, kind: "project.delegation" }, 100, cursor));
+          if (!tasks.some(task => task.id > scope.after || scope.activeIds.includes(task.id))) return false;
+          return this.notifyIdleWork(tx, api.conversationId);
+        }, waiting.context);
+        if (ready) return true;
+        await awaitWithContext(new Promise<void>(resolve => { changed = resolve; if (seen !== revision) resolve(); }), waiting.context);
+        changed = undefined;
+      }
+    })();
+    const timer = waitForAgentSleep(wakeAt, waiting.context.abortSignal).then(() => false);
+    try { return await Promise.race([queue, timer]); }
+    finally { unsubscribe(); waiting.cancel(); await Promise.allSettled([queue, timer]); }
   }
 
   private workRetryPolicy(input: DelegationInput) {
@@ -998,6 +1099,7 @@ export class DurableAgentSession {
         });
         const endedAt = (failure || submission.status === "done" || submission.status === "unanswered") && ends.length ? Math.max(...ends) : undefined;
         turns.push({ requestId: submission.requestId, conversationId: record.id, prompt: typeof prompt === "string" ? prompt : prompt.filter(block => block.type === "text").map(block => block.text).join(""), mode, status: failure ? "unanswered" : submission.status,
+          ...(data.hiddenInput === true ? { hiddenInput: true } : {}),
           ...(startedAt === undefined ? {} : { startedAt }), ...(endedAt === undefined ? {} : { endedAt }),
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),

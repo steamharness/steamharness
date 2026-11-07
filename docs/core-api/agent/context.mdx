@@ -16,9 +16,11 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 
 内置工具包括 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`sleep`，以及只在 plan 模式提供的 `ask_user`。模型用 `ask_user` 中途向用户提问，运行暂停等回答，回答后继续同一份计划；每次可问多题，每题可带选项、多选或自定义回答。添加工具时，编程式运行用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
 
-`sleep({ seconds })` 等待 0–3600 秒，支持小数秒和取消，不执行 shell 命令。持久会话保存等待截止时间，重开后只等待剩余时间。它在 `read-only` 策略下也可用；宿主仍可在 `executor.tools` 中禁用它。宿主禁用的内置工具和自带工具会从模型工具列表中移除，调用时继续校验权限。
+`sleep({ seconds })` 最多等待 0–3600 秒，支持小数秒和取消，不执行 shell 命令。持久会话保存等待截止时间，重开后只等待剩余时间。它在 `read-only` 策略下也可用；宿主仍可在 `executor.tools` 中禁用它。宿主禁用的内置工具和自带工具会从模型工具列表中移除，调用时继续校验权限。
 
 等待开始时，工具进度包含预计结束时间；完成结果保留预计时间和实际结束时间。CLI Web / Studio 的活动行和详情按浏览器本地时区显示，恢复历史后仍可查看。原始结果使用 UTC 时间，`details.wakeAt` 和 `details.endedAt` 为毫秒时间戳。
+
+启用子 Agent 时，当前子任务全部结束且队列清空后，`sleep` 会提前返回，主 Agent 收到一次内部状态通知并继续检查结果或处理剩余工作。通知不显示为用户消息，成功、失败和停止项分别计数。没有相关子任务的定时等待仍按原时长执行。
 
 - **自带工具不受 `permissionPolicy` 约束。** 策略只决定内置工具暴露哪些、能走多远；自带工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待批准（仅 plan 模式的回合；build 回合直接执行）。
 - 要连接宿主提供的 stdio MCP 服务，先用 [connectMcpServer](/core-api/connect-mcp-server) 建立连接，再用 [createMcpTools](/core-api/create-mcp-tools) 把它暴露的工具转成自带工具。

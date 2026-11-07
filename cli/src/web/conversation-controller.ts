@@ -731,12 +731,12 @@ export class ConversationController {
         return { ...input, hostQueued: true, ...(cancelled ? { requestId: globalThis.crypto.randomUUID() } : {}) };
       });
       const hostIds = new Set(hostQueue.map(input => input.requestId ?? input.id));
-      entry.queuedInputs = [...turns.filter(turn => turn.status === 'queued' && turn.mode !== 'report' && !hostIds.has(turn.requestId)).map(turn => entry.agentInputs?.[turn.requestId]
+      entry.queuedInputs = [...turns.filter(turn => turn.status === 'queued' && turn.mode !== 'report' && !turn.hiddenInput && !hostIds.has(turn.requestId)).map(turn => entry.agentInputs?.[turn.requestId]
         ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: entry.updatedAt ?? Date.now() }), ...hostQueue];
       for (const turn of turns) {
         const input = entry.agentInputs?.[turn.requestId];
         const oldTurn = previous?.turns.find(item => item.requestId === turn.requestId && item.conversationId === turn.conversationId);
-        if (!restore && turn.mode !== 'report' && oldTurn?.status !== turn.status && ['done', 'unanswered'].includes(turn.status)) {
+        if (!restore && turn.mode !== 'report' && !turn.hiddenInput && oldTurn?.status !== turn.status && ['done', 'unanswered'].includes(turn.status)) {
           if (turn.status === 'done' && !entry.agentInterrupted) {
             delete entry.queuePaused;
             queueMicrotask(() => this.drain(entry));
@@ -753,13 +753,13 @@ export class ConversationController {
         if (!answer && turn.mode !== 'steer') {
           const id = `session:${turn.conversationId}:${turn.requestId}`;
           const pending = entry.agentCommands?.find(item => item.command.requestId === turn.requestId);
-          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? turn.startedAt ?? Date.now(), contextEpoch: turn.epoch,
+          if (!turn.hiddenInput) entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? turn.startedAt ?? Date.now(), contextEpoch: turn.epoch,
             attachments: input?.attachments ?? pending?.attachments, references: input?.references, ...(input ? { input } : {}) });
           answer = { id, role: 'assistant', content: '', items: [], createdAt: turn.startedAt ?? Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
             model: input ? conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) : undefined };
           entry.messages.push(answer);
         }
-        if (turn.mode === 'steer') {
+        if (turn.mode === 'steer' && !turn.hiddenInput) {
           const id = `steer:${turn.requestId}`;
           if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: turn.startedAt ?? Date.now(), attachments: input?.attachments, references: input?.references });
         }

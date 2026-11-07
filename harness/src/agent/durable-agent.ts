@@ -661,8 +661,9 @@ export class DurableAgent {
           // Recovery waits only the remaining time, using the committed deadline.
           const wakeAt = await api.memo("wakeAt", Date.now() + seconds * 1000, callContext);
           await api.details(agentSleepResult(seconds, wakeAt), callContext);
-          await waitForAgentSleep(wakeAt, callContext.abortSignal);
-          const result = agentSleepResult(seconds, wakeAt, Date.now());
+          const early = this.session ? await this.session.sleep(api, wakeAt, callContext)
+            : (await waitForAgentSleep(wakeAt, callContext.abortSignal), false);
+          const result = agentSleepResult(seconds, wakeAt, Date.now(), early);
           return { output: result.content, details: result.details };
         }
         let progress = Promise.resolve();

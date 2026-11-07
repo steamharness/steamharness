@@ -69,6 +69,10 @@ Tasks 的 `attempt` 更新，最终结果只回传一次。达到上限后停止
 
 等待单个命名工作时调用 `subagent({ action: "wait", taskId })`；需要过一段时间再查询批次进度时，调用 `sleep({ seconds: 180 })`。`sleep` 支持取消，不需要启用 `bash`，等待期间后台子 Agent 继续执行。
 
+子任务全部结束且无排队项时，Core 自动唤醒主 Agent；正在执行的 `sleep` 提前结束，已空闲的主 Agent 也可继续。每次队列清空只通知一次，恢复沿用原通知身份。父任务失败或主动停止后，该通知不会单独重启运行；仍在执行、排队或自动重试的子任务不会触发完成通知。
+
+内部通知在 `turns[].hiddenInput: true` 标记下保留上下文和审计记录。宿主不把它显示为用户消息或待发队列项，保留正常助手续答，也不因该通知完成而单独推进暂停的用户队列。通知只表示当前子任务队列已清空，主 Agent 仍需核对业务批次及实际完成回执。
+
 显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。
 
 业务 durable task 或 native tool 可在事务中调用公开 `enqueueAgentWork(tx, registry, input, options)` / `enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。

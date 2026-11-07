@@ -27,6 +27,9 @@ export const AgentWorkRetryDoc = defineDocFamily({ kind: "project.agent-work-ret
 /** True only while a new host interrupts the previous execution tree before accepting input. */
 export const AgentSessionLifecycleDoc = defineDoc({ kind: "project.agent-lifecycle", version: 1, scope: "conversation",
   history: "latest", fork: "initial", initial: () => ({ interrupted: false as boolean }) });
+/** One durable notification per drained work queue; admission and delivery survive recovery. */
+export const AgentWorkIdleDoc = defineDoc({ kind: "project.agent-work-idle", version: 1, scope: "conversation",
+  history: "latest", fork: "initial", initial: () => ({ version: 0, deliveredVersion: 0 }) });
 
 export type DelegationInput = {
   prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string;

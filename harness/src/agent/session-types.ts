@@ -162,6 +162,8 @@ export interface AgentSessionTurn {
   conversationId: number;
   prompt: string;
   mode: "steer" | "followUp" | "reject" | "report";
+  /** Internal status input: omit its user bubble and queue item; retain the assistant continuation. */
+  hiddenInput?: boolean;
   status: "queued" | "placed" | "done" | "unanswered";
   /** Epoch milliseconds when this input was placed for execution, preserved across reopen. */
   startedAt?: number;

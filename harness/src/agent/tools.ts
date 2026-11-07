@@ -170,17 +170,17 @@ export async function waitForAgentSleep(wakeAt: number, signal?: AbortSignal): P
   await delay(Math.max(0, wakeAt - Date.now()), undefined, { signal });
 }
 
-export function agentSleepResult(seconds: number, wakeAt: number, endedAt?: number) {
+export function agentSleepResult(seconds: number, wakeAt: number, endedAt?: number, early = false) {
   const deadline = `Expected end: ${new Date(wakeAt).toISOString()}.`;
   const text = endedAt === undefined ? `Waiting ${seconds} seconds. ${deadline}`
-    : `Waited ${seconds} seconds. ${deadline} Ended at: ${new Date(endedAt).toISOString()}.`;
-  return { content: [{ type: "text" as const, text }], details: { seconds, wakeAt, ...(endedAt === undefined ? {} : { endedAt }) } };
+    : `${early ? "Wait ended early because child work is no longer running or queued." : `Waited ${seconds} seconds.`} ${deadline} Ended at: ${new Date(endedAt).toISOString()}.`;
+  return { content: [{ type: "text" as const, text }], details: { seconds, wakeAt, ...(endedAt === undefined ? {} : { endedAt }), ...(early ? { wakeReason: "subagents-idle" } : {}) } };
 }
 
 function createSleepTool({ Type }: { Type: TypeboxLike }) {
   return {
     name: "sleep", label: "Sleep",
-    description: "Wait for seconds (0-3600) without running shell commands. Cancellable. Use for a timed pause before checking background work. For a named subagent's result, prefer subagent action=wait with its taskId.",
+    description: "Wait for up to seconds (0-3600) without running shell commands. Cancellable. In a delegated session, the wait ends early when the relevant child work has finished and none is running or queued; an internal status notification resumes the parent. Inspect results and batch receipts then continue instead of sleeping again for settled work. For one named subagent, prefer subagent action=wait with its taskId.",
     parameters: Type.Object({ seconds: Type.Number({ minimum: 0, maximum: 3600, description: "Seconds to wait; fractional values are allowed." }) }),
     async execute(_id: string, args: unknown, signal?: AbortSignal, onUpdate?: (result: ReturnType<typeof agentSleepResult>) => void) {
       const seconds = agentSleepSeconds(args);

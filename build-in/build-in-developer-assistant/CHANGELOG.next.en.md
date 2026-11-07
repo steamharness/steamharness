@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator documents automatic parent continuation when child work drains, early sleep completion and hidden internal input recovery.
+
 - Generator documents expected and actual sleep end times and their display in the conversation's local timezone.
 
 - The assistant uses the default of three concurrent child agents, durable queuing and cancellable sleep. Generator documents bounded run configuration checks and filtering of disabled tools.

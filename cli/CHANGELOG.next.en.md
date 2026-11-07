@@ -1,5 +1,7 @@
 # Unreleased
 
+- Hide subagent completion inputs from user messages and pending queues while retaining assistant continuations and history. Internal completion does not independently advance a paused user queue.
+
 - Sleep activity rows and details show expected and actual end times in the browser’s local timezone, retaining them after completion and history replay.
 
 - Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.

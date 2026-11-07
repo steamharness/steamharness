@@ -1,5 +1,7 @@
 # Unreleased
 
+- [New] Resume the parent with a durable internal status input when child work drains, ending related sleep early. Preserve outcome counts, notification identity, cancellation and failure boundaries; ordinary timed waits retain their duration.
+
 - [Improve] Show the expected sleep end time while waiting and retain the actual completion time in results. Include live tool progress in conversation output and durable snapshots, retaining the original deadline after recovery.
 
 - [Fix] Default child-agent concurrency to three, durably queue excess work and fill released slots. Retry run configuration authorization up to ten times before continuing the same task.
