@@ -22,6 +22,7 @@ export type { ExecutionEnv as AgentExecutionEnv } from "@earendil-works/pi-durab
 export { controlAgentSession, createAgentSessionHost } from "./session-control";
 export type { AgentDefinition, AgentWorkInput, AgentWorkInfo, AgentSubagentAction, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
 export { enqueueAgentWork, enqueueAgentWorks, readAgentWorkContext, AgentWorkProgressDoc, AgentSessionLifecycleDoc } from "./subagents";
+export { submitAgentNotification, type AgentNotification, type AgentNotificationReceipt } from "./notifications";
 export {
   createAgentProjectInput,
   createAgentProjectParams,

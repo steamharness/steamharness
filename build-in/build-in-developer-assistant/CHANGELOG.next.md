@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator 补充后台通知事务 API、业务身份去重、失败后显式续行，以及配置错误与授权重试预算约定。
+
 - Generator 同步子 Agent 队列清空自动续行、sleep 提前结束与内部通知隐藏和恢复约定。
 
 - Generator 补充 sleep 的预计和实际结束时间，以及对话中的本地时区展示。

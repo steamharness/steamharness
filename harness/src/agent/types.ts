@@ -303,7 +303,7 @@ export interface AgentPendingApproval {
  * this side. `recovery` resumes committed output after a host restart, rather
  * than reporting a model connection failure.
  */
-export type AgentTurnContinuationKind = "dropped" | "length" | "lost-call" | "recovery";
+export type AgentTurnContinuationKind = "dropped" | "length" | "lost-call" | "recovery" | "configuration";
 
 export interface AgentSearchSource {
   url: string;

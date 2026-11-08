@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix background reports to deduplicate business events and coalesce pending progress. Failed or stopped parents retain results for explicit continuation, preventing repeated completion notices from restarting model retries. Configuration denials retain their own failure category and wording, with one authorization retry budget per input.
+
 - [New] Resume the parent with a durable internal status input when child work drains, ending related sleep early. Preserve outcome counts, notification identity, cancellation and failure boundaries; ordinary timed waits retain their duration.
 
 - [Improve] Show the expected sleep end time while waiting and retain the actual completion time in results. Include live tool progress in conversation output and durable snapshots, retaining the original deadline after recovery.

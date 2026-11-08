@@ -71,11 +71,33 @@ Tasks 的 `attempt` 更新，最终结果只回传一次。达到上限后停止
 
 子任务全部结束且无排队项时，Core 自动唤醒主 Agent；正在执行的 `sleep` 提前结束，已空闲的主 Agent 也可继续。每次队列清空只通知一次，恢复沿用原通知身份。父任务失败或主动停止后，该通知不会单独重启运行；仍在执行、排队或自动重试的子任务不会触发完成通知。
 
+前台委派直接继续等待它的工具轮次，不额外发队列空闲通知。已单独回传结果的后台工作也不重复唤醒；队列清空仍可提前结束相关 `sleep`。
+
 内部通知在 `turns[].hiddenInput: true` 标记下保留上下文和审计记录。宿主不把它显示为用户消息或待发队列项，保留正常助手续答，也不因该通知完成而单独推进暂停的用户队列。通知只表示当前子任务队列已清空，主 Agent 仍需核对业务批次及实际完成回执。
 
 显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。
 
 业务 durable task 或 native tool 可在事务中调用公开 `enqueueAgentWork(tx, registry, input, options)` / `enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
+
+业务进度和完成通知使用 `submitAgentNotification(tx, parentConversationId, notice)`，从 `steamharness/agent` 导入，也可通过项目的 `steamharness` runtime API 调用。在更新业务回执的同一事务内提交通知，并在调用前完成其他表读取。
+
+```ts
+await runtime.commit(async tx => {
+  await steamharness.submitAgentNotification(tx, task.conversationId, {
+    key: `batch:${batchId}`,
+    requestId: `batch:${batchId}:completed`,
+    content: "Batch complete. Inspect the saved receipts before continuing.",
+  });
+}, ctx);
+```
+
+`key` 标识同一批次或状态流，`requestId` 标识一次业务事件；两者最多 256 字符，不能用重建后会变化的任务 ID 代替业务身份。
+
+`content` 为非空文本，最多 100000 字符。可选 `kind` 设置非 `pi.` 前缀的记录类型，可选 `data` 保存 JSON 元数据。返回 `{ submissionId, status }`，状态为 `placed`、`queued`、`deferred` 或 `duplicate`；同一 requestId 的内容冲突会拒绝。
+
+主 Agent 运行中，同一 key 尚未消费的通知只保留最新一条，在工具边界读入。父轮次失败或停止后，通知仅保存结果，不重新申请模型重试预算；空闲会话还有待处理输入时，也不单独启动通知。明确继续后，保存的结果进入上下文。
+
+重开宿主保留结果和去重身份。通知输入标记为 `hiddenInput`，不会显示成用户发言或释放暂停的用户队列。
 
 Native tool 用 `readAgentWorkContext(api, ctx)` 获取获授权的角色、workId、attempt、父会话与 metadata。进度保存在会话级 family 文档，结束后仍可读取：`tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`，更新 `completed`、`total`、`phase` 及可选 JSON `data`。非空 `error` 表示业务核验失败；重试成功时清空它，不能把仅结束模型输出视为业务完成。跨入口调用使用 `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`，工作项取消与父宿主取消共同生效。
 

@@ -41,7 +41,7 @@ test("configuration retries stop during backoff and leave unrelated failures alo
   await assert.rejects(retryAgentConfigurationAccess(async () => { throw invalid; }, { delayMs: 0 }), error => error === invalid);
 });
 
-for (const boundary of ["request", "tool"] as const) test(`durable ${boundary} retries a temporarily unavailable run configuration before executing`, async t => {
+for (const boundary of ["request", "tool"] as const) for (const denied of [false, true]) test(`durable ${boundary} revalidates configuration and retains its failure category (denied=${denied})`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-configuration-retry-"));
   const id = randomUUID(), token = randomUUID(), origin = "https://configuration-retry.test";
   const subject = JSON.stringify([origin, "alice"]);
@@ -67,7 +67,7 @@ for (const boundary of ["request", "tool"] as const) test(`durable ${boundary} r
     ] } }));
   const store = await configurationFixtureStore(directory, { access: { subject, role: "developer", online: true } });
   const configuration = await store.snapshot({ id: "profile-build" });
-  let denials = boundary === "request" ? 2 : 0, tools = 0, recovered = false;
+  let denials = boundary === "request" ? denied ? Infinity : 2 : 0, tools = 0, recovered = false;
   globalThis.fetch = async input => {
     assert.ok(String(input).startsWith(origin));
     if (String(input).endsWith("/api/auth/me")) return Response.json({ errCode: 0, data: { profile: { userId: "alice" } } });
@@ -78,7 +78,7 @@ for (const boundary of ["request", "tool"] as const) test(`durable ${boundary} r
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   faux.setResponses([
-    ...(boundary === "tool" ? [() => { denials = 2; return ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }); }] : []),
+    ...(boundary === "tool" ? [() => { denials = denied ? Infinity : 2; return ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }); }] : []),
     ai.fauxAssistantMessage("Finished after authorization recovered"),
   ]);
   const agent = withProjectConfiguration(configuration, () => new DurableAgent({ models, retryDelayMs: 0,
@@ -89,11 +89,21 @@ for (const boundary of ["request", "tool"] as const) test(`durable ${boundary} r
   t.after(() => agent.close());
   let snapshot: AgentSessionSnapshot | undefined;
   agent.subscribe(event => { if ((event as any).type === "project_session") snapshot = (event as any).snapshot; });
-  await agent.prompt("Complete the work");
-  assert.equal(agent.state.errorMessage, undefined);
-  assert.equal(tools, boundary === "tool" ? 1 : 0);
-  assert.equal(faux.state.callCount, boundary === "tool" ? 2 : 1);
+  if (denied) await assert.rejects(agent.prompt("Complete the work"), unavailable());
+  else await agent.prompt("Complete the work");
+  if (denied) {
+    assert.equal(snapshot!.turns[0]!.status, "unanswered");
+    assert.equal(snapshot!.turns[0]!.reason, "configuration_error");
+    assert.match(snapshot!.turns[0]!.detail!, /configuration is not available/);
+    assert.equal(tools, 0);
+    assert.equal(faux.state.callCount, boundary === "tool" ? 1 : 0);
+  } else {
+    assert.equal(agent.state.errorMessage, undefined);
+    assert.equal(tools, boundary === "tool" ? 1 : 0);
+    assert.equal(faux.state.callCount, boundary === "tool" ? 2 : 1);
+  }
   const retries = snapshot!.turns[0]!.items.filter(item => item.metadata?.partType === "retry");
-  assert.equal(retries.length, 2);
+  assert.equal(retries.length, denied ? 10 : 2);
   assert.match(JSON.stringify(retries), /This run configuration is not available to this account/);
+  assert.match(JSON.stringify(retries), /Rechecking run configuration|重新校验运行配置/);
 });

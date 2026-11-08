@@ -30,7 +30,9 @@ description: "模型错误、续写预算与停止行为。"
 
 同步创建、流迭代、结果获取、摘要请求和延迟响应中的模型错误都在调用边界处理。错误保留上游原因及有限的 `code`、`status`、`statusCode`、`cause`，不序列化请求头或完整请求响应对象。
 
-`This run configuration is not available to this account.` 使用配置授权重试预算，与模型请求和子工作重试分别计数。每次重新校验都使用原配置快照；权限恢复后继续原任务，持续拒绝时报告原错误。用户停止会中断等待，重试不会放宽权限或重放已完成工具。
+`This run configuration is not available to this account.` 使用配置授权重试预算，与模型请求和子工作重试分别计数。每次重新校验都使用原配置快照；权限恢复后继续原任务，持续拒绝时报告 `configuration_error` 和原错误。
+
+同一输入的预算耗尽后不因进入下一个工具或请求边界再次校验。用户停止会中断等待，重试不会放宽权限或重放已完成工具。
 
 ## 保留哪些内容
 
@@ -40,6 +42,8 @@ description: "模型错误、续写预算与停止行为。"
 
 ## 事件与界面
 
-`retry.kind` 区分 `dropped`、`recovery`、`length` 和 `lost-call`，`attempt` 与 `maxAttempts` 描述对应预算。CLI Web 与 Studio 在正文中显示网络重试，其他续写保留在 Trace 与导出中。
+`retry.kind` 区分 `dropped`、`recovery`、`length`、`lost-call` 和 `configuration`，`attempt` 与 `maxAttempts` 描述对应预算。配置重校验有独立文案；CLI Web 与 Studio 在正文中显示网络重试，其他续写及配置校验保留在 Trace 与导出中。
 
 超过预算后显示最终失败原因。失败与取消保留待发输入，只有成功的用户轮次才继续推进队列。
+
+后台进度与完成报告不会恢复失败的父轮次。项目用 [submitAgentNotification](/core-api/agent/work-queue) 保存通知，明确继续时再读取结果，避免持续故障期间反复启动同一任务。

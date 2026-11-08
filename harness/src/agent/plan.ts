@@ -238,6 +238,12 @@ export function createAgentStreamRetryText(options: {
   const progress = `${options.attempt}/${options.maxAttempts}`;
   const kind = options.kind ?? "dropped";
 
+  if (kind === "configuration") {
+    return readRuntimeLocaleSafe() === "zh-CN"
+      ? { title: `正在重新校验运行配置（${progress}）`, content: "运行配置暂时无法授权，正在重新校验同一配置。权限恢复后才会继续模型或工具调用。" }
+      : { title: `Rechecking run configuration (${progress})`, content: "The run configuration is temporarily unavailable. The same configuration is being revalidated before any model or tool call can continue." };
+  }
+
   if (kind === "recovery") {
     return readRuntimeLocaleSafe() === "zh-CN"
       ? { title: `正在继续回答（${progress}）`, content: "宿主恢复后继续未完成的回答，保留已有内容和工具结果。" }

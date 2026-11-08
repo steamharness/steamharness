@@ -1428,6 +1428,16 @@ const session = {
 
 业务 durable task 或 native tool 可在事务中调用公开 `steamharness.enqueueAgentWork(tx, registry, input, options)` / `steamharness.enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
 
+后台业务报告使用 `steamharness.submitAgentNotification(tx, parentConversationId, { key, requestId, content, kind?, data? })`，也从 `steamharness/agent` 导出。在业务回执事务内、完成其他表读取后调用，返回 `{ submissionId, status: "placed" | "queued" | "deferred" | "duplicate" }`。
+
+key 标识批次/状态流，requestId 标识事件，均最多 256 字符，必须使用重建任务后仍稳定的业务身份；content 为非空文本，最多 100000 字符。kind 不得使用 pi. 前缀，data 是可选 JSON 元数据。同身份不同内容拒绝；同 key 的未消费进度合并为最新一条。
+
+父轮次失败、停止或空闲且仍有待处理输入时仅保存结果，明确继续后带入上下文；重开不重置失败预算。通知不显示为用户发言、不释放暂停的用户队列，不使用普通 conversation.submit 为每条进度开启新轮次。
+
+前台委派完成会直接继续等待它的工具轮次；后台工作已单独回传结果时不再添加队列空闲唤醒。未单独报告的后台队列清空后仍发送内部通知，相关 sleep 可提前结束。
+
+运行配置授权持续拒绝保留 `turns[].reason: "configuration_error"`；配置校验重试使用 `retry.kind: "configuration"`，连续拒绝耗尽后同一输入不再取得新预算。模型与宿主执行错误分别保留 `model_error`、`execution_error`，detail 保留原原因。
+
 Native tool 用 `steamharness.readAgentWorkContext(api, ctx)` 获取获授权的角色、workId、attempt、父会话与 metadata。进度保存在会话级 family 文档，结束后仍可读取：`tx.doc(steamharness.AgentWorkProgressDoc, parentConversationId, String(taskId), null)`，更新 `completed`、`total`、`phase` 及可选 JSON `data`。非空 `error` 表示业务核验失败；重试成功时清空它，不能把仅结束模型输出视为业务完成。跨入口调用使用 `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`，工作项取消与父宿主取消共同生效。
 
 重试不能证明外部副作用失败。付费请求或写入结果未知时，先读取服务状态或业务回执；保留稳定业务 ID、草稿和阶段检查点，索引冲突仅重试索引阶段，不重放已提交正文。

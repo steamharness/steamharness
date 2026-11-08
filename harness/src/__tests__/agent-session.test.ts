@@ -10,6 +10,8 @@ import type { AgentSessionSnapshot } from "../agent/session-types";
 import { projectSessionEntries, projectSessionUsage } from "../agent/session";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "../agent/web-search";
 import { createBuiltinAgentTools } from "../agent/tools";
+import { createRegistry, defineExtension, defineTask } from "@earendil-works/pi-durable";
+import { submitAgentNotification } from "../agent/notifications";
 
 function latch() {
   let resolve!: () => void;
@@ -32,6 +34,85 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("background results survive parent retry exhaustion and host reopen without replaying committed tools", async t => {
+  const registry = createRegistry();
+  const task = defineTask<{ event: string; content: string }, { phase: "notify" }, null>({ name: "test.progress", version: 1,
+    initial: () => ({ phase: "notify" }), phases: { notify: async (task, runtime, ctx) => {
+      await runtime.commit(async tx => {
+        await submitAgentNotification(tx, task.conversationId, { key: "batch", requestId: task.input.event, content: task.input.content });
+        return { status: "terminal", outcome: { status: "completed", result: null } };
+      }, ctx);
+    } }, abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); } });
+  registry.install(defineExtension({ name: "test.progress", tasks: [task] }));
+  const options = { registry, compaction: { enabled: false } };
+  const database = `notifications:${crypto.randomUUID()}`;
+  let effects = 0;
+  const inspect = { name: "inspect", label: "Inspect", description: "Commit once", parameters: ai.Type.Object({}),
+    execute: async () => { effects++; return { content: [ai.fauxText("Already committed")], details: {} }; } };
+  const first = session(options, database); first.instance.state.tools = [inspect];
+  first.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+    ...Array.from({ length: 11 }, () => ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "API error (503): Service temporarily unavailable" }))]);
+  const running = first.instance.prompt("Finish the original task");
+  t.after(async () => { first.suspend.resolve(); await running; await first.instance.close(); });
+  await until(() => first.snapshot()?.turns[0]?.status === "unanswered");
+  for (const progress of [1, 2, 3]) {
+    const receipt = await first.instance.control({ type: "task", name: "test.progress", requestId: `dispatch:${progress}`, background: true,
+      input: { event: `progress:${progress}`, content: `Batch ${progress}/3` } });
+    await until(() => first.snapshot()?.history.some(task => task.id === receipt.taskId) === true);
+  }
+  assert.equal(first.faux.state.callCount, 12); assert.equal(effects, 1);
+  assert.equal(first.snapshot().turns.length, 1, "Deferred notices must not become fake user turns");
+  first.suspend.resolve(); await running; await first.instance.close();
+  const second = session(options, database, true); second.instance.state.tools = [inspect];
+  second.faux.setResponses([request => {
+    assert.match(JSON.stringify(request.messages), /Batch 3\/3/);
+    assert.doesNotMatch(JSON.stringify(request.messages), /Batch [12]\/3/);
+    assert.match(JSON.stringify(request.messages), /Already committed/);
+    return ai.fauxAssistantMessage("Completed from saved results");
+  }]);
+  const resumed = second.instance.prompt("Do not submit the bootstrap prompt");
+  t.after(async () => { second.lease.resolve(); await resumed; await second.instance.close(); });
+  await until(() => !!second.snapshot());
+  assert.equal(second.faux.state.callCount, 0, "Reattachment alone must not reset an exhausted request budget");
+  await second.instance.control({ type: "submit", requestId: "explicit-continue", mode: "followUp", prompt: "Continue" });
+  await until(() => second.snapshot()?.turns.some(turn => turn.requestId === "explicit-continue" && turn.status === "done") === true);
+  assert.equal(second.faux.state.callCount, 1); assert.equal(effects, 1);
+});
+
+for (const defer of [false, true]) test(`coalesced progress retains internal identity and shares the parent answer (defer=${defer})`, async t => {
+  const registry = createRegistry();
+  const task = defineTask<{ event: string }, { phase: "notify" }, null>({ name: "test.progress", version: 1,
+    initial: () => ({ phase: "notify" }), phases: { notify: async (task, runtime, ctx) => {
+      await runtime.commit(async tx => {
+        await submitAgentNotification(tx, task.conversationId, { key: "batch", requestId: task.input.event, content: task.input.event });
+        return { status: "terminal", outcome: { status: "completed", result: null } };
+      }, ctx);
+    } }, abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); } });
+  registry.install(defineExtension({ name: "test.progress", tasks: [task] }));
+  const f = session({ registry, compaction: { enabled: false } });
+  const gate = latch();
+  f.instance.state.tools = [{ name: "hold", label: "Hold", description: "Hold", parameters: ai.Type.Object({}),
+    execute: async () => { await gate.promise; return { content: [ai.fauxText("Released")], details: {} }; } }];
+  f.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("hold", {})], { stopReason: "toolUse" }), ai.fauxAssistantMessage("Done"), ai.fauxAssistantMessage("Continued")]);
+  const running = f.instance.prompt("Start");
+  t.after(async () => { gate.resolve(); f.lease.resolve(); await running; await f.instance.close(); });
+  await until(() => f.snapshot()?.tasks.some(task => task.kind === "pi.tool") === true);
+  for (const event of ["notice:1", "notice:2"]) {
+    const receipt = await f.instance.control({ type: "task", name: "test.progress", requestId: `dispatch:${event}`, background: true, input: { event } });
+    await until(() => f.snapshot()?.history.some(task => task.id === receipt.taskId) === true);
+  }
+  if (defer) await f.instance.control({ type: "submit", requestId: "explicit-input", mode: "followUp", prompt: "Continue" });
+  else gate.resolve();
+  const turns = f.snapshot().turns.filter(turn => turn.requestId.startsWith("notice:"));
+  await until(() => f.snapshot().turns.find(turn => turn.requestId === "notice:2")?.status === (defer ? "unanswered" : "done"));
+  assert.equal(turns.length, 2);
+  assert.ok(f.snapshot().turns.filter(turn => turn.requestId.startsWith("notice:")).every(turn => turn.hiddenInput === true && turn.mode === "steer"));
+  if (!defer) {
+    assert.equal(f.faux.state.callCount, 2, "Progress must join the current tool round rather than start another model turn");
+    assert.equal(f.snapshot().turns.find(turn => turn.requestId === "notice:2")!.items.length, 0, "A merged notification must not duplicate the parent's assistant answer");
+  }
+});
 
 test("sleep resumes its committed deadline after a host restart without starting the full delay again", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-sleep-recovery-"));
@@ -972,6 +1053,8 @@ test("background subagents have restricted tools and return exactly one durable 
   await until(() => snapshot()?.turns.some(turn => turn.requestId.startsWith("report:") && turn.status === "done"));
   assert.deepEqual(childTools, ["read"]);
   assert.equal(snapshot().turns.filter(turn => turn.requestId.startsWith("report:")).length, 1);
+  assert.equal([...snapshot().tasks, ...snapshot().history].filter(task => task.kind === "project.subagents-idle").length, 0,
+    "An individually delivered result already wakes its parent; an idle notice must not start another model turn");
   assert.equal(snapshot().conversations.length, 2);
   assert.equal(snapshot().usage.length, 2);
 });
@@ -1003,6 +1086,8 @@ for (const override of [false, true]) test(`subagents advertise usable models an
   await until(() => f.snapshot()?.turns.some(turn => turn.status === "done" && !turn.requestId.startsWith("delegate:")));
   assert.equal(f.snapshot().conversations.length, 2);
   assert.deepEqual(modelIds, ["test", override ? "other" : "test", "test"]);
+  assert.equal([...f.snapshot().tasks, ...f.snapshot().history].filter(task => task.kind === "project.subagents-idle").length, 0,
+    "A foreground child's waiting tool round already continues its parent");
 });
 
 test("a rejected child model explains recovery and a corrected delegation completes in the same turn", async t => {

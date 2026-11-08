@@ -23,6 +23,7 @@ import { waitForAgentSleep } from "./tools";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 import { SessionDoc, canonical, forkSessionConversation, sessionTarget } from "./session-state";
 import { waitBeforeRetry } from "./provider-retry";
+import { deferAgentNotifications, submitAgentNotification } from "./notifications";
 const initialPlan = () => ({ version: 0, items: [] as { id: string; text: string; status: string }[] });
 const PlanAsOf = defineDoc({ kind: "project.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
 const PlanCurrent = defineDoc({ kind: "project.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
@@ -398,10 +399,12 @@ export class DurableAgentSession {
           }, ctx);
           if (failed && task.input.retry && attempt >= policy.maxAttempts) answer = `Retry limit reached (${attempt}/${policy.maxAttempts}). Stop retrying and report this failure. ${answer}`;
           if (task.input.background && task.input.reportToParent !== false) {
-            const parent = (await runtime.conversation(task.conversationId, ctx))!;
             const output = delegationOutput(task.id, failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer }, {});
-            await parent.submit({ type: "input", content: `Subagent ${failed ? "failed" : "result"} (${childId}, resultTaskId=${task.id}):\n${output.output[0]!.text}`, whenBusy: "followUp", requestId: `report:${task.id}`,
-              entry: { kind: "project.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
+            await runtime.commit(async tx => {
+              await submitAgentNotification(tx, task.conversationId, { key: `child:${task.id}`, requestId: `report:${task.id}`,
+                content: `Subagent ${failed ? "failed" : "result"} (${childId}, resultTaskId=${task.id}):\n${output.output[0]!.text}`,
+                kind: "project.child-result", data: { sourceId: childId } });
+            }, ctx);
           }
           await runtime.commit(async tx => {
             await this.notifyIdleWork(tx, task.conversationId, { id: task.id, status: failed ? "failed" : "completed" });
@@ -433,12 +436,20 @@ export class DurableAgentSession {
     const tasks = await scanAll(cursor => tx.scanTasks({ conversationId, kind: "project.delegation" }, 100, cursor));
     if (!tasks.length || tasks.some(task => task.id !== settling?.id && task.state.status !== "terminal")
       || tasks.some(task => task.id === settling?.id && task.abortRequested)) return false;
+    // Foreground delegation already resumes its waiting tool round. Individual
+    // background reports also carry the wakeup; neither needs a second model turn.
+    const background = tasks.filter(task => (task.input as DelegationInput).background);
+    if (!background.length) return false;
     const lifecycle = await tx.doc(AgentSessionLifecycleDoc, conversationId);
     if (lifecycle.interrupted) return false;
     const idle = await tx.doc(AgentWorkIdleDoc, conversationId);
-    const version = tasks.reduce((latest, task) => Math.max(latest, task.id), 0);
+    const version = background.reduce((latest, task) => Math.max(latest, task.id), 0);
     if (idle.version < version) {
-      const work = tasks.filter(task => task.id > idle.version);
+      const work = background.filter(task => task.id > idle.version);
+      if (work.every(task => (task.input as DelegationInput).reportToParent !== false)) {
+        idle.version = version; idle.deliveredVersion = version;
+        return true;
+      }
       const notice: WorkIdleNotice = { version, taskIds: work.slice(-50).map(task => task.id), completed: 0, failed: 0, stopped: 0 };
       for (const task of work) {
         const status = task.id === settling?.id ? settling.status : task.state.status === "terminal" ? task.state.outcome.status : undefined;
@@ -461,22 +472,16 @@ export class DurableAgentSession {
           const tasks = await scanAll(cursor => tx.scanTasks({ conversationId: task.conversationId, kind: "project.delegation" }, 100, cursor));
           const lifecycle = await tx.doc(AgentSessionLifecycleDoc, task.conversationId);
           const idle = await tx.doc(AgentWorkIdleDoc, task.conversationId);
-          const live = await tx.doc(LiveDoc, task.conversationId);
-          const latestInput = [...this.submissions.values()].filter(input => input.conversationId === task.conversationId && input.type === "input" && input.entry !== undefined)
-            .sort((left, right) => right.id - left.id)[0];
-          const failedParent = !live.run && latestInput?.status === "unanswered";
           send = !lifecycle.interrupted && idle.version === task.input.version && idle.deliveredVersion < task.input.version
-            && !failedParent && tasks.every(work => work.state.status === "terminal");
+            && tasks.every(work => work.state.status === "terminal");
           if (!send) return { status: "terminal", outcome: { status: "completed", result: null } };
         }, ctx);
         if (!send) return;
         const requestId = `subagents-idle:${task.conversationId}:${task.input.version}`;
-        const parent = (await runtime.conversation(task.conversationId, ctx))!;
-        await parent.submit({ type: "input", whenBusy: "steer", requestId,
-          content: `The subagent queue is idle: no children are running or queued. Since the previous idle notification: ${task.input.completed} completed, ${task.input.failed} failed, ${task.input.stopped} stopped. Recent work task IDs: ${task.input.taskIds.join(", ")}. Inspect their results and any business batch receipts, then continue the existing user's request. Do not keep sleeping for these settled agents. This is an internal status notification, not a new user request or permission to expand the task; failures and stopped work are not successful completion.`,
-          entry: { kind: "project.subagents-idle", data: { requestId, mode: "steer", hiddenInput: true, version: task.input.version } },
-        }, ctx);
         await runtime.commit(async tx => {
+          await submitAgentNotification(tx, task.conversationId, { key: "subagents-idle", requestId,
+            content: `The subagent queue is idle: no children are running or queued. Since the previous idle notification: ${task.input.completed} completed, ${task.input.failed} failed, ${task.input.stopped} stopped. Recent work task IDs: ${task.input.taskIds.join(", ")}. Inspect their results and any business batch receipts, then continue the existing user's request. Do not keep sleeping for these settled agents. This is an internal status notification, not a new user request or permission to expand the task; failures and stopped work are not successful completion.`,
+            kind: "project.subagents-idle", data: { mode: "steer", version: task.input.version } });
           const idle = await tx.doc(AgentWorkIdleDoc, task.conversationId);
           idle.deliveredVersion = Math.max(idle.deliveredVersion, task.input.version);
           return { status: "terminal", outcome: { status: "completed", result: null } };
@@ -824,6 +829,7 @@ export class DurableAgentSession {
       case "submit": {
         if (typeof command.prompt !== "string" || command.prompt.length > 100_000 || !["steer", "followUp", "reject"].includes(command.mode)) throw new Error("Invalid agent input.");
         const content = command.images?.length ? [{ type: "text" as const, text: command.prompt }, ...command.images.map(image => ({ type: "image" as const, ...image }))] : command.prompt;
+        await target.commit(tx => deferAgentNotifications(tx, target.id), context);
         const submission = await this.submitManagedInput(target, { type: "input", content, requestId: command.requestId, whenBusy: command.mode,
           entry: { kind: "project.input", data: { requestId: command.requestId, mode: command.mode,
             ...((command as { botSystemPrompt?: string }).botSystemPrompt === undefined ? {} : { botSystemPrompt: (command as unknown as { botSystemPrompt: string }).botSystemPrompt }) } } }, context);
@@ -1078,16 +1084,18 @@ export class DurableAgentSession {
         if (submission.type !== "input" || !submission.requestId) continue;
         const entry = submission.entry === undefined ? undefined : byId.get(submission.entry);
         const queued = inbox?.items.find(item => item.id === submission.id);
-        const data = object(entry?.data ?? queued?.entry?.data);
+        const data = object(entry?.data ?? queued?.entry?.data ?? (submission.status === "unanswered" ? submission.detail : undefined));
         const prompt = entry?.model?.find(message => message.role === "user")?.content ?? (queued && "content" in queued ? queued.content : "");
         let mode = ["steer", "followUp", "reject", "report"].includes(String(data.mode)) ? String(data.mode) as AgentSessionTurn["mode"] : "followUp";
         if (mode === "steer" && (submission.status === "done" && !submitted.some(other => other.id < submission.id && other.type === "input" && other.status === "done" && other.answer === submission.answer)
           || submission.status === "placed" && live.run?.inputs[0] === submission.id)) mode = "followUp";
-        const nextInput = entries.find(candidate => candidate.id > (submission.entry ?? Infinity) && ["project.input", "project.child-result", "pi.user"].includes(candidate.kind) && object(candidate.data).mode !== "steer");
+        const nextInput = entries.find(candidate => candidate.id > (submission.entry ?? Infinity)
+          && (["project.input", "project.child-result", "pi.user"].includes(candidate.kind) || typeof object(candidate.data).notificationKey === "string") && object(candidate.data).mode !== "steer");
         const end = submission.status === "done" ? submission.answer : nextInput?.id;
         const visible = submission.entry === undefined ? [] : entries.filter(candidate => candidate.id > submission.entry! && (end === undefined || candidate.id <= end));
         const partial = submission.status === "placed" ? live?.generation?.message as unknown as AssistantMessage | undefined : undefined;
-        const failure = [...visible].reverse().find(entry => entry.kind === "project.failure");
+        const failure = [...visible].reverse().find(entry => entry.kind === "project.failure" &&
+          (object(entry.data).requestId === undefined || object(entry.data).requestId === submission.requestId));
         const detail = failure ? object(failure.data).message : submission.status === "unanswered" ? submission.detail : undefined;
         // Input timestamps are stamped when placed, independently of when a
         // client first opens the conversation. Task spans also survive reopen.
@@ -1103,7 +1111,7 @@ export class DurableAgentSession {
           ...(startedAt === undefined ? {} : { startedAt }), ...(endedAt === undefined ? {} : { endedAt }),
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
-          ...(failure ? { reason: "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),
+          ...(failure ? { reason: typeof object(failure.data).reason === "string" ? String(object(failure.data).reason) : "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),
           ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId, allTasks, live?.tools),
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }

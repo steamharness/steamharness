@@ -40,6 +40,10 @@ Usage is retained for every attempt. A fully successful model request resets con
 
 ## Events and display
 
-`retry.kind` distinguishes `dropped`, `recovery`, `length`, and `lost-call`. `attempt` and `maxAttempts` describe the relevant budget. CLI Web and Studio display network retries in the conversation; other continuations remain in Trace and exports.
+`retry.kind` distinguishes `dropped`, `recovery`, `length`, `lost-call`, and `configuration`. `attempt` and `maxAttempts` describe the relevant budget. Configuration checks have their own wording. CLI Web and Studio display network retries in the conversation; other continuations and configuration checks remain in Trace and exports.
+
+Exhausted configuration authorization reports `configuration_error` with its original diagnostic. The budget belongs to the input; another tool or request boundary does not restart it. Host execution failures retain `execution_error` rather than being relabeled as model failures.
+
+Background progress and completion reports do not resume a failed parent turn. Projects use [submitAgentNotification](/en/core-api/agent/work-queue) to save results for explicit continuation, avoiding repeated wakeups during a persistent outage.
 
 Budget exhaustion displays the final failure reason. Failure and cancellation preserve pending input. Only a successful user round advances the queue.

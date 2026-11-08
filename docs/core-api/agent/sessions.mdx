@@ -59,7 +59,7 @@ description: "提交命令、读取快照，并区分任务、轮次和会话用
 
 `turns[].items[].metadata` 中可选的 `startedAt` / `endedAt` 为轨迹提供 Unix 毫秒时间。思考与正文共享所属模型请求的跨度，包含首包等待，不代表各文本片段单独的生成耗时；工具条目使用对应工具任务的持久跨度。同一工具调用 ID 在不同模型回复中分别匹配。Studio 时间轴包含整轮耗时，即使旧历史缺少分段时间也不会缩成 1ms；未记录的模型分段时间保持未知。
 
-`turns[].reason` 是未完成轮次的原因码，`turns[].detail` 保留模型或重试耗尽的具体错误。宿主即使继续驻留，也应把 `model_error` 等失败显示为失败并展示原因；`aborted` 表示持久取消。续写耗尽同样报告失败，不当作正常完成。
+`turns[].reason` 是未完成轮次的原因码，`turns[].detail` 保留具体错误。`model_error`、`configuration_error`、`execution_error` 分别表示模型、运行配置与宿主执行失败；`aborted` 表示持久取消。宿主即使继续驻留，也应展示失败及其原因。续写耗尽同样报告失败，不当作正常完成。
 
 `turns[].usage` 是该轮已返回模型响应的累计用量，包含工具循环、失败重试和轮内压缩响应，字段为 `inputTokens`、`outputTokens`、`totalTokens`、`cachedInputTokens`、`cacheCreationTokens`、`reasoningTokens`、`calls`。继承的 fork 历史、其他轮次和其他会话不会重复计入该回答。空闲后台压缩的消耗保留在逐会话 `usage` 中，不回写已完成回答。`contexts[].contextUsage` 则是对应会话当前模型上下文的 `{ used, total }`，包括流式内容，在后续输入、fork、压缩和 reset 后更新，与累计消耗独立。
 

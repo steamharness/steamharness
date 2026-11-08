@@ -3,7 +3,7 @@ import { AGENT_PLAN_SYSTEM_PROMPT } from "./plan";
 import { currentBotRequestScope, withBotRequest } from "./bot-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { assertCurrentProjectConfigurationAccess } from "../configuration";
+import { assertCurrentProjectConfigurationAccess, ProjectConfigurationError } from "../configuration";
 import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-works/chord/context";
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
@@ -36,6 +36,7 @@ import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 import { AgentRoleDoc } from "./subagents";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
+import { deferAgentNotifications, deliverAgentNotifications } from "./notifications";
 
 const context = BACKGROUND_CONTEXT;
 const deferred = () => {
@@ -49,7 +50,8 @@ const deferred = () => {
 const RunDoc = defineDocFamily({
   kind: "project.agent.run", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
   initial: () => ({ cutoff: 0, initialized: false as boolean, approvals: {} as JsonObject, usage: {} as JsonObject,
-    retries: {} as JsonObject, continuations: {} as JsonObject, pendingRetries: {} as JsonObject, failure: "", end: 0 }),
+    retries: {} as JsonObject, continuations: {} as JsonObject, pendingRetries: {} as JsonObject, failure: "", end: 0,
+    configurationFailure: null as { message: string; code: string } | null }),
 });
 export interface DurableAgentState {
   systemPrompt: string;
@@ -329,7 +331,8 @@ export class DurableAgent {
     const failure = error instanceof Error ? error.message : String(error);
     if (this.activeRequest) await this.root.commit(async tx => {
       (await tx.doc(RunDoc, this.root!.id, this.activeRequest, null)).failure = failure;
-      await tx.appendEntry(this.root!.id, { kind: "project.failure", data: { message: failure } });
+      await tx.appendEntry(this.root!.id, { kind: "project.failure", data: { message: failure, requestId: this.activeRequest,
+        reason: error instanceof ProjectConfigurationError ? "configuration_error" : "execution_error" } });
     }, context);
     // One owner runs every independent fork as well as the root's owned tasks.
     // A reported failure must settle them; only host shutdown preserves work.
@@ -419,7 +422,7 @@ export class DurableAgent {
                 for (const search of (message as AgentSearchMessage).projectWebSearch!.searches) if (search.status === "running") {
                   search.status = "failed"; search.error = run.failure;
                 }
-                await tx.appendEntry(root.id, { kind: "project.failure", data: { message: run.failure } });
+                await tx.appendEntry(root.id, { kind: "project.failure", data: { requestId: logicalRequestId, reason: "model_error", message: run.failure } });
                 return;
               }
               run.continuations[api.taskId] = AGENT_SEARCH_RESUME_PROMPT;
@@ -444,7 +447,7 @@ export class DurableAgent {
               run.continuations[api.taskId] = false;
               run.failure = kind === "length" ? `The model ran out of output tokens mid-answer ${attempt} times in a row (${reason}). Raise maxTokens or split the request.`
                 : `A tool call the model made went missing ${attempt} times in a row (${reason}).`;
-              await tx.appendEntry(root.id, { kind: "project.failure", data: { message: run.failure } });
+              await tx.appendEntry(root.id, { kind: "project.failure", data: { requestId: logicalRequestId, reason: "model_error", message: run.failure } });
               return;
             }
             const prompt = createAgentStreamResumePrompt({ kind, reason, keptPartial: message.content.length > 0 });
@@ -456,10 +459,11 @@ export class DurableAgent {
           return continuation === undefined ? undefined : { continue: continuation };
         },
         beforeRequest: async (request, api, requestContext) => {
-          await this.authorizeConfiguration(api, requestContext);
-          await this.session?.authorizeChild(api.conversationId);
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
+          const notifications = await root.commit(tx => deliverAgentNotifications(tx, root.id), context);
+          await this.authorizeConfiguration(api, requestContext);
+          await this.session?.authorizeChild(api.conversationId);
           const history = await root.context(context);
           const last = [...history.entries].reverse().find(entry => entry.model?.[0]?.role === "assistant");
           const message = last?.model?.[0] as InterruptedMessage | undefined;
@@ -536,8 +540,8 @@ export class DurableAgent {
             if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
           const compacted = await this.compactBeforeRequest(root, api, requestContext);
-          const messages = compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
-          if (compacted || partials.length > 0) return { messages };
+          const messages = notifications || compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
+          if (notifications || compacted || partials.length > 0) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
@@ -587,6 +591,9 @@ export class DurableAgent {
     try {
       if (parked) { await this.close(); return; }
       // requestId remains the same after a worker crash or a lost submit acknowledgement.
+      if (!resuming && this.session) await root.commit(async tx => {
+        if (!await tx.submissionByRequest(root.id, requestId)) await deferAgentNotifications(tx, root.id);
+      }, context);
       const submission = resuming ? undefined : await root.submit({ type: "input", content, requestId, whenBusy: "reject",
         ...(this.session ? { entry: { kind: "project.input", data: { requestId, mode: "reject" } } } : {}) }, context);
       this.commandReady.resolve();
@@ -688,16 +695,30 @@ export class DurableAgent {
   }
 
   private async authorizeConfiguration(api: Pick<HookApi, "conversationId">, callContext: Context): Promise<void> {
-    await retryAgentConfigurationAccess(() => awaitWithContext(this.checkConfigurationAccess(), callContext), {
+    const requestId = this.session ? await this.session.requestIdFor(api.conversationId) : this.activeRequest;
+    const denied = (await this.harness!.snapshot(RunDoc, api.conversationId, requestId, callContext))?.configurationFailure;
+    if (denied) throw new ProjectConfigurationError(denied.message, denied.code as ProjectConfigurationError["code"]);
+    try { await retryAgentConfigurationAccess(() => awaitWithContext(this.checkConfigurationAccess(), callContext), {
       signal: callContext.abortSignal, delayMs: this.options.retryDelayMs,
       onRetry: async (attempt, error) => {
         await this.harness!.commit(async tx => {
           await tx.appendEntry(api.conversationId, { kind: "project.retry", data: {
-            attempt, maxAttempts: AGENT_PROVIDER_MAX_RETRIES, kind: "dropped", reason: error.message,
+            attempt, maxAttempts: AGENT_PROVIDER_MAX_RETRIES, kind: "configuration", reason: error.message,
           } });
         }, callContext);
       },
-    });
+    }); } catch (error) {
+      if (error instanceof ProjectConfigurationError && !callContext.abortSignal?.aborted) {
+        await this.harness!.commit(async tx => {
+          const run = await tx.doc(RunDoc, api.conversationId, requestId, null);
+          if (!run.configurationFailure) {
+            run.configurationFailure = { message: error.message, code: error.code };
+            await tx.appendEntry(api.conversationId, { kind: "project.failure", data: { requestId, reason: "configuration_error", code: error.code, message: error.message } });
+          }
+        }, callContext);
+      }
+      throw error;
+    }
   }
 
   private async approve(raw: ToolCall, callContext: Context, prefix = ""): Promise<ApprovalResult> {

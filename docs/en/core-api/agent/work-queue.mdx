@@ -74,11 +74,31 @@ Core resumes the parent once all current child work has ended and none remains q
 
 Internal inputs carry `turns[].hiddenInput: true` for context and audit. Hosts omit their user bubbles and queue rows while retaining normal assistant continuations. Their completion does not independently advance a paused user queue. An idle child queue does not prove that a business batch is complete; the parent must inspect its status and receipts.
 
+Foreground delegation continues its waiting tool round without an extra idle notification. Background work that already reports its result also avoids a duplicate wakeup. Draining the queue can still end a related `sleep` early.
+
 Anonymous `subagent({ task, background?, model? })` and historical tasks remain supported. Named tool calls use `{ action: "spawn", agentId, workId, task, background: true }`; management actions use taskId. Tool background work reports to the parent by default. Commands and business tasks may set `reportToParent: false` to consume receipts themselves.
 
 An explicit `action` selects named management and ignores legacy result pagination fields populated by a model. Tool arguments still cannot override a named role's model.
 
 Durable tasks and native tools can call exported `enqueueAgentWork(tx, registry, input, options)` or `enqueueAgentWorks(tx, registry, inputs, options)` in a transaction. Use the bulk API for 1–1000 items, completing all table reads before creating tasks. Pi transactions cannot read tables after the first table write; do not loop over the single-item API. Task ownership makes batch cancellation cascade to queued and running items.
+
+Send business progress and completion through `submitAgentNotification(tx, parentConversationId, notice)`, exported from `steamharness/agent` and available on the project's `steamharness` runtime API. Submit in the same transaction as the business receipt, after completing other table reads.
+
+```ts
+await runtime.commit(async tx => {
+  await steamharness.submitAgentNotification(tx, task.conversationId, {
+    key: `batch:${batchId}`,
+    requestId: `batch:${batchId}:completed`,
+    content: "Batch complete. Inspect the saved receipts before continuing.",
+  });
+}, ctx);
+```
+
+`key` identifies a batch or status stream; `requestId` identifies one business event. Each is limited to 256 characters. Use business identities that survive task recreation. `content` is nonempty text of up to 100000 characters. Optional `kind` selects an application entry kind outside the `pi.` prefix; optional `data` holds JSON metadata. The receipt is `{ submissionId, status }`, with `placed`, `queued`, `deferred` or `duplicate`. Conflicting content for the same requestId is rejected.
+
+While the parent runs, only the latest unconsumed notification for each key is kept and read at a tool boundary. If the parent failed or stopped, results are saved without starting another model retry budget. An idle conversation with unconsumed inputs also defers notification wakeups. Explicit continuation brings saved results into context.
+
+Reopening the host preserves results and deduplication identities. Notification inputs use `hiddenInput`; they do not appear as user messages or release a paused user queue.
 
 Native tools call `readAgentWorkContext(api, ctx)` for the authorized role, workId, attempt, parent conversation and metadata. Persist progress with `tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`, updating `completed`, `total`, `phase` and optional JSON `data`. A nonempty `error` records failed business verification; clear it after successful retry. A finished model response alone does not prove business completion. The conversation family survives task settlement. Cross-entry operations accept `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`; both item and host cancellation apply.
 

@@ -60,6 +60,7 @@
 - `steamharness.AgentGenerationTask(...)`
 - `steamharness.enqueueAgentWork(...)`
 - `steamharness.enqueueAgentWorks(...)`
+- `steamharness.submitAgentNotification(...)`
 - `steamharness.readAgentWorkContext(...)`
 - `steamharness.AgentWorkProgressDoc(...)`
 - `steamharness.AgentSessionLifecycleDoc(...)`

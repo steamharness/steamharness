@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document the transactional background notification API, business event identities, explicit continuation after failure, and configuration failure categories and retry budgets in Generator.
+
 - Generator documents automatic parent continuation when child work drains, early sleep completion and hidden internal input recovery.
 
 - Generator documents expected and actual sleep end times and their display in the conversation's local timezone.
