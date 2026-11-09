@@ -49,6 +49,8 @@ Use a new session to change existing definitions. Transient connection failures 
 
 `steamharness.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` validates configuration without spawning a process. Its allowlist uses original MCP names; final ids remain `<serverId>_<toolName>`. Existing MCP credential inheritance and approval rules apply. The session owner releases catalog connections after the Harness stops.
 
+Programmatic runtimes can call `agent.setExternalTools(tools, catalogs)` between turns to replace tools and catalogs. Before the next turn, old catalog connections are released and new callbacks are loaded, retaining conversation history, loaded tool identities and persisted definition checks. Catalog connections cannot be rebuilt while tasks remain active.
+
 ### Code Mode And Environments
 
 `session.codeMode: {}` enables `codemode({ code })` in an isolated QuickJS worker. Scripts use `await tools.<name>(args)`, `text()`, `store()` and `load()`; they have no Node, network or extra `models.*` capability. Nested calls keep the conversation's tool allowlist, caller restrictions, approvals, replay and cancellation. The official journal validates sandbox fingerprints, call order and deadlines when recovering; committed nested results are reused. The worker and WASM ship in Core's package. Defaults are 64 MiB and 300 seconds, with maximums of 256 MiB and 300 seconds.

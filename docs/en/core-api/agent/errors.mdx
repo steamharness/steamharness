@@ -15,6 +15,9 @@ Model failures use the same bounded retry policy regardless of HTTP status, prov
 | Invalid model attributes | `input_validation` | JSON-form attributes with an unknown key, a mistyped value, or an out-of-range number; the field is never silently dropped. |
 | Waiting for approval | `user_input_required` | The run is paused until the host resumes it. |
 | Empty compaction summary | plain `Error` | The model produced no usable summary. |
+| Concurrent `run()` calls on one runtime | `execution` | Rejects the new call while preserving the active request, tools and observers. |
+
+For an ordinary Agent, wait for the current `run()` to finish before calling again. During a durable session, use [session control](/en/core-api/agent/sessions) to queue input or steer the active run.
 
 ## Retry and continuation
 

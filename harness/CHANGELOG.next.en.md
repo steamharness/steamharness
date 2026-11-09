@@ -1,5 +1,8 @@
 # Unreleased
 
+- [Fixed] Reopening an unfinished request after compaction reuses its summary and committed tool results, narrows saved tool declarations to current authorization, and preserves the system prompt during partial-answer recovery.
+- [Fixed] Host tool disabling also applies to session, native and deferred tools. Replacing catalogs between turns releases old connections and refreshes callbacks while retaining history and definition checks. Concurrent runs on one runtime are rejected before they can overwrite active state.
+
 - [Fixed] Restore the prepared system prompt and tool declarations after request-time context compaction, so long tasks can continue calling tools. Current authorization and loaded deferred tools are preserved.
 
 - Fix background reports to deduplicate business events and coalesce pending progress. Failed or stopped parents retain results for explicit continuation, preventing repeated completion notices from restarting model retries. Configuration denials retain their own failure category and wording, with one authorization retry budget per input.

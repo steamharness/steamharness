@@ -8,7 +8,7 @@ import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-wo
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import {
-  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, ConversationBusy, createRegistry, defineDoc, defineDocFamily,
+  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, ConversationBusy, ROOT_CONVERSATION_ID, createRegistry, defineDoc, defineDocFamily,
   defineExtension, hook, section, watchEvents,
   type AgentEvent as DurableEvent, type AgentEventStream, type Conversation,
   type EntryRecord, type JsonObject, type Storage, type ToolRegistration, type HookApi,
@@ -18,6 +18,7 @@ import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-age
 import type { Api, AssistantMessage, ImageContent, Message, Model, Models, ToolCall, Usage } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { declarationsEqual, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai/utils/transcript";
 import { HarnessError } from "../workflow/errors";
 import type { AgentAskResume, AgentContextUsage, AgentWebSearch } from "./types";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "./web-search";
@@ -26,7 +27,7 @@ import { AgentCompactionResponseError, DEFAULT_AGENT_COMPACTION_SETTINGS, estima
   findCompactionSplitIndex, shouldCompactAgent, summarizeAgentMessages, type AgentCompactionSettings } from "./compaction";
 import { createAgentStreamResumePrompt } from "./plan";
 import type { AgentStorageFactory } from "./storage";
-import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
+import { AgentExtensionResources, mergeAgentRegistries, type AgentToolCatalog } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
@@ -79,6 +80,7 @@ export interface DurableAgentOptions {
   retryDelayMs?: number;
   compaction?: AgentCompactionSettings;
   contextUsage?: () => AgentContextUsage | undefined;
+  isToolEnabled?: (name: string) => boolean;
 }
 
 type ApprovalResult = { block: true; reason: string; pause?: HarnessError } | undefined;
@@ -98,6 +100,7 @@ export class DurableAgent {
   private root?: Conversation;
   private releaseOwner?: () => void | Promise<void>;
   private resources?: AgentExtensionResources;
+  private toolCatalogs?: readonly AgentToolCatalog[];
   private memoryStorage?: MemoryStorage;
   private session?: DurableAgentSession;
   private commandReady = deferred();
@@ -168,7 +171,9 @@ export class DurableAgent {
           return typeof value === "function" ? value.bind(this.models) : value;
         },
       });
-      this.resources = new AgentExtensionResources(this.options.session ?? {});
+      this.resources = new AgentExtensionResources(this.toolCatalogs === undefined ? this.options.session ?? {} : {
+        ...this.options.session, toolSearch: { ...this.options.session?.toolSearch, catalogs: this.toolCatalogs },
+      });
       await this.resources.install(this.registry, tool => this.adaptTool(tool));
       const registry = mergeAgentRegistries(this.registry, this.options.session?.registry,
         async (name, args, api, callContext) => {
@@ -179,7 +184,8 @@ export class DurableAgent {
             const decision = await this.approve({ type: "toolCall", id: api.callId, name, arguments: json(args) as JsonObject }, callContext, prefix);
             if (decision?.block) return { output: [{ type: "text", text: decision.reason }], isError: true };
           }
-        }, { delayMs: this.options.retryDelayMs, canRetry: (api, callContext) => this.fatalFailure === undefined
+        }, { delayMs: this.options.retryDelayMs, isToolEnabled: this.options.isToolEnabled,
+          canRetry: (api, callContext) => this.fatalFailure === undefined
           ? this.session?.canRetryTool(api.conversationId, callContext) ?? true : false });
       registry.snapshot();
       const compactionPolicy = () => {
@@ -251,6 +257,17 @@ export class DurableAgent {
     if (this.state.messages !== this.projected) await this.replaceContext();
   }
 
+  async setToolCatalogs(catalogs: readonly AgentToolCatalog[]): Promise<void> {
+    if (!this.options.session?.toolSearch) throw new Error("Deferred tools require session.toolSearch.");
+    if (this.prompting || this.harness && (await this.harness.inspect(context)).tasks.length) {
+      throw new Error("Cannot replace tool catalogs while an agent run is active.");
+    }
+    // Keep the same store, including schema pins and loaded tool identities,
+    // while releasing callbacks and connections tied to the previous turn.
+    if (this.harness) await this.close();
+    this.toolCatalogs = [...catalogs];
+  }
+
   async canCompact(requestId?: string): Promise<boolean> {
     if (requestId && await this.root!.commit(tx => tx.submissionByRequest(this.root!.id, requestId), context)) return false;
     return (await this.harness!.inspect(context)).tasks.length === 0;
@@ -303,6 +320,7 @@ export class DurableAgent {
   }
 
   async prompt(prompt: string | AgentMessage[], images?: ImageContent[]): Promise<void> {
+    if (this.prompting) throw new ConversationBusy(this.root?.id ?? ROOT_CONVERSATION_ID);
     this.commandReady = deferred();
     this.prompting = true;
     try { await this.runPrompt(prompt, images); }
@@ -540,15 +558,24 @@ export class DurableAgent {
             if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
           const compacted = await this.compactBeforeRequest(root, api, requestContext);
-          const messages = notifications || compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
-          if (compacted) {
-            // Durable already prepared the prompt and tool declarations before
-            // this hook. Compaction can remove their baseline; replay that
-            // prepared system sequence once ahead of the retained conversation.
-            return { messages: [...request.messages.filter(message => message.role === "system"),
-              ...messages.filter(message => message.role !== "system")] };
+          const replaced = notifications || compacted || partials.length > 0;
+          let messages = replaced ? (await root.context(context)).messages : request.messages;
+          if (replaced) {
+            // Preserve the prepared prompt and declarations when replacing
+            // context for compaction, recovery or saved background results.
+            messages = [...request.messages.filter(message => message.role === "system"),
+              ...messages.filter(message => message.role !== "system")];
           }
-          if (notifications || partials.length > 0) return { messages };
+          // A saved request cutoff can predate host revocation or a catalog
+          // update. Narrow its offered declarations to the current registry,
+          // preserving any additional request-only restriction from other hooks.
+          const allowed = new Map((await root.agent(requestContext)).tools.map(tool => [tool.name, toToolDeclaration(tool)]));
+          const offered = getCurrentTools(messages);
+          const current = offered.flatMap(tool => allowed.has(tool.name) ? [allowed.get(tool.name)!] : []);
+          const toolsChanged = current.length !== offered.length || current.some((tool, index) => !declarationsEqual(tool, offered[index]!));
+          if (toolsChanged) messages = [...messages, { role: "system", content: "", timestamp: Date.now(),
+            toolsRemoved: offered.map(tool => ({ name: tool.name })), toolsAdded: current }];
+          if (replaced || toolsChanged) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
@@ -754,26 +781,31 @@ export class DurableAgent {
 
   private async compactBeforeRequest(root: Conversation, api: HookApi, requestContext: Context): Promise<boolean> {
     const settings = this.compactionSettings();
-    if (!settings.enabled) return false;
-    const generation = await this.harness!.getTask(api.taskId, requestContext);
-    const checkpoint = generation?.state.checkpoint;
-    if (checkpoint && typeof checkpoint === "object" && "compacted" in checkpoint) return false;
-    const view = await root.context(requestContext);
-    if (findCompactionSplitIndex(view.messages.filter(message => message.role !== "system") as AgentMessage[], settings.keepRecentTokens) <= 0) return false;
-    if (root.id === this.root!.id) await this.refresh();
-    const model = (await root.agent(requestContext)).model;
-    const measurement = root.id === this.root!.id ? this.options.contextUsage?.() : undefined;
-    const usage = readAgentContextUsage({
-      used: measurement?.used ?? estimateAgentContextTokens(durableContextMessages(view)),
-      contextWindow: model && api.models.getModel(model.provider, model.modelId)?.contextWindow,
-    });
-    if (!shouldCompactAgent(usage, settings)) return false;
     const requestId = this.session ? await this.session.requestIdFor(root.id) : this.activeRequest;
+    const key = `compaction:${api.taskId}`;
+    let taskId = await root.commit(async tx => (await tx.doc(RunDoc, root.id, requestId, null)).continuations[key], requestContext);
+    // A recovered generation still has its pre-compaction cutoff. Rejoin its
+    // committed summary even if the new context is already below the threshold.
+    if (typeof taskId !== "number") {
+      if (!settings.enabled) return false;
+      const generation = await this.harness!.getTask(api.taskId, requestContext);
+      const checkpoint = generation?.state.checkpoint;
+      if (checkpoint && typeof checkpoint === "object" && "compacted" in checkpoint) return false;
+      const view = await root.context(requestContext);
+      if (findCompactionSplitIndex(view.messages.filter(message => message.role !== "system") as AgentMessage[], settings.keepRecentTokens) <= 0) return false;
+      if (root.id === this.root!.id) await this.refresh();
+      const model = (await root.agent(requestContext)).model;
+      const measurement = root.id === this.root!.id ? this.options.contextUsage?.() : undefined;
+      const usage = readAgentContextUsage({
+        used: measurement?.used ?? estimateAgentContextTokens(durableContextMessages(view)),
+        contextWindow: model && api.models.getModel(model.provider, model.modelId)?.contextWindow,
+      });
+      if (!shouldCompactAgent(usage, settings)) return false;
+    }
     // The child identity is committed with its status. Recovery joins it instead
     // of starting another summary; a no-op cannot create an unbounded loop.
-    const taskId = await root.commit(async tx => {
+    taskId = typeof taskId === "number" ? taskId : await root.commit(async tx => {
       const run = await tx.doc(RunDoc, root.id, requestId, null);
-      const key = `compaction:${api.taskId}`;
       if (typeof run.continuations[key] === "number") return run.continuations[key] as number;
       const id = await tx.createTask(CompactionTask, { reason: "threshold" as const },
         { conversationId: root.id, ownership: { kind: "task", taskId: api.taskId } });

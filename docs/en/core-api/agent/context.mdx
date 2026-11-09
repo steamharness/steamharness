@@ -20,6 +20,8 @@ The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` and
 
 Progress includes the expected end time when waiting starts. The completed result retains both expected and actual end times. CLI Web / Studio activity rows and details use the browser's local timezone, including history replay. Raw results use UTC; `details.wakeAt` and `details.endedAt` are millisecond timestamps.
 
+Host disabling also applies to session tools, native extension tools and deferred catalogs. Disabled tools are excluded from discovery and cannot be called indirectly through Code Mode. Reopening an unfinished request narrows its saved declarations to current authorization.
+
 With subagents enabled, sleep returns early when the relevant child work has ended and none remains queued. One internal status input resumes the parent so it can inspect results or continue its work. The input has no user message bubble and counts completed, failed and stopped work separately. Timed waits without relevant child work retain their duration.
 
 - **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
@@ -64,6 +66,8 @@ Summary responses report model usage through `host.reportUsage`, including token
 **Context is compacted automatically at 90% of the window.** Ordinary Agents and durable sessions check occupancy before every model request, including requests following tool execution in the same turn. At the threshold, older history is compacted before execution continues. A `contextWindow` override also controls this check. Events have `auto: true`, with start when compaction begins and end after success. Failure or cancellation preserves the original history; a compaction failure ends the run with its cause.
 
 The next model request retains the current system prompt and authorized tool declarations, including deferred tools that have already been loaded. Compaction does not expand tool access; host-disabled tools remain unavailable.
+
+If the process exits after compaction but before the model answers, reopening reuses the existing summary and committed tool results. Recovery does not resend the old uncompressed history, regenerate that summary or repeat completed tools.
 
 If the provider still returns an explicit context overflow error, the runtime attempts compaction and retries once. Another overflow reports the error instead of retrying indefinitely. History already beyond the window is summarized in bounded chunks and then merged, reserving output space for each summary request and billing every call. Automatic compaction retains recent messages and complete tool call/result pairs. If a remaining input or tool result alone exceeds the window, shorten that input or output.
 

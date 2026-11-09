@@ -183,6 +183,8 @@ class ProjectAgentRuntime implements AgentRuntime {
   private connection: AgentConnection;
   private externalTools: PiAgentTool[] = [];
   private externalCatalogs: readonly import("./extensions").AgentToolCatalog[] = [];
+  private catalogsChanged = false;
+  private running = false;
   /**
    * The transcript this process starts from, until the agent exists.
    *
@@ -221,9 +223,10 @@ class ProjectAgentRuntime implements AgentRuntime {
    * `NodeContext`, so they cannot be built once alongside the runtime.
    */
   setExternalTools(tools: readonly PiAgentTool[], catalogs: readonly import("./extensions").AgentToolCatalog[] = []): void {
-    this.externalTools = [...tools];
-    this.externalCatalogs = catalogs;
     if (catalogs.length && !this.options.session?.toolSearch) throw new Error("Deferred tools require session.toolSearch.");
+    this.catalogsChanged ||= !!(catalogs.length || this.externalCatalogs.length);
+    this.externalTools = [...tools];
+    this.externalCatalogs = [...catalogs];
   }
 
   reset(): void {
@@ -279,6 +282,14 @@ class ProjectAgentRuntime implements AgentRuntime {
   }
 
   async *run(input: AgentInput, host?: AgentHost): AsyncIterable<AgentStreamEvent> {
+    if (this.running) throw new HarnessError({ type: "execution", message: "An agent run is already active. Submit input through session control or wait until it finishes." });
+    this.running = true;
+    try {
+      yield* this.runInput(input, host);
+    } finally { this.running = false; }
+  }
+
+  private async *runInput(input: AgentInput, host?: AgentHost): AsyncIterable<AgentStreamEvent> {
     throwIfRunAborted(host?.abortSignal);
     const resolved = this.resolveInput ? await this.resolveInput(input, host?.abortSignal) : input;
     // A host-resolved connection and inherited permissions belong to one snapshot.
@@ -288,6 +299,10 @@ class ProjectAgentRuntime implements AgentRuntime {
       : parseAgentInput(resolved, this.options);
     await this.applyConnection(parsed);
     const agent = this.ensureAgent();
+    if (this.catalogsChanged) {
+      await agent.setToolCatalogs([...(this.options.session?.toolSearch?.catalogs ?? []), ...this.externalCatalogs]);
+      this.catalogsChanged = false;
+    }
     agent.state.contextWindow = parsed.contextWindow;
     await agent.open();
     this.contextWindow = parsed.contextWindow;
@@ -405,7 +420,9 @@ class ProjectAgentRuntime implements AgentRuntime {
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
         contextUsage: () => this.getContextUsage(),
+        isToolEnabled: this.options.isToolEnabled,
       });
+      this.catalogsChanged = false;
     }
 
     return this.agent;

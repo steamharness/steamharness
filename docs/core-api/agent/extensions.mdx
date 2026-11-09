@@ -45,6 +45,8 @@ Registry publication 使用不可变快照，在途工具和 hook 固定实现�
 
 标准 MCP 助手 `steamharness.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` 验证服务器定义但不立即启动进程。这里 `allowedTools` 使用 MCP 原始名称，最终 id 沿用 `<serverId>_<toolName>`；凭据按已有 MCP 环境继承规则传入。所有目录都由会话 owner 管理并在关闭后释放。
 
+编程式运行时可在两轮之间调用 `agent.setExternalTools(tools, catalogs)` 替换工具和目录。下一轮开始前释放旧目录连接并加载新回调，会话历史、已加载工具身份和持久定义校验继续保留。还有未结束任务时，不会重建目录连接。
+
 ### Code Mode 与执行目标
 
 显式设置 `session.codeMode: {}` 后提供 `codemode({ code })`。脚本可使用 `await tools.<name>(args)`、`text()`、`store()` / `load()`；没有 Node、网络或额外 `models.*` 能力。每个嵌套调用仍经过工具 whitelist、caller、审批、replay 和取消。官方执行日志、沙箱指纹、脚本 deadline 与调用顺序共同校验恢复；已提交嵌套结果不会重做。worker JS 和 QuickJS WASM 随 Core 包分发。

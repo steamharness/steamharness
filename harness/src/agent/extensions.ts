@@ -52,7 +52,8 @@ function rememberCatalogTools(catalogs: Record<string, JsonObject[]>, id: string
 /** Merges immutable publications; the Harness itself pins each phase and wakes missing tasks. */
 export function mergeAgentRegistries(internal: RegistryReader, application?: RegistryReader,
   authorizeTool?: (name: string, args: unknown, api: ToolExecutionApi, context: Context) => Promise<ToolExecutionResult | void>,
-  recovery: { delayMs?: number; canRetry?(api: ToolExecutionApi, context: Context): boolean | Promise<boolean> } = {}): RegistryReader {
+  recovery: { delayMs?: number; canRetry?(api: ToolExecutionApi, context: Context): boolean | Promise<boolean>;
+    isToolEnabled?(name: string): boolean } = {}): RegistryReader {
   return {
     snapshot: () => {
       const own = internal.snapshot(), extra = application?.snapshot();
@@ -73,9 +74,9 @@ export function mergeAgentRegistries(internal: RegistryReader, application?: Reg
       }
       const merged = createRegistry();
       // Project argument transforms run before the Core approval hook.
-      for (const extension of [...(extra?.installed() ?? []), ...extensions]) merged.install(!authorizeTool ? extension : {
+      for (const extension of [...(extra?.installed() ?? []), ...extensions]) merged.install({
         ...extension,
-        tools: extension.tools?.map(tool => ({ ...tool, execute: async (args, api, context) => {
+        tools: extension.tools?.filter(tool => recovery.isToolEnabled?.(tool.name) !== false).map(tool => !authorizeTool ? tool : ({ ...tool, execute: async (args, api, context) => {
           // Restored ToolTasks may already be past beforeTool. Guard the actual
           // side-effect boundary as well as fresh argument/approval phases.
           return retryAgentTool({ replay: tool.replay, signal: context.abortSignal, delayMs: recovery.delayMs,
@@ -96,6 +97,7 @@ export function mergeAgentRegistries(internal: RegistryReader, application?: Reg
 
 export class AgentExtensionResources {
   private readonly directories: Directory[] = [];
+  private readonly installed = new Map<string, Parameters<ReturnType<typeof createRegistry>["install"]>[0]>();
   private readonly environments = new Map<string, Promise<ExecutionEnv>>();
   private environmentState: "idle" | "ready" | "failed" = "idle";
   private sandbox?: { close(): Promise<void> };
@@ -107,12 +109,17 @@ export class AgentExtensionResources {
 
   constructor(private readonly options: AgentSessionOptions) {}
 
+  private installExtension(extension: Parameters<ReturnType<typeof createRegistry>["install"]>[0]): void {
+    this.installed.set(extension.name, extension);
+    this.registry!.install(extension);
+  }
+
   async install(registry: ReturnType<typeof createRegistry>, adapt: (tool: AgentTool) => ToolRegistration): Promise<void> {
     this.closing = false;
     this.registry = registry; this.adapt = adapt;
     if (this.options.toolSearch) {
       const search = createToolSearchTool();
-      registry.install(defineExtension({ name: "tool-search", tools: [{ ...search, execute: async (args, api, context) => {
+      this.installExtension(defineExtension({ name: "tool-search", tools: [{ ...search, execute: async (args, api, context) => {
         for (const directory of this.directories) if (!directory.catalog.tools && directory.catalog.allowedTools?.length) {
           const connection = await this.connect(directory);
           // A restored manifest is a compatibility baseline, not the complete
@@ -146,7 +153,7 @@ export class AgentExtensionResources {
       const { createSteamHarnessmode } = await import("./codemode");
       const { extension, sandbox } = createSteamHarnessmode(this.options.codeMode);
       this.sandbox = sandbox;
-      registry.install(extension);
+      this.installExtension(extension);
     }
   }
 
@@ -163,7 +170,7 @@ export class AgentExtensionResources {
       } };
       return { ...this.adapt!(lazy), deferred: true as const };
     });
-    this.registry!.install(defineExtension({ name: `project.catalog.${directory.catalog.id}`, tools }));
+    this.installExtension(defineExtension({ name: `project.catalog.${directory.catalog.id}`, tools }));
   }
 
   private connect(directory: Directory): Promise<AgentToolSet> {
@@ -257,6 +264,8 @@ export class AgentExtensionResources {
       ...[...this.environments.values()].map(async pending => { const environment = await pending.catch(() => undefined); await environment?.cleanup(context); }),
       this.sandbox?.close(),
     ]);
+    for (const extension of this.installed.values()) this.registry?.uninstall(extension);
+    this.installed.clear();
     this.directories.length = 0; this.environments.clear(); this.sandbox = undefined;
     const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
     if (errors.length) throw new AggregateError(errors, "Agent extension resource cleanup failed.");
