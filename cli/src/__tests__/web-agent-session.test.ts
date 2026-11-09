@@ -814,6 +814,62 @@ it('retains queued image metadata after acknowledgement and projects it when Har
   await f.finish();
 });
 
+it.each(['placed', 'done', 'unanswered'] as const)('keeps consumed queue messages before their %s answer through streaming and history recovery', async status => {
+  const f = fixture(); await f.start('placed');
+  const initial = f.snapshot(), answer = f.controller.current.messages[1];
+  const original = { ...initial.turns[0], status: 'placed' as const, answerId: undefined };
+  const first: AgentSessionTurn = { requestId: 'first-steer', conversationId: 1, prompt: 'First correction', mode: 'steer', status: 'queued', epoch: 0, items: [] };
+  const second: AgentSessionTurn = { ...first, requestId: 'second-steer', prompt: 'Second correction' };
+  f.emit({ ...initial, revision: 2, foreground: true, turns: [original, first, second] });
+  expect(f.controller.current.messages).toHaveLength(2);
+  expect(f.controller.current.queuedInputs?.map(input => input.text)).toEqual(['First correction', 'Second correction']);
+  const placed = [{ ...first, status: 'placed' as const, entryId: 3 }, { ...second, status: 'placed' as const, entryId: 5 }];
+  const expected = [f.controller.current.messages[0].id, 'steer:first-steer', 'steer:second-steer', answer.id];
+  // Submission order can differ from the order in which inputs were consumed.
+  const frame = { ...initial, foreground: true, turns: [original, ...[...placed].reverse()] };
+  f.emit({ ...frame, revision: 3 });
+  expect(f.controller.current.queuedInputs).toEqual([]);
+  expect(f.controller.current.messages.map(message => message.id)).toEqual(expected);
+  expect(f.controller.current.messages.at(-1)).toBe(answer);
+  const updated = { ...original, items: [...original.items, { id: 'continued', title: 'Output', content: 'Continued after correction', contentType: 'markdown' as const }] };
+  f.emit({ ...frame, revision: 4, turns: [updated, ...placed] });
+  expect(f.controller.current.messages.map(message => message.id)).toEqual(expected);
+  expect(answer.content).toContain('Continued after correction');
+  f.controller.current.queuePaused = true;
+  f.emit({ ...frame, revision: 5, foreground: status === 'placed', turns: [
+    { ...updated, status, ...(status === 'placed' ? {} : status === 'done' ? { answerId: 7 } : { reason: 'aborted' }) },
+    ...placed.map(turn => ({ ...turn, status, ...(status === 'done' ? { answerId: 7 } : {}) })),
+  ] });
+  expect(f.controller.current.messages.map(message => message.id)).toEqual(expected);
+  // Repair a checkpoint from an older host, where steered bubbles followed the answer.
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.current.id, selectionVersion: 1 });
+  saved.sessions[0].messages = [saved.sessions[0].messages[0], saved.sessions[0].messages[3], ...saved.sessions[0].messages.slice(1, 3)];
+  const reopened = new ConversationController(f.controller.project, f.runtime, saved, { save: vi.fn(), changed: vi.fn(), log: vi.fn() }); controllers.push(reopened);
+  expect(reopened.current.messages.map(message => message.id)).toEqual(expected);
+  reopened.restoreAgentState();
+  expect(reopened.current.messages.map(message => message.id)).toEqual(expected);
+  if (status !== 'placed') {
+    const send = vi.spyOn(f.controller, 'send').mockResolvedValue();
+    await f.controller.retry(answer.id!);
+    expect(send).toHaveBeenCalledWith(f.controller.current.messages[0].input, f.controller.current);
+  }
+  await f.finish();
+});
+
+it('places a consumed queue message before its follow-up answer while retaining earlier history', async () => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot(), history = [...f.controller.current.messages];
+  const followUp: AgentSessionTurn = { requestId: 'follow-up', conversationId: 1, prompt: 'Next task', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3, items: [] };
+  const steer: AgentSessionTurn = { ...followUp, requestId: 'follow-up-correction', prompt: 'Correct the next task', mode: 'steer', entryId: 5 };
+  f.emit({ ...initial, revision: 2, foreground: true, turns: [...initial.turns, followUp, steer] });
+  const messages = f.controller.current.messages;
+  expect(messages.slice(0, 2)).toEqual(history);
+  expect(messages.slice(2).map(message => message.role)).toEqual(['user', 'user', 'assistant']);
+  expect(messages.slice(2, 4).map(message => message.content)).toEqual(['Next task', 'Correct the next task']);
+  expect(messages.at(-1)).toMatchObject({ sessionRequestId: 'follow-up', status: 'running' });
+  await f.finish();
+});
+
 it.each([false, true])('promotes a durable queued input without restarting its owner or changing the draft (foreground=%s)', async foreground => {
   const f = fixture(); await f.start();
   const attachments = [{ id: 'image', name: 'diagram.png', mimeType: 'image/png', size: 3, kind: 'image' as const, storage: 'local' as const, createdAt: '2026-10-15T00:00:00Z' }];

@@ -738,6 +738,7 @@ export class ConversationController {
       const hostIds = new Set(hostQueue.map(input => input.requestId ?? input.id));
       entry.queuedInputs = [...turns.filter(turn => turn.status === 'queued' && turn.mode !== 'report' && !turn.hiddenInput && !hostIds.has(turn.requestId)).map(turn => entry.agentInputs?.[turn.requestId]
         ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: entry.updatedAt ?? Date.now() }), ...hostQueue];
+      const answersByTurn = new Map<string, ConversationMessage>();
       for (const turn of turns) {
         const input = entry.agentInputs?.[turn.requestId];
         const oldTurn = previous?.turns.find(item => item.requestId === turn.requestId && item.conversationId === turn.conversationId);
@@ -770,6 +771,7 @@ export class ConversationController {
         }
         if (entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (!answer) continue;
+        for (const part of outputTurns) answersByTurn.set(part.requestId, answer);
         const startedAt = outputTurns[0]?.startedAt;
         if (startedAt !== undefined) answer.createdAt = startedAt;
         answer.sessionConversationId = turn.conversationId;
@@ -811,6 +813,21 @@ export class ConversationController {
         const extras = answer.items?.filter(item => item.display) ?? [];
         answer.items = [...outputTurns.flatMap(part => part.items), ...extras]; answer.content = outputText(answer.items);
         if (answer.pendingInput) answer.status = 'waiting_for_input';
+      }
+      // Steered input joins an existing answer instead of creating a new one.
+      // Keep its bubble before that answer as it streams, including when
+      // repairing checkpoints that previously appended the bubble at the end.
+      const steered = turns.filter(turn => turn.mode === 'steer' && !turn.hiddenInput && turn.entryId !== undefined && turn.status !== 'queued')
+        .sort((left, right) => left.entryId! - right.entryId!);
+      for (const turn of steered) {
+        const source = turns.filter(part => part.mode !== 'steer' && part.entryId !== undefined && part.entryId < turn.entryId!
+          && (part.answerId === undefined || part.answerId > turn.entryId!))
+          .sort((left, right) => right.entryId! - left.entryId!)[0];
+        const answer = source && answersByTurn.get(source.requestId);
+        const index = entry.messages.findIndex(message => message.id === `steer:${turn.requestId}`);
+        if (!answer || index < 0) continue;
+        const [message] = entry.messages.splice(index, 1);
+        entry.messages.splice(entry.messages.indexOf(answer), 0, message);
       }
     }
     if (!restore) this.configurationChanged();
@@ -1222,7 +1239,7 @@ export class ConversationController {
       if (anchor) anchor.recoveryAttempts = 0;
       entry.recoveryPaused = false; answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
     }
-    const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user');
+    const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user' && message.status !== 'steer');
     if (!user || entry.activeRunId && !entry.agent) { return; }
     if (user.input) { await this.send(user.input, entry); return; }
     const parameters = projectParameters(this.project, user.entrypointId);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix Bot queue messages sent with Send now staying at the bottom of the conversation. Consumed messages appear before the reply handling them and retain their order during streaming and history recovery.
+
 - Fix queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn. Older user queues stay paused, and active replies retain normal queueing.
 
 - Hide subagent completion inputs from user messages and pending queues while retaining assistant continuations and history. Internal completion does not independently advance a paused user queue.

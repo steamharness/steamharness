@@ -79,6 +79,31 @@ it('restores a compact file reference but saves and submits its complete path af
   expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'send', text: `检查 ${source}` }));
 });
 
+it('keeps a consumed queue bubble above the existing streaming reply and its responding indicator', async () => {
+  const f = await fixture();
+  const input = { id: 'input', role: 'user' as const, content: 'Original task' };
+  const answer = { id: 'reply', role: 'assistant' as const, content: 'Original output', status: 'running' };
+  const entry: ConversationSession = { ...session('queue-placement'), messages: [input, answer] };
+  f.receive([entry], entry.id);
+  const root = document.querySelector('[data-message-id="reply"]');
+  const steer = { id: 'steer:correction', role: 'user' as const, content: 'Queued correction', status: 'steer' };
+  // Also repair an already displayed bubble from an older host snapshot.
+  entry.messages = [input, answer, steer]; f.receive([entry], entry.id);
+  entry.messages = [input, steer, answer]; f.receive([entry], entry.id);
+  const correction = document.querySelector('[data-message-id="steer:correction"]');
+  expect([...document.querySelectorAll('#transcript-content > .message')].map(node => (node as HTMLElement).dataset.messageId)).toEqual(['input', 'steer:correction', 'reply']);
+  expect(correction?.nextElementSibling).toBe(root);
+  expect(document.querySelector('.pending')?.closest('.message')).toBe(root);
+  answer.content = 'Reply after the queued correction'; f.receive([structuredClone(entry)], entry.id);
+  expect(document.querySelector('[data-message-id="steer:correction"]')).toBe(correction);
+  expect(document.querySelector('[data-message-id="reply"]')).toBe(root);
+  expect(root?.textContent).toContain(answer.content);
+  expect(correction?.nextElementSibling).toBe(root);
+  answer.status = 'success'; f.receive([entry], entry.id);
+  expect(document.querySelector('.pending')).toBeNull();
+  expect(correction?.nextElementSibling).toBe(root);
+});
+
 it.each(['success', 'failed', 'aborted'])('keeps the final duration in the reply metadata after %s', async status => {
   const f = await fixture(), startedAt = Date.now();
   const entry: ConversationSession = { ...session('duration'), messages: [{ id: 'reply', role: 'assistant', content: 'Answer', status: 'running', createdAt: startedAt - 12_000 }] };
