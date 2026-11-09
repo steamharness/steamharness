@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { ROOT } from '../../scripts/distribution.mjs';
+import { kernelLock } from './kernel-lock.mjs';
 
 // Share read-only objects, but keep refs, files and the index inside the fixture.
 // Keep the real pinned commit identity so its integrated-patch receipt applies.
@@ -14,13 +15,19 @@ export async function pinnedKernel(t, files) {
     await fs.mkdir(directory);
   }
   const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const lock = JSON.parse(await fs.readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
-  const objects = git(path.join(ROOT, lock.path), ['rev-parse', '--path-format=absolute', '--git-path', 'objects']).trim();
+  const lock = await kernelLock(ROOT);
+  const source = path.join(ROOT, lock.path);
+  const objects = git(source, ['rev-parse', '--path-format=absolute', '--git-path', 'objects']).trim();
   git(upstream, ['init', '-q']);
   await fs.writeFile(path.join(upstream, '.git/objects/info/alternates'), `${objects}\n`);
   git(upstream, ['update-ref', 'HEAD', lock.commit]);
   git(upstream, ['read-tree', 'HEAD']);
-  await fs.writeFile(path.join(upstream, '.git/shallow'), `${lock.commit}\n`);
+  // Copy the real shallow boundaries: declaring HEAD shallow would hide the
+  // ancestry the integrated-patch receipt needs to recognize itself.
+  const shallow = await fs.readFile(git(source, ['rev-parse', '--path-format=absolute', '--git-path', 'shallow']).trim(), 'utf8').catch(() => '');
+  if (shallow.trim()) {
+    await fs.writeFile(path.join(upstream, '.git/shallow'), shallow.endsWith('\n') ? shallow : `${shallow}\n`);
+  }
   await fs.copyFile(path.join(ROOT, 'config/patches.json'), path.join(root, 'config/patches.json'));
   for (const file of files) {
     await fs.mkdir(path.dirname(path.join(upstream, file)), { recursive: true });

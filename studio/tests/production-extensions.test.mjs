@@ -11,6 +11,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { pinnedKernel } from './helpers/pinned-kernel.mjs';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const require = createRequire(path.join(ROOT, 'upstream/vscode/build/package.json'));
 const vsce = require('@vscode/vsce'), es = require('event-stream'), File = require('vinyl');
@@ -54,7 +55,7 @@ test('the complete packaging patch series replays without changing the pinned in
     const patch = await fsp.readFile(path.join(ROOT, 'patches', name), 'utf8');
     for (const match of patch.matchAll(/^\+\+\+ b\/(.+)$/gm)) touched.add(match[1]);
   }
-  const lock = JSON.parse(await fsp.readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
+  const lock = await kernelLock();
   const tracked = execFileSync('git', ['ls-tree', '-r', '--name-only', lock.commit, '--', ...touched], { cwd: path.join(ROOT, lock.path), encoding: 'utf8' }).trim().split('\n').filter(Boolean);
   const { upstream } = await pinnedKernel(t, tracked);
   const git = args => execFileSync('git', args, { cwd: upstream, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

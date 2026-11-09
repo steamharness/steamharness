@@ -15,7 +15,7 @@ Studio 使用 VS Code OSS 的工作台、Monaco 编辑器、语言服务、扩�
 | 简体中文界面 | 官方扩展 `MS-CEINTL.vscode-language-pack-zh-hans` |
 | 编辑器布局、原生服务、核心 API 修改 | `upstream/vscode/src`，日常提交到 fork 的 `steamharness-dev` 分支，测试与正式通道使用 `steamharness-alpha`、`steamharness-main`；对应补丁保留在 `patches` |
 | 构建和启动流程 | `scripts` |
-| 上游版本 | 子模块 Git 提交与 `config/upstream.json` |
+| 上游版本 | 子模块 Git 提交（`config/upstream.json` 只记录路径与 VS Code 版本号） |
 
 工作站扩展通过链接挂载为 `upstream/vscode/extensions/studio-workstation`，让开发运行和后续内置扩展打包都能发现它。扩展依赖 `vscode` API，由宿主提供；浏览器包不能引入 Node 原生模块。
 

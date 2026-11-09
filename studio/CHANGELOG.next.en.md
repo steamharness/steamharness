@@ -1,5 +1,7 @@
 # Unreleased
 
+- The kernel revision now comes from the submodule checkout alone; `config/upstream.json` only records the path and VS Code version. Advancing the kernel locally or committing in the fork no longer requires syncing a lock file, and startup and preparation no longer refuse to run on a revision mismatch. The upstream `product.json` is still generated from the current checkout.
+
 - Use project artifacts under dist/steamharness/ for release runs, uploads and examples.
 
 - Release windows select the Steam layout before the first workbench render, without showing the IDE or opening Assistant. Project restoration and retries keep the main project in its primary area instead of reusing a tools tab.

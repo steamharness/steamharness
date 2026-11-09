@@ -7,7 +7,7 @@
 ```text
 studio/
   upstream/vscode/                 VS Code OSS 源码，Git 子模块
-  config/upstream.json             上游版本与提交锁
+  config/upstream.json             上游版本与分支信息（不固定提交）
   config/patches.json              已合入内核的历史补丁指纹与提交
   config/product.json              Studio 品牌、数据目录、扩展市场配置
   config/downloads.json            Electron 与 CI 依赖下载镜像
@@ -20,7 +20,7 @@ studio/
   .studio/                        本地运行数据，不提交
 ```
 
-底座基于 [VS Code 1.141.0](https://github.com/microsoft/vscode/releases/tag/1.141.0)，原始上游提交为 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c`。Studio 内核维护在 fork 的 `steamharness-dev`、`steamharness-alpha`、`steamharness-main` 分支，分别对应开源仓库的 `dev`、`alpha`、`main` 通道。实际使用的提交固定在子模块引用和 `config/upstream.json` 中。可以从 `upstream/vscode/src` 开始定制内核；初次使用浅克隆。
+底座基于 [VS Code 1.141.0](https://github.com/microsoft/vscode/releases/tag/1.141.0)，原始上游提交为 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c`。Studio 内核维护在 fork 的 `steamharness-dev`、`steamharness-alpha`、`steamharness-main` 分支，分别对应开源仓库的 `dev`、`alpha`、`main` 通道。实际使用的内核提交只由子模块引用决定，`config/upstream.json` 只记录路径和对应的 VS Code 版本号，不再固定提交。可以从 `upstream/vscode/src` 开始定制内核；初次使用浅克隆。
 
 ## 本地初始化
 
@@ -165,7 +165,7 @@ GitLab CI 在推送后自动执行框架测试、Studio 类型检查和两端扩
 
 ## 品牌与上游维护
 
-VS Code 源码使用 [GRCmade/vscode 的 steamharness-dev 分支](https://github.com/GRCmade/vscode/tree/steamharness-dev)进行日常开发；`steamharness-alpha` 和 `steamharness-main` 分别维护测试与正式通道，fork 原有的 `main` 保留其历史。`.gitmodules` 的远端更新默认跟随 `steamharness-dev`，普通子模块初始化仍按已提交的引用检出；`config/upstream.json` 固定同一内核提交。拉取源码需要 GitHub SSH 访问权限。当前内核定制和品牌配置已提交到 fork，`patches` 中保留对应补丁，准备脚本会跳过已合并的补丁。后续在 fork 中维护内核提交时，先推送源码提交，再同步更新 `config/upstream.json` 与子模块提交引用。
+VS Code 源码使用 [GRCmade/vscode 的 steamharness-dev 分支](https://github.com/GRCmade/vscode/tree/steamharness-dev)进行日常开发；`steamharness-alpha` 和 `steamharness-main` 分别维护测试与正式通道，fork 原有的 `main` 保留其历史。`.gitmodules` 的远端更新默认跟随 `steamharness-dev`，普通子模块初始化仍按已提交的引用检出。拉取源码需要 GitHub SSH 访问权限。当前内核定制和品牌配置已提交到 fork，`patches` 中保留对应补丁，准备脚本会跳过已合并的补丁。内核提交只由子模块引用决定：在 fork 中提交并推送内核后，回到本仓库提交子模块指针即可，`config/upstream.json` 无需同步，本地推进内核（`git -C upstream/vscode commit`）也不会再被拒绝。
 
 品牌的持久配置是 `config/product.json`。上游 `product.json`、开发期 `product.overrides.json` 和 Studio 扩展链接由脚本生成；检测到手动改动或冲突会停止，避免覆盖。Web 配置注入品牌、扩展市场和正确的上游 API 版本。源码补丁放入 `patches/*.patch`，按文件名排序。
 
@@ -181,6 +181,6 @@ Electron 下载地址固定在 `config/downloads.json`，默认使用 `https://n
 
 完整 CI 的小助手测试依赖使用同一文件中的 `ciNpmMirror`，可通过 `STUDIO_TEST_REGISTRY` 覆盖。安装使用持久 pnpm store，安装及网络并发均为 1，并限制 Node 堆内存；镜像安装失败时回退官方 npm 源。`@steamharness` 新发布版本始终从官方源获取，避免镜像同步延迟影响验证。
 
-升级时必须同步更新子模块提交、`config/upstream.json`、`.nvmrc` 与 CI Node 版本，并逐个检查补丁及两端运行结果。不要在有本地改动的上游目录直接强制切换版本。
+升级时必须同步更新子模块提交、`.nvmrc` 与 CI Node 版本，并按需更新 `config/upstream.json` 的 `ref`，逐个检查补丁及两端运行结果。不要在有本地改动的上游目录直接强制切换版本。
 
 VS Code OSS 遵循 [MIT License](upstream/vscode/LICENSE.txt)，版权和第三方声明保留在子模块中。Studio 自有代码尚未选择公开许可证。正式发布还需补齐应用图标、安装包、签名、更新渠道及发行说明。

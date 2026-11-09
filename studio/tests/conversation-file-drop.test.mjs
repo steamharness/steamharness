@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const patch = path.join(root, 'patches/0050-studio-conversation-file-drop.patch');
@@ -62,7 +63,7 @@ test('native URI drops preserve encoded names and exclude remote resources', () 
 
 test('the integrated drag bridge patch reverses and reapplies against the pinned kernel without modifying the active checkout', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-drop-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const config = JSON.parse(await readFile(path.join(root, 'config/upstream.json'), 'utf8'));
+  const config = await kernelLock();
   const files = ['src/vs/workbench/contrib/webview/browser/webviewElement.ts', 'src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts'];
   const original = files.map(filename => execFileSync('git', ['show', `${config.commit}:${filename}`], { cwd: path.join(root, config.path) }));
   for (const [index, filename] of files.entries()) {

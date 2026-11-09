@@ -8,12 +8,13 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const fixture = await mkdtemp(path.join(tmpdir(), 'studio-ci-build-'));
 after(() => rm(fixture, { recursive: true, force: true }));
 const kernel = path.join(fixture, 'vscode');
 await mkdir(kernel);
-const upstream = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
+const upstream = await kernelLock();
 const files = ['build/next/build-fast.ts', 'build/gulpfile.extensions.ts'];
 execFileSync('git', ['init', '-q'], { cwd: kernel });
 for (const file of files) {

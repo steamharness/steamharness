@@ -69,7 +69,7 @@ async function fixture(t) {
   git(['add', 'product.json', 'package.json', 'core.txt'], upstream);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'test fixture'], upstream);
-  const lock = { path: 'upstream/vscode', ref: 'test', commit: git(['rev-parse', 'HEAD'], upstream) };
+  const lock = { path: 'upstream/vscode', ref: 'test' };
   await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify(lock));
   await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'SteamHarness', nameLong: 'SteamHarness' }));
   return { root, upstream, source, lock };
@@ -159,10 +159,14 @@ test('an unrelated extension directory is preserved before branding', async (t) 
   assert.equal(await fs.readFile(path.join(upstream, 'product.json'), 'utf8'), before);
 });
 
-test('an unexpected upstream revision is rejected', async (t) => {
-  const { root, lock } = await fixture(t);
+test('the kernel revision is read from the checkout instead of a pinned field', async (t) => {
+  const { root, upstream, lock } = await fixture(t);
+  await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify(lock));
+  assert.equal((await assertUpstream(root)).commit, git(['rev-parse', 'HEAD'], upstream));
+  // A stale commit recorded by an older lock file must not block preparation.
   await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify({ ...lock, commit: '0'.repeat(40) }));
-  await assert.rejects(assertUpstream(root), /revision mismatch/);
+  assert.equal((await assertUpstream(root)).commit, git(['rev-parse', 'HEAD'], upstream));
+  await prepareDistribution(root);
 });
 
 test('a broken unrelated extension link is preserved before branding', async (t) => {
@@ -195,7 +199,7 @@ test('patches are repeatable and preserve conflicting local changes', async (t) 
 });
 
 test('overlapping patches are recognized after applying and committing the series without changing the user index', async t => {
-  const { root, upstream, lock } = await fixture(t);
+  const { root, upstream } = await fixture(t);
   await fs.writeFile(path.join(root, 'patches/0001.patch'),
     'diff --git a/core.txt b/core.txt\n--- a/core.txt\n+++ b/core.txt\n@@ -1 +1 @@\n-upstream\n+studio\n');
   await fs.writeFile(path.join(root, 'patches/0002.patch'),
@@ -207,7 +211,6 @@ test('overlapping patches are recognized after applying and committing the serie
   git(['add', 'core.txt'], upstream);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'commit patch series'], upstream);
-  await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify({ ...lock, commit: git(['rev-parse', 'HEAD'], upstream) }));
   await fs.writeFile(path.join(upstream, 'package.json'), '{"version":"1.141.0","userChange":true}\n');
   git(['add', 'package.json'], upstream);
   const staged = git(['diff', '--cached'], upstream);
@@ -221,7 +224,7 @@ test('overlapping patches are recognized after applying and committing the serie
 });
 
 test('local edits in a committed multi-file patch do not hide earlier overlapping patches', async t => {
-  const { root, upstream, lock } = await fixture(t);
+  const { root, upstream } = await fixture(t);
   await fs.writeFile(path.join(root, 'patches/0001.patch'),
     'diff --git a/core.txt b/core.txt\n--- a/core.txt\n+++ b/core.txt\n@@ -1 +1 @@\n-upstream\n+studio\n');
   await fs.writeFile(path.join(root, 'patches/0002.patch'),
@@ -231,7 +234,6 @@ test('local edits in a committed multi-file patch do not hide earlier overlappin
   git(['add', 'core.txt', 'mode.txt'], upstream);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'commit overlapping patch series'], upstream);
-  await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify({ ...lock, commit: git(['rev-parse', 'HEAD'], upstream) }));
   await fs.writeFile(path.join(upstream, 'mode.txt'), 'staged mode edit\n');
   git(['add', 'mode.txt'], upstream);
   await fs.writeFile(path.join(upstream, 'mode.txt'), 'unstaged mode edit\n');

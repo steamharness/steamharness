@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const compiled = await build({ stdin: { contents: `
   export * from './upstream/vscode/src/vs/platform/window/common/studioProjectWindow';
@@ -81,7 +82,7 @@ test('the project-window patch reproduces the kernel changes repeatedly without 
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-project-window-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const kernel = path.join(fixture, 'vscode');
-  const upstream = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
+  const upstream = await kernelLock();
   const files = ['src/vs/platform/window/common/studioProjectWindow.ts', 'src/vs/platform/windows/electron-main/studioProjectWindow.ts',
     'src/vs/platform/native/electron-main/nativeHostMainService.ts', 'src/vs/platform/menubar/electron-main/menubar.ts',
     'src/vs/workbench/services/host/browser/browserHostService.ts'];

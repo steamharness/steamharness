@@ -113,17 +113,17 @@ export async function assertRuntime(root = ROOT) {
   }
 }
 
+/**
+ * 内核检出的 HEAD 就是唯一依据：子模块 gitlink 固定源码，config/upstream.json
+ * 只记录路径与上游版本号。这里不再比对提交，本地推进内核后无需同步任何锁文件。
+ */
 export async function assertUpstream(root = ROOT) {
   const lock = await readJSON(path.join(root, 'config/upstream.json'));
   const directory = path.resolve(root, lock.path);
   if (!await exists(path.join(directory, '.git'))) {
     throw new Error('VS Code source is missing. Run npm run setup.');
   }
-  const commit = git(['rev-parse', 'HEAD'], directory);
-  if (commit !== lock.commit) {
-    throw new Error(`VS Code revision mismatch: expected ${lock.commit}, found ${commit}. Update config/upstream.json and the submodule together.`);
-  }
-  return { ...lock, directory };
+  return { ...lock, commit: git(['rev-parse', 'HEAD'], directory), directory };
 }
 
 const digest = (content) => createHash('sha256').update(content).digest('hex');

@@ -5,13 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 test('the account menu patches apply repeatably to the pinned kernel and preserve extension authorization commands', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-account-menu-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const kernel = path.join(fixture, 'vscode');
   const filename = 'src/vs/workbench/browser/parts/globalCompositeBar.ts';
-  const upstream = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
+  const upstream = await kernelLock();
   const paths = [filename, 'src/vs/workbench/browser/parts/studioAccountMenu.ts', 'src/vs/workbench/browser/parts/media/studioAccountMenu.css'];
   const present = execFileSync('git', ['ls-tree', '-r', '--name-only', upstream.commit, '--', ...paths], { cwd: path.join(ROOT, upstream.path), encoding: 'utf8' }).trim().split('\n');
   for (const file of present) {

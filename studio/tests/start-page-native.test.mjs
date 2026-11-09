@@ -9,6 +9,7 @@ import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { pinnedKernel } from './helpers/pinned-kernel.mjs';
+import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const file = 'src/vs/workbench/browser/parts/editor/studioStart.ts';
 const css = 'src/vs/workbench/browser/parts/editor/media/studioStart.css';
@@ -125,7 +126,7 @@ test('the complete patch series applies to the pinned kernel and preserves local
     const patch = await readFile(path.join(ROOT, 'patches', name), 'utf8');
     for (const match of patch.matchAll(/^\+\+\+ b\/(.+)$/gm)) { files.add(match[1]); }
   }
-  const lock = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
+  const lock = await kernelLock();
   const tracked = execFileSync('git', ['ls-tree', '-r', '--name-only', lock.commit, '--', ...files], { cwd: path.join(ROOT, lock.path), encoding: 'utf8' }).trim().split('\n').filter(Boolean);
   const { upstream } = await pinnedKernel(t, tracked);
   const git = args => execFileSync('git', args, { cwd: upstream, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
