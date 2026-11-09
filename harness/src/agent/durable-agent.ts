@@ -541,7 +541,14 @@ export class DurableAgent {
           }
           const compacted = await this.compactBeforeRequest(root, api, requestContext);
           const messages = notifications || compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
-          if (notifications || compacted || partials.length > 0) return { messages };
+          if (compacted) {
+            // Durable already prepared the prompt and tool declarations before
+            // this hook. Compaction can remove their baseline; replay that
+            // prepared system sequence once ahead of the retained conversation.
+            return { messages: [...request.messages.filter(message => message.role === "system"),
+              ...messages.filter(message => message.role !== "system")] };
+          }
+          if (notifications || partials.length > 0) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {

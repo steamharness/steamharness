@@ -63,6 +63,8 @@ Summary responses report model usage through `host.reportUsage`, including token
 
 **Context is compacted automatically at 90% of the window.** Ordinary Agents and durable sessions check occupancy before every model request, including requests following tool execution in the same turn. At the threshold, older history is compacted before execution continues. A `contextWindow` override also controls this check. Events have `auto: true`, with start when compaction begins and end after success. Failure or cancellation preserves the original history; a compaction failure ends the run with its cause.
 
+The next model request retains the current system prompt and authorized tool declarations, including deferred tools that have already been loaded. Compaction does not expand tool access; host-disabled tools remain unavailable.
+
 If the provider still returns an explicit context overflow error, the runtime attempts compaction and retries once. Another overflow reports the error instead of retrying indefinitely. History already beyond the window is summarized in bounded chunks and then merged, reserving output space for each summary request and billing every call. Automatic compaction retains recent messages and complete tool call/result pairs. If a remaining input or tool result alone exceeds the window, shorten that input or output.
 
 Automatic compaction summarizes only the older part: the split point walks back from the end by token window and aligns to a user turn; when the kept window holds no user turn, it falls back to the nearest assistant turn, and the newest message is always kept. Explicit summarization includes the full context and preserves the goal, decisions, and unresolved work in its summary.

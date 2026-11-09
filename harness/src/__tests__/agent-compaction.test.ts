@@ -4,11 +4,13 @@ import * as ai from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { DurableAgent } from "../agent/durable-agent";
 import { createAgentRuntime } from "../agent/runtime";
-import type { AgentStreamEvent } from "../agent/types";
+import type { AgentSessionOptions } from "../agent/session-types";
+import type { AgentContextUsage, AgentStreamEvent } from "../agent/types";
 import { compactAgentMessages, DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentTokens,
   serializeAgentMessages, shouldCompactAgent } from "../agent/compaction";
 
-function fixture(options: { session?: boolean; window?: number; enabled?: boolean; contextWindow?: number } = {}) {
+function fixture(options: { session?: boolean | AgentSessionOptions; window?: number; enabled?: boolean; contextWindow?: number;
+  contextUsage?: () => AgentContextUsage | undefined } = {}) {
   const faux = ai.fauxProvider({ models: [{ id: "compact", contextWindow: options.window ?? 100_000, maxTokens: 1_000 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const summaries: ai.Context[] = [];
@@ -16,8 +18,9 @@ function fixture(options: { session?: boolean; window?: number; enabled?: boolea
     summaries.push(source);
     return ai.fauxAssistantMessage("Earlier work is complete; continue the current task.");
   };
-  const instance = new DurableAgent({ models, retryDelayMs: 0,
-    ...(options.session ? { session: { compaction: { enabled: options.enabled ?? true } } } : {}),
+  const instance = new DurableAgent({ models, retryDelayMs: 0, contextUsage: options.contextUsage,
+    ...(options.session ? { session: { ...(typeof options.session === "object" ? options.session : {}),
+      compaction: { enabled: options.enabled ?? true } } } : {}),
     compaction: { ...DEFAULT_AGENT_COMPACTION_SETTINGS, enabled: options.enabled ?? true },
     initialState: { model: models.getModel("faux", "compact")!, systemPrompt: "Continue the user's task.",
       contextWindow: options.contextWindow, thinkingLevel: "off", tools: [],
@@ -26,6 +29,76 @@ function fixture(options: { session?: boolean; window?: number; enabled?: boolea
   });
   return { instance, faux, models, summaries };
 }
+
+for (const session of [false, true]) for (const { resultSize, compactions } of [
+  { resultSize: 100, compactions: 1 }, { resultSize: 40_000, compactions: 2 },
+]) {
+  test(`request-time compaction retains the prepared prompt and callable tools (session=${session}, resultSize=${resultSize})`, async t => {
+    let occupancy: AgentContextUsage | undefined;
+    const { instance, faux, models, summaries } = fixture({ session, contextUsage: () => occupancy });
+    t.after(() => instance.close());
+    instance.state.messages[0] = { role: "user", content: "Earlier instructions: " + "a".repeat(40_000), timestamp: 1 };
+    const complete = models.completeSimple.bind(models);
+    models.completeSimple = async (...args) => { occupancy = undefined; return complete(...args); };
+    let executions = 0;
+    instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Inspect workspace data", parameters: ai.Type.Object({}),
+      execute: async () => {
+        executions++;
+        occupancy = { used: 90_000, total: 100_000 };
+        return { content: [ai.fauxText("Recent workspace result: " + "x".repeat(resultSize))], details: {} };
+      } }];
+    const requests: { context: ai.TranscriptContext; summaries: number }[] = [];
+    faux.setResponses(Array.from({ length: compactions + 1 }, (_, count) => (context: ai.TranscriptContext) => {
+      requests.push({ context, summaries: summaries.length });
+      return ai.fauxAssistantMessage(count < compactions ? [ai.fauxToolCall("inspect", {})] : "Finished",
+        { stopReason: count < compactions ? "toolUse" : "stop" });
+    }));
+    await instance.prompt("Inspect and finish the workspace task");
+    assert.equal(instance.state.errorMessage, undefined);
+    assert.equal(executions, compactions);
+    assert.equal(faux.state.callCount, compactions + 1);
+    assert.equal(summaries.length, compactions);
+    const prepared = ai.getCurrentTools(requests[0]!.context.messages);
+    for (const [index, request] of requests.slice(1).entries()) {
+      assert.equal(request.summaries, index + 1);
+      assert.deepEqual(ai.getCurrentTools(request.context.messages), prepared);
+      assert.equal(request.context.messages[0]?.role, "system");
+      assert.ok(request.context.messages.some(message => message.role === "system" &&
+        ai.getSystemMessageText(message).includes(instance.state.systemPrompt)));
+      assert.match(JSON.stringify(request.context.messages), /Earlier work is complete/);
+    }
+  });
+}
+
+test("request-time compaction preserves loaded catalog tools without loading other tools", async t => {
+  let occupancy: AgentContextUsage | undefined, executions = 0;
+  const loaded = { name: "inspect_workspace", label: "Inspect workspace", description: "Inspect workspace files", parameters: ai.Type.Object({}),
+    execute: async () => { executions++; occupancy = { used: 90_000, total: 100_000 };
+      return { content: [ai.fauxText("Workspace files inspected")], details: {} }; } };
+  const unloaded = { ...loaded, name: "other_catalog_tool", description: "Perform an unrelated service action" };
+  const { instance, faux, models, summaries } = fixture({ contextUsage: () => occupancy, session: {
+    toolSearch: { catalogs: [{ id: "workspace", tools: [loaded, unloaded], open: async () => ({ tools: [loaded, unloaded] }) }] },
+  } });
+  t.after(() => instance.close());
+  instance.state.messages[0] = { role: "user", content: "Earlier instructions: " + "a".repeat(40_000), timestamp: 1 };
+  const complete = models.completeSimple.bind(models);
+  models.completeSimple = async (...args) => { occupancy = undefined; return complete(...args); };
+  const requests: ai.TranscriptContext[] = [];
+  faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: loaded.name, limit: 1 })], { stopReason: "toolUse" }),
+    context => { requests.push(context); return ai.fauxAssistantMessage([ai.fauxToolCall(loaded.name, {})], { stopReason: "toolUse" }); },
+    context => { requests.push(context); return ai.fauxAssistantMessage("Finished"); },
+  ]);
+  await instance.prompt("Inspect the workspace with its catalog tool");
+  assert.equal(instance.state.errorMessage, undefined);
+  assert.equal(executions, 1);
+  assert.equal(summaries.length, 1);
+  const prepared = ai.getCurrentTools(requests[0]!.messages);
+  assert.ok(prepared.some(tool => tool.name === loaded.name));
+  assert.ok(!prepared.some(tool => tool.name === unloaded.name));
+  assert.deepEqual(ai.getCurrentTools(requests[1]!.messages), prepared);
+  assert.equal(requests[1]!.messages[0]?.role, "system");
+});
 
 test("automatic compaction includes exactly 90% and leaves lower occupancy alone", () => {
   assert.equal(DEFAULT_AGENT_COMPACTION_SETTINGS.threshold, 0.9);

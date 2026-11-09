@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Restore the prepared system prompt and tool declarations after request-time context compaction, so long tasks can continue calling tools. Current authorization and loaded deferred tools are preserved.
+
 - Fix background reports to deduplicate business events and coalesce pending progress. Failed or stopped parents retain results for explicit continuation, preventing repeated completion notices from restarting model retries. Configuration denials retain their own failure category and wording, with one authorization retry budget per input.
 
 - [New] Resume the parent with a durable internal status input when child work drains, ending related sleep early. Preserve outcome counts, notification identity, cancellation and failure boundaries; ordinary timed waits retain their duration.
