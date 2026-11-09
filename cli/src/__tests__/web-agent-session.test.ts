@@ -1378,6 +1378,77 @@ it('holds durable user messages in the host after failure; only a successful use
   await f.finish();
 });
 
+it.each([false, true])('sends explicit input after failure while old background reports are still queued (hidden=%s)', async hidden => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  const failed = { ...initial.turns[0], status: 'unanswered' as const, reason: 'model_error', detail: 'Service temporarily unavailable' };
+  const reports: AgentSessionTurn[] = Array.from({ length: 7 }, (_, index) => ({ requestId: `progress:${index}`, conversationId: 1,
+    prompt: 'Saved background result', mode: hidden ? 'steer' : 'report', ...(hidden ? { hiddenInput: true } : {}), status: 'queued', epoch: 0, items: [] }));
+  owner.queuedInputs = [{ id: 'older-user-input', text: 'Wait for my previous request to succeed', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
+  f.emit({ ...initial, revision: 2, turns: [failed, ...reports] });
+  expect(f.controller.running).toBe(false); expect(owner.queuePaused).toBe(true);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'Continue', params: { model: 'one' }, attachments: [] }, owner, true, 'continue-after-failure');
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId,
+    expect.objectContaining({ type: 'submit', requestId: 'continue-after-failure', prompt: 'Continue' }), owner.id, []);
+  expect(owner.queuedInputs?.map(input => input.id)).toEqual(['older-user-input']);
+  expect(owner.queuePaused).toBe(true);
+  await f.finish();
+});
+
+it('does not recover an idle failed owner just because background notifications remain queued', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [{ ...initial.turns[0], status: 'unanswered', reason: 'model_error' },
+    { requestId: 'report:old', conversationId: 1, prompt: 'Saved result', mode: 'report', status: 'queued', epoch: 0, items: [] }] });
+  f.runs[0].finish({ status: 'failed' }); await f.controller.idle();
+  f.controller.recover();
+  expect(f.controller.hasRuns).toBe(false);
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+  expect(f.controller.running).toBe(false); expect(f.controller.current.queuePaused).toBe(true);
+});
+
+it('applies new configuration to explicit continuation with only queued reports remaining', async () => {
+  let revision = 0;
+  const f = fixture(() => revision); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  const failed: AgentSessionTurn = { ...initial.turns[0], status: 'unanswered', reason: 'model_error' };
+  f.emit({ ...initial, revision: 2, turns: [failed,
+    { requestId: 'progress:old', conversationId: 1, prompt: 'Saved result', mode: 'report', status: 'queued', epoch: 0, items: [] }] });
+  revision = 1;
+  const sending = f.controller.send({ text: 'Continue', params: { model: 'one' }, attachments: [] }, owner, true, 'continue-new-config');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.emit({ ...initial, ownerId: 'new-owner', turns: [failed], receipts: [{ requestId: 'continue-new-config', conversationId: 1, status: 'accepted' }] });
+  await sending;
+  expect(owner.queuedInputs).toEqual([]); expect(owner.queuePaused).toBe(true);
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, agentCommands: [expect.objectContaining({ command: expect.objectContaining({ type: 'submit', requestId: 'continue-new-config' }) })] });
+  await f.finish();
+});
+
+it('runs an already held Continue message when only background reports remain pending', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [{ ...initial.turns[0], status: 'unanswered', reason: 'model_error' },
+    { requestId: 'progress:old', conversationId: 1, prompt: 'Saved result', mode: 'report', status: 'queued', epoch: 0, items: [] }] });
+  owner.queuedInputs = [{ id: 'held-continue', requestId: 'held-continue', text: 'Continue', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.runQueued();
+  await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId,
+    expect.objectContaining({ type: 'submit', requestId: 'held-continue', prompt: 'Continue' }), owner.id, []));
+  expect(owner.queuedInputs).toEqual([]);
+  await f.finish();
+});
+
+it.each([
+  { foreground: true, status: 'queued' },
+  { foreground: false, status: 'placed' },
+] as const)('retains normal queueing while a background continuation is actually active ($foreground/$status)', async ({ foreground, status }) => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, foreground, turns: [...initial.turns,
+    { requestId: 'notice:active', conversationId: 1, prompt: 'Background continuation', mode: 'steer', hiddenInput: true, status, epoch: 0, items: [] }] });
+  await f.controller.send({ text: 'Next input', params: { model: 'one' }, attachments: [] }, owner, true, 'next');
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(owner.queuedInputs).toMatchObject([{ requestId: 'next', hostQueued: true }]);
+  owner.queuedInputs = [];
+  await f.finish();
+});
+
 it('reopening an unfinished managed execution tree pauses it and its user queue until explicit input', async () => {
   const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
   f.emit({ ...initial, revision: 2, tasks: [{ id: 42, kind: 'project.delegation', conversationId: 1, status: 'running', label: 'Video', background: true, stopping: false, blockedOn: [],

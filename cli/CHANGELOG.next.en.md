@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn. Older user queues stay paused, and active replies retain normal queueing.
+
 - Hide subagent completion inputs from user messages and pending queues while retaining assistant continuations and history. Internal completion does not independently advance a paused user queue.
 
 - Sleep activity rows and details show expected and actual end times in the browser’s local timezone, retaining them after completion and history replay.

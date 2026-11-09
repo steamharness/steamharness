@@ -29,6 +29,11 @@ interface ControllerOptions {
 interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
+function pendingAgentInput(turn: AgentSessionSnapshot['turns'][number]): boolean {
+  // Reports can remain queued after the parent's run has failed. They are saved
+  // results, not an executing turn or a user input awaiting admission.
+  return turn.status === 'placed' || turn.status === 'queued' && turn.mode !== 'report' && !turn.hiddenInput;
+}
 function forkReferences<T>(value: T, result: ForkIsolation): T {
   const replacements = [...result.replacements].sort((a, b) => b.from.length - a.from.length);
   const files = new Map(result.files.map(file => [file.id, file]));
@@ -87,7 +92,7 @@ export class ConversationController {
           else if (project.conversation?.recovery?.enabled && (message.runId && message.args
             || agent?.turns.some(turn => turn.requestId === message.sessionRequestId
               && turn.conversationId === (message.sessionConversationId ?? entry.agentConversationId ?? agent.conversationId)
-              && (turn.status === 'placed' || turn.status === 'queued')))) {
+              && pendingAgentInput(turn)))) {
             message.recovering = true; message.error = undefined;
             if (project.conversation?.recovery?.startup === "manual") { entry.recoveryPaused = true; entry.queuePaused = true; }
           }
@@ -152,7 +157,7 @@ export class ConversationController {
         // its receipt is pending would race that API for the same Agent lease.
         const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id
           && session.agentCommands?.some(({ command }) => command.type !== 'fork'));
-        const activeAgent = entry.agent && (entry.agent.tasks.length || entry.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed'));
+        const activeAgent = entry.agent && (entry.agent.tasks.length || entry.agent.turns.some(pendingAgentInput));
         if (anchor && (activeAgent || pendingCommands) && (!this.options.canRun || this.options.canRun(entry))) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
         continue;
       }
@@ -301,7 +306,7 @@ export class ConversationController {
       const configChanged = previous && (this.settingsChanged(owner) || previous.configurationRevision !== this.options.configurationRevision?.()
         || input.configurationSelection && !isDeepStrictEqual(previous.configurationSelection, input.configurationSelection));
       if (configChanged) {
-        if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')) {
+        if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(pendingAgentInput)) {
           (entry.queuedInputs ??= []).push({ ...queued, hostQueued: true, configurationPending: true });
           if (!preserveDraft) entry.draft = { text: '', attachments: [] };
           this.changed(); await this.persist(); return;
@@ -311,7 +316,7 @@ export class ConversationController {
       const forkEffort = await this.configureForkEffort(entry, owner, input, args, id);
       const changed = !forkEffort && previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
       if (changed) {
-        if (owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'placed' || turn.status === 'queued') || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
+        if (owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(pendingAgentInput) || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
         if (entry !== owner) throw new Error(t('Change workflow settings in the main conversation.'));
         await this.retireAgentOwner(owner);
         const planIndex = args.indexOf('--plan');
@@ -907,7 +912,7 @@ export class ConversationController {
     const existing = this.reloading.get(owner.id);
     if (existing) return existing;
     if (this.disposed || !owner.agent || !owner.agentParameters || !force && !this.settingsChanged(owner) && owner.agentParameters.configurationRevision === this.options.configurationRevision?.()
-      || owner.agent.tasks.length || owner.agent.foreground || owner.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')
+      || owner.agent.tasks.length || owner.agent.foreground || owner.agent.turns.some(pendingAgentInput)
       || this.sessions.some(entry => (entry.agentOwnerId ?? entry.id) === owner.id && entry.messages.some(message => message.pendingInput))) return Promise.resolve();
     // Defer cancellation until the snapshot's receipts have been acknowledged.
     const reload = Promise.resolve().then(async () => {
@@ -957,7 +962,7 @@ export class ConversationController {
   }
   private settleStoppedAgent(owner: ConversationSession): void {
     const snapshot = owner.agent;
-    if (snapshot && (snapshot.foreground || snapshot.tasks.length || snapshot.turns.some(turn => turn.status === 'placed' || turn.status === 'queued'))) {
+    if (snapshot && (snapshot.foreground || snapshot.tasks.length || snapshot.turns.some(pendingAgentInput))) {
       this.pauseInterruptedAgent(owner);
     } else {
       for (const session of this.sessions.filter(entry => (entry.agentOwnerId ?? entry.id) === owner.id)) {
@@ -1013,7 +1018,7 @@ export class ConversationController {
     if (!agent) return !!owner.activeRunId;
     const id = entry.agentConversationId ?? agent.conversationId;
     return (agent.contexts.find(context => context.conversationId === id)?.foreground ?? (id === agent.conversationId && agent.foreground))
-      || agent.turns.some(turn => turn.conversationId === id && (turn.status === 'queued' || turn.status === 'placed'))
+      || agent.turns.some(turn => turn.conversationId === id && pendingAgentInput(turn))
       || !!entry.agentCommands?.some(({ command }) => command.type === 'submit' && (command.targetId ?? id) === id
         && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }

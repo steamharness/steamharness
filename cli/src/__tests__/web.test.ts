@@ -17,6 +17,7 @@ import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
 import type { ConversationSession, Project, Runtime, Run, Report } from '../web/workflow-types';
+import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 import { resolveHarnessRoot } from './harness-source';
@@ -95,6 +96,44 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
 }
 
 describe('steamharness web', () => {
+  it('submits an HTTP follow-up after failure with seven queued background reports and no active task', async () => {
+    const { app, runtime, post } = await fixture();
+    app.project.conversation = { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } };
+    let publish!: (frame: AgentSessionSnapshot) => void, finish!: (report: Report) => void;
+    let frame!: AgentSessionSnapshot;
+    vi.mocked(runtime.run).mockImplementation((request, emit) => {
+      publish = snapshot => emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', content: snapshot, metadata: { kind: 'agent-session' } } } });
+      frame = { version: 1, ownerId: 'fixture-owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
+        configuration: { version: 0, provider: 'fixture', model: 'model', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
+        tasks: [], history: [], contexts: [], receipts: [], records: [], usage: [], conversations: [{ id: 1, title: 'Main', background: false }],
+        turns: [{ requestId: `${request.runId}:agent:build`, conversationId: 1, prompt: 'First', mode: 'reject', status: 'unanswered',
+          reason: 'model_error', detail: 'Service temporarily unavailable', epoch: 0, entryId: 1, items: [] },
+          ...Array.from({ length: 7 }, (_, index) => ({ requestId: `report:${index}`, conversationId: 1, prompt: 'Saved background result', mode: 'report' as const, status: 'queued' as const, epoch: 0, items: [] }))] };
+      publish(frame);
+      return new Promise(resolve => { finish = resolve; });
+    });
+    runtime.agentControl = vi.fn(async (_runId, command) => {
+      if (command.type !== 'submit') throw new Error('Expected explicit user input');
+      frame = { ...frame, revision: frame.revision + 1, turns: [frame.turns[0], { requestId: command.requestId, conversationId: 1,
+        prompt: command.prompt, mode: command.mode, status: 'done', epoch: 0, entryId: 3, answerId: 4,
+        items: [{ id: 'continued', title: 'Output', content: 'Continued from saved results', contentType: 'markdown' }] }] };
+      publish(frame);
+      return { requestId: command.requestId, conversationId: 1, status: 'accepted' as const };
+    });
+    runtime.cancel = vi.fn(() => finish({ status: 'failed' }));
+    try {
+      expect((await post({ type: 'send', text: 'First', params: {}, attachments: [] })).status).toBe(200);
+      await expect.poll(() => app.controller!.current.messages.at(-1)?.status).toBe('failed');
+      expect(app.controller!.running).toBe(false); expect(app.controller!.current.agent?.tasks).toEqual([]);
+      const response = await post({ type: 'send', requestId: randomUUID(), text: 'Continue', params: {}, attachments: [] });
+      expect(response.status, await response.text()).toBe(200);
+      await expect.poll(() => app.controller!.current.messages.at(-1)?.content).toBe('Continued from saved results');
+      expect(runtime.agentControl).toHaveBeenCalledOnce();
+      expect(app.controller!.current.queuedInputs).toEqual([]);
+      expect(app.controller!.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['First', 'Continue']);
+    } finally { finish?.({ status: 'success' }); await app.controller!.idle(); }
+  });
+
   it('resolves and persists dropped paths, imports browser folders, and passes readable context to Core', async () => {
     const { app, directory, runtime, post } = await fixture();
     const folder = path.join(directory, 'dropped folder'); await mkdir(folder); await writeFile(path.join(folder, 'source.txt'), 'original bytes');

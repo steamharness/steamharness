@@ -45,7 +45,9 @@ Tasks shows roles, sources, phases, queued state and completed/target counts. Op
 
 Reopening unfinished business work does not rerun its batch automatically: explicit input first clears the old tree, and project recovery tools resume the batch with drafts and verified receipts intact.
 
-With input queuing enabled, send consecutive messages without waiting for earlier delivery confirmations. New input after Stop submits directly; older queued messages wait for a successful turn before continuing. Clicking **Send now** or × immediately removes that pending row. Failed actions restore the original message with a retry control. Withdrawing local pending input while a new conversation is being created prevents it from being sent when creation finishes.
+With input queuing enabled, send consecutive messages without waiting for earlier delivery confirmations. New input after failure or Stop submits directly. Unconsumed background reports alone do not block an idle conversation. Older queued messages still wait for a successful user turn; background reports do not release them.
+
+Clicking **Send now** or × immediately removes that pending row. Failed actions restore the original message with a retry control. Withdrawing local pending input while a new conversation is being created prevents it from being sent when creation finishes.
 
 Composer **Stop** cancels the current conversation's entire execution tree, including background batches and subagents, while excluding independent forks. Background work keeps Stop available. Unexpected execution worker crashes first recover the existing tree under the current host. Queued input stays paused during recovery and successful replies remain successful. After automatic recovery is exhausted or the host itself is forcibly closed, explicit input first clears the old tree and adopts updated configuration at an idle boundary; project recovery tools can then resume business batches. Use `cancel scope=foreground` in Tasks/Trace when only foreground work should stop.
 
