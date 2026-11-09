@@ -21,8 +21,6 @@
 
 - Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.
 
-- Fixed compiled Kanban previews reloading during local data writes. Only artifact and entry declaration changes trigger preview reloads, preserving active edits when images or JSON are saved elsewhere in the project.
-
 - Knowledge cards now use descriptive titles and retain search and document selections when opening, refreshing, and returning to results.
 - Match embedded project header heights and icon sizes to the native window controls in Studio Steam mode.
 
