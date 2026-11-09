@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -89,6 +90,34 @@ test('prepare is repeatable and links the desktop and web extension', async (t) 
   await prepareDistribution(root);
   assert.equal(await fs.readFile(path.join(upstream, 'product.json'), 'utf8'), first);
   assert.equal(await fs.realpath(path.join(upstream, 'extensions/studio-workstation')), await fs.realpath(source));
+});
+
+test('bundled default extensions use verified local VSIX files in desktop and web products', async t => {
+  const { root, upstream } = await fixture(t);
+  const contents = Buffer.from('bundled extension fixture');
+  const extension = { id: 'example.database', version: '1.0.0', builtin: true,
+    url: `data:application/octet-stream;base64,${contents.toString('base64')}`,
+    sha256: createHash('sha256').update(contents).digest('hex') };
+  await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify([extension,
+    { id: 'example.user-extension', url: 'https://offline.invalid/do-not-download' }]));
+  const { product } = await prepareDistribution(root);
+  assert.deepEqual(product.builtInExtensions[0], baseProduct.builtInExtensions[0]);
+  const bundled = product.builtInExtensions[1];
+  assert.equal(product.builtInExtensions.length, 2);
+  assert.equal(bundled.name, extension.id);
+  assert.equal(bundled.version, extension.version);
+  assert.equal(bundled.sha256, extension.sha256);
+  assert.deepEqual(await fs.readFile(path.resolve(upstream, bundled.vsix)), contents);
+  const web = JSON.parse(await fs.readFile(path.join(upstream, 'product.overrides.json'), 'utf8'));
+  assert.deepEqual(web.builtInExtensions, product.builtInExtensions);
+  await prepareDistribution(root);
+  await fs.writeFile(path.resolve(upstream, bundled.vsix), 'corrupted cache');
+  await prepareDistribution(root);
+  assert.deepEqual(await fs.readFile(path.resolve(upstream, bundled.vsix)), contents);
+  await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify([{ ...extension, sha256: '0'.repeat(64) }]));
+  const before = await fs.readFile(path.join(upstream, 'product.json'), 'utf8');
+  await assert.rejects(prepareDistribution(root), /does not match the pinned SHA-256/);
+  assert.equal(await fs.readFile(path.join(upstream, 'product.json'), 'utf8'), before);
 });
 
 test('branding changes update previously generated data', async (t) => {

@@ -10,5 +10,14 @@
     "version": "1.131.0",
     "url": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-zh-hans/1.131.0/file/MS-CEINTL.vscode-language-pack-zh-hans-1.131.0.vsix",
     "sha256": "7ffc9dbe980f95942ed56752c1d6ca5f40855013aedd34cf40257929be4d1895"
+  },
+  {
+    "id": "yy0931.vscode-sqlite3-editor",
+    "version": "1.0.214",
+    "url": "https://open-vsx.org/api/yy0931/vscode-sqlite3-editor/1.0.214/file/yy0931.vscode-sqlite3-editor-1.0.214.vsix",
+    "sha256": "9711fe8fcdd1d996025ab101d1cef40d1482327e621f55f3fef5cb641138d848",
+    "repository": "https://github.com/yy0931/sqlite3-editor",
+    "license": "GPL-3.0",
+    "builtin": true
   }
 ]

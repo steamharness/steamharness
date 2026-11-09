@@ -64,6 +64,8 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 入口目前用于本地开发；桌面工作站已接入 SteamHarness Server 账号，公网部署和安装包发布尚未配置。
 
+Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)（GPLv3）。在资源管理器或项目文件卡片中点击 `.sqlite`、`.sqlite3`、`.db` 文件，即可在编辑器中查看数据表、表结构和执行 SQL，无需另装 SQLite。Web 版查看的是服务器上的数据库文件。扩展版本及安装包校验值固定在 `config/default-extensions.json` 中，开发启动与发行打包共用该文件；原始许可证随扩展保留。
+
 默认打开当前源码仓库。首次运行时，需要信任该目录，才能加载位于仓库内的内置扩展并使用终端；Web 如显示 Restricted Mode，可点击横幅中的 Manage，再选择 Trust。打开其他项目时仍保留上游工作区信任检查。
 
 ## 已有工作站入口

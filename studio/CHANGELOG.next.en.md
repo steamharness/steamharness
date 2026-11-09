@@ -1,5 +1,7 @@
 # Unreleased
 
+- Bundle the open-source SQLite3 Editor by default. Click a `.sqlite`, `.sqlite3`, or `.db` file to browse tables, inspect schemas, and run SQL in the Studio editor. Development builds and release installers use the same pinned version and SHA-256 verification.
+
 - Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.
 
 - Align Steam mode project icons and toolbar buttons. The tools area starts collapsed when entering Steam mode or reopening a window, while manual opening retains its tabs and width.

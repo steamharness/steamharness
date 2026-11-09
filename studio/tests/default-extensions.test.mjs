@@ -16,6 +16,7 @@ test('cached default language packs initialize every profile while ordinary exte
   const defaults = [
     { id: 'example.icons', version: '1.0.0' },
     { id: 'example.language', version: '1.0.0', localizations: [{ languageId: 'zh-cn' }] },
+    { id: 'example.builtin', version: '1.0.0', builtin: true },
   ];
   for (const extension of defaults) {
     const data = Buffer.from(extension.id);
@@ -25,6 +26,7 @@ test('cached default language packs initialize every profile while ordinary exte
   }
   await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify(defaults));
   await fs.copyFile(new URL('../scripts/default-extensions.mjs', import.meta.url), path.join(root, 'default-extensions.mjs'));
+  await fs.copyFile(new URL('../scripts/extension-artifacts.mjs', import.meta.url), path.join(root, 'extension-artifacts.mjs'));
   await fs.writeFile(path.join(root, 'distribution.mjs'), `import * as fs from 'node:fs/promises'; export const ROOT = import.meta.dirname;
     export const exists = async path => { try { await fs.access(path); return true; } catch { return false; } };
     export const readJSON = async path => JSON.parse(await fs.readFile(path, 'utf8'));`);

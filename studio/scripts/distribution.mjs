@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyPatches } from './patches.mjs';
+import { ensureExtensionVsix } from './extension-artifacts.mjs';
 
 export { applyPatches };
 
@@ -145,6 +146,17 @@ export async function prepareDistribution(root = ROOT) {
   const current = (await fs.readFile(productFile, 'utf8')).trim();
   const overrides = await readJSON(path.join(root, 'config/product.json'));
   const product = mergeProduct(JSON.parse(base), overrides);
+  const defaultsFile = path.join(root, 'config/default-extensions.json');
+  const bundled = await exists(defaultsFile) ? (await readJSON(defaultsFile)).filter(extension => extension.builtin) : [];
+  if (bundled.length) {
+    const ids = new Set(bundled.map(extension => extension.id.toLowerCase()));
+    product.builtInExtensions = (product.builtInExtensions ?? []).filter(extension => !ids.has(extension.name.toLowerCase()));
+    for (const extension of bundled) {
+      const vsix = await ensureExtensionVsix(root, extension);
+      product.builtInExtensions.push({ name: extension.id, version: extension.version, sha256: extension.sha256,
+        vsix: path.relative(upstream.directory, vsix).replaceAll('\\', '/') });
+    }
+  }
   const generated = JSON.stringify(product, null, 2);
   const state = await exists(stateFile) ? await readJSON(stateFile) : undefined;
   const packageJSON = JSON.parse(git(['show', `${upstream.commit}:package.json`], upstream.directory));
