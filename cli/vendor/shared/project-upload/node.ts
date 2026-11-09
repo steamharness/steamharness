@@ -1,7 +1,7 @@
 import { DATABASE_DEFINITION_FILE, readDatabaseArtifactFiles } from "./database-artifacts";
 import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { PROJECT_RELEASE_FILE } from "@steamharness/project-manifest/release";
-import { projectEntryFilePath, projectManifestForDistribution } from "@steamharness/project-manifest";
+import { isProjectToolArtifactPath, projectEntryFilePath, projectManifestForDistribution } from "@steamharness/project-manifest";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -85,7 +85,7 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
       const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
       if (isProjectUploadExcludedPath(relativePath)) continue;
       if (relativePath.startsWith("dist/") && !inArtifacts(relativePath, entry.isDirectory())
-        || ["dist/cache", "dist/reports", "dist/release", "dist/tmp"].some(prefix => relativePath === prefix || relativePath.startsWith(prefix + "/"))) {
+        || isProjectToolArtifactPath(relativePath)) {
         ignoredPaths.push(relativePath + (entry.isDirectory() ? "/" : "")); continue;
       }
       const portablePath = createProjectUploadPortablePathKey(relativePath);

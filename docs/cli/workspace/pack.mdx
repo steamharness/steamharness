@@ -12,7 +12,7 @@ description: "把全部注册入口打包为可上传的归档。"
 ## 命令
 
 ```sh
-pnpm exec steamharness workspace pack <project-id> --path . --output dist/release/project.tgz
+pnpm exec steamharness workspace pack <project-id> --path . --output dist/steamharness/release/project.tgz
 ```
 
 先安装依赖、构建静态入口，再执行 `steamharness check .`。名称必须是单个可移植目录名，不能包含路径分隔符、上级路径或 Windows 保留名称；源码位置用 `--path` 指定。
@@ -33,4 +33,4 @@ pnpm exec steamharness workspace pack <project-id> --path . --output dist/releas
 
 聚合根或注册入口目录存在 `steamharness.database.ts` 时，打包先生成 Node/Browser 描述符、类型和运行资产。通过清单校验的数据库产物必须完整，不能用 `.steamharnessignore` 排除。
 
-默认输出 `.tgz`，存放在项目根的 `dist/release/`。打包结束只清理本次临时目录，其他入口的产物保留。路径规则见 [Database API](/core-api/database#构建与分发)。
+默认输出 `.tgz`，存放在项目根的 `dist/steamharness/release/`。打包结束只清理本次临时目录，其他入口的产物保留。路径规则见 [Database API](/core-api/database#构建与分发)。

@@ -353,6 +353,13 @@ describe("independent built-in project release", () => {
   it("packages both assistant entries and skills while dropping repository infrastructure", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const skillRoot = "skills/steamharness-generator";
+    expect(shouldPackEntry(root, path.join(root, 'dist'))).toBe(true);
+    expect(shouldPackEntry(root, path.join(root, 'dist/steamharness'))).toBe(true);
+    expect(shouldPackEntry(root, path.join(root, 'dist/steamharness/build/main/index.html'))).toBe(true);
+    for (const folder of ['cache', 'reports', 'release', 'tmp']) {
+      expect(shouldPackEntry(root, path.join(root, 'dist/steamharness', folder))).toBe(false);
+      expect(shouldPackEntry(root, path.join(root, 'dist/steamharness', folder, 'private.json'))).toBe(false);
+    }
 
     // 规则层：仓库根的 scripts/__tests__ 必须排除，skill 自己的 scripts/ 必须保留。
     expect(shouldPackEntry(root, path.join(root, "scripts"))).toBe(false);

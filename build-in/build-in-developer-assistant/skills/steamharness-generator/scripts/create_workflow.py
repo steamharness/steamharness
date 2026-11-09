@@ -37,10 +37,10 @@ PROJECT_CARD_DEFAULTS = {
 
 STEAMHARNESS_IGNORE = """.git/
 node_modules/
-dist/cache/
-dist/reports/
-dist/release/
-dist/tmp/
+dist/steamharness/cache/
+dist/steamharness/reports/
+dist/steamharness/release/
+dist/steamharness/tmp/
 *.log
 *.tmp
 *.tsbuildinfo

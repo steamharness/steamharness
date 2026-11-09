@@ -13,7 +13,7 @@ description: 生成、修改或迁移 steamharness Workflow、Bot 或 Kanban 项
 4. 需要选择 API、定位公开类型或寻找项目示例时，先读短索引 `references/task-map.md`，再按其指向读取详细契约；要改参数入口或控件（`kind` / `fields` / `control`），先读 `references/param-panels.md`。
 5. 项目不存在时使用 `scripts/create_workflow.py`。所有类型生成 `.steamharnessignore` 与 `configuration.json`；Workflow/Bot 生成 TypeScript executor，Kanban 生成 HTML、状态与存储模块和测试。`--with-kanban-params` 在声明文件加入示例字段。
 6. 如果项目已存在，先判断它是否处于 Desktop 普通文件夹降级、旧清单迁移或数据库空间未绑定状态；命中任一情况时必须完整读取 `references/project-repair.md`。如果该必需引用缺失、被拒绝或只读取到部分内容，立即停止本次修复并准确报告读取失败与未验证阶段；不得继续编辑、转向无关优化、用旧工具的成功结果代替当前合同校验，或宣称修复完成。引用可用时再按当前授权根目录分阶段完成，不能把局部修复宣称为整体完成。
-8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Bot 才运行 json/run 或 runtime smoke。运行历史默认保存在宿主应用数据目录；独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`。业务数据验证使用专用账号与独立资源；可重建缓存使用聚合根 `dist/cache/`，报告使用 `dist/reports/`。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
+8. 所有项目运行 `steamharness structure <project-dir>`；只有 Workflow/Bot 才运行 json/run 或 runtime smoke。运行历史默认保存在宿主应用数据目录；独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`。业务数据验证使用专用账号与独立资源；可重建缓存使用聚合根 `dist/steamharness/cache/`，报告使用 `dist/steamharness/reports/`。不得读写宿主或其它项目的历史和业务数据。structure 成功不等于宿主识别或真实运行成功。
 9. 新增功能时不要把所有功能都加在 `index.ts` 中，合理创建文件和文件夹组织代码。
 
 ## 项目修复边界
@@ -37,7 +37,7 @@ Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, c
 ## 当前 API 规则
 
 - 一个根 steamharness.json.id UUID 注册多个 steamharness.json.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
-- Workflow/Bot 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认指向当前源码根的 build/<entryId>/index.html：根入口使用 dist/steamharness/build/<entryId>/，子入口使用 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/build/<entryId>/。所有可重建产物仅使用聚合根 dist/；数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
+- Workflow/Bot 从相对 entry.root 的注册模块加载 executor。Kanban 的 entry 相对聚合根，默认指向当前源码根的 build/<entryId>/index.html：根入口使用 dist/steamharness/build/<entryId>/，子入口使用 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/build/<entryId>/。所有可重建产物仅使用聚合根 dist/steamharness/；dist/ 下只创建 steamharness 这一个受管一级目录，cache、reports、release、tmp 都放在其中。数据库根定义在 dist/steamharness/generated/database/，子定义在 dist/steamharness/entries/<encodeURIComponent(完整 entry.root)>/generated/database/，相同源码根共用产物。构建器仅清理自身子目录。
 - entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 设备名 con、prn、aux、nul、com1–com9、lpt1–lpt9；显式入口路径位于 dist 时必须进入当前源码根对应的 build/<entryId>/，不得占用 generated 或其他入口的输出。打包名称只用单个可移植目录名，源码位置用 --path 指定。下载校验入口与生成清单，拒绝运行数据及未登记产物。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
 - 业务数据库使用 `steamharness.database.ts` 与 `steamharness.schema` 定义，生成描述符后通过 `context.databases.connect(descriptor)` 访问。关系别名声明在入口 databases 字符串数组中；资源 UUID 与绑定只由 Server 按账号、项目、入口、alias 管理。知识库使用 `context.knowledgeBases.get(alias)`，独立声明 knowledgeBases，并映射到根 config.json 的 knowledgeBases。附件通过 `knowledge.files` 操作，`knowledge` 来自 `context.knowledgeBases.get(alias)`。旧 KV、PersistentValue 与本地 KV 已删除。
@@ -221,7 +221,7 @@ python <skill-dir>/scripts/create_workflow.py <kanban-name> --dir <target-dir> \
 
 - `steamharness.json`：项目 UUID、名称、版本、defaultEntry、显式 entries、projectCard、projectInfo；子入口仅在父 entries 登记后生效。
 - `package.json`：npm `name`、`version`、`type`、精确 Core/CLI dev dependency，以及必要时才加入的真实第三方依赖。
-- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Bot 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/steamharness/**/build/<entryId>/`；所有类型排除 `dist/cache/`、`dist/reports/`、`dist/release/` 和临时文件。
+- `.steamharnessignore`：上传文件的唯一忽略规则；Workflow/Bot 默认排除编译输出，Kanban 保留已声明入口所需的 `dist/steamharness/**/build/<entryId>/`；所有类型排除 `dist/steamharness/cache/`、`dist/steamharness/reports/`、`dist/steamharness/release/` 和临时文件。
 - `configuration.json`：为所有业务配置声明字段和安全默认值；无字段时使用空 fields。实际值不进入源码，由面板及 Studio Control 管理。
 - `interface.ts`：本地 `RunPayload`、`ExecutorResult`、输入类型、输出 payload 和输出结果类型。
 - `index.ts`：全局 `steamharness.*` 节点、具名 workflow、带静态 params 的 executor、默认导出。
@@ -249,4 +249,4 @@ Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow �
 
 ## 项目发行
 
-使用 `steamharness release .` 生成 `dist/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
+使用 `steamharness release .` 生成 `dist/steamharness/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。

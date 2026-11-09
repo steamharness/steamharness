@@ -1,5 +1,7 @@
 # Unreleased
 
+- Group SteamHarness project artifacts under dist/steamharness/, including releases, locks, snapshots, package staging and template ignore rules. Uploads exclude tool caches and reports.
+
 - Fix duplicate bubbles and lingering sending previews after Send now. Retain request identities for confirmation and replay, retry the original task after an independent fork, start promoted persisted inputs while idle, and restore history in execution order.
 
 - Fix contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.

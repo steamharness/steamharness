@@ -35,7 +35,7 @@ pnpm exec steamharness run . --release --entry database --entrypoint search -- -
 pnpm exec steamharness web . --release --entry agent
 ```
 
-The release project is written to `dist/release/project/`, with its archive under `dist/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
+The release project is written to `dist/steamharness/release/project/`, with its archive under `dist/steamharness/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
 
 In Studio, click **Run (Release Mode)** beside the Run button. Studio saves the project files, builds the release, and opens a new window rooted at the release run directory with the selected entry. That entry must be included in the release configuration.
 

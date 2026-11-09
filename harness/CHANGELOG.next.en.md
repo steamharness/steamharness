@@ -1,5 +1,7 @@
 # Unreleased
 
+- Update project generation and artifact validation to keep caches, reports and release output under dist/steamharness/.
+
 - Fix promoted persisted inputs remaining queued when idle or after a failed turn. Start a new turn with the original identity and images after applying queued context writes, and keep repeated promotions idempotent.
 
 - [Fixed] Reopening an unfinished request after compaction reuses its summary and committed tool results, narrows saved tool declarations to current authorization, and preserves the system prompt during partial-answer recovery.

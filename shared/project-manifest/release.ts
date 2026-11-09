@@ -1,7 +1,8 @@
 import { DATABASE_UUID_PATTERN, isProjectEntryId } from "./identity";
+import { PROJECT_RELEASE_BASE_DIRECTORY, isProjectToolArtifactPath } from "./artifact-paths";
 
 export const PROJECT_RELEASE_FILE = "steamharness.release.json";
-export const PROJECT_RELEASE_DIRECTORY = "dist/release/project";
+export const PROJECT_RELEASE_DIRECTORY = `${PROJECT_RELEASE_BASE_DIRECTORY}/project`;
 export type ProjectDistributionMode = "auto" | "source" | "release";
 
 export interface ProjectReleaseEntryOverride {
@@ -92,7 +93,7 @@ export function isForbiddenReleasePath(filename: string): boolean {
   const parts = releasePath(filename).split("/");
   return parts.some(part => ["node_modules", ".git", ".DS_Store", ".data", ".local", ".workflow", ".release", ".steamharness", ".env", ".envrc", "workflow-auth.json", "tests", "__tests__", "e2e"].includes(part)
     || part.startsWith(".env.") || part.startsWith("._"))
-    || /\.(?:tsx?|jsx|map|tsbuildinfo)$/i.test(filename) || /\.(?:test|spec)\.[cm]?js$/i.test(filename);
+    || isProjectToolArtifactPath(filename) || /\.(?:tsx?|jsx|map|tsbuildinfo)$/i.test(filename) || /\.(?:test|spec)\.[cm]?js$/i.test(filename);
 }
 export function parseProjectReleaseManifest(value: unknown): ProjectReleaseManifest {
   if (!object(value) || value.kind !== "steamharness.project.release" || value.version !== 1) throw new Error("Unsupported SteamHarness release format. Upgrade the host.");

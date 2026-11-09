@@ -23,7 +23,7 @@ description: "关系库、独立知识库和平台运行存储"
 
 ## 产物与运行数据目录
 
-所有可重建产物统一写入聚合项目根的 `dist/`，子入口不得另建产物根：
+所有 SteamHarness 可重建产物统一写入聚合项目根的 `dist/steamharness/`。`dist/` 下只创建这一个受管一级目录，子入口不得另建产物根：
 
 | 内容 | 路径 |
 | --- | --- |
@@ -31,7 +31,8 @@ description: "关系库、独立知识库和平台运行存储"
 | 子入口数据库定义的生成代码 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
 | 根入口编译和静态页面 | `dist/steamharness/build/<entryId>/` |
 | 子入口编译和静态页面 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
-| 工具缓存、测试报告和打包文件 | `dist/cache/`、`dist/reports/`、`dist/release/` |
+| 工具缓存、测试报告和打包文件 | `dist/steamharness/cache/`、`dist/steamharness/reports/`、`dist/steamharness/release/` |
+| 临时构建文件 | `dist/steamharness/tmp/` |
 
 目录按源码根和入口区分。将完整 `entry.root` 做 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`；同一源码根共用生成代码，各入口分别写入 `build/<entryId>/`。
 

@@ -1536,7 +1536,7 @@ entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 
 | 子入口数据库定义的生成代码 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
 | 根入口编译和静态页面 | `dist/steamharness/build/<entryId>/` |
 | 子入口编译和静态页面 | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
-| 工具缓存、测试报告和打包文件 | `dist/cache/`、`dist/reports/`、`dist/release/` |
+| 工具缓存、测试报告和打包文件 | `dist/steamharness/cache/`、`dist/steamharness/reports/`、`dist/steamharness/release/` |
 
 子入口使用完整 `entry.root` 的 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`；同一源码根的入口共用生成代码。每个构建器只清理自己的子目录，不能清空整个 `dist/`。源码、配置、数据库模型和迁移保留在源码目录，根 `.gitignore` 忽略 `/dist/`。
 
@@ -1546,7 +1546,7 @@ entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 
 
 ## 项目发行
 
-使用 `steamharness release .` 生成 `dist/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
+使用 `steamharness release .` 生成 `dist/steamharness/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
 
 Bot 的 `conversation.collapseIntermediate` 默认 true：成功后收起中间过程，保留最终答案；false 保留过程。它只控制呈现，不删除历史或改变输出。输入钩子可能在宿主恢复时重新调用，应保持幂等；完成通知按稳定 requestId 去重。
 

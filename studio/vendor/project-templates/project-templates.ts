@@ -138,7 +138,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, 'steamharness.json'), `${JSON.stringify(projectManifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, '.gitignore'), 'node_modules/\n/dist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
-    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/cache/\ndist/reports/\ndist/release/\ndist/tmp/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/steamharness/cache/\ndist/steamharness/reports/\ndist/steamharness/release/\ndist/steamharness/tmp/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     if (!files.some(file => file.filename === 'configuration.json')) await writeFile(path.join(directory,'configuration.json'), JSON.stringify({version:1,fields:[]},null,2)+'\n',{flag:'wx'});
     for (const file of files) {
       request.signal?.throwIfAborted();

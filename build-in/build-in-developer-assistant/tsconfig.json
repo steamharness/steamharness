@@ -17,7 +17,7 @@
       "vitest/globals"
     ],
     "forceConsistentCasingInFileNames": true,
-    "tsBuildInfoFile": "dist/cache/typescript.tsbuildinfo"
+    "tsBuildInfoFile": "dist/steamharness/cache/typescript.tsbuildinfo"
   },
   "include": [
     "**/*.ts"
