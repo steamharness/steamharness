@@ -34,7 +34,7 @@ description: "提交命令、读取快照，并区分任务、轮次和会话用
 | --- | --- |
 | `submit` | `prompt`、可选 `images`、`mode: "steer" \| "followUp" \| "reject"`。steer 在工具轮边界补充本轮，followUp 排下一轮，reject 在忙碌时拒绝；空闲 steer 是正常新轮。 |
 | `withdraw` | `inputId` 为待撤回输入的 requestId；已消费返回 `already_placed` / `settled`，不会撤销副作用。 |
-| `promote` | `inputId` 为待立即发送输入的 requestId；在同一事务内将队列项转为 steer 并保存回执，保留原身份和图片，在下一工具边界接入本轮。已消费返回 `already_placed` / `settled`，不会重发。 |
+| `promote` | `inputId` 为待立即发送输入的 requestId。运行中转为 steer，在下一工具边界接入本轮；空闲时（包括上轮失败后）直接开始新轮，先应用已排队的重置等上下文写入。输入身份和图片保持不变，状态与回执在同一事务保存。已消费返回 `already_placed` / `settled`，不会重发。 |
 | `compact` | 可选 `instructions`；创建后台压缩任务，可与活动任务协调。 |
 | `reset` | 可选 `handoff`；在输入边界进入新上下文世代，保留旧正文与任务计划。 |
 | `fork` | 已提交 `entryId`；同一持久会话内新建独立 conversation、provider 身份和输入队列，不复制活动任务或审批。回执包含 `forkId`。 |

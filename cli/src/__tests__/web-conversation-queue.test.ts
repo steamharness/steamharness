@@ -135,6 +135,21 @@ it.each(['queue-promote', 'queue-remove'])('retains a failed %s with its error a
   expect(f.root.children[1].children.map(row => row.dataset.id)).toEqual(['two']);
 });
 
+it('lets a previously requested input be sent again after the active turn has failed', () => {
+  const f = fixture();
+  f.state.session.agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
+    configuration: { version: 0, provider: 'fixture', model: 'fixture', effort: 'off' }, prompt: { hash: 'test', version: 1 }, plan: { version: 0, items: [] },
+    tasks: [], history: [], receipts: [], records: [], usage: [], contexts: [], conversations: [{ id: 1, title: 'Main', background: false }],
+    turns: [{ requestId: 'one', conversationId: 1, prompt: 'one', mode: 'steer', status: 'queued', epoch: 0, items: [] }] };
+  f.update();
+  expect(f.row().status.textContent).toBe('Send requested'); expect(f.row().send.disabled).toBe(true);
+  f.state.session.agent.foreground = false; f.state.session.agent.revision++;
+  f.update();
+  expect(f.row().send.disabled).toBe(false);
+  f.row().send.click();
+  expect(f.action).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ type: 'queue-promote', id: 'one' }));
+});
+
 it('shows queue resume for a paused Bot after its owner has stopped', () => {
   const f = fixture(true);
   f.state.session.queuePaused = true; f.update();

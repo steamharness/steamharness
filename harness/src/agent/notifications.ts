@@ -102,12 +102,12 @@ export async function submitAgentNotification(tx: Tx, conversationId: Conversati
 }
 
 /** Fold reports queued before a failure/stop into the next explicit input without advancing queued user requests. */
-export async function deferAgentNotifications(tx: Tx, conversationId: ConversationId): Promise<void> {
+export async function deferAgentNotifications(tx: Tx, conversationId: ConversationId, exceptSubmissionId?: number): Promise<void> {
   const inbox = await tx.doc(InboxDoc, conversationId);
   const state = await tx.doc(NotificationsDoc, conversationId);
   for (let index = 0; index < inbox.items.length;) {
     const item = inbox.items[index]!;
-    if (item.mode === "write" || !isNotification(item.entry?.kind, item.entry?.data)) { index++; continue; }
+    if (item.id === exceptSubmissionId || item.mode === "write" || !isNotification(item.entry?.kind, item.entry?.data)) { index++; continue; }
     const data = object(item.entry?.data);
     const content = typeof item.content === "string" ? item.content : item.content.filter(block => block.type === "text").map(block => block.text).join("");
     const key = String(data.notificationKey ?? `legacy:${item.entry!.kind}:${createHash("sha256").update(content).digest("hex")}`);

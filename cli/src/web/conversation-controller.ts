@@ -602,7 +602,7 @@ export class ConversationController {
       entry.messages = history.map(message => ({ id: globalThis.crypto.randomUUID(), role: message.role, content: message.content,
         createdAt: message.createdAt, entryId: message.entryId, entrypointId: message.entrypointId, model: message.model, durationMs: message.durationMs,
         ...(message.role === 'assistant' ? { status: ['running', 'waiting_for_input', 'sending'].includes(message.status ?? '') ? 'failed' : message.status,
-          error: message.error, items: message.items?.filter(item => item.metadata?.kind !== 'agent-session') } : {}),
+          error: message.error, items: message.items?.filter(item => item.metadata?.kind !== 'agent-session') } : message.status === 'steer' ? { status: 'steer' } : {}),
         attachments: message.attachments, references: message.references, files: message.files }));
       entry.forkSource = { sessionId: entry.forkSource?.sessionId ?? owner.id, entryId: entry.forkSource?.entryId ?? info.forkEntryId!,
         agentOwnerId: owner.id, agentConversationId: targetId };
@@ -721,7 +721,10 @@ export class ConversationController {
       const previous = entry.agent;
       entry.agent = snapshot;
       entry.agentConversationId ??= snapshot.conversationId;
-      const turns = snapshot.turns.filter(turn => turn.conversationId === entry.agentConversationId);
+      // Explicitly starting a later queued input can change execution order.
+      // Entry positions keep live projection and stale-checkpoint recovery aligned.
+      const turns = snapshot.turns.filter(turn => turn.conversationId === entry.agentConversationId)
+        .sort((left, right) => (left.entryId ?? Number.MAX_SAFE_INTEGER) - (right.entryId ?? Number.MAX_SAFE_INTEGER));
       const anchors = entry === owner ? entry.messages.filter(message => message.role === 'assistant' && message.runId) : [];
       const hostQueue = (entry.queuedInputs ?? []).filter(input => {
         const turn = turns.find(turn => turn.requestId === (input.requestId ?? input.id));
@@ -767,7 +770,16 @@ export class ConversationController {
         }
         if (turn.mode === 'steer' && !turn.hiddenInput) {
           const id = `steer:${turn.requestId}`;
-          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: turn.startedAt ?? Date.now(), attachments: input?.attachments, references: input?.references });
+          let message = entry.messages.find(message => message.id === id);
+          if (!message) {
+            message = { id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: turn.startedAt ?? Date.now(), attachments: input?.attachments, references: input?.references };
+            entry.messages.push(message);
+          }
+          // The display ID is distinct from the durable request identity. Repair
+          // older checkpoints as well so previews and replays can acknowledge it.
+          message.sessionRequestId = turn.requestId;
+          message.sessionConversationId = turn.conversationId;
+          if (input) message.input = input;
         }
         if (entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (!answer) continue;

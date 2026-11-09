@@ -30,7 +30,7 @@ Every command has a stable `requestId` and optional numeric `targetId` from the 
 | --- | --- |
 | `submit` | `prompt`, optional `images`, and `mode: "steer" \| "followUp" \| "reject"`. Steer applies at a tool boundary; followUp queues another turn; reject refuses busy input. An idle steer becomes an ordinary answered turn. |
 | `withdraw` | `inputId` is the input requestId. Consumed inputs return `already_placed` / `settled`; withdrawal never undoes side effects. |
-| `promote` | `inputId` is a queued input's requestId. Atomically change it to steer and save the receipt, retaining its identity and images for the next tool boundary. Consumed inputs return `already_placed` / `settled` and are never resent. |
+| `promote` | `inputId` is a queued input's requestId. During an active turn, change it to steer for the next tool boundary. When idle, including after a failed turn, start a new turn with that input after applying queued resets and other context writes. Preserve its identity and images, and save the state and receipt atomically. Consumed inputs return `already_placed` / `settled` and are never resent. |
 | `compact` | Optional `instructions`; create a background compaction task coordinated with active work. |
 | `reset` | Optional `handoff`; start a new context epoch at an input boundary, retaining visible history and the task plan. |
 | `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same persistent session. Active tasks and approvals are not copied. The receipt contains `forkId`. |

@@ -68,7 +68,7 @@ export class EntryConversations {
         const params = input.params ?? {};
         if (!params || typeof params !== 'object' || Array.isArray(params) || !Object.values(params).every(value => typeof value === 'string' || Array.isArray(value) && value.every(item => typeof item === 'string'))) throw new Error('Invalid conversation parameters.');
         const previous = target.queuedInputs?.find(item => (item.requestId ?? item.id) === requestId)
-          ?? target.messages.find(message => message.role === 'user' && (message.id === requestId || message.input?.requestId === requestId));
+          ?? target.messages.find(message => message.role === 'user' && (message.id === requestId || message.sessionRequestId === requestId || message.input?.requestId === requestId));
         if (previous && (('text' in previous ? previous.text : previous.content) !== text
           || !isDeepStrictEqual('text' in previous ? previous.entrySubmission?.params ?? previous.params : previous.input?.entrySubmission?.params ?? previous.input?.params ?? {}, params))) throw new Error('A requestId cannot be reused with different content.');
         if (previous) {

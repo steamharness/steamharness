@@ -3,8 +3,8 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { JsonValue } from "@earendil-works/chord";
 import { Type, clampThinkingLevel, type AssistantMessage, type Models, type Usage } from "@earendil-works/pi-ai";
 import {
-  AgentDoc, CompactionTask, InboxDoc, LiveDoc, ProviderDoc, UsageDoc, configure, defineDoc, defineExtension, defineTask,
-  type Conversation, type ConversationId, type ConversationWatch, type EntryId, type EntryRecord,
+  AgentDoc, CompactionTask, GenerationTask, InboxDoc, LiveDoc, ProviderDoc, UsageDoc, configure, defineDoc, defineExtension, defineTask,
+  type Conversation, type ConversationId, type ConversationWatch, type EntryDraft, type EntryId, type EntryRecord,
   type Harness, type JsonObject, type Registry, type TaskId, type Storage, type SubmissionRecord,
   type ToolRegistration, type TaskGraphWatch, type Cursor, type Tx, type AgentChange, type TaskRecord, type RegistryReader, type TaskOutcome,
 } from "@earendil-works/pi-durable";
@@ -33,6 +33,37 @@ const DelegationDoc = defineDoc({ kind: "project.delegation", version: 1, scope:
 const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
+
+/** An idle conversation has no future tool boundary at which to consume a promoted input. */
+async function startPromotedInput(tx: Tx, conversationId: ConversationId, requestId: string): Promise<boolean> {
+  const record = await tx.submissionByRequest(conversationId, requestId);
+  const live = await tx.doc(LiveDoc, conversationId);
+  if (record?.type !== "input" || record.status !== "queued" || live.run) return false;
+  const inbox = await tx.doc(InboxDoc, conversationId);
+  const item = inbox.items.find(item => item.id === record.id);
+  if (!item || item.mode === "write") throw new Error("The queued input does not exist.");
+  const input = plain(item);
+  input.entry ??= { kind: "project.input" };
+  input.entry.data = { ...object(input.entry.data) as JsonObject, requestId, mode: "followUp" };
+  let head = (await tx.latestHeadMarker(conversationId))?.head;
+  await deferAgentNotifications(tx, conversationId, record.id);
+  for (const write of inbox.items.filter(queued => queued.mode === "write")) {
+    if (write.mode !== "write") continue;
+    if (typeof write.entry.head === "number" && head !== undefined && write.entry.head < head) {
+      tx.settleSubmission(write.id, { status: "unanswered", reason: "stale" });
+      continue;
+    }
+    const entry = await tx.appendEntry(conversationId, plain(write.entry) as unknown as EntryDraft);
+    tx.placeSubmission(write.id, entry.id);
+    if (write.entry.head !== undefined) head = write.entry.head === "self" ? entry.id : write.entry.head as EntryId;
+  }
+  const entry = await tx.appendEntry(conversationId, { kind: input.entry.kind, data: input.entry.data,
+    model: [{ role: "user", content: input.content, timestamp: Date.now() }] });
+  tx.placeSubmission(record.id, entry.id);
+  inbox.items = inbox.items.filter(queued => queued.mode !== "write" && queued.id !== record.id);
+  live.run = { taskId: await tx.createTask(GenerationTask, {}, { conversationId, ownership: { kind: "conversation" } }), inputs: [record.id] };
+  return true;
+}
 const validConcurrency = (value: number | null | undefined) => value == null || Number.isSafeInteger(value) && value > 0;
 const concurrencyLimit = (value: number | null | undefined) => value === null ? Infinity : value ?? 3;
 type WorkIdleNotice = { version: number; taskIds: number[]; completed: number; failed: number; stopped: number };
@@ -795,7 +826,14 @@ export class DurableAgentSession {
     const fingerprint = createHash("sha256").update(canonical({ ...command, targetId: target.id })).digest("hex");
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw new Error("The requestId was already used for another command.");
-      if (previous.receipt) { this.schedule(); return plain(previous.receipt) as unknown as AgentSessionReceipt; }
+      if (previous.receipt) {
+        const receipt = plain(previous.receipt) as unknown as AgentSessionReceipt;
+        // A promotion can be acknowledged while busy, then lose its tool boundary
+        // to a failed turn. Retrying that command starts the still-unplaced input.
+        if (command.type === "promote" && receipt.status === "accepted"
+          && await target.commit(tx => startPromotedInput(tx, target.id, command.inputId), context)) this.harness.resume();
+        this.schedule(); return receipt;
+      }
     }
     if ((await this.harness.snapshot(SessionDoc, target.id, context))?.deleted) throw new Error("The target conversation was deleted.");
     const receipt: AgentSessionReceipt = { requestId: command.requestId, status: "accepted", conversationId: target.id };
@@ -856,6 +894,7 @@ export class DurableAgentSession {
             item.mode = "steer";
             item.entry ??= { kind: "project.input", data: { requestId: command.inputId } };
             item.entry.data = { ...object(item.entry.data) as JsonObject, mode: "steer" };
+            await startPromotedInput(tx, target.id, command.inputId);
           }
           await save(tx);
         }, context);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix duplicate bubbles and lingering sending previews after Send now. Retain request identities for confirmation and replay, retry the original task after an independent fork, start promoted persisted inputs while idle, and restore history in execution order.
+
 - Fix contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.
 
 - Fix CLI Web plan selections and scroll positions being lost during confirmation pauses and task reordering in older browsers, overflowing status labels in narrow panes, and untranslated stopping states. Announce progress while the plan panel is collapsed.

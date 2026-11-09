@@ -885,7 +885,8 @@ it.each([false, true])('promotes a durable queued input without restarting its o
   expect(f.runtime.cancel).not.toHaveBeenCalled(); expect(f.runtime.run).toHaveBeenCalledOnce();
   f.emit({ ...f.snapshot(), revision: 3, foreground, turns: [...f.snapshot().turns, { ...turn, mode: 'steer', status: 'placed', entryId: 4 }] });
   expect(f.controller!.current.queuedInputs).toEqual([]);
-  expect(f.controller!.current.messages.find(message => message.status === 'steer')).toMatchObject({ content: 'Queued image', attachments });
+  expect(f.controller!.current.messages.find(message => message.status === 'steer')).toMatchObject({ content: 'Queued image', attachments,
+    sessionRequestId: 'queued-image', sessionConversationId: 1, input: { text: 'Queued image', params: { model: 'one' }, attachments } });
   expect(f.controller!.current.draft?.text).toBe('Keep this draft');
   await f.finish();
 });

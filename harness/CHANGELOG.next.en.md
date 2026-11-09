@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix promoted persisted inputs remaining queued when idle or after a failed turn. Start a new turn with the original identity and images after applying queued context writes, and keep repeated promotions idempotent.
+
 - [Fixed] Reopening an unfinished request after compaction reuses its summary and committed tool results, narrows saved tool declarations to current authorization, and preserves the system prompt during partial-answer recovery.
 - [Fixed] Host tool disabling also applies to session, native and deferred tools. Replacing catalogs between turns releases old connections and refreshes callbacks while retaining history and definition checks. Concurrent runs on one runtime are rejected before they can overwrite active state.
 

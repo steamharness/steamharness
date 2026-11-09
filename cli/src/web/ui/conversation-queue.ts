@@ -144,6 +144,10 @@ export class ConversationQueue {
   private render(): void {
     const state = this.state;
     if (!state) return;
+    const agent = state.session.agent, conversationId = state.session.agentConversationId ?? agent?.conversationId;
+    const foreground = agent?.contexts.find(context => context.conversationId === conversationId)?.foreground
+      ?? (agent?.conversationId === conversationId ? agent?.foreground : false);
+    const executing = !!foreground || !!agent?.turns.some(turn => turn.conversationId === conversationId && turn.status === 'placed');
     const queue = [...(state.session.queuedInputs ?? [])];
     for (const action of this.actions.values()) {
       if (action.projectUri === state.projectUri && action.sessionId === state.session.id && action.phase === 'failed'
@@ -175,7 +179,7 @@ export class ConversationQueue {
       row.edit.hidden = row.up.hidden = state.durable;
       row.edit.disabled = row.up.disabled = !state.ready || state.pendingIds.has(input.requestId ?? input.id);
       row.up.disabled ||= index === 0;
-      row.send.disabled = !state.ready || state.canExecute === false || promoted;
+      row.send.disabled = !state.ready || state.canExecute === false || promoted && executing;
       row.remove.disabled = !state.ready;
       row.retry.disabled = !state.ready || action?.type === 'queue-promote' && state.canExecute === false;
       row.root.draggable = !state.durable && state.ready && !state.pendingIds.has(input.requestId ?? input.id);
