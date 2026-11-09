@@ -1,5 +1,7 @@
 # Unreleased
 
+- Update project artifact validation to exclude caches, reports and release staging under dist/steamharness/ from source distribution.
+
 - Breaking: registered entry types are workflow, bot and kanban; old conversation declarations are rejected, and uploads and distribution use the new static contract.
 
 - Reduced database round trips when acquiring uncontended relational binding and authorization locks, while preserving bounded waits, revocation, and migration isolation.

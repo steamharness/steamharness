@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  cacheDir: "dist/cache/vitest",
+  cacheDir: "dist/steamharness/cache/vitest",
   resolve: { conditions: ["development"] },
   test: {
     environment: "node",
@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
-      reportsDirectory: "dist/reports/coverage",
+      reportsDirectory: "dist/steamharness/reports/coverage",
       thresholds: {
         "studio-control/{index,host-bridge}.ts": { statements: 80, branches: 75, functions: 80, lines: 80 },
       },

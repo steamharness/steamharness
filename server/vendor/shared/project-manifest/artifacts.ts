@@ -1,8 +1,7 @@
-import { normalizeEntryPath } from "./index";
+import { normalizeEntryPath } from "./entry-path";
 import { isProjectEntryId } from "./identity";
-
-export const PROJECT_ARTIFACT_DIRECTORY = "dist/steamharness";
-export const DATABASE_GENERATED_DIRECTORY = `${PROJECT_ARTIFACT_DIRECTORY}/generated/database`;
+import { PROJECT_ARTIFACT_DIRECTORY, DATABASE_GENERATED_DIRECTORY } from "./artifact-paths";
+export * from "./artifact-paths";
 
 /** All paths are relative to the aggregate root, including child-entry outputs. */
 export function projectArtifactDirectory(sourceRoot = "."): string {

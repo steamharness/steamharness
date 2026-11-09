@@ -14,7 +14,7 @@ src/
 tests/
 dist/**/*.map
 
-dist/cache/
-dist/reports/
-dist/release/
-dist/tmp/
+dist/steamharness/cache/
+dist/steamharness/reports/
+dist/steamharness/release/
+dist/steamharness/tmp/

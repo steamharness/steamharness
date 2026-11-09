@@ -1,7 +1,7 @@
 import { projectDataDirectorySync } from "../web/project-data-directory";
 import { main as runWebCommand } from "../web";
 import { afterEach, expect, it, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile, cp } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildProjectRelease, prepareReleaseRun, resolveProjectDistribution } from "../release/build";
@@ -20,7 +20,7 @@ const source = `const steamharness=globalThis.steamharness;
 const main=steamharness.defineProject({name:'answer',async run(){return steamharness.createOutputPayload({items:[{id:'answer',title:'Answer',contentType:'text',content:'release works'}]});}});
 export const executor=steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',workflow:main,createInput:()=>({errCode:0,errMessage:''})})]});`;
 async function fixture() {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "steamharness-release-test-")); folders.push(directory);
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "steamharness-release-test-"))); folders.push(directory);
   const host = await mkdtemp(path.join(os.tmpdir(), "release-test-user-")); folders.push(host); vi.spyOn(os, "homedir").mockReturnValue(host);
   await mkdir(path.join(directory, "node_modules/@steamharness"), { recursive: true });
   await symlink(path.resolve("../harness"), path.join(directory, "node_modules/steamharness"), "dir");
@@ -35,6 +35,9 @@ it("builds a portable compiled project with readable metadata and checks invento
   initI18n({ preference: "en" });
   const { directory } = await fixture();
   const result = await buildProjectRelease(directory);
+  expect(result.directory).toBe(path.join(directory, 'dist/steamharness/release/project'));
+  expect(result.archive.startsWith(path.join(directory, 'dist/steamharness/release') + path.sep)).toBe(true);
+  expect(await readdir(path.join(directory, 'dist'))).toEqual(['steamharness']);
   const manifest = readProjectReleaseSync(result.directory)!;
   expect(manifest.entries.map(entry => entry.entryId)).toEqual(["main"]);
   expect(manifest.files.some(file => /\.(ts|map)$/.test(file.path))).toBe(false);
@@ -42,6 +45,7 @@ it("builds a portable compiled project with readable metadata and checks invento
   expect((await buildProjectRelease(directory)).cached).toBe(true);
   const snapshot = await prepareReleaseRun(directory);
   expect(snapshot.directory).not.toBe(result.directory);
+  expect(snapshot.directory.startsWith(path.join(directory, 'dist/steamharness/release/snapshots') + path.sep)).toBe(true);
   const plan = await createProjectUploadPlan(result.directory);
   const download = path.join(directory, "download");
   await materializeAggregateDownload({ projectId: id, files: await Promise.all(plan.files.map(async file => ({ path: file.path, content: (await readFile(file.absolutePath)).toString("base64"), encoding: "base64" as const }))) }, download);

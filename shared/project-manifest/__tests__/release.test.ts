@@ -11,7 +11,7 @@ it("validates entry selection and release overrides without widening the registe
 it.each(["/absolute", "../outside", "a/../secret", "a\\secret", "file:", "a//file", "trailing."])("rejects unsafe release path %s", filename => {
   expect(() => releasePath(filename)).toThrow();
 });
-it.each(["index.ts", "index.js.map", "tests/run.js", ".env", "entries/main/.env.local", "._index.js", "node_modules/private/index.js"])("never inventories private or source path %s", filename => {
+it.each(["index.ts", "index.js.map", "tests/run.js", ".env", "entries/main/.env.local", "._index.js", "node_modules/private/index.js", "dist/steamharness/cache/private.json", "dist/steamharness/reports/run.json", "dist/steamharness/release/project/package.json", "dist/steamharness/tmp/token.json"])("never inventories private or source path %s", filename => {
   expect(isForbiddenReleasePath(filename)).toBe(true);
 });
 it("fails closed on unknown distribution format versions", () => {

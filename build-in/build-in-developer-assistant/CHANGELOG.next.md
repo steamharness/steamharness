@@ -1,6 +1,7 @@
 # Unreleased
 
 - 生成技能补充原生 Conversation 消息卡片用法：按请求 ID 关联回复，保留草稿和历史，只接受有界纯文本内容。
+- 内置项目与 Generator 统一将缓存、报告、临时文件及发行产物放入 dist/steamharness/，打包仅保留所需构建产物。
 
 - Generator 补充后台通知事务 API、业务身份去重、失败后显式续行，以及配置错误与授权重试预算约定。
 

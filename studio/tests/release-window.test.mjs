@@ -26,7 +26,7 @@ test('release run opens only the prepared directory in a separate window', async
   const context = {
     currentProject: () => source,
     launcher: {
-      prepareDistribution: async (project, snapshot) => { assert.equal(project, source); assert.equal(snapshot, true); return { mode: 'release', directory: '/source/dist/release/snapshots/build/map', entries: ['agent', 'map'] }; },
+      prepareDistribution: async (project, snapshot) => { assert.equal(project, source); assert.equal(snapshot, true); return { mode: 'release', directory: '/source/dist/steamharness/release/snapshots/build/map', entries: ['agent', 'map'] }; },
       inspect: () => { throw new Error('The source window must not mount the release.'); },
     },
     openReleaseProjectWindow: (...args) => calls.push(args),
@@ -36,7 +36,7 @@ test('release run opens only the prepared directory in a separate window', async
   };
   runInNewContext(actionCode, context); await context.action();
   assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], '/source/dist/release/snapshots/build/map');
+  assert.equal(calls[0][0], '/source/dist/steamharness/release/snapshots/build/map');
   assert.equal(calls[0][1], source.uri);
 });
 

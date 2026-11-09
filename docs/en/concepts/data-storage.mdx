@@ -23,7 +23,7 @@ Choose bindings according to the required isolation:
 
 ## Artifacts and runtime data
 
-Keep every rebuildable output in the aggregate project root's `dist/`, including outputs for child entries:
+Keep every rebuildable SteamHarness output in the aggregate root's `dist/steamharness/`. SteamHarness creates only this one top-level directory under `dist/`; child entries share it:
 
 | Content | Path |
 | --- | --- |
@@ -31,7 +31,8 @@ Keep every rebuildable output in the aggregate project root's `dist/`, including
 | Generated code for child database definitions | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
 | Compiled root entry code and static pages | `dist/steamharness/build/<entryId>/` |
 | Compiled child entry code and static pages | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
-| Tool caches, test reports, and packages | `dist/cache/`, `dist/reports/`, and `dist/release/` |
+| Tool caches, test reports, and packages | `dist/steamharness/cache/`, `dist/steamharness/reports/`, and `dist/steamharness/release/` |
+| Temporary build files | `dist/steamharness/tmp/` |
 
 Directory layout follows source roots and entry IDs. URL-encode the whole `entry.root`: for example, `apps/board` becomes `apps%2Fboard`. Entries under the same source root share generated code and write their builds to separate `build/<entryId>/` directories.
 

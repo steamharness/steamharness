@@ -13,7 +13,7 @@ import { build, transform } from "esbuild";
 import { inspectLocalProjectStructure, inspectProjectAgentModelUsage } from "steamharness";
 import { inspectProjectScripts } from "steamharness/executor/rules";
 import { readProjectDeclarationFromDirectory, readProjectDocument } from "@steamharness/project-manifest/node";
-import { projectEntryFilePath, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
+import { projectEntryFilePath, PROJECT_RELEASE_BASE_DIRECTORY, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
 import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRelease } from "@steamharness/project-manifest/release-node";
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
 import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
@@ -143,10 +143,10 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
   if (process.env.STEAMHARNESS_RELEASE_BUILD === "1") throw new Error("A release build command cannot recursively invoke steamharness release.");
   const root = await realpath(path.resolve(directory)), existing = readProjectReleaseSync(root);
   if (existing) return { directory: root, archive: "", buildId: existing.buildId, entries: existing.entries.map(entry => entry.entryId), cached: true };
-  await regularDirectories(root, "dist/release");
+  await regularDirectories(root, PROJECT_RELEASE_BASE_DIRECTORY);
   const output = path.join(root, PROJECT_RELEASE_DIRECTORY);
-  if (await exists(path.join(root, "dist/release/build.lock.sqlite"))) releaseRegularFile(root, "dist/release/build.lock.sqlite");
-  const lock = new DatabaseSync(path.join(root, "dist/release/build.lock.sqlite"));
+  if (await exists(path.join(root, `${PROJECT_RELEASE_BASE_DIRECTORY}/build.lock.sqlite`))) releaseRegularFile(root, `${PROJECT_RELEASE_BASE_DIRECTORY}/build.lock.sqlite`);
+  const lock = new DatabaseSync(path.join(root, `${PROJECT_RELEASE_BASE_DIRECTORY}/build.lock.sqlite`));
   const started = Date.now();
   try { for (;;) {
     options.signal?.throwIfAborted();
@@ -156,7 +156,7 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
       await delay(100, undefined, { signal: options.signal });
     }
   } } catch (error) { lock.close(); throw error; }
-  const stage = path.join(root, "dist/release", `stage-${randomUUID()}`), backup = path.join(root, "dist/release", `previous-${randomUUID()}`);
+  const stage = path.join(root, PROJECT_RELEASE_BASE_DIRECTORY, `stage-${randomUUID()}`), backup = path.join(root, PROJECT_RELEASE_BASE_DIRECTORY, `previous-${randomUUID()}`);
   let replaced = false;
   try {
     const declaration = await readProjectDeclarationFromDirectory(root), config = declaration.release ?? {};
@@ -165,7 +165,7 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     if (!selected.some(entry => entry.entryId === defaultEntry)) throw new Error("The release must include its defaultEntry.");
     const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
     const inputHash = await fingerprint(root);
-    const archive = path.join(root, "dist/release", `${String(pkg.name ?? declaration.name).replace(/[^a-zA-Z0-9_-]/g, "-")}-${declaration.version}.tgz`);
+    const archive = path.join(root, PROJECT_RELEASE_BASE_DIRECTORY, `${String(pkg.name ?? declaration.name).replace(/[^a-zA-Z0-9_-]/g, "-")}-${declaration.version}.tgz`);
     let previous: ProjectReleaseManifest | undefined;
     try { previous = readProjectReleaseSync(output); } catch { /* An invalid output is rebuilt, never distributed. */ }
     if (previous?.inputHash === inputHash && await exists(archive)) return { directory: output, archive, buildId: previous.buildId, entries: previous.entries.map(entry => entry.entryId), cached: true };
@@ -272,7 +272,7 @@ export async function prepareReleaseRun(directory: string, options: ReleaseOptio
   if (!declaration.entries.some(entry => entry.entryId === entryId)) throw new Error(`Entry is not included in this release: ${entryId}`);
   const sourceRoot = await realpath(path.resolve(directory));
   if (sourceRoot === result.directory) return result;
-  const snapshotParent = `dist/release/snapshots/${result.buildId}`;
+  const snapshotParent = `${PROJECT_RELEASE_BASE_DIRECTORY}/snapshots/${result.buildId}`;
   const snapshot = path.join(sourceRoot, snapshotParent, entryId);
   if (!await exists(snapshot)) {
     await regularDirectories(sourceRoot, snapshotParent);

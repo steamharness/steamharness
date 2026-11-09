@@ -28,6 +28,8 @@ it.skipIf(process.platform !== "darwin")("packs extended-attribute files without
   const execute = promisify(execFile);
   await execute("xattr", ["-w", "com.steamharness.artifact-test", "generated", path.join(project, "index.ts")]);
   const archive = await packProject("artifacts", undefined, project);
+  expect(archive.startsWith(path.join(project, 'dist/steamharness/release') + path.sep)).toBe(true);
+  expect(await readdir(path.join(project, 'dist'))).toEqual(['steamharness']);
   const { stdout } = await execute("tar", ["-tzf", archive]);
   expect(stdout).toContain("/index.ts");
   expect(stdout.split("\n").some(filename => filename.split("/").some(part => part.startsWith("._")))).toBe(false);
@@ -59,7 +61,7 @@ it("checks a child Kanban's required HTML and preserves its complete asset set",
   }
 });
 
-it.each([".local/auth.json", ".workflow/runtime/history.json", ".release/live-runtime/auth.json", "dist/cache/token.json", "dist/reports/run.json", "dist/release/old.tgz", "dist/steamharness/unverified.json", "dist/unregistered/output.js"])("rejects downloaded runtime or unregistered artifact %s", async filename => {
+it.each([".local/auth.json", ".workflow/runtime/history.json", ".release/live-runtime/auth.json", "dist/steamharness/cache/token.json", "dist/steamharness/reports/run.json", "dist/steamharness/release/old.tgz", "dist/steamharness/unverified.json", "dist/unregistered/output.js"])("rejects downloaded runtime or unregistered artifact %s", async filename => {
   const root = await directory();
   await expect(materializeAggregateDownload({ projectId, files: [...sourceFiles(), { path: filename, content: "private" }] }, path.join(root, "download"))).rejects.toThrow(/download path|downloaded.*artifact/i);
   expect(await readdir(root)).toEqual([]);
@@ -80,9 +82,9 @@ it("removes only its staging directory when a package is incomplete", async () =
   initI18n({ preference: "en" });
   const project = await directory();
   for (const file of sourceFiles().filter(file => file.path !== "index.ts")) await writeFile(path.join(project, file.path), file.content);
-  const other = path.join(project, "dist/release/tmp/other-job"); await mkdir(other, { recursive: true });
+  const other = path.join(project, "dist/steamharness/release/tmp/other-job"); await mkdir(other, { recursive: true });
   await writeFile(path.join(other, "keep.txt"), "keep");
   await expect(packProject("artifacts", undefined, project)).rejects.toThrow(/required upload path/i);
-  expect(await readdir(path.join(project, "dist/release/tmp"))).toEqual(["other-job"]);
+  expect(await readdir(path.join(project, "dist/steamharness/release/tmp"))).toEqual(["other-job"]);
   expect(await readFile(path.join(other, "keep.txt"), "utf8")).toBe("keep");
 });

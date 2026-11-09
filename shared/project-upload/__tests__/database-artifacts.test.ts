@@ -47,9 +47,9 @@ describe("static database artifacts", () => {
     await writeFile(path.join(root, "dist/steamharness/build/unregistered/private.json"), "{}");
     await writeFile(path.join(root, "dist/steamharness/session.json"), '{"secret":"local"}');
     const target = await mkdtemp(path.join(os.tmpdir(), "database-static-target-")); directories.push(target);
-    for (const relative of ['cache/vite', 'reports/test', 'release/package', 'tmp/build', 'unregistered/output']) {
-      await mkdir(path.join(root, 'dist', relative), { recursive: true });
-      await writeFile(path.join(root, 'dist', relative, 'private.json'), '{}');
+    for (const base of ['dist', 'dist/steamharness']) for (const relative of ['cache/vite', 'reports/test', 'release/package', 'tmp/build', 'unregistered/output']) {
+      await mkdir(path.join(root, base, relative), { recursive: true });
+      await writeFile(path.join(root, base, relative, 'private.json'), '{}');
     }
     const plan = await copyProjectUploadFiles(root, target);
     expect(plan.files.some(file => file.path.endsWith('private.json'))).toBe(false);

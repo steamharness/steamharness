@@ -1,6 +1,6 @@
 import { resolveProjectDistribution } from "./release/build";
 import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
-import type { ProjectDistributionMode } from "@steamharness/project-manifest";
+import { PROJECT_RELEASE_BASE_DIRECTORY, type ProjectDistributionMode } from "@steamharness/project-manifest";
 import { prepareProjectDatabaseArtifacts } from "./database-generation";
 import { isProjectUploadExcludedPath } from "@steamharness/project-upload";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
@@ -549,7 +549,7 @@ async function packProject(
   // Hosts can supply their own writable data directory for installed projects.
   const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
     ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
-    : path.join(projectDir, "dist", "release");
+    : path.join(projectDir, PROJECT_RELEASE_BASE_DIRECTORY);
   const stagingRoot = path.join(packsDir, "tmp", randomUUID());
   const stagingDir = path.join(stagingRoot, projectName);
   const archivePath = outputPath

@@ -1,6 +1,8 @@
 import { isProjectKind, type ProjectKind } from "@steamharness/project-types";
 import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN, isProjectEntryId } from "./identity";
 import { projectEntryBuildDirectory, projectEntryFilePath } from "./artifacts";
+import { normalizeEntryPath } from "./entry-path";
+export { normalizeEntryPath } from "./entry-path";
 export * from "./identity";
 export * from "./artifacts";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
@@ -199,11 +201,6 @@ export function projectManifestTypes(manifest: Pick<ProjectManifest, "entries">)
 export function projectManifestForDistribution<T extends Record<string, unknown>>(document: T): T {
   rootDocument(document);
   return structuredClone(document);
-}
-export function normalizeEntryPath(value: unknown, field: string, allowRoot = false): string {
-  if (allowRoot && value === ".") return ".";
-  if (typeof value !== "string" || !value.length || value.includes("\\") || /[\0?#:]/.test(value) || value.startsWith("/") || value.split("/").some((segment) => !segment || segment === "." || segment === ".." || segment === "node_modules" || segment === ".git")) throw new Error(`${field} must be a safe relative path inside the aggregate project.`);
-  return value;
 }
 function record(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${field} must be an object.`);

@@ -12,7 +12,7 @@ Use `workspace pack` to package the entire aggregate locally. It creates neither
 ## Command
 
 ```sh
-pnpm exec steamharness workspace pack <project-id> --path . --output dist/release/project.tgz
+pnpm exec steamharness workspace pack <project-id> --path . --output dist/steamharness/release/project.tgz
 ```
 
 Install dependencies, build static entries, and run `steamharness check .` first. The name must be a single portable directory name, without path separators, parent traversal, or Windows reserved names. Specify source through `--path`.
@@ -33,4 +33,4 @@ Server maintains account-specific relational bindings. Connection credentials an
 
 When the aggregate root or a registered source root contains `steamharness.database.ts`, packing generates Node/Browser descriptors, types, and runtime assets first. The validated database inventory must be complete and cannot be excluded with `.steamharnessignore`.
 
-The default output is a `.tgz` under the project root's `dist/release/`. Packing cleans only its own temporary directory and preserves other entry artifacts. See [database distribution](/en/core-api/database).
+The default output is a `.tgz` under the project root's `dist/steamharness/release/`. Packing cleans only its own temporary directory and preserves other entry artifacts. See [database distribution](/en/core-api/database).

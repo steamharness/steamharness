@@ -1,6 +1,7 @@
 # Unreleased
 
 - Kanban Conversation UI accepts bounded plain-text messageCards linked to native replies by request ID, without script or navigation access.
+- Update project generation and artifact validation to keep caches, reports and release output under dist/steamharness/.
 
 - Fix promoted persisted inputs remaining queued when idle or after a failed turn. Start a new turn with the original identity and images after applying queued context writes, and keep repeated promotions idempotent.
 
