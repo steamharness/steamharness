@@ -1165,7 +1165,10 @@ function initialize(): void {
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message) || !!embeddedConversation && action.classList.contains('export-message');
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
-    else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled); }
+    else {
+      view.output!.setConnected(connectionAvailable && !serverBlocked());
+      view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled);
+    }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     renderRequestError(view.error, error);
     const configureModel = !!view.configureModel && !!error && configurationPanel.needsAgentModels() && currentParameters().fields.some(field => field.name === 'model');
@@ -1678,6 +1681,7 @@ function initialize(): void {
       manualReconnect = !!message.manual;
       reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
+      for (const view of messages.values()) view.output?.setConnected(connectionAvailable && !serverBlocked());
       const session = currentSession();
       const latest = session && [...session.messages].reverse().find(message => message.role === 'assistant');
       if (session) updateChildWorkStatus(session);

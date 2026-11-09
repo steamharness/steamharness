@@ -1,5 +1,7 @@
 # Unreleased
 
+- CLI Web shows task-plan progress beside the response status, with an expandable task list. The panel hides when the reply succeeds and preserves the last progress after failure or cancellation.
+
 - Fix Bot queue messages sent with Send now staying at the bottom of the conversation. Consumed messages appear before the reply handling them and retain their order during streaming and history recovery.
 
 - Fix queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn. Older user queues stay paused, and active replies retain normal queueing.

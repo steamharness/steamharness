@@ -27,6 +27,12 @@ Creating a branch only changes saved conversation records: it does not call AI, 
 
 ## Agent batches and pending user messages
 
+After an Agent successfully calls `update_plan` in the current reply, a **Plan** entry appears beside “Responding…”, showing the completed count, total and first task in progress. Click it to expand the full list of pending, active and completed tasks. The plan and **Subagents** panels expand independently. Later plan updates preserve expansion and scroll position.
+
+When the reply finishes successfully, the plan entry and panel disappear automatically, even if the Agent did not mark every task complete. Marking every task complete keeps the panel available until the reply succeeds. Failure, timeout or a manual stop preserves the last progress and final status. Confirmation prompts, retries and disconnection do not clear the plan; offline views show the last known state.
+
+Reopened history follows the same rules. A plan belongs to the reply that created it: a new reply without `update_plan` does not show the previous plan. Child conversations and independent forks display the plans from their own replies.
+
 The **Errors** filter in Studio Trace collects run, node and tool failures and model retry reasons. Existing diagnostics remain available after a successful retry and can be filtered by conversation and turn. Execution failures do not occupy the operation alert above the composer. Parameter validation, attachment and resource-opening errors remain in that alert; use **×** to hide them. Dismissing a parameter error does not bypass validation.
 
 Durable Agent conversations show a **Subagents** entry beside “Responding…” with running, queued, failed and completed counts for the current conversation. Click to expand tasks, then expand an item to see its role, phase, progress, current activity, result and error. **Open child conversation** opens the corresponding independent conversation. Both anonymous delegations and named project roles are supported; tool calls, other conversations and independent forks are excluded from the counts.

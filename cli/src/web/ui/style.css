@@ -217,7 +217,28 @@ html:has(#app[data-conversation-presentation=composer]),body:has(#app[data-conve
 .activity-error pre { color: var(--vscode-errorForeground); }
 .message-output > .pending { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .message-output > .pending > .pending-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.subagents-summary { display: flex; padding: 8px 0; }
+.conversation-progress-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; }
+.plan-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 24px; border: 1px solid var(--border); border-radius: 12px; padding: 3px 8px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; text-align: left; }
+.plan-button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-editor-foreground); }
+.plan-button > .codicon, .plan-chevron { flex: none; }
+.plan-label { flex: none; white-space: nowrap; }
+.plan-current { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-button[aria-expanded=true] .plan-chevron { transform: rotate(90deg); }
+.plan-panel { border: 1px solid var(--border); border-radius: 8px; margin: 2px 0 12px; min-width: 0; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.plan-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
+.plan-status, .plan-connection { margin: 0; color: var(--muted); font-size: 12px; }
+.plan-header progress { flex: 1; min-width: 48px; max-width: 160px; height: 5px; accent-color: var(--vscode-progressBar-background); }
+.plan-connection { margin: 0 12px 8px; }
+.plan-list { max-height: min(400px, 50vh); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; list-style: none; margin: 0; padding: 0 12px 4px; }
+.plan-list:focus-visible { outline: 1px solid var(--focus); outline-offset: -2px; }
+.plan-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 9px 0; font-size: 12px; line-height: 1.6; }
+.plan-item + .plan-item { border-top: 1px solid var(--border); }
+.plan-item-icon { display: flex; padding-top: 2px; color: var(--muted); }
+.plan-item-text { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.plan-item-status { color: var(--muted); font-size: 11px; }
+.plan-item[data-state=running] .plan-item-icon > .codicon { animation: spin 1.2s linear infinite; }
+.plan-item[data-state=completed] .plan-item-icon { color: var(--vscode-testing-iconPassed, var(--muted)); }
+.plan-button[data-state=failed], .plan-panel[data-state=failed] .plan-status { color: var(--vscode-errorForeground); }
 .subagents-button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 12px; padding: 3px 8px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; text-align: left; }
 .subagents-button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-editor-foreground); }
 .subagents-button > .codicon, .subagents-button > span:last-child { flex: none; }

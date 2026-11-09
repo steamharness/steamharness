@@ -1,4 +1,13 @@
 {
+  "Task plan": "任务计划",
+  "Plan progress": "计划进度",
+  "Plan items": "计划任务",
+  "Plan · {0}/{1}": "计划 · {0}/{1}",
+  "View task plan": "查看任务计划",
+  "Not started": "待开始",
+  "In progress": "进行中",
+  "Incomplete": "未完成",
+  "Paused": "已暂停",
   "References": "引用",
   "Files": "文件",
   "Project entries": "项目入口",

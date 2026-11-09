@@ -7,6 +7,7 @@ import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-di
 import { attachmentSignature } from './attachment-state';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 import { ConversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
+import { ConversationPlan, conversationPlan, type ConversationPlanState } from './conversation-plan';
 
 interface OutputOptions {
   composer?: boolean;
@@ -31,6 +32,10 @@ export class ConversationOutput {
   private readonly displays = new Map<HTMLElement, RingOutput>();
   private pending?: HTMLDivElement;
   private subagents?: ConversationSubagents;
+  private plan?: ConversationPlan;
+  private planState?: ConversationPlanState;
+  private connected = true;
+  private readonly progressSummary = document.createElement('div');
   private process?: { root: HTMLDetailsElement; list: HTMLDivElement };
   private readonly resourceTheme = new MutationObserver(() => this.syncResourceTheme());
   private syncResourceTheme(): void {
@@ -69,6 +74,7 @@ export class ConversationOutput {
     window.removeEventListener('message', this.resourceReply); this.resourceTheme.disconnect();
     this.processToggle.remove();
     this.subagents?.remove();
+    this.plan?.remove(); this.progressSummary.remove();
     for (const display of this.displays.values()) { display.dispose(); } this.displays.clear();
   }
 
@@ -81,6 +87,9 @@ export class ConversationOutput {
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
   update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
+    const focusedPlan = !!this.plan && (this.plan.button.contains(document.activeElement) || this.plan.panel.contains(document.activeElement));
+    const focusedProgress = focusedPlan || !!this.subagents && (this.subagents.button.contains(document.activeElement) || this.subagents.panel.contains(document.activeElement))
+      ? document.activeElement as HTMLElement : undefined;
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, entryId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
@@ -241,37 +250,59 @@ export class ConversationOutput {
       if (label.textContent !== text) { label.textContent = text; }
       if (this.pending.parentElement !== this.root) { this.root.append(this.pending); }
     } else { this.pending?.remove(); }
-    this.placeSubagents();
+    this.planState = conversationPlan(message);
+    if (this.planState) {
+      this.plan ??= new ConversationPlan(); this.plan.update(this.planState, this.connected);
+    } else if (this.plan) {
+      this.plan.remove(); this.plan = undefined;
+      if (focusedPlan) { this.root.tabIndex = -1; this.root.focus({ preventScroll: true }); }
+    }
+    this.placeProgress();
+    if (focusedProgress?.isConnected && document.activeElement !== focusedProgress) focusedProgress.focus({ preventScroll: true });
     this.tick();
   }
 
   updateSubagents(state?: ConversationSubagentsState): void {
-    if (!state || !this.options.subagent) { this.subagents?.remove(); this.subagents = undefined; return; }
+    if (!state || !this.options.subagent) { this.subagents?.remove(); this.subagents = undefined; this.placeProgress(); return; }
     this.subagents ??= new ConversationSubagents(this.options.subagent);
-    this.subagents.update(state); this.placeSubagents();
+    this.subagents.update(state); this.placeProgress();
+  }
+
+  setConnected(connected: boolean): void {
+    if (this.connected === connected) return;
+    this.connected = connected;
+    if (this.planState) this.plan?.update(this.planState, connected);
   }
 
   moveSubagentsTo(output: ConversationOutput): void {
     if (output === this || !this.subagents) return;
     output.subagents?.remove(); output.subagents = this.subagents; this.subagents = undefined;
-    output.placeSubagents();
+    output.placeProgress(); this.placeProgress();
   }
 
-  private placeSubagents(): void {
-    if (!this.subagents) return;
-    const { button, summary, panel } = this.subagents;
-    const focused = button.contains(document.activeElement) || panel.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
-    const append = (parent: HTMLElement, child: HTMLElement): void => {
-      if (parent.moveBefore && parent.isConnected && child.isConnected) parent.moveBefore(child, null);
-      else parent.append(child);
+  private placeProgress(): void {
+    const panels = [this.plan, this.subagents].filter(panel => panel !== undefined);
+    if (!panels.length) { this.progressSummary.remove(); return; }
+    const focused = panels.some(({ button, panel }) => button.contains(document.activeElement) || panel.contains(document.activeElement))
+      ? document.activeElement as HTMLElement : undefined;
+    const place = (parent: HTMLElement, child: HTMLElement, before: Element | null = null): void => {
+      if (parent.moveBefore && parent.isConnected && child.isConnected) parent.moveBefore(child, before);
+      else parent.insertBefore(child, before);
     };
-    const row = this.pending?.parentElement === this.root ? this.pending : summary;
-    if (button.parentElement !== row) append(row, button);
-    if (row === summary && summary.parentElement !== this.root) append(this.root, summary);
-    else if (row !== summary) summary.remove();
-    if (panel.parentElement !== this.root) append(this.root, panel);
-    // Keep details after the response status, including when a reply resumes.
-    if (row.nextElementSibling !== panel) row.after(panel);
+    this.progressSummary.className = `conversation-progress-summary${this.subagents ? ' subagents-summary' : ''}`;
+    const row = this.pending?.parentElement === this.root ? this.pending : this.progressSummary;
+    const offset = row === this.pending ? 2 : 0;
+    panels.forEach(({ button }, index) => {
+      const before = row.children[offset + index] ?? null;
+      if (before !== button) place(row, button, before);
+    });
+    if (row === this.progressSummary && row.parentElement !== this.root) place(this.root, row);
+    else if (row !== this.progressSummary) this.progressSummary.remove();
+    let previous: HTMLElement = row;
+    for (const { panel } of panels) {
+      if (previous.nextElementSibling !== panel) place(this.root, panel, previous.nextElementSibling);
+      previous = panel;
+    }
     if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
   }
 
