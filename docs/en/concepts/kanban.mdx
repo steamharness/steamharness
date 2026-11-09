@@ -114,6 +114,25 @@ await view.update({ presentation: "composer", mentions: updatedGroups });
 // Call view() when unmounting.
 ```
 
+### Show business cards in replies
+
+With the native transcript enabled, use `ui.messageCards` to place business records below the matching assistant reply. Set each card's `requestId` to the turn's `requestId` from an aggregate conversation snapshot. A durable receipt `id` returned by the submit Workflow can also identify that turn. Cards without a matching reply are not shown.
+
+```ts
+await view.update({
+  presentation: "conversation",
+  messageCards: [{
+    id: "delivery-1", requestId: "parent-request",
+    title: "Send to Researcher", text: "Please check this description.", icon: "bot",
+    status: { label: "Sent", tone: "success" },
+  }],
+});
+```
+
+Cards scroll with their messages. Status updates preserve message nodes, drafts, and native execution history. Cards display plain text without executing HTML, scripts, or navigation, and never enter model context. `view.update(ui)` replaces all UI options; include `mentions` when keeping a custom mention menu.
+
+Each view accepts up to 100 cards with unique IDs. IDs, request IDs, and titles allow 200 characters each; text allows 4000 and status labels 60. The optional `icon` accepts `bot`, `message`, or `send`; `iconColor` accepts a six-digit hexadecimal color. Status `tone` accepts `neutral`, `info`, `success`, `warning`, or `danger`.
+
 ### Track submissions and retries
 
 `onSubmission` reports `sending`, `accepted`, and `failed` for the same `requestId`. `sending` is provisional local feedback, not a successful delivery. `accepted.result` contains the authorized submit Workflow result, so projects can update their business transcript and subscribe to target sessions without waiting for a full reload. Reconcile by request ID with durable records. After a failure, the user can explicitly call `view.retry(requestId)` to reuse the native submission identity and parameters while preserving the current draft. Submissions are never replayed automatically. Full native transcripts retain their own optimistic messages.

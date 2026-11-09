@@ -1,5 +1,7 @@
 # Unreleased
 
+- Embedded Kanban Bot conversations can display business cards below their matching replies, preserving drafts, history, and message positions during status updates.
+
 - Fix duplicate bubbles and lingering sending previews after Send now. Retain request identities for confirmation and replay, retry the original task after an independent fork, start promoted persisted inputs while idle, and restore history in execution order.
 
 - Fix contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.

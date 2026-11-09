@@ -1,0 +1,12 @@
+.conversation-message-cards { display:grid; gap:8px; margin-top:12px; min-width:0; }
+.conversation-message-card { width:min(520px,100%); min-width:0; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--vscode-textCodeBlock-background,transparent); }
+.conversation-message-card > header { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.message-card-icon { display:inline-flex; flex:none; color:var(--muted); }
+.message-card-title { min-width:0; font-size:12px; font-weight:500; overflow-wrap:anywhere; }
+.message-card-status { margin-left:auto; color:var(--muted); font-size:11px; }
+.message-card-status[data-tone=info] { color:var(--vscode-notificationsInfoIcon-foreground,var(--muted)); }
+.message-card-status[data-tone=success] { color:var(--vscode-testing-iconPassed,var(--muted)); }
+.message-card-status[data-tone=warning] { color:var(--vscode-notificationsWarningIcon-foreground,var(--muted)); }
+.message-card-status[data-tone=danger] { color:var(--vscode-errorForeground,var(--muted)); }
+.message-card-text { margin-top:8px; max-height:12em; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.5; }
+@media(max-width:540px) { .conversation-message-card { padding:10px; } }

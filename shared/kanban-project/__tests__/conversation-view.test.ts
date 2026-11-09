@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { assertConversationUi, createKanbanBridgeScript, parseKanbanBridgeCall, type KanbanBrowserApi } from '../index';
 
 describe('embedded Conversation bridge', () => {
+  it('accepts message-bound data cards and rejects scripts, duplicate IDs and unbounded content', () => {
+    const card = { id: 'delivery', requestId: 'parent-turn', title: '发送给执行员', text: '你好', icon: 'bot', iconColor: '#b86a14', status: { label: '已发送', tone: 'success' } };
+    expect(() => assertConversationUi({ messageCards: [card] })).not.toThrow();
+    for (const cards of [[card, card], Array(101).fill(card), [{ ...card, requestId: '' }], [{ ...card, text: 'x'.repeat(4001) }],
+      [{ ...card, html: '<script>' }], [{ ...card, href: 'javascript:run()' }], [{ ...card, icon: '<svg>' }], [{ ...card, iconColor: 'url(secret)' }],
+      [{ ...card, status: { label: '已发送', tone: 'unknown' } }], [{ ...card, status: { label: '已发送', action: 'run' } }]])
+      expect(() => assertConversationUi({ messageCards: cards })).toThrow();
+  });
   it('accepts declarative project references and rejects reserved or unbounded UI data', () => {
     const ui = { presentation: 'composer', mentions: [{ kind: 'bot', label: 'Bot', items: [{ value: 'researcher', label: '研究员' }] }] };
     expect(() => assertConversationUi(ui)).not.toThrow();

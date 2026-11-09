@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document message cards in native Conversation views, including request-ID anchoring, bounded plain text, and preservation of drafts and history.
+
 - Document the transactional background notification API, business event identities, explicit continuation after failure, and configuration failure categories and retry budgets in Generator.
 
 - Generator documents automatic parent continuation when child work drains, early sleep completion and hidden internal input recovery.

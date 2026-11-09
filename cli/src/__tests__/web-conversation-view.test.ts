@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ConversationAccess } from '../web/conversation-ownership';
 import type { ConversationSession, Project } from '../web/workflow-types';
+import type { KanbanConversationUi } from '@steamharness/kanban-project';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
@@ -38,14 +39,33 @@ async function fixture(query = '', saved?: object) {
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
   const emit = (message: object) => window.dispatchEvent(new MessageEvent('message', { data: message }));
-  const receive = (sessions: ConversationSession[], activeId = 'running', conversationAccess: ConversationAccess = { readOnly: activeId === 'running' }) => {
-    emit({ type: 'state', project, sessions, activeId, running: activeId === 'running', conversationAccess });
+  const receive = (sessions: ConversationSession[], activeId = 'running', conversationAccess: ConversationAccess = { readOnly: activeId === 'running' }, conversationUi?: KanbanConversationUi) => {
+    emit({ type: 'state', project, sessions, activeId, running: activeId === 'running', conversationAccess, conversationUi });
     const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0);
   };
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate');
   const savedState = () => host.setState.mock.calls.at(-1)?.[0];
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
+
+it('anchors project cards to their assistant turn and preserves drafts and history on UI updates', async () => {
+  const f = await fixture(), entry: ConversationSession = { ...session('cards'), messages: [
+    { id: 'question', sessionRequestId: 'turn-1', role: 'user', content: 'First request' },
+    { id: 'answer-1', sessionRequestId: 'turn-1', role: 'assistant', content: 'First answer', status: 'success' },
+    { id: 'answer-2', sessionRequestId: 'turn-2', role: 'assistant', content: 'Second answer', status: 'success' },
+  ] };
+  const card = { id: 'delivery', requestId: 'turn-1', title: '发送给执行员', text: '你好', status: { label: '等待发送' } };
+  f.receive([entry], entry.id, { readOnly: false }, { messageCards: [card, { ...card, id: 'unknown', requestId: 'other-turn' }] });
+  const root = document.querySelector('[data-message-card-id="delivery"]')!;
+  expect(root.closest('.message')?.getAttribute('data-message-id')).toBe('answer-1');
+  expect(document.querySelector('.message.user .conversation-message-card')).toBeNull();
+  expect(document.querySelector('[data-message-card-id="unknown"]')).toBeNull();
+  f.input.value = '未发送草稿'; f.input.dispatchEvent(new Event('input', { bubbles: true }));
+  f.receive([entry], entry.id, { readOnly: false }, { messageCards: [{ ...card, status: { label: '已发送', tone: 'success' } }] });
+  expect(document.querySelector('[data-message-card-id="delivery"]')).toBe(root);
+  expect(root.textContent).toContain('已发送'); expect(f.input.value).toBe('未发送草稿');
+  expect(entry.messages.map(message => message.content)).toEqual(['First request', 'First answer', 'Second answer']);
+});
 
 it.each([false, true])('does not flash an ownership warning when leaving a populated conversation (readOnly=%s)', async readOnly => {
   const f = await fixture();

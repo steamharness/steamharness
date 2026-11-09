@@ -5,11 +5,23 @@ export interface KanbanConversationMentionGroup {
   items: { value: string; label: string; description?: string }[];
 }
 
+/** Plain project data attached to one assistant turn, outside model history. */
+export interface KanbanConversationMessageCard {
+  id: string;
+  requestId: string;
+  title: string;
+  text: string;
+  icon?: "bot" | "message" | "send";
+  iconColor?: string;
+  status?: { label: string; tone?: "neutral" | "info" | "success" | "warning" | "danger" };
+}
+
 export interface KanbanConversationUi {
   mentions?: KanbanConversationMentionGroup[];
   placeholder?: string;
   /** Use project-owned transcript slots with the native composer. */
   presentation?: "conversation" | "composer";
+  messageCards?: KanbanConversationMessageCard[];
 }
 
 export type KanbanConversationSubmission = {
@@ -37,9 +49,23 @@ export interface KanbanConversationMount {
 export function assertConversationUi(value: unknown): asserts value is KanbanConversationUi {
   const record = (item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item);
   const string = (item: unknown, max: number) => typeof item === "string" && item.trim().length > 0 && item.length <= max;
-  if (!record(value) || Object.keys(value).some(key => !["mentions", "placeholder", "presentation"].includes(key)) ||
+  if (!record(value) || Object.keys(value).some(key => !["mentions", "placeholder", "presentation", "messageCards"].includes(key)) ||
     value.placeholder !== undefined && !string(value.placeholder, 500) ||
     value.presentation !== undefined && value.presentation !== "conversation" && value.presentation !== "composer") throw new Error("Invalid conversation UI.");
+  if (value.messageCards !== undefined) {
+    if (!Array.isArray(value.messageCards) || value.messageCards.length > 100) throw new Error("Invalid message cards.");
+    const cardIds = new Set();
+    for (const card of value.messageCards) {
+      if (!record(card) || Object.keys(card).some(key => !["id", "requestId", "title", "text", "icon", "iconColor", "status"].includes(key)) ||
+        !string(card.id, 200) || cardIds.has(card.id) || !string(card.requestId, 200) || !string(card.title, 200) || !string(card.text, 4000) ||
+        card.icon !== undefined && !["bot", "message", "send"].includes(String(card.icon)) ||
+        card.iconColor !== undefined && (typeof card.iconColor !== "string" || !/^#[\da-f]{6}$/i.test(card.iconColor)) ||
+        card.status !== undefined && (!record(card.status) || Object.keys(card.status).some(key => !["label", "tone"].includes(key)) ||
+          !string(card.status.label, 60) || card.status.tone !== undefined && !["neutral", "info", "success", "warning", "danger"].includes(String(card.status.tone))))
+        throw new Error("Invalid message card.");
+      cardIds.add(card.id);
+    }
+  }
   if (value.mentions === undefined) return;
   if (!Array.isArray(value.mentions) || value.mentions.length > 16) throw new Error("Invalid mention groups.");
   const kinds = new Set(["skill", "file", "entry"]);

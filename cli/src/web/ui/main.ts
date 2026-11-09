@@ -8,7 +8,9 @@ import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationMentions } from './conversation-mentions';
-import type { KanbanConversationUi } from '@steamharness/kanban-project';
+import type { KanbanConversationUi, KanbanConversationMessageCard } from '@steamharness/kanban-project';
+import { ConversationMessageCards } from './conversation-message-cards';
+import './conversation-message-cards.css';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
@@ -105,6 +107,7 @@ function initialize(): void {
     extrasSignature?: string;
     connection?: HTMLDivElement;
     configureModel?: HTMLButtonElement;
+    cards?: ConversationMessageCards;
   }
   interface SavedNavigation { projectUri: string; activeId: string; updates: ConversationDraftUpdate[] }
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
@@ -1085,6 +1088,8 @@ function initialize(): void {
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(conversationPrompt(view.message.content, view.message.references), event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
+      view.cards = new ConversationMessageCards();
+      view.content.after(view.cards.root);
       view.configureModel = iconButton('settings-gear', t('Configure model'), () => currentParameters().fields.some(field => field.userSetting?.key === 'agent.model') ? vscode.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));
       view.configureModel.className = 'configure-model-message'; view.configureModel.hidden = true;
@@ -1156,8 +1161,9 @@ function initialize(): void {
     ] : []), ...(conversationUsage ? [t('Includes this conversation and its subagents, including failed and stopped attempts.')] : [])].join('\n');
   }
 
-  function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string): void {
+  function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string, cards: readonly KanbanConversationMessageCard[]): void {
     view.message = message;
+    view.cards?.update(cards);
     if (message.role === 'user') { updateUserAvatar(view.avatar, state?.account); }
     else { updateProjectAvatar(view.avatar, state!.project); }
     view.root.classList.toggle('streaming', message.status === 'running' || message.status === 'sending');
@@ -1336,6 +1342,11 @@ function initialize(): void {
       const active = new Set<string>();
       const files = session.messages.flatMap(entry => [...(entry.files ?? []), ...(entry.attachments ?? [])]);
       const filesSignature = attachmentSignature(files);
+      const cardsByRequest = new Map<string, KanbanConversationMessageCard[]>();
+      for (const card of next.conversationUi?.messageCards ?? []) {
+        if (!cardsByRequest.has(card.requestId)) cardsByRequest.set(card.requestId, []);
+        cardsByRequest.get(card.requestId)!.push(card);
+      }
       let latestOutput: ConversationOutput | undefined;
       let epoch = 0;
       session.messages.forEach((message, index) => {
@@ -1345,7 +1356,8 @@ function initialize(): void {
         if (!view) { view = createMessage(message); messages.set(id, view); transcriptContent.append(view.root); }
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
-        updateMessage(view, message, files, filesSignature);
+        const cardRequests = new Set([message.sessionRequestId, message.input?.requestId, message.agentAnchorRequestId, message.id, id].filter((value): value is string => !!value));
+        updateMessage(view, message, files, filesSignature, [...cardRequests].flatMap(requestId => cardsByRequest.get(requestId) ?? []));
         if (view.output) latestOutput = view.output;
         if (message.role === 'user') indexedMessages.push({ root: view.root, message });
         let divider = view.root.querySelector<HTMLElement>('.context-epoch');
