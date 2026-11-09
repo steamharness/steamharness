@@ -150,7 +150,7 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
     id: 'aggregate', defaultEntry: 'agent', name: entryId, entries: entries.map(entryId => ({ entryId })),
     projectType: ['bot', 'workflow', 'kanban'][index], ...(scope ? { assistant: scope } : {}) }));
   const workspaces = new Map(), sessions = new Set(), leases = [], panels = [], frames = [], deliveries = [];
-  const launches = [], errors = [], logs = [], pathBases = [], externalProjects = new Map();
+  const launches = [], errors = [], logs = [], pathBases = [], browserRequests = [], externalProjects = new Map();
   const provider = { projects: assistant ? [] : projects };
   const disposable = { dispose() {} }, settling = new Map();
   const makePanel = (viewType = 'studio.projectTool', _title, showOptions) => {
@@ -186,7 +186,11 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
     bindProjectPathPicker: webview => ({ ...adapter(), receive: message => {
       if (message.type !== 'workflow-path-picker') return false;
       deliveries.push({ panel: panels.find(panel => panel.webview === webview), request: message.requestId }); return true;
-    } }), bindProjectPathOpen: (_webview, baseUri) => { pathBases.push(baseUri.fsPath); return adapter(); }, bindProjectResourceCards: adapter, bindProjectDownload: adapter,
+    } }), bindProjectPathOpen: (_webview, baseUri) => { pathBases.push(baseUri.fsPath); return adapter(); },
+    bindProjectBrowserOpen: webview => ({ ...adapter(), receive: message => {
+      if (message.type !== 'workflow-browser-open') return false;
+      browserRequests.push({ panel: panels.find(panel => panel.webview === webview), url: message.url }); return true;
+    } }), bindProjectResourceCards: adapter, bindProjectDownload: adapter,
     projectAvatarDataUrl: () => 'data:image/svg+xml,icon', chromeFor: () => ({ active: false }),
     projectFrameHtml: (...args) => { frames.push(args); return args[0]; }, output: { appendLine: line => logs.push(line) },
     createWorkspace: (...args) => createWorkspace(...args),
@@ -195,8 +199,27 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
     updateEntry() {}, scheduleEntry() {}, windowChrome: { revision: 0 },
   };
   createWorkspace = load('createWorkspace', bindings);
-  return { projects, workspaces, leases, panels, frames, deliveries, launches, errors, logs, pathBases, makePanel, bindings, createWorkspace };
+  return { projects, workspaces, leases, panels, frames, deliveries, launches, errors, logs, pathBases, browserRequests, makePanel, bindings, createWorkspace };
 }
+
+test('website links use a browser adapter for project entries and Assistant workspaces', async () => {
+  for (const assistant of [false, true]) {
+    const f = workspaceFixture({ assistant });
+    for (const project of f.projects) await f.createWorkspace(project);
+    for (const panel of f.panels) panel.receive({ type: 'workflow-browser-open', version: 1, requestId: 'website', url: 'https://example.com/' });
+    assert.equal(f.browserRequests.length, f.projects.length);
+    for (const [index, opened] of f.browserRequests.entries()) {
+      assert.equal(opened.panel, f.panels[index]); assert.equal(opened.url, 'https://example.com/');
+    }
+  }
+});
+
+test('website resource cards use the same browser preference opener as conversation links', async () => {
+  const opened = [];
+  const open = load('openCard', { openBrowserLink: async url => { opened.push(url); } });
+  await open({ action: 'open', card: { kind: 'browser', target: { url: 'https://example.com/' } } }, {}, {}, new URL('http://localhost:3000'));
+  assert.deepEqual(opened, ['https://example.com/']);
+});
 
 test('file links use the runtime project root or Assistant working directory for every entry', async () => {
   for (const assistant of [false, true]) {

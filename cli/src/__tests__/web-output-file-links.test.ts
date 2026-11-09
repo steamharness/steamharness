@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { bindOutputFileLinks, fileLinkTarget } from '../web/ui/output-file-links';
+import { bindOutputFileLinks, fileLinkTarget, webLinkTarget } from '../web/ui/output-file-links';
 import { markdownHtml } from '../web/ui/ui';
 
 afterEach(() => { document.body.replaceChildren(); window.getSelection()?.removeAllRanges(); });
@@ -63,4 +63,63 @@ it('keeps Markdown rendering reusable by consumers without an editor callback', 
   const root = document.createElement('div'); root.innerHTML = markdownHtml('`configuration.json` [file](./configuration.json)');
   bindOutputFileLinks(root, { file() {} });
   expect(root.querySelectorAll('a')).toHaveLength(1); expect(root.querySelector('a')?.target).toBe('_blank');
+});
+
+it.each([
+  ['raw.communitydragon.org', 'https://raw.communitydragon.org/'],
+  ['wiki.leagueoflegends.com', 'https://wiki.leagueoflegends.com/'],
+  ['op.gg/lol', 'https://op.gg/lol'],
+  ['example.com:8443/data.json#L2', 'https://example.com:8443/data.json#L2'],
+  ['www.example.md/guide', 'https://www.example.md/guide'],
+  ['//example.com/file.ts', 'https://example.com/file.ts'],
+  ['https://example.com/a%20b.json?q=1#L3', 'https://example.com/a%20b.json?q=1#L3'],
+  ['https://example.com/a b.json', 'https://example.com/a%20b.json'],
+  ['http://localhost:3000/path', 'http://localhost:3000/path'],
+  ['localhost:3000/path', 'http://localhost:3000/path'],
+  ['127.0.0.1:3000/path', 'http://127.0.0.1:3000/path'],
+  ['[::1]:3000/path', 'http://[::1]:3000/path'],
+])('routes website reference %s to the browser instead of the filesystem', (value, expected) => {
+  expect(webLinkTarget(value)).toBe(expected);
+  expect(fileLinkTarget(value)).toBeUndefined();
+});
+
+it.each([
+  'configuration.json', 'README.md', 'settings.ini', 'project.config', 'main.test.ts', 'src/main.ts:12:3',
+  './example.com', '/tmp/raw.communitydragon.org', 'file:///tmp/example.com', 'C:\\Work\\main.ts',
+  '\\\\server\\share\\file.txt', '#heading', 'javascript:alert(1)', 'data:text/html,hello', 'command:workbench.action.closeWindow',
+  'javascript%3Aalert(1)', 'https://example.com/a\nfile', 'https://', 'https://example.com:invalid',
+])('does not turn %s into a website', value => { expect(webLinkTarget(value)).toBeUndefined(); });
+
+it('opens inline and Markdown websites through the browser callback while retaining files, copying and code blocks', () => {
+  const root = document.createElement('div'), file = vi.fn(), path = vi.fn(), browser = vi.fn(); document.body.append(root);
+  root.innerHTML = markdownHtml('`raw.communitydragon.org` [wiki](wiki.leagueoflegends.com) `op.gg/lol` `README.md` `./example.com` https://example.com/path\n\n```text\nraw.communitydragon.org\n```');
+  const text = root.textContent;
+  bindOutputFileLinks(root, { file, path, browser });
+  expect(root.textContent).toBe(text);
+  expect(root.querySelector('pre a')).toBeNull();
+  const links = Array.from(root.querySelectorAll('a'));
+  links[0].click(); links[1].click(); links[2].click();
+  expect(browser.mock.calls).toEqual([['https://raw.communitydragon.org/'], ['https://wiki.leagueoflegends.com/'], ['https://op.gg/lol']]);
+  expect(path).not.toHaveBeenCalled();
+  links[3].click(); links[4].click();
+  expect(path.mock.calls).toEqual([[{ path: 'README.md' }], [{ path: './example.com' }]]);
+  links[5].click(); expect(browser).toHaveBeenLastCalledWith('https://example.com/path');
+  const selection = window.getSelection()!, range = document.createRange(); range.selectNodeContents(links[0]); selection.addRange(range);
+  browser.mockClear(); links[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+  expect(browser).not.toHaveBeenCalled();
+  selection.removeAllRanges();
+  links[0].dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+  expect(browser).toHaveBeenCalledWith('https://raw.communitydragon.org/');
+});
+
+it('normalizes website links without an editor callback and keeps managed attachments ahead of website detection', () => {
+  const root = document.createElement('div'), file = vi.fn(), browser = vi.fn(); document.body.append(root);
+  root.innerHTML = markdownHtml('`raw.communitydragon.org` [attachment](https://example.com/attachment.pdf)', [{
+    id: 'wf_' + 'b'.repeat(32), path: '/work/attachment.pdf', url: 'https://example.com/attachment.pdf', name: 'attachment.pdf',
+    mimeType: 'application/pdf', size: 1, kind: 'file', storage: 'local', createdAt: '', previewUrl: '/api/file/attachment',
+  }]);
+  bindOutputFileLinks(root, { file, browser });
+  const links = root.querySelectorAll('a');
+  expect(links[0].href).toBe('https://raw.communitydragon.org/'); links[0].click();
+  links[1].click(); expect(file).toHaveBeenCalledWith('wf_' + 'b'.repeat(32)); expect(browser).toHaveBeenCalledOnce();
 });

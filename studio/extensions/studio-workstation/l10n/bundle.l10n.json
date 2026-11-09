@@ -924,5 +924,12 @@
   "Distribution Mode": "Distribution Mode",
   "Entries": "Entries",
   "A release installation can only be upgraded to another release.": "A release installation can only be upgraded to another release.",
-  "Bot": "Bot"
+  "Bot": "Bot",
+  "Open web links in": "Open web links in",
+  "Choose where to open website links from conversations.": "Choose where to open website links from conversations.",
+  "Built-in browser": "Built-in browser",
+  "System default browser": "System default browser",
+  "Only HTTP and HTTPS links can be opened in the browser.": "Only HTTP and HTTPS links can be opened in the browser.",
+  "Unable to open the website in the system browser.": "Unable to open the website in the system browser.",
+  "Unable to open the website: {0}": "Unable to open the website: {0}"
 }

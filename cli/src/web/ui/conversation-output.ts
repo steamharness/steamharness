@@ -15,6 +15,7 @@ interface OutputOptions {
   plan(text: string): void;
   file(id: string): void;
   path?(target: FileLinkTarget): void;
+  browser?(url: string): void;
   subagent?(conversationId: number, ownerId: string): void;
   image(src: string, title: string): void;
   resource(card: ResourceCard, action?: 'open' | 'inline' | 'window' | 'project', requestId?: string): void;

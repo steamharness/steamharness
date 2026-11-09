@@ -924,5 +924,12 @@
   "Distribution Mode": "分发模式",
   "Entries": "入口",
   "A release installation can only be upgraded to another release.": "发行版只能升级为另一个发行版。",
-  "Bot": "Bot"
+  "Bot": "Bot",
+  "Open web links in": "网页链接打开方式",
+  "Choose where to open website links from conversations.": "选择对话中网页链接的打开方式。",
+  "Built-in browser": "内置浏览器",
+  "System default browser": "系统默认浏览器",
+  "Only HTTP and HTTPS links can be opened in the browser.": "浏览器仅支持打开 HTTP 和 HTTPS 链接。",
+  "Unable to open the website in the system browser.": "无法在系统浏览器中打开网页。",
+  "Unable to open the website: {0}": "无法打开网页：{0}"
 }

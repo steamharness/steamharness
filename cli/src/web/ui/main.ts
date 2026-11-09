@@ -264,6 +264,7 @@ function initialize(): void {
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
     path: target => post({ type: 'open-path', ...target }),
+    browser: url => post({ type: 'open-url', url }),
     account: () => post({ type: 'open-account' }),
     configurations: configurationPanel,
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
@@ -1099,6 +1100,7 @@ function initialize(): void {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
+        browser: url => post({ type: 'open-url', url }),
         subagent: (conversationId, ownerId) => post({ type: 'agent-open', conversationId, agentOwner: ownerId, requestId: beginAgentNavigation('open') }),
         image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', messageId: view.message.id, cardId: card.id, action, requestId }),
       });

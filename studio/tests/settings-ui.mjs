@@ -48,6 +48,17 @@ try {
         await send('settings-navigate', { state: { section: 'general' } });
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
         assert.equal(await page.locator('#settings-navigation button').count(), 6, 'Public settings includes models and permissions without injected categories');
+        const browserKey = 'studio.browser.linkTarget', browserChoice = setting(browserKey);
+        assert.match(await browserChoice.innerText(), language === 'en' ? /Built-in browser/ : /内置浏览器/);
+        await selectSettingsOption(page, browserChoice, 'external');
+        assert.deepEqual(await last('settings-update'), { type: 'settings-update', key: browserKey, value: 'external', reset: false, target: 'user' });
+        state = { ...state, items: state.items.map(item => item.key === browserKey ? { ...item, value: 'external', configured: true } : item) };
+        await send('settings-saved', { key: browserKey, target: 'user', state });
+        assert.match(await browserChoice.innerText(), language === 'en' ? /System default browser/ : /系统默认浏览器/);
+        await selectSettingsOption(page, browserChoice, 'internal');
+        assert.equal((await last('settings-update')).value, 'internal');
+        state = { ...state, items: state.items.map(item => item.key === browserKey ? { ...item, value: 'internal', configured: false } : item) };
+        await send('settings-saved', { key: browserKey, target: 'user', state });
         await fits();
         assert.equal(await page.locator('select').count(), 0, 'Settings must use page menus, including language and scope');
         await selectSettingsOption(page, setting('workbench.colorTheme'), 'Light');

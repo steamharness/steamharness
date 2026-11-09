@@ -36,6 +36,7 @@ const configurationPanel = mountProjectConfigurations(host, {
   isOpen: () => dialogs.activeSection === 'configurations',
 });
 const dialogs = new ConversationTools(aggregateToolbar.databases, {
+  browser: url => host.postMessage({ type: 'open-url', url }),
   account: () => { void host.postMessage({ type: 'open-account' }); },
   configurations: configurationPanel,
   usage: { available: () => usageAvailable, load: requestId => { host.postMessage({ type: 'usage', requestId }); } },

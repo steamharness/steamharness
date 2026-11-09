@@ -9,6 +9,7 @@ import { editText, pasteHostClipboard, selectedText, textEditShortcut, type Text
 import { ProjectWindowChrome } from './window-chrome';
 import { chooseConversationFiles } from './conversation-file-picker';
 import type { FileImport } from './conversation-drop';
+import { webLinkTarget } from './output-file-links';
 import { ProjectServerCreateDialog } from './project-server-create';
 import { acquireHostKeyboard } from './host-keyboard';
 
@@ -52,10 +53,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     for (const pending of serverProjectRequests.values()) { clearTimeout(pending.timer); pending.reject(new Error(t('Connection interrupted.'))); }
     serverProjectRequests.clear();
   });
-  let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false, downloadHost = false;
+  let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
+  const browserOpens = new Map<string, Message>();
   const fileIconRequests = new Set<string>();
   const selectedFiles = (message: Message, selection?: FileImport, error?: string) => {
     if (pathPickers.get(message.requestId) !== message) return;
@@ -63,7 +65,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     emit({ type: error ? 'error' : 'files-selected', requestType: 'select-paths', requestId: message.requestId,
       projectUri: message.projectUri, sessionId: message.sessionId, target: message.target, selection, message: error });
   };
-  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); fileIconRequests.clear(); });
+  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); browserOpens.clear(); fileIconRequests.clear(); });
   const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
@@ -189,6 +191,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
+    if (event.data.browserOpenVersion !== undefined) browserOpenHost = event.data.browserOpenVersion === 1;
     if (event.data.downloadVersion !== undefined) downloadHost = event.data.downloadVersion === 1;
     if (event.data.fileIconsVersion !== undefined || event.data.fileIconsChanged?.version === 1) {
       if (event.data.fileIconsVersion !== undefined) fileIconsHost = event.data.fileIconsVersion === 1;
@@ -204,6 +207,14 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (pending) {
         pathOpens.delete(pathOpened.requestId);
         if (typeof pathOpened.error === 'string') emit({ type: 'error', requestType: 'open-path', projectUri: pending.projectUri, sessionId: pending.sessionId, message: pathOpened.error });
+      }
+    }
+    const browserOpened = event.data.browserOpened;
+    if (browserOpened?.version === 1) {
+      const pending = browserOpens.get(browserOpened.requestId);
+      if (pending) {
+        browserOpens.delete(browserOpened.requestId);
+        if (typeof browserOpened.error === 'string') emit({ type: 'error', requestType: 'open-url', projectUri: pending.projectUri, sessionId: pending.sessionId, message: browserOpened.error });
       }
     }
     const pathSelection = event.data.pathSelection;
@@ -398,6 +409,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'session-action' && message.action === 'delete'
         && await requestAction({ title: t("Delete this conversation?"), confirm: t("Delete"), danger: true }) === undefined) { return; }
       if (message.type === 'open-file') { window.open(connection.fileUrl(`/api/file/${encodeURIComponent(message.id)}`), '_blank', 'noopener'); return; }
+      if (message.type === 'open-url') {
+        const url = typeof message.url === 'string' ? webLinkTarget(message.url) : undefined;
+        if (!url) return;
+        if (!browserOpenHost) { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+        const requestId = crypto.randomUUID(); browserOpens.set(requestId, message);
+        window.parent.postMessage({ type: 'workflow-browser-open', version: 1, requestId, url }, '*'); return;
+      }
       if (message.type === 'open-user-setting') {
         if (userSettingsHost) window.parent.postMessage({ type: 'workflow-user-settings', version: 1, key: message.key }, '*');
         else emit({ type: 'error', message: t('Open this project in Studio to change user settings.') });

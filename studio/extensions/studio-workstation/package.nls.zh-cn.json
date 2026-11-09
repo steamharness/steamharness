@@ -97,5 +97,8 @@
   "command.openDatabases": "打开数据库",
   "command.refreshDatabases": "刷新数据库",
   "config.studio.project.nodeSource": "项目使用 Studio 提供的运行时或本地 Node.js；切换后重启已有项目服务和终端。",
-  "command.openProjectRelease": "运行（发行模式）"
+  "command.openProjectRelease": "运行（发行模式）",
+  "config.browser.linkTarget": "选择对话中网页链接的打开方式，默认使用内置浏览器。",
+  "config.browser.internal": "内置浏览器",
+  "config.browser.external": "系统默认浏览器"
 }

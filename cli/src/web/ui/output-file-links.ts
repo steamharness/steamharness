@@ -1,9 +1,37 @@
 export interface FileLinkTarget { path: string; line?: number; column?: number }
 
+// Bare filenames remain editor references. Ambiguous website names can use an
+// explicit scheme; www-prefixed names are always treated as website addresses.
+const fileExtensions = new Set(('ts tsx js jsx mjs cjs json jsonc md mdx txt rst adoc yaml yml toml ini env config conf properties lock log py rs go sh bash zsh ps1 bat cmd '
+  + 'c cc cpp h hpp cs java kt swift rb php vue svelte html htm css scss sass less xml sql csv tsv '
+  + 'svg png jpg jpeg gif webp pdf doc docx xls xlsx ppt pptx zip tar gz bz2 7z mp3 mp4 mov mkv wav sqlite db wasm ipynb rmd exe dll dmg pkg apk ipa msi jar class obj lib bin dat har').split(' '));
+
+/** Recognize website references before filename heuristics, without using the page origin. */
+export function webLinkTarget(href: string): string | undefined {
+  const value = href.trim();
+  if (!value || value.length > 4096 || /[\0-\x1f\x7f]/.test(value)) return;
+  const explicit = /^https?:\/\//i.test(value), relative = value.startsWith('//');
+  let local = false;
+  if (!explicit && !relative) {
+    const authority = value.split(/[/?#]/, 1)[0];
+    local = /^(?:localhost:\d+|(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?|\[[\da-f:]+\](?::\d+)?)$/i.test(authority);
+    if (!local) {
+      if (!/^(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?\.)+[\p{L}][\p{L}\p{N}-]{1,62}(?::\d+)?$/u.test(authority)) return;
+      const extension = authority.replace(/:\d+$/, '').split('.').at(-1)!.toLowerCase();
+      if (!/^www\./i.test(authority) && fileExtensions.has(extension)) return;
+    }
+  }
+  try {
+    const url = new URL(explicit ? value : relative ? `https:${value}` : `${local ? 'http' : 'https'}://${value}`);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+  } catch { /* Invalid website addresses are not browser targets. */ }
+  return;
+}
+
 /** Interpret model-provided links without resolving them against the Web page URL. */
 export function fileLinkTarget(href: string): FileLinkTarget | undefined {
   let path = href.trim();
-  if (!path || path.length > 4096 || /[\0-\x1f\x7f]/.test(path) || /^[#?]/.test(path) || path.startsWith('//')) return;
+  if (!path || path.length > 4096 || /[\0-\x1f\x7f]/.test(path) || /^[#?]/.test(path) || path.startsWith('//') || webLinkTarget(path)) return;
   const drive = /^[a-z]:[\\/]/i.test(path);
   const scheme = !drive && /^[a-z][a-z\d+.-]*:/i.test(path) && !/^file:\/\//i.test(path);
   const position = path.match(/#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?$/i) ?? path.match(/:(\d+)(?::(\d+))?$/);
@@ -45,15 +73,17 @@ function looksLikePath(text: string): boolean {
 export function bindOutputFileLinks(root: HTMLElement, options: {
   file(id: string): void;
   path?: (target: FileLinkTarget) => void;
+  browser?: (url: string) => void;
 }): void {
+  for (const code of Array.from(root.querySelectorAll('code'))) {
+    if (code.closest('pre, a')) continue;
+    const text = code.textContent ?? '', url = webLinkTarget(text);
+    if (!url && (!options.path || !looksLikePath(text))) continue;
+    const link = document.createElement('a'); link.href = url ?? '#';
+    if (!url) link.dataset.workflowPath = text;
+    code.replaceWith(link); link.append(code);
+  }
   if (options.path) {
-    for (const code of Array.from(root.querySelectorAll('code'))) {
-      if (code.closest('pre, a')) continue;
-      const text = code.textContent ?? '';
-      if (!looksLikePath(text)) continue;
-      const link = document.createElement('a'); link.href = '#'; link.dataset.workflowPath = text;
-      code.replaceWith(link); link.append(code);
-    }
     // Plain absolute paths are common in final answers. Leave prose and code blocks intact.
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const texts: Text[] = [];
@@ -77,16 +107,24 @@ export function bindOutputFileLinks(root: HTMLElement, options: {
   }
   for (const link of Array.from(root.querySelectorAll('a'))) {
     const file = link.dataset.workflowFile;
-    const target = file ? undefined : fileLinkTarget(link.dataset.workflowPath ?? link.getAttribute('href') ?? '');
-    if (file || target && options.path) {
+    const value = link.dataset.workflowPath ?? link.getAttribute('href') ?? '';
+    const url = file ? undefined : webLinkTarget(value);
+    const target = file || url ? undefined : fileLinkTarget(value);
+    if (url) { link.href = url; delete link.dataset.workflowPath; }
+    if (url || !file && !(target && options.path)) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+    const open = file ? () => options.file(file) : url && options.browser ? () => options.browser!(url)
+      : target && options.path ? () => options.path!(target) : undefined;
+    if (open) {
       if (!link.hasAttribute('href')) link.href = '#';
-      link.addEventListener('click', event => {
+      const activate = (event: MouseEvent) => {
         event.preventDefault();
         const selection = window.getSelection();
         if (event.detail > 0 && selection && !selection.isCollapsed
           && (link.contains(selection.anchorNode) || link.contains(selection.focusNode) || selection.containsNode(link, true))) return;
-        if (file) options.file(file); else options.path!(target!);
-      });
-    } else { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+        open();
+      };
+      link.addEventListener('click', activate);
+      if (url) link.addEventListener('auxclick', event => { if (event.button === 1) activate(event); });
+    }
   }
 }

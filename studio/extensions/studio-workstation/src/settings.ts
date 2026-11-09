@@ -21,6 +21,10 @@ export function settingsCatalog(): SettingItem[] {
     { key: 'workbench.colorTheme', section: 'general', group: t('Appearance'), label: t('Theme'), description: t('Choose an installed theme or follow your system appearance.'), type: 'select' },
     { key: 'studio.startPage.enabled', section: 'general', group: t('Workspace'), label: t('Show start page'), description: t('Show the Studio start page when no editor is open.'), type: 'boolean' },
     { key: 'studio.recentProjects.limit', section: 'general', group: t('Workspace'), label: t('Recent project limit'), description: t('Maximum number of projects in the recent projects list.'), type: 'number', integer: true, minimum: 1, maximum: 50 },
+    { key: 'studio.browser.linkTarget', section: 'general', group: t('Browser'), label: t('Open web links in'),
+      description: t('Choose where to open website links from conversations.'), type: 'select', options: [
+        { value: 'internal', label: t('Built-in browser') }, { value: 'external', label: t('System default browser') },
+      ] },
     { key: 'studio.terminal.name', section: 'general', group: t('Runtime'), label: t('Terminal name'), description: t('Name used when opening a new Studio terminal.'), type: 'string' },
     { key: 'studio.project.nodeSource', section: 'general', group: t('Runtime'), label: t('Node.js runtime'),
       description: t('Choose the runtime for projects, dependencies, terminals and default Node.js debugging. Restart existing sessions after changing it.'), type: 'select', options: [

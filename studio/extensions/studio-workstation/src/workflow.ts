@@ -17,6 +17,7 @@ import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectPathPicker } from './workflow-path-picker';
 import { bindProjectPathOpen } from './workflow-path-open';
+import { bindProjectBrowserOpen, openBrowserLink } from './workflow-browser-open';
 import { bindProjectDownload } from './workflow-download';
 import { openProjectUserSettings } from './workflow-user-settings';
 import { ProjectFileIcons } from './workflow-file-icons';
@@ -238,6 +239,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const clipboardBinding = bindProjectClipboard(panel.webview);
       const pickerBinding = bindProjectPathPicker(panel.webview, vscode.Uri.file(project.folderPath));
       const pathOpenBinding = bindProjectPathOpen(panel.webview, vscode.Uri.file(project.assistant?.workdir ?? project.folderPath));
+      const browserOpenBinding = bindProjectBrowserOpen(panel.webview);
       const downloadBinding = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
       const fileIconsBinding = fileIcons.bind(panel.webview);
       const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
@@ -273,7 +275,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         });
         return true;
       };
-      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, browserOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
         if (message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
           const open = async () => {
@@ -321,7 +323,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           return;
         }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
-        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
+        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !browserOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
       panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject);
       if ('reveal' in panel) {
@@ -412,7 +414,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         const root = vscode.Uri.file(project.assistant?.workdir ?? project.folderPath);
         await vscode.window.showTextDocument(vscode.Uri.joinPath(root, card.target.filePath)); return;
       }
-      if (card.kind === 'browser') { await vscode.env.openExternal(vscode.Uri.parse(card.target.url)); return; }
+      if (card.kind === 'browser') { await openBrowserLink(card.target.url); return; }
       if ((card.kind === 'project' && card.preview !== true || result.action === 'project') && project?.folderPath) {
         const workspaceProject = findProject(project.uri, project.entryId);
         if (workspaceProject) { await openProject(workspaceProject); }

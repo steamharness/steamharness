@@ -929,6 +929,14 @@
     "configuration": {
       "title": "Studio",
       "properties": {
+        "studio.browser.linkTarget": {
+          "type": "string",
+          "default": "internal",
+          "scope": "application",
+          "enum": ["internal", "external"],
+          "enumItemLabels": ["%config.browser.internal%", "%config.browser.external%"],
+          "description": "%config.browser.linkTarget%"
+        },
         "studio.agent.permissionPolicy": {
           "type": "string",
           "default": "auto",

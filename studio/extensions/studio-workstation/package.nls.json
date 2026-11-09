@@ -97,5 +97,8 @@
   "command.openDatabases": "Open Databases",
   "command.refreshDatabases": "Refresh Databases",
   "config.studio.project.nodeSource": "Use the runtime provided by Studio or a local Node.js. Restart existing project services and terminals after switching.",
-  "command.openProjectRelease": "Run (Release Mode)"
+  "command.openProjectRelease": "Run (Release Mode)",
+  "config.browser.linkTarget": "Choose where to open website links from conversations. Defaults to the built-in browser.",
+  "config.browser.internal": "Built-in browser",
+  "config.browser.external": "System default browser"
 }

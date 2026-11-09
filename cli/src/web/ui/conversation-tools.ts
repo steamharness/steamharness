@@ -16,6 +16,7 @@ import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
+  browser?(url: string): void;
   account?(): void;
   configurations?: ProjectConfigurationsPanel;
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
@@ -79,7 +80,7 @@ export class ConversationTools {
 
   plan(content: string): void {
     this.show(t("Plan")); const article = document.createElement('article'); article.className = 'message-content'; article.innerHTML = markdownHtml(content);
-    bindOutputFileLinks(article, { file() {}, path: this.settings.path }); this.body.append(article);
+    bindOutputFileLinks(article, { file() {}, path: this.settings.path, browser: this.settings.browser }); this.body.append(article);
   }
 
   image(src: string, title: string): void {

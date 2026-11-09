@@ -16,6 +16,17 @@ The Studio assistant works on code and project tasks in a dedicated working dire
 
 History is stored in the local host's user-data directory. Built-in identity grants no access to other Server projects. If loading fails, select **Retry**; progress appears while retrying, and another failure includes its reason.
 
+## Open websites and files
+
+Website links in conversations open in Studio's built-in browser by default, including common scheme-less addresses such as `example.com`.
+
+1. Open **Settings → General → Browser**.
+2. Under **Open web links in**, choose **Built-in browser** or **System default browser**.
+
+The preference is stored in the user setting `studio.browser.linkTarget` and applies to the next click. Opening a website resource card follows the same preference.
+
+Local file and folder references continue to open as file paths. To make the distinction explicit, use a full `https://` address for a website or `./filename` for a local file.
+
 ## Use project skills
 
 Open **Project information → Skills** to inspect names, counts, and sources. Select a skill to preview its `SKILL.md` and Markdown source without editing.

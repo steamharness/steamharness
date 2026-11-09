@@ -12,6 +12,7 @@ const chinese = JSON.parse(await readFile(new URL('extensions/studio-workstation
 export function settingsFixture(language = 'en', providers = [], target = 'user') {
   const values = { 'workbench.colorTheme': 'Dark', 'window.autoDetectColorScheme': true, 'studio.startPage.enabled': true, 'studio.recentProjects.limit': 12,
     'studio.agent.permissionPolicy': 'auto',
+    'studio.browser.linkTarget': 'internal',
     'studio.terminal.name': 'Studio', 'studio.project.nodePath': '', 'editor.fontSize': 14, 'editor.tabSize': 4, 'editor.insertSpaces': true, 'editor.wordWrap': 'off', 'files.autoSave': 'off' };
   const vscode = { env: { language }, version: '1.141.0',
     extensions: { all: [{ packageJSON: { contributes: { themes: [{ id: 'Dark', label: 'Dark' }, { id: 'Light', label: 'Light' }] } } }] },
@@ -23,6 +24,9 @@ export function settingsFixture(language = 'en', providers = [], target = 'user'
 }
 
 export async function selectSettingsOption(page, control, value) {
+  await control.scrollIntoViewIfNeeded();
+  // The menu intentionally closes on scroll. Settle scrolling before opening it.
+  await control.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await control.click();
   await page.locator('.settings-dropdown-menu:popover-open').locator(`[role="option"][data-value="${value}"]`).click();
 }

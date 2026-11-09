@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 function fixture(workspace = true) {
   const defaults = { 'editor.fontSize': 14, 'editor.tabSize': 4, 'editor.insertSpaces': true, 'editor.wordWrap': 'off', 'files.autoSave': 'off',
     'studio.agent.permissionPolicy': 'auto',
+    'studio.browser.linkTarget': 'internal',
     'studio.startPage.enabled': true, 'studio.recentProjects.limit': 12, 'studio.terminal.name': 'Studio', 'studio.project.nodePath': '', 'workbench.colorTheme': 'Dark', 'window.autoDetectColorScheme': true };
   const global = {}, local = {}, writes = [];
   const configuration = prefix => ({
@@ -56,6 +57,18 @@ test('permission settings persist only at user scope and reset to auto approve',
   f.global[key] = 'invalid';
   assert.throws(() => f.readUserSettings(), /valid user permission/);
   assert.equal(f.settingsViewState({ section: 'permissions' }).section, 'permissions');
+});
+
+test('browser preference defaults to internal, saves at user scope and resets without a workspace override', async () => {
+  const f = fixture(), key = 'studio.browser.linkTarget';
+  f.local[key] = 'external';
+  const current = () => f.settingsState('test', 'user', []).items.find(item => item.key === key);
+  assert.equal(current().value, 'internal');
+  assert.deepEqual(Array.from(current().options, option => option.value), ['internal', 'external']);
+  await f.updateSetting(key, 'external', 'user', false); assert.equal(current().value, 'external');
+  await assert.rejects(f.updateSetting(key, 'external', 'workspace', false));
+  await assert.rejects(f.updateSetting(key, 'unknown', 'user', false));
+  await f.updateSetting(key, undefined, 'user', true); assert.equal(current().value, 'internal');
 });
 
 test('editor writes and resets affect only the selected configuration scope', async () => {

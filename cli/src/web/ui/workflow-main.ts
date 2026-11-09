@@ -82,6 +82,7 @@ let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnTyp
 let prompt: InputPrompt | undefined, promptKey = '';
 const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
   path: target => post({ type: 'open-path', ...target }),
+  browser: url => post({ type: 'open-url', url }),
   account: () => post({ type: 'open-account' }),
   configurations: configurationPanel,
   skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
@@ -93,6 +94,7 @@ const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools
 const output = new ConversationOutput(element('run-output'), {
   copy: text => host.postMessage({ type: 'copy', text }), plan: text => dialogs.plan(text), file: id => host.postMessage({ type: 'open-file', id }),
   path: target => post({ type: 'open-path', ...target }),
+  browser: url => post({ type: 'open-url', url }),
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
 });
 const parameters = () => state ? projectParameters(state.project, entrypointId) : { fields: [] };
