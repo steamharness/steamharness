@@ -17,10 +17,10 @@ index 5b8c2499f3bf2ad5d4f6538d1e71c5cc86546902..8c18705d719bf532c4065844f2e1231d
  		// minimal color configuration (works with or without persisted data)
 diff --git a/src/vs/platform/window/common/studioReleaseProject.ts b/src/vs/platform/window/common/studioReleaseProject.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c49c78f841121909c4c81178b073b30671b567e9
+index 0000000000000000000000000000000000000000..7aee5120e53ec1976fd321a7448e2345802de97c
 --- /dev/null
 +++ b/src/vs/platform/window/common/studioReleaseProject.ts
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,31 @@
 +/*---------------------------------------------------------------------------------------------
 + *  Copyright (c) Microsoft Corporation. All rights reserved.
 + *  Licensed under the MIT License. See License.txt in the project root for license information.
@@ -33,7 +33,7 @@ index 0000000000000000000000000000000000000000..c49c78f841121909c4c81178b073b306
 +}
 +
 +/** Read only the release identity needed before the workbench restores any views. */
-+export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string): IStudioReleaseProject | undefined {
++export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string, locale = 'en'): IStudioReleaseProject | undefined {
 +	try {
 +		const project = JSON.parse(projectJson);
 +		const release = JSON.parse(releaseJson);
@@ -45,7 +45,11 @@ index 0000000000000000000000000000000000000000..c49c78f841121909c4c81178b073b306
 +			return undefined;
 +		}
 +		const avatar = project.projectCard?.avatarUrl;
-+		return { projectUri, name: project.name, avatarUrl: typeof avatar === 'string' && /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)[;,]/i.test(avatar) ? avatar : '' };
++		const language = locale.toLowerCase().replace(/_/g, '-');
++		const names = Object.entries(project.projectInfo?.localizedNames ?? {});
++		const localized = names.find(([key]) => key.toLowerCase() === language)?.[1] ?? names.find(([key]) => key.toLowerCase() === language.split('-')[0])?.[1] ?? names.find(([key]) => key.toLowerCase() === 'en')?.[1];
++		return { projectUri, name: typeof localized === 'string' && localized.trim() ? localized : project.name,
++			avatarUrl: typeof avatar === 'string' && /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)[;,]/i.test(avatar) ? avatar : '' };
 +	} catch { return undefined; }
 +}
 diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
@@ -62,7 +66,7 @@ index a0a2d9bb7da48fc14792d9826edc42d09a065def..5cf24f1f20c3b30dc66a581797e2e2e1
  	handle?: VSBuffer;
  
 diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
-index 22bcd111251a4c447a7ecd09848518419cad5e6b..eac440512e7a2335df9a2de216d1234df803385a 100644
+index 22bcd111251a4c447a7ecd09848518419cad5e6b..da9bcff54e98bf631270a65c925b697072a7dc76 100644
 --- a/src/vs/platform/windows/electron-main/windowsMainService.ts
 +++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
 @@ -60,6 +60,7 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
@@ -77,14 +81,14 @@ index 22bcd111251a4c447a7ecd09848518419cad5e6b..eac440512e7a2335df9a2de216d1234d
  
  			remoteAuthority: options.remoteAuthority,
  			workspace: options.workspace,
-+			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined),
++			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
 +			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
  			userEnv: { ...this.initialUserEnv, ...options.userEnv },
  
  			nls: {
 diff --git a/src/vs/platform/windows/node/studioReleaseProject.ts b/src/vs/platform/windows/node/studioReleaseProject.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..d9634d8605deaacb4df3c38c598e2fb5a2df6378
+index 0000000000000000000000000000000000000000..2489ca203891e3b36b88f6c45d8ba265199f36fd
 --- /dev/null
 +++ b/src/vs/platform/windows/node/studioReleaseProject.ts
 @@ -0,0 +1,22 @@
@@ -100,14 +104,14 @@ index 0000000000000000000000000000000000000000..d9634d8605deaacb4df3c38c598e2fb5
 +import { IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
 +
 +/** Detect local release folders before creating their window; never execute project code. */
-+export async function readStudioReleaseProject(folder: URI | undefined): Promise<IStudioReleaseProject | undefined> {
++export async function readStudioReleaseProject(folder: URI | undefined, locale = 'en'): Promise<IStudioReleaseProject | undefined> {
 +	if (folder?.scheme !== Schemas.file) { return undefined; }
 +	try {
 +		const files = ['steamharness.json', 'steamharness.release.json'].map(name => join(folder.fsPath, name));
 +		const stats = await Promise.all(files.map(file => stat(file)));
 +		if (stats.some(value => !value.isFile() || value.size > 2_000_000)) { return undefined; }
 +		const [project, release] = await Promise.all(files.map(file => readFile(file, 'utf8')));
-+		return parseStudioReleaseProject(folder.toString(), project, release);
++		return parseStudioReleaseProject(folder.toString(), project, release, locale);
 +	} catch { return undefined; }
 +}
 diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
@@ -327,7 +331,7 @@ index 6f785eaa4a0510d329e0c8ad955b60521883c56c..095fd672ef68400d67dfb54ef8c430b2
  		this.tryShowOnboarding();
  		this.run().then(undefined, onUnexpectedError);
 diff --git a/src/vs/workbench/electron-browser/desktop.main.ts b/src/vs/workbench/electron-browser/desktop.main.ts
-index a827f145c61f0a4465289c5b6faed10756ee3051..f25823b132c599869f873f182aaaa6338d36c4d0 100644
+index a827f145c61f0a4465289c5b6faed10756ee3051..3cc7ced4d66b5f47d2543682b66c84ee88032ae5 100644
 --- a/src/vs/workbench/electron-browser/desktop.main.ts
 +++ b/src/vs/workbench/electron-browser/desktop.main.ts
 @@ -7,6 +7,9 @@ import { localize } from '../../nls.js';
@@ -350,7 +354,7 @@ index a827f145c61f0a4465289c5b6faed10756ee3051..f25823b132c599869f873f182aaaa633
 +			const fileService = services.serviceCollection.get(IFileService) as IFileService;
 +			try {
 +				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
-+				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString());
++				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString(), this.configuration.nls.language);
 +			} catch { /* Ordinary folders have no release identity. */ }
 +		}
 +		initializeStudioReleaseProject(release);

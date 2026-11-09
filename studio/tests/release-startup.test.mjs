@@ -37,6 +37,13 @@ test('window creation recognizes a release identity without loading any project 
   assert.deepEqual(JSON.parse(JSON.stringify(found)), { projectUri: f.uri.toString(), name: project.name, avatarUrl: '' });
 });
 
+test('the initial release title uses the host display language before extension inspection', async t => {
+  const f = await fixture(t, { ...project, projectInfo: { localizedNames: { 'zh-CN': '三角洲', en: 'Deltaforce' } } });
+  assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'zh-cn')).name, '三角洲');
+  assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'en-US')).name, 'Deltaforce');
+  assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'fr')).name, 'Deltaforce');
+});
+
 test('source declarations, incomplete releases and unsupported formats cannot select the release shell', async t => {
   for (const [declaration, release] of [[{ ...project, distribution: undefined, release: {} }, manifest], [project, { ...manifest, projectId: 'other' }],
     [project, { ...manifest, version: 2 }], [{ ...project, defaultEntry: undefined }, manifest], [project, { ...manifest, entries: [] }]]) {
