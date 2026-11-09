@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.
+
 - Fix CLI Web plan selections and scroll positions being lost during confirmation pauses and task reordering in older browsers, overflowing status labels in narrow panes, and untranslated stopping states. Announce progress while the plan panel is collapsed.
 
 - CLI Web shows task-plan progress beside the response status, with an expandable task list. The panel hides when the reply succeeds and preserves the last progress after failure or cancellation.
