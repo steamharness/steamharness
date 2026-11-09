@@ -39,6 +39,8 @@ The release project is written to `dist/release/project/`, with its archive unde
 
 In Studio, click **Run (Release Mode)** beside the Run button. Studio saves the project files, builds the release, and opens a new window rooted at the release run directory with the selected entry. That entry must be included in the release configuration.
 
+Release windows start in the Steam layout and show project loading progress without passing through IDE mode or opening Assistant. The main project stays in the primary area. Restoring a tools tab for the same project does not make startup or retries use that tab.
+
 The release window shows the aggregate project's logo and name in the upper left, stays in Steam mode, and omits Editor and Assistant from the tools area. Tools start collapsed when entering Steam mode or reopening a window. Click **Show Tools** in the upper right to expand the area with its saved tabs and width.
 
 Source windows show the version declared in source. Opening a release project shows its installed version and checks for upgrades.

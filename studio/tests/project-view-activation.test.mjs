@@ -23,14 +23,26 @@ visit(source);
 function load(name, bindings = {}) {
   assert.ok(initializers.has(name));
   const compiled = ts.transpileModule(`(${initializers.get(name)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return runInNewContext(compiled, { setTimeout, clearTimeout, t: (text, ...args) => text.replace(/\{(\d+)\}/g, (_match, index) => String(args[index])), Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
+  return runInNewContext(compiled, { setTimeout, clearTimeout, t: (text, ...args) => text.replace(/\{(\d+)\}/g, (_match, index) => String(args[index])), Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, vscode: { ViewColumn: { One: 1 } }, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
 }
 const revealProject = load('revealProject');
+
+test('Steam preparation selects the main project panel even when a matching tool tab is active', () => {
+  const project = { uri: 'file:///project', entryId: 'agent' };
+  const tool = { project, running: true, panel: { viewType: 'studio.projectTool', active: true } };
+  const primary = { project, running: true, panel: { viewType: 'studio.project', active: false } };
+  const workspaces = new Map([['tool', tool], ['primary', primary]]);
+  const find = load('findWorkspace', { workspaces });
+  assert.equal(find(project), tool);
+  assert.equal(find(project, true), primary);
+  workspaces.delete('primary');
+  assert.equal(find(project, true), undefined);
+});
 
 function panelFixture() {
   const changed = new Set(), closed = new Set();
   const subscribe = listeners => callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; };
-  const panel = { active: false, viewColumn: 2, reveals: [],
+  const panel = { active: false, viewColumn: 2, viewType: 'studio.project', reveals: [],
     reveal(column) { panel.reveals.push(column); },
     onDidChangeViewState: subscribe(changed), onDidDispose: subscribe(closed) };
   return { panel, changed, closed, change: () => [...changed].forEach(callback => callback()), close: () => [...closed].forEach(callback => callback()) };
@@ -318,6 +330,22 @@ test('restoring multiple native panels for the same entry keeps every panel and 
   for (const panel of panels) { assert.equal(f.workspaces.get(panel).project.entryId, project.entryId); panel.dispose(); }
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(f.leases.map(lease => lease.closes), [1, 1]);
+});
+
+test('concurrent primary panel restoration shares one startup instead of creating a second runtime', async () => {
+  const project = { uri: 'file:///project', entryId: 'agent', projectType: 'bot' }, workspaces = new Map(), opening = new Map();
+  let release, starts = 0;
+  const panels = [0, 1].map(() => ({ viewType: 'studio.project', disposed: false, dispose() { this.disposed = true; } }));
+  const serializer = load('projectSerializer', { initialScan: Promise.resolve(), findProject: () => project, opening,
+    findWorkspace: load('findWorkspace', { workspaces }), createWorkspace: async (_project, panel) => {
+      starts++;
+      await new Promise(resolve => { release = resolve; });
+      workspaces.set(panel, { project, panel, running: true });
+    } });
+  const restored = panels.map(panel => serializer.deserializeWebviewPanel(panel, { projectUri: project.uri, entryId: project.entryId }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(starts, 1); release(); await Promise.all(restored);
+  assert.deepEqual({ running: workspaces.size, disposed: panels.map(panel => panel.disposed), opening: opening.size }, { running: 1, disposed: [false, true], opening: 0 });
 });
 
 test('side resource tabs replace their content and dispose previous session bindings without creating a window',async()=>{

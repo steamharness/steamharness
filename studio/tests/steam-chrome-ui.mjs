@@ -46,17 +46,23 @@ try {
       const $ = (selector, attributes, ...children) => { const [tag, ...classes] = selector.split('.'); const node = document.createElement(tag || 'div'); node.className = classes.join(' '); for (const [key, value] of Object.entries(attributes ?? {})) { if (key === 'hidden') node.hidden = value; else node.setAttribute(key, value); } node.append(...children); return node; };
       const common = { $, append: (parent, child) => parent.appendChild(child), getWindow: () => window, Emitter, Disposable, DisposableStore,
         addDisposableListener: (target, name, fn) => { target.addEventListener(name, fn); return { dispose: () => target.removeEventListener(name, fn) }; },
-        toDisposable: dispose => ({ dispose }), onDidChangeFullscreen: event, onDidChangeZoomLevel: event, CommandsRegistry: { registerCommand: event }, getDefaultHoverDelegate: () => ({}), Parts: { AUXILIARYBAR_PART: 'tools' } };
+        toDisposable: dispose => ({ dispose }), onDidChangeFullscreen: event, onDidChangeZoomLevel: event, CommandsRegistry: { registerCommand: event }, getDefaultHoverDelegate: () => ({}), Parts: { AUXILIARYBAR_PART: 'tools' }, studioLocaleStrings: { loadingProject: 'Loading project...', showTools: 'Show Tools', hideTools: 'Hide Tools' } };
       const module = { exports: {} }, require = () => new Proxy(common, { get: (values, key) => key in values ? values[key] : () => {} });
       new Function('module', 'exports', 'require', nativeCode)(module, module.exports, require);
       const native = module.exports, visibility = new Emitter(); let visible = false;
       const layout = { mainContainer: document.querySelector('.monaco-workbench'), isVisible: () => visible, getContainer: () => undefined, onDidChangePartVisibility: visibility.event, onDidLayoutMainContainer: event };
       const commands = { executeCommand: async (command, value) => { if (command === 'studio.internalUpdateWindowChrome') document.querySelector('iframe').contentWindow.chromeFixture.update(value); else if (command === 'workbench.action.toggleAuxiliaryBar') { visible = !visible; visibility.fire(); } } };
-      native.studioModeState.state = { available: true, releaseOnly: release, project: { name: '三角洲', avatarUrl: avatar }, labels: {} };
+      if (release) native.initializeStudioReleaseProject({ projectUri: 'file:///release', name: '三角洲', avatarUrl: avatar });
+      else native.studioModeState.state = { available: true, labels: {} };
       window.switcher = new native.StudioModeSwitcher(document.querySelector('#left'), document.querySelector('#right'), commands, { error: error => { throw error; } }, layout, { setupManagedHover: () => ({ update() {}, dispose() {} }) });
-      native.studioModeState.setMode(true, false);
+      if (!release) native.studioModeState.setMode(true, false);
     }, { nativeCode, release, avatar });
     await frame.locator('#app[data-studio-window-chrome]').waitFor();
+    if (release) {
+      assert.equal(await page.locator('.studio-mode-toggle').isVisible(), false, 'The first release shell must not show an IDE switch before inspection');
+      assert.equal(await page.locator('.studio-release-project-name').textContent(), '三角洲');
+      assert.equal(await page.locator('.studio-steam-toggle-tools').getAttribute('aria-expanded'), 'false');
+    }
     await page.evaluate(() => document.fonts.ready); await frame.evaluate(() => document.fonts.ready);
     const geometry = async () => {
       const outer = await page.evaluate(() => { const box = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { y: r.y, height: r.height, center: r.y + r.height / 2 }; }; return { project: box('.studio-mode-switcher'), tool: box('.studio-steam-toggle-tools'), nativeIcon: getComputedStyle(document.querySelector('.studio-steam-toggle-tools .codicon')).fontSize, logo: document.querySelector('.studio-release-project-logo').getBoundingClientRect().height }; });

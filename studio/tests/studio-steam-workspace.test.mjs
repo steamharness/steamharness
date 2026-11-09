@@ -404,6 +404,34 @@ test('browser add uses a fresh page and category routing retains files and secon
   assert.equal(f.parts.get('project').groups[0].contains(other), true); assert.equal(f.parts.get('browser').groups[0].contains(browser), true);
 });
 
+test('a recreated primary project stays in the main group while an old restored input is alive', async t => {
+  const f = fixture(t), old = new WebviewInput('Restored project', 'file:///project');
+  await f.left.openEditor(old); await f.workspace.activate();
+  await f.workspace.openTool('kv');
+  const fresh = new WebviewInput('Fresh project', 'file:///project');
+  assert.equal(f.policy.getEditorOpenTarget(fresh, f.parts.get('kv').activeGroup), f.left);
+  await f.open(fresh);
+  assert.equal(f.left.activeEditor, fresh);
+  assert.equal(f.workspace.hasProject, true);
+  assert.ok(!f.tabs.some(tab => tab.label === 'Fresh project'));
+  old.dispose();
+  assert.equal(f.workspace.hasProject, true, 'Disposing the stale input must not forget its replacement');
+  const secondary = new WebviewInput('Other entry', 'file:///project'); secondary.webview.providedViewType = 'studio.projectTool';
+  await f.open(secondary);
+  assert.equal(f.parts.get('project').activeGroup.activeEditor, secondary);
+  assert.equal(f.left.activeEditor, fresh);
+});
+
+test('release project restoration targets the main surface before tool activation', async t => {
+  const f = fixture(t); f.state.state.releaseOnly = true;
+  const runtime = new WebviewInput('Project'); runtime.webview.state = undefined;
+  assert.equal(f.policy.getEditorOpenTarget(runtime, f.right), f.left);
+  assert.equal(f.policy.getEditorOpenTarget(file('unrelated.txt'), f.left), undefined);
+  await f.left.openEditor(runtime); await f.workspace.activate();
+  assert.equal(f.workspace.hasProject, true);
+  assert.equal(f.left.activeEditor, runtime);
+});
+
 test('entries opened from Assistant activate distinct project tabs while retaining the running project and Assistant', async t => {
   const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
   await f.left.openEditor(runtime); await f.workspace.activate();

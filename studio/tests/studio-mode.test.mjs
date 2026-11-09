@@ -36,10 +36,10 @@ class Sequencer {
 const parts = { ACTIVITYBAR_PART: 'activity', SIDEBAR_PART: 'sidebar', PANEL_PART: 'panel', AUXILIARYBAR_PART: 'auxiliary', EDITOR_PART: 'editor', TITLEBAR_PART: 'titlebar', STATUSBAR_PART: 'statusbar' };
 const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 
-function fixture(t, saved = new Map()) {
+function fixture(t, saved = new Map(), initialState = {}) {
   const commands = new Map(), stateChange = new Emitter(), calls = [], settings = new Map(), errors = [];
   const resized = new Emitter(), visibilityChanged = new Emitter(), windowResized = new Emitter();
-  const state = { state: { available: false, labels: {} }, steam: false, busy: false, onDidChangeState: stateChange.event,
+  const state = { state: { available: false, labels: {}, ...initialState }, steam: !!initialState.releaseOnly, busy: false, onDidChangeState: stateChange.event,
     setMode(steam, busy, targetSteam = steam) { this.steam = steam; this.busy = busy; this.targetSteam = targetSteam; } };
   const register = (id, handler) => { commands.set(id, handler); return { dispose: () => commands.delete(id) }; };
   const containers = new Map([
@@ -172,6 +172,20 @@ test('ordinary folders cannot enter Steam mode or start a project worker', async
   await f.run('EnterSteamMode');
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
   assert.deepEqual(f.calls, []);
+});
+
+test('an early release shell skips IDE snapshots and transition animations during project preparation', async t => {
+  const f = fixture(t, new Map([['studio.ideLayout', { projectUri: 'file:///stale-source' }]]), { releaseOnly: true, projectUri: 'file:///release' });
+  assert.equal(f.state.steam, true);
+  assert.equal(f.loading, true);
+  assert.deepEqual({ ...f.options }, { showTabs: 'none', editorActionsLocation: 'hidden' });
+  let prepared;
+  f.prepare = async uri => { prepared = uri; assert.equal(f.state.steam, true); return true; };
+  f.publish(true); await f.run('EnterSteamMode');
+  assert.equal(prepared, 'file:///release');
+  assert.equal(f.visible.get('auxiliary'), false);
+  assert.equal(f.calls.some(call => Array.isArray(call) && call[0] === 'animate'), false);
+  assert.equal(f.state.steam, true);
 });
 
 for (const releaseOnly of [false, true]) {

@@ -77,8 +77,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
-  const findWorkspace = (project: Project) => {
-    const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project));
+  const findWorkspace = (project: Project, primary = false) => {
+    const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project) && (!primary || entry.panel.viewType === 'studio.project'));
     return candidates.find(entry => entry.panel.active) ?? candidates.find(entry => entry.running) ?? candidates[0];
   };
   const opening = new Map<string, Promise<AssistantConversation>>();
@@ -373,6 +373,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     });
   };
   const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false): Promise<void> => {
+    const primary = viewColumn === vscode.ViewColumn.One && !toolTab;
     signal?.throwIfAborted();
     const selected = target?.releasePreview ? target : target?.builtin === 'analysis' ? target : target?.uri ? findProject(target.uri, target.entryId) : currentProject();
     if (!selected) { return; }
@@ -389,12 +390,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }
       signal?.throwIfAborted();
     }
-    const existing = findWorkspace(selected);
+    const existing = findWorkspace(selected, primary);
     if (existing?.running) { await revealProject(existing.panel, viewColumn, signal); return; }
     const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab); })(); opening.set(projectWindowKey(selected), created);
     try {
       await created; signal?.throwIfAborted();
-      const panel = findWorkspace(selected)?.panel;
+      const panel = findWorkspace(selected, primary)?.panel;
       if (panel && (signal || existing && viewColumn !== undefined)) { await revealProject(panel, viewColumn, signal, !!existing); }
     } finally { opening.delete(projectWindowKey(selected)); }
   };
@@ -569,7 +570,17 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       catch { panel.dispose(); return; }
     }
     if (!project) { panel.dispose(); return; }
-    await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'bot' ? 'restore' : undefined);
+    if (panel.viewType !== 'studio.project') {
+      await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'bot' ? 'restore' : undefined);
+      return;
+    }
+    const key = projectWindowKey(project);
+    const pending = opening.get(key);
+    if (pending) { await pending; }
+    if (findWorkspace(project, true)?.running) { panel.dispose(); return; }
+    const restored = createWorkspace(project, panel, undefined, vscode.ViewColumn.One, undefined, false, project.projectType === 'bot' ? 'restore' : undefined);
+    opening.set(key, restored);
+    try { await restored; } finally { if (opening.get(key) === restored) { opening.delete(key); } }
   } };
   context.subscriptions.push(launcher, provider, projectWindows, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
     vscode.window.registerTreeDataProvider('studio.projects', projectWindows),
@@ -637,7 +648,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
       try {
         await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal), canceled]);
-        const entry = findWorkspace(project);
+        const entry = findWorkspace(project, true);
         if (!entry?.running) { return false; }
         panelClosed = entry.panel.onDidDispose(() => controller.abort());
         await Promise.race([entry.ready, canceled, new Promise<never>((_resolve, reject) => {
@@ -687,7 +698,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   await initialScan;
   projectScanReady = true;
   updateEntry();
-  void assistant.showInitially().catch(error => output.appendLine(`Project Assistant: ${String(error)}`));
+  let releaseWindow = provider.projects.some(project => project.distribution === 'release' && project.uri === vscode.workspace.workspaceFolders?.[0]?.uri.toString());
+  if (!releaseWindow) { releaseWindow = await vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow') === true; }
+  if (!releaseWindow) { void assistant.showInitially().catch(error => output.appendLine(`Project Assistant: ${String(error)}`)); }
   return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChange,
     getVersionStatus: project => versions.getVersionStatus(project), onDidChangeVersions: versions.onDidChangeVersions };
 }

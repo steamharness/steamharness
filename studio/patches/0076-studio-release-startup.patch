@@ -1,0 +1,388 @@
+diff --git a/src/vs/code/electron-browser/workbench/workbench.ts b/src/vs/code/electron-browser/workbench/workbench.ts
+index 5b8c2499f3bf2ad5d4f6538d1e71c5cc86546902..8c18705d719bf532c4065844f2e1231d256c42f6 100644
+--- a/src/vs/code/electron-browser/workbench/workbench.ts
++++ b/src/vs/code/electron-browser/workbench/workbench.ts
+@@ -45,9 +45,9 @@ import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash
+ 			}
+ 		}
+ 
+-		// developing an extension -> ignore stored layouts
+-		if (data && configuration.extensionDevelopmentPath) {
+-			data.layoutInfo = undefined;
++		// A release window must not paint an IDE-shaped splash before its application UI.
++		if (data && (configuration.extensionDevelopmentPath || configuration.studioReleaseProject || configuration.studioReleasePending)) {
++			data = { ...data, layoutInfo: undefined };
+ 		}
+ 
+ 		// minimal color configuration (works with or without persisted data)
+diff --git a/src/vs/platform/window/common/studioReleaseProject.ts b/src/vs/platform/window/common/studioReleaseProject.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c49c78f841121909c4c81178b073b30671b567e9
+--- /dev/null
++++ b/src/vs/platform/window/common/studioReleaseProject.ts
+@@ -0,0 +1,27 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export interface IStudioReleaseProject {
++	readonly projectUri: string;
++	readonly name: string;
++	readonly avatarUrl: string;
++}
++
++/** Read only the release identity needed before the workbench restores any views. */
++export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string): IStudioReleaseProject | undefined {
++	try {
++		const project = JSON.parse(projectJson);
++		const release = JSON.parse(releaseJson);
++		if (project?.distribution?.kind !== 'release' || project.distribution.version !== 1 || release?.kind !== 'steamharness.project.release' || release.version !== 1
++			|| typeof project.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id)
++			|| release.projectId !== project.id || typeof project.version !== 'string' || release.projectVersion !== project.version || typeof project.name !== 'string' || !project.name.trim()
++			|| typeof project.defaultEntry !== 'string' || !project.defaultEntry
++			|| !Array.isArray(release.entries) || !release.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) {
++			return undefined;
++		}
++		const avatar = project.projectCard?.avatarUrl;
++		return { projectUri, name: project.name, avatarUrl: typeof avatar === 'string' && /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)[;,]/i.test(avatar) ? avatar : '' };
++	} catch { return undefined; }
++}
+diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
+index a0a2d9bb7da48fc14792d9826edc42d09a065def..5cf24f1f20c3b30dc66a581797e2e2e1f55fd510 100644
+--- a/src/vs/platform/window/common/window.ts
++++ b/src/vs/platform/window/common/window.ts
+@@ -513,6 +513,8 @@ export interface IOSConfiguration {
+ }
+ 
+ export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
++	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
++	studioReleasePending?: boolean;
+ 	mainPid: number;
+ 	handle?: VSBuffer;
+ 
+diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
+index 22bcd111251a4c447a7ecd09848518419cad5e6b..eac440512e7a2335df9a2de216d1234df803385a 100644
+--- a/src/vs/platform/windows/electron-main/windowsMainService.ts
++++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
+@@ -60,6 +60,7 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
+ import { ResourceSet } from '../../../base/common/map.js';
+ import { VSBuffer } from '../../../base/common/buffer.js';
+ import { resolveAgentsWindowFolder } from './agentsWindow.js';
++import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
+ 
+ //#region Helper Interfaces
+ 
+@@ -1567,6 +1568,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 
+ 			remoteAuthority: options.remoteAuthority,
+ 			workspace: options.workspace,
++			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined),
++			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
+ 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
+ 
+ 			nls: {
+diff --git a/src/vs/platform/windows/node/studioReleaseProject.ts b/src/vs/platform/windows/node/studioReleaseProject.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9634d8605deaacb4df3c38c598e2fb5a2df6378
+--- /dev/null
++++ b/src/vs/platform/windows/node/studioReleaseProject.ts
+@@ -0,0 +1,22 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { readFile, stat } from 'fs/promises';
++import { join } from '../../../base/common/path.js';
++import { Schemas } from '../../../base/common/network.js';
++import { URI } from '../../../base/common/uri.js';
++import { IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
++
++/** Detect local release folders before creating their window; never execute project code. */
++export async function readStudioReleaseProject(folder: URI | undefined): Promise<IStudioReleaseProject | undefined> {
++	if (folder?.scheme !== Schemas.file) { return undefined; }
++	try {
++		const files = ['steamharness.json', 'steamharness.release.json'].map(name => join(folder.fsPath, name));
++		const stats = await Promise.all(files.map(file => stat(file)));
++		if (stats.some(value => !value.isFile() || value.size > 2_000_000)) { return undefined; }
++		const [project, release] = await Promise.all(files.map(file => readFile(file, 'utf8')));
++		return parseStudioReleaseProject(folder.toString(), project, release);
++	} catch { return undefined; }
++}
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+index 3079e8ddc74574eaa7730ef3a734776f58c3878d..41347fdc36b94c5e4dc96111130eaf398a97b97c 100644
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -52,6 +52,7 @@ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js'
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { CodeWindow, mainWindow } from '../../base/browser/window.js';
+ import { localize } from '../../nls.js';
++import { studioModeState } from './parts/studioMode.js';
+ 
+ //#region Layout Implementation
+ 
+@@ -745,6 +746,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			mainContainerDimension: this._mainContainerDimension,
+ 			resetLayout: Boolean(this.layoutOptions?.resetLayout)
+ 		});
++		if (studioModeState.state.releaseOnly) {
++			this.windowChromeHidden = true;
++			for (const key of [LayoutStateKeys.ACTIVITYBAR_HIDDEN, LayoutStateKeys.SIDEBAR_HIDDEN, LayoutStateKeys.PANEL_HIDDEN, LayoutStateKeys.AUXILIARYBAR_HIDDEN, LayoutStateKeys.STATUSBAR_HIDDEN]) {
++				this.stateModel.setRuntimeValue(key, true);
++			}
++			this.stateModel.setRuntimeValue(LayoutStateKeys.EDITOR_HIDDEN, false);
++			this.stateModel.setRuntimeValue(LayoutStateKeys.AUXILIARYBAR_WAS_LAST_MAXIMIZED, false);
++		}
+ 
+ 		this._register(this.stateModel.onDidChangeState(change => {
+ 			if (change.key === LayoutStateKeys.ACTIVITYBAR_HIDDEN) {
+@@ -777,14 +786,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		}
+ 		const initialLayoutState: ILayoutInitializationState = {
+ 			layout: {
+-				editors: initialEditorsState?.layout
++				editors: studioModeState.state.releaseOnly ? { orientation: GroupOrientation.HORIZONTAL, groups: [{}] } : initialEditorsState?.layout
+ 			},
+ 			editor: {
+ 				restoreEditors: this.shouldRestoreEditors(this.contextService, initialEditorsState),
+ 				editorsToOpen: this.resolveEditorsToOpen(fileService, initialEditorsState),
+ 			},
+ 			views: {
+-				defaults: this.getDefaultLayoutViews(this.environmentService, this.storageService),
++				defaults: studioModeState.state.releaseOnly ? undefined : this.getDefaultLayoutViews(this.environmentService, this.storageService),
+ 				containerToRestore: {}
+ 			}
+ 		};
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index e137f69dfe1fdb4aa8b0da3fc0201d2faa6c4d79..b452afffcea1840df4e5bc68780da99ca03110c2 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -295,7 +295,7 @@ export class StudioStartView extends Disposable {
+ 				button.title = project.uri;
+ 				if (project.current) {
+ 					button.setAttribute('aria-current', 'true');
+-					append(button.lastElementChild!, $('span.studio-start-recent-current', undefined, text('currentProject')));
++					append(button.lastElementChild as HTMLElement, $('span.studio-start-recent-current', undefined, text('currentProject')));
+ 				}
+ 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
+ 			}
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index b5f18292e72684455b72edec172df9487d5edbae..107bc870ca40fb6e53a3b5fedb4cca3ba4bc675f 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -17,10 +17,13 @@ import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/la
+ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
+ import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
++import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
++import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
+ 
+ /** Space reserved by the embedded project for the retained native workbench controls. */
+ export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
+ CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
++CommandsRegistry.registerCommand('studio.internalIsReleaseWindow', () => !!studioModeState.state.releaseOnly);
+ 
+ export const studioSteamToolDefinitions = [
+ 	{ id: 'editor', icon: 'code', editor: true },
+@@ -66,6 +69,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
+ const stateChange = new Emitter<StudioModeState>();
+ const modeChange = new Emitter<void>();
+ export const studioModeState = {
++	releaseProject: undefined as IStudioReleaseProject | undefined,
+ 	state: { available: false, labels: {} } as StudioModeState,
+ 	steam: false,
+ 	busy: false,
+@@ -80,7 +84,23 @@ export const studioModeState = {
+ 	}
+ };
+ 
++/** Establish the release shell before layout, title controls, or editor restoration. */
++export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined): void {
++	if (!project) { return; }
++	studioModeState.releaseProject = project;
++	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,
++		labels: { loading: studioLocaleStrings.loadingProject, showTools: studioLocaleStrings.showTools, hideTools: studioLocaleStrings.hideTools } };
++	studioWindowChrome.projectUri = project.projectUri;
++	studioModeState.setMode(true, true, true);
++}
++
+ CommandsRegistry.registerCommand('studio.internalUpdateModeState', (_accessor, state: StudioModeState) => {
++	const release = studioModeState.releaseProject;
++	if (release) {
++		const primary = state.projectUri === release.projectUri;
++		state = { ...state, available: primary && state.available, ready: primary && state.ready, releaseOnly: true, projectUri: release.projectUri,
++			project: primary && state.project ? state.project : release, labels: { ...studioModeState.state.labels, ...state.labels } };
++	}
+ 	studioModeState.state = state;
+ 	stateChange.fire(state);
+ });
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index e7172e25c118e1f6ef5dc107100f5a1a31fdae45..d27240d86486663875a13a6dd82431d83ab6188d 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -113,8 +113,14 @@ export class StudioModeContribution extends Disposable {
+ 		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
+ 		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART)!));
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+-		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+-		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
++		this.requested = !!studioModeState.state.releaseOnly || storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		if (studioModeState.state.releaseOnly) {
++			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
++			this.layout.mainContainer.classList.add('studio-steam-mode');
++			this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none', editorActionsLocation: 'hidden' });
++			this.loading.show();
++		}
+ 		this._register(layout.onDidResizeParts(() => {
+ 			if (this.steam && layout.isVisible(Parts.AUXILIARYBAR_PART) && !layout.isAuxiliaryBarMaximized()) {
+ 				const width = layout.getSize(Parts.AUXILIARYBAR_PART).width;
+@@ -158,6 +164,7 @@ export class StudioModeContribution extends Disposable {
+ 		}));
+ 		this._register(studioModeState.onDidChangeState(state => {
+ 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
++			if (state.releaseOnly && !state.available) { return; }
+ 			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
+ 				this.initialized = true;
+ 				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
+@@ -187,7 +194,7 @@ export class StudioModeContribution extends Disposable {
+ 				}
+ 				return;
+ 			}
+-			studioModeState.setMode(this.steam, true, next);
++			studioModeState.setMode(this.steam || !!studioModeState.state.releaseOnly, true, next);
+ 			try {
+ 				if (next) {
+ 					let prepared: boolean | undefined;
+@@ -202,7 +209,7 @@ export class StudioModeContribution extends Disposable {
+ 						await this.transition(true, revision, async () => {
+ 							const group = this.groups.mainPart.activeGroup;
+ 							if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
+-							this.captureIde();
++							if (!studioModeState.state.releaseOnly) { this.captureIde(); }
+ 							this.loading.show();
+ 							await this.enterSteam(projectUri);
+ 							// Reveal retained content before the incoming animation, without a loading flash.
+@@ -376,7 +383,7 @@ export class StudioModeContribution extends Disposable {
+ 		const win = getWindow(this.layout.mainContainer);
+ 		const isCurrent = () => revision === this.revision && !this._store.isDisposed;
+ 		if (!isCurrent()) { return; }
+-		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
++		if (studioModeState.state.releaseOnly || win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
+ 		const effects: Animation[] = [];
+ 		const clearEffects = () => {
+ 			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
+@@ -428,4 +435,4 @@ export class StudioModeContribution extends Disposable {
+ 	}
+ }
+ 
+-registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);
++registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.BlockRestore);
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index 6d875be6c86c7b95b28c508878bdcbe0ff55d66e..60e37c03aef66bc2fd151985ba9f12279cecb4a3 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -383,15 +383,18 @@ export class StudioSteamWorkspace extends Disposable {
+ 
+ 	private matchesProject(editor: EditorInput): boolean {
+ 		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project' && editor.webview.providedViewType !== 'studio.projectTool') { return false; }
+-		if (this.project && !this.project.isDisposed()) { return editor === this.project; }
+-		try { const uri = JSON.parse(editor.webview.state ?? '{}').projectUri; return uri ? uri === this.projectUri : editor.webview.providedViewType === 'studio.project'; }
++		// Primary panels can be recreated while an old serialized input is still alive.
++		// Their identity is the project root, never the first restored input object.
++		if (editor.webview.providedViewType === 'studio.projectTool') { return editor === this.project; }
++		try { const uri = JSON.parse(editor.webview.state ?? '{}').projectUri; return !uri || uri === (this.projectUri ?? studioModeState.state.projectUri); }
+ 		catch { return false; }
+ 	}
+ 
+ 	private target(editor: EditorInput | IUntypedEditorInput, preferred: PreferredGroup | undefined): IEditorGroup | undefined {
+-		if (!this.enabled) { return undefined; }
++		if (!this.enabled && !studioModeState.state.releaseOnly) { return undefined; }
+ 		const explicit = typeof preferred === 'number' && preferred >= 0 ? this.groups.getGroup(preferred) : typeof preferred === 'object' ? preferred : undefined;
+-		if (editor instanceof EditorInput && this.matchesProject(editor)) { this.setProject(editor); return this.projectGroup; }
++		if (editor instanceof EditorInput && this.matchesProject(editor)) { this.setProject(editor); return this.projectGroup ?? this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]; }
++		if (!this.enabled) { return undefined; }
+ 		if (explicit && this.groups.getPart(explicit).windowId !== this.groups.mainPart.windowId) { return undefined; }
+ 		const category = this.editorCategory(editor);
+ 		const part = this.ensurePart(category);
+diff --git a/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts b/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
+index 6f785eaa4a0510d329e0c8ad955b60521883c56c..095fd672ef68400d67dfb54ef8c430b203d5805b 100644
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
+@@ -33,6 +33,7 @@ import { mainWindow } from '../../../../base/browser/window.js';
+ import { getActiveElement } from '../../../../base/browser/dom.js';
+ import { isWeb } from '../../../../base/common/platform.js';
+ import { IOnboardingService } from '../../welcomeOnboarding/common/onboardingService.js';
++import { studioModeState } from '../../../browser/parts/studioMode.js';
+ import { ONBOARDING_STORAGE_KEY } from '../../welcomeOnboarding/common/onboardingTypes.js';
+ 
+ export const restoreWalkthroughsConfigurationKey = 'workbench.welcomePage.restorableWalkthroughs';
+@@ -97,6 +98,7 @@ export class StartupPageRunnerContribution extends Disposable implements IWorkbe
+ 		@IOnboardingService private readonly onboardingService: IOnboardingService,
+ 	) {
+ 		super();
++		if (studioModeState.state.releaseOnly) { return; }
+ 
+ 		this.tryShowOnboarding();
+ 		this.run().then(undefined, onUnexpectedError);
+diff --git a/src/vs/workbench/electron-browser/desktop.main.ts b/src/vs/workbench/electron-browser/desktop.main.ts
+index a827f145c61f0a4465289c5b6faed10756ee3051..f25823b132c599869f873f182aaaa6338d36c4d0 100644
+--- a/src/vs/workbench/electron-browser/desktop.main.ts
++++ b/src/vs/workbench/electron-browser/desktop.main.ts
+@@ -7,6 +7,9 @@ import { localize } from '../../nls.js';
+ import product from '../../platform/product/common/product.js';
+ import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
+ import { Workbench } from '../browser/workbench.js';
++import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
++import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
++import { joinPath } from '../../base/common/resources.js';
+ import { NativeWindow } from './window.js';
+ import { setFullscreen } from '../../base/browser/browser.js';
+ import { domContentLoaded } from '../../base/browser/dom.js';
+@@ -127,10 +130,20 @@ export class DesktopMain extends Disposable {
+ 		// zoom level that is not derived from settings.
+ 		// (fixes https://github.com/microsoft/vscode/issues/187982)
+ 		this.applyWindowZoomLevel(services.configurationService);
++		let release = this.configuration.studioReleaseProject;
++		if (!release && isSingleFolderWorkspaceIdentifier(this.configuration.workspace)) {
++			const folder = this.configuration.workspace.uri;
++			const fileService = services.serviceCollection.get(IFileService) as IFileService;
++			try {
++				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
++				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString());
++			} catch { /* Ordinary folders have no release identity. */ }
++		}
++		initializeStudioReleaseProject(release);
+ 
+ 		// Create Workbench
+ 		const workbench = new Workbench(mainWindow.document.body, {
+-			extraClasses: this.getExtraClasses(),
++			extraClasses: [...this.getExtraClasses(), ...(release ? ['studio-steam-mode'] : [])],
+ 			resetLayout: this.configuration['disable-layout-restore'] === true
+ 		}, services.serviceCollection, services.logService);
+ 
+diff --git a/src/vs/workbench/services/localization/common/studioLocaleStrings.ts b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+index 036cd596be6277b63a7426a5dfd89b0a29493b44..8e35c413b990e10fa4dfed3566aff855922a1739 100644
+--- a/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
++++ b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+@@ -7,6 +7,9 @@ import { language } from '../../../../base/common/platform.js';
+ import { localize } from '../../../../nls.js';
+ 
+ const defaults = {
++	loadingProject: localize('studio.release.loading', "Loading project..."),
++	showTools: localize('studio.release.showTools', "Show Tools"),
++	hideTools: localize('studio.release.hideTools', "Hide Tools"),
+ 	writeFailed: localize('studio.locale.writeFailed', "Unable to save display language."),
+ 	unsupported: localize('studio.locale.unsupported', "Unsupported display language."),
+ 	unavailable: localize('studio.locale.unavailable', "The selected language pack is unavailable. Please try again."),
+@@ -18,6 +21,9 @@ const defaults = {
+ 
+ // Studio-specific messages are not included in upstream language packs.
+ const chinese: typeof defaults = {
++	loadingProject: "正在加载项目…",
++	showTools: "显示工具区",
++	hideTools: "隐藏工具区",
+ 	writeFailed: "无法保存显示语言。",
+ 	unsupported: "不支持此显示语言。",
+ 	unavailable: "所选语言包暂不可用，请重试。",

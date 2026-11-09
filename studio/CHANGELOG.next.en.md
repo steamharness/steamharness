@@ -1,5 +1,7 @@
 # Unreleased
 
+- Release windows select the Steam layout before the first workbench render, without showing the IDE or opening Assistant. Project restoration and retries keep the main project in its primary area instead of reusing a tools tab.
+
 - Bundle the open-source SQLite3 Editor by default. Click a `.sqlite`, `.sqlite3`, or `.db` file to browse tables, inspect schemas, and run SQL in the Studio editor. Development builds and release installers use the same pinned version and SHA-256 verification.
 
 - Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.
