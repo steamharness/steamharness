@@ -1,7 +1,7 @@
 import { t, locale } from '../localization';
 import type { ConversationMessage, Attachment, OutputItem, ResolvedInput, TimerRecord } from '../workflow-types';
 import { conversationResourceCards, type ResourceCard } from '../resource-cards';
-import { escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } from './ui';
+import { captureSelection, escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } from './ui';
 import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, isSilentAgentRetry, type AgentActivity } from './agent-activity';
 import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-display';
 import { attachmentSignature } from './attachment-state';
@@ -87,6 +87,7 @@ export class ConversationOutput {
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
   update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
+    const restoreSelection = captureSelection(this.root);
     const focusedPlan = !!this.plan && (this.plan.button.contains(document.activeElement) || this.plan.panel.contains(document.activeElement));
     const focusedProgress = focusedPlan || !!this.subagents && (this.subagents.button.contains(document.activeElement) || this.subagents.panel.contains(document.activeElement))
       ? document.activeElement as HTMLElement : undefined;
@@ -259,6 +260,7 @@ export class ConversationOutput {
     }
     this.placeProgress();
     if (focusedProgress?.isConnected && document.activeElement !== focusedProgress) focusedProgress.focus({ preventScroll: true });
+    restoreSelection?.();
     this.tick();
   }
 
@@ -287,7 +289,12 @@ export class ConversationOutput {
       ? document.activeElement as HTMLElement : undefined;
     const place = (parent: HTMLElement, child: HTMLElement, before: Element | null = null): void => {
       if (parent.moveBefore && parent.isConnected && child.isConnected) parent.moveBefore(child, before);
-      else parent.insertBefore(child, before);
+      else {
+        const scrollers = Array.from(child.querySelectorAll<HTMLElement>('.plan-list, .subagents-list'),
+          element => ({ element, top: element.scrollTop, left: element.scrollLeft }));
+        parent.insertBefore(child, before);
+        for (const { element, top, left } of scrollers) { element.scrollTop = top; element.scrollLeft = left; }
+      }
     };
     this.progressSummary.className = `conversation-progress-summary${this.subagents ? ' subagents-summary' : ''}`;
     const row = this.pending?.parentElement === this.root ? this.pending : this.progressSummary;

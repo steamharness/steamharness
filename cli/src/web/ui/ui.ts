@@ -13,6 +13,33 @@ export function updateIcon(root: HTMLElement, name?: string): void {
     if (current.className !== className) { current.className = className; }
   } else { root.innerHTML = iconHtml(name); }
 }
+
+/** Snapshot boundaries before DOM moves; live Range objects change when insertBefore detaches their nodes. */
+export function captureSelection(root: Node): (() => void) | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) return;
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+  if (!anchorNode || !focusNode || !root.contains(anchorNode) && !root.contains(focusNode)) return;
+  const anchorText = anchorNode.textContent, focusText = focusNode.textContent;
+  const scrollers = new Map<Element, { top: number; left: number }>();
+  for (const boundary of [anchorNode, focusNode]) {
+    for (let element = boundary instanceof Element ? boundary : boundary.parentElement; element && root.contains(element); element = element.parentElement) {
+      if (!scrollers.has(element)) scrollers.set(element, { top: element.scrollTop, left: element.scrollLeft });
+    }
+  }
+  const valid = (node: Node, offset: number, text: string | null): boolean => node.isConnected && node.textContent === text
+    && offset <= (node.nodeType === Node.TEXT_NODE ? node.textContent!.length : node.childNodes.length);
+  return () => {
+    if (!valid(anchorNode, anchorOffset, anchorText) || !valid(focusNode, focusOffset, focusText)) return;
+    if (selection.anchorNode !== anchorNode || selection.anchorOffset !== anchorOffset
+      || selection.focusNode !== focusNode || selection.focusOffset !== focusOffset) {
+      selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
+    }
+    for (const [element, { top, left }] of scrollers) {
+      if (element.isConnected) { element.scrollTop = top; element.scrollLeft = left; }
+    }
+  };
+}
 export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 export function managedFileForUrl(url: string, files: Attachment[]): Attachment | undefined {
   let value = url;

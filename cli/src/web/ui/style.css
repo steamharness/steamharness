@@ -221,7 +221,10 @@ html:has(#app[data-conversation-presentation=composer]),body:has(#app[data-conve
 .plan-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 24px; border: 1px solid var(--border); border-radius: 12px; padding: 3px 8px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; text-align: left; }
 .plan-button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-editor-foreground); }
 .plan-button > .codicon, .plan-chevron { flex: none; }
-.plan-label { flex: none; white-space: nowrap; }
+.plan-button-content { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; min-width: 0; flex: 1; }
+.plan-label { display: inline-flex; flex-wrap: wrap; min-width: 0; max-width: 100%; flex: none; }
+.plan-count { flex: none; white-space: nowrap; }
+.plan-phase { min-width: 0; overflow-wrap: anywhere; }
 .plan-current { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-button[aria-expanded=true] .plan-chevron { transform: rotate(90deg); }
 .plan-panel { border: 1px solid var(--border); border-radius: 8px; margin: 2px 0 12px; min-width: 0; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }

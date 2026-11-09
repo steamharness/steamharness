@@ -1,7 +1,7 @@
 import type { AgentPlanItem } from 'steamharness/agent';
 import type { ConversationMessage } from '../workflow-types';
 import { t } from '../localization';
-import { iconHtml, updateIcon } from './ui';
+import { captureSelection, iconHtml, updateIcon } from './ui';
 
 type PlanStatus = 'running' | 'waiting' | 'stopping' | 'failed' | 'stopped' | 'paused';
 export interface ConversationPlanState { items: AgentPlanItem[]; status: PlanStatus }
@@ -46,7 +46,7 @@ export function conversationPlan(message: ConversationMessage): ConversationPlan
 
 const setText = (element: HTMLElement, value: string): void => { if (element.textContent !== value) element.textContent = value; };
 const statusLabel = (status: PlanStatus): string => status === 'failed' ? t('Failed') : status === 'stopped' ? t('Stopped')
-  : status === 'waiting' ? t('Awaiting confirmation') : status === 'stopping' ? t('Stopping') : status === 'paused' ? t('Paused') : '';
+  : status === 'waiting' ? t('Awaiting confirmation') : status === 'stopping' ? t('Stopping...') : status === 'paused' ? t('Paused') : '';
 interface PlanRow { root: HTMLLIElement; icon: HTMLElement; text: HTMLElement; status: HTMLElement }
 
 /** Keyed rows preserve selection and scroll while the model revises its plan. */
@@ -54,6 +54,8 @@ export class ConversationPlan {
   readonly button = document.createElement('button');
   readonly panel = document.createElement('section');
   private readonly label = document.createElement('span');
+  private readonly count = document.createElement('span');
+  private readonly phase = document.createElement('span');
   private readonly current = document.createElement('span');
   private readonly progress = document.createElement('progress');
   private readonly status = document.createElement('p');
@@ -64,8 +66,11 @@ export class ConversationPlan {
   constructor() {
     this.button.type = 'button'; this.button.className = 'plan-button';
     this.label.className = 'plan-label'; this.current.className = 'plan-current';
+    this.label.setAttribute('role', 'status'); this.label.setAttribute('aria-atomic', 'true');
+    this.count.className = 'plan-count'; this.phase.className = 'plan-phase'; this.label.append(this.count, this.phase);
     const chevron = document.createElement('span'); chevron.className = 'plan-chevron'; chevron.innerHTML = iconHtml('chevron-right');
-    this.button.innerHTML = iconHtml('checklist'); this.button.append(this.label, this.current, chevron);
+    const content = document.createElement('span'); content.className = 'plan-button-content'; content.append(this.label, this.current);
+    this.button.innerHTML = iconHtml('checklist'); this.button.append(content, chevron);
     this.panel.id = `plan-${crypto.randomUUID()}`; this.panel.className = 'plan-panel'; this.panel.hidden = true;
     this.panel.setAttribute('aria-label', t('Task plan'));
     this.button.setAttribute('aria-controls', this.panel.id); this.button.setAttribute('aria-expanded', 'false');
@@ -75,7 +80,7 @@ export class ConversationPlan {
       event.preventDefault(); event.stopPropagation(); this.expand(false); this.button.focus();
     };
     this.panel.addEventListener('keydown', escape); this.button.addEventListener('keydown', escape);
-    this.status.className = 'plan-status'; this.status.setAttribute('role', 'status'); this.status.setAttribute('aria-atomic', 'true');
+    this.status.className = 'plan-status';
     this.progress.setAttribute('aria-label', t('Plan progress'));
     this.connection.className = 'plan-connection'; this.connection.textContent = t('Connection lost. Showing the last known task state.');
     const header = document.createElement('div'); header.className = 'plan-header'; header.append(this.status, this.progress);
@@ -88,15 +93,19 @@ export class ConversationPlan {
   }
 
   update(state: ConversationPlanState, connected: boolean): void {
+    const restoreSelection = captureSelection(this.panel);
     const completed = state.items.filter(item => item.status === 'completed').length;
     const active = state.items.find(item => item.status === 'in_progress');
     const status = state.status === 'running' && !connected ? 'paused' : state.status;
-    const summary = [t('Plan · {0}/{1}', completed, state.items.length), statusLabel(status)].filter(Boolean).join(' · ');
-    setText(this.label, summary); setText(this.current, active?.text ?? ''); this.current.hidden = !active;
+    const phase = statusLabel(status);
+    const summary = [t('Plan · {0}/{1}', completed, state.items.length), phase].filter(Boolean).join(' · ');
+    setText(this.count, t('Plan · {0}/{1}', completed, state.items.length));
+    setText(this.phase, phase ? ` · ${phase}` : ''); this.phase.hidden = !phase;
+    setText(this.current, active?.text ?? ''); this.current.hidden = !active;
     const title = [summary, active?.text].filter(Boolean).join(' · ');
     this.button.ariaLabel = title; this.button.title = `${t('View task plan')}\n${title}`;
     this.panel.dataset.state = this.button.dataset.state = status;
-    setText(this.status, [t('{0}/{1} completed', completed, state.items.length), statusLabel(status)].filter(Boolean).join(' · '));
+    setText(this.status, [t('{0}/{1} completed', completed, state.items.length), phase].filter(Boolean).join(' · '));
     this.progress.max = state.items.length; this.progress.value = completed; this.connection.hidden = connected;
     const keep = new Set<string>();
     state.items.forEach((item, index) => {
@@ -122,6 +131,7 @@ export class ConversationPlan {
       }
     });
     for (const [id, row] of this.rows) if (!keep.has(id)) { row.root.remove(); this.rows.delete(id); }
+    restoreSelection?.();
   }
 
   remove(): void { this.button.remove(); this.panel.remove(); }

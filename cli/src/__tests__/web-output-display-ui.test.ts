@@ -4,7 +4,7 @@ import { ComposerOutput, RingOutput } from '../web/ui/output-display';
 import type { OutputItem } from '../web/workflow-types';
 
 vi.mock('../web/resource-cards', () => ({ conversationResourceCards: () => [] }));
-vi.mock('../web/ui/ui', () => ({ escapeHtml: (value: string) => value, iconHtml: () => '', iconButton: () => ({}), markdownHtml: () => '', mediaUrl: () => '', updateIcon: () => {} }));
+vi.mock('../web/ui/ui', () => ({ captureSelection: () => undefined, escapeHtml: (value: string) => value, iconHtml: () => '', iconButton: () => ({}), markdownHtml: () => '', mediaUrl: () => '', updateIcon: () => {} }));
 
 const disposables: { dispose(): void }[] = [];
 afterEach(() => { for (const view of disposables.splice(0)) { view.dispose(); } vi.useRealTimers(); vi.unstubAllGlobals(); });

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix CLI Web plan selections and scroll positions being lost during confirmation pauses and task reordering in older browsers, overflowing status labels in narrow panes, and untranslated stopping states. Announce progress while the plan panel is collapsed.
+
 - CLI Web shows task-plan progress beside the response status, with an expandable task list. The panel hides when the reply succeeds and preserves the last progress after failure or cancellation.
 
 - Fix Bot queue messages sent with Send now staying at the bottom of the conversation. Consumed messages appear before the reply handling them and retain their order during streaming and history recovery.

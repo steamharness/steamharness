@@ -91,6 +91,46 @@ it('preserves expansion, rows, selection, scroll and focus across revisions and 
   view.render(); expect(view.button().parentElement).toBe(view.root.querySelector('.pending')); expect(document.activeElement).toBe(view.button());
 });
 
+it('preserves backward text selection when fallback DOM moves reorder tasks or resume a confirmation pause', () => {
+  const view = mount(); view.render(); view.button().click();
+  const list = view.panel().querySelector<HTMLElement>('.plan-list')!;
+  Object.defineProperty(list, 'moveBefore', { value: undefined });
+  Object.defineProperty(view.root, 'moveBefore', { value: undefined });
+  const text = view.panel().querySelector('[data-plan-id="research"] .plan-item-text')!.firstChild!;
+  list.scrollTop = 80;
+  const selected = window.getSelection()!; selected.setBaseAndExtent(text, text.textContent!.length, text, 0);
+  const reordered = [items()[1], items()[0], items()[2]];
+  const revised = message({ items: [update(), update(reordered, 'success', 'reordered')] });
+  view.render(revised);
+  expect(selected.toString()).toBe('Research missing evidence');
+  expect(selected.anchorNode).toBe(text); expect(selected.anchorOffset).toBe(text.textContent!.length);
+  view.render({ ...revised, status: 'waiting_for_input' }); view.render(revised);
+  expect(selected.toString()).toBe('Research missing evidence');
+  expect(selected.anchorNode).toBe(text); expect(selected.focusOffset).toBe(0);
+  expect(list.scrollTop).toBe(80);
+  view.render({ ...revised, status: 'success' }); expect(view.button()).toBeNull();
+});
+
+it('announces contextual progress outside the collapsed panel without competing status regions', () => {
+  const view = mount(); view.render();
+  const status = view.button().querySelector<HTMLElement>('[role="status"]')!;
+  expect(status).not.toBeNull(); expect(status.getAttribute('aria-atomic')).toBe('true');
+  expect(status.textContent).toBe('Plan · 1/3'); expect(view.panel().hidden).toBe(true);
+  expect(view.panel().querySelector('[role="status"]')).toBeNull();
+  const next = items(); next[1].status = 'completed';
+  view.render(message({ items: [update(next)] }));
+  expect(view.button().querySelector('[role="status"]')).toBe(status); expect(status.textContent).toBe('Plan · 2/3');
+});
+
+it('does not select replacement task text when a selected task is rewritten', () => {
+  const view = mount(); view.render(); view.button().click();
+  const text = view.panel().querySelector('[data-plan-id="research"] .plan-item-text')!;
+  const selected = window.getSelection()!; selected.setBaseAndExtent(text, 0, text, 1);
+  const revised = items(); revised[1].text = 'Revised research scope';
+  expect(() => view.render(message({ items: [update(revised)] }))).not.toThrow();
+  expect(selected.toString()).toBe('');
+});
+
 it('waits for successful response completion even at 100%, then removes both controls and restores focus', () => {
   const view = mount(); const complete = items().map(item => ({ ...item, status: 'completed' as const }));
   view.render(message({ items: [update(complete)] })); view.button().click(); view.button().focus();
@@ -159,4 +199,6 @@ it.each(['en', 'zh-CN'] as const)('localizes status labels in %s and renders tas
   expect(view.panel().querySelector('[data-plan-id="save"]')!.textContent).toContain(language === 'en' ? 'Not started' : '待开始');
   expect(view.panel().querySelector('[data-plan-id="research"] .plan-item-text')!.textContent).toBe(plan[1].text);
   expect(view.panel().querySelector('img')).toBeNull();
+  view.render(message({ items: [update(plan)], cancelRequested: true }));
+  expect(view.button().textContent).toContain(language === 'en' ? 'Stopping...' : '正在停止...');
 });
