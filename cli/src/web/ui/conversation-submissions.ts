@@ -98,8 +98,12 @@ export class ConversationSubmissions {
         queuedInputs = queuedInputs.filter(input => input.id !== entry.replacesId);
         queuedInputs.push(entry.input);
       } else {
+        const preview = this.previews.get(entry.input.id)!;
+        const steering = entry.mode === 'steer' && entry.phase !== 'failed';
+        preview[0].status = steering ? 'steer' : undefined;
+        preview[0].sessionRequestId = id;
         const position = messages.findIndex(message => (message.createdAt ?? 0) > entry.input.createdAt);
-        messages.splice(position < 0 ? messages.length : position, 0, ...this.previews.get(entry.input.id)!);
+        messages.splice(position < 0 ? messages.length : position, 0, ...(steering ? preview.slice(0, 1) : preview));
       }
     }
     const first = messages.find(message => message.role === 'user');

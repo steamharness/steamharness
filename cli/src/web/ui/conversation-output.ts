@@ -88,7 +88,7 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false, displaySignature = ''): void {
+  update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false, displaySignature = '', progressMessage = message): void {
     const restoreSelection = captureSelection(this.root);
     const focusedPlan = !!this.plan && (this.plan.button.contains(document.activeElement) || this.plan.panel.contains(document.activeElement));
     const focusedProgress = focusedPlan || !!this.subagents && (this.subagents.button.contains(document.activeElement) || this.subagents.panel.contains(document.activeElement))
@@ -253,7 +253,7 @@ export class ConversationOutput {
       if (label.textContent !== text) { label.textContent = text; }
       if (this.pending.parentElement !== this.root) { this.root.append(this.pending); }
     } else { this.pending?.remove(); }
-    this.planState = conversationPlan(message);
+    this.planState = message.status === 'interrupted' ? undefined : conversationPlan(progressMessage);
     if (this.planState) {
       this.plan ??= new ConversationPlan(); this.plan.update(this.planState, this.connected);
     } else if (this.plan) {

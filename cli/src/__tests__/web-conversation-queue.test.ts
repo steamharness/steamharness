@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ConversationQueue } from '../web/ui/conversation-queue';
+import { ConversationTimeline } from '../web/ui/conversation-timeline';
 import type { ConversationSession } from '../web/workflow-types';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -118,6 +119,18 @@ it('keeps a promoted row hidden while stale queued snapshots arrive before consu
   expect(f.action).toHaveBeenCalledOnce();
 });
 
+it('places an older queued input at the current reply when Send now is clicked', () => {
+  const f = fixture(), sentAt = Date.now();
+  f.state.session.messages = [{ id: 'reply', role: 'assistant', content: 'Current work', status: 'running', createdAt: 40 }];
+  f.row().send.click();
+  const inputs = f.view.promotedInputs('project', f.state.session.id);
+  expect(inputs[0].createdAt).toBeGreaterThanOrEqual(sentAt);
+  expect(f.state.session.queuedInputs![0].createdAt).toBe(1);
+  const rows = new ConversationTimeline().project('project:first', f.state.session, inputs);
+  expect(rows.map(row => row.id)).toEqual(['reply', 'steer:one', 'reply:after:one']);
+  expect(rows[0].previous).toBe(true);
+});
+
 it.each(['queue-promote', 'queue-remove'])('retains a failed %s with its error and retries the same request only when connected', type => {
   const f = fixture(), original = f.row();
   (type === 'queue-promote' ? original.send : original.remove).click();
@@ -135,17 +148,17 @@ it.each(['queue-promote', 'queue-remove'])('retains a failed %s with its error a
   expect(f.root.children[1].children.map(row => row.dataset.id)).toEqual(['two']);
 });
 
-it('lets a previously requested input be sent again after the active turn has failed', () => {
+it('leaves requested steering inputs in the transcript instead of showing a Send requested queue row', () => {
   const f = fixture();
   f.state.session.agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'fixture', effort: 'off' }, prompt: { hash: 'test', version: 1 }, plan: { version: 0, items: [] },
     tasks: [], history: [], receipts: [], records: [], usage: [], contexts: [], conversations: [{ id: 1, title: 'Main', background: false }],
     turns: [{ requestId: 'one', conversationId: 1, prompt: 'one', mode: 'steer', status: 'queued', epoch: 0, items: [] }] };
   f.update();
-  expect(f.row().status.textContent).toBe('Send requested'); expect(f.row().send.disabled).toBe(true);
+  expect(f.root.children[1].children.map(row => row.dataset.id)).toEqual(['two']);
   f.state.session.agent.foreground = false; f.state.session.agent.revision++;
   f.update();
-  expect(f.row().send.disabled).toBe(false);
+  expect(f.row().status.hidden).toBe(true); expect(f.row().send.disabled).toBe(false);
   f.row().send.click();
   expect(f.action).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ type: 'queue-promote', id: 'one' }));
 });

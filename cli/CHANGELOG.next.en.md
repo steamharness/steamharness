@@ -23,7 +23,7 @@
 
 - CLI Web shows task-plan progress beside the response status, with an expandable task list. The panel hides when the reply succeeds and preserves the last progress after failure or cancellation.
 
-- Fix Bot queue messages sent with Send now staying at the bottom of the conversation. Consumed messages appear before the reply handling them and retain their order during streaming and history recovery.
+- Send now during a Bot reply immediately places the message at the current conversation position, collapses the preceding response, and continues output below the message. Remove the Send requested queue row. Streaming and reopened history preserve these sections; failed sends can be retried.
 
 - Fix queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn. Older user queues stay paused, and active replies retain normal queueing.
 

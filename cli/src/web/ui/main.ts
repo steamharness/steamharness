@@ -14,6 +14,7 @@ import { ConversationMessageCards } from './conversation-message-cards';
 import './conversation-message-cards.css';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
+import { ConversationTimeline, type ConversationTimelineRow } from './conversation-timeline';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
@@ -109,6 +110,7 @@ function initialize(): void {
     connection?: HTMLDivElement;
     configureModel?: HTMLButtonElement;
     cards?: ConversationMessageCards;
+    previous?: HTMLDetailsElement;
   }
   interface SavedNavigation { projectUri: string; activeId: string; updates: ConversationDraftUpdate[] }
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
@@ -220,6 +222,7 @@ function initialize(): void {
   const drafts = saved.drafts ?? {};
   const paramValues = saved.params ?? {};
   const submissions = new ConversationSubmissions(saved.submissions, t('Message delivery was not confirmed. Retry to check or send it again.'));
+  const timeline = new ConversationTimeline();
   const parameterEdits = saved.parameterEdits ?? {};
   const editedParams = (): Record<string, string | null> => parameterEdits[formKey] ??= {};
   const markParameterEdited = (name: string): void => { editedParams()[name] = currentSession()?.parameterRevisions?.[entrypoint.value]?.[name] ?? null; };
@@ -265,6 +268,7 @@ function initialize(): void {
     edit: id => { saveDraft(); post({ type: 'queue-edit', id }); },
     reorder: ids => post({ type: 'queue-reorder', ids }),
     resume: () => post({ type: 'queue-run' }),
+    changed: () => queueMicrotask(() => { if (state) render(state, false); }),
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
     path: target => post({ type: 'open-path', ...target }),
@@ -962,7 +966,7 @@ function initialize(): void {
     };
     update(emptyConnection, !target);
     for (const view of messages.values()) {
-      if (view.connection) { update(view.connection, view.message.id === target?.id); }
+      if (view.connection) { update(view.connection, !view.previous && view.message.id === target?.id); }
       const retry = view.root.querySelector<HTMLButtonElement>('.retry-message');
       if (retry) {
         const submission = submissions.forMessage(view.message);
@@ -1155,7 +1159,8 @@ function initialize(): void {
     const latest = session?.messages.filter(item => item.role === 'assistant').at(-1);
     const owner = state?.sessions.find(entry => entry.id === session?.agentOwnerId);
     const snapshot = session?.agent ?? owner?.agent;
-    const conversationUsage = message === latest && state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false
+    const conversationUsage = message.status !== 'interrupted' && (message === latest || !!message.id && message.id === latest?.id)
+      && state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false
       ? snapshot?.contexts?.find(context => context.conversationId === (session?.agentConversationId ?? snapshot.conversationId))?.tokenUsage : undefined;
     view.metadata.textContent = [status, duration, message.model, tokens ? t('Turn usage: {0} tokens', Number(tokens).toLocaleString(locale())) : '',
       conversationUsage ? t('Conversation usage: {0} tokens', conversationUsage.totalTokens.toLocaleString(locale())) : ''].filter(Boolean).join(' \u00b7 ');
@@ -1168,7 +1173,7 @@ function initialize(): void {
     ] : []), ...(conversationUsage ? [t('Includes this conversation and its subagents, including failed and stopped attempts.')] : [])].join('\n');
   }
 
-  function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string, cards: readonly KanbanConversationMessageCard[]): void {
+  function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string, cards: readonly KanbanConversationMessageCard[], progress?: ConversationMessage): void {
     view.message = message;
     view.cards?.update(cards);
     if (message.role === 'user') { updateUserAvatar(view.avatar, state?.account); }
@@ -1183,7 +1188,7 @@ function initialize(): void {
     }
     else {
       view.output!.setConnected(connectionAvailable && !serverBlocked());
-      view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled, mentionSignature);
+      view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled, mentionSignature, progress);
     }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     renderRequestError(view.error, error);
@@ -1369,15 +1374,23 @@ function initialize(): void {
       }
       let latestOutput: ConversationOutput | undefined;
       let epoch = 0;
-      session.messages.forEach((message, index) => {
-        const id = message.id || `${index}:${message.role}`;
+      const rows: ConversationTimelineRow[] = conversation ? timeline.project(`${next.project.uri}:${session.id}`, session, queueView.promotedInputs(next.project.uri, session.id))
+        : session.messages.map((message, index) => ({ id: message.id || `${index}:${message.role}`, message, previous: false }));
+      rows.forEach(({ id, message, previous, progress }, index) => {
         active.add(id);
         let view = messages.get(id);
-        if (!view) { view = createMessage(message); messages.set(id, view); transcriptContent.append(view.root); }
+        if (!view) { view = createMessage(message); view.root.dataset.messageId = id; messages.set(id, view); transcriptContent.append(view.root); }
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
         const cardRequests = new Set([message.sessionRequestId, message.input?.requestId, message.agentAnchorRequestId, message.id, id].filter((value): value is string => !!value));
-        updateMessage(view, message, files, filesSignature, [...cardRequests].flatMap(requestId => cardsByRequest.get(requestId) ?? []));
+        updateMessage(view, message, files, filesSignature, previous ? [] : [...cardRequests].flatMap(requestId => cardsByRequest.get(requestId) ?? []), progress);
+        if (previous && !view.previous) {
+          const details = document.createElement('details'); details.className = 'conversation-segment';
+          const summary = document.createElement('summary'); summary.textContent = t('Previous response');
+          details.append(summary, view.root.querySelector('.message-body')!); view.root.append(details); view.previous = details;
+        } else if (!previous && view.previous) {
+          view.previous.before(view.previous.querySelector('.message-body')!); view.previous.remove(); view.previous = undefined;
+        }
         if (view.output) latestOutput = view.output;
         if (message.role === 'user') indexedMessages.push({ root: view.root, message });
         let divider = view.root.querySelector<HTMLElement>('.context-epoch');

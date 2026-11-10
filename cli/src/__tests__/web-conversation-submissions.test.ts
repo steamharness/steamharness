@@ -12,6 +12,15 @@ function submission(queued = false, id = 'request'): ConversationSubmission {
 }
 
 describe('Immediate conversation submission', () => {
+  it('previews steering as one input bubble while the current reply owns its continuation', () => {
+    const pending = new ConversationSubmissions(); pending.add({ ...submission(), mode: 'steer' });
+    const displayed = pending.project('project', session(), false);
+    expect(displayed.messages).toMatchObject([{ role: 'user', content: 'Inspect file', status: 'steer', sessionRequestId: 'request' }]);
+    pending.fail('request', 'Not accepted');
+    const failed = pending.project('project', displayed, false);
+    expect(failed.messages).toHaveLength(2);
+    expect(failed.messages[0].status).toBeUndefined(); expect(failed.messages[1].status).toBe('failed');
+  });
   it('releases an acknowledged project-routed submission without waiting for another conversation snapshot', () => {
     const pending = new ConversationSubmissions(); pending.add(submission());
     const displayed = pending.project('project', session(), false);

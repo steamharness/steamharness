@@ -120,29 +120,72 @@ it('restores a compact file reference but saves and submits its complete path af
   expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'send', text: `检查 ${source}` }));
 });
 
-it('keeps a consumed queue bubble above the existing streaming reply and its responding indicator', async () => {
+it('folds the earlier reply before a correction and streams into a new section at that position', async () => {
   const f = await fixture();
   const input = { id: 'input', role: 'user' as const, content: 'Original task' };
-  const answer = { id: 'reply', role: 'assistant' as const, content: 'Original output', status: 'running' };
+  const answer = { id: 'reply', role: 'assistant' as const, content: 'Original output', status: 'running', createdAt: 10,
+    items: [{ id: 'before', content: 'Original output', contentType: 'markdown', metadata: { startedAt: 10 } }] };
   const entry: ConversationSession = { ...session('queue-placement'), messages: [input, answer] };
   f.receive([entry], entry.id);
   const root = document.querySelector('[data-message-id="reply"]');
-  const steer = { id: 'steer:correction', role: 'user' as const, content: 'Queued correction', status: 'steer' };
+  const steer = { id: 'steer:correction', role: 'user' as const, content: 'Queued correction', status: 'steer', createdAt: 20 };
   // Also repair an already displayed bubble from an older host snapshot.
   entry.messages = [input, answer, steer]; f.receive([entry], entry.id);
   entry.messages = [input, steer, answer]; f.receive([entry], entry.id);
   const correction = document.querySelector('[data-message-id="steer:correction"]');
-  expect([...document.querySelectorAll('#transcript-content > .message')].map(node => (node as HTMLElement).dataset.messageId)).toEqual(['input', 'steer:correction', 'reply']);
-  expect(correction?.nextElementSibling).toBe(root);
-  expect(document.querySelector('.pending')?.closest('.message')).toBe(root);
+  const continuation = document.querySelector('[data-message-id="reply:after:correction"]');
+  expect([...document.querySelectorAll('#transcript-content > .message')].map(node => (node as HTMLElement).dataset.messageId)).toEqual(['input', 'reply', 'steer:correction', 'reply:after:correction']);
+  const previous = root?.querySelector<HTMLDetailsElement>('.conversation-segment');
+  expect(previous?.open).toBe(false); expect(previous?.textContent).toContain('Original output');
+  expect(correction?.previousElementSibling).toBe(root); expect(correction?.nextElementSibling).toBe(continuation);
+  expect(document.querySelector('.pending')?.closest('.message')).toBe(continuation);
+  previous!.open = true;
   answer.content = 'Reply after the queued correction'; f.receive([structuredClone(entry)], entry.id);
+  answer.items.push({ id: 'after', content: answer.content, contentType: 'markdown', metadata: { startedAt: 30 } });
+  f.receive([structuredClone(entry)], entry.id);
   expect(document.querySelector('[data-message-id="steer:correction"]')).toBe(correction);
   expect(document.querySelector('[data-message-id="reply"]')).toBe(root);
-  expect(root?.textContent).toContain(answer.content);
-  expect(correction?.nextElementSibling).toBe(root);
+  expect(continuation?.textContent).toContain(answer.content); expect(previous?.open).toBe(true);
+  expect(correction?.nextElementSibling).toBe(continuation);
   answer.status = 'success'; f.receive([entry], entry.id);
   expect(document.querySelector('.pending')).toBeNull();
-  expect(correction?.nextElementSibling).toBe(root);
+  expect(correction?.nextElementSibling).toBe(continuation);
+});
+
+it('shows Send now in the transcript before confirmation, restores a failed action, and avoids duplicate input bubbles', async () => {
+  const f = await fixture();
+  const entry: ConversationSession = { ...session('chat'), activeRunId: 'worker', messages: [
+    { id: 'input', role: 'user', content: 'Task', createdAt: 10 },
+    { id: 'reply', role: 'assistant', content: 'Working', status: 'running', createdAt: 10 },
+  ], queuedInputs: [{ id: 'correction', text: 'Correction', params: {}, attachments: [], createdAt: 20 }] };
+  f.receive([entry], entry.id, { readOnly: false });
+  document.querySelector<HTMLButtonElement>('#input-queue button[title="Send now"]')!.click();
+  await Promise.resolve();
+  const correction = document.querySelector('[data-message-id="steer:correction"]');
+  expect(correction?.textContent).toContain('Correction');
+  expect(document.querySelector('.conversation-segment')).not.toBeNull();
+  expect(document.querySelector('#input-queue')?.textContent).not.toContain('Send requested');
+  const action = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'queue-promote');
+  f.emit({ ...action, type: 'error', requestType: 'queue-promote', message: 'Not accepted' });
+  await Promise.resolve();
+  expect(document.querySelector('[data-message-id="steer:correction"]')).toBeNull();
+  expect(document.querySelector('.conversation-segment')).toBeNull();
+  expect(document.querySelector('#input-queue')?.textContent).toContain('Not accepted');
+});
+
+it('keeps current task-plan progress beside the continuation after folding its earlier update', async () => {
+  const f = await fixture();
+  const entry: ConversationSession = { ...session('plan'), messages: [
+    { id: 'input', role: 'user', content: 'Task', createdAt: 10 },
+    { id: 'steer:correction', role: 'user', status: 'steer', content: 'Correction', createdAt: 20 },
+    { id: 'reply', role: 'assistant', content: '', status: 'running', createdAt: 10, items: [{ id: 'plan', metadata: {
+      kind: 'agent-part', partType: 'tool', status: 'success', startedAt: 10,
+    }, content: { tool: 'update_plan', input: { items: [{ id: 'task', text: 'Keep working', status: 'in_progress' }] }, status: 'success' } }] },
+  ] };
+  f.receive([entry], entry.id);
+  const current = document.querySelector('[data-message-id="reply:after:correction"]');
+  expect(current?.querySelector('.plan-button')?.textContent).toContain('Keep working');
+  expect(document.querySelector('.conversation-segment .plan-button')).toBeNull();
 });
 
 it.each(['success', 'failed', 'aborted'])('keeps the final duration in the reply metadata after %s', async status => {

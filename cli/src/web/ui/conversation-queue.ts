@@ -20,6 +20,7 @@ export interface QueueAction {
 }
 interface PendingAction extends QueueAction {
   phase: 'waiting' | 'sending' | 'accepted' | 'failed';
+  requestedAt: number;
   input: ConversationQueuedInput;
   index: number;
   error?: string;
@@ -53,6 +54,7 @@ export class ConversationQueue {
     edit(id: string): void;
     reorder(ids: string[]): void;
     resume(): void;
+    changed?(): void;
   }) {
     this.heading.className = 'queue-heading';
     this.resume = iconButton('play', t('Resume queue'), options.resume);
@@ -80,7 +82,13 @@ export class ConversationQueue {
     if (message.type === 'error') { entry.phase = 'failed'; entry.error = message.message; }
     else { entry.phase = 'accepted'; delete entry.error; }
     this.render();
+    this.options.changed?.();
     return true;
+  }
+
+  promotedInputs(projectUri: string, sessionId: string): ConversationQueuedInput[] {
+    return [...this.actions.values()].filter(action => action.projectUri === projectUri && action.sessionId === sessionId
+      && action.type === 'queue-promote' && action.phase !== 'failed').map(action => ({ ...action.input, createdAt: action.requestedAt }));
   }
 
   private key(id: string): string { return JSON.stringify([this.state!.projectUri, this.state!.session.id, id]); }
@@ -101,9 +109,11 @@ export class ConversationQueue {
     if (previous && previous.phase !== 'failed') return;
     const actionId = previous?.id ?? id;
     this.actions.set(this.key(actionId), { projectUri: state.projectUri, sessionId: state.session.id, id: actionId, type, input,
+      requestedAt: Date.now(),
       index: previous?.index ?? state.session.queuedInputs!.indexOf(input),
       requestId: previous?.type === type ? previous.requestId : crypto.randomUUID(), phase: 'waiting' });
     this.render();
+    this.options.changed?.();
   }
 
   private createRow(id: string): QueueRow {
@@ -144,10 +154,11 @@ export class ConversationQueue {
   private render(): void {
     const state = this.state;
     if (!state) return;
-    const agent = state.session.agent, conversationId = state.session.agentConversationId ?? agent?.conversationId;
+    const conversationId = state.session.agentConversationId ?? state.session.agent?.conversationId;
+    const agent = state.session.agent;
     const foreground = agent?.contexts.find(context => context.conversationId === conversationId)?.foreground
       ?? (agent?.conversationId === conversationId ? agent?.foreground : false);
-    const executing = !!foreground || !!agent?.turns.some(turn => turn.conversationId === conversationId && turn.status === 'placed');
+    const executing = foreground || agent?.turns.some(turn => turn.conversationId === conversationId && turn.status === 'placed');
     const queue = [...(state.session.queuedInputs ?? [])];
     for (const action of this.actions.values()) {
       if (action.projectUri === state.projectUri && action.sessionId === state.session.id && action.phase === 'failed'
@@ -155,7 +166,9 @@ export class ConversationQueue {
     }
     const visible = queue.filter(input => {
       const action = this.actionFor(input);
-      return !action || action.phase === 'failed';
+      const steering = state.session.agent?.turns.some(turn => turn.conversationId === conversationId
+        && turn.requestId === (input.requestId ?? input.id) && turn.mode === 'steer');
+      return action?.phase === 'failed' || !action && !(steering && executing);
     });
     this.root.hidden = !visible.length;
     this.title.textContent = t('Queued messages ({0})', visible.length);
@@ -168,18 +181,15 @@ export class ConversationQueue {
       // Keep untouched rows in place while snapshots stream in.
       if (this.list.children[index] !== row.root) this.list.insertBefore(row.root, this.list.children[index] ?? null);
       const action = this.actionFor(input);
-      const promoted = state.session.agent?.turns.some(turn => turn.requestId === (input.requestId ?? input.id) && turn.mode === 'steer') === true;
       const text = input.text || [...input.attachments, ...(input.references ?? [])].map(file => file.name).join(', ');
       if (row.label.textContent !== text) row.label.textContent = text;
       row.label.title = text;
-      const status = promoted ? t('Send requested') : '';
-      if (row.status.textContent !== status) row.status.textContent = status;
-      row.status.hidden = !status; row.status.title = status;
+      row.status.hidden = true;
       row.root.setAttribute('aria-busy', 'false');
       row.edit.hidden = row.up.hidden = state.durable;
       row.edit.disabled = row.up.disabled = !state.ready || state.pendingIds.has(input.requestId ?? input.id);
       row.up.disabled ||= index === 0;
-      row.send.disabled = !state.ready || state.canExecute === false || promoted && executing;
+      row.send.disabled = !state.ready || state.canExecute === false;
       row.remove.disabled = !state.ready;
       row.retry.disabled = !state.ready || action?.type === 'queue-promote' && state.canExecute === false;
       row.root.draggable = !state.durable && state.ready && !state.pendingIds.has(input.requestId ?? input.id);
