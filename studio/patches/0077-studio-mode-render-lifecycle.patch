@@ -1,0 +1,48 @@
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index d27240d86486663875a13a6dd82431d83ab6188d..c1546da5382b0af6c36870f137c2cfa836e20484 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -85,13 +85,13 @@ export class StudioModeContribution extends Disposable {
+ 	private readonly sequencer = new Sequencer();
+ 	private readonly editorOptions = this._register(new MutableDisposable<IDisposable>());
+ 	private readonly toolLocations = this._register(new DisposableStore());
+-	private readonly loading: StudioModeLoading;
+-	private readonly workspace: StudioSteamWorkspace;
++	private loading!: StudioModeLoading;
++	private workspace!: StudioSteamWorkspace;
+ 	private snapshot: IdeLayout | undefined;
+ 	private ideEditor: { group: IEditorGroup; editor: EditorInput } | undefined;
+ 	private steam = false;
+ 	private projectReady = false;
+-	private requested: boolean;
++	private requested = false;
+ 	private initialized = false;
+ 	private revision = 0;
+ 	private readonly animations = new Set<Animation>();
+@@ -110,8 +110,24 @@ export class StudioModeContribution extends Disposable {
+ 		@IInstantiationService instantiation: IInstantiationService,
+ 	) {
+ 		super();
+-		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
+-		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART)!));
++		// BlockRestore runs before renderWorkbench creates the editor and auxiliary bar.
++		// The first layout provides both containers, still before editor restoration.
++		const rendering = this._register(new MutableDisposable<IDisposable>());
++		const initialize = () => {
++			const editor = layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART);
++			const tools = layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART);
++			if (!editor || !tools) { return; }
++			rendering.clear();
++			this.initialize(editor, tools, notifications, instantiation);
++		};
++		rendering.value = layout.onDidLayoutMainContainer(initialize);
++		initialize();
++	}
++
++	private initialize(editor: HTMLElement, tools: HTMLElement, notifications: INotificationService, instantiation: IInstantiationService): void {
++		const { layout, storage } = this;
++		this.loading = this._register(new StudioModeLoading(layout.mainContainer, editor));
++		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, tools));
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+ 		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+ 		this.requested = !!studioModeState.state.releaseOnly || storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';

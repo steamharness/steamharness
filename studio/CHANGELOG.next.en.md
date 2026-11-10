@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix release windows stopping at Start by initializing the Steam workspace once the workbench containers exist, then opening the project entry automatically. Tools remain collapsed on startup.
+
 - Add a General setting for opening website links in the built-in browser or the system default browser. The built-in browser is the default; conversation links and website resource cards use the preference on the next click.
 
 - The kernel revision now comes from the submodule checkout alone; `config/upstream.json` only records the path and VS Code version. Advancing the kernel locally or committing in the fork no longer requires syncing a lock file, and startup and preparation no longer refuse to run on a revision mismatch. The upstream `product.json` is still generated from the current checkout.

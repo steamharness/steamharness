@@ -36,7 +36,7 @@ class Sequencer {
 const parts = { ACTIVITYBAR_PART: 'activity', SIDEBAR_PART: 'sidebar', PANEL_PART: 'panel', AUXILIARYBAR_PART: 'auxiliary', EDITOR_PART: 'editor', TITLEBAR_PART: 'titlebar', STATUSBAR_PART: 'statusbar' };
 const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 
-function fixture(t, saved = new Map(), initialState = {}) {
+function fixture(t, saved = new Map(), initialState = {}, initiallyRendered = true) {
   const commands = new Map(), stateChange = new Emitter(), calls = [], settings = new Map(), errors = [];
   const resized = new Emitter(), visibilityChanged = new Emitter(), windowResized = new Emitter();
   const state = { state: { available: false, labels: {}, ...initialState }, steam: !!initialState.releaseOnly, busy: false, onDidChangeState: stateChange.event,
@@ -64,12 +64,12 @@ function fixture(t, saved = new Map(), initialState = {}) {
     calls.push(['animate', frames, part, options]);
     return f.animate?.(frames, part) ?? { finished: Promise.resolve(), cancel() {} };
   } }]));
-  let maximized = false, groupMaximized = false, options = false;
+  let maximized = false, groupMaximized = false, options = false, rendered = initiallyRendered;
   const layout = {
     onDidResizeParts: resized.event, onDidChangePartVisibility: visibilityChanged.event, onDidLayoutMainContainer: windowResized.event,
     setWindowChromeHidden: value => { f.chromeHidden = value; calls.push(['windowChrome', value]); },
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
-    getContainer: (_window, part) => elements.get(part),
+    getContainer: (_window, part) => rendered ? elements.get(part) : undefined,
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
     setPartHidden: (hidden, part) => {
       if (visible.get(part) === !hidden) { return; }
@@ -121,7 +121,8 @@ function fixture(t, saved = new Map(), initialState = {}) {
     store: (key, value) => pending.set(key, structuredClone(value)), remove: key => pending.set(key, undefined),
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
   const context = { createKey: id => ({ set: value => { settings.set(id, value); f.contextChanged?.(id, value); } }) };
-  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false, projectOpen: false,
+  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false, projectOpen: false, workspaceCreations: 0,
+    render: () => { rendered = true; windowResized.fire(layout.mainContainerDimension); },
     resizeTools: width => { sizes.set('auxiliary', { ...sizes.get('auxiliary'), width }); resized.fire(); },
     resizeWindow: width => { layout.mainContainerDimension.width = width; windowResized.fire(layout.mainContainerDimension); },
     flush: () => storage.flush(),
@@ -140,8 +141,11 @@ function fixture(t, saved = new Map(), initialState = {}) {
     studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({
       id: { 'studio.projectInfo': 'info', 'studio.developerAssistant': 'assistant' }[view] ?? view.replace('studio.', ''), view,
     })).concat([{ id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }]),
-    StudioModeLoading: class { show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } layout() {} dispose() {} },
-    ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { AfterRestored: 3 }, registerWorkbenchContribution2() {},
+    StudioModeLoading: class {
+      constructor(_parent, editor) { assert.ok(editor, 'Loading must bind to the rendered project editor'); }
+      show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } layout() {} dispose() {}
+    },
+    ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { BlockRestore: 2, AfterRestored: 3 }, registerWorkbenchContribution2() {},
     Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, GroupsOrder: { GRID_APPEARANCE: 2 }, Parts: parts,
   };
   const module = { exports: {} };
@@ -152,18 +156,22 @@ function fixture(t, saved = new Map(), initialState = {}) {
       if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); }
       if (command !== 'studio.internalPrepareSteamProject') { calls.push(['command', command, ...args]); return f.toolCommand?.(command); }
       calls.push('prepare'); const ready = await f.prepare(...args); if (ready) { f.projectOpen = true; } return ready;
-    } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
-      get hasProject() { return f.projectOpen; },
-      activate: () => views.openView('studio.steamTools', true),
-      home: () => views.openView('studio.steamTools', true),
-      openTool: id => {
-        const tool = common.studioSteamToolDefinitions.find(tool => tool.id === id);
-        if (tool.command) { calls.push(['command', tool.command]); return f.toolCommand?.(tool.command); }
-        return views.openView(tool.view, true);
-      },
-      deactivate: async () => undefined, select() {}, close() {}, dispose() {},
-    }) });
+    } }, { error: error => errors.push(String(error)) }, { createInstance: (_ctor, parent) => {
+      assert.ok(parent, 'The tools workspace must mount in a rendered auxiliary bar'); f.workspaceCreations++;
+      return {
+        get hasProject() { return f.projectOpen; },
+        activate: () => views.openView('studio.steamTools', true),
+        home: () => views.openView('studio.steamTools', true),
+        openTool: id => {
+          const tool = common.studioSteamToolDefinitions.find(tool => tool.id === id);
+          if (tool.command) { calls.push(['command', tool.command]); return f.toolCommand?.(tool.command); }
+          return views.openView(tool.view, true);
+        },
+        deactivate: async () => undefined, select() {}, close() {}, dispose() {},
+      };
+    } });
   t.after(() => controller.dispose());
+  f.controller = controller;
   return f;
 }
 
@@ -173,6 +181,39 @@ test('ordinary folders cannot enter Steam mode or start a project worker', async
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
   assert.deepEqual(f.calls, []);
 });
+
+for (const inspectedBeforeRender of [false, true]) {
+  test(`release cold startup opens the project when inspection finishes ${inspectedBeforeRender ? 'before' : 'after'} the workbench renders`, async t => {
+    const f = fixture(t, new Map(), { releaseOnly: true, projectUri: 'file:///release', labels: { loading: 'Loading project...' } }, false);
+    assert.equal(f.workspaceCreations, 0);
+    const inspect = () => { f.state.state.labels.mode = 'Workspace Mode'; f.publish(true); };
+    if (inspectedBeforeRender) { inspect(); }
+    f.render();
+    if (!inspectedBeforeRender) { inspect(); }
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual({ steam: f.state.steam, busy: f.state.busy, project: f.projectOpen, tools: f.visible.get('auxiliary'), errors: f.errors },
+      { steam: true, busy: false, project: true, tools: false, errors: [] });
+    f.resizeWindow(1200);
+    assert.deepEqual({ workspaces: f.workspaceCreations, starts: f.calls.filter(call => call === 'prepare').length }, { workspaces: 1, starts: 1 });
+  });
+}
+
+test('a window closed before the first render does not create Steam UI or start a project', t => {
+  const f = fixture(t, new Map(), { releaseOnly: true, projectUri: 'file:///release' }, false);
+  f.controller.dispose();
+  f.render(); f.publish(true);
+  assert.deepEqual({ workspaces: f.workspaceCreations, starts: f.calls.filter(call => call === 'prepare').length }, { workspaces: 0, starts: 0 });
+});
+
+for (const mode of ['ide', 'steam']) {
+  test(`source cold startup retains the saved ${mode} mode after the first render`, async t => {
+    const f = fixture(t, new Map([['studio.workbenchMode', mode]]), {}, false);
+    f.render(); f.publish(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual({ steam: f.state.steam, project: f.projectOpen, workspaces: f.workspaceCreations, errors: f.errors },
+      { steam: mode === 'steam', project: mode === 'steam', workspaces: 1, errors: [] });
+  });
+}
 
 test('an early release shell skips IDE snapshots and transition animations during project preparation', async t => {
   const f = fixture(t, new Map([['studio.ideLayout', { projectUri: 'file:///stale-source' }]]), { releaseOnly: true, projectUri: 'file:///release' });
