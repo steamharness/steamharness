@@ -69,6 +69,25 @@ it('anchors project cards to their assistant turn and preserves drafts and histo
   expect(entry.messages.map(message => message.content)).toEqual(['First request', 'First answer', 'Second answer']);
 });
 
+it('renders current reference labels while preserving raw history, code, links and drafts', async () => {
+  const f = await fixture(), entry: ConversationSession = { ...session('labels'), messages: [
+    { id: 'question', role: 'user', content: '@bot:executor 你好，@bot:missing' },
+    { id: 'answer', role: 'assistant', content: '已联系 @bot:executor。\n\n`@bot:executor`\n\n[查看 @bot:executor](https://example.com/@bot:executor)', status: 'success' },
+  ] };
+  const ui = (label: string) => ({ mentions: [{ kind: 'bot', label: 'Bot', items: [{ value: 'executor', label, suggest: false }] }] });
+  f.receive([entry], entry.id, { readOnly: false }, ui('执行员'));
+  const question = document.querySelector('.message.user .message-content')!;
+  expect(question.textContent).toBe('@执行员 你好，@bot:missing');
+  expect(document.querySelector('.message.assistant .message-content p')?.textContent).toBe('已联系 @执行员。');
+  expect(document.querySelector('.message.assistant code')?.textContent).toBe('@bot:executor');
+  expect(document.querySelector('.message.assistant a')?.getAttribute('href')).toBe('https://example.com/@bot:executor');
+  f.input.value = '未发送草稿'; f.input.dispatchEvent(new Event('input', { bubbles: true })); f.input.setSelectionRange(1, 3);
+  f.receive([entry], entry.id, { readOnly: false }, ui('执行小助手'));
+  expect(question.textContent).toBe('@执行小助手 你好，@bot:missing');
+  expect(f.input.value).toBe('未发送草稿'); expect(f.input.selectionStart).toBe(1); expect(f.input.selectionEnd).toBe(3);
+  expect(entry.messages[0]!.content).toBe('@bot:executor 你好，@bot:missing');
+});
+
 it.each([false, true])('does not flash an ownership warning when leaving a populated conversation (readOnly=%s)', async readOnly => {
   const f = await fixture();
   const original: ConversationSession = { ...session('previous'), messages: [{ id: 'reply', role: 'assistant', content: 'Previous answer', status: 'success' }] };

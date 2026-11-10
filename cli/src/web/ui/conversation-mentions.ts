@@ -104,7 +104,7 @@ export class ConversationMentions {
     const groupLabel = (kind: string) => state.groups?.find(group => group.kind === kind)?.label ?? label(kind);
     for (const group of state.groups ?? []) {
       if (token.kind && token.kind !== group.kind) continue;
-      choices.push(...group.items.filter(item => [item.value, item.label, item.description ?? ''].some(value => value.toLocaleLowerCase().includes(search)))
+      choices.push(...group.items.filter(item => item.suggest !== false && [item.value, item.label, item.description ?? ''].some(value => value.toLocaleLowerCase().includes(search)))
         .map(item => ({ id: `${group.kind}:${item.value}`, label: item.label, description: item.description, kind: group.kind, value: item.value })));
     }
     if (categories) choices.push(...kinds.map(kind => ({ id: kind, label: label(kind), kind })));

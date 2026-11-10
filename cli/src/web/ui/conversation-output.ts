@@ -11,6 +11,7 @@ import { ConversationPlan, conversationPlan, type ConversationPlanState } from '
 
 interface OutputOptions {
   composer?: boolean;
+  displayText?(text: string): string;
   copy(text: string, button: HTMLButtonElement): void;
   plan(text: string): void;
   file(id: string): void;
@@ -87,7 +88,7 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
+  update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false, displaySignature = ''): void {
     const restoreSelection = captureSelection(this.root);
     const focusedPlan = !!this.plan && (this.plan.button.contains(document.activeElement) || this.plan.panel.contains(document.activeElement));
     const focusedProgress = focusedPlan || !!this.subagents && (this.subagents.button.contains(document.activeElement) || this.subagents.panel.contains(document.activeElement))
@@ -127,7 +128,7 @@ export class ConversationOutput {
     const renderEntry = (entry: OutputEntry): HTMLElement => {
       active.add(entry.key);
       const { activity, ...content } = entry;
-      const signature = JSON.stringify([content, activity?.status, message.submittingInput?.requestId === entry.answer?.requestId]);
+      const signature = JSON.stringify([content, activity?.status, message.submittingInput?.requestId === entry.answer?.requestId, displaySignature]);
       let view = this.views.get(entry.key);
       const changed = !view || view.signature !== signature || view.filesSignature !== filesSignature;
       const display = view && this.displays.get(view.root);
@@ -390,6 +391,15 @@ export class ConversationOutput {
 
   private markdown(text: string, files: Attachment[]): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-content'; root.innerHTML = markdownHtml(text, files);
+    if (this.options.displayText && /@[a-z][a-z0-9_-]*:/.test(text)) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text;
+        if (node.parentElement?.closest('pre,code,a')) continue;
+        const value = this.options.displayText(node.data);
+        if (value !== node.data) node.data = value;
+      }
+    }
     bindOutputFileLinks(root, this.options);
     for (const image of Array.from(root.querySelectorAll('img'))) {
       image.loading = 'lazy'; image.tabIndex = 0; image.classList.add('preview-image');
@@ -418,7 +428,7 @@ export class ConversationOutput {
     }
     if (!item.collapsed && ['markdown', 'text', undefined].includes(item.contentType)) {
       if (item.contentType === 'text') {
-        const root = document.createElement('div'); root.className = 'message-content plain-output'; root.textContent = text;
+        const root = document.createElement('div'); root.className = 'message-content plain-output'; root.textContent = this.options.displayText?.(text) ?? text;
         bindOutputFileLinks(root, this.options); return root;
       }
       return this.markdown(text, files);

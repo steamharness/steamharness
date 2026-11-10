@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { composerMentionToken, mentionRanges, mentionText } from '../web/conversation-mentions';
+import { composerMentionToken, mentionRanges, mentionText, mentionLabelFormatter } from '../web/conversation-mentions';
 import { ConversationMentions } from '../web/ui/conversation-mentions';
 import { ConversationComposer } from '../web/ui/conversation-composer';
 import type { Project } from '../web/workflow-types';
@@ -53,12 +53,21 @@ function fixture() {
 }
 
 describe('reference text', () => {
+  it('uses known labels for display and retains unknown, longer and URL references', () => {
+    const format = mentionLabelFormatter([{ kind: 'bot', label: 'Bot', items: [{ value: 'executor', label: '执行员', suggest: false }] }]);
+    expect(format('给 @bot:executor 你好，@bot:missing @bot:executor-other')).toBe('给 @执行员 你好，@bot:missing @bot:executor-other');
+    expect(format('@bot:executor, @bot:executor. @bot:"executor"')).toBe('@执行员, @执行员. @执行员');
+    expect(format('https://example.com/@bot:executor user@bot:executor @file:executor')).toBe('https://example.com/@bot:executor user@bot:executor @file:executor');
+    expect(mentionLabelFormatter()('@bot:executor')).toBe('@bot:executor');
+  });
   it('inserts project-defined references with stable values, search and highlights', () => {
     const f = fixture();
     f.state.groups = [{ kind: 'bot', label: 'Bot', items: [{ value: 'researcher', label: '研究员', description: '查证信息' }] }];
     f.type('@'); expect(f.rows()[0]?.textContent).toContain('研究员');
     f.key('Enter'); expect(f.mentions.text()).toBe('@bot:researcher ');
     expect(f.textarea.parentElement?.querySelector('mark')?.textContent).toBe('@bot:researcher');
+    f.state.groups[0]!.items.push({ value: 'retired', label: '不在菜单中', suggest: false });
+    f.type('@bot:'); expect(f.rows().some(row => row.textContent?.includes('不在菜单中'))).toBe(false);
     f.type('@bot:查证'); expect(f.rows()).toHaveLength(1);
     f.key('Escape'); expect(f.popup.hidden).toBe(true);
     f.type(''); f.type('@bot:查证'); expect(f.popup.hidden).toBe(false);

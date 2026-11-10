@@ -1506,6 +1506,10 @@ await view.update({ presentation: "composer", mentions: updatedGroups });
 
 选择选项只插入并高亮 `@bot:researcher`，发送时才调用业务 Workflow。`kind` 是项目自己的命名空间，不能覆盖 `skill`、`file` 或 `entry`；最多 16 组、每组 200 项。名称与说明作为纯文本展示。`view.update(ui)` 替换全部 UI 配置并保留输入、草稿与原生会话；成员变化后应及时更新。内置技能、文件与项目入口菜单在嵌入模式也可使用，文件仍仅显示文件名，悬停查看完整路径。
 
+原生已发送消息按 `ui.mentions` 中的 `kind`、`value` 查找 `label`，例如把 `@bot:executor` 显示为 `@执行员`；找不到时保留原文。显示名更新后，历史消息随之刷新，存储内容、提交和路由仍使用稳定标识。代码块、链接和工具原始数据保持原文。
+
+项目可为历史成员保留名称，并设置 `suggest: false`，让该条目不出现在 `@` 菜单中。该字段仅控制菜单候选，不授予成员或执行权限；普通候选省略该字段或设为 `true`。
+
 默认 `presentation: "conversation"` 保留完整原生消息区。`"composer"` 隐藏原生消息区，由 `slots.transcript` 展示项目消息；原生输入区按内容自适应高度，`@` 菜单在其上方展开。三个可选插槽都由项目提供 DOM 节点，留在 Kanban 文档中，项目自行渲染、订阅与处理审批、停止和各成员的队列。插槽不会把 HTML 或执行函数传入原生 sandbox。`onSubmitted` 在取得持久回执后通知页面，不能作为模型完成通知。
 
 ### 在回复中展示业务卡片

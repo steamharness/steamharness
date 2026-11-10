@@ -2,7 +2,7 @@
 export interface KanbanConversationMentionGroup {
   kind: string;
   label: string;
-  items: { value: string; label: string; description?: string }[];
+  items: { value: string; label: string; description?: string; suggest?: boolean }[];
 }
 
 /** Plain project data attached to one assistant turn, outside model history. */
@@ -80,9 +80,10 @@ export function assertConversationUi(value: unknown): asserts value is KanbanCon
     kinds.add(group.kind);
     const values = new Set();
     for (const item of group.items) {
-      if (!record(item) || Object.keys(item).some(key => !["value", "label", "description"].includes(key)) ||
+      if (!record(item) || Object.keys(item).some(key => !["value", "label", "description", "suggest"].includes(key)) ||
         !string(item.value, 500) || /[\r\n]/.test(String(item.value)) || values.has(item.value) || !string(item.label, 200) ||
-        item.description !== undefined && !string(item.description, 1000)) throw new Error("Invalid mention item.");
+        item.description !== undefined && !string(item.description, 1000) ||
+        item.suggest !== undefined && typeof item.suggest !== "boolean") throw new Error("Invalid mention item.");
       values.add(item.value);
     }
   }

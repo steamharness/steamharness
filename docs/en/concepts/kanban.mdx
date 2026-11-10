@@ -114,6 +114,10 @@ await view.update({ presentation: "composer", mentions: updatedGroups });
 // Call view() when unmounting.
 ```
 
+Sent messages resolve references through the `kind`, `value`, and `label` in `ui.mentions`. For example, `@bot:executor` can display as `@Executor`; unknown references keep their original text. Updating a label refreshes history display while storage, submissions, and routing retain the stable reference. Code blocks, links, and raw tool data keep their original text.
+
+Keep a historical member's label with `suggest: false` to hide that item from the `@` menu. This controls suggestions only and grants no membership or execution permission. Omit it or use `true` for ordinary suggestions.
+
 ### Show business cards in replies
 
 With the native transcript enabled, use `ui.messageCards` to place business records below the matching assistant reply. Set each card's `requestId` to the turn's `requestId` from an aggregate conversation snapshot. A durable receipt `id` returned by the submit Workflow can also identify that turn. Cards without a matching reply are not shown.

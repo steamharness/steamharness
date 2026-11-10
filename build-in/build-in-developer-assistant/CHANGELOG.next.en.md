@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document display labels, unknown-reference fallback, and suggestion visibility for historical members in the generator skill.
+
 - Document message-card callbacks, status excerpts, and handling of stale card events in the generator skill.
 
 - Document message cards in native Conversation views, including request-ID anchoring, bounded plain text, and preservation of drafts and history.

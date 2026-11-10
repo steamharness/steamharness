@@ -8,6 +8,7 @@ import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationMentions } from './conversation-mentions';
+import { mentionLabelFormatter } from '../conversation-mentions';
 import type { KanbanConversationUi, KanbanConversationMessageCard } from '@steamharness/kanban-project';
 import { ConversationMessageCards } from './conversation-message-cards';
 import './conversation-message-cards.css';
@@ -113,6 +114,9 @@ function initialize(): void {
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
 
   let state: State | undefined;
+  let mentionGroups: KanbanConversationUi['mentions'];
+  let mentionSignature = '';
+  let displayMentions: (text: string) => string = text => text;
   let embeddedUi: KanbanConversationUi | undefined;
   let checkingServer = false;
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
@@ -1097,6 +1101,7 @@ function initialize(): void {
       view.configureModel.setAttribute('aria-haspopup', 'dialog'); view.configureModel.setAttribute('aria-controls', 'project-information-dialog');
       view.feedback.append(view.configureModel);
       view.output = new ConversationOutput(view.content, {
+        displayText: text => displayMentions(text),
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
@@ -1172,10 +1177,13 @@ function initialize(): void {
     view.root.querySelector<HTMLElement>('.message-actions')!.hidden = message.role === 'assistant' && !messageSettled(message);
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message) || !!embeddedConversation && action.classList.contains('export-message');
     updateMessageMetadata(view);
-    if (message.role === 'user') { view.content.textContent = message.content; }
+    if (message.role === 'user') {
+      const text = displayMentions(message.content);
+      if (view.content.textContent !== text) view.content.textContent = text;
+    }
     else {
       view.output!.setConnected(connectionAvailable && !serverBlocked());
-      view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled);
+      view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled, mentionSignature);
     }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     renderRequestError(view.error, error);
@@ -1308,6 +1316,11 @@ function initialize(): void {
       renderedProject = next.project.uri;
     }
     app.dataset.conversationPresentation = next.conversationUi?.presentation ?? 'conversation';
+    if (mentionGroups !== next.conversationUi?.mentions) {
+      mentionGroups = next.conversationUi?.mentions;
+      const signature = JSON.stringify(mentionGroups?.map(group => [group.kind, group.items.map(item => [item.value, item.label])]) ?? []);
+      if (signature !== mentionSignature) { mentionSignature = signature; displayMentions = mentionLabelFormatter(mentionGroups); }
+    }
     if (conversation) textarea.placeholder = next.conversationUi?.placeholder ?? t('Write anything');
     if (switching) {
       fileMenu.close();

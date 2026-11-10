@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban 自定义引用支持 `suggest: false`：保留历史显示名称，同时从提及菜单隐藏该条目。
+
 - Kanban 原生会话卡片新增带标签的点击回调，仅传递当前卡片与轮次标识，不接受 URL 或脚本。
 
 - Kanban Conversation UI 新增有界纯文本 `messageCards`，按请求 ID 关联原生回复，不向卡片开放脚本或导航能力。

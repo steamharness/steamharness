@@ -1,5 +1,7 @@
 # Unreleased
 
+- Custom Kanban references accept suggest: false to retain historical display labels while hiding items from the mention menu.
+
 - Native Kanban conversation cards support a labeled click callback that receives current card and turn IDs, without URLs or scripts.
 
 - Kanban Conversation UI accepts bounded plain-text messageCards linked to native replies by request ID, without script or navigation access.

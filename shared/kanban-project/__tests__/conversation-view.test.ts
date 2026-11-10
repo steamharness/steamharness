@@ -16,9 +16,11 @@ describe('embedded Conversation bridge', () => {
   it('accepts declarative project references and rejects reserved or unbounded UI data', () => {
     const ui = { presentation: 'composer', mentions: [{ kind: 'bot', label: 'Bot', items: [{ value: 'researcher', label: '研究员' }] }] };
     expect(() => assertConversationUi(ui)).not.toThrow();
+    expect(() => assertConversationUi({ mentions: [{ ...ui.mentions[0], items: [{ value: 'retired', label: '历史 Bot', suggest: false }] }] })).not.toThrow();
     for (const bad of [{ ...ui, html: '<script>' }, { mentions: [{ ...ui.mentions[0], kind: 'file' }] },
       { mentions: [ui.mentions[0], ui.mentions[0]] }, { mentions: [{ ...ui.mentions[0], items: Array(201).fill(ui.mentions[0]!.items[0]) }] },
-      { presentation: 'unknown' }, { presentation: ['conversation'] }, { mentions: [{ ...ui.mentions[0], items: [{ value: 'x', label: 'X', action: 'run' }] }] }])
+      { presentation: 'unknown' }, { presentation: ['conversation'] }, { mentions: [{ ...ui.mentions[0], items: [{ value: 'x', label: 'X', action: 'run' }] }] },
+      { mentions: [{ ...ui.mentions[0], items: [{ value: 'x', label: 'X', suggest: 'yes' }] }] }])
       expect(() => assertConversationUi(bad)).toThrow();
   });
   it('validates bounded target data and rejects caller-selected identities', () => {
