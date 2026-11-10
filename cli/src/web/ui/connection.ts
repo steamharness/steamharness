@@ -229,7 +229,7 @@ export class BrowserConnection {
     try {
       // Only explicit cancellation can cross process recovery. A failed send or
       // tool action is never replayed by this transport.
-      if (control && this.recoverHost && await this.recoverHostSession()) { this.disconnect(); void this.connect(); }
+      if (control && this.status !== 'connected' && this.recoverHost && await this.recoverHostSession()) { this.disconnect(); void this.connect(); }
       if (this.status === 'expired') { throw new ConnectionError(t("Project connection expired.")); }
       if (this.closed || signal.aborted) throw new ConnectionError(t('Connection changed.'));
       const body = { ...message, ...(this.applicationId ? { applicationId: this.applicationId } : {}), clientId: this.clientId };
@@ -245,6 +245,9 @@ export class BrowserConnection {
           response = await fetch(entryBase() + '/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) });
           if (this.closed || signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
           if (response.status === 401) {
+            if (control && !attempt && this.recoverHost && await this.recoverHostSession()) {
+              this.disconnect(); void this.connect(); continue;
+            }
             if (epoch === this.epoch) { this.abortRequests(true); this.disconnect(); this.update('expired'); }
             throw new ConnectionError(t("Project connection expired."));
           }

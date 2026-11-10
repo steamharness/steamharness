@@ -754,6 +754,105 @@ it('deletes a root together with its dependent views after joining the worker', 
   expect(f.runtime.deleteConversation).toHaveBeenCalledWith(f.controller!.project, owner.id);
 });
 
+it('interrupts the owned worker promptly when durable Stop never confirms and ignores late output', async () => {
+  vi.useFakeTimers();
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current, runId = owner.activeRunId;
+  owner.queuedInputs = [{ id: 'queued', text: 'Retain me', params: {}, attachments: [], createdAt: 1, hostQueued: true }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(() => {}));
+  const stopped = f.controller.stop(owner, 'prompt-stop');
+  expect(owner.messages[1].cancelRequested).toBe(true);
+  const before = structuredClone(owner.messages[1].items);
+  f.runs[0].emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'late', content: 'Late output', contentType: 'markdown' } } });
+  expect(owner.messages[1].items).toEqual(before);
+  await vi.advanceTimersByTimeAsync(1000);
+  await stopped;
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(runId,
+    expect.objectContaining({ type: 'cancel', scope: 'all', requestId: 'prompt-stop' }), owner.id, undefined);
+  expect(f.runtime.cancel).toHaveBeenCalledExactlyOnceWith(runId);
+  expect(f.runtime.cancelConversation).toHaveBeenCalledWith(f.controller.project, owner.id);
+  expect(f.controller.hasRuns).toBe(false); expect(f.controller.running).toBe(false);
+  expect(owner.queuedInputs).toMatchObject([{ id: 'queued', hostQueued: true }]); expect(owner.queuePaused).toBe(true);
+  expect(owner.agentCommands).toEqual([]);
+  await vi.advanceTimersByTimeAsync(135_000);
+  expect(f.runtime.agentControl).toHaveBeenCalledOnce();
+});
+
+it('interrupts execution while a slow history checkpoint is still pending', async () => {
+  vi.useFakeTimers();
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current, runId = owner.activeRunId;
+  let release!: () => void;
+  f.save.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const stopped = f.controller.stop(owner, 'stop-during-save');
+  try {
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(f.runtime.cancel).toHaveBeenCalledExactlyOnceWith(runId);
+    expect(owner.activeRunId).toBeUndefined(); expect(f.runs).toHaveLength(1);
+    expect(f.controller.running).toBe(false); expect(owner.messages[1].status).toBe('aborted');
+  } finally { release?.(); }
+  await stopped;
+  expect(f.controller.hasRuns).toBe(false);
+});
+
+it('keeps a newer execution active when an older Stop finishes saving', async () => {
+  vi.useFakeTimers();
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current;
+  let release!: () => void;
+  f.save.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const stopped = f.controller.stop(owner, 'older-stop');
+  try {
+    await vi.advanceTimersByTimeAsync(1000);
+    owner.activeRunId = 'newer-run'; delete owner.agentInterrupted;
+    owner.agent = { ...owner.agent!, ownerId: 'newer-owner', foreground: true, turns: [{
+      requestId: 'newer-input', conversationId: 1, prompt: 'Next', mode: 'followUp', status: 'placed', epoch: 0, items: [],
+    }] };
+    owner.messages.push({ id: 'newer-reply', role: 'assistant', content: '', status: 'running', sessionRequestId: 'newer-input', sessionConversationId: 1 });
+  } finally { release?.(); }
+  await stopped;
+  expect(owner.messages.at(-1)?.status).toBe('running'); expect(owner.agentInterrupted).toBeUndefined();
+  expect(f.controller.running).toBe(true);
+});
+
+it('does not restart an owner that exits while its Stop intent is being saved', async () => {
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current, runId = owner.activeRunId;
+  let release!: () => void;
+  f.save.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const stopped = f.controller.stop(owner, 'stop-during-exit');
+  try {
+    await vi.waitFor(() => expect(release).toBeDefined());
+    f.runs[0].finish({ status: 'aborted' });
+    await vi.waitFor(() => expect(owner.activeRunId).toBeUndefined());
+  } finally { release?.(); }
+  await stopped;
+  expect(f.runs).toHaveLength(1); expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(f.runtime.cancel).toHaveBeenCalledExactlyOnceWith(runId); expect(f.controller.hasRuns).toBe(false);
+});
+
+it('keeps the parent worker alive while a scoped child Stop awaits confirmation', async () => {
+  vi.useFakeTimers();
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current, initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, foreground: true,
+    conversations: [...initial.conversations, { id: 2, parentId: 1, title: 'Owned child', background: true }],
+    turns: [...initial.turns, { requestId: 'child', conversationId: 2, prompt: 'Work', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3, items: [] }] });
+  const childId = await f.controller.openAgentConversation(owner.id, 2);
+  const child = f.controller.sessions.find(session => session.id === childId)!;
+  let accept!: () => void;
+  vi.mocked(f.runtime.agentControl!).mockImplementation((_run, command) => new Promise(resolve => {
+    accept = () => resolve({ requestId: command.requestId, conversationId: 2, status: 'accepted' });
+  }));
+  const stopped = f.controller.stop(child, 'child-stop');
+  await vi.advanceTimersByTimeAsync(1500);
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  expect(f.runtime.agentControl).toHaveBeenCalledWith(owner.activeRunId,
+    expect.objectContaining({ type: 'cancel', targetId: 2, requestId: 'child-stop' }), child.id, undefined);
+  accept(); await stopped;
+  expect(f.runtime.cancel).not.toHaveBeenCalled(); await f.finish();
+});
+
 it('joins the owner and clears parked work when its durable stop command fails', async () => {
   const f = fixture(); await f.start('placed');
   vi.mocked(f.runtime.agentControl!).mockRejectedValue(new Error('Control transport failed'));

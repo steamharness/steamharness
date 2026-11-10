@@ -6,7 +6,7 @@ import type { BrowserConnection } from '../web/ui/connection';
 
 const compiled = build({ entryPoints: ['src/web/ui/connection.ts'], bundle: true, platform: 'node', format: 'cjs', write: false, loader: { '.css': 'empty' } });
 
-async function connectionFixture(status: number, live = true) {
+async function connectionFixture(status: number, live = true, recoverHost?: () => Promise<string | undefined>) {
   const listeners = new Map<string, (event?: { persisted: boolean }) => void>();
   const updates: string[] = [];
   const messages: Record<string, unknown>[] = [];
@@ -35,7 +35,7 @@ async function connectionFixture(status: number, live = true) {
     setTimeout: retry, clearTimeout: clear, fetch: fetcher,
     EventSource: Source, document: { querySelector: () => null },
   });
-  const connection = new module.exports.BrowserConnection(message => { if (message.type === 'connection') updates.push(message.status); messages.push(message); }, live);
+  const connection = new module.exports.BrowserConnection(message => { if (message.type === 'connection') updates.push(message.status); messages.push(message); }, live, false, recoverHost);
   const fire = (delay: number) => {
     const timer = [...timers].find(([, timer]) => timer.delay === delay);
     expect(timer, `No timer scheduled for ${delay} ms`).toBeDefined();
@@ -46,6 +46,32 @@ async function connectionFixture(status: number, live = true) {
   };
   return { listeners, updates, messages, retry, clear, fetcher, connection, navigatorState, timers, fire, open, source: () => source };
 }
+
+it('sends Stop on a healthy connection without waiting for host recovery', async () => {
+  const recover = vi.fn(() => new Promise<string | undefined>(() => {}));
+  const fixture = await connectionFixture(200, true, recover);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  fixture.fetcher.mockResolvedValueOnce(Response.json({ messages: [{ type: 'stopped', requestId: 'stop' }] }));
+  await expect(fixture.connection.request({ type: 'stop', requestId: 'stop' })).resolves.toEqual([{ type: 'stopped', requestId: 'stop' }]);
+  expect(recover).not.toHaveBeenCalled();
+  expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
+  fixture.listeners.get('pagehide')!();
+});
+
+it('recovers an expired control endpoint once if the host exits before the event stream notices', async () => {
+  const recover = vi.fn(async () => 'b'.repeat(64));
+  const fixture = await connectionFixture(200, true, recover);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  fixture.fetcher.mockImplementation(async url => url === '/api/message'
+    ? Response.json({ messages: [{ type: 'stopped', requestId: 'stop' }] }) : new Response(null, { status: 200 }));
+  fixture.fetcher.mockResolvedValueOnce(new Response(null, { status: 401 }));
+  await expect(fixture.connection.request({ type: 'stop', requestId: 'stop' })).resolves.toEqual([{ type: 'stopped', requestId: 'stop' }]);
+  expect(recover).toHaveBeenCalledOnce();
+  const requests = fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message');
+  expect(requests).toHaveLength(2);
+  expect(requests[1][1].headers.Authorization).toBe(`Bearer ${'b'.repeat(64)}`);
+  fixture.listeners.get('pagehide')!();
+});
 
 it('retries temporary session errors without marking the capability expired', async () => {
   const connection = await connectionFixture(503);

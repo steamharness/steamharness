@@ -776,6 +776,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           if (message.errorScope !== 'stop' || message.command.type !== 'cancel' || !['foreground', 'all'].includes(message.command.scope)
             || !message.runId || message.runId !== current.activeRunId || !sameTasks) throw new Error(t('Task state changed. Refresh the trace and try again.'));
         }
+        if (message.errorScope === 'stop' && message.command.type === 'cancel' && message.command.scope === 'all' && message.command.targetId === undefined) {
+          if (message.runId !== undefined && current.activeRunId && message.runId !== current.activeRunId) throw new Error(t('Task state changed. Refresh the trace and try again.'));
+          await controller.stop(current, message.command.requestId);
+          replies.push(state(message.clientId), { type: 'stopped', projectUri: project.uri, sessionId: current.id, requestId: message.command.requestId });
+          break;
+        }
         const receipt = await controller.agentCommand(current.id, message.command);
         const fork = receipt.forkId === undefined ? undefined : controller.sessions.find(entry => entry.agentOwnerId === (current.agentOwnerId ?? current.id) && entry.agentConversationId === receipt.forkId
           || entry.forkSource?.agentOwnerId === (current.agentOwnerId ?? current.id) && entry.forkSource.agentConversationId === receipt.forkId);

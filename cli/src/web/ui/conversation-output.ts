@@ -249,7 +249,7 @@ export class ConversationOutput {
         this.pending.innerHTML = `${iconHtml('loading')}<span class="pending-label"></span>`;
       }
       const label = this.pending.querySelector('.pending-label')!;
-      const text = message.status === 'sending' ? t('Sending message...') : activeAgentActivity(message)?.title ?? t("Responding...");
+      const text = message.cancelRequested ? t('Stopping...') : message.status === 'sending' ? t('Sending message...') : activeAgentActivity(message)?.title ?? t("Responding...");
       if (label.textContent !== text) { label.textContent = text; }
       if (this.pending.parentElement !== this.root) { this.root.append(this.pending); }
     } else { this.pending?.remove(); }

@@ -1475,14 +1475,22 @@ it.each(['foreground', 'all'])('binds a %s stop across process replacement to th
     tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Model', status: 'running', background: false, stopping: false, blockedOn: [] }],
     history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
   const control = vi.spyOn(app.controller, 'agentCommand').mockResolvedValue({ requestId: 'original-stop', conversationId: 1, status: 'accepted' });
+  const stop = vi.spyOn(app.controller, 'stop').mockResolvedValue();
   const request = { type: 'agent-command', sessionId: current.id, agentOwner: 'exited-owner', runId: 'restored-run', taskIds: [42], errorScope: 'stop',
     command: { type: 'cancel', scope, requestId: 'original-stop' } };
   expect((await post({ ...request, taskIds: [43] })).status).toBe(400);
   expect((await post({ ...request, runId: 'another-run' })).status).toBe(400);
   expect((await post({ ...request, taskIds: [] })).status).toBe(400);
   expect((await post({ ...request, command: { ...request.command, type: 'reset' } })).status).toBe(400);
+  if (scope === 'all') expect((await post({ ...request, agentOwner: undefined, runId: 'another-run' })).status).toBe(400);
   expect(control).not.toHaveBeenCalled();
+  expect(stop).not.toHaveBeenCalled();
   const stopped = await post(request);
-  expect(stopped.status, await stopped.text()).toBe(200);
-  expect(control).toHaveBeenCalledExactlyOnceWith(current.id, request.command);
+  const result = await stopped.json();
+  expect(stopped.status, JSON.stringify(result)).toBe(200);
+  if (scope === 'all') {
+    expect(stop).toHaveBeenCalledExactlyOnceWith(current, 'original-stop');
+    expect(control).not.toHaveBeenCalled();
+    expect(result.messages).toContainEqual(expect.objectContaining({ type: 'stopped', requestId: 'original-stop' }));
+  } else expect(control).toHaveBeenCalledExactlyOnceWith(current.id, request.command);
 });

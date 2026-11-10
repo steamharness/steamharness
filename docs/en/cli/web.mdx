@@ -17,6 +17,10 @@ During a Bot reply, click **Send now** beside a queued message to display it imm
 
 The Agent receives the message through the existing queue rules. If the send request fails, the queued message returns with an error and a **Retry** action.
 
+Click **Stop** to show stopping progress immediately in the reply and task plan. Displayed content and the composer draft are preserved, and the input queue pauses. You can send a new message once execution ends. Stopping a child conversation leaves the parent's other work running.
+
+Connected pages send Stop directly. If disconnected, the page restores the connection before trying to stop. Failed requests show an error and can be retried.
+
 In the main Bot composer, type `@` to select **Skills**, **Files** or **Project entries**, or keep typing a name to search across them. Skills come from the current entry's configured directories. Files are searched from the project root, or Assistant's bound working directory. Git projects respect ignore rules; dependencies, build output, runtime data and `.env` configuration are excluded.
 
 Use ↑/↓ to select, Enter or Tab to insert, Esc to dismiss, and Shift+Enter for a new line. Inserted `@skill:…`, `@file:…` and `@entry:…` references are highlighted in the composer. File references display only the file name, with full paths on hover and automatic quoting for names containing spaces. Stored and sent messages retain full paths. References remain message text when restoring drafts, editing queued messages or resending.

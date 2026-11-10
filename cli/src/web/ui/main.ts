@@ -144,7 +144,7 @@ function initialize(): void {
   let connectionStatus: ConnectionState = 'connected';
   let manualReconnect = false;
   let reconnectFailed = false;
-  interface StopRequest { projectUri: string; sessionId: string; requestId: string; runId?: string; agentOwner?: string; taskIds?: number[]; phase: 'pending' | 'accepted' | 'failed'; error?: string; timer?: ReturnType<typeof setTimeout> }
+  interface StopRequest { projectUri: string; sessionId: string; requestId: string; runId?: string; agentOwner?: string; serverInstanceId?: string; taskIds?: number[]; phase: 'pending' | 'accepted' | 'failed'; error?: string; timer?: ReturnType<typeof setTimeout> }
   const stopRequests = new Map<string, StopRequest>();
   window.addEventListener('pagehide', () => { for (const request of stopRequests.values()) { clearTimeout(request.timer); } stopRequests.clear(); });
   let preferredSessionId: string | undefined;
@@ -1150,7 +1150,7 @@ function initialize(): void {
 
   function updateMessageMetadata(view: MessageView): void {
     const message = view.message;
-    const status = message.status === 'sending' ? t('Sending') : message.pendingInput ? t("Awaiting confirmation") : message.status === 'running' ? activeAgentActivity(message)?.label ?? t("Responding") : message.status === 'aborted' ? t("Stopped") : message.status === 'failed' ? t("Failed") : '';
+    const status = message.cancelRequested ? t('Stopping...') : message.status === 'sending' ? t('Sending') : message.pendingInput ? t("Awaiting confirmation") : message.status === 'running' ? activeAgentActivity(message)?.label ?? t("Responding") : message.status === 'aborted' ? t("Stopped") : message.status === 'failed' ? t("Failed") : '';
     const seconds = Math.round((message.status === 'running' ? Date.now() - (message.createdAt ?? Date.now()) : message.durationMs ?? 0) / 1000);
     const duration = message.durationMs !== undefined || message.status === 'running' ? t("Duration {0}{1}s", seconds >= 60 ? `${Math.floor(seconds / 60)}m ` : '', seconds % 60) : '';
     const usage = message.tokenUsage?.display ? message.tokenUsage.run : undefined;
@@ -1174,6 +1174,11 @@ function initialize(): void {
   }
 
   function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string, cards: readonly KanbanConversationMessageCard[], progress?: ConversationMessage): void {
+    if (state && stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending'
+      && ['running', 'waiting_for_input'].includes(message.status ?? '')) {
+      message = { ...message, cancelRequested: true };
+      if (progress) progress = { ...progress, cancelRequested: true };
+    }
     view.message = message;
     view.cards?.update(cards);
     if (message.role === 'user') { updateUserAvatar(view.avatar, state?.account); }
@@ -1258,12 +1263,18 @@ function initialize(): void {
     if (serverBlocked()) { paramsNeedInit ||= resolving; cancelParameterRequest(); }
     for (const [key, request] of stopRequests) {
       const target = next.sessions.find(session => session.id === request.sessionId);
-      const recoveringStop = request.phase === 'pending' && request.runId === target?.activeRunId && request.taskIds?.length
+      const recoveringStop = request.runId === target?.activeRunId && request.taskIds?.length
         && request.taskIds.every(id => target?.agent?.tasks.some(task => task.id === id));
       const replaced = request.agentOwner ? target?.agent?.ownerId !== request.agentOwner && !recoveringStop
         : !!target?.activeRunId && target.activeRunId !== request.runId;
       if (request.projectUri !== next.project.uri || !target || replaced) {
         clearTimeout(request.timer); stopRequests.delete(key);
+      } else if (fromServer && request.serverInstanceId === next.serverInstanceId && request.phase === 'pending' && request.runId && !target.activeRunId && !sessionRunning(target)
+        && !target.recoveryPaused && !target.messages.some(message => message.cancelRequested || message.recovering
+          || message.pendingInput || message.submittingInput || message.status === 'running')) {
+        // Worker completion can reach the event stream before its final history
+        // checkpoint and HTTP receipt. It already proves execution has stopped.
+        clearTimeout(request.timer); request.phase = 'accepted';
       }
     }
     updateProjectAvatar(document.querySelector<HTMLElement>('#project-info')!, next.project);
@@ -1511,7 +1522,8 @@ function initialize(): void {
     clearTimeout(request.timer);
     request.phase = message.type === 'error' ? 'failed' : 'accepted';
     request.error = message.type === 'error' ? t("Stop was not confirmed: {0}. Retry or reconnect to check its result.", message.message) : undefined;
-    updateControls(); return true;
+    if (state) render(state, false);
+    return true;
   }
 
   async function stopCurrent(): Promise<void> {
@@ -1521,18 +1533,21 @@ function initialize(): void {
     if (previous?.phase === 'pending') { return; }
     const request: StopRequest = { projectUri: state.project.uri, sessionId: state.activeId,
       requestId: previous?.phase === 'failed' ? previous.requestId : crypto.randomUUID(),
-      runId: currentSession()?.activeRunId, agentOwner: currentSession()?.agent?.ownerId,
+      runId: currentSession()?.activeRunId, agentOwner: currentSession()?.agent?.ownerId, serverInstanceId: state.serverInstanceId,
       taskIds: currentSession()?.agent?.tasks.map(task => task.id), phase: 'pending' };
     stopRequests.set(key, request);
     // Allow the host to restore the process before waiting for its cancellation receipt.
     request.timer = setTimeout(() => finishStop({ ...request, type: 'error', message: t("The server did not confirm the stop request.") }), 90_000);
-    updateControls();
+    render(state, false);
     const message = state.project.conversation?.durable?.enabled
       ? { type: 'agent-command', agentOwner: request.agentOwner, runId: request.runId,
         taskIds: request.taskIds,
         command: { type: 'cancel', scope: 'all', requestId: request.requestId } }
       : { type: 'stop', runId: request.runId };
-    try { await vscode.postMessage({ ...message, projectUri: request.projectUri, sessionId: request.sessionId, requestId: request.requestId, errorScope: 'stop' }); }
+    try {
+      const delivered = await vscode.postMessage({ ...message, projectUri: request.projectUri, sessionId: request.sessionId, requestId: request.requestId, errorScope: 'stop' });
+      if (delivered === false) throw new Error(t('Message delivery was not confirmed. Retry to check or send it again.'));
+    }
     catch (error) { finishStop({ ...request, type: 'error', message: String((error as Error)?.message ?? error) }); }
   }
 

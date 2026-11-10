@@ -26,7 +26,7 @@ interface ControllerOptions {
   changed(): void;
   log(message: string): void;
 }
-interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void> }
+interface RunTask { sessionId: string; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
 function pendingAgentInput(turn: AgentSessionSnapshot['turns'][number]): boolean {
@@ -570,7 +570,8 @@ export class ConversationController {
         } catch (error) { if (!historical) answer.error = String(error); this.options.log(`Workflow cancellation: ${String(error)}`); }
       }
       if (entry.activeRunId === answer.runId) { delete entry.activeRunId; }
-      if (!restart && entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'))) this.pauseInterruptedAgent(entry);
+      if (!restart && task.stopping && entry.agent) this.settleStoppedAgent(entry);
+      else if (!restart && entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'))) this.pauseInterruptedAgent(entry);
       if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
       this.changed();
       try { await this.persist(); }
@@ -853,7 +854,7 @@ export class ConversationController {
       this.agentSave = undefined; void this.persist().catch(error => this.options.log(String(error)));
     }, 1000);
   }
-  async agentCommand(sessionId: string, command: AgentSessionCommand, attachments?: Attachment[], configurationSelection?: Run['configurationSelection']): Promise<AgentSessionReceipt> {
+  async agentCommand(sessionId: string, command: AgentSessionCommand, attachments?: Attachment[], configurationSelection?: Run['configurationSelection'], expectedRunId?: string): Promise<AgentSessionReceipt> {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry || this.disposed) throw new Error(t("Conversation no longer exists."));
@@ -866,6 +867,7 @@ export class ConversationController {
     const stopping = command.type === 'cancel' && command.scope !== 'task';
     if (stopping) entry.queuePaused = true;
     const owner = this.owner(entry);
+    const cancellingRunId = stopping ? owner.activeRunId : undefined;
     const stored = entry.agentCommands?.find(item => item.command.requestId === command.requestId);
     const prepared = { ...command, targetId: command.targetId ?? stored?.command.targetId ?? entry.agentConversationId };
     if (stored && !isDeepStrictEqual(stored.command, prepared)) throw new Error('The requestId was used for another command.');
@@ -884,7 +886,9 @@ export class ConversationController {
       ? t('Fork creation was not confirmed. Reconnect and check your conversations before trying again.')
       : t('Agent command confirmation could not be recovered. Retry to check the same request.')), { code: 'AGENT_COMMAND_TIMEOUT' });
     const apply = async (): Promise<AgentSessionReceipt> => {
+      if (expectedRunId && owner.activeRunId !== expectedRunId) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'AGENT_SESSION_ENDED' });
       if (owner.activeRunId) return this.runtime.agentControl!(owner.activeRunId, prepared, entry.id, attachments);
+      if (cancellingRunId) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'AGENT_SESSION_ENDED' });
       if (prepared.type === 'fork') {
         if (!this.runtime.forkAgentConversation) throw new Error('Stored conversation forking is unavailable.');
         return this.runtime.forkAgentConversation(this.project, owner.id, prepared);
@@ -1071,12 +1075,20 @@ export class ConversationController {
       catch (error) { entry.queuedInputs!.unshift(input); this.options.log(String(error)); this.changed(); }
     }
   }
-  async stop(entry = this.current): Promise<void> {
+  async stop(entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
     // Root cancellation must mark the run synchronously, before late chunks
     // or completion events can land in the same turn of the event loop.
     if (entry.agentOwnerId || this.isolating.has(entry.id)) await this.ensureIndependentFork(entry);
     entry.queuePaused = true; entry.recoveryPaused = false;
     const commandOwner = this.owner(entry);
+    const runId = entry.activeRunId;
+    const task = runId && this.tasks.get(runId);
+    if (task) {
+      task.cancelled = true; task.stopping = true;
+      const answer = entry.messages.find(message => message.runId === runId);
+      if (answer) answer.cancelRequested = true;
+      this.changed();
+    }
     const stoppedSessions = this.sessions.filter(session => session.id === entry.id
       || entry === commandOwner && (session.agentOwnerId ?? session.id) === entry.id);
     for (const session of stoppedSessions) {
@@ -1099,18 +1111,27 @@ export class ConversationController {
     }
     if (this.project.conversation?.durable?.enabled && entry.agent && (entry !== commandOwner || sessionRunning(entry)) && !entry.messages.some(message => message.pendingInput)) {
       const owner = this.owner(entry);
-      try { await this.agentCommand(entry.id, { type: 'cancel', requestId: globalThis.crypto.randomUUID(), scope: 'all' }); }
-      catch (error) { if (entry !== owner) throw error; controlError = error; }
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const control = this.agentCommand(entry.id, { type: 'cancel', requestId, scope: 'all' }, undefined, undefined, task && entry === owner ? runId : undefined);
+        // Root Stop owns this worker. Give its durable cancellation a short
+        // head start, then interrupt it even if its command line is stalled.
+        // A child Stop must keep the shared owner's other conversations alive.
+        if (task && entry === owner) await Promise.race([control, new Promise<void>(resolve => { deadline = setTimeout(resolve, 1000); })]);
+        else await control;
+      }
+      catch (error) {
+        if (entry !== owner) throw error;
+        if ((error as { code?: string })?.code !== 'AGENT_SESSION_ENDED') controlError = error;
+      }
+      finally { clearTimeout(deadline); }
       if (entry !== owner) return;
     }
-    const task = entry.activeRunId && this.tasks.get(entry.activeRunId);
-    if (task) {
-      const runId = entry.activeRunId;
-      task.cancelled = true;
-      const answer = entry.messages.find(message => message.runId === entry.activeRunId);
-      if (answer) answer.cancelRequested = true;
-      try { await this.persist(); }
-      finally { this.runtime.cancel(runId); await task.finished; }
+    if (task && runId) {
+      const saved = this.persist();
+      this.runtime.cancel(runId);
+      try { await saved; }
+      finally { await task.finished; }
     }
     else {
       const answer = entry.messages.find(message => message.pendingInput || message.cancelRequested || message.recovering);
@@ -1136,7 +1157,7 @@ export class ConversationController {
       })();
       await cancellation.finished;
     }
-    if (entry.agent) {
+    if (entry.agent && (!entry.activeRunId || entry.activeRunId === runId)) {
       // The worker can exit after acknowledging cancel and before its final
       // snapshot arrives. Preserve completed replies and settle the active
       // follow-ups locally; the next explicit resume refreshes persisted state.

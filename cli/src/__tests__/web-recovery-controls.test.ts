@@ -69,11 +69,15 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   expect(first).toMatchObject({ type: 'stop', projectUri: project.uri, sessionId: session.id });
   expect(send.disabled).toBe(true); expect(send.getAttribute('aria-busy')).toBe('true');
   expect(feedback.textContent).toBe('Stopping...');
+  expect(document.querySelector('.message-metadata')?.textContent).toContain('Stopping...');
+  expect(document.querySelector('.pending')?.textContent).toBe('Stopping...');
+  expect(session.messages[0].cancelRequested).toBeUndefined();
   emit({ ...first, type: 'stopped', sessionId: 'other' });
   expect(send.disabled).toBe(true);
   emit({ ...first, type: 'error', requestType: 'stop', silent: true, message: 'Connection interrupted.' });
   expect(send.disabled).toBe(false); expect(feedback.getAttribute('role')).toBe('alert');
   expect(feedback.textContent).toContain('Stop was not confirmed: Connection interrupted.');
+  expect(document.querySelector('.pending')?.textContent).toBe('Responding...');
   expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
   send.click();
   const second = stopMessages()[1];
@@ -112,6 +116,11 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
   await render([session], session.id, { serverInstanceId: 'exited', stateRevision: 101 });
   expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
+  const paused = { ...restored, activeRunId: undefined, agentInterrupted: true, agent: { ...restored.agent, ownerId: 'owner' },
+    messages: [{ ...session.messages[0], status: 'success' }] };
+  await render([paused], session.id, { serverInstanceId: 'restored', stateRevision: 2 });
+  expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
+  await render([restored], session.id, { serverInstanceId: 'restored', stateRevision: 3 });
   await vi.advanceTimersByTimeAsync(35_000);
   expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
   await vi.advanceTimersByTimeAsync(55_000);
@@ -122,4 +131,19 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   expect(retried.agentOwner).toBe('replacement');
   emit({ type: 'agent-receipt', sessionId: session.id, receipt: { requestId: retried.requestId, status: 'accepted' } });
   expect(feedback.textContent).toBe('Stop request accepted.'); expect(send.getAttribute('aria-busy')).toBe('false');
+
+  host.postMessage.mockReturnValueOnce(false);
+  send.click(); await Promise.resolve();
+  expect(feedback.getAttribute('role')).toBe('alert');
+  expect(feedback.textContent).toContain('Message delivery was not confirmed');
+  expect(send.getAttribute('aria-busy')).toBe('false');
+  send.click(); expect(send.getAttribute('aria-busy')).toBe('true');
+  const completed = { ...restored, activeRunId: undefined, agent: { ...restored.agent, foreground: false, tasks: [] },
+    messages: [{ ...session.messages[0], status: 'aborted' }] };
+  emit({ type: 'state', project, sessions: [completed], activeId: completed.id, running: false, serverInstanceId: 'restored', stateRevision: 4 });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(send.getAttribute('aria-busy')).toBe('false');
+  expect(document.querySelector('.message-metadata')?.textContent).toContain('Stopped');
+  expect(document.querySelector('.pending')).toBeNull();
+  expect(feedback.textContent).toBe('Stop request accepted.');
 });

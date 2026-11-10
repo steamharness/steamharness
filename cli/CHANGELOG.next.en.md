@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix Bot Stop waiting on host recovery and durable command retries. Connected pages send cancellation directly and show stopping progress immediately. Interrupt a stalled owned worker, ignore late output, and update the UI when execution ends without waiting for its history receipt. Preserve drafts, pause queued input, and keep child cancellation scoped.
+
 - Fix retrying, sending new messages, and continuing queues after initial model or tool setup fails in manual recovery mode. Retry preserves the composer draft, and unfinished execution still requires explicit recovery.
 
 - Fix selected-text, message, and code copying in Kanban and embedded conversations through confirmed host clipboard writes. Route editing to the focused document and keep selection drags from navigating.
