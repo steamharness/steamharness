@@ -74,18 +74,18 @@ test("remote synchronization keeps the GitLab port and credentials out of comman
       token: "secret-sync-token",
       skipCi: true,
       targets: "workflow/desktop",
-      serverUrl: "http://yuhe.space:7201",
+      serverUrl: "https://git.yuhe.space",
       runCommand: async (command, args, options) => {
         calls.push({ command, args, env: options.env });
         return args.includes("--porcelain") ? "" : "";
       },
     });
     const clone = calls.find((call) => call.args.includes("clone"));
-    assert.equal(clone.args.at(-2), "http://yuhe.space:7201/workflow/desktop.git");
+    assert.equal(clone.args.at(-2), "https://git.yuhe.space/workflow/desktop.git");
     assert.equal(clone.args.join(" ").includes("secret-sync-token"), false);
     assert.equal(clone.env.GIT_CONFIG_KEY_0, "http.extraHeader");
     assert.equal(Buffer.from(clone.env.GIT_CONFIG_VALUE_0.slice("Authorization: Basic ".length), "base64").toString("utf8"), "oauth2:secret-sync-token");
-    assert.equal(resolveGitLabServerUrl({ protocol: "http", host: "yuhe.space", port: "7201" }), "http://yuhe.space:7201");
+    assert.equal(resolveGitLabServerUrl({ protocol: "http", host: "yuhe.space", port: "7201" }), "https://git.yuhe.space");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -105,7 +105,7 @@ test("remote synchronization captures push failures and retries a non-fast-forwa
       token: "secret-sync-token",
       skipCi: true,
       targets: "workflow/desktop",
-      serverUrl: "http://yuhe.space:7201",
+      serverUrl: "https://git.yuhe.space",
       attempts: 2,
       runCommand: async (_command, args, options) => {
         if (args.includes("--porcelain")) return " M vendor/shared/i18n/package.json\n";

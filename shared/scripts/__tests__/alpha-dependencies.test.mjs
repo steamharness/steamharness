@@ -91,7 +91,7 @@ test("dependency synchronization captures push failures and retries a non-fast-f
     version: "0.1.4-20260814001",
     targets: ["workflow/server|package.json|dependencies"],
     message: "chore: update Core alpha dependency",
-    serverUrl: "http://yuhe.space:7201",
+    serverUrl: "https://git.yuhe.space",
     token: "secret-sync-token",
     skipCi: true,
     attempts: 2,

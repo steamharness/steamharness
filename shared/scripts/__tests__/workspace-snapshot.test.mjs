@@ -9,7 +9,7 @@ test("workspace snapshot captures push failures and retries a non-fast-forward u
     workspaceProject: "workflow/workspace",
     submodule: "shared",
     commitSha,
-    serverUrl: "http://yuhe.space:7201",
+    serverUrl: "https://git.yuhe.space",
     token: "secret-sync-token",
     skipCi: true,
     attempts: 2,

@@ -18,7 +18,7 @@
 ### 完整测试
 
 - 完整测试在 GitLab CI 的 `linux` 标签 runner 上执行。当前对应 runner 为 `win-linux`（可通过 `~/.ssh/config` 中的同名 SSH Host 检查环境），使用 Linux 的 Xvfb 虚拟显示和独立窗口管理器运行真实 Electron；窗口、焦点及剪贴板操作都留在远端测试环境。
-- 用户明确要求恢复 CI 测试入口后，先提交并推送到本次任务的目标分支，再通过 `glab ci run --repo http://yuhe.space:7201/workflow/studio --branch <目标分支> --variables STUDIO_FULL_TESTS:1` 触发 `full-test`。显式指定仓库地址，避免 SSH remote 与 GitLab API 端口不同导致 glab 匹配失败。这里的 `linux` 是 CI runner 标签，不是 Git 发布 tag；不得为测试创建发布 tag。
+- 用户明确要求恢复 CI 测试入口后，先提交并推送到本次任务的目标分支，再通过 `glab ci run --repo https://git.yuhe.space/workflow/studio --branch <目标分支> --variables STUDIO_FULL_TESTS:1` 触发 `full-test`。显式指定仓库地址，避免 SSH remote 与 GitLab API 端口不同导致 glab 匹配失败。这里的 `linux` 是 CI runner 标签，不是 Git 发布 tag；不得为测试创建发布 tag。
 - 完整测试包括类型检查、全部单元测试、扩展及 VS Code 构建、扩展宿主测试，以及当前已提交的自包含浏览器和桌面 UI 回归。测试使用隔离的数据目录，串行执行并保存各项结果、截图和日志。
 - 完整测试优先控制内存峰值，可以接受较长耗时。按 runner 的现有资源配额限制安装和构建并发及单进程内存，交付时检查包括子进程在内的实际内存占用和内存回收压力。
 - CI 下载必须复用 runner 的持久缓存，包括 Node 工具链、npm/pnpm 包、node-gyp 头文件、Electron 和 Playwright 浏览器。node-gyp 启用 `npm_config_ensure=true`，按目标版本和缓存安装版本检查后复用；不得为重跑测试清空有效缓存。

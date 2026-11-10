@@ -44,9 +44,9 @@ describe("local sibling preparation", () => {
   it("derives the clone prefix from CI_REPOSITORY_URL", () => {
     expect(resolveRepositoryPrefix({})).toBeUndefined();
     expect(resolveRepositoryPrefix({
-      CI_REPOSITORY_URL: "http://gitlab-ci-token:old@yuhe.space:7201/workflow/build-in-opencode.git",
+      CI_REPOSITORY_URL: "https://gitlab-ci-token:old@git.yuhe.space/workflow/build-in-opencode.git",
       CI_JOB_TOKEN: "fresh",
-    })).toBe("http://gitlab-ci-token:fresh@yuhe.space:7201/workflow");
+    })).toBe("https://gitlab-ci-token:fresh@git.yuhe.space/workflow");
     expect(resolveRepositoryPrefix({
       CI_REPOSITORY_URL: "https://yuhe.space/workflow/build-in-opencode.git",
       CI_JOB_TOKEN: "fresh",
@@ -194,7 +194,7 @@ describe("local sibling preparation", () => {
     const ciCalls = [];
     prepareLocalSiblings({
       root: projectRoot,
-      env: { CI_REPOSITORY_URL: "http://yuhe.space:7201/workflow/build-in-project.git", CI_JOB_TOKEN: "t" },
+      env: { CI_REPOSITORY_URL: "https://git.yuhe.space/workflow/build-in-project.git", CI_JOB_TOKEN: "t" },
       log: () => {},
       run: (command, args) => {
         ciCalls.push(`${command} ${args[0]}`);
@@ -223,7 +223,7 @@ describe("local sibling preparation", () => {
     const prepared = prepareLocalSiblings({
       root: projectRoot,
       env: {
-        CI_REPOSITORY_URL: "http://yuhe.space:7201/workflow/build-in-project.git",
+        CI_REPOSITORY_URL: "https://git.yuhe.space/workflow/build-in-project.git",
         CI_JOB_TOKEN: "t",
         CI_COMMIT_BRANCH: "codex/pi-agent",
       },

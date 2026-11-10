@@ -18,7 +18,7 @@ for studio_submodule in "$@"; do
   fi
 done
 git \
-  -c "url.$studio_git_url.insteadOf=ssh://git@yuhe.space:7202/" \
+  -c "url.$studio_git_url.insteadOf=ssh://git@git-ssh.yuhe.space:7202/" \
   -c 'url.https://github.com/.insteadOf=git@github.com:' \
   "${studio_git_options[@]}" \
   submodule update --init --depth 1 -- "$@"
