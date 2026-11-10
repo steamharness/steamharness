@@ -851,7 +851,7 @@ it.each(['placed', 'done', 'unanswered'] as const)('keeps consumed queue message
   if (status !== 'placed') {
     const send = vi.spyOn(f.controller, 'send').mockResolvedValue();
     await f.controller.retry(answer.id!);
-    expect(send).toHaveBeenCalledWith(f.controller.current.messages[0].input, f.controller.current);
+    expect(send).toHaveBeenCalledWith(f.controller.current.messages[0].input, f.controller.current, true);
   }
   await f.finish();
 });

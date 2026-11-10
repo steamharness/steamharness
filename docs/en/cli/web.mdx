@@ -27,6 +27,8 @@ After a forced host exit, ordinary conversations recover using their original ru
 
 You can explicitly resume the queue or send new input; successful new input then advances the retained queue in order.
 
+If the first model connection or tool initialization fails, an idle conversation still accepts **Retry**, a new message, or an explicit queue continuation. Retry preserves the composer draft; failure alone never resends old input. `recovery.startup: "manual"` requires an explicit action for unfinished execution restored after reopening the host, without blocking new sends after a failure.
+
 When reopening a conversation or synchronizing history from another window, persisted Agent turn outcomes correct stale responding and recovery flags. Completed, failed and stopped replies stop counting elapsed time and are not executed again because of old flags. Unfinished turns continue through normal recovery. Each reply keeps its final duration after completion, including after refreshing or reopening history. Follow-ups are timed independently from when their execution starts.
 
 Subagent views use persisted execution timestamps when first opened or restored, including time spent running before the view opened and excluding queue time. Older history without reliable timing records is not backfilled from the current time.

@@ -344,7 +344,9 @@ export class ConversationController {
       if (!preserveDraft) entry.draft = { text: '', attachments: [] };
       this.changed(); await this.persist(); return;
     }
-    const waiting = entry.recoveryPaused || this.project.conversation?.recovery?.startup === 'manual' && entry.queuePaused
+    // Manual startup pauses unfinished execution, not every later queue pause.
+    // A failed bootstrap may have no Agent yet; explicit input must still start.
+    const waiting = entry.recoveryPaused
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering);
     if (entry.activeRunId || waiting || entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry))) {
       if (!this.project.conversation?.inputQueue?.enabled) { throw new Error(t("The current session is running.")); }
@@ -1253,11 +1255,11 @@ export class ConversationController {
     }
     const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user' && message.status !== 'steer');
     if (!user || entry.activeRunId && !entry.agent) { return; }
-    if (user.input) { await this.send(user.input, entry); return; }
+    if (user.input) { await this.send(user.input, entry, true); return; }
     const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = { ...entry.parameterValues?.[user.entrypointId ?? ''] };
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
-    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry);
+    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry, true);
   }
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {

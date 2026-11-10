@@ -2,13 +2,42 @@ import { expect, it, vi } from 'vitest';
 import { ConversationController } from '../web/conversation-controller';
 import type { ConversationSession, Project, Report, Runtime } from '../web/workflow-types';
 
-function fixture(saved: { sessions?: ConversationSession[] } = {}) {
-  const project = { projectType: 'bot', fields: [], entrypoints: [], conversation: { recovery: { enabled: true }, inputQueue: { enabled: true } } } as unknown as Project;
+function fixture(saved: { sessions?: ConversationSession[] } = {}, manual = false, durable = false) {
+  const project = { projectType: 'bot', fields: [], entrypoints: [], conversation: { recovery: { enabled: true, ...(manual ? { startup: 'manual' } : {}) }, durable: { enabled: durable }, inputQueue: { enabled: true } } } as unknown as Project;
   const runtime = { run: vi.fn(), cancel: vi.fn(), cancelConversation: vi.fn(async () => {}) } as unknown as Runtime;
   const save = vi.fn(async () => {});
   const controller = new ConversationController(project, runtime, saved, { save, changed: vi.fn(), log: vi.fn() });
   return { controller, runtime, save };
 }
+
+it.each([
+  ['send', false], ['retry', false], ['resume', false],
+  ['send', true], ['retry', true], ['resume', true],
+] as const)('allows explicit %s after a pre-agent failure with manual recovery (durable=%s)', async (action, durable) => {
+  const { controller, runtime } = fixture({}, true, durable);
+  let fail!: (error: Error) => void;
+  vi.mocked(runtime.run).mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }))
+    .mockResolvedValue({ status: 'success' });
+  try {
+    await controller.send({ text: 'Original', params: {}, attachments: [] });
+    await controller.send({ text: 'Queued one', params: {}, attachments: [] });
+    await controller.send({ text: 'Queued two', params: {}, attachments: [] });
+    fail(new Error('Could not connect to the private AI service to load credentials'));
+    await controller.idle();
+    expect(controller.current.agent).toBeUndefined();
+    expect(controller.current.queuePaused).toBe(true);
+    expect(controller.current.queuedInputs?.map(input => input.text)).toEqual(['Queued one', 'Queued two']);
+    await controller.updateDraft(controller.current.id, 'Keep my draft', []);
+    if (action === 'send') await controller.send({ text: 'Explicit new input', params: {}, attachments: [] });
+    else if (action === 'retry') await controller.retry(controller.current.messages.at(-1)!.id!);
+    else await controller.runQueued();
+    await controller.idle();
+    const prompts = vi.mocked(runtime.run).mock.calls.map(([run]) => run.args?.at(-1));
+    expect(prompts.slice(0, 2)).toEqual(['Original', action === 'send' ? 'Explicit new input' : action === 'retry' ? 'Original' : 'Queued one']);
+    expect(controller.current.recoveryPaused).not.toBe(true);
+    if (action !== 'send') expect(controller.current.draft?.text).toBe('Keep my draft');
+  } finally { controller.dispose(); }
+});
 
 it.each(['failed', 'aborted', 'timed_out', 'throw'] as const)('pauses the queue after %s and advances it only after a successful explicit input', async status => {
   const { controller, runtime } = fixture();

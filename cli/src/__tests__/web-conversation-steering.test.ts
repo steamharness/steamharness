@@ -70,7 +70,7 @@ it('retains the original retry input when independently forking an answer with a
   expect(fork.messages.every(message => !message.runId && !message.sessionRequestId && !message.input)).toBe(true);
   const send = vi.spyOn(controller, 'send').mockResolvedValue();
   await controller.retry(fork.messages.at(-1)!.id!, fork);
-  expect(send).toHaveBeenCalledWith(expect.objectContaining({ text: 'Original task' }), fork);
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ text: 'Original task' }), fork, true);
 });
 
 it('rebuilds turns by execution position when an idle promotion runs before an older queued input', () => {

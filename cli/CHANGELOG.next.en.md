@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix retrying, sending new messages, and continuing queues after initial model or tool setup fails in manual recovery mode. Retry preserves the composer draft, and unfinished execution still requires explicit recovery.
+
 - Fix selected-text, message, and code copying in Kanban and embedded conversations through confirmed host clipboard writes. Route editing to the focused document and keep selection drags from navigating.
 
 - Native conversations display known project references by name and preserve unknown tokens. Label updates refresh history display while retaining routing identities, code, and drafts.
