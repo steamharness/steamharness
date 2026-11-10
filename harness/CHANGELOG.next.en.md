@@ -1,5 +1,7 @@
 # Unreleased
 
+- Complete clipboard and editing relays for nested Kanban conversations while retaining sandbox and session boundaries and cleaning pending copies on close.
+
 - Custom Kanban references accept suggest: false to retain historical display labels while hiding items from the mention menu.
 
 - Native Kanban conversation cards support a labeled click callback that receives current card and turn IDs, without URLs or scripts.

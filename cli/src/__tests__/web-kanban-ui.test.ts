@@ -84,6 +84,31 @@ it.each(['en', 'zh-CN'] as const)('connects the real Kanban host without a sideb
   expect(status.hidden).toBe(true); expect(status.dataset.error).toBe('false');
 });
 
+it('copies only current preview requests through the UI clipboard and delegates focused edits', async () => {
+  const writeText = vi.fn(async () => {});
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  cleanup.push(() => { if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard); else delete (navigator as any).clipboard; });
+  const { sources, sendState, fetcher } = await fixture('en');
+  sources[0].onopen!(); sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!, replies = vi.spyOn(frame.contentWindow!, 'postMessage');
+  const copy = { type: 'steamharness:kanban-copy', version: 1, nonce: 'first', requestId: 'copy-1', text: '正文与引用\nconst n = 1;' };
+  const send = (source: MessageEventSource | null, data: object) => window.dispatchEvent(new MessageEvent('message', { source, data }));
+  send(null, copy); send(frame.contentWindow!, { ...copy, nonce: 'stale' });
+  expect(writeText).not.toHaveBeenCalled();
+  send(frame.contentWindow!, copy);
+  await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(copy.text));
+  expect(fetcher.mock.calls.some(([, options]) => String(options?.body ?? '').includes('copy-1'))).toBe(false);
+  await vi.waitFor(() => expect(replies).toHaveBeenCalledWith({ type: 'steamharness:kanban-copy-result', version: 1, nonce: 'first', requestId: 'copy-1', ok: true }, '*'));
+  frame.focus();
+  const command = new CustomEvent('project-edit-command', { cancelable: true, detail: { command: 'copy', restoreFocus: false } });
+  window.dispatchEvent(command); expect(command.defaultPrevented).toBe(true);
+  expect(replies).toHaveBeenCalledWith(expect.objectContaining({ type: 'steamharness:kanban-edit-command', command: 'copy', nonce: 'first' }), '*');
+  writeText.mockRejectedValueOnce(new Error('clipboard denied'));
+  send(frame.contentWindow!, { ...copy, requestId: 'copy-2' });
+  await vi.waitFor(() => expect(replies).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'copy-2', ok: false }), '*'));
+});
+
 it.each(['entries.runEntrypoint', 'conversations.viewMessage'])('keeps the Workflow receipt window through the Kanban page adapter (%s)', async operation => {
   const { sources, sendState, fetcher } = await fixture('en');
   sources[0]!.onopen!(); sendState(1);

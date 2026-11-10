@@ -14,7 +14,7 @@ import { ProjectServerCreateDialog } from './project-server-create';
 import { acquireHostKeyboard } from './host-keyboard';
 
 type Message = Record<string, any>;
-interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; keyboard?: ReturnType<typeof acquireHostKeyboard> }
+interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean } }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -185,6 +185,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       clipboard.enable(event.data.clipboardVersion);
       editHost = event.data.clipboardVersion === 1;
       if (editHost) { window.parent.postMessage({ type: 'workflow-edit', version: 1 }, '*'); }
+      window.dispatchEvent(new CustomEvent('workflow-edit-host-change'));
     }
     if (event.data.userSettingsVersion !== undefined) userSettingsHost = event.data.userSettingsVersion === 1;
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
@@ -240,27 +241,32 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.recovery) recovery.receive(event.data.recovery);
     if (event.data.nativePasteVersion !== undefined) { nativePasteHost = event.data.nativePasteVersion === 1; }
     if (event.data.resourceError) { emit(event.data.resourceError); }
-    if ((event.data.restoreFocus === true || document.activeElement === document.body)
-      && ['paste', 'cut', 'selectAll', 'undo', 'redo'].includes(event.data.editCommand)) {
-      const context = contextInput ?? lastInput; contextInput = undefined;
-      if (context) {
-        const input = context.element as HTMLInputElement | HTMLTextAreaElement;
-        if (!input.isConnected || context.selection && input.value !== context.selection.value) { return; }
-        input.focus({ preventScroll: true });
-        if (context.selection) { input.setSelectionRange(context.selection.start, context.selection.end, context.selection.direction); }
+    const delegatedEdit = typeof event.data.editCommand === 'string' && window.dispatchEvent(new CustomEvent('project-edit-command', {
+      cancelable: true, detail: { command: event.data.editCommand, restoreFocus: event.data.restoreFocus === true, clipboardData: event.data.clipboardData },
+    })) === false;
+    if (!delegatedEdit) {
+      if ((event.data.restoreFocus === true || document.activeElement === document.body)
+        && ['paste', 'cut', 'selectAll', 'undo', 'redo'].includes(event.data.editCommand)) {
+        const context = contextInput ?? lastInput; contextInput = undefined;
+        if (context) {
+          const input = context.element as HTMLInputElement | HTMLTextAreaElement;
+          if (!input.isConnected || context.selection && input.value !== context.selection.value) { return; }
+          input.focus({ preventScroll: true });
+          if (context.selection) { input.setSelectionRange(context.selection.start, context.selection.end, context.selection.direction); }
+        }
       }
+      if (event.data.editCommand === 'copy') { copySelection(); }
+      else if (event.data.editCommand === 'cut') {
+        contextText = undefined; contextInput = undefined;
+        if (document.activeElement?.matches('textarea, input')) { void cutSelection(); }
+        else { document.execCommand('cut'); }
+      }
+      else if (event.data.editCommand === 'paste' && event.data.clipboardData) { pasteHostClipboard(event.data.clipboardData); }
+      else if (['selectAll', 'undo', 'redo'].includes(event.data.editCommand)) {
+        contextText = undefined; contextInput = undefined; editText(event.data.editCommand as TextEditCommand);
+      }
+      else if (event.data.editCommand === 'paste') { document.execCommand('paste'); }
     }
-    if (event.data.editCommand === 'copy') { copySelection(); }
-    else if (event.data.editCommand === 'cut') {
-      contextText = undefined; contextInput = undefined;
-      if (document.activeElement?.matches('textarea, input')) { void cutSelection(); }
-      else { document.execCommand('cut'); }
-    }
-    else if (event.data.editCommand === 'paste' && event.data.clipboardData) { pasteHostClipboard(event.data.clipboardData); }
-    else if (['selectAll', 'undo', 'redo'].includes(event.data.editCommand)) {
-      contextText = undefined; contextInput = undefined; editText(event.data.editCommand as TextEditCommand);
-    }
-    else if (event.data.editCommand === 'paste') { document.execCommand('paste'); }
     clipboard.receive(event.data.clipboard);
     const traceCommand = trace.command(event.data.traceCommand);
     if (traceCommand?.type === 'trace-navigate') { emit(traceCommand); trace.result(event.data.traceCommand.requestId); }
@@ -324,6 +330,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   return {
     keyboard,
+    editing: { get enabled() { return editHost; } },
     postMessage: async (message) => {
       if (message.type === 'open-account') { accountPanel?.open(); return; }
       if (message.type === 'open-project-create') { void projectCreation.open(); return; }
@@ -400,6 +407,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       }
       if (message.type === 'copy') {
         return copyText(message.text);
+      }
+      if (message.type === 'context-menu') {
+        if (!editHost || !Number.isFinite(message.x) || !Number.isFinite(message.y) || typeof message.editable !== 'boolean' || typeof message.selection !== 'boolean') return false;
+        window.parent.postMessage({ type: 'workflow-contextmenu', version: 1, x: message.x, y: message.y, editable: message.editable, selection: message.selection }, '*');
+        return true;
       }
       if (message.type === 'attach') { chooseFiles(message); return; }
       if (message.type === 'session-action' && message.action === 'rename') {

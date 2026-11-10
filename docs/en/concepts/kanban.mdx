@@ -118,6 +118,10 @@ Sent messages resolve references through the `kind`, `value`, and `label` in `ui
 
 Keep a historical member's label with `suggest: false` to hide that item from the `@` menu. This controls suggestions only and grants no membership or execution permission. Omit it or use `true` for ordinary suggestions.
 
+In Studio, embedded message and code copy buttons, selected-text copying, and context-menu copying use the host clipboard. Editing commands reach the focused project or conversation document, retaining selections while menus are open. Selecting text inside a button or link does not navigate, and unsent input stays intact.
+
+Copying does not invoke a business Workflow or run a model. Loaded content can still request copying while the execution connection is interrupted. Browser mode uses browser copy support, and failures show an error. Project and conversation frames retain their existing sandbox.
+
 ### Show business cards in replies
 
 With the native transcript enabled, use `ui.messageCards` to place business records below the matching assistant reply. Set each card's `requestId` to the turn's `requestId` from an aggregate conversation snapshot. A durable receipt `id` returned by the submit Workflow can also identify that turn. Cards without a matching reply are not shown.

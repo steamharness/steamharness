@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document embedded copying, focused editing, and text-selection behavior in the generator skill.
+
 - Document display labels, unknown-reference fallback, and suggestion visibility for historical members in the generator skill.
 
 - Document message-card callbacks, status excerpts, and handling of stale card events in the generator skill.

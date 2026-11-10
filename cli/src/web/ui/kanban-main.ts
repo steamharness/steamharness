@@ -20,6 +20,7 @@ import { ProjectServerGuidance } from './project-server-guidance';
 import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
+let frameContextMenu = false;
 interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; databaseRevisions: { alias: string; revision: string }[]; databaseWarning: string; serverDataIssue?: ProjectServerIssue }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
@@ -126,6 +127,7 @@ function inject(): void {
     { type: 'steamharness:kanban-theme', theme: document.documentElement.dataset.theme },
     { type: 'steamharness:kanban-presentation', presentation: { mode } },
     { type: 'steamharness:kanban-keyboard-host', version: 1, enabled: host.keyboard?.enabled === true },
+    { type: 'steamharness:kanban-edit-host', version: 1, enabled: host.editing?.enabled === true },
     ...state.databaseRevisions.map(item => ({ type: 'steamharness:kanban-database-revision', ...item })),
   ]) { frame.contentWindow?.postMessage({ ...message, nonce: state.preview.nonce }, '*'); }
 }
@@ -137,6 +139,7 @@ function publishMethods(): void {
   }, 50);
 }
 function mountPreview(): void {
+  frameContextMenu = false;
   if (!state || previewBlocked) { return; }
   clearTimeout(readyTimer); methodSession?.close(); pendingBridge = 0; previewKey = state.preview.url; configurationKey = '';
   methodSession = createKanbanMethodSession({ nonce: state.preview.nonce, getConfiguration: () => state?.configuration, getPresentation: () => ({ mode }), postMessage: message => frame.contentWindow?.postMessage(message, '*') });
@@ -146,6 +149,16 @@ function mountPreview(): void {
 }
 frame.addEventListener('load', () => { configurationKey = ''; inject(); });
 addEventListener('workflow-keyboard-host-change', inject);
+addEventListener('workflow-edit-host-change', inject);
+addEventListener('pointerdown', event => { if (event.target !== frame) frameContextMenu = false; }, true);
+addEventListener('focusin', event => { if ((event.target as Element | null)?.matches('input,textarea,button,[contenteditable=true]')) frameContextMenu = false; });
+addEventListener('project-edit-command', event => {
+  const { command, restoreFocus, clipboardData } = (event as CustomEvent).detail ?? {};
+  if (state && (document.activeElement === frame || restoreFocus && frameContextMenu) && ['copy', 'cut', 'paste', 'selectAll', 'undo', 'redo'].includes(command)) {
+    frameContextMenu = false; event.preventDefault();
+    frame.contentWindow?.postMessage({ type: 'steamharness:kanban-edit-command', nonce: state.preview.nonce, command, restoreFocus, clipboardData }, '*');
+  }
+});
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
   element('dimensions').hidden = previewBlocked || mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
@@ -195,7 +208,24 @@ element('project-info').onclick = () => { if (project) { dialogs.projectInfo(pro
 window.addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame.contentWindow) {
-    if (!state || previewBlocked || message?.nonce !== state.preview.nonce) { return; }
+    if (!state || message?.nonce !== state.preview.nonce) { return; }
+    if (message.type === 'steamharness:kanban-copy' && message.version === 1) {
+      if (typeof message.requestId !== 'string' || !message.requestId || message.requestId.length > 128 || typeof message.text !== 'string' || message.text.length > 1000000) return;
+      const target = frame.contentWindow, nonce = state.preview.nonce;
+      void Promise.resolve(host.postMessage({ type: 'copy', text: message.text })).then(result => {
+        if (nonce === state?.preview.nonce && target === frame.contentWindow) target?.postMessage({ type: 'steamharness:kanban-copy-result', version: 1, nonce, requestId: message.requestId, ok: result !== false }, '*');
+      }).catch(() => { if (nonce === state?.preview.nonce) target?.postMessage({ type: 'steamharness:kanban-copy-result', version: 1, nonce, requestId: message.requestId, ok: false }, '*'); });
+      return;
+    }
+    if (message.type === 'steamharness:kanban-contextmenu' && message.version === 1) {
+      if (!Number.isFinite(message.x) || !Number.isFinite(message.y) || typeof message.editable !== 'boolean' || typeof message.selection !== 'boolean') return;
+      const rect = frame.getBoundingClientRect();
+      frameContextMenu = true;
+      void host.postMessage({ type: 'context-menu', x: rect.left + message.x * rect.width / (frame.clientWidth || rect.width || 1),
+        y: rect.top + message.y * rect.height / (frame.clientHeight || rect.height || 1), editable: message.editable, selection: message.selection });
+      return;
+    }
+    if (previewBlocked) return;
     if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
       if (document.activeElement === frame) host.keyboard?.forward(message.event);
       return;

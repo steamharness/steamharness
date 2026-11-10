@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix selected-text, message, and code copying in Kanban and embedded conversations through confirmed host clipboard writes. Route editing to the focused document and keep selection drags from navigating.
+
 - Native conversations display known project references by name and preserve unknown tokens. Label updates refresh history display while retaining routing identities, code, and drafts.
 
 - CLI Web groups Project Assistant with the workspace name and places the running count beside it. Toolbar actions start with New conversation, followed by project windows and the remaining actions.

@@ -60,6 +60,7 @@ describe('embedded Conversation bridge', () => {
       const frame = container.querySelector('iframe')!;
       expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
       const viewId = opened.input.viewId;
+      send(frame.contentWindow, { type: 'steamharness:conversation-request', viewId, message: { type: 'view-ready' } });
       const action = { type: 'steamharness:conversation-request', viewId, message: { type: 'view-message-card-action', id: card.id, requestId: card.requestId } };
       const beforeAction = posted.length;
       send({}, action);
@@ -71,6 +72,17 @@ describe('embedded Conversation bridge', () => {
       expect(posted).toHaveLength(beforeAction); // Project events never become execution requests.
       expect(container.querySelector('[data-conversation-slot=transcript]')).toBe(transcript);
       expect(container.querySelector('[data-conversation-shell]')?.getAttribute('data-presentation')).toBe('composer');
+      const copyCount = posted.length;
+      const copyMessage = { type: 'steamharness:conversation-request', viewId, message: { type: 'copy', requestId: 'native-copy', text: '正文\n引用' } };
+      send({}, copyMessage); expect(posted).toHaveLength(copyCount);
+      send(frame.contentWindow, copyMessage);
+      const copied = posted.at(-1);
+      expect(copied).toMatchObject({ type: 'steamharness:kanban-copy', version: 1, nonce: 'nonce', text: '正文\n引用' });
+      const clipboardReply = vi.spyOn(frame.contentWindow!, 'postMessage');
+      send(parent, { type: 'steamharness:kanban-copy-result', version: 1, nonce: 'nonce', requestId: copied.requestId, ok: true });
+      await vi.waitFor(() => expect(clipboardReply).toHaveBeenCalledWith(expect.objectContaining({
+        message: { type: 'conversation-copy-result', requestId: 'native-copy', ok: true },
+      }), '*'));
       const submissionEnvelope = { type: 'steamharness:conversation-request', viewId, message: { type: 'send', requestId: 'submit-1', text: '@bot:researcher 内容' } };
       const beforeSend = posted.length;
       send({}, submissionEnvelope); expect(posted).toHaveLength(beforeSend);

@@ -3,11 +3,13 @@ export * from "./database";
 import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
 import { installProjectKeyboardBridge } from "./keyboard";
+import { installProjectCopyBridge } from "./copy";
 const DATABASE_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export * from "./revision-stream";
 export * from "./methods";
 export * from "./keyboard";
+export * from "./copy";
 
 
 export const KANBAN_MANIFEST_FILE = "kanban.json";
@@ -444,7 +446,7 @@ export function createKanbanBridgeScript(
   return `<script nonce=${safeNonce}>(function(){
 let current=${initial};
 let presentation={mode:"fullscreen"};
-let keyboardHost=false;
+let keyboardHost=false,editHost=false;
 (${installProjectKeyboardBridge.toString()})(window,()=>keyboardHost,event=>window.parent.postMessage({type:"steamharness:kanban-keyboard",version:1,nonce:${safeNonce},event},"*"));
 window.addEventListener("message",event=>{
   if(event.source===window.parent&&event.data?.nonce===${safeNonce}&&event.data.type==="steamharness:kanban-keyboard-host")keyboardHost=event.data.version===1&&event.data.enabled===true;
@@ -456,6 +458,33 @@ const databaseRevisions=new Map();
 const databaseRevisionListeners=new Map();
 const conversationListeners=new Map();
 const conversationViews=new Map();
+const copyRequests=new Map();
+let contextConversation;
+window.document?.addEventListener("pointerdown",()=>{contextConversation=undefined;},true);
+const copyText=text=>{
+  if(typeof text!=="string"||text.length>1000000||copyRequests.size>=16)return Promise.resolve(false);
+  const requestId="copy-"+Date.now().toString(36)+"-"+(++sequence);
+  return new Promise(resolve=>{
+    const timer=window.setTimeout(()=>{copyRequests.delete(requestId);resolve(false);},10000);
+    copyRequests.set(requestId,{resolve,timer});
+    window.parent.postMessage({type:"steamharness:kanban-copy",version:1,nonce:${safeNonce},requestId,text},"*");
+  });
+};
+const contextMenu=(value,sourceFrame)=>{
+  if(!editHost)return;
+  const rect=sourceFrame?.getBoundingClientRect();
+  window.parent.postMessage({type:"steamharness:kanban-contextmenu",version:1,nonce:${safeNonce},...value,
+    x:rect?rect.left+value.x*rect.width/(sourceFrame.clientWidth||rect.width||1):value.x,
+    y:rect?rect.top+value.y*rect.height/(sourceFrame.clientHeight||rect.height||1):value.y},"*");
+};
+const copyBridge=window.document?.addEventListener?(${installProjectCopyBridge.toString()})(window,{enabled:()=>editHost,writeText:copyText,
+  contextMenu:value=>{contextConversation=undefined;contextMenu(value);},
+  delegate:(command,restoreFocus,clipboardData)=>{
+    const contextual=restoreFocus&&contextConversation;
+    const view=[...conversationViews.values()].find(view=>view.frame===document.activeElement)||(contextual?conversationViews.get(contextConversation):undefined);
+    contextConversation=undefined;
+    if(!view)return !!contextual;view.deliver({type:"conversation-edit",command,restoreFocus,clipboardData});return true;
+  }}):{command:()=>false,dispose:()=>{}};
 const clearConversations=()=>{for(const stop of [...conversationListeners.values()].map(value=>value.stop))stop();for(const view of [...conversationViews.values()])view.stop();};
 const clone=()=>JSON.parse(JSON.stringify(current));
 const createError=(message,code)=>{const error=new Error(message);if(code)Object.defineProperty(error,"code",{value:code,enumerable:true});return error;};
@@ -543,6 +572,17 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
     if(event.data.message?.type==="view-ready"){loaded=true;for(const message of backlog.splice(0))forward(message);return;}
     if(event.data.message?.type==="view-layout"){const height=event.data.message.composerHeight,menu=event.data.message.menuHeight;
       if(Number.isFinite(height)&&height>=40&&height<=2000&&Number.isFinite(menu)&&menu>=0&&menu<=360){composerHeight=height;menuHeight=menu;layout();}return;}
+    if(event.data.message?.type==="copy"){
+      const message=event.data.message;
+      if(typeof message.requestId==="string"&&message.requestId.length<=128&&typeof message.text==="string")void copyText(message.text).then(ok=>deliver({type:"conversation-copy-result",requestId:message.requestId,ok}));
+      return;
+    }
+    if(event.data.message?.type==="view-contextmenu"){
+      const value=event.data.message;
+      if(editHost&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&typeof value.editable==="boolean"&&typeof value.selection==="boolean"){
+        contextConversation=viewId;contextMenu({x:value.x,y:value.y,editable:value.editable,selection:value.selection},frame);
+      }return;
+    }
     if(event.data.message?.type==="view-message-card-action"){
       const {id,requestId}=event.data.message;
       const card=()=>target.ui?.messageCards?.find(card=>card.id===id&&card.requestId===requestId&&card.action);
@@ -562,14 +602,14 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
   let updating=Promise.resolve();stop.update=ui=>updating=updating.catch(()=>{}).then(async()=>{if(closed)return;const messages=await request("conversations.viewMessage",{viewId,message:{type:"view-ui",ui}});if(closed)return;target.ui=JSON.parse(JSON.stringify(ui));layout();for(const message of messages||[])deliver(message);});
   const open=()=>request("conversations.openView",{locale:document.documentElement.lang==="zh-CN"?"zh-CN":"en",...target,viewId,documentId:methodDocumentId});
   const reconnect=async()=>{try{return await request("conversations.viewMessage",{viewId,message:{type:"ready"}});}catch(error){if(closed||error.code!=="KANBAN_BRIDGE_SESSION_INVALID")throw error;await open();if(closed){request("conversations.closeView",{viewId}).catch(()=>{});return [];}return request("conversations.viewMessage",{viewId,message:{type:"ready"}});}};
-  conversationViews.set(viewId,{deliver,stop,reconnect});window.addEventListener("message",receive);window.addEventListener("steamharness:kanban-theme-change",theme);
+  conversationViews.set(viewId,{deliver,stop,reconnect,frame});window.addEventListener("message",receive);window.addEventListener("steamharness:kanban-theme-change",theme);
   try{
     const result=await open();
     if(closed)return stop;
     delete target.draft;
     frame.srcdoc=result.html.replaceAll("__STEAMHARNESS_KANBAN_NONCE__",${safeNonce});
     for(const name of ["header","transcript"]){if(slots[name] instanceof HTMLElement){slots[name].dataset.conversationSlot=name;if(name==="transcript")slots[name].style.cssText+=";flex:1;min-height:0;overflow:hidden";shell.append(slots[name]);}}
-    composer.append(frame);shell.append(composer);if(slots.footer instanceof HTMLElement){slots.footer.dataset.conversationSlot="footer";shell.append(slots.footer);}container.append(shell);layout();resize?.observe(container);theme();
+    composer.append(frame);shell.append(composer);if(slots.footer instanceof HTMLElement){slots.footer.dataset.conversationSlot="footer";shell.append(slots.footer);}container.append(shell);layout();resize?.observe(container);theme();deliver({type:"conversation-edit-host",enabled:editHost});
     return stop;
   }catch(error){stop();throw error;}
 },snapshot:(entryId,conversationId)=>request("conversations.snapshot",{entryId,conversationId}),subscribe:(target,listener,onError)=>{
@@ -583,9 +623,13 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
   return stop;
 }});
 window.addEventListener("pagehide",clearConversations);
+window.addEventListener("pagehide",()=>{copyBridge.dispose();for(const item of copyRequests.values()){window.clearTimeout(item.timer);item.resolve(false);}copyRequests.clear();});
 Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
+  if(event.data.type==="steamharness:kanban-edit-host"&&event.data.version===1){editHost=event.data.enabled===true;for(const view of conversationViews.values())view.deliver({type:"conversation-edit-host",enabled:editHost});return;}
+  if(event.data.type==="steamharness:kanban-edit-command"&&["copy","cut","paste","selectAll","undo","redo"].includes(event.data.command)){copyBridge.command(event.data.command,event.data.restoreFocus===true,event.data.clipboardData);return;}
+  if(event.data.type==="steamharness:kanban-copy-result"&&event.data.version===1){const item=copyRequests.get(event.data.requestId);if(item){copyRequests.delete(event.data.requestId);window.clearTimeout(item.timer);item.resolve(event.data.ok===true);}return;}
   if(handleKanbanMethodMessage(event.data))return;
   if(event.data.type==="steamharness:kanban-conversation-view-connection"){
     window.dispatchEvent(new CustomEvent("steamharness:kanban-connection-change",{detail:{status:event.data.status}}));
