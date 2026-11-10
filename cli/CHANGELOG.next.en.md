@@ -1,5 +1,7 @@
 # Unreleased
 
+- Embedded Bot message cards can open project records through a card callback while preserving message nodes and drafts during text and status updates.
+
 - Fix scheme-less website addresses in conversations being treated as local files. Website links follow the Studio host's browser preference while file positions, attachment handling and text selection are preserved.
 
 - Embedded Kanban Bot conversations can display business cards below their matching replies, preserving drafts, history, and message positions during status updates.

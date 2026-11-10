@@ -1,5 +1,7 @@
 # Unreleased
 
+- Native Kanban conversation cards support a labeled click callback that receives current card and turn IDs, without URLs or scripts.
+
 - Kanban Conversation UI accepts bounded plain-text messageCards linked to native replies by request ID, without script or navigation access.
 - Update project generation and artifact validation to keep caches, reports and release output under dist/steamharness/.
 

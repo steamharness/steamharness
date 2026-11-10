@@ -543,6 +543,12 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
     if(event.data.message?.type==="view-ready"){loaded=true;for(const message of backlog.splice(0))forward(message);return;}
     if(event.data.message?.type==="view-layout"){const height=event.data.message.composerHeight,menu=event.data.message.menuHeight;
       if(Number.isFinite(height)&&height>=40&&height<=2000&&Number.isFinite(menu)&&menu>=0&&menu<=360){composerHeight=height;menuHeight=menu;layout();}return;}
+    if(event.data.message?.type==="view-message-card-action"){
+      const {id,requestId}=event.data.message;
+      const card=()=>target.ui?.messageCards?.find(card=>card.id===id&&card.requestId===requestId&&card.action);
+      if(typeof id==="string"&&typeof requestId==="string"&&card())Promise.resolve().then(()=>{if(!closed&&card())return options.onMessageCardAction?.({id,requestId});}).catch(()=>{});
+      return;
+    }
     const message=JSON.parse(JSON.stringify(event.data.message));
     if(message?.type==="send"&&typeof message.requestId==="string"&&typeof message.text==="string"){
       const pending={requestId:message.requestId,text:message.text,createdAt:Date.now()};submissions.set(message.requestId,pending);announce({...pending,phase:"sending"});

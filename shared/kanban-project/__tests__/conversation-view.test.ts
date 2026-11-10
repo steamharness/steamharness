@@ -5,9 +5,12 @@ describe('embedded Conversation bridge', () => {
   it('accepts message-bound data cards and rejects scripts, duplicate IDs and unbounded content', () => {
     const card = { id: 'delivery', requestId: 'parent-turn', title: '发送给执行员', text: '你好', icon: 'bot', iconColor: '#b86a14', status: { label: '已发送', tone: 'success' } };
     expect(() => assertConversationUi({ messageCards: [card] })).not.toThrow();
+    expect(() => assertConversationUi({ messageCards: [{ ...card, action: { label: '查看对话' } }] })).not.toThrow();
     for (const cards of [[card, card], Array(101).fill(card), [{ ...card, requestId: '' }], [{ ...card, text: 'x'.repeat(4001) }],
       [{ ...card, html: '<script>' }], [{ ...card, href: 'javascript:run()' }], [{ ...card, icon: '<svg>' }], [{ ...card, iconColor: 'url(secret)' }],
-      [{ ...card, status: { label: '已发送', tone: 'unknown' } }], [{ ...card, status: { label: '已发送', action: 'run' } }]])
+      [{ ...card, status: { label: '已发送', tone: 'unknown' } }], [{ ...card, status: { label: '已发送', action: 'run' } }],
+      [{ ...card, action: { label: '' } }],
+      [{ ...card, action: { label: '查看', href: 'javascript:run()' } }]])
       expect(() => assertConversationUi({ messageCards: cards })).toThrow();
   });
   it('accepts declarative project references and rejects reserved or unbounded UI data', () => {
@@ -44,9 +47,10 @@ describe('embedded Conversation bridge', () => {
     new Function('window', 'document', script)(pageWindow, document);
     const container = document.createElement('div'); document.body.append(container);
     try {
-      const transcript = document.createElement('div'), submitted = vi.fn(), submission = vi.fn();
-      const mounting = pageWindow.steamHarnessKanban.conversations.mount(container, { entryId: 'agent', conversationId: 'private', ui: { presentation: 'composer' } },
-        { slots: { transcript }, onSubmitted: submitted, onSubmission: submission });
+      const transcript = document.createElement('div'), submitted = vi.fn(), submission = vi.fn(), cardAction = vi.fn();
+      const card = { id: 'delivery', requestId: 'turn', title: 'Bot', text: '你好', action: { label: '查看对话' } };
+      const mounting = pageWindow.steamHarnessKanban.conversations.mount(container, { entryId: 'agent', conversationId: 'private', ui: { presentation: 'composer', messageCards: [card] } },
+        { slots: { transcript }, onSubmitted: submitted, onSubmission: submission, onMessageCardAction: cardAction });
       const opened = posted.at(-1);
       expect(opened).toMatchObject({ operation: 'conversations.openView', input: { entryId: 'agent', conversationId: 'private', documentId: expect.any(String) } });
       reply(opened, { html: '<html><body>Native</body></html>' });
@@ -54,6 +58,15 @@ describe('embedded Conversation bridge', () => {
       const frame = container.querySelector('iframe')!;
       expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
       const viewId = opened.input.viewId;
+      const action = { type: 'steamharness:conversation-request', viewId, message: { type: 'view-message-card-action', id: card.id, requestId: card.requestId } };
+      const beforeAction = posted.length;
+      send({}, action);
+      send(frame.contentWindow, { ...action, message: { ...action.message, id: 'unknown' } });
+      send(frame.contentWindow, { ...action, message: { ...action.message, requestId: 'another-turn' } });
+      await Promise.resolve(); expect(cardAction).not.toHaveBeenCalled();
+      send(frame.contentWindow, action);
+      await vi.waitFor(() => expect(cardAction).toHaveBeenCalledWith({ id: 'delivery', requestId: 'turn' }));
+      expect(posted).toHaveLength(beforeAction); // Project events never become execution requests.
       expect(container.querySelector('[data-conversation-slot=transcript]')).toBe(transcript);
       expect(container.querySelector('[data-conversation-shell]')?.getAttribute('data-presentation')).toBe('composer');
       const submissionEnvelope = { type: 'steamharness:conversation-request', viewId, message: { type: 'send', requestId: 'submit-1', text: '@bot:researcher 内容' } };
@@ -70,6 +83,7 @@ describe('embedded Conversation bridge', () => {
       const updating = dispose.update({ presentation: 'conversation' });
       await Promise.resolve(); await Promise.resolve();
       const update = posted.at(-1); expect(update.input.message.type).toBe('view-ui'); reply(update, []); await updating;
+      send(frame.contentWindow, action); await Promise.resolve(); expect(cardAction).toHaveBeenCalledTimes(1);
       expect(transcript.hidden).toBe(true);
       const envelope = { type: 'steamharness:conversation-request', viewId, message: { type: 'ready' } };
       const count = posted.length;
@@ -104,6 +118,7 @@ describe('embedded Conversation bridge', () => {
       expect(posted.at(-1)).toMatchObject({ operation: 'conversations.closeView', input: { viewId } });
       reply(posted.at(-1), {});
       const stopped = posted.length; send(frame.contentWindow, envelope); expect(posted).toHaveLength(stopped);
+      send(frame.contentWindow, action); await Promise.resolve(); expect(cardAction).toHaveBeenCalledTimes(1);
     } finally { container.remove(); }
   });
 });

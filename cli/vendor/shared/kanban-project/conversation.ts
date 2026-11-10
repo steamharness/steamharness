@@ -14,6 +14,8 @@ export interface KanbanConversationMessageCard {
   icon?: "bot" | "message" | "send";
   iconColor?: string;
   status?: { label: string; tone?: "neutral" | "info" | "success" | "warning" | "danger" };
+  /** An opaque card event handled by the owning project, without URLs or scripts. */
+  action?: { label: string };
 }
 
 export interface KanbanConversationUi {
@@ -36,6 +38,7 @@ export interface KanbanConversationMountOptions {
   /** Local sending is provisional; accepted carries the authorized Workflow result. */
   onSubmission?(event: KanbanConversationSubmission): void;
   onSubmitted?(event: { requestId: string; receiptId: string }): void;
+  onMessageCardAction?(event: { id: string; requestId: string }): void;
 }
 
 export interface KanbanConversationMount {
@@ -56,10 +59,11 @@ export function assertConversationUi(value: unknown): asserts value is KanbanCon
     if (!Array.isArray(value.messageCards) || value.messageCards.length > 100) throw new Error("Invalid message cards.");
     const cardIds = new Set();
     for (const card of value.messageCards) {
-      if (!record(card) || Object.keys(card).some(key => !["id", "requestId", "title", "text", "icon", "iconColor", "status"].includes(key)) ||
+      if (!record(card) || Object.keys(card).some(key => !["id", "requestId", "title", "text", "icon", "iconColor", "status", "action"].includes(key)) ||
         !string(card.id, 200) || cardIds.has(card.id) || !string(card.requestId, 200) || !string(card.title, 200) || !string(card.text, 4000) ||
         card.icon !== undefined && !["bot", "message", "send"].includes(String(card.icon)) ||
         card.iconColor !== undefined && (typeof card.iconColor !== "string" || !/^#[\da-f]{6}$/i.test(card.iconColor)) ||
+        card.action !== undefined && (!record(card.action) || Object.keys(card.action).some(key => key !== "label") || !string(card.action.label, 200)) ||
         card.status !== undefined && (!record(card.status) || Object.keys(card.status).some(key => !["label", "tone"].includes(key)) ||
           !string(card.status.label, 60) || card.status.tone !== undefined && !["neutral", "info", "success", "warning", "danger"].includes(String(card.status.tone))))
         throw new Error("Invalid message card.");

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document message-card callbacks, status excerpts, and handling of stale card events in the generator skill.
+
 - Document message cards in native Conversation views, including request-ID anchoring, bounded plain text, and preservation of drafts and history.
 - Keep built-in and generated project caches, reports, temporary files and release output under dist/steamharness/; package only required build artifacts.
 

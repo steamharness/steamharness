@@ -54,7 +54,7 @@ it('anchors project cards to their assistant turn and preserves drafts and histo
     { id: 'answer-1', sessionRequestId: 'turn-1', role: 'assistant', content: 'First answer', status: 'success' },
     { id: 'answer-2', sessionRequestId: 'turn-2', role: 'assistant', content: 'Second answer', status: 'success' },
   ] };
-  const card = { id: 'delivery', requestId: 'turn-1', title: '发送给执行员', text: '你好', status: { label: '等待发送' } };
+  const card = { id: 'delivery', requestId: 'turn-1', title: '发送给执行员', text: '你好', status: { label: '等待发送' }, action: { label: '查看协作对话' } };
   f.receive([entry], entry.id, { readOnly: false }, { messageCards: [card, { ...card, id: 'unknown', requestId: 'other-turn' }] });
   const root = document.querySelector('[data-message-card-id="delivery"]')!;
   expect(root.closest('.message')?.getAttribute('data-message-id')).toBe('answer-1');
@@ -64,6 +64,8 @@ it('anchors project cards to their assistant turn and preserves drafts and histo
   f.receive([entry], entry.id, { readOnly: false }, { messageCards: [{ ...card, status: { label: '已发送', tone: 'success' } }] });
   expect(document.querySelector('[data-message-card-id="delivery"]')).toBe(root);
   expect(root.textContent).toContain('已发送'); expect(f.input.value).toBe('未发送草稿');
+  root.querySelector<HTMLButtonElement>('button')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'view-message-card-action', id: 'delivery', requestId: 'turn-1' });
   expect(entry.messages.map(message => message.content)).toEqual(['First request', 'First answer', 'Second answer']);
 });
 

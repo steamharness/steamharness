@@ -1089,7 +1089,7 @@ function initialize(): void {
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(conversationPrompt(view.message.content, view.message.references), event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
-      view.cards = new ConversationMessageCards();
+      view.cards = new ConversationMessageCards(event => vscode.postMessage({ type: 'view-message-card-action', ...event }));
       view.content.after(view.cards.root);
       view.configureModel = iconButton('settings-gear', t('Configure model'), () => currentParameters().fields.some(field => field.userSetting?.key === 'agent.model') ? vscode.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));

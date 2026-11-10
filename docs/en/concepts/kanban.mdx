@@ -129,7 +129,18 @@ await view.update({
 });
 ```
 
-Cards scroll with their messages. Status updates preserve message nodes, drafts, and native execution history. Cards display plain text without executing HTML, scripts, or navigation, and never enter model context. `view.update(ui)` replaces all UI options; include `mentions` when keeping a custom mention menu.
+Cards scroll with their messages. Text and status updates preserve message nodes, drafts, and native execution history. Projects can show a running state, a result excerpt, or a failure reason. Cards display plain text without executing HTML or scripts and never enter model context. `view.update(ui)` replaces all UI options; include `mentions` when keeping a custom mention menu.
+
+For a clickable card, add `action: { label: "View conversation" }` and provide a callback when mounting:
+
+```ts
+const view = await window.steamHarnessKanban.conversations.mount(container,
+  { entryId, conversationId },
+  { onMessageCardAction: ({ id, requestId }) => openBusinessRecord(id, requestId) },
+);
+```
+
+`openBusinessRecord` is the project's own routing function. The callback receives only the current card's `id` and linked `requestId`; the project uses its authorized records to select a conversation. Cards accept no URLs, HTML, or executable actions. Removed cards, changed configurations, and disposed views cannot trigger stale callbacks. `action.label` provides the button's accessible name and allows up to 200 characters.
 
 Each view accepts up to 100 cards with unique IDs. IDs, request IDs, and titles allow 200 characters each; text allows 4000 and status labels 60. The optional `icon` accepts `bot`, `message`, or `send`; `iconColor` accepts a six-digit hexadecimal color. Status `tone` accepts `neutral`, `info`, `success`, `warning`, or `danger`.
 

@@ -1523,7 +1523,20 @@ await view.update({
 });
 ```
 
-卡片随消息滚动；更新状态保留消息节点、草稿和原生执行历史。卡片只展示纯文本，不执行 HTML、脚本或导航，也不写入模型上下文。`view.update(ui)` 替换全部 UI 配置，需要保留提及菜单时应同时传入 `mentions`。
+卡片随消息滚动；更新正文和状态保留消息节点、草稿和原生执行历史。项目可把正文更新为运行状态、结果摘要或失败原因。卡片只展示纯文本，不执行 HTML 或脚本，也不写入模型上下文。`view.update(ui)` 替换全部 UI 配置，需要保留提及菜单时应同时传入 `mentions`。
+
+需要点击操作时，给卡片添加 `action: { label: "查看协作对话" }`，并在挂载时提供回调：
+
+```ts
+const view = await window.steamHarnessKanban.conversations.mount(container,
+  { entryId, conversationId },
+  { onMessageCardAction: ({ id, requestId }) => openBusinessRecord(id, requestId) },
+);
+```
+
+`openBusinessRecord` 是项目自己的页面切换函数。回调只接收当前视图中仍有效的卡片 `id` 和关联 `requestId`，项目按已有授权记录决定打开哪条会话。
+
+卡片不接受 URL、HTML 或可执行动作；移除卡片、切换配置或释放视图后，旧点击不会触发回调。`action.label` 为按钮的无障碍名称，最多 200 个字符。
 
 每个视图最多 100 张卡片，`id` 必须唯一；`id`、`requestId` 和标题各最多 200 个字符，正文最多 4000 个字符，状态标签最多 60 个字符。`icon` 可选 `bot`、`message` 或 `send`，`iconColor` 仅接受六位十六进制颜色。状态 `tone` 可选 `neutral`、`info`、`success`、`warning` 或 `danger`。
 

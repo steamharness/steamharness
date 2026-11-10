@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban 原生会话卡片新增带标签的点击回调，仅传递当前卡片与轮次标识，不接受 URL 或脚本。
+
 - Kanban Conversation UI 新增有界纯文本 `messageCards`，按请求 ID 关联原生回复，不向卡片开放脚本或导航能力。
 - 项目生成规范统一使用 dist/steamharness/ 管理缓存、报告和发行产物，并同步项目产物与上传校验契约。
 

@@ -9,4 +9,8 @@
 .message-card-status[data-tone=warning] { color:var(--vscode-notificationsWarningIcon-foreground,var(--muted)); }
 .message-card-status[data-tone=danger] { color:var(--vscode-errorForeground,var(--muted)); }
 .message-card-text { margin-top:8px; max-height:12em; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.5; }
+.conversation-message-card.actionable { cursor:pointer; }
+.conversation-message-card.actionable:hover { border-color:var(--vscode-focusBorder,var(--border)); }
+.conversation-message-card.actionable:focus-within { outline:1px solid var(--vscode-focusBorder,var(--border)); outline-offset:2px; }
+.message-card-open { display:inline-flex; align-items:center; justify-content:center; padding:2px; border:0; background:transparent; color:var(--muted); cursor:pointer; }
 @media(max-width:540px) { .conversation-message-card { padding:10px; } }
