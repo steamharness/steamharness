@@ -7,7 +7,9 @@ export function mountAggregateToolbar(host: { postMessage(message: Record<string
   const toolbar = document.querySelector('.toolbar-actions') ?? document.querySelector('.toolbar');
   if (toolbar) {
     const navigation = document.createElement('div'); navigation.className = 'aggregate-navigation';
-    toolbar.prepend(navigation); mountEntryWindows(navigation);
+    const create = toolbar.querySelector(':scope > #new');
+    if (create) create.after(navigation); else toolbar.prepend(navigation);
+    mountEntryWindows(navigation);
   }
   return { databases: new ProjectDatabases(host) };
 }

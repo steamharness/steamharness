@@ -66,8 +66,8 @@ function initialize(): void {
   app.dataset.initialized = 'true';
   app.innerHTML = `
     <header class="toolbar">
-      <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span><button id="conversation-source" class="conversation-source" hidden></button></div><span id="project-name" class="project-name"></span></div>
-      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="server-stop" class="icon-button" title="${t('Stop')}" aria-label="${t('Stop')}" hidden>${icon('debug-stop')}</button><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
+      <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><div class="project-context"><span id="project-identity" class="project-identity" hidden><span id="assistant-folder" hidden></span><span id="project-name" class="project-name"></span></span><span id="running-count" class="running-count" hidden></span></div><button id="conversation-source" class="conversation-source" hidden></button></div></div>
+      <div class="toolbar-actions"><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button><button id="server-stop" class="icon-button" title="${t('Stop')}" aria-label="${t('Stop')}" hidden>${icon('debug-stop')}</button>${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
@@ -1264,8 +1264,9 @@ function initialize(): void {
     const projectChanged = renderedProject !== next.project.uri;
     app.dataset.projectUri = next.project.uri;
     const folder = document.querySelector<HTMLElement>('#assistant-folder')!;
-    folder.hidden = !next.project.assistant;
-    folder.textContent = next.project.assistant?.roots.find((root) => root.folderPath === next.project.assistant?.workdir)?.name ?? '';
+    const folderName = next.project.assistant?.roots.find((root) => root.folderPath === next.project.assistant?.workdir)?.name;
+    folder.hidden = !folderName;
+    folder.textContent = folderName ?? '';
     folder.title = next.project.assistant?.workdir ?? '';
     const switching = projectChanged || renderedSession !== next.activeId;
     if (switching) { vscode.postMessage({ type: 'trace-active', sessionId: next.activeId }); }
@@ -1284,9 +1285,13 @@ function initialize(): void {
       paramsNeedInit = true;
       cancelParameterRequest();
     }
-    document.querySelector('#project-name')!.textContent = next.project.name;
-    document.querySelector<HTMLElement>('#project-name')!.hidden = !session.messages.length;
-    document.querySelector('#conversation-title')!.textContent = session.messages.length ? session.title : next.project.name;
+    document.querySelector('#project-name')!.textContent = folderName ? `(${next.project.name})` : next.project.name;
+    const identity = document.querySelector<HTMLElement>('#project-identity')!;
+    identity.hidden = !session.messages.length && !folderName;
+    identity.title = folderName ? `${folderName}(${next.project.name})` : next.project.name;
+    const conversationTitle = document.querySelector<HTMLElement>('#conversation-title')!;
+    conversationTitle.textContent = session.messages.length ? session.title : next.project.name;
+    conversationTitle.title = conversationTitle.textContent;
     const source = next.sessions.find(entry => entry.id === (session.forkSource?.sessionId ?? session.agentOwnerId));
     const sourceButton = document.querySelector<HTMLButtonElement>('#conversation-source')!;
     sourceButton.hidden = !source;

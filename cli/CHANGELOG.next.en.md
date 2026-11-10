@@ -1,5 +1,7 @@
 # Unreleased
 
+- CLI Web groups Project Assistant with the workspace name and places the running count beside it. Toolbar actions start with New conversation, followed by project windows and the remaining actions.
+
 - Embedded Bot message cards can open project records through a card callback while preserving message nodes and drafts during text and status updates.
 
 - Fix scheme-less website addresses in conversations being treated as local files. Website links follow the Studio host's browser preference while file positions, attachment handling and text selection are preserved.
