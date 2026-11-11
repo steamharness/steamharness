@@ -18,6 +18,13 @@ function createPostgresTextList(values: readonly string[]): string {
   return values.map((value) => `'${value.replaceAll("'", "''")}'`).join(", ");
 }
 
+export class InvalidStoredProjectError extends Error {
+  constructor(readonly projectId: string, cause: unknown) {
+    super("Stored project entries are invalid.", { cause });
+    this.name = "InvalidStoredProjectError";
+  }
+}
+
 export interface DbRecord {
   id: string;
   name: string;
@@ -1003,7 +1010,12 @@ interface ProjectAccessRequestRow {
 
 
 function toProjectRecord(row: Row): DbRecord {
-  const manifest = normalizeProjectManifest({ projectId: row.id, name: row.name, entries: row.entries, defaultEntry: row.default_entry });
+  let manifest: ReturnType<typeof normalizeProjectManifest>;
+  try {
+    manifest = normalizeProjectManifest({ projectId: row.id, name: row.name, entries: row.entries, defaultEntry: row.default_entry });
+  } catch (error) {
+    throw new InvalidStoredProjectError(row.id, error);
+  }
   return {
     id: row.id,
     name: row.name,

@@ -56,6 +56,8 @@ Server assigns a fresh aggregate UUID on creation and cloning, registering `entr
 
 Uploads only extract, statically validate and save files. Server never installs dependencies, builds or executes uploaded code. Failures preserve drafts and published versions. Publication saves an immutable snapshot and updates `latest`; duplicate versions return `409`.
 
+Release uploads preserve compiled entries and the project version. Draft names, avatars, and declarations use the current Server project metadata. Server validates the file inventory after applying that metadata before allowing publication.
+
 A developer upload cannot modify management metadata or ownership. Guests download published versions; draft reads require developer access. Archives exclude KV, PersistentValue, SQLite, environment files and CLI credentials.
 
 ## Entries and data resources

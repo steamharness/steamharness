@@ -23,9 +23,12 @@ pnpm exec steamharness workspace upload <project-id> --path .
 | --- | --- |
 | `--path` | 从源码目录打包上传 |
 | `--file` | 上传已打包归档 |
+| `--mode release` | 构建或更新发行包后上传编译产物 |
 | `--no-wait` | 返回准备任务，随后用 `preparation <project-id> <job-id>` 查询 |
 
 只有静态校验通过，Server 才替换草稿。它不安装依赖或执行项目代码。上传后创建不可变版本，继续执行 [publish](/cli/workspace/publish)。
+
+上传发行包时，Server 保留编译入口与项目版本，并将当前项目名称、头像和声明同步到草稿。完整性校验通过后才能发布；被修改或缺少文件的发行包会被拒绝。
 
 ## 数据与凭据
 

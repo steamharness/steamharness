@@ -23,9 +23,12 @@ Sign in, confirm project registration and write access, install dependencies, bu
 | --- | --- |
 | `--path` | Pack and upload a source directory |
 | `--file` | Upload an existing archive |
+| `--mode release` | Build or refresh the release and upload its compiled files |
 | `--no-wait` | Return a preparation job; inspect it with `preparation <project-id> <job-id>` |
 
 Server replaces the draft only after static validation succeeds. It installs no dependencies and executes no project code. Continue with [publish](/en/cli/workspace/publish) to create an immutable version.
+
+For release uploads, Server preserves the compiled entries and project version and applies the current project name, avatar, and declarations to the draft. Publication requires a valid file inventory; modified releases and releases with missing files are rejected.
 
 ## Data and credentials
 

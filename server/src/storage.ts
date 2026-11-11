@@ -2560,8 +2560,10 @@ export class Storage {
     const metadata = await validateProjectPackage(sourceDir, projectName);
     const record=await this.db.getProject(projectName);
     if(record) {
+      const release = readProjectReleaseSync(sourceDir);
       const packageJson=await readProjectDocument(sourceDir);
       await writeJson(path.join(sourceDir,"steamharness.json"),writeProjectInfo({...packageJson,name:record.name,projectCard:record.projectCard},this.normalizeDeclaredProjectInfo(record.projectInfo)));
+      if (release) sealProjectRelease(sourceDir, release);
     }
     await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, entries: metadata.entries, defaultEntry: metadata.defaultEntry,
       packageVersion: metadata.version, projectCard: metadata.projectCard, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),

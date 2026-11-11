@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed release uploads failing integrity checks after Server applies project metadata, while continuing to reject tampered archives.
+
 - Update project artifact validation to exclude caches, reports and release staging under dist/steamharness/ from source distribution.
 
 - Breaking: registered entry types are workflow, bot and kanban; old conversation declarations are rejected, and uploads and distribution use the new static contract.
