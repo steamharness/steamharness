@@ -1,3 +1,4 @@
+import type { WorkflowOutputJournal } from './workflow-history';
 import { userSettingsJsonReplacer } from './user-settings';
 import { t } from './localization';
 import {
@@ -13,6 +14,7 @@ interface Options {
   changed(): void;
   log(message: string): void;
   legacy?: ConversationSession[];
+  journal?: WorkflowOutputJournal;
 }
 interface Task { record: RunRecord; cancelled: boolean; finished: Promise<void> }
 
@@ -20,6 +22,8 @@ export class Controller {
   readonly workspace: WorkspaceContract;
   private task?: Task;
   private disposed = false;
+  private outputWrites: Promise<void> = Promise.resolve();
+  private outputFailure?: Error;
   private eventSave?: ReturnType<typeof setTimeout>;
 
   constructor(readonly project: Project, private readonly runtime: Runtime, saved: Partial<WorkspaceContract>, private readonly options: Options) {
@@ -116,6 +120,14 @@ export class Controller {
     const record = task.record, pending = record.pendingInput;
     try {
       await this.persist();
+      this.outputFailure = undefined;
+      if (this.options.journal && !record.outputSummary) {
+        record.outputSummary = await this.options.journal.append(record.id, {
+          items: record.items as unknown as Record<string, unknown>[], events: record.events, files: record.files as unknown as Record<string, unknown>[],
+        });
+        record.items = record.items.slice(-100); record.events = record.events.slice(-100);
+        await this.persist();
+      }
       if (task.cancelled || this.disposed) { throw new Error('Stopped.'); }
       const report = await this.runtime.run({
         project: this.project, conversationId: record.scopeId, args: record.args, entrypointId: record.entrypointId,
@@ -125,7 +137,18 @@ export class Controller {
       }, event => {
         if (task.cancelled || this.disposed || this.task !== task) { return; }
         record.events.push(event);
-        if (event.type === 'node_chunk') { applyOutputChunk(record.items, event.chunk); }
+        if (this.options.journal) {
+          record.events = record.events.slice(-100);
+          this.outputWrites = this.outputWrites.then(async () => {
+            if (this.outputFailure) return;
+            record.outputSummary = await this.options.journal!.append(record.id, { events: [event] });
+            this.changed(); this.scheduleSave();
+          }).catch(error => {
+            this.outputFailure = error instanceof Error ? error : new Error(String(error));
+            this.runtime.cancel(record.id);
+          });
+        }
+        if (event.type === 'node_chunk') { applyOutputChunk(record.items, event.chunk); if (this.options.journal) record.items = record.items.slice(-100); }
         if (event.type === 'node_started' || event.type === 'node_finished') {
           const index = record.nodes.findIndex(node => node.executionId === event.executionId);
           const node = { ...(index >= 0 ? record.nodes[index] : {}), ...event, name: event.nodeName, status: event.status ?? 'running' };
@@ -140,24 +163,33 @@ export class Controller {
         if (event.type === 'token_usage_updated') {
           record.tokenUsage = { enabled: true, display: projectParameters(this.project, record.entrypointId).tokenUsage?.display !== false, run: event.usage as Record<string, unknown> };
         }
-        if (event.type === 'file_created') { record.files.push(event.file as unknown as RunRecord['files'][number]); }
+        if (event.type === 'file_created') { record.files.push(event.file as unknown as RunRecord['files'][number]); if (this.options.journal) retainRunFiles(record); }
         if (event.type === 'timer_started' || event.type === 'timer_finished') {
           const timer = event.timer as TimerRecord;
           record.timers = [...(record.timers ?? []).filter(entry => entry.timerId !== timer.timerId), timer];
         }
         record.updatedAt = Date.now(); this.changed(); this.scheduleSave();
       });
+      await this.outputWrites;
+      if (this.outputFailure) throw this.outputFailure;
       if (task.cancelled || this.disposed) { throw new Error('Stopped.'); }
       record.report = report; record.durationMs = report.durationMs;
       record.status = report.status as RunRecord['status'];
       // Paused reports omit unfinished streams; successful reports replace the replayed snapshot.
       const items = report.output?.items ?? [];
-      if (report.output && (report.status === 'success' || !record.items.length || (report.status !== 'waiting_for_input' && items.length))) { record.items = items; }
+      if (!this.options.journal && report.output && (report.status === 'success' || !record.items.length || (report.status !== 'waiting_for_input' && items.length))) { record.items = items; }
       record.nodes = report.nodes ?? record.nodes;
       record.logs = report.logs ?? record.logs;
       record.tokenUsage = report.tokenUsage ?? record.tokenUsage;
       record.timers = report.timers ?? record.timers;
       record.files = [...new Map([...record.files, ...(report.files ?? [])].map(file => [file.id, file])).values()];
+      if (this.options.journal) {
+        record.outputSummary = await this.options.journal.append(record.id, {
+          items: items as unknown as Record<string, unknown>[], files: record.files as unknown as Record<string, unknown>[],
+        });
+        record.items = record.items.slice(-100); retainRunFiles(record);
+        record.report = compactReport(report);
+      }
       record.pendingInput = report.status === 'waiting_for_input' ? report.pendingUserInput : undefined;
       for (const resolved of report.resolvedUserInputs ?? []) { this.confirmInput(record, resolved); }
       if (record.submittingInput && report.status === 'success') { this.confirmInput(record, record.submittingInput); }
@@ -175,7 +207,9 @@ export class Controller {
       else if (this.disposed) { record.pendingInput ??= pending; }
       else { delete record.pendingInput; }
     } finally {
+      await this.outputWrites;
       if (task.cancelled) { record.status = this.disposed ? 'interrupted' : 'aborted'; if (!this.disposed) { delete record.pendingInput; } }
+      if (this.outputFailure) { record.status = 'failed'; record.error = this.outputFailure.message; delete record.pendingInput; }
       delete record.submittingInput;
       if (!record.pendingInput || this.disposed) { delete this.workspace.occupiedId; }
       if (record.status !== 'running') { this.clearTimers(record); }
@@ -199,16 +233,18 @@ export class Controller {
     if (!record?.pendingInput) { throw new Error('Input request is no longer available.'); }
     if (this.workspace.occupiedId && this.workspace.occupiedId !== id) { throw new Error('Another workflow is waiting for input.'); }
     const request = record.pendingInput;
+    const allItems = this.options.journal && record.outputSummary ? (await this.options.journal.details(id)).items : record.items;
     const form = Object.fromEntries(request.params.map(field => [field.name, projectFormValue(field, values[field.name] ?? request.defaultValues?.[field.name])]));
     record.submittingInput = { requestId, nodeName: request.nodeName, values: resolvedProjectValues(request.params, form),
-      submittedAt: new Date().toISOString(), request, precedingOutputItemIds: record.items.map((item, index) => item.id ?? String(index)) };
+      submittedAt: new Date().toISOString(), request, precedingOutputItemIds: allItems.map((item, index) => typeof item.id === 'string' ? item.id : String(index)) };
     this.launch(record); await this.persist();
   }
   async stop(reason = 'Stopped.'): Promise<void> {
     const record = this.occupied;
     if (!record) { return; }
     if (this.task) { this.task.cancelled = true; this.runtime.cancel(record.id); await this.task.finished; }
-    record.status = 'aborted'; record.error = reason; delete record.pendingInput; delete this.workspace.occupiedId;
+    if (!this.outputFailure) { record.status = 'aborted'; record.error = reason; }
+    delete record.pendingInput; delete this.workspace.occupiedId;
     this.clearTimers(record); this.changed(); await this.persist();
   }
   async remove(id: string): Promise<void> {
@@ -217,6 +253,10 @@ export class Controller {
     if (!record) { throw new Error('Run no longer exists.'); }
     const other = projectStorageReferences([this.runs.filter(item => item !== record), this.workspace.drafts, this.options.legacy ?? []]);
     const own = projectStorageReferences(record);
+    if (this.options.journal) {
+      for (const file of await this.options.journal.references(id)) own.files.add(file);
+      for (const run of this.runs) if (run.id !== id) for (const file of await this.options.journal.references(run.id)) other.files.add(file);
+    }
     for (const session of this.options.legacy ?? []) { other.scopes.add(session.id); }
     let unresolvedOwner = false;
     for (const id of other.files) {
@@ -236,10 +276,48 @@ export class Controller {
     if (this.workspace.selectedId === id) { delete this.workspace.selectedId; }
     this.changed(); await this.persist();
   }
+  async outputPage(runId: string, page?: number, pageSize = 100) {
+    const run = this.runs.find(run => run.id === runId);
+    if (!run) throw new Error('Run no longer exists.');
+    if (pageSize !== 100 || page !== undefined && (!Number.isSafeInteger(page) || page < 1)) throw new Error('Invalid output page.');
+    await this.outputWrites;
+    if (this.options.journal && run.outputSummary) {
+      const result = await this.options.journal.page(runId, page, pageSize);
+      const inputs = projectStorageReferences([run.params, run.args]).files;
+      return { ...result, files: [...new Map([...run.files.filter(file => inputs.has(file.id)), ...result.files].map(file => [file.id, file])).values()] };
+    }
+    const total = run.items.length;
+    const selected = Math.min(page ?? Infinity, Math.max(1, Math.ceil(total / pageSize)));
+    return { runId, page: selected, pageSize, total, revision: run.updatedAt, items: run.items.slice((selected - 1) * pageSize, selected * pageSize), files: run.files };
+  }
+  async materialize(runId: string): Promise<RunRecord> {
+    const run = this.runs.find(run => run.id === runId);
+    if (!run) throw new Error('Run no longer exists.');
+    await this.outputWrites;
+    if (!this.options.journal || !run.outputSummary) return run;
+    const output = await this.options.journal.details(runId);
+    const complete = { ...run, items: output.items as unknown as RunRecord['items'], events: output.events,
+      files: [...new Map([...run.files, ...output.files].map(file => [file.id, file])).values()] as RunRecord['files'] };
+    if (run.report) complete.report = { ...run.report, output: run.report.output ? { ...run.report.output, items: complete.items } : undefined,
+      files: complete.files, result: run.report.result && { ...run.report.result, data: run.report.result.data && typeof run.report.result.data === 'object'
+        ? { ...run.report.result.data, items: complete.items } : run.report.result.data } };
+    return complete;
+  }
   async idle(): Promise<void> { if (this.task) { await this.task.finished; } }
   dispose(): void {
     this.disposed = true; clearTimeout(this.eventSave);
     if (this.task) { this.task.cancelled = true; this.runtime.cancel(this.task.record.id); }
     else if (this.occupied) { this.occupied.status = 'interrupted'; this.occupied.error = 'Host closed.'; this.clearTimers(this.occupied); delete this.workspace.occupiedId; }
   }
+}
+
+function compactReport(report: import('./workflow-types').Report): import('./workflow-types').Report {
+  return { ...report, files: [], output: report.output ? { ...report.output, items: [] } : undefined,
+    result: report.result && { ...report.result, data: report.result.data && typeof report.result.data === 'object' && 'items' in report.result.data
+      ? { ...report.result.data, items: [] } : report.result.data } };
+}
+
+function retainRunFiles(record: RunRecord): void {
+  const inputIds = projectStorageReferences([record.params, record.args]).files;
+  record.files = [...record.files.filter(file => inputIds.has(file.id)), ...record.files.filter(file => !inputIds.has(file.id)).slice(-100)];
 }

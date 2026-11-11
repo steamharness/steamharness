@@ -404,7 +404,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   const workspace: WorkspaceContract = { version: 1, runs: [], drafts: {} };
   const projectController = isProject ? new Controller(project, runtime, workspace!, {
-    changed: broadcast, legacy: saved.sessions,
+    changed: broadcast, legacy: saved.sessions, journal: workflowHistory?.journal,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
       if (!storageReady || !workflowHistory) return Promise.reject(new Error(storageError ?? 'Workflow history is not ready.'));

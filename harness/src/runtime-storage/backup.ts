@@ -7,6 +7,15 @@ export async function copyRuntimePersistence(options: { source: RuntimePersisten
   const existing = await Promise.all(kinds.map(kind => options.target.list(kind)));
   if (existing.some(records => records.length)) throw new RuntimeStorageError("RUNTIME_STORAGE_REVISION_CONFLICT", "Runtime backup requires an empty destination.");
   const records = (await Promise.all(kinds.map(kind => options.source.list(kind)))).flat();
+  if (options.source.readRunOutputPage && options.source.readRunOutputDetails) {
+    for (const record of records) if (record.kind === "run" && (await options.source.readRunOutputPage(record.key)).revision) {
+      const output = await options.source.readRunOutputDetails(record.key);
+      record.messages = output.items.map((value, index) => ({ id: String(index), value }));
+      record.events = output.events.map((value, index) => ({ id: String(index), value }));
+      record.state = { ...record.state, files: output.files };
+      delete record.state.outputSummary;
+    }
+  }
   const ids = new Set(records.filter(record => record.kind !== "workflow").map(record => record.key));
   for (const record of records) if (record.kind === "conversation") ids.add(record.scope);
   const keys = new Set((await Promise.all([...ids].map(id => options.source.agentSessions(id)))).flat());

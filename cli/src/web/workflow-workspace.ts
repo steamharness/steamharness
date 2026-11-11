@@ -22,6 +22,7 @@ export interface RunRecord {
   args: string[];
   params: ParamValues;
   policies: ToolPolicies;
+  outputSummary?: { total: number; revision: number };
   items: OutputItem[];
   events: Record<string, unknown>[];
   files: Attachment[];

@@ -1,5 +1,9 @@
 # Unreleased
 
+- Terminal streaming now prints the initial content carried by output items.
+
+- Local Workflow history now supports an incremental output journal and page reads. Partial final snapshots preserve earlier output, and deletion and backup include the complete journal.
+
 - Complete clipboard and editing relays for nested Kanban conversations while retaining sandbox and session boundaries and cleaning pending copies on close.
 
 - Custom Kanban references accept suggest: false to retain historical display labels while hiding items from the mention menu.

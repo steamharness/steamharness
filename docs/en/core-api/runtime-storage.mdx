@@ -115,3 +115,11 @@ Both local and Server repositories support the snapshot and optional backup APIs
 Standalone createAgent() without storage remains a temporary memory instance; inject local.agentStorage(conversationId, sessionKey) or createServerAgentStorage for persistence. Project business models are a separate API.
 
 See [Deployment and release](/en/guides/server/deployment) for local development and [OpenAPI](../openapi/steamharness.openapi.yaml) for HTTP details.
+
+## Local Workflow output journal
+
+The local SQLite backend stores output separately from run summaries. With the matching execution lease, call `lease.appendRunOutput(runId, { events, items, files })` to append events, merge output items, and save attachment references. Updating an existing item ID preserves its position. A partial final snapshot does not remove earlier items.
+
+`local.readRunOutputPage(runId, page?, pageSize?)` returns `runId`, `items`, the page attachments in `files`, `total`, `page`, `pageSize`, and `revision`. Pages start at 1. Omitting the page selects the latest page. The default and maximum page size are both 100.
+
+Use `readRunOutputDetails(runId)` for an explicit export of all items, events, and attachments, or `readRunOutputReferences(runId)` for attachment IDs. Deleting a run removes its journal; `copyRuntimePersistence` includes the complete journal in backups. These optional methods are currently provided by the local SQLite backend.

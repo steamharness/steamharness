@@ -63,7 +63,7 @@ export function markdownHtml(text: string, files: Attachment[] = []): string {
   const renderer = new marked.Renderer();
   renderer.image = (token) => {
     const file = managedFileForUrl(token.href, files);
-    return `<img src="${escapeHtml(file?.previewUrl ?? token.href)}" alt="${escapeHtml(token.text)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : ''}>`;
+    return `<img loading="lazy" src="${escapeHtml(file?.previewUrl ?? token.href)}" alt="${escapeHtml(token.text)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : ''}>`;
   };
   renderer.link = (token) => {
     const file = managedFileForUrl(token.href, files);
@@ -71,7 +71,7 @@ export function markdownHtml(text: string, files: Attachment[] = []): string {
   };
   const fragment = DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true, renderer }), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'a', 'img', 'details', 'summary', 'input'],
-    ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'class', 'open', 'data-workflow-file', 'data-workflow-path', 'type', 'checked', 'disabled'],
+    ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'loading', 'class', 'open', 'data-workflow-file', 'data-workflow-path', 'type', 'checked', 'disabled'],
     RETURN_DOM_FRAGMENT: true,
   });
   for (const input of Array.from(fragment.querySelectorAll('input'))) { input.type = 'checkbox'; input.disabled = true; }

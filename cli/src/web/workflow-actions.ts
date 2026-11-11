@@ -43,11 +43,15 @@ export function createProjectActions(controller: Controller, runtime: Runtime, p
     await controller.updateDraft(id, { values: params, rawArgs: String(message.rawArgs ?? controller.draft(id).rawArgs).slice(0, 100_000), inputMode: mode });
     return { params, states: next };
   };
+  const publicRun = (record: import('./workflow-workspace').RunRecord | undefined) => record && ({ ...record,
+    outputSummary: record.outputSummary ?? { total: record.items.length, revision: record.updatedAt }, items: [], events: [],
+    files: record.files.slice(-100), report: record.report && { ...record.report, output: undefined, result: undefined, files: [] },
+  });
   const state = () => {
     const filtered = controller.runs.filter(record => !query || `${record.title} ${record.entrypointId ?? ''} ${record.args.join(' ')}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
     const runs = filtered.slice(0, limit).map(({ id, title, entrypointId, status, createdAt, updatedAt, durationMs }) => ({ id, title, entrypointId, status, createdAt, updatedAt, durationMs }));
-    return { runs, selectedId: controller.workspace.selectedId, run: controller.current, occupiedId: controller.workspace.occupiedId,
-      occupiedRun: controller.occupied, running: controller.running, runningCount: controller.runs.filter(run => run.status === 'running').length, drafts: controller.workspace.drafts,
+    return { runs, selectedId: controller.workspace.selectedId, run: publicRun(controller.current), occupiedId: controller.workspace.occupiedId,
+      occupiedRun: publicRun(controller.occupied), running: controller.running, runningCount: controller.runs.filter(run => run.status === 'running').length, drafts: controller.workspace.drafts,
       history: { pageSize: 30, total: filtered.length, hasMore: filtered.length > limit, query }, migratedConversations: controller.workspace.migratedConversations };
   };
   return {
@@ -65,8 +69,13 @@ export function createProjectActions(controller: Controller, runtime: Runtime, p
           query = nextQuery; changed(); break;
         }
         case 'workflow-select': await controller.select(message.id ? String(message.id) : undefined); break;
+        case 'workflow-output-page': {
+          try { replies.push({ type: 'workflow-output-page', requestId: message.requestId, ...(await controller.outputPage(String(message.runId), message.page, message.pageSize ?? 100)) }); }
+          catch (error) { replies.push({ type: 'workflow-output-page', requestId: message.requestId, runId: message.runId, error: (error as Error).message }); }
+          break;
+        }
         case 'workflow-trace': {
-          const run = controller.runs.find(record => record.id === message.id);
+          const run = await controller.materialize(String(message.id));
           if (!run) { throw new Error('Run no longer exists.'); }
           replies.push({ type: 'trace-run', runId: run.id, run }); break;
         }
@@ -96,7 +105,7 @@ export function createProjectActions(controller: Controller, runtime: Runtime, p
         case 'workflow-rerun': await controller.rerun(String(message.id)); break;
         case 'workflow-delete': await controller.remove(String(message.id)); break;
         case 'workflow-export': {
-          const record = controller.runs.find(record => record.id === message.id);
+          const record = await controller.materialize(String(message.id));
           if (!record) { throw new Error('Run no longer exists.'); }
           replies.push({ type: 'download', name: `workflow-${record.id}.json`, content: JSON.stringify(redactProjectData(record, [], false), null, 2) }); break;
         }

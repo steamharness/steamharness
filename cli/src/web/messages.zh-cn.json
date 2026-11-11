@@ -292,7 +292,7 @@
   "New configuration": "新建配置",
   "New conversation": "新对话",
   "New run": "新建运行",
-  "Next": "下一个",
+  "Next": "下一页",
   "Next question": "下一问",
   "No": "否",
   "No active subscriptions": "暂无已订阅套餐",
@@ -320,7 +320,7 @@
   "Please confirm {0}": "请确认 {0}",
   "Please enter {0}.": "请填写 {0}。",
   "Preview size": "预览尺寸",
-  "Previous": "上一个",
+  "Previous": "上一页",
   "Previous question": "上一问",
   "Project connection expired": "项目连接已失效",
   "Project connection expired.": "项目连接已失效。",
@@ -1042,5 +1042,11 @@
   "{0} documents": "{0} 篇文档",
   "No matching documents": "没有找到匹配的文档",
   "Try a different keyword.": "可以换个关键词再搜索。",
-  "More matches exist; refine the search to narrow results.": "还有更多匹配内容，可以缩小关键词范围。"
+  "More matches exist; refine the search to narrow results.": "还有更多匹配内容，可以缩小关键词范围。",
+  "Output pages": "输出分页",
+  "Page {0} of {1} · {2} outputs": "第 {0} / {1} 页 · 共 {2} 条",
+  "{0} new · Latest": "新增 {0} 条 · 返回最新",
+  "Latest": "返回最新",
+  "Loading output…": "正在读取输出…",
+  "Output page request timed out. Retry.": "输出读取超时，请重试。"
 }

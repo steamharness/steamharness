@@ -2318,8 +2318,7 @@ function formatCliOutputChunk(chunk: unknown): string {
   }
 
   if (chunk.type === "output_item_start") {
-    const title = chunk.item.title.trim() || "Output";
-    return `\n${title}\n`;
+    return `\n${formatCliOutputItem(chunk.item)}\n`;
   }
 
   if (chunk.type === "output_item_delta") {

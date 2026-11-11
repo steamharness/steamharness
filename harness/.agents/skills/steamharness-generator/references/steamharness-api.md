@@ -1601,3 +1601,13 @@ Workflow entrypoint 可声明静态 `readOnly: true`，类型为可选 boolean�
 知识卡片可声明 reader: { entrypointId, args? }，调用卡片所指向的同一聚合本地 Workflow，只读操作返回 { errCode: 0, errMessage: "", format: "markdown" | "json", content }。有 reader 时可省略 target.knowledgeBase；远程知识卡片仍使用原别名。Kanban 只读预览允许 entries.list 和对已声明 readOnly 操作的 runEntrypoint，不接受写操作。
 
 自定义工具的 details.resourceCard 可用 target.query 为本地知识卡片保留关键词。宿主在 reader.args 后追加当前 --document-id 与 --query，reader 以末尾选择覆盖初始值；空 documentId 返回搜索或目录。reader 返回的可选 title 用于预览标题。卡片应使用文档真实 title 或搜索/目录名称，不以项目 UUID 作为显示名。
+
+## 本地 Workflow 长期监听与输出分页
+
+长期监听使用 output node 的异步生成器和 `runStreamNode`，每条记录发送独立的 `output_item_start`，手动停止响应 `context.abortSignal` 并在 `finally` 释放进程和监听器。可用节点的 `accumulateChunk` 保留有限最终快照；所有原始 chunk 仍需发送给宿主，不得丢弃实时输出。
+
+CLI Web 与 Studio 的 Workflow 结果按 `OutputItem` 每页 100 条展示。本地宿主通过运行历史的增量日志保存全部输出，并按页读取。业务项目继续使用标准输出协议与 `context.files.createFile` 保存截图，不读取宿主 SQLite 或自行实现历史存储。
+
+`steamharness/runtime-storage` 的本地仓储可选提供 `readRunOutputPage(runId, page?, pageSize?)`、`readRunOutputDetails(runId)`、`readRunOutputReferences(runId)`，对应租约提供 `appendRunOutput(runId, { events?, items?, files? })`。读页返回 `runId/items/files/total/page/pageSize/revision`，页码从 1 开始，省略取最新页，每页 1–100 条。追加须持有运行所属 scope 的有效租约；更新已有 item ID 保持顺序，最终局部快照不得截断历史，删除和备份包含完整日志。
+
+终端流式输出会立即显示 `output_item_start.item.content` 的初始内容，后续 delta 继续追加，不能只输出标题后等待最终报告。

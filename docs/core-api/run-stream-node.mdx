@@ -77,3 +77,5 @@ Core Agent 节点仅保留最新完整 `agent-session` 快照，避免长时间�
 | --- | --- | --- |
 | 执行前或流中中断 | `execution_aborted` 或 `stream_interrupted` | 中断会在流式遍历中被检查。 |
 | stream/finalize 抛错 | `stream_interrupted` | 错误会写入节点执行报告。 |
+
+终端会立即显示 `output_item_start` 中已有的正文，后续 `output_item_delta` 继续追加。可见内容不会等到运行结束才显示。

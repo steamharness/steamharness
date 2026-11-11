@@ -7,6 +7,7 @@ import { acquireProjectHost } from './host';
 import { requestAction } from './action-dialog';
 import { renderRequestError } from './request-error';
 import { Fields } from './workflow-fields';
+import { WorkflowOutputPager, type WorkflowOutputPage } from './workflow-output-pager';
 import { ConversationOutput } from './conversation-output';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
@@ -46,7 +47,7 @@ app.innerHTML = `
     <div id="workspace-scroll" class="workspace-scroll"><section id="entrypoints" class="workflow-entrypoints" aria-label="${t("Workflow entrypoint")}"></section>
       <section id="run-detail" class="workflow-run" hidden><header class="run-heading"><div><h2 id="run-title"></h2><div id="run-meta"></div></div><div class="run-heading-actions"><button id="rerun" class="icon-button" title="${t("Rerun")}" aria-label="${t("Rerun")}">${iconHtml('debug-restart')}</button><button id="export-run" class="icon-button" title="${t("Export record")}" aria-label="${t("Export record")}">${iconHtml('export')}</button><button id="delete-run" class="icon-button" title="${t("Delete record")}" aria-label="${t("Delete record")}">${iconHtml('trash')}</button></div></header>
       <nav class="workflow-tabs" role="tablist"><button id="tab-result" role="tab" aria-controls="result-view" aria-selected="true">${t("Result")}</button><button id="tab-flow" role="tab" aria-controls="flow-view" aria-selected="false">${t("Graph")}</button><button id="tab-logs" role="tab" aria-controls="logs-view" aria-selected="false">${t("Logs")}</button></nav><div id="run-error" class="error" hidden></div>
-      <div id="result-view" role="tabpanel" aria-labelledby="tab-result"><div id="run-output" class="message-content"></div><div id="run-files" class="attachments"></div><div id="run-prompt"></div></div>
+      <div id="result-view" role="tabpanel" aria-labelledby="tab-result"><nav id="output-pagination" hidden></nav><div id="run-output" class="message-content"></div><div id="run-files" class="attachments"></div><div id="run-prompt"></div></div>
       <div id="flow-view" role="tabpanel" aria-labelledby="tab-flow" hidden><div class="graph-toolbar"><button id="zoom-out" class="icon-button" title="${t("Zoom out")}" aria-label="${t("Zoom out")}">${iconHtml('zoom-out')}</button><span id="graph-scale">100%</span><button id="zoom-in" class="icon-button" title="${t("Zoom in")}" aria-label="${t("Zoom in")}">${iconHtml('zoom-in')}</button><button id="fit-graph" class="icon-button" title="${t("Fit graph")}" aria-label="${t("Fit graph")}">${iconHtml('screen-full')}</button></div><div id="graph-viewport"><div id="graph-size"><div id="graph-surface"></div></div></div><div id="graph-diagnostics"></div></div>
       <pre id="logs-view" role="tabpanel" aria-labelledby="tab-logs" hidden></pre></section>
     </div>
@@ -96,6 +97,11 @@ const output = new ConversationOutput(element('run-output'), {
   path: target => post({ type: 'open-path', ...target }),
   browser: url => post({ type: 'open-url', url }),
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
+});
+let outputPage: WorkflowOutputPage | undefined;
+const outputPager = new WorkflowOutputPager(element('output-pagination'), {
+  request: input => post({ type: 'workflow-output-page', ...input }),
+  render: page => { outputPage = page; renderRun(); },
 });
 const parameters = () => state ? projectParameters(state.project, entrypointId) : { fields: [] };
 const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
@@ -262,17 +268,21 @@ function fitGraph(): void { zoom(Math.min(1, (element('graph-viewport').clientWi
 function renderRun(): void {
   const run = state?.run;
   element('entrypoints').hidden = !!run; element('run-detail').hidden = !run;
-  if (!run) { if (renderedRun) { fields.close(); } renderedRun = ''; controls(); return; }
-  if (renderedRun !== run.id) { renderedRun = run.id; tab = 'result'; graphSignature = ''; prompt = undefined; promptKey = ''; element('run-prompt').replaceChildren(); }
+  if (!run) { outputPager.update('', 0, 0); outputPage = undefined; if (renderedRun) { fields.close(); } renderedRun = ''; controls(); return; }
+  if (renderedRun !== run.id) { outputPage = undefined; renderedRun = run.id; tab = 'result'; graphSignature = ''; prompt = undefined; promptKey = ''; element('run-prompt').replaceChildren(); }
   element('run-title').textContent = run.title;
   const usage = run.tokenUsage?.display ? run.tokenUsage.run : undefined;
   const tokens = usage && (usage.totalTokens ?? (Number(usage.inputTokens ?? 0) + Number(usage.outputTokens ?? 0)));
   element('run-meta').textContent = [statusLabels[run.status] ?? run.status, new Date(run.createdAt).toLocaleString(locale()),
     run.durationMs === undefined ? '' : `${(run.durationMs / 1000).toFixed(1)}s`, tokens === undefined ? '' : `${tokens} tokens`].filter(Boolean).join(' \u00b7 ');
   renderRequestError(element('run-error'), run.error);
-  const files = run.files;
-  output.update({ id: run.id, role: 'assistant', content: run.items.length || run.report?.result?.data === undefined ? '' : JSON.stringify(run.report.result.data, null, 2),
-    items: run.items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
+  outputPager.update(run.id, run.outputSummary?.total ?? run.items.length, run.outputSummary?.revision ?? run.updatedAt);
+  const page = outputPage?.runId === run.id ? outputPage : undefined;
+  const files = page?.files ?? run.files;
+  const items = page?.items ?? [];
+  element('run-output').hidden = !page && (run.outputSummary?.total ?? 0) > 0;
+  output.update({ id: run.id, role: 'assistant', content: (run.outputSummary?.total ?? 0) || run.report?.result?.data === undefined ? '' : JSON.stringify(run.report.result.data, null, 2),
+    items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
     events: run.events, timers: run.timers }, state!.project.id, state!.project.entryId, run.scopeId, files, 'local');
   const pendingLabel = element('run-output').querySelector('.pending > span:last-child'); if (pendingLabel) { pendingLabel.textContent = t("Running..."); }
   element('run-files').replaceChildren(...files.map(file => {
@@ -344,6 +354,7 @@ element('project-info').onclick = () => { if (state) { fields.close(); dialogs.p
 addEventListener('message', event => {
   if (event.source !== null && event.source !== window.parent) return;
   const message = event.data;
+  if (message?.type === 'workflow-output-page') { outputPager.receive(message); return; }
   if (message?.type === 'project-skills-result' || message?.type === 'error' && message.requestType === 'project-skills') {
     dialogs.skillsResult(message.requestId, message.value, message.type === 'error' ? message.message : undefined); return;
   }
@@ -368,6 +379,7 @@ addEventListener('message', event => {
     }
   } else if (message?.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   else if (message?.type === 'error') {
+    if (message.requestType === 'workflow-output-page') { outputPager.fail(message.requestId, message.message); return; }
     if (message.requestType === 'project-server-check') checkingServer = false;
     if (message.requestType === 'resource' && message.requestId) { return; }
     if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }

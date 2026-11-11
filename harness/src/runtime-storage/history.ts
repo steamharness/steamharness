@@ -3,16 +3,23 @@ import type { AgentStorageFactory } from "../agent/storage";
 import type { TokenUsageEntry } from "../token-usage";
 import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryKind, type RuntimeHistoryRecord, type RuntimeWorkspace, type RuntimeWorkspaceInput } from "./contract";
 import { ServerAgentStorage, runtimeStorageRequest, type ServerAgentStorageOptions } from "./server";
+import type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary } from "./output-journal";
+export type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary } from "./output-journal";
 
 export interface RuntimeHistoryLease {
   assertOwned(): void;
   write(record: RuntimeHistoryRecord): Promise<RuntimeHistoryRecord>;
+  /** Local run journal; the matching execution lease is required for writes. */
+  appendRunOutput?(runId: string, input: RuntimeOutputAppend): Promise<RuntimeOutputSummary>;
   delete(record: Pick<RuntimeHistoryRecord, "kind" | "key" | "scope" | "revision">): Promise<void>;
   usage(entry: TokenUsageEntry): Promise<void>;
   close(): Promise<void>;
 }
 export interface RuntimePersistence {
   list(kind: RuntimeHistoryKind): Promise<RuntimeHistoryRecord[]>;
+  readRunOutputPage?(runId: string, page?: number, pageSize?: number): Promise<RuntimeOutputPage>;
+  readRunOutputDetails?(runId: string): Promise<RuntimeOutputDetails>;
+  readRunOutputReferences?(runId: string): Promise<string[]>;
   acquire(scope: string, onLost?: (error: Error) => void): Promise<RuntimeHistoryLease>;
   agentStorage(conversationId: string, sessionKey: string): AgentStorageFactory;
   agentSessions(conversationId: string): Promise<string[]>;

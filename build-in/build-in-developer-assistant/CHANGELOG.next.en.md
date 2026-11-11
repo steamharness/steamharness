@@ -1,5 +1,7 @@
 # Unreleased
 
+- The project generator documents streaming listeners, host output pagination, and the local incremental run journal.
+
 - Document embedded copying, focused editing, and text-selection behavior in the generator skill.
 
 - Document display labels, unknown-reference fallback, and suggestion visibility for historical members in the generator skill.

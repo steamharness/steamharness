@@ -11,6 +11,7 @@ import type { StorageWrite, Id } from "@earendil-works/pi-durable";
 import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryRecord } from "./contract";
 import { agentRuntimeSessionKey, type RuntimeHistoryLease, type RuntimePersistence } from "./history";
 import { SnapshotMemoryStorage } from "./memory";
+import { createLocalOutputJournal } from "./output-journal";
 
 export interface LocalRuntimePersistenceOptions {
   /** Host-owned directory, isolated by project/entry and optionally account. */
@@ -62,8 +63,12 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
   };
   const session = (key: string) => db().prepare("SELECT file,deleted FROM agent_sessions WHERE key=?").get(key) as { file: string; deleted: number } | undefined;
   const fileFor = (key: string) => path.join(directory, "agents", `${digest(key)}.sqlite`);
+  const outputs = createLocalOutputJournal(db);
 
   return {
+    async readRunOutputPage(runId, page, pageSize) { return outputs.page(runId, page, pageSize); },
+    async readRunOutputDetails(runId) { return outputs.details(runId); },
+    async readRunOutputReferences(runId) { return outputs.references(runId); },
     async list(kind) {
       return db().prepare("SELECT record FROM history WHERE kind=? AND deleted=0 ORDER BY key").all(kind)
         .map(row => JSON.parse(row.record as string) as RuntimeHistoryRecord);
@@ -86,6 +91,7 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
             const saved = JSON.parse(JSON.stringify({ ...record, revision: record.revision + 1 })) as RuntimeHistoryRecord;
             database.prepare("INSERT INTO history(kind,key,scope,revision,deleted,record) VALUES(?,?,?,?,?,?) ON CONFLICT(kind,key) DO UPDATE SET scope=excluded.scope,revision=excluded.revision,deleted=excluded.deleted,record=excluded.record")
               .run(record.kind, record.key, scope, saved.revision, Number(deleted), JSON.stringify(saved));
+            if (deleted && record.kind === "run") outputs.delete(record.key);
             if (deleted && record.kind === "state") database.prepare("DELETE FROM usage WHERE conversation_id=?").run(record.key);
             return saved;
           });
@@ -94,7 +100,14 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
       const lease: RuntimeHistoryLease = {
         assertOwned,
         async write(record) { return write(record, false); },
-        async delete(record) { write({ ...record, state: {}, messages: [], queue: [], events: [], values: [] }, true); },
+        async delete(record) { if (record.kind === "run") outputs.page(record.key, 1, 1); write({ ...record, state: {}, messages: [], queue: [], events: [], values: [] }, true); },
+        async appendRunOutput(runId, input) {
+          assertOwned();
+          const row = db().prepare("SELECT scope,deleted FROM history WHERE kind='run' AND key=?").get(runId);
+          if (!row || row.deleted) throw new RuntimeStorageError("RUNTIME_STORAGE_NOT_FOUND", "The run does not exist.");
+          if (row.scope !== scope) throw new RuntimeStorageError("RUNTIME_STORAGE_ACCESS_DENIED", "Run output requires the matching execution owner.");
+          return outputs.append(runId, input);
+        },
         async usage(entry) {
           assertOwned();
           if (scope !== `core:${entry.conversationId ?? entry.runId}`) throw new RuntimeStorageError("RUNTIME_STORAGE_ACCESS_DENIED", "Usage requires its run or conversation owner.");

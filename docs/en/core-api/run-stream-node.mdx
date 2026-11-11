@@ -77,3 +77,5 @@ Core Agent nodes retain only the latest complete `agent-session` snapshot so lon
 | --- | --- | --- |
 |Pre-execution or in-stream interruption|`execution_aborted` or `stream_interrupted`|Interrupts are checked in the streaming traversal.|
 |stream/finalize throw error| `stream_interrupted` |Errors are written to the node execution report.|
+
+The terminal prints content already present in `output_item_start` immediately, then appends subsequent `output_item_delta` values. Visible content does not wait for the run to finish.

@@ -115,3 +115,11 @@ Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本
 独立编程式 `createAgent()` 不传 `storage` 时仍是临时内存实例；需要长期保存时显式注入本地仓储的 `agentStorage(...)` 或 `createServerAgentStorage`。项目自定义关系表和模型 schema 不属于该 API。
 
 本地调试见[部署与发布](/guides/server/deployment)，HTTP 协议见 [OpenAPI](../openapi/steamharness.openapi.yaml)。
+
+## 本地 Workflow 输出日志
+
+本地 SQLite 仓储支持增量输出日志，与运行摘要分开保存。持有对应执行租约时，调用 `lease.appendRunOutput(runId, { events, items, files })` 追加事件、合并输出项并保存附件引用。相同输出 ID 的更新保留原顺序；最终报告中的局部快照不会删除此前记录。
+
+`local.readRunOutputPage(runId, page?, pageSize?)` 返回 `runId`、`items`、当前页附件 `files`、`total`、`page`、`pageSize` 和 `revision`。页码从 1 开始，省略时读取最新页；每页最多 100 条，默认 100 条。
+
+需要显式导出时，使用 `readRunOutputDetails(runId)` 读取完整输出、事件与附件；`readRunOutputReferences(runId)` 返回附件 ID。删除运行同时清理日志，`copyRuntimePersistence` 备份时包含完整日志。这些能力目前由本地 SQLite 仓储提供，不支持的仓储不会声明对应方法。

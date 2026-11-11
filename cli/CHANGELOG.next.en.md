@@ -1,5 +1,9 @@
 # Unreleased
 
+- Terminal streaming immediately prints initial output-item content.
+
+- Workflow results show 100 items per page, preserve the selected history page while output arrives, and provide a return to the latest page. Local output is saved incrementally and remains readable after stopping.
+
 - Fix Bot Stop waiting on host recovery and durable command retries. Connected pages send cancellation directly and show stopping progress immediately. Interrupt a stalled owned worker, ignore late output, and update the UI when execution ends without waiting for its history receipt. Preserve drafts, pause queued input, and keep child cancellation scoped.
 
 - Fix retrying, sending new messages, and continuing queues after initial model or tool setup fails in manual recovery mode. Retry preserves the composer draft, and unfinished execution still requires explicit recovery.
