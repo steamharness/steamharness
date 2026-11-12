@@ -85,3 +85,6 @@
 .workflow-output-pagination[hidden] { display:none; }
 .workflow-output-pagination button { min-height:44px; padding:4px 10px; border:1px solid var(--border); border-radius:4px; background:var(--vscode-button-secondaryBackground); color:inherit; }
 .workflow-output-pagination [role=status] { overflow-wrap:anywhere; font-size:13px; }
+
+.workflow-app main { position:relative; }
+.workflow-latest-output { position:absolute; right:20px; bottom:16px; z-index:4; min-height:40px; padding:6px 12px; border:1px solid var(--border); border-radius:6px; background:var(--vscode-button-background); color:var(--vscode-button-foreground); }

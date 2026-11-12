@@ -214,3 +214,9 @@ const outputNode = steamharness.createOutputNode<ToolResult, OutputPayload>({
 | `errCode` | 最终 output payload 必须包含。成功值为 `0`。 |
 | `errMessage` | 最终 output payload 必须包含。成功时为空字符串。 |
 | `items` | 最终 output payload 必须包含。每个 item 是一个可独立折叠/展开的输出块。 |
+
+### 结构化活动记录
+
+CLI Web 与 Studio 可以将 `contentType: "json"`、`collapsed: false`、`metadata: { kind: "activity-record" }` 的输出项展示为独立记录卡。`content` 包含 `version: 1`、`kind: "snapshot" | "click" | "input"`、`timestamp` 和 `title`；可选 `fields: [{ label, value }]`、`summary`、完整 `text`、简短 `preview` 和宿主附件 ID `imageFileId`。文字按纯文本渲染，图片只从当前运行的附件解析。
+
+使用标准 `createOutputItem` 与 `createOutputItemChunk` 发送，不需要项目定义 HTML 或脚本。完整数据仍通过运行历史及导出保留；不支持该展示的消费者可以按 JSON 读取原始内容。

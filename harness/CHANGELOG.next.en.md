@@ -1,5 +1,7 @@
 # Unreleased
 
+- The project generator documents structured activity records for business events, complete text, and managed attachments.
+
 - Terminal streaming now prints the initial content carried by output items.
 
 - Local Workflow history now supports an incremental output journal and page reads. Partial final snapshots preserve earlier output, and deletion and backup include the complete journal.

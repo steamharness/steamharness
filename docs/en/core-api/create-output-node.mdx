@@ -216,3 +216,9 @@ const outputNode = steamharness.createOutputNode<ToolResult, OutputPayload>({
 | `errCode` | Required on the final output payload. Use `0` for success. |
 | `errMessage` | Required on the final output payload. Use an empty string on success. |
 | `items` | Required on the final output payload. Each item is an independently collapsible output block. |
+
+### Structured activity records
+
+CLI Web and Studio render output items with `contentType: "json"`, `collapsed: false`, and `metadata: { kind: "activity-record" }` as separate record cards. Their `content` includes `version: 1`, `kind: "snapshot" | "click" | "input"`, `timestamp`, and `title`. Optional fields are `fields: [{ label, value }]`, `summary`, complete `text`, a short `preview`, and the managed attachment ID `imageFileId`. Text renders literally; images resolve through the current run's attachments.
+
+Send records with the standard `createOutputItem` and `createOutputItemChunk` helpers. Projects do not supply HTML or scripts. History and export retain the complete data, and consumers without this presentation can read the original JSON.

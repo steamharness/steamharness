@@ -1048,5 +1048,9 @@
   "{0} new · Latest": "新增 {0} 条 · 返回最新",
   "Latest": "返回最新",
   "Loading output…": "正在读取输出…",
-  "Output page request timed out. Retry.": "输出读取超时，请重试。"
+  "Output page request timed out. Retry.": "输出读取超时，请重试。",
+  "Scroll to latest": "滚动到最新",
+  "Input content · {0} characters": "输入内容 · {0} 字符",
+  "Recognized text · {0} lines": "识别文字 · {0} 行",
+  "Copy full text": "复制完整文字"
 }

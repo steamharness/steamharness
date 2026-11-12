@@ -6,6 +6,7 @@ const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setSta
 vi.mock('../web/ui/aggregate', () => ({ mountAggregateToolbar: () => ({ update() {} }) }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
+vi.mock('../web/ui/output-follow', () => ({ OutputFollow: class { setScope() {} resume() {} dispose() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} close() {} skillsResult() {} } }));
 vi.mock('../web/ui/project-configurations', () => ({ projectConfigurationsButton: () => '', mountProjectConfigurations: () => {} }));

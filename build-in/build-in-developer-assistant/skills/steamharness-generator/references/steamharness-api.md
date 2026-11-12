@@ -1611,3 +1611,9 @@ CLI Web 与 Studio 的 Workflow 结果按 `OutputItem` 每页 100 条展示。�
 `steamharness/runtime-storage` 的本地仓储可选提供 `readRunOutputPage(runId, page?, pageSize?)`、`readRunOutputDetails(runId)`、`readRunOutputReferences(runId)`，对应租约提供 `appendRunOutput(runId, { events?, items?, files? })`。读页返回 `runId/items/files/total/page/pageSize/revision`，页码从 1 开始，省略取最新页，每页 1–100 条。追加须持有运行所属 scope 的有效租约；更新已有 item ID 保持顺序，最终局部快照不得截断历史，删除和备份包含完整日志。
 
 终端流式输出会立即显示 `output_item_start.item.content` 的初始内容，后续 delta 继续追加，不能只输出标题后等待最终报告。
+
+## 结构化活动记录（CLI Web / Studio）
+
+业务事件可使用 `contentType: "json"`、`collapsed: false`、`metadata: { kind: "activity-record" }`。content 为 `{ version: 1, kind: "snapshot" | "click" | "input", timestamp, title, fields?: [{ label, value }], summary?, text?, preview?, imageFileId? }`。完整文字保存在 text，preview 用于简短预览，图片使用 context.files 创建后的附件 ID；正文按纯文本渲染，不传 HTML。宿主分卡展示、延迟加载图片，并保留已展开记录。普通说明和 AI 主回答继续采用 inline markdown/text，不改为事件卡。
+
+Workflow 最新页在新增输出及图片高度变化时跟随底部；用户上翻或阅读详情时暂停，恢复到底部或点击最新操作后继续。项目不得通过消息或脚本强制滚动宿主页面。

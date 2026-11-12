@@ -1,5 +1,7 @@
 # Unreleased
 
+- The project generator documents structured activity records and host output following.
+
 - The project generator documents streaming listeners, host output pagination, and the local incremental run journal.
 
 - Document embedded copying, focused editing, and text-selection behavior in the generator skill.

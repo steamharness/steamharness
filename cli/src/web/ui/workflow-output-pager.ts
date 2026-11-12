@@ -26,6 +26,7 @@ export class WorkflowOutputPager {
   constructor(private readonly root: HTMLElement, private readonly options: {
     request(input: { runId: string; page?: number; pageSize: number; requestId: number }): void;
     render(page: WorkflowOutputPage): void;
+    followChanged?(following: boolean): void;
   }) {
     root.classList.add('workflow-output-pagination');
     root.setAttribute('aria-label', t('Output pages'));
@@ -35,7 +36,7 @@ export class WorkflowOutputPager {
     for (const button of [this.previous, this.next, this.latest, this.retry]) button.type = 'button';
     this.previous.onclick = () => this.select(Math.max(1, (this.page ?? Math.max(1, Math.ceil(this.total / 100))) - 1));
     this.next.onclick = () => this.select((this.page ?? Math.max(1, Math.ceil(this.total / 100))) + 1);
-    this.latest.onclick = () => { this.page = undefined; this.viewedTotal = this.total; this.invalidate(); };
+    this.latest.onclick = () => { this.page = undefined; this.viewedTotal = this.total; this.options.followChanged?.(true); this.invalidate(); };
     this.retry.onclick = () => this.invalidate();
     root.append(this.previous, this.label, this.next, this.latest, this.status, this.retry);
   }
@@ -48,7 +49,8 @@ export class WorkflowOutputPager {
     this.total = total; this.revision = revision;
     this.controls(); this.schedule();
   }
-  private select(page: number): void { this.page = Math.min(page, Math.max(1, Math.ceil(this.total / 100))); this.viewedTotal = this.total; this.invalidate(); }
+  get followingLatest(): boolean { return this.page === undefined; }
+  private select(page: number): void { this.options.followChanged?.(false); this.page = Math.min(page, Math.max(1, Math.ceil(this.total / 100))); this.viewedTotal = this.total; this.invalidate(); }
   private invalidate(): void { ++this.sequence; this.pending = undefined; this.fetched = ''; this.error = ''; clearTimeout(this.timer); clearTimeout(this.deadline); this.timer = undefined; this.controls(); this.schedule(); }
   private signature(): string { return `${this.runId}:${this.page ?? 'latest'}:${this.revision}`; }
   private schedule(): void {

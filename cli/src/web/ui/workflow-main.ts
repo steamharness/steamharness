@@ -1,3 +1,4 @@
+import { OutputFollow } from './output-follow';
 import { mountAggregateToolbar } from './aggregate';
 import { mountProjectConfigurations } from './project-configurations';
 import { t, locale } from '../localization';
@@ -51,7 +52,7 @@ app.innerHTML = `
       <div id="flow-view" role="tabpanel" aria-labelledby="tab-flow" hidden><div class="graph-toolbar"><button id="zoom-out" class="icon-button" title="${t("Zoom out")}" aria-label="${t("Zoom out")}">${iconHtml('zoom-out')}</button><span id="graph-scale">100%</span><button id="zoom-in" class="icon-button" title="${t("Zoom in")}" aria-label="${t("Zoom in")}">${iconHtml('zoom-in')}</button><button id="fit-graph" class="icon-button" title="${t("Fit graph")}" aria-label="${t("Fit graph")}">${iconHtml('screen-full')}</button></div><div id="graph-viewport"><div id="graph-size"><div id="graph-surface"></div></div></div><div id="graph-diagnostics"></div></div>
       <pre id="logs-view" role="tabpanel" aria-labelledby="tab-logs" hidden></pre></section>
     </div>
-    <section id="workflow-form" class="workflow-form" aria-label="${t("Entrypoint parameters")}"><div class="workflow-form-top"><div id="input-mode" class="input-mode" role="group" aria-label="${t("Parameter mode")}"><button data-mode="form" aria-pressed="true">${t("Form")}</button><button data-mode="raw" aria-pressed="false">JSON</button></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}">${iconHtml('refresh')}</button></div><div id="main-fields" class="workflow-main-fields"></div><textarea id="raw-args" aria-label="${t("JSON argument array")}" spellcheck="false" rows="4" hidden></textarea><div id="parameter-error" class="error" role="alert" hidden></div><div class="workflow-form-bottom"><div id="parameter-actions" class="parameter-actions"></div><span id="parameter-status" class="parameter-status" hidden>${iconHtml('loading')}</span><button id="run" class="workflow-run-button">${iconHtml('play')}<span>${t("Run")}</span></button></div></section>
+    <button id="follow-output" class="workflow-latest-output" hidden>${t("Scroll to latest")}</button><section id="workflow-form" class="workflow-form" aria-label="${t("Entrypoint parameters")}"><div class="workflow-form-top"><div id="input-mode" class="input-mode" role="group" aria-label="${t("Parameter mode")}"><button data-mode="form" aria-pressed="true">${t("Form")}</button><button data-mode="raw" aria-pressed="false">JSON</button></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}">${iconHtml('refresh')}</button></div><div id="main-fields" class="workflow-main-fields"></div><textarea id="raw-args" aria-label="${t("JSON argument array")}" spellcheck="false" rows="4" hidden></textarea><div id="parameter-error" class="error" role="alert" hidden></div><div class="workflow-form-bottom"><div id="parameter-actions" class="parameter-actions"></div><span id="parameter-status" class="parameter-status" hidden>${iconHtml('loading')}</span><button id="run" class="workflow-run-button">${iconHtml('play')}<span>${t("Run")}</span></button></div></section>
   </main><dialog id="history-dialog" class="conversation-dialog"><header><label class="history-search">${iconHtml('search')}<input id="search-history" type="search" placeholder="${t("Search runs")}" aria-label="${t("Search runs")}"></label><button id="close-history" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div id="search-results" class="dialog-body"></div><button id="search-more" class="all-history" hidden>${t("Load more")}</button></dialog>
   <dialog id="node-dialog" class="conversation-dialog"><header><h2 id="node-title"></h2><button id="close-node" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><pre id="node-detail" class="dialog-body web-preview"></pre></dialog>`;
 const configurationPanel = mountProjectConfigurations(host, {
@@ -99,9 +100,11 @@ const output = new ConversationOutput(element('run-output'), {
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
 });
 let outputPage: WorkflowOutputPage | undefined;
+const outputFollow = new OutputFollow(element('workspace-scroll'), element('run-detail'), element<HTMLButtonElement>('follow-output'));
 const outputPager = new WorkflowOutputPager(element('output-pagination'), {
   request: input => post({ type: 'workflow-output-page', ...input }),
   render: page => { outputPage = page; renderRun(); },
+  followChanged: following => { outputFollow.setScope(state?.run?.id ?? '', following && tab === 'result'); if (following) outputFollow.resume(); },
 });
 const parameters = () => state ? projectParameters(state.project, entrypointId) : { fields: [] };
 const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
@@ -233,6 +236,7 @@ function historyRows(root: HTMLElement): void {
 }
 function changeTab(value: string): void {
   tab = value;
+  outputFollow.setScope(state?.run?.id ?? '', outputPager.followingLatest && tab === 'result');
   for (const name of ['result', 'flow', 'logs']) { element(`${name}-view`).hidden = tab !== name; element(`tab-${name}`).setAttribute('aria-selected', String(tab === name)); }
   if (value === 'flow') { renderGraph(); } persist();
 }
@@ -268,7 +272,7 @@ function fitGraph(): void { zoom(Math.min(1, (element('graph-viewport').clientWi
 function renderRun(): void {
   const run = state?.run;
   element('run-detail').hidden = !run;
-  if (!run) { outputPager.update('', 0, 0); outputPage = undefined; if (renderedRun) { fields.close(); } renderedRun = ''; controls(); return; }
+  if (!run) { outputFollow.setScope('', false); outputPager.update('', 0, 0); outputPage = undefined; if (renderedRun) { fields.close(); } renderedRun = ''; controls(); return; }
   if (renderedRun !== run.id) { outputPage = undefined; renderedRun = run.id; tab = 'result'; graphSignature = ''; prompt = undefined; promptKey = ''; element('run-prompt').replaceChildren(); }
   element('run-title').textContent = run.title;
   const usage = run.tokenUsage?.display ? run.tokenUsage.run : undefined;
@@ -276,7 +280,9 @@ function renderRun(): void {
   element('run-meta').textContent = [statusLabels[run.status] ?? run.status, new Date(run.createdAt).toLocaleString(locale()),
     run.durationMs === undefined ? '' : `${(run.durationMs / 1000).toFixed(1)}s`, tokens === undefined ? '' : `${tokens} tokens`].filter(Boolean).join(' \u00b7 ');
   renderRequestError(element('run-error'), run.error);
+  outputFollow.setScope(run.id, outputPager.followingLatest && tab === 'result');
   outputPager.update(run.id, run.outputSummary?.total ?? run.items.length, run.outputSummary?.revision ?? run.updatedAt);
+  outputFollow.setScope(run.id, outputPager.followingLatest && tab === 'result');
   const page = outputPage?.runId === run.id ? outputPage : undefined;
   const files = page?.files ?? run.files;
   const items = page?.items ?? [];
@@ -285,7 +291,8 @@ function renderRun(): void {
     items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
     events: run.events, timers: run.timers }, state!.project.id, state!.project.entryId, run.scopeId, files, 'local');
   const pendingLabel = element('run-output').querySelector('.pending > span:last-child'); if (pendingLabel) { pendingLabel.textContent = t("Running..."); }
-  element('run-files').replaceChildren(...files.map(file => {
+  const inlineImages = new Set(Array.from(element('run-output').querySelectorAll<HTMLImageElement>('img[data-record-file]')).map(image => image.dataset.recordFile));
+  element('run-files').replaceChildren(...files.filter(file => !inlineImages.has(file.id)).map(file => {
     const button = iconButton('file', file.name, () => host.postMessage({ type: 'open-file', id: file.id })); button.className = 'workflow-file';
     button.append(document.createTextNode(file.name)); return button;
   }));

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Workflow results follow streaming output and delayed image growth, pause while reading, and offer a resume action. Structured activity cards separate summaries, targets, images, and complete text.
+
 - CLI Web shows only the result area for existing Workflow runs, with entrypoints and parameter forms available when creating a new run.
 
 - Terminal streaming immediately prints initial output-item content.

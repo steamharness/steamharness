@@ -1,3 +1,4 @@
+import { activityRecord, activityRecordFiles, renderActivityRecord } from './activity-record';
 import { t, locale } from '../localization';
 import type { ConversationMessage, Attachment, OutputItem, ResolvedInput, TimerRecord } from '../workflow-types';
 import { conversationResourceCards, type ResourceCard } from '../resource-cards';
@@ -113,7 +114,7 @@ export class ConversationOutput {
     for (const entry of ordered) {
       const content = entry.item?.content as { tool?: string; status?: string } | undefined;
       if (content?.tool === 'workflow-ui_present_card' && content.status === 'success' && !entry.card) { continue; }
-      if (entry.item && (content?.tool !== 'workflow-ui_present_card' || content.status !== 'success')) { entry.activity = agentActivity(entry.item, message); }
+      if (entry.item && !activityRecord(entry.item) && (content?.tool !== 'workflow-ui_present_card' || content.status !== 'success')) { entry.activity = agentActivity(entry.item, message); }
       if (entry.item && content?.tool !== 'workflow-ui_present_card' && !entry.card) { entry.card = conversationResourceCards([entry.item], projectId, entryId, conversationId, storageSource)[0]; }
       if (entry.card && entry.card.kind !== 'file') { blocks.push({ key: `resource:${entry.key}`, card: entry.card, item: entry.item }); continue; }
       if (entry.activity) {
@@ -130,7 +131,8 @@ export class ConversationOutput {
       const { activity, ...content } = entry;
       const signature = JSON.stringify([content, activity?.status, message.submittingInput?.requestId === entry.answer?.requestId, displaySignature]);
       let view = this.views.get(entry.key);
-      const changed = !view || view.signature !== signature || view.filesSignature !== filesSignature;
+      const entryFilesSignature = entry.item && activityRecord(entry.item) ? attachmentSignature(activityRecordFiles(entry.item, files)) : filesSignature;
+      const changed = !view || view.signature !== signature || view.filesSignature !== entryFilesSignature;
       const display = view && this.displays.get(view.root);
       if (view && display && entry.item && !activity && !entry.card && ringOutputContent(entry.item)) {
         if (changed) { display.update(entry.item); view.signature = signature; }
@@ -141,9 +143,9 @@ export class ConversationOutput {
           : entry.timer ? this.timer(entry.timer) : activity ? this.activity(activity, entry.key, entry.card) : entry.card ? this.card(entry.card, entry.item) : entry.item ? this.item(entry.item, files) : this.markdown(entry.text ?? '', files);
         if (view?.root instanceof HTMLDetailsElement && root instanceof HTMLDetailsElement) { root.open = view.root.open; }
         if (view) { this.release(view.root); view.root.replaceWith(root); }
-        view = { root, signature, filesSignature }; this.views.set(entry.key, view);
+        view = { root, signature, filesSignature: entryFilesSignature }; this.views.set(entry.key, view);
       }
-      view.filesSignature = filesSignature;
+      view.filesSignature = entryFilesSignature;
       return view.root;
     };
     // Keep final prose/plans and deliverable cards visible. A trailing tool or usage
@@ -417,6 +419,8 @@ export class ConversationOutput {
   }
 
   private item(item: OutputItem, files: Attachment[]): HTMLElement {
+    const record = activityRecord(item);
+    if (record) return renderActivityRecord(record, files, this.options);
     if (ringOutputContent(item)) {
       const display = new RingOutput(item); this.displays.set(display.root, display); return display.root;
     }
