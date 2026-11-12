@@ -1,5 +1,7 @@
 # Unreleased
 
+- CLI Web shows only the result area for existing Workflow runs, with entrypoints and parameter forms available when creating a new run.
+
 - Terminal streaming immediately prints initial output-item content.
 
 - Workflow results show 100 items per page, preserve the selected history page while output arrives, and provide a return to the latest page. Local output is saved incrementally and remains readable after stopping.

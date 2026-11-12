@@ -187,7 +187,7 @@ function controls(): void {
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
   const blocked = serverBlocked() && !!state?.serverData?.issue;
   element('workflow-form').hidden = blocked;
-  element('entrypoints').hidden = blocked;
+  element('entrypoints').hidden = blocked || !!state?.run;
   element('rerun').hidden = blocked;
   element('run-prompt').hidden = blocked;
   app.classList.toggle('project-server-blocked', blocked);
@@ -267,7 +267,7 @@ function zoom(value: number): void {
 function fitGraph(): void { zoom(Math.min(1, (element('graph-viewport').clientWidth - 16) / graphWidth, (element('graph-viewport').clientHeight - 16) / graphHeight)); }
 function renderRun(): void {
   const run = state?.run;
-  element('entrypoints').hidden = !!run; element('run-detail').hidden = !run;
+  element('run-detail').hidden = !run;
   if (!run) { outputPager.update('', 0, 0); outputPage = undefined; if (renderedRun) { fields.close(); } renderedRun = ''; controls(); return; }
   if (renderedRun !== run.id) { outputPage = undefined; renderedRun = run.id; tab = 'result'; graphSignature = ''; prompt = undefined; promptKey = ''; element('run-prompt').replaceChildren(); }
   element('run-title').textContent = run.title;
