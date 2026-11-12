@@ -584,7 +584,10 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .user-setting-field { color: var(--vscode-editor-foreground); background: transparent; border: none; text-align: left; cursor: pointer; font: inherit; padding: 6px 0; }
 .user-setting-field:hover { color: var(--vscode-textLink-foreground); text-decoration: underline; }
 
-.activity-record { margin:10px 0; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:var(--vscode-editor-background); }
+.activity-record { margin:10px 0; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:var(--vscode-editor-background); container-type:inline-size; }
+.activity-record-body.has-image { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:20px; align-items:start; }
+.activity-record-description, .activity-record-media { min-width:0; }
+.activity-record-media { margin:0; padding:8px; border:1px solid var(--border); border-radius:4px; }
 .activity-record-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .activity-record-heading strong { font-size:14px; font-weight:600; }
 .activity-record-heading time { margin-left:auto; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
@@ -592,9 +595,10 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .activity-record-fields dt { color:var(--muted); }
 .activity-record-fields dd { margin:0; overflow-wrap:anywhere; }
 .activity-record-summary { font-size:13px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
-.activity-record-image { display:block; width:auto; max-width:100%; max-height:360px; object-fit:contain; margin:12px 0; border:1px solid var(--border); cursor:zoom-in; }
+.activity-record-image { display:block; width:auto; max-width:100%; max-height:540px; object-fit:contain; margin:0 auto; cursor:zoom-in; }
 .activity-record-preview { max-height:110px; margin:10px 0 6px; overflow:hidden; white-space:pre-wrap; font-size:13px; line-height:1.5; }
 .activity-record-text { border-top:1px solid var(--border); padding-top:8px; }
 .activity-record-text summary { cursor:pointer; font-size:12px; min-height:32px; }
 .activity-record-text > pre { max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; }
 @media(max-width:640px) { .activity-record { padding:12px; } .activity-record-heading time { flex-basis:100%; margin-left:0; } }
+@container (max-width:600px) { .activity-record-body.has-image { grid-template-columns:minmax(0,1fr); gap:12px; } }

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Activity records with screenshots place text on the left and the image on the right, stacking in narrow views. Images remain available in the full preview.
+
 - Workflow results follow streaming output and delayed image growth, pause while reading, and offer a resume action. Structured activity cards separate summaries, targets, images, and complete text.
 
 - CLI Web shows only the result area for existing Workflow runs, with entrypoints and parameter forms available when creating a new run.

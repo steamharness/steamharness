@@ -23,15 +23,17 @@ export function renderActivityRecord(record: ActivityRecordContent, files: Attac
   const date = new Date(record.timestamp);
   time.textContent = Number.isNaN(date.valueOf()) ? record.timestamp : new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(date);
   header.append(icon, title, time); root.append(header);
+  const body = document.createElement('div'); body.className = 'activity-record-body';
+  const description = document.createElement('div'); description.className = 'activity-record-description'; body.append(description); root.append(body);
   if (record.fields?.length) {
     const fields = document.createElement('dl'); fields.className = 'activity-record-fields';
     for (const field of record.fields) {
       const name = document.createElement('dt'); name.textContent = String(field.label);
       const value = document.createElement('dd'); value.textContent = String(field.value); value.title = String(field.value); fields.append(name, value);
     }
-    root.append(fields);
+    description.append(fields);
   }
-  if (record.summary) { const summary = document.createElement('p'); summary.className = 'activity-record-summary'; summary.textContent = record.summary; root.append(summary); }
+  if (record.summary) { const summary = document.createElement('p'); summary.className = 'activity-record-summary'; summary.textContent = record.summary; description.append(summary); }
   const imageFile = record.imageFileId && files.find(file => file.id === record.imageFileId);
   if (imageFile) {
     const address = imageFile.previewUrl ?? imageFile.url;
@@ -40,7 +42,9 @@ export function renderActivityRecord(record: ActivityRecordContent, files: Attac
       if (['http:', 'https:'].includes(url.protocol)) {
         const image = document.createElement('img'); image.className = 'activity-record-image'; image.dataset.recordFile = imageFile.id; image.src = url.href; image.alt = record.title; image.loading = 'lazy'; image.tabIndex = 0; image.setAttribute('role', 'button');
         const open = () => options.image(image.src, record.title);
-        image.addEventListener('click', open); image.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }); root.append(image);
+        image.addEventListener('click', open); image.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+        const media = document.createElement('figure'); media.className = 'activity-record-media'; media.append(image);
+        body.classList.add('has-image'); body.append(media);
       }
     }
   }
@@ -50,7 +54,7 @@ export function renderActivityRecord(record: ActivityRecordContent, files: Attac
     const preview = document.createElement('pre'); preview.className = 'activity-record-preview'; preview.textContent = record.preview ?? record.text.split(/\r?\n/).slice(0, 5).join('\n');
     const content = document.createElement('pre'); content.textContent = record.text;
     const copy = iconButton('copy', t('Copy full text'), () => options.copy(record.text!, copy));
-    details.append(summary, copy, content); if (record.kind !== 'input' && preview.textContent) root.append(preview); root.append(details);
+    details.append(summary, copy, content); if (record.kind !== 'input' && preview.textContent) description.append(preview); description.append(details);
     if (record.kind === 'input') details.open = true;
   }
   return root;
