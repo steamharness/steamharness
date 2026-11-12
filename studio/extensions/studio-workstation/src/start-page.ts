@@ -9,6 +9,8 @@ import { parseServerProjectShareLink, type ProjectVersionStatus } from './steamh
 import { rememberImportedProjects, type RecentProject } from './projects';
 import { updateProjectHistory } from './project-history';
 import { chooseProjectWindow, openProjectFolder, type ProjectWindowOptions } from './project-window';
+import { getStartRecommendationsProvider, onDidChangeStartRecommendations, normalizeStartRecommendations } from './start-page-recommendations';
+export { registerStartRecommendationsProvider } from './start-page-recommendations';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
 const LAST_SETUP_KEY = 'studio.lastProjectSetupId';
@@ -31,7 +33,7 @@ export function startPageLabels(): Record<string, string> {
     projectName: t('Project Name'), parentDirectory: t('Project Parent Folder'), browse: t('Choose Folder'),
     confirmCreate: t('Create'), cancel: t('Cancel'), requiredName: t('Enter a project name.'),
     requiredParent: t('Choose an existing parent folder.'),
-    'type.workflow': t('Workflow'), 'type.conversation': t('Conversation'), 'type.kanban': t('Kanban'),
+    'type.workflow': t('Workflow'), 'type.bot': t('Bot'), 'type.conversation': t('Conversation'), 'type.kanban': t('Kanban'),
     'type.link': t('Import from Link'), 'type.aggregate': t('Aggregate Project'),
     'stat.studio': 'Studio', 'stat.vscode': 'VS Code', 'stat.node': 'Node.js', 'stat.harness': 'Harness', 'stat.cli': 'CLI',
     'stat.account': t('Account'), 'stat.server': t('Server'), 'stat.projects': t('Local Projects'), 'stat.running': t('Running'), 'stat.waiting': t('Waiting for Input'),
@@ -62,6 +64,9 @@ export class StudioStartController implements vscode.Disposable {
   private requested = false;
   private environmentNeeded = true;
   private refreshing?: Promise<void>;
+  private recommendationsKey?: string;
+  private recommendationsAbort?: AbortController;
+  private visibilityRevision = 0;
   private interval?: ReturnType<typeof setInterval>;
   private timer?: ReturnType<typeof setTimeout>;
   private versionTimer?: ReturnType<typeof setTimeout>;
@@ -92,9 +97,15 @@ export class StudioStartController implements vscode.Disposable {
         }
       }));
     };
-    register('studio.internalStartPageVisibility', (visible: boolean) => this.setVisible(visible === true));
+    register('studio.internalStartPageVisibility', (visible: boolean) => { ++this.visibilityRevision; this.setVisible(visible === true); });
     register('studio.internalGetStartState', () => structuredClone(this.state));
     register('studio.refreshStart', async () => { this.environmentNeeded = true; await Promise.all([this.refresh(), vscode.commands.executeCommand('studio.refreshVersions')]); });
+    register('studio.openStartRecommendation', (id?: string) => {
+      const active = this.recommendationsContext();
+      if (!active || active.key !== this.recommendationsKey) return;
+      if (id !== undefined && !this.state.recommendations?.items.some(item => item.id === id)) return;
+      return active.provider.open(id);
+    });
     register('studio.createProject', (type?: string) => this.create('starter', type));
     register('studio.createExample', (id?: string) => this.create('example', id));
     register('studio.internalChooseProjectParent', async (directory: string) => {
@@ -131,6 +142,7 @@ export class StudioStartController implements vscode.Disposable {
       this.timer = setTimeout(() => { this.publish(); if (this.visible) { void this.refresh(); } }, 350);
     };
     this.subscriptions.push(projects.onDidChangeProjects(schedule), recent.onDidChangeTreeData(schedule), account.onDidChange(schedule),
+      onDidChangeStartRecommendations(schedule),
       vscode.workspace.onDidChangeWorkspaceFolders(schedule),
       projects.onDidChangeVersions(() => { clearTimeout(this.versionTimer); this.versionTimer = setTimeout(() => this.publish(), 150); }),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.resumeProjectSetup()),
@@ -141,7 +153,10 @@ export class StudioStartController implements vscode.Disposable {
         }
       }));
     this.publish();
-    void vscode.commands.executeCommand<boolean>('studio.internalGetStartVisibility').then(visible => this.setVisible(visible), () => undefined);
+    const visibilityRevision = this.visibilityRevision;
+    void vscode.commands.executeCommand<boolean>('studio.internalGetStartVisibility').then(visible => {
+      if (visibilityRevision === this.visibilityRevision) this.setVisible(visible);
+    }, () => undefined);
     void this.refresh();
     this.resumeProjectSetup();
   }
@@ -187,6 +202,14 @@ export class StudioStartController implements vscode.Disposable {
 
   private publish(): void {
     if (this.disposed) { return; }
+    const recommendations = this.recommendationsContext();
+    if (!recommendations) {
+      this.recommendationsAbort?.abort(); this.recommendationsKey = undefined; this.state.recommendations = undefined;
+    } else if (this.recommendationsKey !== recommendations.key) {
+      this.recommendationsAbort?.abort(); this.recommendationsKey = recommendations.key;
+      const { provider } = recommendations;
+      this.state.recommendations = { title: provider.title, openLabel: provider.openLabel, browseLabel: provider.browseLabel, items: [], message: provider.loadingMessage };
+    }
     const aggregates = new Map<string, Project>();
     for (const project of this.projects.getProjects().filter(project => !project.assistant && !project.builtin)) {
       const key = `${project.id}:${project.uri}`;
@@ -228,14 +251,26 @@ export class StudioStartController implements vscode.Disposable {
         await this.recent.reconcile?.();
         if (this.disposed) { return; }
         const revision = this.revision;
+        this.publish();
+        const recommendations = this.visible ? this.recommendationsContext() : undefined;
+        const abort = new AbortController(); this.recommendationsAbort = abort;
         const environment = this.environmentNeeded;
-        const [templates, runtime, summary] = await Promise.allSettled([
+        const [templates, runtime, summary, suggested] = await Promise.allSettled([
           this.state.templates.length ? Promise.resolve(this.state.templates) : this.launcher.templates?.() ?? Promise.resolve([]),
           environment ? this.launcher.environmentStatus?.() : undefined,
           this.visible && vscode.workspace.isTrusted ? this.launcher.analysisSummary?.() : undefined,
+          recommendations?.provider.load(abort.signal, { force: environment }),
         ]);
         if (this.disposed) { return; }
         if (revision !== this.revision) { this.requested = true; continue; }
+        if (recommendations && this.recommendationsContext()?.key === recommendations.key && this.state.recommendations) {
+          if (suggested.status === 'fulfilled' && suggested.value) {
+            try {
+              this.state.recommendations.items = normalizeStartRecommendations(suggested.value.items);
+              this.state.recommendations.message = this.state.recommendations.items.length ? undefined : recommendations.provider.emptyMessage;
+            } catch { this.state.recommendations.message = recommendations.provider.unavailableMessage; }
+          } else if (suggested.status === 'rejected') this.state.recommendations.message = recommendations.provider.unavailableMessage;
+        }
         const errors: string[] = [];
         if (templates.status === 'fulfilled') { this.state.templates = templates.value; }
         else { errors.push(this.errorMessage(templates.reason)); }
@@ -253,6 +288,14 @@ export class StudioStartController implements vscode.Disposable {
       }
     })().catch(error => { this.output.appendLine(`Start page: ${String(error)}`); }).finally(() => { this.refreshing = undefined; });
     return this.refreshing;
+  }
+
+  private recommendationsContext() {
+    if (vscode.workspace.workspaceFolders?.length) return undefined;
+    const provider = getStartRecommendationsProvider();
+    if (!provider) return undefined;
+    try { return { provider, key: `${provider.id}:${provider.contextKey()}` }; }
+    catch { return undefined; }
   }
 
   private async runCreation(action: () => Promise<void>): Promise<void> {
@@ -423,6 +466,7 @@ export class StudioStartController implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true; ++this.revision; this.creation.abort();
+    this.recommendationsAbort?.abort();
     clearTimeout(this.timer); clearTimeout(this.versionTimer); clearTimeout(this.logTimer); clearInterval(this.interval);
     void this.flushInstallationLog();
     for (const subscription of this.subscriptions) { subscription.dispose(); }

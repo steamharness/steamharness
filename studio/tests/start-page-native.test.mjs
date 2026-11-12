@@ -84,6 +84,21 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
   assert.deepEqual(calls.filter(([command]) => ['studio.openProject', 'studio.openProjectSource'].includes(command))
     .map(([command, target]) => [command, { ...target }]), entries.flatMap(([entryId]) =>
       ['studio.openProject', 'studio.openProject', 'studio.openProjectSource'].map(command => [command, { uri: 'file:///aggregate', entryId }])));
+  const recommendation = { id: 'approved-app', name: '<Recommended app>', description: '<script>plain text</script>', projectType: 'bot', version: '1.0.0', avatarUrl: 'data:image/svg+xml,%3Csvg%3E%3C/svg%3E' };
+  instance.labels.set('current', document.createElement('h2'));
+  instance.service.state.projects = [];
+  instance.service.state.recommendations = { title: language === 'en' ? 'Recommended apps' : '推荐应用', openLabel: language === 'en' ? 'View app' : '查看应用', browseLabel: 'Browse', items: [recommendation] };
+  instance.render();
+  const recommendedCard = current.querySelector('.studio-start-recommendation');
+  assert.equal(recommendedCard.querySelector('h3').textContent, recommendation.name);
+  assert.equal(recommendedCard.querySelector('script'), null);
+  assert.equal(instance.labels.get('current').textContent, instance.service.state.recommendations.title);
+  recommendedCard.querySelector('.studio-start-project-actions button').click();
+  assert.deepEqual(calls.at(-1), ['studio.openStartRecommendation', 'approved-app']);
+  instance.render(); assert.equal(current.querySelector('.studio-start-recommendation'), recommendedCard);
+  instance.service.state.recommendations = undefined; instance.service.state.projects = [{ uri: 'file:///local', entryId: 'main', name: 'Local project', projectType: 'workflow', folderPath: '/local' }];
+  instance.render(); assert.equal(current.querySelectorAll('.studio-start-recommendation').length, 0);
+
 });
 
 for (const [patchNames, files] of [
@@ -101,7 +116,7 @@ for (const [patchNames, files] of [
   }
   await mkdir(path.join(directory, 'patches'));
   // Replay the later DOM typing refinement too, restricted to this fixture's files.
-  const sequence = patchNames.includes('0067-studio-start-recent-projects.patch') ? [...patchNames, '0076-studio-release-startup.patch'] : patchNames;
+  const sequence = patchNames.includes('0067-studio-start-recent-projects.patch') ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch'] : patchNames;
   for (const patchName of sequence) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');

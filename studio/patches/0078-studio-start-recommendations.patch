@@ -1,0 +1,65 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -21,6 +21,7 @@
+ 	labels: Record<string, string>;
+ 	badge?: string;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
++	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
+ 	projects: { uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
+ 	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+@@ -216,7 +217,7 @@
+ 		const badge = state.badge?.trim();
+ 		this.badge.textContent = badge ?? '';
+ 		this.badge.hidden = !badge;
+-		const text = (key: string): string => state.labels[key] ?? key;
++		const text = (key: string): string => key === 'current' && state.recommendations ? state.recommendations.title : state.labels[key] ?? key;
+ 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
+ 		for (const action of this.actions) {
+ 			action.button.title = text(action.label);
+@@ -225,8 +226,31 @@
+ 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
+ 		}
+ 		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
+-		this.list('current', { projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
+-			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
++		this.list('current', { recommendations: state.recommendations, projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
++			if (!state.recommendations && !state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
++			if (state.recommendations) {
++				const recommendations = state.recommendations;
++				if (recommendations.message) {
++					append(root, $('p.studio-start-muted.studio-start-recommendation-message', { role: 'status' }, recommendations.message));
++				}
++				for (const item of recommendations.items) {
++					const card = append(root, $('article.studio-start-project-card.studio-start-recommendation'));
++					const heading = append(card, $('.studio-start-project-heading'));
++					const avatar = this.button(heading, item.name, studioProjectIcon(item.projectType) ?? 'extensions', 'studio.openStartRecommendation', item.id, false, true, store);
++					avatar.classList.add('studio-start-project-avatar-button');
++					if (item.avatarUrl?.startsWith('data:image/svg+xml,')) {
++						avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: item.avatarUrl, alt: '' }));
++					}
++					append(heading, $('h3', undefined, item.name));
++					append(card, $('p.studio-start-project-type', undefined, [item.projectType ? text(`type.${item.projectType}`) : '', item.version ? `v${item.version}` : ''].filter(Boolean).join(' · ')));
++					if (item.description) { append(card, $('p.studio-start-recommendation-description', undefined, item.description)); }
++					const actions = append(card, $('.studio-start-project-actions'));
++					this.button(actions, recommendations.openLabel, 'link-external', 'studio.openStartRecommendation', item.id, false, false, store);
++				}
++				const links = append(root, $('.studio-start-recommendation-links'));
++				this.button(links, recommendations.browseLabel, 'extensions', 'studio.openStartRecommendation', undefined, false, false, store);
++				this.button(links, text('refresh'), 'refresh', 'studio.refreshStart', undefined, false, false, store);
++			}
+ 			for (const project of state.projects) {
+ 				const target = { uri: project.uri, entryId: project.entryId };
+ 				const card = append(root, $('article.studio-start-project-card'));
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -94,3 +94,7 @@
+   .studio-start-badge { display:none; }
+ }
+ @container (max-width:360px) { .studio-start h1 { font-size:20px; } }
++
++.studio-start-recommendation-description { color:var(--vscode-descriptionForeground); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
++.studio-start-recommendation-links { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px; }
++.studio-start-recommendation-message { grid-column:1 / -1; }

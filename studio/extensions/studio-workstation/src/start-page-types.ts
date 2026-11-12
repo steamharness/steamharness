@@ -1,5 +1,6 @@
 import type { RecentProject } from './projects';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
+import type { StartRecommendationsState } from './start-page-recommendations-types';
 
 export interface StartTemplate {
   id: string;
@@ -45,6 +46,7 @@ export interface StudioStartState {
   badge?: string;
   templates: StartTemplate[];
   projects: Array<{ uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
+  recommendations?: StartRecommendationsState;
   recent: Array<RecentProject & { current: boolean }>;
   pending: PendingProjectSetup[];
   environment: StartEnvironment & { studio: string; vscode: string; account: string; server: string };

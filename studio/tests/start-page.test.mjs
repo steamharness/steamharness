@@ -78,6 +78,10 @@ function fixture(t, options = {}) {
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     AbortController, AbortSignal, Error, DOMException, structuredClone, TextDecoder, TextEncoder, URL, process, crypto: globalThis.crypto, setTimeout, clearTimeout,
     setInterval: (callback, ms) => { const key = {}; intervals.set(key, { callback, ms }); return key; }, clearInterval: key => intervals.delete(key) });
+  if (options.recommendations) {
+    const registration = module.exports.registerStartRecommendationsProvider(options.recommendations);
+    t.after(() => registration.dispose());
+  }
   const controller = new module.exports.StudioStartController({ globalStorageUri: uri(path.resolve('/studio-storage')), extension: { packageJSON: { version: '0.1.0' } }, globalState: {
     get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } }, launcher,
   { getState: () => f.account, onDidChange: accountChanged.event }, {
@@ -432,4 +436,35 @@ test('a changed project identity and a failed window open never install in the s
   assert.match(target.errors[0], /identity changed/); assert.deepEqual(target.installs, []);
   await target.execute('studio.refreshStart'); target.focus();
   assert.equal(target.errors.length, 1); assert.equal((await target.state()).pending[0].installOnOpen, false);
+});
+
+
+test('empty-folder start pages show host recommendations and reject unknown app actions', async t => {
+  const opened = [];
+  const provider = { id: 'catalog', title: 'Recommended apps', openLabel: 'View app', browseLabel: 'Browse apps', loadingMessage: 'Loading', emptyMessage: 'No recommendations', unavailableMessage: 'Unavailable', contextKey: () => 'server-a',
+    load: async () => ({ items: [{ id: 'app-one', name: '<App>', description: 'Plain text', projectType: 'bot', projectCard: { icon: 'bot' } }] }), open: value => opened.push(value) };
+  const f = fixture(t, { recommendations: provider });
+  await f.execute('studio.internalStartPageVisibility', true); await f.execute('studio.refreshStart');
+  const first = await f.state(); assert.equal(first.recommendations.title, 'Recommended apps');
+  assert.equal(first.recommendations.items[0].name, '<App>'); assert.match(first.recommendations.items[0].avatarUrl, /^data:image\/svg\+xml,/);
+  await f.execute('studio.openStartRecommendation', 'not-loaded'); assert.equal(opened.length, 0);
+  await f.execute('studio.openStartRecommendation', 'app-one'); assert.deepEqual(opened, ['app-one']);
+  f.setWorkspace(['file:///ordinary-folder']); await f.execute('studio.refreshStart');
+  assert.equal((await f.state()).recommendations, undefined);
+  await f.execute('studio.openStartRecommendation', 'app-one'); assert.equal(opened.length, 1);
+});
+
+test('recommendations ignore responses from previous servers and preserve the last good list on failure', async t => {
+  let key = 'old', release, fail = false, reads = 0;
+  const provider = { id: 'catalog', title: 'Recommended apps', openLabel: 'View app', browseLabel: 'Browse apps', loadingMessage: 'Loading', emptyMessage: 'Empty', unavailableMessage: 'Unavailable', contextKey: () => key,
+    load: async () => { reads++; if (reads === 1) return new Promise(resolve => { release = resolve; }); if (fail) throw new Error('offline'); return { items: [{ id: key, name: key }] }; }, open() {} };
+  const f = fixture(t, { recommendations: provider });
+  await f.execute('studio.internalStartPageVisibility', true);
+  await until(() => reads === 1, 'recommendation request did not start');
+  key = 'new'; f.accountChanged.fire(); release({ items: [{ id: 'old', name: 'old' }] });
+  await f.execute('studio.refreshStart');
+  assert.deepEqual((await f.state()).recommendations.items.map(item => item.id), ['new']);
+  fail = true; await f.execute('studio.refreshStart');
+  const state = await f.state(); assert.deepEqual(state.recommendations.items.map(item => item.id), ['new']);
+  assert.equal(state.recommendations.message, 'Unavailable'); assert.equal(state.error, undefined);
 });

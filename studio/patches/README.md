@@ -97,3 +97,5 @@
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。
 
 `0072-studio-project-release.patch` 在运行右侧增加发行运行入口，上传弹窗显示实际模式和入口；发行项目固定使用 Steam 布局，启动失败也不回退 IDE。
+
+`0078-studio-start-recommendations.patch` 在开始页的当前项目区域支持可选的宿主推荐列表，沿用原生项目头像、主题与动作控件；未提供推荐状态时保持原有当前项目展示。

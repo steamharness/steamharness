@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import type { AccountSectionProvider } from './account-section-types';
 import { registerProjectUploadProvider } from './project-upload-extension';
 import type { UserModelCatalogProvider } from './user-model-types';
+import { registerStartRecommendationsProvider } from './start-page-recommendations';
 
 interface LayerAccount {
+  getState?: () => { serverUrl: string };
   setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
   getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   onDidChange?: (listener: () => unknown) => vscode.Disposable;
@@ -19,6 +21,7 @@ interface InternalLayer {
     output: vscode.OutputChannel;
     account?: LayerAccount;
     uploads: { registerProvider: typeof registerProjectUploadProvider };
+    startPage: { registerRecommendationsProvider: typeof registerStartRecommendationsProvider };
   }) => Promise<void> | void;
 }
 
@@ -56,7 +59,7 @@ export async function activateInternalLayer(
 ): Promise<void> {
   try {
     const layer = await loadInternalLayer();
-    await layer?.activate?.({ context, vscode, output, account, uploads: { registerProvider: registerProjectUploadProvider } });
+    await layer?.activate?.({ context, vscode, output, account, uploads: { registerProvider: registerProjectUploadProvider }, startPage: { registerRecommendationsProvider: registerStartRecommendationsProvider } });
   } catch (error) {
     output.appendLine(`[internal-layer] ${String(error)}`);
   }

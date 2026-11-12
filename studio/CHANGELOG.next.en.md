@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added optional host-provided start-page recommendations for windows without folders, including refresh, offline feedback, validated actions, and stale-response protection.
+
 - Fix release windows stopping at Start by initializing the Steam workspace once the workbench containers exist, then opening the project entry automatically. Tools remain collapsed on startup.
 
 - Add a General setting for opening website links in the built-in browser or the system default browser. The built-in browser is the default; conversation links and website resource cards use the preference on the next click.
