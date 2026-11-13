@@ -1,5 +1,7 @@
 # Unreleased
 
+- Read versioned Brotli + Base64 release structures through the shared decoder, keeping project and entry summaries in plain text. Reject corrupt, oversized, or previous-format payloads before using entry, parameter, or model metadata.
+
 - The project generator documents structured activity records for business events, complete text, and managed attachments.
 
 - Terminal streaming now prints the initial content carried by output items.

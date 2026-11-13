@@ -1,11 +1,47 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { brotliCompressSync, brotliDecompressSync, constants } from "node:zlib";
 import { readProjectDeclarationFromDirectorySync } from "./node";
 import { projectEntryFilePath } from "./artifacts";
 import { isForbiddenReleasePath, parseProjectReleaseManifest, PROJECT_RELEASE_FILE, releasePath, type ProjectReleaseManifest } from "./release";
 
 export const releaseHash = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+interface ReleaseStructure {
+  version: 1;
+  report: Record<string, any>;
+  scripts: { definedNodes: any[]; violations: any[] };
+  agentModels?: { found: boolean; projectModels: boolean };
+}
+const structureLimit = 64 * 1024 * 1024;
+
+function decodeReleaseStructure(bytes: Buffer, entryId: string): ReleaseStructure {
+  const encoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  if (encoded?.version !== 2 || encoded.encoding !== "brotli-base64") throw new Error("Unsupported release structure format. Upgrade the host.");
+  try {
+    if (typeof encoded.data !== "string" || !encoded.data || Buffer.from(encoded.data, "base64").toString("base64") !== encoded.data
+      || Object.keys(encoded).some(key => !["version", "encoding", "projectId", "entryId", "entryName", "projectType", "data"].includes(key))) throw new Error("Invalid structure encoding.");
+    const decoded = brotliDecompressSync(Buffer.from(encoded.data, "base64"), { maxOutputLength: structureLimit });
+    const structure = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decoded));
+    if (structure?.version !== 1 || !structure.report || encoded.projectId !== structure.report.projectId || encoded.entryId !== entryId
+      || encoded.entryId !== structure.report.entryId || encoded.entryName !== structure.report.entryName || encoded.projectType !== structure.report.projectType) throw new Error("Structure identity mismatch.");
+    return structure;
+  } catch (cause) {
+    throw new Error(`Invalid release structure: ${entryId}`, { cause });
+  }
+}
+
+function encodeReleaseStructure(bytes: Buffer, entryId: string): Buffer {
+  const document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  const structure = document?.version === 2 ? decodeReleaseStructure(bytes, entryId) : document;
+  if (structure?.version !== 1 || !structure.report || structure.report.entryId !== entryId) throw new Error(`Invalid release structure: ${entryId}`);
+  const content = Buffer.from(JSON.stringify(structure));
+  if (content.byteLength > structureLimit) throw new Error(`Release structure exceeds 64 MiB: ${entryId}`);
+  const { projectId, entryName, projectType } = structure.report;
+  return Buffer.from(JSON.stringify({ version: 2, encoding: "brotli-base64", projectId, entryId, entryName, projectType,
+    data: brotliCompressSync(content, { params: { [constants.BROTLI_PARAM_QUALITY]: 5 } }).toString("base64") }));
+}
 
 export function releaseRegularFile(root: string, relative: string): string {
   const parts = releasePath(relative).split("/");
@@ -55,7 +91,7 @@ export function readProjectReleaseSync(root: string): ProjectReleaseManifest | u
     const compiled = manifest.entries.find(item => item.entryId === entry.entryId);
     if (!compiled || compiled.root !== entry.root || compiled.entry !== entry.entry || compiled.configuration !== entry.configuration) throw new Error(`Release entry mismatch: ${entry.entryId}`);
     if (!manifest.files.some(file => file.path === projectEntryFilePath(entry))) throw new Error(`Release entry is missing: ${entry.entryId}`);
-    const structure = JSON.parse(readFileSync(releaseRegularFile(root, compiled.structure), "utf8"));
+    const structure = decodeReleaseStructure(readFileSync(releaseRegularFile(root, compiled.structure)), entry.entryId);
     if (structure?.version !== 1 || structure.report?.projectId !== manifest.projectId || structure.report?.entryId !== entry.entryId || structure.report?.projectType !== entry.type
       || !Array.isArray(structure.scripts?.definedNodes) || !Array.isArray(structure.scripts?.violations) || structure.scripts.violations.length
       || !Array.isArray(structure.report?.diagnostics?.violations) || structure.report.diagnostics.violations.length) throw new Error(`Invalid release structure: ${entry.entryId}`);
@@ -68,23 +104,44 @@ export function readProjectReleaseSync(root: string): ProjectReleaseManifest | u
   }
   return manifest;
 }
-export function readReleaseStructureSync(root: string, entryId: string): { report: Record<string, any>; scripts: { definedNodes: any[]; violations: any[] }; agentModels?: { found: boolean; projectModels: boolean } } | undefined {
+export function readReleaseStructureSync(root: string, entryId: string): ReleaseStructure | undefined {
   const manifest = readProjectReleaseSync(root);
   if (!manifest) return undefined;
   const entry = manifest.entries.find(item => item.entryId === entryId);
   if (!entry) throw new Error(`Entry is not included in this release: ${entryId}`);
-  return JSON.parse(readFileSync(releaseRegularFile(root, entry.structure), "utf8"));
+  return decodeReleaseStructure(readFileSync(releaseRegularFile(root, entry.structure)), entryId);
 }
+
+function compactReleaseJson(bytes: Buffer, relative: string): Buffer {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    JSON.parse(text);
+  } catch (cause) {
+    throw new Error(`Invalid release JSON: ${relative}`, { cause });
+  }
+  // Remove whitespace tokens without reserializing asset numbers or string escapes.
+  return Buffer.from(text.replace(/"(?:\\.|[^"\\])*"|[ \t\r\n]+/g, token => token.startsWith('"') ? token : ""));
+}
+
 /** Called only by the local compiler or Server after controlled configuration publication. */
 export function sealProjectRelease(root: string, manifest: Omit<ProjectReleaseManifest, "files">): ProjectReleaseManifest {
   const filename = releaseRegularFile(root, "steamharness.json");
   const declaration = JSON.parse(readFileSync(filename, "utf8"));
   declaration.distribution = { kind: "release", version: 1 };
-  writeFileSync(filename, JSON.stringify(declaration, null, 2) + "\n");
+  writeFileSync(filename, JSON.stringify(declaration));
+  const structures = new Map(manifest.entries.map(entry => [entry.structure, entry.entryId]));
   const result = parseProjectReleaseManifest({ ...manifest, files: releaseFiles(root).map(relative => {
-    const bytes = readFileSync(releaseRegularFile(root, relative));
+    const filename = releaseRegularFile(root, relative);
+    let bytes: Buffer = readFileSync(filename);
+    const entryId = structures.get(relative);
+    if (entryId !== undefined || path.extname(relative).toLowerCase() === ".json") {
+      const compact = entryId === undefined ? compactReleaseJson(bytes, relative) : encodeReleaseStructure(bytes, entryId);
+      if (!bytes.equals(compact)) writeFileSync(filename, compact);
+      bytes = compact;
+    }
     return { path: relative, size: bytes.byteLength, sha256: releaseHash(bytes) };
   }) });
-  writeFileSync(path.join(root, PROJECT_RELEASE_FILE), JSON.stringify(result, null, 2) + "\n");
+  writeFileSync(path.join(root, PROJECT_RELEASE_FILE), JSON.stringify(result));
   return readProjectReleaseSync(root)!;
 }

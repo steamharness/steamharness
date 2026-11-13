@@ -47,6 +47,11 @@ test("Server publishes and downloads a compiled release without executing its co
     const target = path.join(root, "download");
     for (const file of downloaded.files) { await mkdir(path.dirname(path.join(target, file.path)), { recursive: true }); await writeFile(path.join(target, file.path), file.encoding === "base64" ? Buffer.from(file.content, "base64") : file.content); }
     assert.equal(readProjectReleaseSync(target)?.buildId, release.buildId);
+    assert.ok(downloaded.files.some(file => file.path.startsWith("configuration-templates/") && file.path.endsWith(".json")));
+    for (const file of downloaded.files.filter(file => file.path.endsWith(".json"))) {
+      const text = await readFile(path.join(target, file.path), "utf8");
+      assert.equal(text, JSON.stringify(JSON.parse(text)), `Published release JSON must remain compact: ${file.path}`);
+    }
     const content = JSON.stringify(downloaded.files);
     assert.ok(!content.includes("must-not-ship"));
     assert.ok(!content.includes("buildSecret"));

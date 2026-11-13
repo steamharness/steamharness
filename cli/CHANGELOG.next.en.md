@@ -1,5 +1,7 @@
 # Unreleased
 
+- Encode release internals in v2 `structure.json` while keeping project and entry summaries readable. Minify declarations, configuration definitions, and JSON assets without changing string content or number literals. Snapshots and uploads/downloads share the decoder and integrity checks. Rebuild older releases from source.
+
 - CLI Web displays Workflow run history in a single row per entry, matching the Bot conversation list. Titles, status icons, and timestamps share one line, with long titles truncated.
 
 - Activity records with screenshots place text on the left and the image on the right, stacking in narrow views. Images remain available in the full preview.

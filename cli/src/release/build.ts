@@ -36,7 +36,7 @@ async function sourceFiles(root: string, prefix = ""): Promise<string[]> {
 }
 async function fingerprint(root: string): Promise<string> {
   const hash = createHash("sha256");
-  hash.update("steamharness.release:1:compiler:1\n");
+  hash.update("steamharness.release:1:compiler:2\n");
   hash.update(await readFile(fileURLToPath(import.meta.url)));
   hash.update(await readFile(createRequire(import.meta.url).resolve("esbuild/package.json")));
   hash.update(packageVersion(root, "steamharness"));
@@ -75,7 +75,7 @@ async function command(argv: string[], cwd: string, options: ReleaseOptions): Pr
 }
 async function writeJson(root: string, file: string, value: unknown): Promise<void> {
   await mkdir(path.dirname(path.join(root, file)), { recursive: true });
-  await writeFile(path.join(root, file), JSON.stringify(value, null, 2) + "\n");
+  await writeFile(path.join(root, file), JSON.stringify(value));
 }
 function sanitizeStructure(value: unknown, root = "", artifact = ""): unknown {
   if (typeof value === "string" && root) return value.replaceAll(root, ".");

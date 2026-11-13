@@ -1,5 +1,7 @@
 # Unreleased
 
+- Validate v2 encoded release structures statically. Compact JSON and renew the integrity inventory after publishing configuration and attachments, preserving encoded internals and readable project and entry summaries in downloads.
+
 - Fixed release uploads failing integrity checks after Server applies project metadata, while continuing to reject tampered archives.
 
 - Update project artifact validation to exclude caches, reports and release staging under dist/steamharness/ from source distribution.

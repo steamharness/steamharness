@@ -37,6 +37,12 @@ pnpm exec steamharness web . --release --entry agent
 
 The release project is written to `dist/steamharness/release/project/`, with its archive under `dist/steamharness/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
 
+Project declarations, configuration definitions, and extra JSON assets are minified to a single line. Field names, string content, and original number literals are preserved. Server configuration publication also minifies JSON before updating the file inventory.
+
+The v2 `structure.json` format keeps project ID, entry ID, entry name, and type in plain text, with internal structure encoded as `brotli-base64`. The SDK, CLI, and Server share a decoder for inspection, execution, and static validation.
+
+Use a matching host and rebuild older releases from source. Corrupt payloads and structures larger than 64 MiB after decompression are rejected. This encoding is not encryption; hosts can restore the structure.
+
 In Studio, click **Run (Release Mode)** beside the Run button. Studio saves the project files, builds the release, and opens a new window rooted at the release run directory with the selected entry. That entry must be included in the release configuration.
 
 Release windows start in the Steam layout and show project loading progress without passing through IDE mode or opening Assistant. The main project stays in the primary area. Restoring a tools tab for the same project does not make startup or retries use that tab.

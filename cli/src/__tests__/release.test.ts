@@ -31,6 +31,12 @@ async function fixture() {
   await writeFile(path.join(directory, "index.ts"), source);
   return { directory, declaration };
 }
+async function expectCompactRelease(directory: string) {
+  const manifest = readProjectReleaseSync(directory)!;
+  for (const file of [...manifest.files.filter(file => file.path.toLowerCase().endsWith(".json")).map(file => file.path), "steamharness.release.json"]) {
+    expect(await readFile(path.join(directory, file), "utf8"), file).not.toMatch(/[\r\n]/);
+  }
+}
 it("builds a portable compiled project with readable metadata and checks inventory on roundtrip", async () => {
   initI18n({ preference: "en" });
   const { directory } = await fixture();
@@ -39,23 +45,55 @@ it("builds a portable compiled project with readable metadata and checks invento
   expect(result.archive.startsWith(path.join(directory, 'dist/steamharness/release') + path.sep)).toBe(true);
   expect(await readdir(path.join(directory, 'dist'))).toEqual(['steamharness']);
   const manifest = readProjectReleaseSync(result.directory)!;
+  const structure = JSON.parse(await readFile(path.join(result.directory, "entries/main/structure.json"), "utf8"));
+  expect(structure).toMatchObject({ version: 2, encoding: "brotli-base64", projectId: id, entryId: "main", entryName: "Main", projectType: "workflow" });
+  expect(structure.report).toBeUndefined();
+  expect(structure.scripts).toBeUndefined();
   expect(manifest.entries.map(entry => entry.entryId)).toEqual(["main"]);
   expect(manifest.files.some(file => /\.(ts|map)$/.test(file.path))).toBe(false);
   expect(inspectLocalProjectStructure({ projectDir: result.directory }).entrypoints?.[0].title).toBe("Main");
   expect((await buildProjectRelease(directory)).cached).toBe(true);
   const snapshot = await prepareReleaseRun(directory);
+  await expectCompactRelease(result.directory);
+  await expectCompactRelease(snapshot.directory);
   expect(snapshot.directory).not.toBe(result.directory);
   expect(snapshot.directory.startsWith(path.join(directory, 'dist/steamharness/release/snapshots') + path.sep)).toBe(true);
   const plan = await createProjectUploadPlan(result.directory);
   const download = path.join(directory, "download");
   await materializeAggregateDownload({ projectId: id, files: await Promise.all(plan.files.map(async file => ({ path: file.path, content: (await readFile(file.absolutePath)).toString("base64"), encoding: "base64" as const }))) }, download);
   expect(readProjectReleaseSync(download)?.buildId).toBe(result.buildId);
+  await expectCompactRelease(download);
   expect(await packProject("release-test", undefined, directory)).toMatch(/\.tgz$/);
   const run = await runLocalProjectWithReport({ projectDir: download, storage: { host: "local", local: { runtimePersistence: createMemoryRuntimePersistence() } } });
   expect(run.status, JSON.stringify(run)).toBe("success");
   await writeFile(path.join(result.directory, "entries/main/index.mjs"), "tampered");
   expect(() => readProjectReleaseSync(result.directory)).toThrow(/integrity/);
   expect(readProjectReleaseSync(snapshot.directory)?.buildId).toBe(result.buildId);
+});
+
+it("compacts copied root and entry JSON assets without modifying source or rounding their numbers", async () => {
+  const { directory, declaration } = await fixture();
+  const asset = '{\n  "large": 9007199254740993,\n  "text": " keep  spaces\\ninside the value "\n}\n';
+  const configuration = { version: 1, fields: [{ name: "label", type: "string", defaultValue: " keep  spaces\ninside the value " }] };
+  await writeFile(path.join(directory, "asset.json"), asset);
+  await writeFile(path.join(directory, "configuration.json"), JSON.stringify(configuration, null, 2));
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration,
+    entries: [{ ...declaration.entries[0], configuration: "configuration.json" }],
+    release: { files: ["asset.json"], entryOverrides: { main: { assets: ["asset.json"] } } } }));
+  const release = await buildProjectRelease(directory);
+  await expectCompactRelease(release.directory);
+  for (const relative of ["asset.json", "entries/main/asset.json"]) {
+    const compact = await readFile(path.join(release.directory, relative), "utf8");
+    expect(compact).toContain('"large":9007199254740993');
+    expect(JSON.parse(compact)).toEqual(JSON.parse(asset));
+  }
+  expect(await readFile(path.join(directory, "asset.json"), "utf8")).toBe(asset);
+  expect(await readFile(path.join(directory, "configuration.json"), "utf8")).toBe(JSON.stringify(configuration, null, 2));
+  const inventory = await readFile(path.join(release.directory, "steamharness.release.json"), "utf8");
+  await writeFile(path.join(directory, "asset.json"), "{broken}");
+  await expect(buildProjectRelease(directory)).rejects.toThrow(/Invalid release JSON: .*asset.json/);
+  expect(await readFile(path.join(release.directory, "steamharness.release.json"), "utf8")).toBe(inventory);
+  expect(readProjectReleaseSync(release.directory)?.buildId).toBe(release.buildId);
 });
 it("serializes concurrent builds and preserves the previous release after build failure", async () => {
   const { directory } = await fixture();

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Update Generator guidance for v2 encoded release structures, readable project and entry summaries, compact JSON, and matching host decoders.
+
 - The project generator documents structured activity records and host output following.
 
 - The project generator documents streaming listeners, host output pagination, and the local incremental run journal.

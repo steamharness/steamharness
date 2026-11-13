@@ -249,4 +249,4 @@ Kanban 调用业务 Workflow 使用 `entries.get(id).runEntrypoint`；Workflow �
 
 ## 项目发行
 
-使用 `steamharness release .` 生成 `dist/steamharness/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留可读身份和结构元数据，使用文件清单验证，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
+使用 `steamharness release .` 生成 `dist/steamharness/release/project/`；通过根清单 `release.entries`、`entryOverrides`、`build`、`files` 和 `externals` 控制发行内容。裁剪能力时拆分模块依赖并使用发行专用入口；配置 profile 白名单不能代替代码裁剪。发行包保留明文项目、入口摘要和配置定义；`structure.json` v2 使用 `brotli-base64` 编码内部结构，宿主统一解码且不回退旧格式，其余 JSON 单行压缩。文件清单验证覆盖压缩后的内容，排除源码、source map、凭据及运行数据。`run/json/web --release` 使用固定构建快照；发行与开发运行数据在宿主/用户目录分开保存。上传 `--mode auto|source|release`，auto 检测发行结果并自动重建，不得失败后回退上传源码。Studio 源码项目只展示本地版本，发行安装启用升级检查且固定 Steam 模式。
