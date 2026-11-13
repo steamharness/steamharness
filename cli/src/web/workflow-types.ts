@@ -29,6 +29,7 @@ export interface Field {
   format?: 'json';
   step?: number;
   audio?: { maxDurationSeconds?: number; maxBytes?: number };
+  range?: { min: number; max: number; step: number };
 }
 
 export interface ParamLayout {
@@ -446,6 +447,7 @@ export function validateProjectValues(fields: Field[], values: ParamValues, stat
     if (field.required && (typeof value === 'string' && !value.trim() || Array.isArray(value) && !value.length)) { throw new Error(t("Please enter {0}.", label)); }
     if (value === '' || Array.isArray(value) && !value.length) { continue; }
     if (field.type === 'number' && (typeof value !== 'string' || !Number.isFinite(Number(value)))) { throw new Error(t("{0} must be a valid number.", label)); }
+    if (field.control === 'range' && field.range && (!String(value).trim() || Number(value) < field.range.min || Number(value) > field.range.max)) { throw new Error(t('{0} must be between {1} and {2}.', label, field.range.min, field.range.max)); }
     if (field.type === 'boolean' && value !== 'true' && value !== 'false') { throw new Error(t("{0} must be a valid boolean.", label)); }
     if (field.format === 'json' || field.type === 'file' || field.control === 'audio') {
       let parsed: unknown;

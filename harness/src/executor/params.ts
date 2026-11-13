@@ -62,6 +62,7 @@ export function parseProjectParamValues(
     index += 1;
   }
 
+  for (const param of definitions) validateRangeValue(param, values[param.name]);
   return values;
 }
 
@@ -81,10 +82,10 @@ export function validateProjectParamResolveResult(
       throw resolverError(`Parameter patch "${name}" must be an object.`);
     }
     if (
-      isProjectDateParamControl(param.control) &&
+      (isProjectDateParamControl(param.control) || param.control === "range") &&
       (patch.resolvedOptions !== undefined || patch.options !== undefined)
     ) {
-      throw resolverError(`Date parameter "${name}" cannot resolve options.`);
+      throw resolverError(`${param.control === "range" ? "Range" : "Date"} parameter "${name}" cannot resolve options.`);
     }
     validateResolvedOptions(name, patch.resolvedOptions);
     if (patch.value !== undefined && patch.value !== null) validatePatchValue(param, patch.value);
@@ -148,6 +149,7 @@ function validateResolvedOptions(
 }
 
 function validatePatchValue(param: ParamDefinition, value: ParamValue): void {
+  validateRangeValue(param, value);
   if (isMultiParam(param)) {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
       throw resolverError(`Parameter "${param.name}" requires a string array value.`);
@@ -156,6 +158,13 @@ function validatePatchValue(param: ParamDefinition, value: ParamValue): void {
   }
   if (typeof value !== "string") {
     throw resolverError(`Parameter "${param.name}" requires a string value.`);
+  }
+}
+
+function validateRangeValue(param: ParamDefinition, value: ParamValue): void {
+  if (param.control !== "range" || !param.range || value === "") return;
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(Number(value)) || Number(value) < param.range.min || Number(value) > param.range.max) {
+    throw resolverError(`Parameter "${param.name}" must be between ${param.range.min} and ${param.range.max}.`);
   }
 }
 

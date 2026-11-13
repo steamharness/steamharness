@@ -1,6 +1,7 @@
 import { t } from '../localization';
 import { validateProjectValues, projectFormValue, type InputRequest, type ParamValues, type Field } from '../workflow-types';
 import { iconButton } from './ui';
+import { rangeField, updateRangeField } from './range-field';
 
 interface PromptOptions {
   submit(values: ParamValues): void;
@@ -102,12 +103,15 @@ export class InputPrompt {
         if (control.type === 'checkbox') { control.checked = value === 'true'; }
       }
       control.id = `prompt-${this.request.requestId}-${field.name}`; label.htmlFor = control.id;
-      control.value = typeof value === 'string' ? value : JSON.stringify(value); control.disabled = this.busy;
+      const element = control instanceof HTMLInputElement && field.control === 'range' && field.range ? rangeField(control, field) : control;
+      if (control instanceof HTMLInputElement && control.type === 'range') updateRangeField(control, value);
+      else control.value = typeof value === 'string' ? value : JSON.stringify(value);
+      control.disabled = this.busy;
       control.addEventListener('input', () => {
         this.touched.add(field.name);
         this.values[field.name] = control instanceof HTMLInputElement && control.type === 'checkbox' ? String(control.checked) : control.value;
       });
-      root.append(control);
+      root.append(element);
     }
     return root;
   }

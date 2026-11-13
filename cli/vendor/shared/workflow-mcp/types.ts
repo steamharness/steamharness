@@ -13,6 +13,7 @@ export type McpRunStatus =
 export type McpParamType = "string" | "number" | "boolean" | "positional" | "file";
 export type McpParamControl =
   | "text"
+  | "range"
   | "textarea"
   | "radio"
   | "select"
@@ -38,6 +39,7 @@ export interface McpParamDefinition {
   defaultValue?: string;
   multiple?: boolean;
   control?: McpParamControl;
+  range?: { min: number; max: number; step: number };
   options?: McpParamOption[];
   accept?: string[];
   title?: string;

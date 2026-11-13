@@ -2639,6 +2639,7 @@ function analyzeSourceFile(
       options: readParamOptionsProperty(obj, "options"),
       accept: readStringArrayProperty(obj, "accept"),
       audio: readParamAudioProperty(obj),
+      range: readParamRangeProperty(obj),
       format: readStringProperty(obj, "format") === "json" ? "json" : undefined,
     } as ParamDefinition;
   }
@@ -2864,6 +2865,7 @@ function analyzeSourceFile(
     const value = readStringProperty(obj, propertyName);
     return value === "text" ||
       value === "audio" ||
+      value === "range" ||
       value === "textarea" ||
       value === "radio" ||
       value === "select" ||
@@ -2892,6 +2894,21 @@ function analyzeSourceFile(
       }
     }
     return limits;
+  }
+
+  function readParamRangeProperty(obj: ts.ObjectLiteralExpression): ParamDefinition["range"] {
+    const property = findStaticPropertyAssignment(obj, "range");
+    if (!property) return undefined;
+    const initializer = unwrapExpression(property.initializer);
+    const number = (name: string): number => {
+      if (!ts.isObjectLiteralExpression(initializer)) return NaN;
+      const member = findStaticPropertyAssignment(initializer, name);
+      const value = member && unwrapExpression(member.initializer);
+      if (value && ts.isNumericLiteral(value)) return Number(value.text);
+      if (value && ts.isPrefixUnaryExpression(value) && ts.isNumericLiteral(value.operand) && (value.operator === ts.SyntaxKind.MinusToken || value.operator === ts.SyntaxKind.PlusToken)) return (value.operator === ts.SyntaxKind.MinusToken ? -1 : 1) * Number(value.operand.text);
+      return NaN;
+    };
+    return { min: number("min"), max: number("max"), step: number("step") };
   }
 
   function readParamPanelProperty(

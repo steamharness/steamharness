@@ -45,6 +45,19 @@ export function readProjectParamDefinitionError(
   if (param.step !== undefined && (!Number.isInteger(param.step) || param.step < 1)) {
     return `Parameter "${param.name}" step must be a positive integer.`;
   }
+  if (param.control === "range" || param.range !== undefined) {
+    if (param.type !== "number" || param.control !== "range" || param.multiple || param.options !== undefined || declaredProperties?.options || param.panel === "quick") {
+      return `Range parameter "${param.name}" must be a single number with control: "range" and no options or quick placement.`;
+    }
+    const range = param.range;
+    if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min >= range.max || !Number.isFinite(range.step) || range.step <= 0 || range.step > range.max - range.min) {
+      return `Range parameter "${param.name}" requires finite min < max and a positive step no greater than max - min.`;
+    }
+    const value = param.fixedValue ?? param.defaultValue;
+    if (value !== undefined && value !== "" && (!Number.isFinite(Number(value)) || Number(value) < range.min || Number(value) > range.max)) {
+      return `Range parameter "${param.name}" default or fixed value must be between ${range.min} and ${range.max}.`;
+    }
+  }
   if (param.control === "audio" || param.audio !== undefined) {
     if (param.type !== "file" || param.control !== "audio") {
       return `Audio parameter "${param.name}" must use type: "file" and control: "audio".`;

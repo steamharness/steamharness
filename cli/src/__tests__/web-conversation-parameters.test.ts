@@ -608,12 +608,15 @@ it.each(['pending', 'failed', 'dismissed'])('validates required dynamic defaults
 
 it('rebuilds changed parameter definitions after a service restart at the same project URI', async () => {
   const f = await fixture(); f.reply();
-  const fields: Project['fields'] = [{ name: 'temperature', type: 'number', panel: 'auxiliary', defaultValue: '0.5' }];
+  const fields: Project['fields'] = [{ name: 'temperature', type: 'number', control: 'range', range: { min: 0, max: 1, step: 0.01 }, panel: 'auxiliary', defaultValue: '0.5' }];
   f.receive({ serverInstanceId: 'replacement', project: { ...f.project, fields, paramResolver: undefined,
     paramLayout: { actions: [{ kind: 'auxiliary', id: 'new-options', label: 'New options', params: ['temperature'] }] } } });
   expect(f.action('advanced')).toBeNull();
   f.action('new-options').click();
   expect(document.querySelector<HTMLInputElement>('#param-temperature')!.value).toBe('0.5');
+  const slider = document.querySelector<HTMLInputElement>('#param-temperature')!;
+  expect(slider.type).toBe('range'); slider.value = '0.43'; slider.dispatchEvent(new Event('input'));
+  expect(slider.parentElement!.querySelector('output')!.textContent).toBe('0.43');
   expect(f.requests()).toHaveLength(1); expect(f.loading()).toBe(false);
 });
 

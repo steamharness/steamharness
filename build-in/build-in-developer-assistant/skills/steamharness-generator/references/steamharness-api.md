@@ -648,6 +648,7 @@ params: [
 - `positional`：把值追加到 argv 尾部；仍要提供稳定 `flag`。
 - `file`：追加 `flag value`，其中 value 是一个 file reference 或 file reference 数组的 JSON 字符串。
 - Params 可以声明 `control: "textarea"`（或显式的 `control: "text"`）用于长文本或单行文本输入，也可以声明 `options: [{ value, label, description }]` 和 `control: "radio" | "select" | "checkboxes"` 用于 本地宿主参数表单。
+- 有界数值使用 `type: "number"`、`control: "range"`、`range: { min: 0, max: 1, step: 0.01 }`，宿主显示滑块、当前值和范围。仅支持单值，不声明 options 或 Quick；三个配置必须是有限数，`min < max`、`0 < step <= max - min`。默认值、固定值、命令行输入及 resolver 值应在范围内。`range.step` 只控制滑动增量，不替代顶层用于分步提问的 `step`。可选空值保持未设置，不能用控件显示值覆盖原参数值。
 - 每个 param 可以声明 `label` 作为宿主表单的展示名；缺省时宿主回退到 `name`。`shortFlag` 与 `flag` 一起构成 CLI 的短/长参数；两者都要稳定，不要只改一个。
 - **一次问多个独立问题时用 `step`（从 1 开始）分步**：同一步的字段一起问，声明了 `step` 的请求在用户输入节点里一次只展示一步，问题上方的「‹ 第 N / M 问 ›」前后翻页并标出还没答的必答题。同一个问题的多个字段（选项 + 它的补充输入）要留在同一步，不要把一张表单拆成向导。
 - 音频输入使用 `type: "file"` 加 `control: "audio"`，并用 `audio: { maxDurationSeconds?, maxBytes? }` 限制单个录音文件：

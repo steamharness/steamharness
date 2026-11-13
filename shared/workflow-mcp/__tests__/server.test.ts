@@ -21,6 +21,19 @@ afterEach(async () => {
 });
 
 describe("workflow MCP server", () => {
+  it('keeps range bounds when cloning a project declaration into a tool schema', async () => {
+    const runner: McpRunner = { run: vi.fn(async () => successReport('main', 'Main', [])), resume: vi.fn() };
+    const server = createProjectMcpServer({ entryId: 'main', projectId: 'range-test', fileInputMode: 'local', runner,
+      structure: { projectId: 'range-test', entryId: 'main', projectType: 'workflow', workflow: { name: 'Range' }, defaultEntrypoint: 'main',
+        entrypoints: [{ id: 'main', title: 'Main', params: [{ name: 'threshold', flag: '--threshold', type: 'number', control: 'range', range: { min: 0, max: 1, step: 0.01 }, defaultValue: '0.8' }] }] } });
+    const client = new Client({ name: 'range-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]); openConnections.push(client, server);
+    const { tools } = await client.listTools();
+    expect(tools[0].inputSchema.properties?.threshold).toMatchObject({ type: 'number', minimum: 0, maximum: 1 });
+    await client.callTool({ name: 'main', arguments: { threshold: 0.4 } });
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({ args: ['--threshold', '0.4'] }));
+  });
   it("rejects unsafe or duplicate structure declarations before serving tools", () => {
     const base = {
       runner: { run: vi.fn(), resume: vi.fn() },

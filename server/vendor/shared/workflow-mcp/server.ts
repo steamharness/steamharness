@@ -468,7 +468,7 @@ function clonePendingUserInput(
 
 const STEAMHARNESS_MCP_PARAM_NAME_PATTERN = /^[\p{L}_][\p{L}\p{N}_.-]{0,127}$/u;
 const STEAMHARNESS_MCP_PARAM_CONTROLS = new Set([
-  "text", "textarea", "radio", "select", "checkboxes",
+  "text", "range", "textarea", "radio", "select", "checkboxes",
   "date", "time", "datetime", "date-range",
 ]);
 const STEAMHARNESS_MCP_RESERVED_PARAM_NAMES = new Set(["__proto__", "constructor", "prototype"]);
@@ -512,6 +512,14 @@ function cloneParam(
   }
 
   const options = cloneParamOptions(value.options, name);
+  const range = value.range;
+  if (value.control === "range" || range !== undefined) {
+    if (value.type !== "number" || value.control !== "range" || value.multiple || options !== undefined || !isRecord(range) ||
+      typeof range.min !== "number" || !Number.isFinite(range.min) || typeof range.max !== "number" || !Number.isFinite(range.max) || range.min >= range.max ||
+      typeof range.step !== "number" || !Number.isFinite(range.step) || range.step <= 0 || range.step > range.max - range.min) {
+      throw new Error(`Workflow MCP parameter "${name}" has an invalid range.`);
+    }
+  }
   const accept = cloneParamAccept(value.accept, name);
   return {
     name,
@@ -523,6 +531,7 @@ function cloneParam(
     ...(value.defaultValue !== undefined ? { defaultValue: value.defaultValue as string } : {}),
     ...(value.multiple !== undefined ? { multiple: value.multiple as boolean } : {}),
     ...(value.control !== undefined ? { control: value.control as NonNullable<NonNullable<McpEntrypointStructure["params"]>[number]["control"]> } : {}),
+    ...(isRecord(range) ? { range: { min: range.min as number, max: range.max as number, step: range.step as number } } : {}),
     ...(options !== undefined ? { options } : {}),
     ...(accept !== undefined ? { accept } : {}),
     ...(value.title !== undefined ? { title: value.title as string } : {}),

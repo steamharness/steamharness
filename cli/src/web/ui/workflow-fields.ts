@@ -4,6 +4,7 @@ import {
 } from '../workflow-types';
 import { ParameterActions } from './parameter-actions';
 import { iconButton } from './ui';
+import { rangeField, updateRangeField } from './range-field';
 
 interface Options {
   values(): ParamValues;
@@ -85,7 +86,7 @@ export class Fields {
           : control instanceof HTMLSelectElement && control.multiple ? Array.from(control.selectedOptions, option => option.value) : control.value;
         this.options.change(field.name, value);
       });
-      view.controls.push(control); root.append(control);
+      view.controls.push(control); root.append(control instanceof HTMLInputElement && field.control === 'range' && field.range ? rangeField(control, field) : control);
     }
     if (field.description) { const description = document.createElement('small'); description.textContent = field.description; description.className = 'option-description'; root.append(description); }
     return view;
@@ -122,6 +123,7 @@ export class Fields {
         if (control instanceof HTMLInputElement && control.type === 'checkbox') { control.checked = field.control === 'checkboxes' ? Array.isArray(value) && value.includes(control.value) : value === 'true'; }
         else if (control instanceof HTMLInputElement && control.type === 'radio') { control.checked = control.value === value; }
         else if (control instanceof HTMLSelectElement && control.multiple) { for (const option of Array.from(control.options)) { option.selected = Array.isArray(value) && value.includes(option.value); } }
+        else if (control instanceof HTMLInputElement && control.type === 'range') { updateRangeField(control, value); }
         else { const next = typeof value === 'string' ? value : ''; if (control.value !== next) { control.value = next; } }
         control.disabled = this.options.disabled() || !!state?.disabled || (['radio', 'checkboxes'].includes(field.control ?? '') && !!state?.options?.[control.value]?.disabled);
       }

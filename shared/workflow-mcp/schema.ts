@@ -109,7 +109,7 @@ function createParamSchema(
       ? z.string().min(1)
       : z.object({ id: z.string().min(1) }).strict();
   } else if (param.type === "number") {
-    schema = z.number().finite();
+    schema = param.range ? z.number().finite().min(param.range.min).max(param.range.max) : z.number().finite();
   } else if (param.type === "boolean") {
     schema = z.boolean();
   } else {
@@ -167,7 +167,7 @@ function createParamJsonSchema(
           additionalProperties: false,
         };
   } else if (param.type === "number") {
-    schema = { type: "number" };
+    schema = { type: "number", ...(param.range ? { minimum: param.range.min, maximum: param.range.max } : {}) };
   } else if (param.type === "boolean") {
     schema = { type: "boolean" };
   } else {

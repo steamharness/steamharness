@@ -18,6 +18,7 @@ export type ParamType = "string" | "number" | "boolean" | "positional" | "file";
 export type ParamControl =
   | "text"
   | "audio"
+  | "range"
   | "textarea"
   | "radio"
   | "select"
@@ -77,6 +78,12 @@ export interface AudioParamOptions {
   maxBytes?: number;
 }
 
+export interface RangeParamOptions {
+  min: number;
+  max: number;
+  step: number;
+}
+
 /** Bind a parameter to a host user setting without adding a selector option. */
 export interface UserSettingParamBinding {
   key: "agent.permissionPolicy" | "agent.model";
@@ -103,6 +110,7 @@ interface ParamDefinitionBase {
   resolveOnInput?: boolean;
   accept?: string[];
   audio?: AudioParamOptions;
+  range?: RangeParamOptions;
   format?: "json";
   /**
    * The step this field is asked in, starting at 1. Fields sharing a step are

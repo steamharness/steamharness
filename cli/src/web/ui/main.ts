@@ -15,6 +15,8 @@ import './conversation-message-cards.css';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
 import { ConversationTimeline, type ConversationTimelineRow } from './conversation-timeline';
+import { rangeField, updateRangeField } from './range-field';
+import './range-field.css';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
@@ -491,7 +493,7 @@ function initialize(): void {
           scheduleParams({ kind: 'param', paramName: field.name }, 200);
         });
       }
-      root.append(control);
+      root.append(control instanceof HTMLInputElement && field.control === 'range' && field.range ? rangeField(control, field) : control);
       controls.push(control);
     }
     const description = document.createElement('div');
@@ -612,6 +614,7 @@ function initialize(): void {
         if (entry instanceof HTMLInputElement && entry.type === 'checkbox') { entry.checked = view.field.control === 'checkboxes' ? Array.isArray(value) && value.includes(entry.value) : value === 'true'; }
         else if (entry instanceof HTMLInputElement && entry.type === 'radio') { entry.checked = entry.value === value; }
         else if (entry instanceof HTMLSelectElement && entry.multiple) { for (const option of Array.from(entry.options)) { option.selected = Array.isArray(value) && value.includes(option.value); } }
+        else if (entry instanceof HTMLInputElement && entry.type === 'range') { updateRangeField(entry, value); }
         else { entry.value = typeof value === 'string' ? value : ''; }
       }
       const selected = visibleOptions.find((option) => option.value === value);

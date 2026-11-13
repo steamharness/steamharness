@@ -2,7 +2,7 @@ import { defineBot } from "../agent/bot";
 import { createMemoryRuntimePersistence } from "../runtime-storage/memory";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -25,6 +25,36 @@ const params = [
   { name: "sources", flag: "--sources", type: "string" as const, control: "checkboxes" as const, options: [{ value: "web" }, { value: "docs" }] },
   { name: "dryRun", flag: "--dry-run", type: "boolean" as const, defaultValue: "false" },
 ];
+
+test('range parameters preserve zero bounds, reject invalid definitions and validate execution and resolver values', () => {
+  const field = { name: 'threshold', flag: '--threshold', type: 'number', control: 'range', range: { min: 0, max: 1, step: 0.01 }, defaultValue: '0.8', step: 2 } satisfies ParamDefinition;
+  assert.equal(readProjectParamDefinitionError(field), undefined);
+  for (const patch of [{ type: 'string' }, { multiple: true }, { options: [] }, { range: { min: 1, max: 0, step: 0.01 } }, { range: { min: 0, max: 1, step: 0 } }, { defaultValue: '1.2' }]) {
+    assert.ok(readProjectParamDefinitionError({ ...field, ...patch } as ParamDefinition));
+  }
+  assert.equal(parseProjectParamValues([field], ['--threshold', '0']).threshold, '0');
+  assert.equal(parseProjectParamValues([field], ['--threshold', '1']).threshold, '1');
+  assert.throws(() => parseProjectParamValues([field], ['--threshold', '1.1']), /between 0 and 1/);
+  assert.throws(() => validateProjectParamResolveResult([field], { params: { threshold: { value: '-0.1' } } }), /between 0 and 1/);
+  assert.throws(() => validateProjectParamResolveResult([field], { params: { threshold: { resolvedOptions: [] } } }), /cannot resolve options/);
+});
+
+test('static structure retains numeric slider metadata and a separate prompt step', async () => {
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'steamharness-range-'));
+  try {
+    await writeProjectFixture(path.join(projectDir, 'package.json'), JSON.stringify({ id: crypto.randomUUID(), defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'workflow', root: '.', entry: 'index.ts', databases: [] }], name: 'range-test', version: '0.1.0', type: 'module' }));
+    await writeFile(path.join(projectDir, 'index.ts'), `const flow = steamharness.defineProject({ name: 'Range', run: async () => ({ errCode: 0, errMessage: '' }) });
+      export const executor = steamharness.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow,
+      params: [{ name: 'threshold', flag: '--threshold', type: 'number', control: 'range', range: { min: -1, max: 1, step: 0.01 }, step: 2, defaultValue: '0.8' }], createInput({ paramValues }) { return paramValues; } })] });`);
+    const report = inspectLocalProjectStructure({ projectDir });
+    assert.deepEqual(report.diagnostics.violations, []);
+    const field = report.entrypoints?.[0]?.params?.[0];
+    assert.equal(field?.control, 'range'); assert.equal(field?.step, 2);
+    assert.deepEqual(field?.range, { min: -1, max: 1, step: 0.01 });
+    const script = await readFile(path.join(projectDir, 'index.ts'), 'utf8');
+    assert.ok(validateProjectScriptSource(script.replace('min: -1', 'min: !1')).some(violation => violation.type === 'invalid_executor_param_configuration'));
+  } finally { await rm(projectDir, { recursive: true, force: true }); }
+});
 
 test("parseProjectParamValues returns structured defaults and selected values", () => {
   assert.deepEqual(parseProjectParamValues(params, [

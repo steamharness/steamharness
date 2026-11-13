@@ -3,6 +3,7 @@ import { mountAggregateToolbar } from './aggregate';
 import { mountProjectConfigurations } from './project-configurations';
 import { t, locale } from '../localization';
 import './style.css';
+import './range-field.css';
 import './workflow-style.css';
 import { acquireProjectHost } from './host';
 import { requestAction } from './action-dialog';

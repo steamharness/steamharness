@@ -47,7 +47,8 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `defaultValue` | `string` |Default value.|
 | `userSetting` | `UserSettingParamBinding` | Bind a single string field to `agent.permissionPolicy` or `agent.model`: `mode: "default"` permits project overrides; `"fixed"` follows user settings and offers a settings action. Do not combine with `defaultValue`. See [User settings](/en/core-api/user-settings). |
 | `multiple` | `boolean` |Whether multiple values are allowed.|
-| `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints; `audio` must use `type: "file"`, while date-related controls still use `type: "string"`. |
+| `control` | `"text" \| "textarea" \| "range" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints. Use `range` for a single number, `audio` for a file, and date-related controls for strings. |
+| `range` | `{ min: number, max: number, step: number }` | Slider bounds and increment. Declare with `type: "number"` and `control: "range"`. |
 | `step` | `number` |Which step this field is asked in, starting at `1`. Fields sharing a step are asked together, and a user-input node that declares steps shows one step at a time — a "‹ question N of M ›" control above the field pages between them and flags a required question that is still unanswered. Use it when one request asks several separate questions; do not split the fields of a single question across steps.|
 | `resolveOnInput` | `boolean` |Whether to execute `resolveParams` when the main input content changes. Default `false`; set to `true` only if linkage does depend on input text.|
 | `options` | `{ value, label?, description?, command? }[]` | Enumerates options. A Slash option's `command` omits the leading `/` and defaults to `value`. |
@@ -56,6 +57,17 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `format` | `"json"` |file param uses the JSON reference format.|
 
 Quick `summary` must list distinct field names from that group in display order. Quick fields must be `type: "string"` enumerations with `control: "select" | "radio" | "checkboxes"`. Mode directly declares `name`, `flag`, optional `label` / `defaultValue`, and at least two distinct, non-empty `options`; it is available only to Bot. Without `defaultValue`, Mode uses the first option. An explicit default must match an option. Auxiliary accepts ordinary form fields. Fields cannot set `panel` or contain nested groups. Static analysis and runtime reject empty groups, duplicate names/flags/IDs, and invalid summaries.
+
+## Numeric Sliders
+
+Use a slider for bounded values such as thresholds or ratios. CLI Web and Studio show the slider, current value, and bounds, with dragging and arrow-key controls. Workflow forms, Bot auxiliary fields, and input prompts share this control.
+
+```ts
+{ name: "threshold", flag: "--threshold", type: "number", label: "Decision threshold",
+  control: "range", range: { min: 0, max: 1, step: 0.01 }, defaultValue: "0.8" }
+```
+
+All three range settings must be finite, with `min < max` and `0 < step <= max - min`. Do not declare options, `multiple: true`, or Quick placement. Default, fixed, and input values must lie within the inclusive bounds. `range.step` controls the slider increment; the top-level `step` still groups questions into prompt steps. Unset optional values display “—” and remain unset until edited.
 
 ## Slash Menu And Footer Text
 

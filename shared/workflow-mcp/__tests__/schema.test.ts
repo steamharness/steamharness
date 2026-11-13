@@ -47,6 +47,15 @@ const params: McpParamDefinition[] = [
   { name: "source", type: "positional", required: true },
 ];
 
+it('preserves slider bounds in MCP JSON schemas and rejects out-of-range tool input', async () => {
+  const fields: McpParamDefinition[] = [{ name: 'threshold', type: 'number', control: 'range', range: { min: 0, max: 1, step: 0.01 }, defaultValue: '0.8' }];
+  const json = projectParamsToMcpJsonSchema(fields, 'local');
+  expect(json.properties.threshold).toMatchObject({ type: 'number', minimum: 0, maximum: 1, default: 0.8 });
+  const schema = await projectParamsToMcpInputSchema(fields, 'local');
+  expect(schema.safeParse({ threshold: 0.43 }).success).toBe(true);
+  expect(schema.safeParse({ threshold: 1.1 }).success).toBe(false);
+});
+
 describe("workflow MCP schemas", () => {
   it("maps workflow params to a strict JSON schema", () => {
     const schema = projectParamsToMcpJsonSchema(params, "local");

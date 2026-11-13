@@ -35,7 +35,7 @@ Auxiliary、Quick、Mode 都可重复声明，动作行按 `params` 数组顺序
 
 Quick 的一级菜单显示本组每个可见字段和当前值；点字段后显示选项列表。宽屏并排，窄屏在同一弹层钻取。单选后关闭选项列表，多选可连续勾选。`control: "radio"` 与 `control: "select"` 在 Quick 内同形；主表单和 Auxiliary 中的 `radio` 是可见单选按钮，`select` 是下拉框。Quick 的“重置为默认值”只恢复本组字段，一次触发 `resolveParams`，不清除其它分组、未知 Raw 参数或未发送的正文与附件。摘要由 `summary` 显式决定，不按 `model`、`effort` 等名字猜测。
 
-`text`、`textarea`、`date`、`time`、`datetime`、`date-range`、`audio` 和 `file` 只能作为主表单或 Auxiliary 字段，不能进 Quick。日期控件使用 `type: "string"`，不声明 `options`、`multiple: true`，resolver 不返回 option 补丁。音频使用单文件 `type: "file"` 和 `control: "audio"`，不声明 `options`。
+`text`、`textarea`、`range`、`date`、`time`、`datetime`、`date-range`、`audio` 和 `file` 只能作为主表单或 Auxiliary 字段，不能进 Quick。日期控件使用 `type: "string"`，不声明 `options`、`multiple: true`，resolver 不返回 option 补丁。音频使用单文件 `type: "file"` 和 `control: "audio"`，不声明 `options`。数值滑块使用 `type: "number"`、`control: "range"` 和 `range: { min: 0, max: 1, step: 0.01 }`；范围与增量须为有限数且 `min < max`、`0 < step <= max - min`，不声明 options 或 multiple，默认值和输入值在范围内。`range.step` 是滑动增量，顶层 `step` 仍是提问步骤。
 
 ## 值与宿主
 

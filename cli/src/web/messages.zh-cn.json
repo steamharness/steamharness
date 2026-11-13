@@ -200,6 +200,7 @@
   "Connection changed.": "连接已变更。",
   "Copy timed out.": "复制超时。",
   "Host clipboard is unavailable.": "宿主剪贴板不可用。",
+  "{0} must be between {1} and {2}.": "{0} 必须在 {1} 到 {2} 之间。",
   "Paste image from clipboard": "读取剪贴板图片",
   "Clipboard image reading is unavailable in this browser.": "当前浏览器不支持读取剪贴板图片。",
   "Could not read clipboard images. Allow clipboard access and try again.": "无法读取剪贴板图片，请允许访问剪贴板后重试。",
