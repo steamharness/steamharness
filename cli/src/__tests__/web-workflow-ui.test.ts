@@ -3,9 +3,10 @@ import { validateProjectValues, type Project } from '../web/workflow-types';
 import type { RunRecord } from '../web/workflow-workspace';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
+const fileOptions = vi.hoisted(() => ({ current: undefined as { pasteFile(name: string): void } | undefined }));
 vi.mock('../web/ui/aggregate', () => ({ mountAggregateToolbar: () => ({ update() {} }) }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
+vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { constructor(_root: unknown, _actions: unknown, options: { pasteFile(name: string): void }) { fileOptions.current = options; } close() {} render() {} update() {} } }));
 vi.mock('../web/ui/output-follow', () => ({ OutputFollow: class { setScope() {} resume() {} dispose() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} close() {} skillsResult() {} } }));
@@ -94,6 +95,15 @@ async function fixture() {
 }
 
 describe('Workflow request alerts', () => {
+  it('clears a clipboard read alert before retrying and ignores a late failure from the earlier read', async () => {
+    const { element, emit, request, fail } = await fixture();
+    fileOptions.current!.pasteFile('image'); const first = request('attach'); fail(first, 'Clipboard denied');
+    expect(element('error').hidden).toBe(false);
+    fileOptions.current!.pasteFile('image'); const retry = request('attach');
+    expect(retry.clipboard).toBe(true); expect(retry.errorScope).not.toBe(first.errorScope);
+    expect(element('error').hidden).toBe(true); fail(first, 'Old clipboard error'); expect(element('error').hidden).toBe(true);
+    fail(retry, 'No image found'); expect(element('error').textContent).toBe('No image found');
+  });
   it('keeps request-scoped resource failures out of the run alert', async () => {
     const { element, emit } = await fixture();
     emit({ type: 'error', requestType: 'resource', requestId: 'map-preview', message: 'Preview failed' });

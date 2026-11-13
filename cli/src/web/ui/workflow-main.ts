@@ -115,13 +115,16 @@ const fields = new Fields(element('main-fields'), element('parameter-actions'), 
   modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => parameters().fields.some(field => field.userSetting?.key === 'agent.model') ? host.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels(),
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },
   file: name => post({ type: 'attach', entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
+  pasteFile: name => post({ type: 'attach', clipboard: true, entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
+  fileUrl: id => host.fileUrl?.(id) ?? `/api/file/${encodeURIComponent(id)}`,
+  image: (src, title) => dialogs.image(src, title),
 });
 function clearError(invalidate = true): void {
   if (invalidate) { ++errorScope; }
   renderRequestError(element('error'));
 }
 function post(message: Record<string, unknown>): void {
-  if (['workflow-select', 'workflow-run', 'workflow-rerun', 'workflow-resume'].includes(String(message.type))) { clearError(); }
+  if (['workflow-select', 'workflow-run', 'workflow-rerun', 'workflow-resume', 'attach'].includes(String(message.type))) { clearError(); }
   if (message.type === 'workflow-select') { submitting = false; controls(); }
   host.postMessage({ projectUri: state?.project.uri, entrypointId, ...message, errorScope });
 }

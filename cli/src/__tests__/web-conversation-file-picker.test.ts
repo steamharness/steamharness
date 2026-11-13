@@ -5,7 +5,8 @@ import { chooseConversationFiles } from '../web/ui/conversation-file-picker';
 import { acquireProjectHost } from '../web/ui/host';
 
 vi.mock('../web/ui/account', () => ({ AccountPanel: class {} }));
-vi.mock('../web/ui/connection', () => ({ BrowserConnection: class {}, ConnectionError: class extends Error {} }));
+const transport = vi.hoisted(() => ({ request: vi.fn() }));
+vi.mock('../web/ui/connection', () => ({ BrowserConnection: class { request = transport.request; }, ConnectionError: class extends Error {} }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 
 const folder = (name: string, children: (PickedDirectory | { kind: 'file'; name: string; getFile(): Promise<File> })[] = []): PickedDirectory => ({
@@ -83,6 +84,40 @@ function hostFixture() {
   const request = { type: 'select-paths', kind: 'folders', requestId: 'picker-1', target: 'conversation:1', projectUri: 'file:///project', sessionId: 'one' };
   return { host, receive, sent, messages, request, close: () => hideListeners.forEach(hide => hide()) };
 }
+
+it('uploads clipboard images through the existing parameter attachment route and preserves field identity', async () => {
+  const f = hostFixture(), image = new Blob(['clipboard image'], { type: 'image/png' });
+  vi.stubGlobal('navigator', { clipboard: { read: async () => [{ types: ['image/png'], getType: async () => image }] } });
+  const reply = { type: 'attachments', entrypointId: 'box', paramName: 'image', files: [{ id: 'new-image' }] };
+  transport.request.mockReset().mockResolvedValue([reply]);
+  await f.host.postMessage({ type: 'attach', clipboard: true, entrypointId: 'box', paramName: 'image', accept: ['image/*'], errorScope: 7 });
+  expect(transport.request).toHaveBeenCalledExactlyOnceWith({ type: 'upload', clipboard: true, entrypointId: 'box', paramName: 'image', accept: ['image/*'], errorScope: 7,
+    files: [{ name: 'clipboard-1.png', mimeType: 'image/png', data: btoa('clipboard image') }] });
+  expect(f.messages().at(-1)).toEqual(reply); f.close();
+});
+
+it('rejects unsupported clipboard image formats without uploading or losing the request error scope', async () => {
+  const f = hostFixture();
+  vi.stubGlobal('navigator', { clipboard: { read: async () => [{ types: ['image/png'], getType: async () => new Blob(['image'], { type: 'image/png' }) }] } });
+  transport.request.mockReset();
+  await f.host.postMessage({ type: 'attach', clipboard: true, entrypointId: 'box', paramName: 'image', accept: ['image/jpeg'], errorScope: 7 });
+  expect(transport.request).not.toHaveBeenCalled();
+  expect(f.messages().at(-1)).toMatchObject({ type: 'error', requestType: 'attach', entrypointId: 'box', errorScope: 7, message: expect.stringContaining('accepted file types') }); f.close();
+});
+
+it('uses the existing Studio native paste capability without falling back to browser permissions', async () => {
+  const f = hostFixture(), read = vi.fn(async () => { throw new DOMException('blocked', 'NotAllowedError'); });
+  vi.stubGlobal('navigator', { clipboard: { read } });
+  transport.request.mockReset().mockResolvedValue([]);
+  f.receive({ nativePasteVersion: 1 });
+  const pending = f.host.postMessage({ type: 'attach', clipboard: true, entrypointId: 'box', paramName: 'image', accept: ['image/*'] });
+  expect(f.sent.at(-1)).toMatchObject({ type: 'workflow-edit', command: 'paste', clipboardImageRequestId: expect.any(String) });
+  f.receive({ editCommand: 'paste', clipboardData: { text: 'Do not paste this into another field', image: new Uint8Array([1, 2, 3]) } });
+  await pending;
+  expect(read).not.toHaveBeenCalled();
+  expect(transport.request).toHaveBeenCalledWith(expect.objectContaining({ type: 'upload', entrypointId: 'box', paramName: 'image', files: [{ name: 'clipboard.png', mimeType: 'image/png', data: 'AQID' }] }));
+  f.close();
+});
 
 it('routes browser selection through the local chooser without posting files to a parent', async () => {
   const f = hostFixture(); await f.host.postMessage({ type: 'drop-target', target: f.request.target });

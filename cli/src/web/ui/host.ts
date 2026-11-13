@@ -5,6 +5,7 @@ import { HostConnectionRecovery } from './connection-recovery';
 import { requestAction } from './action-dialog';
 import { TraceBridge } from './trace-bridge';
 import { ClipboardBridge } from './clipboard-bridge';
+import { ClipboardImages } from './clipboard-images';
 import { editText, pasteHostClipboard, selectedText, textEditShortcut, type TextEditCommand } from './edit-commands';
 import { ProjectWindowChrome } from './window-chrome';
 import { chooseConversationFiles } from './conversation-file-picker';
@@ -14,7 +15,7 @@ import { ProjectServerCreateDialog } from './project-server-create';
 import { acquireHostKeyboard } from './host-keyboard';
 
 type Message = Record<string, any>;
-interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean } }
+interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean } }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -78,6 +79,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   };
   const clipboard = new ClipboardBridge(message => window.parent.postMessage(message, '*'),
     text => navigator.clipboard.writeText(text), window.parent !== window && document.body.dataset.accountHost === 'true');
+  const clipboardImages = new ClipboardImages(message => window.parent.postMessage(message, '*'));
+  addEventListener('pagehide', () => clipboardImages.dispose());
   const copyText = async (text: string): Promise<boolean> => {
     try { await clipboard.writeText(text); return true; }
     catch (error) { emit({ type: 'error', message: (error as Error).message }); return false; }
@@ -240,6 +243,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.recoveryVersion === 1) recovery.enabled = true;
     if (event.data.recovery) recovery.receive(event.data.recovery);
     if (event.data.nativePasteVersion !== undefined) { nativePasteHost = event.data.nativePasteVersion === 1; }
+    if (event.data.clipboardImageVersion !== undefined || event.data.nativePasteVersion !== undefined) clipboardImages.enable(event.data.clipboardImageVersion ?? event.data.nativePasteVersion);
+    clipboardImages.receive(event.data.clipboardImage);
+    if (event.data.editCommand === 'paste' && clipboardImages.receivePaste(event.data.clipboardData)) return;
     if (event.data.resourceError) { emit(event.data.resourceError); }
     const delegatedEdit = typeof event.data.editCommand === 'string' && window.dispatchEvent(new CustomEvent('project-edit-command', {
       cancelable: true, detail: { command: event.data.editCommand, restoreFocus: event.data.restoreFocus === true, clipboardData: event.data.clipboardData },
@@ -306,17 +312,27 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     } else { emit(reply); }
   };
   const chooseFiles = (message: Message) => {
-    const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true;
-    if (Array.isArray(message.accept)) { picker.accept = message.accept.join(','); }
-    picker.addEventListener('change', async () => {
+    const upload = async (selection: File[]) => {
       try {
-        const files = await Promise.all(Array.from(picker.files ?? []).map(file => new Promise<Message>((resolve, reject) => {
-          if (file.size > 50 * 1024 * 1024) { reject(new Error('Attachment exceeds 50 MiB.')); return; }
+        if (message.clipboard && Array.isArray(message.accept) && message.accept.length) {
+          selection = selection.filter(file => message.accept.some((accept: string) => {
+            const type = accept.toLowerCase();
+            return type.startsWith('.') ? file.name.toLowerCase().endsWith(type) : type.endsWith('/*') ? file.type.startsWith(type.slice(0, -1)) : file.type === type;
+          }));
+          if (!selection.length) throw new Error(t("Clipboard image does not match this parameter's accepted file types."));
+        }
+        const files = await Promise.all(selection.map(file => new Promise<Message>((resolve, reject) => {
+          if (file.size > 50 * 1024 * 1024) { reject(new Error(t('Attachment exceeds 50 MiB.'))); return; }
           const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, mimeType: file.type, data: String(reader.result).split(',')[1] }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
         })));
         await request({ ...message, type: 'upload', files });
-      } catch (error) { emit({ type: 'error', requestType: 'attach', sessionId: message.sessionId, message: String((error as Error).message) }); }
-    });
+      } catch (error) { attachmentError(error); }
+    };
+    const attachmentError = (error: unknown) => emit({ type: 'error', requestType: 'attach', projectUri: message.projectUri, sessionId: message.sessionId, entrypointId: message.entrypointId, errorScope: message.errorScope, message: String((error as Error).message) });
+    if (message.clipboard) { return clipboardImages.read().then(upload).catch(attachmentError); }
+    const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true;
+    if (Array.isArray(message.accept)) { picker.accept = message.accept.join(','); }
+    picker.addEventListener('change', () => { void upload(Array.from(picker.files ?? [])); });
     picker.addEventListener('cancel', () => emit({ type: 'attachment-cancelled', sessionId: message.sessionId }));
     picker.click();
   };
@@ -413,7 +429,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
         window.parent.postMessage({ type: 'workflow-contextmenu', version: 1, x: message.x, y: message.y, editable: message.editable, selection: message.selection }, '*');
         return true;
       }
-      if (message.type === 'attach') { chooseFiles(message); return; }
+      if (message.type === 'attach') { return chooseFiles(message); }
       if (message.type === 'session-action' && message.action === 'rename') {
         const title = await requestAction({ title: t("Rename conversation"), label: t("Conversation name"), value: message.currentTitle, confirm: t("Save") });
         if (title === undefined) { return; } message = { ...message, title };
@@ -441,6 +457,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'login') { accountPanel.open(); return; }
       void request(message).catch(error => emit({ type: 'error', errorSource: 'request', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, projectUri: message.projectUri, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
+    fileUrl: id => connection.fileUrl(`/api/file/${encodeURIComponent(id)}`),
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
     setState: (state) => {
       try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
