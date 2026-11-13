@@ -46,6 +46,7 @@ params: [
 | `userSetting` | `UserSettingParamBinding` | 单个 string 字段绑定 `agent.permissionPolicy` 或 `agent.model`；`mode: "default"` 允许项目覆盖，`"fixed"` 跟随用户设置并提供设置跳转。不能同时填写 `defaultValue`。见[用户设置](/core-api/user-settings)。 |
 | `multiple` | `boolean` | 是否允许多个值。 |
 | `control` | `"text" \| "textarea" \| "range" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web 的表单控件提示；`range` 用于单个 number，`audio` 用于 file，日期相关控件用于 string。 |
+| `image` | `ImageParamOptions` | 文件参数的裁剪开关与最小／最大像素宽高，见下方图片上传说明。 |
 | `range` | `{ min: number, max: number, step: number }` | 数值滑块的最小值、最大值和滑动增量。与 `type: "number"`、`control: "range"` 一起声明。 |
 | `step` | `number` | 这个字段属于第几步，从 `1` 开始。同一步的字段一起问；声明了 `step` 的请求在用户输入节点里一次只展示一步（问题上方有「‹ 第 N / M 问 ›」前后翻页，未答的必答题会在那里标出）。一次问多个独立问题时用它，同一个问题的多个字段不要拆步。 |
 | `resolveOnInput` | `boolean` | 是否在主输入内容变化时执行 `resolveParams`。默认 `false`；只有联动确实依赖输入文本时才设为 `true`。 |
@@ -230,6 +231,22 @@ createInput({ paramValues }) {
 Bot 参数扩展 Core 的默认配置。Model、Effort、Plan 和权限通过 `agent.paramOptions` 定制，顶层 `params` 只追加业务字段。Core 在调用 `prepareInput` 前解析文本和图片附件；Bot 不能声明 `workflow`、`coreAgent` 或 `createInput`。
 
 输入钩子见 [defineBot](/core-api/define-bot)；底层参数辅助函数见 [parseConversationDefaultInputArgs](/core-api/parse-conversation-default-input-args)。
+
+## 图片上传与裁剪
+
+文件参数可通过 `image` 配置上传前的图片处理。`crop: true` 在选择或粘贴图片后打开裁剪编辑器；省略或设为 `false` 时保留原图。
+
+```ts
+{ name: "photo", flag: "--photo", type: "file", multiple: false,
+  accept: ["image/png", "image/jpeg"], format: "json",
+  image: { crop: true, minWidth: 280, minHeight: 280, maxWidth: 1568, maxHeight: 1568 } }
+```
+
+`minWidth`、`minHeight`、`maxWidth`、`maxHeight` 都是可选的正整数，单位为像素；同一方向的最小值不能超过最大值。`image` 必须写成静态对象，只用于 `type: "file"`，不能与音频控件、枚举选项或 Quick 混用。
+
+用户可拖动自由裁剪框，也可输入左、上、宽、高。确认后，选区会等比缩放到声明的范围；长宽比与尺寸范围不相容时补白边，不拉伸图片。尺寸约束作用于最终上传的图片。编辑器内关闭裁剪时，原图也须满足声明的范围。
+
+处理在浏览器本地完成，确认后才上传。取消任一图片的编辑会取消该次文件选择，保留原参数值；多图选择不会先上传已编辑的部分。导出使用 `accept` 允许的 PNG、JPEG 或 WebP，文件引用格式与现有文件参数相同。终端和外部调用直接使用文件引用，仍由工作流校验模型或业务要求。
 
 ## Core Agent 内置参数
 

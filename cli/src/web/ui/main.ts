@@ -21,6 +21,7 @@ import { ConversationMessageIndex, type IndexedUserMessage } from './conversatio
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
+import { fileSelectionOptions } from './image-cropper';
 import { ConversationForkDialog } from './conversation-fork-dialog';
 import { renderRequestError, RequestErrorAlert } from './request-error';
 import { isExecutionError } from './execution-error';
@@ -463,7 +464,7 @@ function initialize(): void {
       if (field.type === 'file' || field.control === 'audio') {
         control = document.createElement('input'); control.type = 'hidden';
         const summary = document.createElement('span'); summary.className = 'param-file-summary'; root.append(summary);
-        const choose = iconButton(field.control === 'audio' ? 'mic' : 'attach', t("Choose files"), () => post({ type: 'attach', paramName: field.name, entrypointId: entrypoint.value }));
+        const choose = iconButton(field.control === 'audio' ? 'mic' : 'attach', t("Choose files"), () => post({ type: 'attach', paramName: field.name, entrypointId: entrypoint.value, ...fileSelectionOptions(field) }));
         choose.classList.add('param-file-button'); root.append(choose);
       } else if (field.control === 'select' || field.options !== undefined) {
         control = document.createElement('select');
@@ -1215,7 +1216,7 @@ function initialize(): void {
       view.prompt?.root.remove(); view.prompt = new InputPrompt(message.pendingInput, {
         submit: (values) => post({ type: 'resume', messageId: message.id, requestId: message.pendingInput!.requestId, values }),
         stop: () => post({ type: 'stop' }),
-        files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name }),
+        files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name, ...fileSelectionOptions(message.pendingInput!.params.find(field => field.name === name)) }),
       }); view.promptRoot.append(view.prompt.root);
       if (serverBlocked() || readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
     } else if (!message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }

@@ -29,6 +29,7 @@ export interface Field {
   format?: 'json';
   step?: number;
   audio?: { maxDurationSeconds?: number; maxBytes?: number };
+  image?: import("steamharness").ImageParamOptions;
   range?: { min: number; max: number; step: number };
 }
 

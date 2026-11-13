@@ -1,5 +1,7 @@
 # Unreleased
 
+- File parameters support image cropping options and minimum/maximum pixel dimensions, preserved in structure reports and waiting-input forms with validated bounds.
+
 - Numeric parameters support `control: "range"` with `range: { min, max, step }` for sliders. Parameter parsing and resolver values validate the bounds.
 
 - Read versioned Brotli + Base64 release structures through the shared decoder, keeping project and entry summaries in plain text. Reject corrupt, oversized, or previous-format payloads before using entry, parameter, or model metadata.

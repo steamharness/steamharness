@@ -48,6 +48,7 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `userSetting` | `UserSettingParamBinding` | Bind a single string field to `agent.permissionPolicy` or `agent.model`: `mode: "default"` permits project overrides; `"fixed"` follows user settings and offers a settings action. Do not combine with `defaultValue`. See [User settings](/en/core-api/user-settings). |
 | `multiple` | `boolean` |Whether multiple values are allowed.|
 | `control` | `"text" \| "textarea" \| "range" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints. Use `range` for a single number, `audio` for a file, and date-related controls for strings. |
+| `image` | `ImageParamOptions` | Cropping toggle and minimum/maximum pixel dimensions for file parameters; see image upload below. |
 | `range` | `{ min: number, max: number, step: number }` | Slider bounds and increment. Declare with `type: "number"` and `control: "range"`. |
 | `step` | `number` |Which step this field is asked in, starting at `1`. Fields sharing a step are asked together, and a user-input node that declares steps shows one step at a time — a "‹ question N of M ›" control above the field pages between them and flags a required question that is still unanswered. Use it when one request asks several separate questions; do not split the fields of a single question across steps.|
 | `resolveOnInput` | `boolean` |Whether to execute `resolveParams` when the main input content changes. Default `false`; set to `true` only if linkage does depend on input text.|
@@ -244,3 +245,19 @@ See [defineBot](/en/core-api/define-bot) for hooks and [parseConversationDefault
 Bot inherits Model, Effort, Plan, and permission controls automatically. `agent.paramOptions` can set defaults, visibility, grouping, and fixed values. Business `params` append fields and cannot replace reserved fields. Core reapplies fixed values after `prepareInput`; `resolveParams` may update only the allowed interactive state.
 
 See [defineBot](/en/core-api/define-bot).
+
+## Image upload and cropping
+
+A file parameter can declare `image` options for processing before upload. Set `crop: true` to open the crop editor after selecting or pasting an image. Omit it or set it to `false` to keep the original.
+
+```ts
+{ name: "photo", flag: "--photo", type: "file", multiple: false,
+  accept: ["image/png", "image/jpeg"], format: "json",
+  image: { crop: true, minWidth: 280, minHeight: 280, maxWidth: 1568, maxHeight: 1568 } }
+```
+
+`minWidth`, `minHeight`, `maxWidth`, and `maxHeight` are optional positive integers in pixels. A minimum cannot exceed the corresponding maximum. Declare `image` as a static object on `type: "file"`; it cannot be combined with audio controls, enum options, or Quick placement.
+
+Users can drag a free-form selection or enter its left, top, width, and height. On confirmation, the crop is resized proportionally to fit the declared bounds. White padding fills any remaining minimum dimension when the aspect ratio cannot fit both bounds. The image is not stretched. These bounds apply to the final upload; turning cropping off also requires the original to meet them.
+
+Processing stays in the browser until confirmation. Cancelling any editor cancels that file selection and keeps the previous parameter value; a multi-file selection does not upload earlier edits first. Export uses PNG, JPEG, or WebP allowed by `accept`, and retains the existing file-reference format. Terminal and external callers pass file references directly; workflows still validate model and business requirements.

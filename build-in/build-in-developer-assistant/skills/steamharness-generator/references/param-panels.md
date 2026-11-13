@@ -54,6 +54,22 @@ Conversation 的 `commands` 是 `conversation.commands` 中的静态执行命令
 用户要求“收进高级选项”时创建 Auxiliary 并把相关字段放入同一个 `fields`；要求多个收缩面板时创建多个 Auxiliary。要求“模型和 Effort 在一个入口，权限另一个入口”时创建两个 Quick，各自设置 `summary`。要求“点一下切换模式”时创建 Mode，不靠把参数命名为 `agent` 来触发。完成后检查 `steamharness structure` 的 `params` 和 `paramLayout.actions`，再检查 `createInput({ paramValues })` 是否按同一字段名读取。
 
 
+## 图片上传与裁剪
+
+文件参数可通过 `image` 配置上传前的图片处理。`crop: true` 在选择或粘贴图片后打开裁剪编辑器；省略或设为 `false` 时保留原图。
+
+```ts
+{ name: "photo", flag: "--photo", type: "file", multiple: false,
+  accept: ["image/png", "image/jpeg"], format: "json",
+  image: { crop: true, minWidth: 280, minHeight: 280, maxWidth: 1568, maxHeight: 1568 } }
+```
+
+`minWidth`、`minHeight`、`maxWidth`、`maxHeight` 都是可选的正整数，单位为像素；同一方向的最小值不能超过最大值。`image` 必须写成静态对象，只用于 `type: "file"`，不能与音频控件、枚举选项或 Quick 混用。
+
+用户可拖动自由裁剪框，也可输入左、上、宽、高。确认后，选区会等比缩放到声明的范围；长宽比与尺寸范围不相容时补白边，不拉伸图片。尺寸约束作用于最终上传的图片。编辑器内关闭裁剪时，原图也须满足声明的范围。
+
+处理在浏览器本地完成，确认后才上传。取消任一图片的编辑会取消该次文件选择，保留原参数值；多图选择不会先上传已编辑的部分。导出使用 `accept` 允许的 PNG、JPEG 或 WebP，文件引用格式与现有文件参数相同。终端和外部调用直接使用文件引用，仍由工作流校验模型或业务要求。
+
 ## Core Agent 内置参数
 
 `defineBot` 直接作为 `defineExecutor.workflow` 时，省略 `params` 与标准 `resolveParams`。业务包装 workflow 使用 `coreAgent` 指向所选 Core 项目；多个 Agent 的契约互相隔离。默认是 Model / Effort / Permission 三个 Quick 和 boolean `/plan`；effort 为 high，Plan 关闭，模型与权限绑定当前用户设置。

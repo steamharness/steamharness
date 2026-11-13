@@ -7,6 +7,7 @@ import './range-field.css';
 import './workflow-style.css';
 import { acquireProjectHost } from './host';
 import { requestAction } from './action-dialog';
+import { fileSelectionOptions } from './image-cropper';
 import { renderRequestError } from './request-error';
 import { Fields } from './workflow-fields';
 import { WorkflowOutputPager, type WorkflowOutputPage } from './workflow-output-pager';
@@ -115,8 +116,8 @@ const fields = new Fields(element('main-fields'), element('parameter-actions'), 
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
   modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => parameters().fields.some(field => field.userSetting?.key === 'agent.model') ? host.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels(),
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },
-  file: name => post({ type: 'attach', entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
-  pasteFile: name => post({ type: 'attach', clipboard: true, entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
+  file: name => post({ type: 'attach', entrypointId, paramName: name, ...fileSelectionOptions(parameters().fields.find(field => field.name === name)) }),
+  pasteFile: name => post({ type: 'attach', clipboard: true, entrypointId, paramName: name, ...fileSelectionOptions(parameters().fields.find(field => field.name === name)) }),
   fileUrl: id => host.fileUrl?.(id) ?? `/api/file/${encodeURIComponent(id)}`,
   image: (src, title) => dialogs.image(src, title),
 });
@@ -307,7 +308,7 @@ function renderRun(): void {
       prompt = new InputPrompt(run.pendingInput, {
         submit: values => { submitting = true; controls(); post({ type: 'workflow-resume', id: run.id, requestId: run.pendingInput!.requestId, values }); },
         stop: () => post({ type: 'workflow-stop' }),
-        files: name => post({ type: 'attach', runId: run.id, requestId: run.pendingInput!.requestId, paramName: name, entrypointId: run.entrypointId }),
+        files: name => post({ type: 'attach', runId: run.id, requestId: run.pendingInput!.requestId, paramName: name, entrypointId: run.entrypointId, ...fileSelectionOptions(run.pendingInput!.params.find(field => field.name === name)) }),
       }); element('run-prompt').append(prompt.root);
     }
   }

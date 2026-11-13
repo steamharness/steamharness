@@ -2639,6 +2639,7 @@ function analyzeSourceFile(
       options: readParamOptionsProperty(obj, "options"),
       accept: readStringArrayProperty(obj, "accept"),
       audio: readParamAudioProperty(obj),
+      image: readParamImageProperty(obj),
       range: readParamRangeProperty(obj),
       format: readStringProperty(obj, "format") === "json" ? "json" : undefined,
     } as ParamDefinition;
@@ -2876,6 +2877,24 @@ function analyzeSourceFile(
       value === "date-range"
       ? value
       : undefined;
+  }
+
+  function readParamImageProperty(obj: ts.ObjectLiteralExpression): ParamDefinition["image"] {
+    const property = findStaticPropertyAssignment(obj, "image");
+    if (!property) return undefined;
+    const initializer = unwrapExpression(property.initializer);
+    if (!ts.isObjectLiteralExpression(initializer)) return null as unknown as ParamDefinition["image"];
+    const settings: Record<string, unknown> = {};
+    for (const member of initializer.properties) {
+      if (!ts.isPropertyAssignment(member)) { settings.invalid = null; continue; }
+      const name = readStructurePropertyName(member.name), value = unwrapExpression(member.initializer);
+      if (name === undefined) { settings.invalid = null; continue; }
+      if (name === "crop") settings.crop = value.kind === ts.SyntaxKind.TrueKeyword ? true : value.kind === ts.SyntaxKind.FalseKeyword ? false : null;
+      else if (ts.isNumericLiteral(value)) settings[name] = Number(value.text);
+      else if (ts.isPrefixUnaryExpression(value) && ts.isNumericLiteral(value.operand) && (value.operator === ts.SyntaxKind.MinusToken || value.operator === ts.SyntaxKind.PlusToken)) settings[name] = (value.operator === ts.SyntaxKind.MinusToken ? -1 : 1) * Number(value.operand.text);
+      else settings[name] = null;
+    }
+    return settings as ParamDefinition["image"];
   }
 
   function readParamAudioProperty(obj: ts.ObjectLiteralExpression): ParamDefinition["audio"] {

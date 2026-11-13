@@ -1,5 +1,7 @@
 # Unreleased
 
+- Image parameters support Cropper.js cropping, proportional resizing, and padding before upload. Cropping can be disabled; cancellation preserves the existing value. File selection and clipboard images share the same processing path.
+
 - Numeric parameters can use sliders with a current value and bounds in Workflow, Bot auxiliary fields, and input prompts. Ordinary numeric inputs remain available.
 
 - Encode release internals in v2 `structure.json` while keeping project and entry summaries readable. Minify declarations, configuration definitions, and JSON assets without changing string content or number literals. Snapshots and uploads/downloads share the decoder and integrity checks. Rebuild older releases from source.

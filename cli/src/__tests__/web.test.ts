@@ -621,6 +621,8 @@ describe('steamharness web', () => {
       const response = await fetch(`${app.origin}${pathname}`);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-security-policy')?.split(';').map(directive => directive.trim()).find(directive => directive.startsWith('font-src'))).toBe("font-src 'self' data:");
+      const imagePolicy = response.headers.get('content-security-policy')?.split(';').find(directive => directive.trim().startsWith('img-src'));
+      expect(imagePolicy?.split(/\s+/)).toContain('blob:');
       const html = await response.text();
       expect(html).toContain(`<link rel="stylesheet" href="/assets/${stylesheet}.css"><link rel="stylesheet" href="/assets/theme.css">`);
     }

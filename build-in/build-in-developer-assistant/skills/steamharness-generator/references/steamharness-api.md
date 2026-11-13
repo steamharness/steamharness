@@ -711,6 +711,18 @@ params: [
 ]
 ```
 
+### 图片参数与裁剪
+
+文件参数可声明内联 `image: { crop?: boolean, minWidth?: number, minHeight?: number, maxWidth?: number, maxHeight?: number }`。四个尺寸均为可选正整数像素，最小值不得超过对应最大值；仅用于 `type: "file"`，不与 audio、options 或 Quick 混用。`crop: true` 在选择或粘贴图片后打开 Cropper.js 裁剪编辑器，省略或 false 不打开。用户可在编辑器中关闭裁剪，使用满足声明尺寸的原图。
+
+裁剪框不固定长宽比，支持拖动与像素坐标输入。确认后按输出尺寸范围等比缩放，必要时补白边；取消保留已有文件值，不上传本次选择。多图全部确认后才调用现有上传接口。图片在浏览器本地处理，输出采用 accept 允许的 PNG、JPEG 或 WebP，仍通过原有文件引用传给 createInput 与 createFileInputNode。终端直接传文件引用，不打开编辑器；工作流继续校验模型限制。
+
+```ts
+{ name: "image", flag: "--image", type: "file", multiple: false,
+  accept: ["image/png", "image/jpeg"], format: "json",
+  image: { crop: true, minWidth: 280, minHeight: 280, maxWidth: 1568, maxHeight: 1568 } }
+```
+
 ## 节点
 
 ```ts

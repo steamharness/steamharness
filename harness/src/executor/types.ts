@@ -78,6 +78,15 @@ export interface AudioParamOptions {
   maxBytes?: number;
 }
 
+export interface ImageParamOptions {
+  /** Open the crop editor before uploading. Omitted or false keeps the original image. */
+  crop?: boolean;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
 export interface RangeParamOptions {
   min: number;
   max: number;
@@ -110,6 +119,7 @@ interface ParamDefinitionBase {
   resolveOnInput?: boolean;
   accept?: string[];
   audio?: AudioParamOptions;
+  image?: ImageParamOptions;
   range?: RangeParamOptions;
   format?: "json";
   /**

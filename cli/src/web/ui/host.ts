@@ -13,6 +13,7 @@ import type { FileImport } from './conversation-drop';
 import { webLinkTarget } from './output-file-links';
 import { ProjectServerCreateDialog } from './project-server-create';
 import { acquireHostKeyboard } from './host-keyboard';
+import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
 interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean } }
@@ -321,6 +322,10 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
           }));
           if (!selection.length) throw new Error(t("Clipboard image does not match this parameter's accepted file types."));
         }
+        if (!selection.length) { emit({ type: 'attachment-cancelled', sessionId: message.sessionId }); return; }
+        const prepared = await prepareImageFiles(selection, message.image, message.accept);
+        if (!prepared) { emit({ type: 'attachment-cancelled', sessionId: message.sessionId }); return; }
+        selection = prepared;
         const files = await Promise.all(selection.map(file => new Promise<Message>((resolve, reject) => {
           if (file.size > 50 * 1024 * 1024) { reject(new Error(t('Attachment exceeds 50 MiB.'))); return; }
           const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, mimeType: file.type, data: String(reader.result).split(',')[1] }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
@@ -330,7 +335,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     };
     const attachmentError = (error: unknown) => emit({ type: 'error', requestType: 'attach', projectUri: message.projectUri, sessionId: message.sessionId, entrypointId: message.entrypointId, errorScope: message.errorScope, message: String((error as Error).message) });
     if (message.clipboard) { return clipboardImages.read().then(upload).catch(attachmentError); }
-    const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true;
+    const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = message.multiple !== false;
     if (Array.isArray(message.accept)) { picker.accept = message.accept.join(','); }
     picker.addEventListener('change', () => { void upload(Array.from(picker.files ?? [])); });
     picker.addEventListener('cancel', () => emit({ type: 'attachment-cancelled', sessionId: message.sessionId }));

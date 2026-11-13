@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -65,7 +66,8 @@
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-access": "workspace:*",
     "@steamharness/service-urls": "workspace:*",
-    "@steamharness/project-manifest": "workspace:*"
+    "@steamharness/project-manifest": "workspace:*",
+    "cropperjs": "2.3.1"
   },
   "repository": {
     "type": "git",

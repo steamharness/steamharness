@@ -189,6 +189,7 @@ function cloneParamDefinition(param: ParamDefinition): ParamDefinition {
     return {
       ...param,
       ...(param.accept === undefined ? {} : { accept: [...param.accept] }),
+      ...(param.image === undefined ? {} : { image: { ...param.image } }),
     };
   }
   return {
@@ -197,6 +198,7 @@ function cloneParamDefinition(param: ParamDefinition): ParamDefinition {
       ? {}
       : { options: param.options.map((option) => ({ ...option })) }),
     ...(param.accept === undefined ? {} : { accept: [...param.accept] }),
+    ...(param.image === undefined ? {} : { image: { ...param.image } }),
   } as ParamDefinition;
 }
 

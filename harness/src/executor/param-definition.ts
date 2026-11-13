@@ -58,6 +58,23 @@ export function readProjectParamDefinitionError(
       return `Range parameter "${param.name}" default or fixed value must be between ${range.min} and ${range.max}.`;
     }
   }
+  if (param.image !== undefined) {
+    if (param.type !== "file" || param.control === "audio" || param.options !== undefined || param.panel === "quick") {
+      return `Image parameter "${param.name}" must use type: "file" without audio, options or quick placement.`;
+    }
+    if (!param.image || typeof param.image !== "object" || Array.isArray(param.image)) return `Image parameter "${param.name}" settings must be an object.`;
+    for (const [key, value] of Object.entries(param.image)) {
+      if (key === "crop") {
+        if (typeof value !== "boolean") return `Image parameter "${param.name}" crop must be boolean.`;
+      } else if (!["minWidth", "minHeight", "maxWidth", "maxHeight"].includes(key) || !Number.isSafeInteger(value) || Number(value) <= 0) {
+        return `Image parameter "${param.name}" ${key} must be a positive integer pixel limit.`;
+      }
+    }
+    if ((param.image.minWidth ?? 1) > (param.image.maxWidth ?? Infinity) || (param.image.minHeight ?? 1) > (param.image.maxHeight ?? Infinity)) {
+      return `Image parameter "${param.name}" minimum dimensions cannot exceed maximum dimensions.`;
+    }
+  }
+
   if (param.control === "audio" || param.audio !== undefined) {
     if (param.type !== "file" || param.control !== "audio") {
       return `Audio parameter "${param.name}" must use type: "file" and control: "audio".`;

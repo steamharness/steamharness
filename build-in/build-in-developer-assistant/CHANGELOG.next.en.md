@@ -1,5 +1,7 @@
 # Unreleased
 
+- Project generation guidance covers optional image cropping, minimum/maximum pixel dimensions, and uploading only after confirmation.
+
 - Parameter guidance supports numeric sliders, covering bounds, increments, current values, and the separate prompt-step setting.
 
 - Update Generator guidance for v2 encoded release structures, readable project and entry summaries, compact JSON, and matching host decoders.
