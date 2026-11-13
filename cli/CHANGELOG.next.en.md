@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban can start and stop local Workflows, read output pages and load run images through native history. Optional Server guidance is collapsed by default.
+
 - Image parameters support Cropper.js cropping, proportional resizing, and padding before upload. Cropping can be disabled; cancellation preserves the existing value. File selection and clipboard images share the same processing path.
 
 - Numeric parameters can use sliders with a current value and bounds in Workflow, Bot auxiliary fields, and input prompts. Ordinary numeric inputs remain available.

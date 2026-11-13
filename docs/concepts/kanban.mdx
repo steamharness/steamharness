@@ -179,3 +179,31 @@ Workflow 调用独立使用 120 秒 Bridge 时限，供数据库授权及持久�
 `conversations.snapshot(entryId, conversationId)` 读取原生会话投影，`conversations.subscribe({ entryId, conversationId }, listener, onError)` 通过现有 SSE / IPC 通道接收流式输出、队列、审批和运行状态，返回注销函数。最多保留 16 个订阅。配置、身份或 iframe 代次变化时注销旧订阅，忽略旧快照；重新连接后重新读取并订阅。不要用轮询最后一条消息判断某个请求完成，必须匹配 `requestId`。
 
 Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNTIME_UNAVAILABLE`，页面应提示使用本地 CLI Web / Studio。对话中的只读资源预览保持原数据访问边界。
+
+## 在看板中持续运行 Workflow
+
+本地 CLI Web 和 Studio 提供 `window.steamHarnessKanban.workflows.get(entryId)`。它控制同一聚合中已登记的 Workflow，使用原生运行历史和附件，不需要另建数据库或读取宿主的 SQLite。
+
+```js
+const capture = window.steamHarnessKanban.workflows.get("capture");
+const run = await capture.start({
+  entrypointId: "listen", params: { windowId: "42" },
+  requestId: crypto.randomUUID(), title: "窗口监听",
+});
+const page = await capture.page(run.id); // 省略 page 时取最新页
+await capture.stop(run.id);
+```
+
+| 方法 | 用途 |
+| --- | --- |
+| `list({ offset?, limit? })` | 返回 `runs、total、activeRunId、nextOffset`，每次最多 100 个运行摘要。 |
+| `start({ entrypointId, params, requestId, title? })` | 持久化后立即返回运行摘要，不等待长期任务结束。参数值为字符串或字符串数组。 |
+| `page(runId, { page? })` | 每页 100 个 `OutputItem`，返回当前页、附件摘要、总数、revision 和运行状态。 |
+| `stop(runId)` | 只停止指定的活动运行，保留已保存的输出。 |
+| `readImage(runId, fileId)` | 读取该运行生成的图片，返回 `mimeType` 和 `ArrayBuffer`，上限 10 MiB。 |
+
+`start` 使用稳定的请求 ID：同一来源入口、相同 ID 和参数会返回原运行；相同 ID 携带不同内容会报错。`title` 只用于展示。刷新页面后先读取 `list`，通过 `activeRunId` 找回监听，避免重复启动。
+
+页面按需读页和图片，并丢弃切换运行、翻页或身份变化前的旧响应。图片可转为 Blob URL，切换后调用 `URL.revokeObjectURL` 释放。停止、取消和重开后仍可读历史；业务页面不复制完整运行日志。
+
+同一聚合的本地只读资源预览仅可列出运行、读页和读取图片，不能启动或停止。Server 静态预览不提供本地执行和历史，需要在本地工作区打开。

@@ -325,6 +325,14 @@ export class ResourcePreviews {
       if (data.card.target.source === 'server' || project.id !== this.owner.id) throw new Error('A local project is required.');
       return readLocalWorkflowResource(this.runtime, project, String(call.input.entryId), { entrypointId: call.input.entrypointId, args: call.input.args }, this.entries.get(id)?.controller?.signal ?? this.lifetime.signal);
     }
+    if (call.operation === 'entries.workflow') {
+      if (data.card.target.source === 'server' || project.id !== this.owner.id || !['list','page','file'].includes(String(call.input.action))) throw new Error(t('This resource preview is read-only.'));
+      if (!this.runtime.kanbanBridge) throw new Error('Local Workflow history is unavailable.');
+      const generation = this.generation, entry = this.entries.get(id);
+      const result = await this.runtime.kanbanBridge(project, call, entry?.controller?.signal ?? this.lifetime.signal);
+      if (generation !== this.generation || this.entries.get(id) !== entry) throw new Error(t('Resource access changed. Open the card again.'));
+      return result;
+    }
     // Card previews are temporary and cannot mutate the target's stored data.
     if (!(call.operation === 'database.query' && call.input.request && (call.input.request as { operation?: string }).operation === 'rows') && !['runtime.getLocale', 'database.resolve', 'knowledge.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
       throw new Error(t('This resource preview is read-only.'));

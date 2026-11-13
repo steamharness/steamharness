@@ -12,6 +12,7 @@ export interface Draft {
   policies: ToolPolicies;
 }
 export interface RunRecord {
+  entryRequest?: { sourceEntryId: string; requestId: string; signature: string };
   id: string;
   scopeId: string;
   entrypointId?: string;
@@ -47,6 +48,8 @@ export interface WorkspaceContract {
   migratedConversations?: boolean;
 }
 export interface StartInput {
+  title?: string;
+  entryRequest?: { sourceEntryId: string; requestId: string; signature: string };
   entrypointId?: string;
   params: ParamValues;
   states?: Record<string, ParamState>;

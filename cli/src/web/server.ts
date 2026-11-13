@@ -2,6 +2,7 @@ import { assertProjectDataDirectory } from "@steamharness/project-manifest/node"
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
+import { EntryWorkflows } from './entry-workflows';
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
@@ -155,11 +156,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     kanbanBridge: async (source, call, abortSignal) => {
       if (call.operation === 'entries.list') return (options.mount?.catalog() as { entries?: unknown[] } | undefined)?.entries ?? [];
-      if (call.operation === 'entries.runEntrypoint' || call.operation === 'conversations.snapshot') {
+      if (call.operation === 'entries.runEntrypoint' || call.operation === 'entries.workflow' || call.operation === 'conversations.snapshot') {
         if (!options.mount?.invokeEntry || source.id !== project.id || source.folderPath !== project.folderPath) throw Object.assign(new Error('A local aggregate execution host is required.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
         return options.mount.invokeEntry({ entryId: String(call.input.entryId),
           projectId: source.id, actor: { userId: account.user?.userId, isSystemAdmin: false }, abortSignal,
-          action: call.operation === 'entries.runEntrypoint' ? 'workflow' : 'snapshot', input: call.input, sourceEntryId: source.entryId });
+          action: call.operation === 'entries.workflow' ? 'workflow-control' : call.operation === 'entries.runEntrypoint' ? 'workflow' : 'snapshot', input: call.input, sourceEntryId: source.entryId });
       }
       return executor.kanbanBridge!(source, call);
     },
@@ -412,6 +413,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
+  const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${message}\n`),
@@ -1093,8 +1095,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       call.abortSignal?.throwIfAborted();
       if (call.projectId !== project.id || call.actor.userId !== account.user?.userId) throw new Error('The entry caller identity changed.');
       if (!storageReady) throw new Error(storageError ?? 'Runtime storage is unavailable.');
-      if (projectServer?.blocking) await projectServer.assertReady();
+      if (projectServer?.blocking && (call.action !== 'workflow-control' || call.input.action === 'start')) await projectServer.assertReady();
       call.abortSignal?.throwIfAborted();
+      if (call.action === 'workflow-control') {
+        if (!entryWorkflows) throw new Error('The target is not a Workflow.');
+        return publicValue(await entryWorkflows.invoke(call.input, call.sourceEntryId, call.readOnly));
+      }
       if (call.action === 'workflow') {
         if (project.projectType !== 'workflow') throw new Error('The target is not a Workflow.');
         const operation = String(call.input.entrypointId);

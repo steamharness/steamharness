@@ -84,6 +84,17 @@ it.each(['en', 'zh-CN'] as const)('connects the real Kanban host without a sideb
   expect(status.hidden).toBe(true); expect(status.dataset.error).toBe('false');
 });
 
+it('keeps local-only Kanban previews usable without unrelated Server guidance', async () => {
+  const {sources,sendState}=await fixture('en');sources[0].onopen!();
+  const issue={kind:'connection-unavailable' as const,serverUrl:'https://unavailable.test'};
+  sendState(1,'local',undefined,{checking:false,blocking:false,issue});
+  expect((document.getElementById('server-guidance-panel') as HTMLDetailsElement).open).toBe(false);
+  expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+  sendState(2,'local',undefined,{checking:false,blocking:true,issue});
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
+  expect(document.getElementById('preview-stage')!.hidden).toBe(true);
+});
+
 it('copies only current preview requests through the UI clipboard and delegates focused edits', async () => {
   const writeText = vi.fn(async () => {});
   const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

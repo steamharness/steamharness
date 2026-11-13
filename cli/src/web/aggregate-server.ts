@@ -27,7 +27,7 @@ export async function startAggregateWebServer(options: WebOptions) {
     if (call.projectId !== manifest.projectId) throw new Error("The aggregate project identity changed.");
     selectProjectEntry(manifest, call.sourceEntryId);
     const target = selectProjectEntry(manifest, call.entryId);
-    if (target.type !== (call.action === 'workflow' ? 'workflow' : 'bot')) throw new Error('The entry does not support this operation.');
+    if (target.type !== (call.action === 'workflow' || call.action === 'workflow-control' ? 'workflow' : 'bot')) throw new Error('The entry does not support this operation.');
     const runtime = entries.get(call.entryId);
     if (!runtime) throw new Error('The target entry is unavailable.');
     return runtime.invokeEntry(call);

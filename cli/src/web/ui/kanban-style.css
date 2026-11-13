@@ -59,3 +59,6 @@
   .kanban-app .web-account-button { min-height: 38px; }
 }
 @media (max-width: 480px) { .kanban-app .toolbar > .project-title { flex-basis: 100%; } .kanban-app .toolbar-actions { width: 100%; justify-content: flex-end; } .kanban-app .project-menu { max-height: 42vh; } }
+
+.kanban-app #server-guidance-panel { flex-shrink:0; }
+.kanban-app #server-guidance-panel > summary { padding:7px 16px; color:var(--muted); font-size:12px; cursor:pointer; border-bottom:1px solid var(--border); }

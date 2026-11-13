@@ -85,8 +85,8 @@ export class Controller {
     const draft = this.draft(input.entrypointId);
     const id = globalThis.crypto.randomUUID(), now = Date.now();
     const record: RunRecord = {
-      id, scopeId: id, entrypointId: input.entrypointId,
-      title: this.project.entrypoints.find(entry => entry.id === input.entrypointId)?.title ?? this.project.name,
+      id, scopeId: id, entrypointId: input.entrypointId, entryRequest: input.entryRequest,
+      title: input.title ?? this.project.entrypoints.find(entry => entry.id === input.entrypointId)?.title ?? this.project.name,
       createdAt: now, updatedAt: now, status: 'running', args: [...args], params: { ...input.params }, policies: structuredClone(draft.policies),
       items: [], events: [], files, nodes: [], logs: '', resolvedInputs: [],
     };
@@ -132,6 +132,7 @@ export class Controller {
       const report = await this.runtime.run({
         project: this.project, conversationId: record.scopeId, args: record.args, entrypointId: record.entrypointId,
         runId: record.id, toolPermissionPolicies: record.policies,
+        entryCall: record.entryRequest ? { entryId: record.entryRequest.sourceEntryId } : undefined,
         resolvedInputs: [...record.resolvedInputs, ...(record.submittingInput ? [record.submittingInput] : [])],
         resumeAfterRequestId: record.submittingInput?.requestId,
       }, event => {

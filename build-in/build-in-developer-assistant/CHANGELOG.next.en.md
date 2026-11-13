@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document background Workflow controls and paged results for Kanban projects.
+
 - Project generation guidance covers optional image cropping, minimum/maximum pixel dimensions, and uploading only after confirmation.
 
 - Parameter guidance supports numeric sliders, covering bounds, increments, current values, and the separate prompt-step setting.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- The project generator documents Kanban background Workflow controls, output pages and run images.
+
 - File parameters support image cropping options and minimum/maximum pixel dimensions, preserved in structure reports and waiting-input forms with validated bounds.
 
 - Numeric parameters support `control: "range"` with `range: { min, max, step }` for sliders. Parameter parsing and resolver values validate the bounds.

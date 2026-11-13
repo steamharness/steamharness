@@ -1630,3 +1630,9 @@ CLI Web 与 Studio 的 Workflow 结果按 `OutputItem` 每页 100 条展示。�
 业务事件可使用 `contentType: "json"`、`collapsed: false`、`metadata: { kind: "activity-record" }`。content 为 `{ version: 1, kind: "snapshot" | "click" | "input", timestamp, title, fields?: [{ label, value }], summary?, text?, preview?, imageFileId? }`。完整文字保存在 text，preview 用于简短预览，图片使用 context.files 创建后的附件 ID；正文按纯文本渲染，不传 HTML。宿主分卡展示、延迟加载图片，并保留已展开记录。普通说明和 AI 主回答继续采用 inline markdown/text，不改为事件卡。
 
 Workflow 最新页在新增输出及图片高度变化时跟随底部；用户上翻或阅读详情时暂停，恢复到底部或点击最新操作后继续。项目不得通过消息或脚本强制滚动宿主页面。
+
+## Kanban 的后台 Workflow 与分页结果
+
+本地浏览器宿主提供 `window.steamHarnessKanban.workflows.get(entryId)`，仅控制同一聚合中已登记的 Workflow。`start({ entrypointId, params, requestId, title? })` 在宿主持久化运行后立即返回摘要，使用稳定请求 ID 去重，不能用长时间等待的 runEntrypoint 代替。`list({offset?,limit?})` 返回 runs/total/activeRunId/nextOffset（limit 1–100）；`page(runId,{page?})` 固定每页 100 条 OutputItem，省略 page 取最新；`stop(runId)` 只停止指定活动运行；`readImage(runId,fileId)` 返回该运行图片的 mimeType/buffer，最多 10 MiB。
+
+此接口复用原生 Controller、运行日志、附件和租约。刷新时先 list 并连接 activeRunId，不重复启动；选旧页保持页码，按 revision 和请求代次忽略旧响应。图片按需读取并释放 Blob URL。不得在业务项目中直接读取宿主 SQLite、另存重复历史或通过 URL/参数选择项目、账号与路径。只读资源预览限 list/page/readImage；Server 静态预览不执行本地 Workflow。

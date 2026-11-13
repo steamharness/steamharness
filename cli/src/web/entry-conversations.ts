@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 export interface AggregateEntryCall {
   readOnly?: boolean;
   entryId: string;
-  action: EntryConversationAction | 'workflow';
+  action: EntryConversationAction | 'workflow' | 'workflow-control';
   input: Record<string, unknown>;
   sourceEntryId: string;
   sourceConversationId?: string;

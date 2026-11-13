@@ -1084,5 +1084,6 @@
   "The crop area must stay inside the image.": "裁剪区域必须位于图片内部。",
   "Crop height (px)": "裁剪高度（像素）",
   "Reset crop": "重置裁剪",
-  "Cropping requires PNG, JPEG or WebP in the accepted file types.": "启用裁剪时，允许的文件类型需要包含 PNG、JPEG 或 WebP。"
+  "Cropping requires PNG, JPEG or WebP in the accepted file types.": "启用裁剪时，允许的文件类型需要包含 PNG、JPEG 或 WebP。",
+  "Optional Server connection": "可选的 Server 连接"
 }

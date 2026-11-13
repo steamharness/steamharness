@@ -1,3 +1,5 @@
+import { validateWorkflowCall } from './workflow';
+export * from './workflow';
 import { connectBrowserDatabase } from "./database";
 export * from "./database";
 import type { ParamDefinition } from "./run-workspace/types";
@@ -132,6 +134,7 @@ export type KanbanJsonValue =
 
 export type KanbanBridgeOperation =
   | "entries.list"
+  | "entries.workflow"
   | "conversations.openView"
   | "conversations.viewMessage"
   | "conversations.closeView"
@@ -199,6 +202,7 @@ const MAX_KNOWLEDGE_LINE_RANGE = 1_000;
 
 const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[]> = {
   "entries.list": [],
+  "entries.workflow": ["entryId", "action", "entrypointId", "params", "requestId", "title", "runId", "page", "fileId", "offset", "limit"],
   "conversations.openView": ["entryId", "conversationId", "viewId", "documentId", "draft", "locale", "submit", "ui"],
   "conversations.viewMessage": ["viewId", "message"],
   "conversations.closeView": ["viewId"],
@@ -542,6 +546,13 @@ const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
 }});
 ${createKanbanMethodsBridgeScript(nonce)}
 const entries=Object.freeze({list:()=>request("entries.list",{}),get:(entryId)=>Object.freeze({runEntrypoint:(entrypointId,args=[],options={})=>request("entries.runEntrypoint",{entryId,entrypointId,args,requestId:options.requestId||Date.now().toString(36)+"-operation-"+(++sequence)})})});
+const workflows=Object.freeze({get:(entryId)=>Object.freeze({
+ list:(options={})=>request("entries.workflow",{...options,entryId,action:"list"}),
+ start:(input)=>request("entries.workflow",{...input,entryId,action:"start"}),
+ page:(runId,options={})=>request("entries.workflow",{...options,entryId,runId,action:"page"}),
+ stop:(runId)=>request("entries.workflow",{entryId,runId,action:"stop"}),
+ readImage:async(runId,fileId)=>{const file=await request("entries.workflow",{entryId,runId,fileId,action:"file"});const bytes=Uint8Array.from(atob(file.base64),value=>value.charCodeAt(0));return {mimeType:file.mimeType,buffer:bytes.buffer};}
+})});
 const conversations=Object.freeze({mount:async(container,target,options={})=>{
   if(!(container instanceof HTMLElement))throw invalidRequest();
   target=JSON.parse(JSON.stringify(target));
@@ -624,7 +635,7 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
 }});
 window.addEventListener("pagehide",clearConversations);
 window.addEventListener("pagehide",()=>{copyBridge.dispose();for(const item of copyRequests.values()){window.clearTimeout(item.timer);item.resolve(false);}copyRequests.clear();});
-Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,workflows,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(event.data.type==="steamharness:kanban-edit-host"&&event.data.version===1){editHost=event.data.enabled===true;for(const view of conversationViews.values())view.deliver({type:"conversation-edit-host",enabled:editHost});return;}
@@ -861,6 +872,7 @@ function validateKanbanBridgeInput(
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
   switch (operation) {
+    case "entries.workflow": validateWorkflowCall(input); return;
     case "entries.list": return;
     case "conversations.openView":
     case "conversations.viewMessage":
@@ -997,7 +1009,7 @@ function validateKanbanBridgeInput(
 }
 
 function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation {
-  return value === 'entries.list' || value === 'conversations.openView' || value === 'conversations.viewMessage' || value === 'conversations.closeView' || value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
+  return value === 'entries.workflow' || value === 'entries.list' || value === 'conversations.openView' || value === 'conversations.viewMessage' || value === 'conversations.closeView' || value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
     value === "studio.getLocalAnalysis" ||
     value === "files.createFile" ||
     value === "files.readFile" ||
