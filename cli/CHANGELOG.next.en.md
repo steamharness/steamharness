@@ -1,5 +1,7 @@
 # Unreleased
 
+- CLI Web displays Workflow run history in a single row per entry, matching the Bot conversation list. Titles, status icons, and timestamps share one line, with long titles truncated.
+
 - Activity records with screenshots place text on the left and the image on the right, stacking in narrow views. Images remain available in the full preview.
 
 - Workflow results follow streaming output and delayed image growth, pause while reading, and offer a resume action. Structured activity cards separate summaries, targets, images, and complete text.
