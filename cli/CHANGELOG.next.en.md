@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix large inline images leaving the result page on progress text with a running indicator. Completed records display their saved images after refreshing the page.
+
 - Kanban can query the complete Workflow timeline and navigate captured frames through local journals and attachments, including read-only previews.
 
 - Kanban can start and stop local Workflows, read output pages and load run images through native history. Optional Server guidance is collapsed by default.

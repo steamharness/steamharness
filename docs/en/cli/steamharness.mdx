@@ -59,6 +59,8 @@ See [Use CLI Web](/en/cli/web).
 
 `check` and `structure` statically inspect registered entries without executing user modules. Unsafe paths, duplicate IDs, invalid defaults, mismatched types and legacy declarations fail. `json` returns a run report with project and entry identity. Failed runs return a nonzero exit code. Cancellation propagates to the current execution and calls to other entries.
 
+CLI Web and Studio can display inline images in run results. Click an image to enlarge it, or reopen the record to view it later. If an older page stays on progress text after a successful run, update the CLI, refresh the project page, and reopen the record to see the saved image without running the workflow again.
+
 Use [workspace commands](/en/cli/server-workspace) for remote static project management. Server never executes project code.
 
 Kanban cards in assistant replies preview their saved project, entry and configuration, keeping the owning host's entry prefix in resource URLs. Studio's `get_kanban_diagnostics` covers both open workspace boards and assistant cards, returning page instances, configuration identity and the latest 50 reads; `previews` identifies card sources. Use the current `instanceId` and `configurationId` to call page methods explicitly declared `readOnly: true` and verify actual state such as image readiness.

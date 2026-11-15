@@ -2,9 +2,43 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ConversationOutput } from '../web/ui/conversation-output';
 import type { Attachment, ConversationMessage, OutputItem } from '../web/workflow-types';
+import { markdownHtml } from '../web/ui/ui';
 
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
+
+it('replaces live progress with a large inline image, clears running state and restores the image from history', () => {
+  const root = document.createElement('div'), image = vi.fn(); document.body.append(root);
+  const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image, resource() {} }); outputs.push(output);
+  const item: OutputItem = { id: 'grid-result', title: 'Output', contentType: 'markdown', collapsed: false, content: 'Completed 16 / 16 tiles' };
+  output.update({ role: 'assistant', status: 'running', content: '', items: [item] }, 'project', 'main', 'run', []);
+  expect(root.querySelector('.pending')).not.toBeNull();
+  const src = `data:image/png;base64,${'A'.repeat(8 * 1024 * 1024)}`;
+  const message: ConversationMessage = { role: 'assistant', status: 'success', content: '', items: [
+    { ...item, content: `## Highlighted map\n\n![Highlighted map](${src})\n\n16 regions analyzed.` },
+    { id: 'grid-details', title: 'Coordinates', contentType: 'json', collapsed: true, content: { cells: 16 } },
+  ] };
+  expect(() => output.update(message, 'project', 'main', 'run', [])).not.toThrow();
+  expect(root.querySelector('.pending')).toBeNull();
+  expect(root.querySelector('img')?.getAttribute('src')).toBe(src);
+  root.querySelector('img')!.click(); expect(image).toHaveBeenCalledWith(src, 'Highlighted map');
+  const replayRoot = document.createElement('div'); document.body.append(replayRoot);
+  const replay = new ConversationOutput(replayRoot, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(replay);
+  replay.update(message, 'project', 'main', 'run', []);
+  expect(replayRoot.querySelector('img')?.getAttribute('src')).toBe(src);
+  expect(replayRoot.querySelector('.pending')).toBeNull();
+}, 15000);
+
+it('preserves embedded URLs in references, HTML and code while sanitizing the restored HTML', () => {
+  const src = 'data:image/png;base64,QUJDRA==';
+  const html = markdownHtml(`![map][frame]\n\n[frame]: ${src}\n\n<img src="${src}" onerror="alert(1)">\n\n\`\`\`text\n${src}\n\`\`\`\n\n<a href="data:text/html;base64,PHNjcmlwdD4=">unsafe</a>`);
+  const root = document.createElement('div'); root.innerHTML = html;
+  expect([...root.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([src, src]);
+  expect(root.querySelector('pre')?.textContent).toContain(src);
+  expect(root.querySelector('a')?.hasAttribute('href')).toBe(false);
+  expect(root.querySelector('[onerror]')).toBeNull();
+  expect(html).not.toContain('STEAMHARNESSMEDIA');
+});
 
 it.each(['en', 'zh-CN'] as const)('shows sleep end times during the wait and after completion and replay in %s', async language => {
   const { initI18n } = await import('@steamharness/i18n'); initI18n({ preference: language });

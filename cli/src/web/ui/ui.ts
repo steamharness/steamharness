@@ -60,16 +60,26 @@ export function mediaUrl(source: string, kind: 'audio' | 'video', files: Attachm
 }
 
 export function markdownHtml(text: string, files: Attachment[] = []): string {
+  // Marked's block regexes can overflow on multi-megabyte base64 lines.
+  // Restore URLs before sanitizing so inline HTML and unsafe links keep the same checks.
+  const dataUrls = new Map<string, string>();
+  const prefix = `STEAMHARNESSMEDIA${crypto.randomUUID().replaceAll('-', '')}X`;
+  const source = text.replace(/data:[a-z0-9.+/-]+(?:;[a-z0-9._+-]+=[a-z0-9._+-]+)*;base64,[a-z0-9+/=]+/gi, url => {
+    const key = `${prefix}${dataUrls.size}END`;
+    dataUrls.set(key, url); return key;
+  });
+  const marker = new RegExp(`${prefix}\\d+END`, 'g');
+  const restore = (value: string): string => dataUrls.size ? value.replace(marker, key => dataUrls.get(key) ?? key) : value;
   const renderer = new marked.Renderer();
   renderer.image = (token) => {
-    const file = managedFileForUrl(token.href, files);
-    return `<img loading="lazy" src="${escapeHtml(file?.previewUrl ?? token.href)}" alt="${escapeHtml(token.text)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : ''}>`;
+    const href = restore(token.href), file = managedFileForUrl(href, files);
+    return `<img loading="lazy" src="${escapeHtml(file?.previewUrl ?? href)}" alt="${escapeHtml(token.text)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : ''}>`;
   };
   renderer.link = (token) => {
-    const file = managedFileForUrl(token.href, files);
-    return `<a href="${escapeHtml(file?.previewUrl ?? token.href)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : fileLinkTarget(token.href) ? ` data-workflow-path="${escapeHtml(token.href)}"` : ''}>${renderer.parser.parseInline(token.tokens)}</a>`;
+    const href = restore(token.href), file = managedFileForUrl(href, files);
+    return `<a href="${escapeHtml(file?.previewUrl ?? href)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : fileLinkTarget(href) ? ` data-workflow-path="${escapeHtml(href)}"` : ''}>${renderer.parser.parseInline(token.tokens)}</a>`;
   };
-  const fragment = DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true, renderer }), {
+  const fragment = DOMPurify.sanitize(restore(marked.parse(source, { async: false, breaks: true, renderer })), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'a', 'img', 'details', 'summary', 'input'],
     ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'loading', 'class', 'open', 'data-workflow-file', 'data-workflow-path', 'type', 'checked', 'disabled'],
     RETURN_DOM_FRAGMENT: true,
