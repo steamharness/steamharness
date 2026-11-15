@@ -1,5 +1,7 @@
 # Unreleased
 
+- Local run journals can read activity by capture time, returning bounded frame references, activity buckets, and the selected moment while preserving existing pages and history.
+
 - The project generator documents Kanban background Workflow controls, output pages and run images.
 
 - File parameters support image cropping options and minimum/maximum pixel dimensions, preserved in structure reports and waiting-input forms with validated bounds.

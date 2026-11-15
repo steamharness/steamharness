@@ -202,7 +202,7 @@ const MAX_KNOWLEDGE_LINE_RANGE = 1_000;
 
 const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[]> = {
   "entries.list": [],
-  "entries.workflow": ["entryId", "action", "entrypointId", "params", "requestId", "title", "runId", "page", "fileId", "offset", "limit"],
+  "entries.workflow": ["entryId", "action", "entrypointId", "params", "requestId", "title", "runId", "page", "fileId", "offset", "limit", "from", "to", "at", "position", "direction"],
   "conversations.openView": ["entryId", "conversationId", "viewId", "documentId", "draft", "locale", "submit", "ui"],
   "conversations.viewMessage": ["viewId", "message"],
   "conversations.closeView": ["viewId"],
@@ -550,6 +550,7 @@ const workflows=Object.freeze({get:(entryId)=>Object.freeze({
  list:(options={})=>request("entries.workflow",{...options,entryId,action:"list"}),
  start:(input)=>request("entries.workflow",{...input,entryId,action:"start"}),
  page:(runId,options={})=>request("entries.workflow",{...options,entryId,runId,action:"page"}),
+ timeline:(runId,options={})=>request("entries.workflow",{...options,entryId,runId,action:"timeline"}),
  stop:(runId)=>request("entries.workflow",{entryId,runId,action:"stop"}),
  readImage:async(runId,fileId)=>{const file=await request("entries.workflow",{entryId,runId,fileId,action:"file"});const bytes=Uint8Array.from(atob(file.base64),value=>value.charCodeAt(0));return {mimeType:file.mimeType,buffer:bytes.buffer};}
 })});

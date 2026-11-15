@@ -34,3 +34,14 @@ it('only reads supported images owned by the selected run',async()=>{
   try{expect((await api.invoke(request,'viewer') as any).base64).toBe('AQID');owner='another-run';await expect(api.invoke(request,'viewer')).rejects.toThrow('belong');}
   finally{await rm(dir,{recursive:true,force:true});}
 });
+
+it('routes readonly timeline queries through the native journal and rejects missing run identity',async()=>{
+  const project={entryId:'capture',fields:[],entrypoints:[]} as unknown as Project;
+  const queryLog: unknown[]=[];
+  const journal={append:async()=>({total:201,revision:2}),page:async()=>({runId:'run',items:[],files:[],total:201,revision:2,page:1,pageSize:100}),details:async()=>({items:[],files:[],events:[]}),references:async()=>[],timeline:async(runId:string,query:unknown)=>{queryLog.push([runId,query]);return{runId,total:201,revision:2,bounds:null,from:1000,to:2000,frames:[],buckets:[],selection:null};}};
+  const controller=new Controller(project,{} as Runtime,{runs:[{id:'run',scopeId:'run',status:'success',items:[],events:[],files:[],resolvedInputs:[],args:[],params:{},outputSummary:{total:201,revision:2}} as any]}, {journal,save:async()=>{},changed(){},log(){}});
+  const api=new EntryWorkflows(controller,project,{} as Runtime);
+  const value=await api.invoke({entryId:'capture',action:'timeline',runId:'run',from:1000,to:2000,at:1500,limit:12},'viewer',true) as any;
+  expect(value.run.id).toBe('run');expect(value.total).toBe(201);expect(queryLog).toEqual([['run',{from:1000,to:2000,at:1500,limit:12}]]);
+  await expect(api.invoke({entryId:'capture',action:'timeline',runId:'foreign'},'viewer',true)).rejects.toThrow('no longer exists');
+});

@@ -67,6 +67,7 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
 
   return {
     async readRunOutputPage(runId, page, pageSize) { return outputs.page(runId, page, pageSize); },
+    async readRunOutputTimeline(runId, query) { return outputs.timeline(runId, query); },
     async readRunOutputDetails(runId) { return outputs.details(runId); },
     async readRunOutputReferences(runId) { return outputs.references(runId); },
     async list(kind) {

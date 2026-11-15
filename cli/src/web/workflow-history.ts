@@ -1,10 +1,11 @@
 import { emptyRuntimeRecord, type RuntimeHistoryLease, type RuntimeHistoryRecord, type RuntimePersistence } from 'steamharness/runtime-storage';
-import type { RuntimeOutputAppend, RuntimeOutputPage, RuntimeOutputDetails, RuntimeOutputSummary } from 'steamharness/runtime-storage';
+import type { RuntimeOutputAppend, RuntimeOutputPage, RuntimeOutputDetails, RuntimeOutputSummary, RuntimeOutputTimeline, RuntimeTimelineQuery } from 'steamharness/runtime-storage';
 import type { RunRecord, WorkspaceContract } from './workflow-workspace';
 
 export interface WorkflowOutputJournal {
   append(runId: string, input: RuntimeOutputAppend): Promise<RuntimeOutputSummary>;
   page(runId: string, page?: number, pageSize?: number): Promise<RuntimeOutputPage>;
+  timeline?(runId: string, query?: RuntimeTimelineQuery): Promise<RuntimeOutputTimeline>;
   details(runId: string): Promise<RuntimeOutputDetails>;
   references(runId: string): Promise<string[]>;
 }
@@ -31,6 +32,7 @@ export class WorkflowHistory {
         this.pending = next.catch(() => undefined); return next;
       },
       page: async (runId, page, pageSize) => { await this.pending; return backend.readRunOutputPage!(runId, page, pageSize); },
+      timeline: backend.readRunOutputTimeline ? async (runId, query) => { await this.pending; return backend.readRunOutputTimeline!(runId, query); } : undefined,
       details: async runId => { await this.pending; return backend.readRunOutputDetails!(runId); },
       references: async runId => { await this.pending; return backend.readRunOutputReferences!(runId); },
     };

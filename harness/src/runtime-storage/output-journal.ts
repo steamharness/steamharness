@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { createOutputTimeline } from "./output-timeline";
+export type { RuntimeOutputTimeline, RuntimeTimelinePoint, RuntimeTimelineQuery } from "./output-timeline";
 
 export interface RuntimeOutputSummary { total: number; revision: number }
 export interface RuntimeOutputPage extends RuntimeOutputSummary {
@@ -35,6 +37,7 @@ export function createLocalOutputJournal(database: () => DatabaseSync) {
     }
     return db;
   };
+  const timeline = createOutputTimeline(db);
   const references = (runId: string, value: unknown, item = false) => {
     const insert = db().prepare("INSERT OR IGNORE INTO run_output_refs(run_id,file_id) VALUES(?,?)");
     for (const id of new Set(JSON.stringify(value).match(/wf_[a-f0-9]{32}/g) ?? [])) {
@@ -115,6 +118,7 @@ export function createLocalOutputJournal(database: () => DatabaseSync) {
         .all(runId).map(row => JSON.parse(row.record as string) as Record<string, unknown>);
       return { runId, total: state.total, revision: state.revision, page, pageSize, items, files: [...new Map([...files, ...standalone].map(file => [file.id, file])).values()] };
     },
+    timeline,
     details(runId: string): RuntimeOutputDetails {
       const read = (table: string, order: string) => db().prepare(`SELECT record FROM ${table} WHERE run_id=? ORDER BY ${order}`).all(runId)
         .map(row => JSON.parse(row.record as string) as Record<string, unknown>);

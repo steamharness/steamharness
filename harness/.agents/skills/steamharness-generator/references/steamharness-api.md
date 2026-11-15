@@ -1636,3 +1636,8 @@ Workflow 最新页在新增输出及图片高度变化时跟随底部；用户�
 本地浏览器宿主提供 `window.steamHarnessKanban.workflows.get(entryId)`，仅控制同一聚合中已登记的 Workflow。`start({ entrypointId, params, requestId, title? })` 在宿主持久化运行后立即返回摘要，使用稳定请求 ID 去重，不能用长时间等待的 runEntrypoint 代替。`list({offset?,limit?})` 返回 runs/total/activeRunId/nextOffset（limit 1–100）；`page(runId,{page?})` 固定每页 100 条 OutputItem，省略 page 取最新；`stop(runId)` 只停止指定活动运行；`readImage(runId,fileId)` 返回该运行图片的 mimeType/buffer，最多 10 MiB。
 
 此接口复用原生 Controller、运行日志、附件和租约。刷新时先 list 并连接 activeRunId，不重复启动；选旧页保持页码，按 revision 和请求代次忽略旧响应。图片按需读取并释放 Blob URL。不得在业务项目中直接读取宿主 SQLite、另存重复历史或通过 URL/参数选择项目、账号与路径。只读资源预览限 list/page/readImage；Server 静态预览不执行本地 Workflow。
+
+
+画面回看使用 `timeline(runId, { from?, to?, at?, limit?, position?, direction? })`，复用本地 SQLite 输出日志，不另存历史。`from/to/at` 是 Unix 毫秒时间戳；不传范围读取整次运行，不传定位选中最新事件。返回 `run/runId/total/revision/bounds/from/to/frames/buckets/selection`。`limit` 为 1–48，默认 16；最多返回该数量的抽样截图元数据、80 个活动区间，以及一个完整选中 item 和最多九条附近事件摘要。`selection.point` 包含 `id/position/timestamp/kind/title/imageFileId?/fields`；`selection.frame` 是附近截图的定位信息。缩略图和附近事件没有完整 OCR 正文，图片仍走 `readImage`。
+
+时间轴只投影 `metadata.kind: "activity-record"`、`content.version: 1` 且带有效时间戳的 snapshot/click/input 输出。同一时间按稳定输出位置排序，支持混合秒与毫秒精度及延迟事件。传入 `selection.point.position` 可保持选中事件，附带 `direction: "previous" | "next"` 可跳转相邻图片。请求范围为空档时不得伪造连续记录。拖动暂停实时跟随，保留当前位置并提示新增记录；异步响应须校验运行及请求序号，缩略图缓存和读取队列须有上限。存储未实现时间轴时明确失败，不全量载入历史来模拟。

@@ -291,6 +291,13 @@ export class Controller {
     const selected = Math.min(page ?? Infinity, Math.max(1, Math.ceil(total / pageSize)));
     return { runId, page: selected, pageSize, total, revision: run.updatedAt, items: run.items.slice((selected - 1) * pageSize, selected * pageSize), files: run.files };
   }
+  async outputTimeline(runId: string, query: import('steamharness/runtime-storage').RuntimeTimelineQuery) {
+    const run = this.runs.find(run => run.id === runId);
+    if (!run) throw new Error('Run no longer exists.');
+    await this.outputWrites;
+    if (!this.options.journal?.timeline) throw new Error('Timeline reads are unavailable in this history storage.');
+    return this.options.journal.timeline(runId, query);
+  }
   async materialize(runId: string): Promise<RunRecord> {
     const run = this.runs.find(run => run.id === runId);
     if (!run) throw new Error('Run no longer exists.');

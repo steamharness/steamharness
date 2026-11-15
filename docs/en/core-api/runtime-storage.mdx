@@ -123,3 +123,6 @@ The local SQLite backend stores output separately from run summaries. With the m
 `local.readRunOutputPage(runId, page?, pageSize?)` returns `runId`, `items`, the page attachments in `files`, `total`, `page`, `pageSize`, and `revision`. Pages start at 1. Omitting the page selects the latest page. The default and maximum page size are both 100.
 
 Use `readRunOutputDetails(runId)` for an explicit export of all items, events, and attachments, or `readRunOutputReferences(runId)` for attachment IDs. Deleting a run removes its journal; `copyRuntimePersistence` includes the complete journal in backups. These optional methods are currently provided by the local SQLite backend.
+
+
+The local persistence adapter also provides optional `readRunOutputTimeline(runId, query)` for structured activity output. It reads capture timestamps from the existing journal using additive indexes, returning bounded frame metadata, time buckets, and the selected item. It supports saved runs without rewriting them. Backends that do not implement this method must report that timeline reads are unavailable; pages remain available.

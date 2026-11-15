@@ -16,7 +16,7 @@ export class EntryWorkflows {
   async invoke(input: Record<string, unknown>, sourceEntryId: string, readOnly = false): Promise<unknown> {
     validateWorkflowCall(input);
     if (input.entryId !== this.project.entryId) throw new Error('Workflow entry identity changed.');
-    if (readOnly && !['list', 'page', 'file'].includes(String(input.action))) throw new Error('Read-only views cannot control a Workflow.');
+    if (readOnly && !['list', 'page', 'timeline', 'file'].includes(String(input.action))) throw new Error('Read-only views cannot control a Workflow.');
     if (input.action === 'list') {
       const offset = Number(input.offset ?? 0), limit = Number(input.limit ?? 50);
       return { runs: this.controller.runs.slice(offset, offset + limit).map(run => this.summary(run)), total: this.controller.runs.length,
@@ -43,6 +43,11 @@ export class EntryWorkflows {
     if (input.action === 'page') {
       const page = await this.controller.outputPage(run.id, input.page as number | undefined);
       return { ...page, run: this.summary(run), files: page.files.map(file => ({ id: file.id, name: file.name, mimeType: file.mimeType, size: file.size })) };
+    }
+    if (input.action === 'timeline') {
+      const { from, to, at, limit, position, direction } = input;
+      const timeline = await this.controller.outputTimeline(run.id, { from, to, at, limit, position, direction } as import('steamharness/runtime-storage').RuntimeTimelineQuery);
+      return { ...timeline, run: this.summary(run) };
     }
     if (input.action === 'file') {
       const file = await this.runtime.readFile(this.project, String(input.fileId));

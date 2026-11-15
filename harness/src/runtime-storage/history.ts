@@ -3,8 +3,8 @@ import type { AgentStorageFactory } from "../agent/storage";
 import type { TokenUsageEntry } from "../token-usage";
 import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryKind, type RuntimeHistoryRecord, type RuntimeWorkspace, type RuntimeWorkspaceInput } from "./contract";
 import { ServerAgentStorage, runtimeStorageRequest, type ServerAgentStorageOptions } from "./server";
-import type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary } from "./output-journal";
-export type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary } from "./output-journal";
+import type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary, RuntimeOutputTimeline, RuntimeTimelineQuery } from "./output-journal";
+export type { RuntimeOutputAppend, RuntimeOutputDetails, RuntimeOutputPage, RuntimeOutputSummary, RuntimeOutputTimeline, RuntimeTimelinePoint, RuntimeTimelineQuery } from "./output-journal";
 
 export interface RuntimeHistoryLease {
   assertOwned(): void;
@@ -18,6 +18,7 @@ export interface RuntimeHistoryLease {
 export interface RuntimePersistence {
   list(kind: RuntimeHistoryKind): Promise<RuntimeHistoryRecord[]>;
   readRunOutputPage?(runId: string, page?: number, pageSize?: number): Promise<RuntimeOutputPage>;
+  readRunOutputTimeline?(runId: string, query?: RuntimeTimelineQuery): Promise<RuntimeOutputTimeline>;
   readRunOutputDetails?(runId: string): Promise<RuntimeOutputDetails>;
   readRunOutputReferences?(runId: string): Promise<string[]>;
   acquire(scope: string, onLost?: (error: Error) => void): Promise<RuntimeHistoryLease>;

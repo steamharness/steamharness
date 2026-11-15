@@ -123,3 +123,6 @@ Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本
 `local.readRunOutputPage(runId, page?, pageSize?)` 返回 `runId`、`items`、当前页附件 `files`、`total`、`page`、`pageSize` 和 `revision`。页码从 1 开始，省略时读取最新页；每页最多 100 条，默认 100 条。
 
 需要显式导出时，使用 `readRunOutputDetails(runId)` 读取完整输出、事件与附件；`readRunOutputReferences(runId)` 返回附件 ID。删除运行同时清理日志，`copyRuntimePersistence` 备份时包含完整日志。这些能力目前由本地 SQLite 仓储提供，不支持的仓储不会声明对应方法。
+
+
+本地持久化适配器还提供可选的 `readRunOutputTimeline(runId, query)`，按结构化活动记录的采集时间定位。它在现有日志上增加索引，返回有界的截图元数据、时间区间与选中输出，旧运行无需重写。未实现该方法的存储应明确报告时间轴不可用，原有分页仍可使用。

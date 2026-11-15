@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document Kanban timeline reads, capture-time ordering, and bounded viewer caches.
+
 - Document background Workflow controls and paged results for Kanban projects.
 
 - Project generation guidance covers optional image cropping, minimum/maximum pixel dimensions, and uploading only after confirmation.

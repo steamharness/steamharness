@@ -326,7 +326,7 @@ export class ResourcePreviews {
       return readLocalWorkflowResource(this.runtime, project, String(call.input.entryId), { entrypointId: call.input.entrypointId, args: call.input.args }, this.entries.get(id)?.controller?.signal ?? this.lifetime.signal);
     }
     if (call.operation === 'entries.workflow') {
-      if (data.card.target.source === 'server' || project.id !== this.owner.id || !['list','page','file'].includes(String(call.input.action))) throw new Error(t('This resource preview is read-only.'));
+      if (data.card.target.source === 'server' || project.id !== this.owner.id || !['list','page','timeline','file'].includes(String(call.input.action))) throw new Error(t('This resource preview is read-only.'));
       if (!this.runtime.kanbanBridge) throw new Error('Local Workflow history is unavailable.');
       const generation = this.generation, entry = this.entries.get(id);
       const result = await this.runtime.kanbanBridge(project, call, entry?.controller?.signal ?? this.lifetime.signal);
