@@ -17,6 +17,7 @@ import type { RunContext } from "../types";
 import type { AgentInput } from "../agent/types";
 import { createProjectToolPermissionContext } from "../tool-permissions";
 import { withBotToolCall } from "../agent/bot-lifecycle";
+import { serializeProjectError } from "../workflow/errors";
 
 test("Bot memories survive reopen, share conversations and isolate projects, entries and categories", async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "bot-memory-"));
@@ -83,6 +84,48 @@ function context(persistence: ReturnType<typeof createMemoryRuntimePersistence>,
     tokenUsage: createDisabledProjectTokenUsageContext() };
 }
 const input: AgentInput = { errCode: 0, errMessage: "", prompt: "Remember and retrieve project facts.", requestId: "memory-input" };
+
+for (const withFactory of [false, true]) test(`default memory tools preserve configured extra tools (factory: ${withFactory})`, { timeout: 15_000 }, async t => {
+  const ai = await import("@earendil-works/pi-ai");
+  const faux = ai.fauxProvider({ models: [{ id: "memory-extra-tools", contextWindow: 100_000, maxTokens: 1_000 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const offered: string[][] = [], calls: string[] = [];
+  const custom = (name: string) => ({ name, label: name, description: name, parameters: { type: "object", properties: {} },
+    async execute() { calls.push(name); return { content: [{ type: "text" as const, text: name }], details: {} }; },
+  });
+  const definition = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "memory-extra-tools")!, tools: [], permissionPolicy: "auto",
+    extraTools: [custom("configured_tool") as never], ...(withFactory ? { createTools: async () => [custom("per_run_tool") as never] } : {}) },
+    tools: ["configured_tool", "per_run_tool"].map(name => ({ name, enabled: true, autoApprove: true })),
+  });
+  faux.setResponses([
+    request => { offered.push(ai.getCurrentTools(request.messages).map(tool => tool.name)); return ai.fauxAssistantMessage([ai.fauxToolCall("configured_tool", {})], { stopReason: "toolUse" }); },
+    ...(withFactory ? [ai.fauxAssistantMessage([ai.fauxToolCall("per_run_tool", {})], { stopReason: "toolUse" })] : []),
+    ai.fauxAssistantMessage("Done"),
+  ]);
+  const run = context(persistence);
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: definition.tools ?? [], projectName: "bot", runId: "custom-tools" });
+  assert.equal((await definition.workflow.run(input, run)).errCode, 0);
+  assert.ok(offered[0]?.includes("configured_tool"));
+  assert.equal(offered[0]?.includes("per_run_tool"), withFactory);
+  assert.deepEqual(offered[0]?.filter(name => name.startsWith("memory_")), BOT_MEMORY_TOOL_NAMES);
+  assert.deepEqual(calls, withFactory ? ["configured_tool", "per_run_tool"] : ["configured_tool"]);
+});
+
+for (const enabled of [true, false]) test(`configured extra tools cannot replace Core memory tools (enabled: ${enabled})`, async t => {
+  const ai = await import("@earendil-works/pi-ai");
+  const faux = ai.fauxProvider({ models: [{ id: "reserved-memory-tools", contextWindow: 100_000, maxTokens: 500 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const definition = defineBot({ memory: { enabled }, agent: { models, resolvedModel: models.getModel("faux", "reserved-memory-tools")!, tools: [],
+    extraTools: [{ name: "memory_get", label: "Memory", description: "Conflicting tool", parameters: { type: "object", properties: {} },
+      async execute() { return { content: [{ type: "text", text: "Wrong tool" }], details: {} }; } } as never] } });
+  faux.setResponses([ai.fauxAssistantMessage("Done")]);
+  await assert.rejects(async () => definition.workflow.run(input, context(persistence)), error => {
+    assert.match(JSON.stringify(serializeProjectError(error)), /memory_\* tool names are reserved/);
+    return true;
+  });
+});
 
 test("separate Bot conversations retrieve the same project memory while a disabled switch blocks calls", async t => {
   const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());

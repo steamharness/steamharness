@@ -52,6 +52,47 @@ it.each([true, false])("preserves the Bot memory default (%s) in compiled releas
   await store.dispatch({ action: "save", revision: state.revision, id: state.activeConfigurationId, values: { [BOT_MEMORY_CONFIGURATION_KEY]: !enabled } });
   expect((await store.snapshot()).values[BOT_MEMORY_CONFIGURATION_KEY]).toBe(!enabled);
 });
+it.each([true, false])("uses the release override's Bot memory default (%s)", async enabled => {
+  const { directory, declaration } = await fixture();
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration,
+    entries: [{ ...declaration.entries[0], type: "bot", configuration: "configuration.json" }],
+    release: { entryOverrides: { main: { entry: "release.ts", configuration: "release-configuration.json" } } } }));
+  await writeFile(path.join(directory, "index.ts"), `export default steamharness.defineBot({ memory: { enabled: ${!enabled} } });`);
+  await writeFile(path.join(directory, "release.ts"), `export default steamharness.defineBot({ memory: { enabled: ${enabled} } });`);
+  await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [{ name: BOT_MEMORY_CONFIGURATION_KEY, type: "boolean", defaultValue: !enabled }] }));
+  await writeFile(path.join(directory, "release-configuration.json"), JSON.stringify({ version: 1, fields: [{ name: BOT_MEMORY_CONFIGURATION_KEY, type: "boolean" }] }));
+  const release = await buildProjectRelease(directory);
+  const store = await createLocalProjectConfigurationStore(release.directory, { rootDir: path.join(os.homedir(), "configurations") });
+  expect((await store.snapshot()).values[BOT_MEMORY_CONFIGURATION_KEY]).toBe(enabled);
+  const configuration = JSON.parse(await readFile(path.join(release.directory, "entries/main/configuration.json"), "utf8"));
+  expect(configuration.fields.find((field: { name: string }) => field.name === BOT_MEMORY_CONFIGURATION_KEY).defaultValue).toBe(enabled);
+});
+
+it("inspects the memory default of an alternate Bot source entry", async () => {
+  const { directory, declaration } = await fixture();
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot" }] }));
+  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({});');
+  await writeFile(path.join(directory, "release.ts"), 'export default steamharness.defineBot({ memory: { enabled: false } });');
+  const report = inspectLocalProjectStructure({ projectDir: directory, sourceEntry: "release.ts" });
+  expect(report.configuration?.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)?.defaultValue).toBe(false);
+  const release = await buildProjectRelease(directory);
+  expect(readProjectConfigurationDefinition(release.directory).fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)?.defaultValue).toBe(true);
+});
+
+it("preserves versioned configuration profiles when adding the Bot memory switch to a release", async () => {
+  const { directory, declaration } = await fixture();
+  const profilePolicy = { version: 1, manageMinimumRole: "guest", defaultProfileKey: "ask", profiles: [{ key: "ask", name: "Ask", minimumRole: "guest", fixedValues: {} }] };
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot", configuration: "configuration.json" }] }));
+  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({ memory: { enabled: false } });');
+  await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 2, fields: [], profilePolicy }));
+  const release = await buildProjectRelease(directory);
+  const definition = readProjectConfigurationDefinition(release.directory);
+  expect(definition.version).toBe(2);
+  expect(definition.profilePolicy).toEqual(profilePolicy);
+  const store = await createLocalProjectConfigurationStore(release.directory, { rootDir: path.join(os.homedir(), "configurations") });
+  expect((await store.snapshot()).values[BOT_MEMORY_CONFIGURATION_KEY]).toBe(false);
+  expect((await store.snapshot()).profileKey).toBe("ask");
+});
 it("builds a portable compiled project with readable metadata and checks inventory on roundtrip", async () => {
   initI18n({ preference: "en" });
   const { directory } = await fixture();

@@ -41,7 +41,9 @@ export const executor = steamharness.defineBot({
 });
 ```
 
-The boolean configuration key is `STEAMHARNESS_BOT_MEMORY_ENABLED`. Core provides these tools automatically; projects must not supply tools with the same names:
+The boolean configuration key is `STEAMHARNESS_BOT_MEMORY_ENABLED`; you usually do not need to declare it in `configuration.json`. An explicit declaration must use type `boolean`. If `defaultValue` is omitted, it inherits `memory.enabled` from the Bot exported by that entry. Other Bot declarations do not change this default.
+
+Core provides these tools alongside business tools supplied by `agent.extraTools` and `agent.createTools`. A conflicting memory tool name in either place causes an execution error:
 
 | Tool | Arguments and result |
 | --- | --- |

@@ -1060,7 +1060,9 @@ Bot 使用 `steamharness.defineBot({ name?, memory?, agent?, tools?, params?, re
 
 Bot 项目记忆默认开启。`memory: { enabled: false }` 定义新配置的默认关闭值，已保存的项目配置布尔键 `STEAMHARNESS_BOT_MEMORY_ENABLED` 优先；用户可在项目配置界面切换，后续执行生效，已有运行快照保持原值。关闭保留已有条目，但不提供记忆工具与提示词。
 
-Core 自动提供 `memory_save({ category, key, content })`、`memory_get({ category?, key?, query?, limit?, offset? })`、`memory_update({ category, key, content, expectedRevision })` 和 `memory_delete({ category, key, expectedRevision })`。项目不得声明同名工具。先读取最新 `revision` 再修改或删除；同分类同键的新建拒绝覆盖，版本冲突须重读。Plan 和只读模式只提供读取，工具继续经过宿主权限与审批。
+该字段通常无需写入 `configuration.json`；显式声明时必须为 `boolean`，缺少 `defaultValue` 时继承入口实际导出的 Bot 默认值。静态读取支持别名与相对模块重导出，不读取无关 Bot 的默认值。宿主可调用 `readProjectConfigurationDefinition(projectDir, entryId?, { sourceEntry?, configurationFile? })` 检查替代源码入口与配置文件；覆盖路径相对已注册入口根目录，不能越界，检查不会执行项目代码。发行打包使用最终入口与配置的默认值，并保留配置版本及档位。
+
+Core 自动提供 `memory_save({ category, key, content })`、`memory_get({ category?, key?, query?, limit?, offset? })`、`memory_update({ category, key, content, expectedRevision })` 和 `memory_delete({ category, key, expectedRevision })`。`agent.extraTools` 与每轮 `agent.createTools` 提供的业务工具会同时保留，两处均不得声明同名记忆工具。先读取最新 `revision` 再修改或删除；同分类同键的新建拒绝覆盖，版本冲突须重读。Plan 和只读模式只提供读取，工具继续经过宿主权限与审批。
 
 记忆按项目 UUID 与 Bot 入口隔离，同一入口的会话共享；分类与键再区分独立事实，不得把所有内容塞进同一条。无筛选的读取只列分类，分类或关键词检索返回摘要，分类加键读取全文；列表默认 10 条、最多 20 条，按 `nextOffset` 翻页。内置提示指导按需检索、查重、维护长期事实并排除凭据、完整会话与临时进度，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
 

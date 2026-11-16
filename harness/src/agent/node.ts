@@ -273,7 +273,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
       }
       const bot = botNodeLifecycle(this);
-      if (bot && toolSet?.tools.some(tool => BOT_MEMORY_TOOL_NAMES.includes(tool.name as typeof BOT_MEMORY_TOOL_NAMES[number]))) {
+      if (bot && [...(this.options.extraTools ?? []), ...(toolSet?.tools ?? [])].some(tool => BOT_MEMORY_TOOL_NAMES.includes(tool.name as typeof BOT_MEMORY_TOOL_NAMES[number]))) {
         throw new Error("Bot memory_* tool names are reserved by Core.");
       }
       if (bot && isBotMemoryEnabled(context, bot.memoryDefaultEnabled)) {

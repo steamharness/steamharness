@@ -41,7 +41,9 @@ export const executor = steamharness.defineBot({
 });
 ```
 
-开关对应配置键 `STEAMHARNESS_BOT_MEMORY_ENABLED`，值为布尔值。Core 自动提供以下工具，项目不应声明同名工具：
+开关对应配置键 `STEAMHARNESS_BOT_MEMORY_ENABLED`，值为布尔值，通常无需在 `configuration.json` 中声明。显式声明时必须使用 `boolean` 类型；省略 `defaultValue` 时，继承该入口实际导出的 Bot 的 `memory.enabled`。其它 Bot 声明不会改变这个默认值。
+
+Core 自动提供以下工具，可与 `agent.extraTools` 和 `agent.createTools` 提供的业务工具同时使用。两处若声明与记忆工具同名的工具，执行时会报错：
 
 | 工具 | 参数与结果 |
 | --- | --- |

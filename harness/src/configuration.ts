@@ -9,12 +9,13 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import ts from "typescript";
 import { getUserSettings, type UserSettings } from "./user-settings";
 import { setTimeout as delay } from "node:timers/promises";
 import {resolveProjectConfigurationAccess,type ConfigurationConnection} from './configuration-access';
 import { BOT_MEMORY_CONFIGURATION_KEY, botMemoryConfigurationField } from "./agent/memory-configuration";
+import { findBotMemoryDefinition } from "./agent/memory-source";
 export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
@@ -63,17 +64,19 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
     const report = readReleaseStructureSync(aggregateDir, entry.entryId);
     return report?.agentModels?.[mode] === true;
   }
+  const entrySources = entryFile ? projectEntrySources(projectDir, entryFile, aggregateDir) : undefined;
+  const memoryDefinition = entryFile && entrySources ? findBotMemoryDefinition(entryFile, entrySources) : undefined;
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
-    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile, aggregateDir).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of entrySources ? entrySources.map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }
       if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || /(?:\.d|\.test|\.spec)\.[cm]?[jt]sx?$/.test(entry.name)) continue;
       const info = statSync(file);
       if (info.size > 1024 * 1024) continue;
-      const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+      const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}:${memoryDefinition?.file ?? ""}:${memoryDefinition?.start ?? ""}`;
       const previous = cache?.get(file);
       if (previous?.stamp === stamp) { if (previous[mode]) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
@@ -116,7 +119,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       };
       collect(source);
       const unwrap = (value: ts.Expression, seen = new Set<ts.Node>()): ts.Expression => {
-        if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value)) return unwrap(value.expression, seen);
+        if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value) || ts.isNonNullExpression(value)) return unwrap(value.expression, seen);
         if (ts.isIdentifier(value)) for (let owner: ts.Node | undefined = value.parent; owner; owner = owner.parent) {
           const declarations = constants.get(owner);
           if (!declarations?.has(value.text)) continue;
@@ -151,9 +154,10 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
             found = true;
             const isBot = ts.isPropertyAccessExpression(expression) ? expression.name.text === "defineBot" : ts.isIdentifier(expression) && imports.get(expression.text) === "defineBot";
             const argument = node.arguments[0] && unwrap(node.arguments[0]);
-            if (isBot && argument && ts.isObjectLiteralExpression(argument)) {
+            // Keep an explicit opt-out for legacy export shapes we cannot resolve statically.
+            if (isBot && (!memoryDefinition || memoryDefinition.file === file && memoryDefinition.start === node.getStart(source)) && argument && ts.isObjectLiteralExpression(argument)) {
               const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined => {
-                const field = object.properties.find(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) && item.name.text === name);
+                const field = [...object.properties].reverse().find(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) && item.name.text === name);
                 return field && ts.isPropertyAssignment(field) ? unwrap(field.initializer) : field && ts.isShorthandPropertyAssignment(field) ? unwrap(field.name) : undefined;
               };
               const memory = property(argument, "memory");
@@ -184,6 +188,7 @@ function addAgentConfigurationFields(definition: ProjectConfigurationDefinition,
     const field = definition.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY);
     if (field && field.type !== "boolean") throw new ProjectConfigurationError("Bot memory configuration must be a boolean field.");
     if (!field) definition.fields.push(botMemoryConfigurationField(!discoverProjectAgentModels(projectDir, cache, entryFile, "botMemoryDisabled", aggregateDir)));
+    else if (field.defaultValue === undefined) field.defaultValue = !discoverProjectAgentModels(projectDir, cache, entryFile, "botMemoryDisabled", aggregateDir);
   }
   if (!discoverProjectAgentModels(projectDir, cache, entryFile, "found", aggregateDir)) return;
   if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) definition.fields.unshift({ ...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD), ...definition.agentModelPolicy });
@@ -208,13 +213,22 @@ function withoutProjectAgentModels(state: ProjectConfigurationState): ProjectCon
       ...(state.template.profilePolicy ? { profilePolicy: profiles(state.template.profilePolicy) } : {}) } } : {}) };
 }
 
-export function readProjectConfigurationDefinition(projectDir: string, entryId?: string) {
+export function readProjectConfigurationDefinition(projectDir: string, entryId?: string, options: {
+  /** Authoring overrides, relative to the registered entry root. Project code is never executed. */
+  sourceEntry?: string; configurationFile?: string;
+} = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, entryId);
-  const file = resolved.configurationPath;
   projectDir = resolved.rootDir;
+  const override = (file: string) => {
+    const target = path.resolve(projectDir, file), relative = path.relative(realpathSync(projectDir), existsSync(target) ? realpathSync(target) : target);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error("Configuration inspection overrides must stay inside their registered root.");
+    return target;
+  };
+  const file = options.configurationFile === undefined ? resolved.configurationPath : override(options.configurationFile);
+  const modulePath = options.sourceEntry === undefined ? resolved.modulePath : override(options.sourceEntry);
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
-  addAgentConfigurationFields(definition, projectDir, resolved.modulePath, undefined, resolved.projectDir, resolved.registration.type === "bot");
-  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath, undefined, getUserSettings(), resolved.projectDir) && !definition.fields.some(field => field.control === "agent-model")) {
+  addAgentConfigurationFields(definition, projectDir, modulePath, undefined, resolved.projectDir, resolved.registration.type === "bot");
+  if (usesOnlyUserAgentModels(projectDir, modulePath, undefined, getUserSettings(), resolved.projectDir) && !definition.fields.some(field => field.control === "agent-model")) {
     definition.agentModelPolicy = configurationAgentModelPolicy(definition);
     definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
   }

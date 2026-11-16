@@ -37,6 +37,8 @@ pnpm exec steamharness web . --release --entry agent
 
 发行项目保存在 `dist/steamharness/release/project/`，压缩包保存在 `dist/steamharness/release/`。`run`、`json` 和 `web` 的 `--release` 只运行发行配置中包含的入口；构建失败会报告错误，保留上一次完整产物。
 
+Bot 记忆开关的默认值按最终发行入口和配置定义生成，支持 `release.entryOverrides` 的 `entry` 与 `configuration`。补入记忆开关时保留 v2 配置档位。
+
 发行目录中的项目声明、配置定义和额外 JSON 资源统一压缩为单行，保留字段名、字符串内容和数值原文。Server 发布配置后也会重新压缩，并更新文件校验清单。
 
 `structure.json` 使用 v2 格式，明文保留项目 ID、入口 ID、入口名称和类型，内部结构以 `brotli-base64` 压缩编码。SDK、CLI 和 Server 统一解码，供结构检查、运行和静态校验使用。

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Bot release memory defaults to use the selected release entry and configuration file, fill omitted defaults, and preserve v2 configuration profiles.
+
 - Fix New conversation reusing a blank Bot conversation already open in another window. Each click now creates an independent conversation that can send messages.
 
 - Bot project configurations include a default-on memory switch and a Bot memory tool permission group. Releases preserve the source default, older installed configurations gain the switch, and disabling memory preserves saved entries.

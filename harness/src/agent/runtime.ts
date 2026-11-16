@@ -219,7 +219,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   }
 
   /**
-   * Replaces the caller-supplied tools.
+   * Replaces per-run tools while retaining configured extra tools.
    *
    * Called per run by the node: those tools close over the run's
    * `NodeContext`, so they cannot be built once alongside the runtime.
@@ -227,7 +227,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   setExternalTools(tools: readonly PiAgentTool[], catalogs: readonly import("./extensions").AgentToolCatalog[] = []): void {
     if (catalogs.length && !this.options.session?.toolSearch) throw new Error("Deferred tools require session.toolSearch.");
     this.catalogsChanged ||= !!(catalogs.length || this.externalCatalogs.length);
-    this.externalTools = [...tools];
+    this.externalTools = [...(this.options.extraTools ?? []), ...tools];
     this.externalCatalogs = [...catalogs];
   }
 
