@@ -1,3 +1,7 @@
+export type WebAppFailureReason =
+  | 'server-not-configured' | 'server-unsupported' | 'account-unavailable' | 'server-unavailable'
+  | 'service-unavailable' | 'invalid-response' | 'provider-unavailable' | 'unknown';
+
 export interface WebAppBinding {
   service: string;
   apiBaseUrl: string;

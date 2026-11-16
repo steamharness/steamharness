@@ -932,5 +932,12 @@
   "Only HTTP and HTTPS links can be opened in the browser.": "浏览器仅支持打开 HTTP 和 HTTPS 链接。",
   "Unable to open the website in the system browser.": "无法在系统浏览器中打开网页。",
   "Unable to open the website: {0}": "无法打开网页：{0}",
-  "Could not connect the Web application to your account. Check the Server configuration and retry.": "无法将 Web 应用连接到当前账号。请检查 Server 配置后重试。"
+  "Could not connect the Web application to your account. Check the Server configuration and retry.": "无法将 Web 应用连接到当前账号。请检查 Server 配置后重试。",
+  "The selected Server has not configured account integration for this Web application. Configure and restart the Server, then retry.": "当前 Server 尚未配置此 Web 应用的账号集成。请完成配置并重启 Server 后重试。",
+  "The selected Server does not support account integration for this Web application. Update the Server, then retry.": "当前 Server 不支持此 Web 应用的账号集成。请更新 Server 后重试。",
+  "Your Server session is no longer valid. Sign in again from the Studio account menu, then retry.": "Server 登录已失效。请在 Studio 账号菜单中重新登录后重试。",
+  "The account Server could not be reached. Check its address and connection, then retry.": "无法连接账号 Server。请检查地址和网络连接后重试。",
+  "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.": "无法连接 Web 应用服务。请启动该服务，并检查 Server 中配置的服务地址后重试。",
+  "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.": "账号集成返回了无效响应。请检查 Server 和 Web 应用服务的版本及配置。",
+  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "当前 Studio 未注册此 Web 应用的账号提供器。请检查 Studio 扩展配置。"
 }

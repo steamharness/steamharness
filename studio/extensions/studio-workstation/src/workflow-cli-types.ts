@@ -5,6 +5,7 @@ import type { HostDatabaseRequest } from './workflow-databases-types';
 import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
+import type { WebAppFailureReason } from './web-app-errors';
 
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
@@ -28,7 +29,7 @@ export interface WebSession {
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
   retryWebApps?(): Promise<void>;
-  onWebAppError?(callback: () => void): { dispose(): void };
+  onWebAppError?(callback: (reason: WebAppFailureReason) => void): { dispose(): void };
   reconnect?(): Promise<boolean>;
   onReconnect?(callback: () => void): { dispose(): void };
   onExit(callback: (exit?: WebSessionExit) => void): { dispose(): void };

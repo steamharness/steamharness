@@ -1,4 +1,5 @@
 import { openWebApp, type WebAppSession } from "./web-app-providers";
+import { webAppFailureReason, type WebAppFailureReason } from "./web-app-errors";
 import { t, locale as currentLocale } from './localization';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -132,13 +133,13 @@ export async function startProjectCli(options: {
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
   let closing = false, finished = false, buffer = '', stderr = '';
-  let webAppFailed = false;
+  let webAppFailure: WebAppFailureReason | undefined;
   let webAppConnection = options.connection;
   let webAppEpoch = 0, webAppAbort: AbortController | undefined;
   let webAppSessions: WebAppSession[] = [];
-  const clearWebApps = () => { ++webAppEpoch; webAppAbort?.abort(); const sessions = webAppSessions; webAppSessions = []; for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); };
+  const clearWebApps = () => { ++webAppEpoch; webAppFailure = undefined; webAppAbort?.abort(); const sessions = webAppSessions; webAppSessions = []; for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); };
   const refreshWebApps = async (connection: Connection | undefined) => {
-    clearWebApps(); webAppFailed = false;
+    clearWebApps();
     if (!connection || closing || finished || !options.expectedProjectId || !options.webAppEntries?.length) return;
     const epoch = webAppEpoch, abort = webAppAbort = new AbortController();
     const sessions: WebAppSession[] = [];
@@ -151,9 +152,9 @@ export async function startProjectCli(options: {
       if (closing || finished || epoch !== webAppEpoch) { for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); return; }
       webAppSessions = sessions;
       child.stdin?.write(`${JSON.stringify({ type: 'web-apps', webApps: bindings })}\n`);
-    } catch {
+    } catch (error) {
       for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined);
-      if (!abort.signal.aborted) { webAppFailed = true; events.emit('web-app-error'); }
+      if (!abort.signal.aborted) { webAppFailure = webAppFailureReason(error); events.emit('web-app-error', webAppFailure); }
     }
   };
   let exit: WebSessionExit | undefined;
@@ -245,7 +246,7 @@ export async function startProjectCli(options: {
         child.stdin?.write(`${JSON.stringify({ type: 'resource-projects', resourceProjects })}\n`);
       },
       retryWebApps: () => refreshWebApps(webAppConnection),
-      onWebAppError: callback => { events.on('web-app-error', callback); if (webAppFailed) queueMicrotask(() => { if (events.listeners('web-app-error').includes(callback)) callback(); }); return { dispose: () => events.off('web-app-error', callback) }; },
+      onWebAppError: callback => { events.on('web-app-error', callback); if (webAppFailure) { const reason = webAppFailure, epoch = webAppEpoch; queueMicrotask(() => { if (webAppEpoch === epoch && webAppFailure === reason && events.listeners('web-app-error').includes(callback)) callback(reason); }); } return { dispose: () => events.off('web-app-error', callback) }; },
       onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(() => { if (events.listeners('exit').includes(callback)) callback(exit); }); } return { dispose: () => events.off('exit', callback) }; },
     };
   } catch (error) { await close(); throw error; }

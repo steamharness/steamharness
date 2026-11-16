@@ -1,5 +1,7 @@
 # Unreleased
 
+- Distinguish missing Server setup, unsupported endpoints, expired sign-in and unreachable application services when Web application account connections fail. Keep retry available without exposing raw provider errors.
+
 - Host providers can issue scoped sessions for bundled Kanban Web applications without exposing host credentials. Account and Server changes clear old sessions; microphone recording requires consent.
 
 - Added optional host-provided start-page recommendations for windows without folders, including refresh, offline feedback, validated actions, and stale-response protection.
