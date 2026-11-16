@@ -8,7 +8,7 @@ const projectDir = path.resolve(process.cwd());
 const CORE_TOOL_NAMES = [
   "workflow-ui_present_card",
   "skill",
-  "memory_save", "memory_get", "memory_update", "memory_delete",
+  "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search",
 ];
 const RUN_SCOPED_CORE_TOOL_NAMES = [
   "workflow-knowledge_knowledge_documents",

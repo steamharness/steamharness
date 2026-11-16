@@ -77,6 +77,7 @@ type PiAgentTool = PiAgent["state"]["tools"][number];
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   /** Core-owned guidance for Bot project memory, including custom and prepared personas. */
   botMemoryPrompt?: string;
+  botMemoryRecall?: import("./memory").BotMemoryRecall;
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
@@ -420,6 +421,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         workdir: this.options.workdir,
         storage: this.options.storage,
         botMemoryPrompt: this.options.botMemoryPrompt,
+        botMemoryRecall: this.options.botMemoryRecall,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
         contextUsage: () => this.getContextUsage(),

@@ -26,6 +26,15 @@ function fixture(tools: Tool[], policies: ToolPolicies = {}) {
   return { dialogs, changed, root, sections, section, search };
 }
 
+it('groups and translates keyword search with the other Bot memory tools', () => {
+  initI18n({ preference: 'zh-CN' });
+  const f = fixture([{ name: 'memory_search', label: 'Search memory', enabled: true, autoApprove: true }, { name: 'memory_get', label: 'Get memory' }]);
+  expect(f.sections()).toHaveLength(1);
+  expect(f.sections()[0].dataset.group).toBe('category:Bot memory');
+  expect(f.root.textContent).toContain('搜记忆');
+  expect(f.root.querySelector<HTMLInputElement>('input[aria-label="搜记忆 (memory_search) 启用"]')?.checked).toBe(true);
+});
+
 it('groups interleaved built-in, project and MCP tools without losing or duplicating registrations', () => {
   const f = fixture([
     { name: 'read' }, { name: 'kb_list_documents' }, { name: 'bash' }, { name: 'db_rows' },

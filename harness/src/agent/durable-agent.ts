@@ -68,6 +68,7 @@ export interface DurableAgentState {
 
 export interface DurableAgentOptions {
   botMemoryPrompt?: string;
+  botMemoryRecall?: import("./memory").BotMemoryRecall;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
@@ -576,7 +577,29 @@ export class DurableAgent {
           const toolsChanged = current.length !== offered.length || current.some((tool, index) => !declarationsEqual(tool, offered[index]!));
           if (toolsChanged) messages = [...messages, { role: "system", content: "", timestamp: Date.now(),
             toolsRemoved: offered.map(tool => ({ name: tool.name })), toolsAdded: current }];
-          if (replaced || toolsChanged) return { messages };
+          let recalled = false;
+          if (this.options.botMemoryRecall && current.some(tool => tool.name === "memory_search")) {
+            // Use the latest real input, including steering and child inputs. Retry prompts,
+            // tool results and background notifications must not replace the search topic.
+            const input = [...history.entries].reverse().find(entry => entry.conversationId === root.id
+              && (entry.kind === "project.input" || entry.kind === "pi.user") && entry.model?.some(message => message.role === "user"));
+            const prompt = input?.model?.flatMap(message => message.role !== "user" ? [] : typeof message.content === "string"
+              ? [message.content] : message.content.flatMap(block => block.type === "text" ? [block.text] : [])).join("\n");
+            if (prompt) {
+              const memory = await this.options.botMemoryRecall(prompt, requestContext.abortSignal);
+              // Refresh the bounded lookup for each attempt so writes/deletions in this turn
+              // cannot leave stale snippets behind. These messages are never journaled.
+              if (memory) {
+                // Keep the real input and assistant/tool sequence intact. A trailing user
+                // message would look like another turn to providers and tool integrations.
+                const firstMessage = messages.findIndex(message => message.role !== "system");
+                const index = firstMessage < 0 ? messages.length : firstMessage;
+                messages = [...messages.slice(0, index), { role: "system", content: memory, timestamp: Date.now() }, ...messages.slice(index)];
+                recalled = true;
+              }
+            }
+          }
+          if (replaced || toolsChanged || recalled) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {

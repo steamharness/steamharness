@@ -47,7 +47,7 @@ import {
 } from "./plan";
 import { createAgentRuntime, resolveAgentWorkdir, type AgentRuntimeInternalOptions } from "./runtime";
 import { createSkillTools } from "./skills";
-import { BOT_MEMORY_SYSTEM_PROMPT, BOT_MEMORY_TOOL_NAMES, createBotMemoryTools, isBotMemoryEnabled } from "./memory";
+import { BOT_MEMORY_SYSTEM_PROMPT, BOT_MEMORY_TOOL_NAMES, createBotMemoryRecall, createBotMemoryTools, isBotMemoryEnabled } from "./memory";
 import { DEFAULT_AGENT_EFFORT, DEFAULT_AGENT_MODE } from "./types";
 import type {
   AgentContextUsage,
@@ -688,9 +688,12 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     if (durable && !this.options.storage && !persistence) {
       throw new Error("Durable conversations require runtime persistence or an explicit storage factory.");
     }
+    const botMemory = botNodeLifecycle(this);
+    const memoryEnabled = botMemory && isBotMemoryEnabled(context, botMemory.memoryDefaultEnabled);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
-      botMemoryPrompt: botNodeLifecycle(this) && isBotMemoryEnabled(context, botNodeLifecycle(this)!.memoryDefaultEnabled) ? BOT_MEMORY_SYSTEM_PROMPT : undefined,
+      botMemoryPrompt: memoryEnabled ? BOT_MEMORY_SYSTEM_PROMPT : undefined,
+      botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,
       sessionLease: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionLease(context.conversation.conversationId) : undefined,
       sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,

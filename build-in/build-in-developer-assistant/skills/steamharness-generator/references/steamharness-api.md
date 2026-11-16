@@ -1062,9 +1062,13 @@ Bot 项目记忆默认开启。`memory: { enabled: false }` 定义新配置的�
 
 该字段通常无需写入 `configuration.json`；显式声明时必须为 `boolean`，缺少 `defaultValue` 时继承入口实际导出的 Bot 默认值。静态读取支持别名与相对模块重导出，不读取无关 Bot 的默认值。宿主可调用 `readProjectConfigurationDefinition(projectDir, entryId?, { sourceEntry?, configurationFile? })` 检查替代源码入口与配置文件；覆盖路径相对已注册入口根目录，不能越界，检查不会执行项目代码。发行打包使用最终入口与配置的默认值，并保留配置版本及档位。
 
-Core 自动提供 `memory_save({ category, key, content })`、`memory_get({ category?, key?, query?, limit?, offset? })`、`memory_update({ category, key, content, expectedRevision })` 和 `memory_delete({ category, key, expectedRevision })`。`agent.extraTools` 与每轮 `agent.createTools` 提供的业务工具会同时保留，两处均不得声明同名记忆工具。先读取最新 `revision` 再修改或删除；同分类同键的新建拒绝覆盖，版本冲突须重读。Plan 和只读模式只提供读取，工具继续经过宿主权限与审批。
+Core 自动提供 `memory_save({ category, key, content })`、`memory_get({ category?, key?, query?, limit?, offset? })`、`memory_search({ keywords, match?, category?, limit?, offset? })`、`memory_update({ category, key, content, expectedRevision })` 和 `memory_delete({ category, key, expectedRevision })`。`agent.extraTools` 与每轮 `agent.createTools` 提供的业务工具会同时保留，两处均不得声明同名记忆工具。先读取最新 `revision` 再修改或删除；同分类同键的新建拒绝覆盖，版本冲突须重读。Plan 和只读模式只提供 `memory_get` 与 `memory_search`，工具继续经过宿主权限与审批。
 
-记忆按项目 UUID 与 Bot 入口隔离，同一入口的会话共享；分类与键再区分独立事实，不得把所有内容塞进同一条。无筛选的读取只列分类，分类或关键词检索返回摘要，分类加键读取全文；列表默认 10 条、最多 20 条，按 `nextOffset` 翻页。内置提示指导按需检索、查重、维护长期事实并排除凭据、完整会话与临时进度，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
+记忆按项目 UUID 与 Bot 入口隔离，同一入口的会话共享；分类与键再区分独立事实，不得把所有内容塞进同一条。`memory_get` 无筛选时只列分类，分类或 `query` 返回摘要（默认 10 条、最多 20 条），分类加键读取全文。
+
+Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条相关摘要；追加输入、中途补充和恢复执行沿用该机制，后续模型请求刷新已修改或删除的结果。只有 `memory_search` 已启用且自动审批时才后台检索，不弹确认。模型可用 `memory_search` 进一步缩小范围：`keywords` 最多 12 个、每个最多 80 字符、合计最多 500 字符；`match` 为 `any`（默认）或 `all`，按命中词数及相关性排序，支持中文子串。默认 5 条、最多 10 条，每条最多 240 字符且优先截取命中位置，总返回不超过 6,000 字符；有后续页时返回 `nextOffset`，不能遍历全部记忆。
+
+内置提示要求模型静默判断长期记忆价值：确认有用的项目事实、决策、流程、偏好后自动存储，先查重，信息变化时更新，确认失效或要求忘记时删除。不等待用户说“记住”，不例行询问或播报操作；排除凭据、完整会话、临时进度、猜测和明确要求不保留的信息，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
 
 `agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 

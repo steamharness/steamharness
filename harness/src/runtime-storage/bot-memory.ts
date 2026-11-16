@@ -10,6 +10,7 @@ export interface BotMemoryEntry extends BotMemorySummary { content: string }
 export type BotMemoryRequest =
   | ({ action: "save"; content: string } & BotMemoryAddress)
   | { action: "get"; category?: string; key?: string; query?: string; limit?: number; offset?: number }
+  | { action: "search"; keywords: string[]; match?: "any" | "all"; category?: string; limit?: number; offset?: number }
   | ({ action: "update"; content: string; expectedRevision: number } & BotMemoryAddress)
   | ({ action: "delete"; expectedRevision: number } & BotMemoryAddress);
 export interface BotMemoryStore {
@@ -37,10 +38,21 @@ export function validateBotMemoryRequest(input: unknown): BotMemoryRequest {
   };
   const action = value.action;
   const allowed = action === "get" ? ["action", "category", "key", "query", "limit", "offset"]
+    : action === "search" ? ["action", "keywords", "match", "category", "limit", "offset"]
     : action === "save" ? ["action", "category", "key", "content"]
       : action === "update" ? ["action", "category", "key", "content", "expectedRevision"]
         : action === "delete" ? ["action", "category", "key", "expectedRevision"] : undefined;
   if (!allowed || Object.keys(value).some(key => !allowed.includes(key))) return invalid("Unknown memory action or argument.");
+  if (action === "search") {
+    const keywords = value.keywords;
+    if (!Array.isArray(keywords) || keywords.length < 1 || keywords.length > 12
+      || [...keywords].some(word => typeof word !== "string" || !word.trim() || word.length > 80 || word.includes("\0"))
+      || keywords.join(" ").length > 500) return invalid("Memory search requires 1-12 keywords, each 1-80 characters, totaling at most 500 characters.");
+    if (value.match !== undefined && value.match !== "any" && value.match !== "all") return invalid("Memory search match must be any or all.");
+    return { action, keywords: [...new Set((keywords as string[]).map(word => word.trim().toLowerCase()))],
+      ...(value.match === undefined ? {} : { match: value.match }), ...(value.category === undefined ? {} : { category: text("category", 100) }),
+      ...(value.limit === undefined ? {} : { limit: integer("limit", 1, 10) }), ...(value.offset === undefined ? {} : { offset: integer("offset", 0, 1_000_000) }) };
+  }
   if (action === "get") {
     if (value.key !== undefined && (value.category === undefined || value.query !== undefined)) return invalid("Read one memory with category and key, without query.");
     if (typeof value.query === "string" && value.query.trim().split(/\s+/u).length > 12) return invalid("Memory queries support at most 12 search terms.");
@@ -79,6 +91,40 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
   return {
     async execute(input, requestId) {
       const request = validateBotMemoryRequest(input), database = db();
+      if (request.action === "search") {
+        const { keywords } = request, limit = request.limit ?? 5, offset = request.offset ?? 0;
+        // Literal substring matching also works for Chinese and does not interpret SQL wildcards.
+        const matches = "instr(lower(category),term)>0 OR instr(lower(key),term)>0 OR instr(lower(content),term)>0";
+        const rows = database.prepare(`WITH terms(term) AS (VALUES ${keywords.map(() => "(?)").join(",")}), ranked AS (
+          SELECT category,key,content,revision,created_at,updated_at,
+            (SELECT COUNT(*) FROM terms WHERE ${matches}) AS matched,
+            (SELECT SUM((CASE WHEN instr(lower(key),term)>0 THEN 6 ELSE 0 END)
+              +(CASE WHEN instr(lower(category),term)>0 THEN 3 ELSE 0 END)
+              +(CASE WHEN instr(lower(content),term)>0 THEN 1 ELSE 0 END)) FROM terms) AS relevance
+          FROM bot_memories WHERE project_id=? AND entry_id=?${request.category === undefined ? "" : " AND category=?"})
+          SELECT * FROM ranked WHERE matched>=? ORDER BY matched DESC,relevance DESC,updated_at DESC,category,key LIMIT ? OFFSET ?`)
+          .all(...keywords, ...scope, ...(request.category === undefined ? [] : [request.category]), request.match === "all" ? keywords.length : 1, limit + 1, offset);
+        const memories: Record<string, unknown>[] = [];
+        for (const row of rows.slice(0, limit)) {
+          const content = row.content as string, lowered = content.toLowerCase();
+          const positions = keywords.map(word => lowered.indexOf(word)).filter(index => index >= 0);
+          let start = Math.max(0, (positions.length ? Math.min(...positions) : 0) - 60);
+          if (start > 0 && /[\uDC00-\uDFFF]/u.test(content[start]!)) start--;
+          const excerpt = Array.from(content.slice(start)).slice(0, 240).join("");
+          const memory = { ...summary(row), excerpt, matchedKeywords: keywords.filter(word =>
+            `${row.category}\n${row.key}\n${content}`.toLowerCase().includes(word)) };
+          // Bound the whole response as well as its count; long keys/keywords cannot flood context.
+          const responseSize = () => JSON.stringify({ memories: [...memories, memory], nextOffset: offset + memories.length + 1 }).length;
+          // Escaped control characters can enlarge even one summary. Shorten its excerpt
+          // rather than returning an empty page whose nextOffset would never advance.
+          if (memories.length === 0) while (memory.excerpt.length > 0 && responseSize() > 6_000) {
+            memory.excerpt = Array.from(memory.excerpt).slice(0, -16).join("");
+          }
+          if (responseSize() > 6_000) break;
+          memories.push(memory);
+        }
+        return { memories, ...(rows.length > memories.length ? { nextOffset: offset + memories.length } : {}) };
+      }
       if (request.action === "get") {
         if (request.key !== undefined) {
           const row = find(request.category!, request.key);

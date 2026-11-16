@@ -49,14 +49,23 @@ Core provides these tools alongside business tools supplied by `agent.extraTools
 | --- | --- |
 | `memory_save` | `category`, `key`, `content`. Creates an entry and returns its revision. An existing category/key is never overwritten. |
 | `memory_get` | No filters lists categories. `category` or `query` returns entry summaries. `category` and `key` reads a full entry, returning `memory: null` when absent. |
+| `memory_search` | A `keywords` array, with optional `category`, `match` (`any` by default, or `all`), `limit` and `offset`. Returns summaries ranked by keyword coverage and relevance, including Chinese substring matches. |
 | `memory_update` | `category`, `key`, `content`, `expectedRevision`. Replaces an entry's content and returns a new revision. |
 | `memory_delete` | `category`, `key`, `expectedRevision`. Deletes only the specified entry. |
 
-Retrieval happens on demand; Core does not inject all memories into the prompt. Category and summary lists accept `limit` (default 10, maximum 20) and `offset`, returning `nextOffset` when another page exists. `query` supports up to 12 whitespace-separated terms, all of which must match, including Chinese substrings. Summaries include at most the first 240 characters of content; full entries allow up to 8,000 characters.
+At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog.
 
-Before an update or deletion, read the entry's `revision` and pass it as `expectedRevision`. On a version conflict, retrieve the latest entry before deciding what to change. Tools retain host permission and approval checks. Plan and read-only runs offer only `memory_get`.
+`memory_search` returns up to 5 entries by default, with a maximum `limit` of 10. Each excerpt contains at most 240 characters around a matching passage, and the complete search result stays within 6,000 characters. Pass up to 12 keywords, each at most 80 characters and at most 500 characters combined. `any` matches one or more keywords; `all` requires every keyword. Matching is literal and supports Chinese.
 
-Core's built-in guidance tells the Bot to retrieve by category, store independent facts separately, check for duplicates, and use the tools when asked to remember or forget. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress and guesses should not be stored.
+Search results include the category, key, revision and matched keywords. Use `memory_get` to read a relevant entry in full, up to 8,000 characters. When more results exist, `nextOffset` provides the next `offset`. Prefer narrower keywords over paging through every memory.
+
+Category and summary lists from `memory_get` still accept `limit` (default 10, maximum 20) and `offset`. Its `query` accepts up to 12 whitespace-separated terms that must all match. These summaries contain the first 240 characters of content.
+
+Before an update or deletion, read the entry's `revision` and pass it as `expectedRevision`. On a version conflict, retrieve the latest entry before deciding what to change. Tools retain host permission and approval checks. Plan and read-only runs offer `memory_get` and `memory_search` only.
+
+Core's built-in guidance tells the Bot to maintain memory silently. It judges whether confirmed project facts, decisions, procedures or preferences will help future conversations and saves them without waiting for a request to remember. It checks for duplicates, updates changed facts and deletes facts confirmed obsolete or explicitly forgotten, without routine confirmation or memory announcements.
+
+The model decides what to retain from the conversation; it does not copy every message. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress, guesses and information the user explicitly asks not to retain should not be stored.
 
 Memories persist in SQLite on the execution host across its conversations and restarts. There is no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 

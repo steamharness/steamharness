@@ -1089,6 +1089,7 @@
   "Bot memory": "Bot 记忆",
   "Save memory": "存记忆",
   "Get memory": "取记忆",
+  "Search memory": "搜记忆",
   "Update memory": "改记忆",
   "Delete memory": "删记忆",
   "Share categorized memories across conversations in this Bot. Turning memory off preserves saved entries. Changes apply on the next execution.": "在此 Bot 的会话间共享分类记忆。关闭后保留已存条目，修改在下次执行生效。"

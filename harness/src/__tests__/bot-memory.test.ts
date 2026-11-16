@@ -8,7 +8,7 @@ import { createLocalRuntimePersistence, createMemoryRuntimePersistence } from ".
 import { createSqliteBotMemoryStore, type BotMemoryEntry, type BotMemorySummary } from "../runtime-storage/bot-memory";
 import { defineBot } from "../agent/bot";
 import { BOT_MEMORY_CONFIGURATION_KEY } from "../agent/memory-configuration";
-import { BOT_MEMORY_TOOL_NAMES, createBotMemoryTools } from "../agent/memory";
+import { BOT_MEMORY_TOOL_NAMES, botMemoryKeywords, createBotMemoryRecall, createBotMemoryTools } from "../agent/memory";
 import { createTestResources } from "./entry-test-resources";
 import { createProjectConversationContext } from "../conversation";
 import { testConversationStorage } from "./runtime-test-storage";
@@ -76,6 +76,79 @@ test("retrieval returns bounded summaries, exact reads and category pages withou
   for (const request of [{ action: "get", projectId: "other" }, { action: "get", key: "item-00" }, { action: "get", limit: 21 }, { action: "get", query: Array(13).fill("word").join(" ") }, { action: "save", category: "", key: "x", content: "x" }, { action: "update", category: "decisions", key: "item-00", content: "x" }]) {
     await assert.rejects(memory.execute(request as never), { code: "BOT_MEMORY_INVALID_INPUT" });
   }
+});
+
+test("keyword search ranks coverage and keys, supports Chinese, all/any and literal matching, and returns focused excerpts", async t => {
+  const memory = createSqliteBotMemoryStore({ file: ":memory:", projectId: "test", entryId: "main" }); t.after(() => memory.close());
+  const save = (category: string, key: string, content: string) => memory.execute({ action: "save", category, key, content });
+  await save("decisions", "postgresql", "数据库连接池固定为 5。PostgreSQL 用于业务数据。");
+  await save("procedures", "database", "其他信息。".repeat(800) + "数据库维护前需要备份。PostgreSQL 连接池需要监控。");
+  await save("facts", "postgresql-old", "数据库使用 PostgreSQL。");
+  await save("facts", "wildcards", "字面字符 %_ ' ? 必须原样匹配。");
+  await save("unrelated", "image", "图片输出格式为 PNG。");
+  const search = (extra = {}) => memory.execute({ action: "search", keywords: ["PostgreSQL", "连接池"], ...extra });
+  const any = await search();
+  const entries = any.memories as (BotMemorySummary & { excerpt: string; content?: string; matchedKeywords: string[] })[];
+  assert.deepEqual(entries.map(entry => entry.key), ["postgresql", "database", "postgresql-old"]);
+  assert.deepEqual(entries[0]!.matchedKeywords, ["postgresql", "连接池"]);
+  assert.ok(entries.every(entry => entry.excerpt.length <= 240 && entry.content === undefined));
+  assert.match(entries[1]!.excerpt, /数据库维护前需要备份/);
+  assert.equal(((await search({ match: "all" })).memories as unknown[]).length, 2);
+  assert.equal(((await search({ category: "procedures" })).memories as unknown[]).length, 1);
+  assert.equal(((await search({ keywords: ["SQLITE"] })).memories as unknown[]).length, 0);
+  assert.equal(((await search({ keywords: ["%_ '"] })).memories as unknown[]).length, 1);
+  const first = await search({ limit: 1 }); assert.equal(first.nextOffset, 1);
+  assert.equal(((await search({ limit: 1, offset: first.nextOffset })).memories as BotMemorySummary[])[0]!.key, "database");
+  assert.equal(((await search({ keywords: [" PostGreSQL ", "POSTGRESQL"], match: "all" })).memories as unknown[]).length, 3);
+  for (const invalid of [{ keywords: [] }, { keywords: [""] }, { keywords: ["x\0"] }, { keywords: ["x".repeat(81)] },
+    { keywords: Array(13).fill("词") }, { keywords: Array(12).fill("长".repeat(80)) }, { keywords: [1] }, { keywords: Array(2) }, { limit: 11 }, { match: "fuzzy" }, { query: "postgresql" }, { projectId: "other" }]) {
+    await assert.rejects(search(invalid), { code: "BOT_MEMORY_INVALID_INPUT" });
+  }
+});
+
+test("search has count and whole-response budgets and pagination never drops matches", async t => {
+  const memory = createSqliteBotMemoryStore({ file: ":memory:", projectId: "test", entryId: "main" }); t.after(() => memory.close());
+  const keywords = Array.from({ length: 6 }, (_, index) => `${index}-` + "词".repeat(70));
+  const content = keywords.join(" ") + "正文".repeat(2_000);
+  for (let index = 0; index < 24; index++) await memory.execute({ action: "save", category: "c".repeat(100), key: `${index}-` + "k".repeat(190), content });
+  const first = await memory.execute({ action: "search", keywords });
+  assert.equal((first.memories as unknown[]).length, 5);
+  const keys: string[] = [];
+  let offset = 0;
+  do {
+    const page = await memory.execute({ action: "search", keywords, limit: 10, offset });
+    assert.ok(JSON.stringify(page).length <= 6_000);
+    const entries = page.memories as BotMemorySummary[];
+    assert.ok(entries.length > 0 && entries.length < 10, "Long summaries should hit the response budget before the count limit");
+    keys.push(...entries.map(entry => entry.key));
+    if (page.nextOffset === undefined) break;
+    assert.equal(page.nextOffset, offset + entries.length); offset = page.nextOffset as number;
+  } while (true);
+  assert.equal(keys.length, 24); assert.equal(new Set(keys).size, 24);
+  const escapedKeywords = Array.from({ length: 6 }, (_, index) => String.fromCharCode(index + 1).repeat(80));
+  await memory.execute({ action: "save", category: "\u0001".repeat(100), key: "\u0002".repeat(200), content: escapedKeywords.join(" ") });
+  const escapedPage = await memory.execute({ action: "search", keywords: escapedKeywords, match: "all" });
+  assert.equal((escapedPage.memories as unknown[]).length, 1); assert.equal(escapedPage.nextOffset, undefined);
+  assert.ok(JSON.stringify(escapedPage).length <= 6_000);
+});
+
+test("automatic lookup extracts bounded topic keywords and stays silent under host restrictions", async t => {
+  assert.deepEqual(botMemoryKeywords("好的，谢谢！"), []);
+  const keywords = botMemoryKeywords("请检查 PostgreSQL 数据库连接池配置，PostgreSQL 的连接池应该如何设置？");
+  assert.ok(keywords.includes("postgresql")); assert.ok(keywords.some(word => "连接池".includes(word)));
+  assert.ok(!keywords.includes("如何") && !keywords.includes("检查"));
+  assert.ok(botMemoryKeywords(Array.from({ length: 30 }, (_, index) => `keyword${index}`).join(" ")).length <= 12);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const run = context(persistence);
+  let approvals = 0;
+  run.userInput = { requestInput: async () => { approvals++; throw new Error("Automatic memory must not ask for approval"); } } as never;
+  for (const policy of [{ enabled: false, autoApprove: true }, { enabled: true, autoApprove: false }]) {
+    run.toolPermissions = createProjectToolPermissionContext({ definitions: [{ name: "memory_search", ...policy }], projectName: "bot", runId: "lookup" });
+    assert.equal(await createBotMemoryRecall(run, true)("PostgreSQL 数据库"), undefined);
+  }
+  assert.equal(approvals, 0);
+  const aborted = AbortSignal.abort(new Error("Lookup cancelled"));
+  await assert.rejects(createBotMemoryRecall(run, true)("PostgreSQL", aborted), /Lookup cancelled/);
 });
 
 function context(persistence: ReturnType<typeof createMemoryRuntimePersistence>, resources = createTestResources(), conversationId = "chat-one"): RunContext {
@@ -207,9 +280,42 @@ for (const mode of ["enabled", "disabled", "source-disabled", "source-disabled-u
     assert.equal(output.errCode, 0); assert.ok(requests.length > 0);
     assert.match(requests[0]!, /Custom prepared persona/);
     const active = mode !== "disabled" && mode !== "source-disabled";
-    const expected = !active ? [] : mode === "plan" || mode === "read-only" ? ["memory_get"] : BOT_MEMORY_TOOL_NAMES.filter(name => mode !== "host-disabled" || name !== "memory_save");
+    const expected = !active ? [] : mode === "plan" || mode === "read-only" ? ["memory_get", "memory_search"] : BOT_MEMORY_TOOL_NAMES.filter(name => mode !== "host-disabled" || name !== "memory_save");
     assert.deepEqual(offered[0]!.filter(name => name.startsWith("memory_")), expected);
     if (active) assert.match(requests[0]!, /Memories belong only to this Bot project and entry/);
     else assert.doesNotMatch(requests[0]!, /Project memory is available/);
   });
 }
+
+test("Bot searches project memory before its first model request and refreshes after automatic writes", { timeout: 15_000 }, async t => {
+  const ai = await import("@earendil-works/pi-ai");
+  const faux = ai.fauxProvider({ models: [{ id: "automatic-memory", contextWindow: 100_000, maxTokens: 1_000 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const run = context(persistence), address = { category: "decisions", key: "database" };
+  const store = persistence.botMemory!({ projectId: run.projectId, entryId: run.entryId });
+  const saved = await store.execute({ action: "save", ...address, content: "数据库使用 PostgreSQL。" });
+  const revision = (saved.memory as BotMemorySummary).revision;
+  await store.execute({ action: "save", category: "images", key: "format", content: "图片输出 PNG。" });
+  await persistence.botMemory!({ projectId: "other-project", entryId: run.entryId }).execute({ action: "save", ...address, content: "数据库使用 OTHER_PROJECT_SECRET。" });
+  const bot = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "automatic-memory")!, tools: [], permissionPolicy: "auto" },
+    prepareInput(value) { return { ...value, systemPrompt: "Prepared database assistant." }; } });
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: "bot", runId: "auto" });
+  const snapshots: string[] = [];
+  const observe = (request: { messages: readonly { role: string }[] }) => {
+    assert.equal(request.messages.at(-1)?.role, snapshots.length === 0 ? "user" : "toolResult", "Memory context must preserve the current input/tool boundary");
+    const value = JSON.stringify(request.messages.find(message => JSON.stringify(message).includes("Automatically retrieved Bot project memory"))); snapshots.push(value);
+    assert.match(value, /Automatically retrieved Bot project memory/);
+    assert.doesNotMatch(value, /OTHER_PROJECT_SECRET|图片输出 PNG/);
+    assert.match(JSON.stringify(request), /Do not wait for the user to ask/);
+    assert.match(JSON.stringify(request), /Do not report routine memory operations/i);
+  };
+  faux.setResponses([
+    request => { observe(request); assert.match(snapshots[0]!, /PostgreSQL/); return ai.fauxAssistantMessage([ai.fauxToolCall("memory_update", { ...address, content: "数据库使用 SQLite。", expectedRevision: revision })], { stopReason: "toolUse" }); },
+    request => { observe(request); assert.match(snapshots[1]!, /SQLite/); assert.doesNotMatch(snapshots[1]!, /PostgreSQL/); return ai.fauxAssistantMessage([ai.fauxToolCall("memory_delete", { ...address, expectedRevision: revision + 2 })], { stopReason: "toolUse" }); },
+    request => { observe(request); return ai.fauxAssistantMessage("配置已更新。"); },
+  ]);
+  assert.equal((await bot.workflow.run({ ...input, prompt: "数据库怎样配置？" }, run)).errCode, 0);
+  assert.doesNotMatch(snapshots[2]!, /数据库使用/);
+  assert.equal(snapshots.length, 3);
+});
