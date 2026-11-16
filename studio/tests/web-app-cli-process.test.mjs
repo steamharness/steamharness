@@ -7,6 +7,7 @@ import { register } from 'tsx/esm/api';
 register();
 const { startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
 const { registerWebAppProvider } = await import('../extensions/studio-workstation/src/web-app-providers.ts');
+const { WebAppConnectionError } = await import('../extensions/studio-workstation/src/web-app-errors.ts');
 const projectId = '00000000-0000-4000-8000-000000000001';
 const entries = [{ entryId: 'main', type: 'kanban', root: '.', name: 'Application', entry: 'dist/steamharness/build/main/index.html', webApp: { service: 'sample.app' } }];
 async function fixture(t, supported = true) {
@@ -56,10 +57,28 @@ test('authorization failure is reported and retry opens a fresh scoped session',
   const registration = registerWebAppProvider({ matches: () => true, open: () => { opened++; return new Promise((resolve, reject) => { finish = { resolve, reject }; }); } });
   t.after(() => registration.dispose());
   const session = await startProjectCli(options); t.after(() => session.close());
-  let errors = 0; session.onWebAppError(() => { errors++; });
+  const errors = []; session.onWebAppError(reason => { errors.push(reason); });
   await until(() => finish); finish.reject(Error('private-provider-detail'));
-  await until(() => errors === 1);
+  await until(() => errors.length === 1);
+  assert.deepEqual(errors, ['unknown']);
   const retry = session.retryWebApps(); await until(() => opened === 2);
   finish.resolve({ binding: { service: 'sample.app', apiBaseUrl: 'https://im.invalid/api', bootstrap: {} }, dispose() {} });
   await retry; await until(async () => (await messages()).some(item => item.type === 'web-apps'));
+});
+
+test('a separately bundled provider reports a safe setup reason to existing and late subscribers', async t => {
+  const { options } = await fixture(t);
+  const registration = registerWebAppProvider({ matches: () => true, open: async () => {
+    // This object deliberately has a different class identity, as private layers do.
+    throw Object.assign(Error('private-token-must-not-leak'), { reason: 'server-not-configured' });
+  } });
+  t.after(() => registration.dispose());
+  const session = await startProjectCli(options); t.after(() => session.close());
+  const errors = []; session.onWebAppError(reason => errors.push(reason));
+  await until(() => errors.length === 1);
+  assert.deepEqual(errors, ['server-not-configured']);
+  const late = []; session.onWebAppError(reason => late.push(reason));
+  await until(() => late.length === 1);
+  assert.deepEqual(late, errors);
+  assert.equal(new WebAppConnectionError('server-not-configured').reason, errors[0]);
 });

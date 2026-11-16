@@ -886,5 +886,12 @@
   "Only HTTP and HTTPS links can be opened in the browser.": "Only HTTP and HTTPS links can be opened in the browser.",
   "Unable to open the website in the system browser.": "Unable to open the website in the system browser.",
   "Unable to open the website: {0}": "Unable to open the website: {0}",
-  "Could not connect the Web application to your account. Check the Server configuration and retry.": "Could not connect the Web application to your account. Check the Server configuration and retry."
+  "Could not connect the Web application to your account. Check the Server configuration and retry.": "Could not connect the Web application to your account. Check the Server configuration and retry.",
+  "The selected Server has not configured account integration for this Web application. Configure and restart the Server, then retry.": "The selected Server has not configured account integration for this Web application. Configure and restart the Server, then retry.",
+  "The selected Server does not support account integration for this Web application. Update the Server, then retry.": "The selected Server does not support account integration for this Web application. Update the Server, then retry.",
+  "Your Server session is no longer valid. Sign in again from the Studio account menu, then retry.": "Your Server session is no longer valid. Sign in again from the Studio account menu, then retry.",
+  "The account Server could not be reached. Check its address and connection, then retry.": "The account Server could not be reached. Check its address and connection, then retry.",
+  "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.": "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.",
+  "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.": "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.",
+  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "This Studio installation has no account provider for the Web application. Check the Studio extension configuration."
 }

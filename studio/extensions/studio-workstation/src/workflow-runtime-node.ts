@@ -303,9 +303,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
           surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
-        const webAppErrors = session.onWebAppError?.(() => {
+        const webAppErrors = session.onWebAppError?.(reason => {
           const retry = t('Retry');
-          void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'), retry).then(action => {
+          const messages = {
+            'server-not-configured': t('The selected Server has not configured account integration for this Web application. Configure and restart the Server, then retry.'),
+            'server-unsupported': t('The selected Server does not support account integration for this Web application. Update the Server, then retry.'),
+            'account-unavailable': t('Your Server session is no longer valid. Sign in again from the Studio account menu, then retry.'),
+            'server-unavailable': t('The account Server could not be reached. Check its address and connection, then retry.'),
+            'service-unavailable': t('The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.'),
+            'invalid-response': t('Account integration returned an invalid response. Check the Server and Web application service versions and configuration.'),
+            'provider-unavailable': t('This Studio installation has no account provider for the Web application. Check the Studio extension configuration.'),
+            'unknown': t('Could not connect the Web application to your account. Check the Server configuration and retry.'),
+          };
+          void vscode.window.showErrorMessage(messages[reason], retry).then(action => {
             if (action === retry && !runSignal.aborted) void session.retryWebApps?.();
           });
         });

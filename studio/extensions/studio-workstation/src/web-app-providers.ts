@@ -1,4 +1,5 @@
 import type { WebAppProvider, WebAppRequest, WebAppSession } from './web-app-types';
+import { WebAppConnectionError } from './web-app-errors';
 export type { WebAppBinding, WebAppProvider, WebAppRequest, WebAppSession } from './web-app-types';
 
 const providers = new Set<WebAppProvider>();
@@ -7,10 +8,10 @@ export function registerWebAppProvider(provider: WebAppProvider): { dispose(): v
 }
 export async function openWebApp(input: WebAppRequest): Promise<WebAppSession> {
   const matches = [...providers].filter(provider => provider.matches(input));
-  if (matches.length !== 1) throw new Error('No unique host provider is registered for this Web application.');
+  if (matches.length !== 1) throw new WebAppConnectionError('provider-unavailable', 'No unique host provider is registered for this Web application.');
   input.signal.throwIfAborted();
   const session = await matches[0].open(input);
   if (input.signal.aborted) { await session.dispose(); input.signal.throwIfAborted(); }
-  if (session.binding.service !== input.service) { await session.dispose(); throw new Error('Web application service mismatch.'); }
+  if (session.binding.service !== input.service) { await session.dispose(); throw new WebAppConnectionError('invalid-response', 'Web application service mismatch.'); }
   return session;
 }
