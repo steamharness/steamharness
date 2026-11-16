@@ -1,0 +1,125 @@
+diff --git a/src/vs/code/electron-main/app.ts b/src/vs/code/electron-main/app.ts
+--- a/src/vs/code/electron-main/app.ts
++++ b/src/vs/code/electron-main/app.ts
+@@ -3,7 +3,8 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { app, BrowserWindow, desktopCapturer, globalShortcut, powerMonitor, protocol, screen as electronScreen, session, Session, systemPreferences, WebFrameMain } from 'electron';
++import { StudioWebAppMicrophone } from './studioWebAppMicrophone.js';
++import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, powerMonitor, protocol, screen as electronScreen, session, Session, systemPreferences, WebFrameMain } from 'electron';
+ import { addUNCHostToAllowlist, disableUNCAccessRestrictions } from '../../base/node/unc.js';
+ import { validatedIpcMain } from '../../base/parts/ipc/electron-main/ipcMain.js';
+ import { hostname, release } from 'os';
+@@ -27,7 +28,7 @@
+ import { Client as MessagePortClient } from '../../base/parts/ipc/electron-main/ipc.mp.js';
+ import { Server as NodeIPCServer } from '../../base/parts/ipc/node/ipc.net.js';
+ import { IProxyAuthService, ProxyAuthService } from '../../platform/native/electron-main/auth.js';
+-import { localize } from '../../nls.js';
++import { getNLSLanguage, localize } from '../../nls.js';
+ import { IBackupMainService } from '../../platform/backup/electron-main/backup.js';
+ import { BackupMainService } from '../../platform/backup/electron-main/backupMainService.js';
+ import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
+@@ -278,7 +279,24 @@
+ 			'deprecated-sync-clipboard-read',
+ 		]);
+ 
++		const webAppMicrophone = new StudioWebAppMicrophone();
+ 		session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
++			if (permission === 'media' && details.requestingUrl?.startsWith('http://127.0.0.1:')) {
++				void webAppMicrophone.request(webContents, details, async () => {
++					const zh = getNLSLanguage()?.toLowerCase() === 'zh-cn';
++					const options: Electron.MessageBoxOptions = {
++						type: 'question', defaultId: 1, cancelId: 1,
++						message: zh ? '允许此项目的 Web 应用使用麦克风？' : localize('studio.webApp.microphone', "Allow this project's Web application to use your microphone?"),
++						detail: zh ? '录制语音消息时，音频会发送到此应用配置的服务。' : localize('studio.webApp.microphone.detail', "Audio is sent to this application's configured service when you record a voice message."),
++						buttons: [zh ? '允许使用麦克风' : localize('studio.webApp.microphone.allow', "Allow Microphone"), zh ? '不允许' : localize('studio.webApp.microphone.deny', "Don't Allow")]
++					};
++					const owner = webContents && BrowserWindow.fromWebContents(webContents);
++					const result = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
++					return result.response === 0;
++				}).then(callback, () => callback(false));
++				return;
++			}
++
+ 			if (isUrlFromWebview(details.requestingUrl)) {
+ 				return callback(allowedPermissionsInWebview.has(permission));
+ 			}
+@@ -289,6 +307,9 @@
+ 		});
+ 
+ 		session.defaultSession.setPermissionCheckHandler((webContents, permission, _origin, details) => {
++			if (permission === 'media' && details.requestingUrl?.startsWith('http://127.0.0.1:')) {
++				return webAppMicrophone.check(webContents, details);
++			}
+ 			if (isUrlFromWebview(details.requestingUrl)) {
+ 				return allowedPermissionsInWebview.has(permission);
+ 			}
+diff --git a/src/vs/code/electron-main/studioWebAppMicrophone.ts b/src/vs/code/electron-main/studioWebAppMicrophone.ts
+new file mode 100644
+--- /dev/null
++++ b/src/vs/code/electron-main/studioWebAppMicrophone.ts
+@@ -0,0 +1,63 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++interface Frame {
++	url: string;
++	parent: Frame | null;
++	framesInSubtree: Frame[];
++}
++interface Contents { mainFrame: Frame; isDestroyed(): boolean }
++interface MediaDetails { requestingUrl?: string; mediaTypes?: string[]; mediaType?: string }
++
++/** Consent belongs to one live, nonce-scoped application frame, never all localhost pages. */
++export class StudioWebAppMicrophone {
++	private readonly approved = new WeakMap<Frame, string>();
++	private readonly pending = new WeakMap<Frame, Promise<boolean>>();
++
++	private frame(contents: Contents | null, requestingUrl: string | undefined): { frame: Frame; scope: string } | undefined {
++		if (!contents || contents.isDestroyed() || !requestingUrl) { return; }
++		try {
++			const request = new URL(requestingUrl);
++			if (request.protocol !== 'http:' || request.hostname !== '127.0.0.1' || !request.port || request.username || request.password) { return; }
++			for (const frame of contents.mainFrame.framesInSubtree) {
++				const url = new URL(frame.url);
++				if (url.origin !== request.origin || !/^\/[\w-]{32}\/[^?#]+\.html$/.test(url.pathname) ||
++					(request.pathname !== '/' && request.pathname !== url.pathname)) { continue; }
++				let webview = false, window = false;
++				for (let parent = frame.parent; parent; parent = parent.parent) {
++					const ancestor = new URL(parent.url);
++					webview ||= ancestor.protocol === 'vscode-webview:' || ancestor.protocol === 'https:' && /\.vscode-(?:cdn|webview)\.net$/.test(ancestor.hostname);
++					window ||= ancestor.protocol === 'vscode-file:' && ancestor.hostname === 'vscode-app';
++				}
++				if (webview && window) { return { frame, scope: url.origin + url.pathname }; }
++			}
++		} catch { /* Reject malformed URLs and detached frames. */ }
++		return;
++	}
++
++	check(contents: Contents | null, details: MediaDetails): boolean {
++		const candidate = this.frame(contents, details.requestingUrl);
++		return details.mediaType === 'audio' && !!candidate && this.approved.get(candidate.frame) === candidate.scope;
++	}
++
++	async request(contents: Contents | null, details: MediaDetails, ask: () => Promise<boolean>): Promise<boolean> {
++		const candidate = this.frame(contents, details.requestingUrl);
++		if (!candidate || !details.mediaTypes?.length || details.mediaTypes.some(type => type !== 'audio')) { return false; }
++		if (this.approved.get(candidate.frame) === candidate.scope) { return true; }
++		let pending = this.pending.get(candidate.frame);
++		if (!pending) {
++			pending = (async () => {
++				if (!await ask()) { return false; }
++				const current = this.frame(contents, details.requestingUrl);
++				if (!current || current.frame !== candidate.frame || current.scope !== candidate.scope) { return false; }
++				this.approved.set(candidate.frame, candidate.scope);
++				return true;
++			})();
++			this.pending.set(candidate.frame, pending);
++		}
++		try { return await pending; }
++		finally { if (this.pending.get(candidate.frame) === pending) { this.pending.delete(candidate.frame); } }
++	}
++}

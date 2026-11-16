@@ -1,3 +1,4 @@
+import { registerWebAppProvider } from "./web-app-providers";
 import * as vscode from 'vscode';
 import type { AccountSectionProvider } from './account-section-types';
 import { registerProjectUploadProvider } from './project-upload-extension';
@@ -21,6 +22,7 @@ interface InternalLayer {
     output: vscode.OutputChannel;
     account?: LayerAccount;
     uploads: { registerProvider: typeof registerProjectUploadProvider };
+    webApps: { registerProvider: typeof registerWebAppProvider };
     startPage: { registerRecommendationsProvider: typeof registerStartRecommendationsProvider };
   }) => Promise<void> | void;
 }
@@ -59,7 +61,7 @@ export async function activateInternalLayer(
 ): Promise<void> {
   try {
     const layer = await loadInternalLayer();
-    await layer?.activate?.({ context, vscode, output, account, uploads: { registerProvider: registerProjectUploadProvider }, startPage: { registerRecommendationsProvider: registerStartRecommendationsProvider } });
+    await layer?.activate?.({ context, vscode, output, account, uploads: { registerProvider: registerProjectUploadProvider }, webApps: { registerProvider: registerWebAppProvider }, startPage: { registerRecommendationsProvider: registerStartRecommendationsProvider } });
   } catch (error) {
     output.appendLine(`[internal-layer] ${String(error)}`);
   }

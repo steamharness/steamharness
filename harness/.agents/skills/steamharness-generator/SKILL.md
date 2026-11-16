@@ -118,6 +118,12 @@ Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, c
 - 上传清单只由项目根目录 `.steamharnessignore` 控制，`.gitignore` 不参与。规则支持目录、glob、`**` 与 `!` 反向包含；缺失或空规则会上传全部普通文件。`.steamharnessignore` 必须是普通文件（符号链接会被拒绝）且为 UTF-8；自身始终上传，`package.json`、根及所有登记的子 `steamharness.json`、项目入口和已有 `configuration.json` 不得被忽略。Workflow/Bot 的必备上传路径包括 `package.json`、`steamharness.json` 与登记的入口文件。Kanban 规则不得排除实际 `artifactDir`；是否把产物提交 Git 与是否上传无关。
 - 必须验证没有参数时的全幅布局、有参数时的命名配置、配置事件更新，以及全屏、手机、平板和对话小卡片的宽高适配；覆盖 760px 以下与低高度卡片布局，确认内容不溢出或重叠，尺寸切换保留页面状态。
 
+## 有账号的 Kanban Web 应用
+
+仅完整 H5 需要存储、API、WebSocket 或麦克风时才显式声明 `webApp: { service: "example.chat", permissions?: ["microphone"] }`。它只适用于 Kanban，仍加载打包的本地 H5。普通 Kanban 保持原沙箱。清单不得携带 API URL、宿主 token 或任意网络权限。
+
+宿主必须按项目 UUID、入口 ID 与 service 注册唯一提供器，通过可信 stdio 传递项目专用会话与固定代理目标；页面只读 `window.steamHarnessWebApp`，以 `apiBase` 请求自己的服务，将 `session` 保存在内存。切换账号、Server 或退出会关闭旧 origin 与连接。麦克风仍需显式授权。旧 CLI 必须升级；独立 CLI 和 Server Web 静态预览不提供统一账号会话。具体合同见 `references/steamharness-api.md`。
+
 ## Executor 参数
 
 - 新 Workflow 有用户输入时，应在 `steamharness.defineEntrypoint({ params, createInput })` 中声明；Bot 继续在 executor 上声明，让本地 CLI 和 CLI Web 共享相同参数语义。

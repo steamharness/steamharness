@@ -885,5 +885,6 @@
   "System default browser": "系统默认浏览器",
   "Only HTTP and HTTPS links can be opened in the browser.": "浏览器仅支持打开 HTTP 和 HTTPS 链接。",
   "Unable to open the website in the system browser.": "无法在系统浏览器中打开网页。",
-  "Unable to open the website: {0}": "无法打开网页：{0}"
+  "Unable to open the website: {0}": "无法打开网页：{0}",
+  "Could not connect the Web application to your account. Check the Server configuration and retry.": "无法将 Web 应用连接到当前账号。请检查 Server 配置后重试。"
 }

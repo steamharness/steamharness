@@ -55,6 +55,10 @@ Kanban 是 HTML、CSS、JavaScript 和静态资源组成的项目入口。下面
 
 需要打包 JavaScript 或样式时，先本地构建，再把入口指向构建后的 HTML。静态资源使用相对路径，随项目归档一起分发。Server 不替项目执行构建脚本。
 
+只有 Kanban 入口的项目，可以通过 `.steamharnessignore` 只上传项目声明、依赖清单、配置和完整静态产物，排除构建源码与后端。上传时会校验已声明产物目录中的资源是否齐全。
+
 ## 接入宿主
 
 配置、页面方法、对话订阅和其他 Workflow 调用见 [Kanban HTML 项目](/concepts/kanban)。浏览器页面不能获得宿主长期凭据。
+
+需要复用完整 H5 的存储、API、WebSocket 或麦克风时，按 [Web 应用接入](/concepts/kanban#接入有账号的-web-应用) 声明 `webApp`，并为宿主注册服务提供器。普通 HTML 模板不自动获得这些能力。

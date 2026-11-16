@@ -15,13 +15,14 @@ it('processes logout and close while an earlier host authentication is pending',
   const close = vi.fn(async () => {});
   const setHostResourceProjects = vi.fn();
   const setHostUserSettings = vi.fn();
+  const setHostWebApps = vi.fn(async () => {});
   const resourceProjects = [path.join(os.tmpdir(), 'aggregate')];
   const connection = { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' };
   const systemAiConnection = { serverUrl: 'https://ai.test', accessToken: 'ai-test-token' };
   vi.mocked(startWebServer).mockResolvedValue({
     url: `http://127.0.0.1:3000/#session=${'a'.repeat(64)}`,
     manifest:{entries:[],defaultEntry:'main'}, project: { id: 'host-test', name: 'Host test', projectType: 'bot', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
-    setHostConnection, setHostResourceProjects, setHostUserSettings, close,
+    setHostConnection, setHostResourceProjects, setHostUserSettings, setHostWebApps, close,
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([
     JSON.stringify({ type: 'configure', surface: 'editor', connection, systemAiConnection, userSettings: { agent: { permissionPolicy: 'auto' } } }),
@@ -36,12 +37,15 @@ it('processes logout and close while an earlier host authentication is pending',
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
-    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, userSettingsProtocolVersion: 1 });
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host?.userSettings).toEqual({ agent: { permissionPolicy: 'auto' } });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host?.connection).toEqual({ ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: systemAiConnection.accessToken });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
     expect(setHostConnection).toHaveBeenNthCalledWith(1, { ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: 'rotated-ai-token' });
     expect(setHostConnection).toHaveBeenNthCalledWith(2, undefined);
+    expect(setHostWebApps).toHaveBeenCalledTimes(2);
+    expect(setHostWebApps.mock.invocationCallOrder[0]).toBeLessThan(setHostConnection.mock.invocationCallOrder[0]);
+    expect(setHostWebApps.mock.invocationCallOrder[1]).toBeLessThan(setHostConnection.mock.invocationCallOrder[1]);
     expect(setHostResourceProjects).toHaveBeenNthCalledWith(1, resourceProjects);
     expect(setHostResourceProjects).toHaveBeenNthCalledWith(2, []);
     expect(setHostUserSettings).toHaveBeenCalledWith({ agent: { permissionPolicy: 'read-only' } });

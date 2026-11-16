@@ -69,7 +69,7 @@ Kanban cards in assistant replies preview their saved project, entry and configu
 
 Closing or refreshing a card invalidates its old instance; missing live instances do not prove successful rendering. File bridge reads allow up to 120 seconds without an earlier transport timeout; reads exceeding that limit still require investigation of the file path.
 
-When a Kanban board or embedded conversation fails, note the operation and error code in the alert. If it includes a diagnostic ID, use Studio's `get_kanban_diagnostics` to find that ID among recent requests for the board or card. Failed requests include a category, such as timeout, connection, or permission; file and database reads also list the sources they tried.
+When a Kanban board or embedded conversation fails, note the operation and error code in the alert. If it includes a diagnostic ID, use Studio's `get_kanban_diagnostics` to find that ID among recent requests for the board or card. Failed requests include a category, such as timeout, connection, or permission; file reads also list the sources they tried.
 
 Search the CLI host log for the same ID to find the underlying exception. Read diagnostics before refreshing the board, which clears these records. A Workflow business rejection shows its user-facing reason; other host exceptions do not expose raw paths or credentials to the page.
 
@@ -92,3 +92,5 @@ See [Runtime storage](/en/core-api/runtime-storage).
 ## Durable Agents and Studio Trace
 
 Read [conversation and task controls](/en/cli/agent-sessions) for queues, forks, errors, and child tasks.
+
+Explicit `webApp` entries require a CLI advertising `webAppProtocolVersion: 1` and a host provider. Standalone CLI Web does not supply an account. See [Kanban Web applications](/en/concepts/kanban#connect-an-account-based-web-application).

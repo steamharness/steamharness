@@ -1561,3 +1561,13 @@ Workflow 最新页在新增输出及图片高度变化时跟随底部；用户�
 画面回看使用 `timeline(runId, { from?, to?, at?, limit?, position?, direction? })`，复用本地 SQLite 输出日志，不另存历史。`from/to/at` 是 Unix 毫秒时间戳；不传范围读取整次运行，不传定位选中最新事件。返回 `run/runId/total/revision/bounds/from/to/frames/buckets/selection`。`limit` 为 1–48，默认 16；最多返回该数量的抽样截图元数据、80 个活动区间，以及一个完整选中 item 和最多九条附近事件摘要。`selection.point` 包含 `id/position/timestamp/kind/title/imageFileId?/fields`；`selection.frame` 是附近截图的定位信息。缩略图和附近事件没有完整 OCR 正文，图片仍走 `readImage`。
 
 时间轴只投影 `metadata.kind: "activity-record"`、`content.version: 1` 且带有效时间戳的 snapshot/click/input 输出。同一时间按稳定输出位置排序，支持混合秒与毫秒精度及延迟事件。传入 `selection.point.position` 可保持选中事件，附带 `direction: "previous" | "next"` 可跳转相邻图片。请求范围为空档时不得伪造连续记录。拖动暂停实时跟随，保留当前位置并提示新增记录；异步响应须校验运行及请求序号，缩略图缓存和读取队列须有上限。存储未实现时间轴时明确失败，不全量载入历史来模拟。
+
+## Kanban Web 应用宿主合同
+
+入口可选 `webApp: { service: string; permissions?: ["microphone"] }`，仅 Kanban 接受。service 匹配 `/^[a-z][a-z0-9.-]{0,99}$/`；拒绝其它字段、重复权限和摄像头权限。完整静态产物仍随入口打包，不使用远程 iframe。
+
+支持该协议的 CLI 在 ready 中返回 `webAppProtocolVersion: 1`。宿主扩展按 `projectId + entryId + service` 注册唯一提供器，使用当前连接和 AbortSignal 换取专用会话。可信 stdio 的 `web-apps` 消息按 entryId 传递 `{ service, apiBaseUrl, bootstrap, accountUrl? }`；来源不能是项目声明。API 目标必须是 HTTPS 或 loopback HTTP 的固定 `/api`，不携带 cookie、不跟随重定向。
+
+页面获得 `window.steamHarnessWebApp = { protocolVersion: 1, managed: true, apiBase, session, accountUrl?, nonce }`。`session` 对应 scoped bootstrap，缺少提供器时为 null；宿主长期 token 不进入页面。只在内存使用会话，通过 apiBase 访问 API、上传、签名文件与 WebSocket。页面可向 parent 发送 `{ type: "steamharness:web-app-account", nonce }`，由宿主按固定 accountUrl 打开账号中心；项目不能指定目标 URL。
+
+每个 Web 应用具有独立 loopback origin；显式声明麦克风才启用浏览器 Permissions-Policy 和 iframe 权限，系统授权仍由用户完成。取消、关闭、账号或 Server 变更必须撤销专用会话并关闭旧代理和 socket，忽略迟到的授权结果。Server Web 静态预览不支持此协议，需要本地宿主及提供器。

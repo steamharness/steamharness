@@ -2774,6 +2774,7 @@ export class Storage {
     const metadata = await this.readPackageMetadataForTarget(projectName, resolved.resolvedTarget);
     const registration = selectProjectEntry({ entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
+    if (registration.webApp) throw new HttpError(409, 409, "This Web application requires a local host with a registered service provider.");
     const artifact = registration.entry;
     return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }

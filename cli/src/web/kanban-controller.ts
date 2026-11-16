@@ -1,3 +1,4 @@
+import { WebAppPreview, type WebAppBinding } from "./web-app-preview";
 import { createLocalProjectConfigurationStore, resolveProjectEntrySync, readCachedConfigurationFile } from 'steamharness';
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { watch, type FSWatcher } from 'node:fs';
@@ -15,11 +16,14 @@ import { requestStudioAnalysis } from './local-analysis';
 import type { ProjectServerIssue, ProjectServerState } from './project-server-state';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; serverState?(): ProjectServerState; projectChanged?(): Promise<void> }
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; serverState?(): ProjectServerState; projectChanged?(): Promise<void>; webAppBinding?(): WebAppBinding | undefined }
 export class KanbanController {
   workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
   preview!: KanbanPreview;
+  private webApp?: WebAppPreview;
+  private webAppEpoch = 0;
+  private binding?: WebAppBinding;
   serverDataIssue?: ProjectServerIssue;
   private watcher?: FSWatcher;
   private previewDeclarations = new Set<string>();
@@ -43,10 +47,11 @@ export class KanbanController {
   }
   configuration(): KanbanInjectedConfiguration { const snapshot = configurationSnapshot(this.workspace, undefined, false); return { id: snapshot.id, name: snapshot.name, params: snapshot.values }; }
   configurationChanged(state: ProjectConfigurationState): void { this.workspace = state; if (this.preview) { this.newPreview(); this.hooks.changed(); } }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, serverDataIssue: this.serverDataIssue }; }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.project.kanban?.webApp ? this.webApp?.url ?? "about:blank" : this.preview.url, nonce: this.preview.nonce, webApp: !!this.project.kanban?.webApp, permissions: this.project.kanban?.webApp?.permissions ?? [], accountUrl: this.binding?.accountUrl }, serverDataIssue: this.serverDataIssue }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();
+    if (this.project.kanban?.webApp) await this.setWebAppBinding(this.hooks.webAppBinding?.());
     try {
       this.watcher = watch(this.project.folderPath, { recursive: true }, (_event, filename) => {
         const file = String(filename).replaceAll('\\', '/');
@@ -65,10 +70,25 @@ export class KanbanController {
       path.join(declaration.rootDir, 'steamharness.json'), path.join(declaration.rootDir, 'package.json'), declaration.configurationPath,
     ].filter((file): file is string => typeof file === 'string').map(file => path.relative(this.project.folderPath, file).replaceAll('\\', '/')));
     this.project.entryRoot = declaration.rootDir;
-    this.project.kanban = { artifactDir: path.posix.dirname(declaration.registration.entry), entry: path.posix.basename(declaration.registration.entry) };
+    this.project.kanban = { artifactDir: path.posix.dirname(declaration.registration.entry), entry: path.posix.basename(declaration.registration.entry), webApp: declaration.registration.webApp };
     this.newPreview();
+    if (this.webApp) await this.setWebAppBinding(this.binding);
     if (checkConnections) await this.hooks.projectChanged?.();
     this.hooks.changed();
+  }
+  async setWebAppBinding(binding: WebAppBinding | undefined): Promise<void> {
+    const epoch = ++this.webAppEpoch;
+    const previous = this.webApp; this.webApp = undefined;
+    this.binding = binding;
+    void previous?.close();
+    if (!this.preview || !this.project.kanban?.webApp || this.disposed) return;
+    this.hooks.changed();
+    if (binding && binding.service !== this.project.kanban.webApp.service) throw new Error('Web application service does not match its registration.');
+    this.newPreview();
+    const app = new WebAppPreview(() => this.preview, binding);
+    await app.start();
+    if (this.disposed || epoch !== this.webAppEpoch) { await app.close(); return; }
+    this.webApp = app; this.hooks.changed();
   }
   private newPreview() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); this.preview = new KanbanPreview(this.project.folderPath, this.project.kanban!, () => this.configuration()); }
   async handle(message: Message): Promise<Message[]> {
@@ -176,7 +196,7 @@ export class KanbanController {
       throw error;
     } finally { this.requests.delete(abort); }
   }
-  authenticationChanged() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.serverDataIssue = undefined; }
+  authenticationChanged(clearWebApp = true) { if (clearWebApp && this.project.kanban?.webApp) void this.setWebAppBinding(undefined); this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.serverDataIssue = undefined; }
   projectChecksChanged() { this.hooks.changed(); }
-  async close() { this.disposed = true; this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
+  async close() { this.disposed = true; ++this.webAppEpoch; await this.webApp?.close(); this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
 }

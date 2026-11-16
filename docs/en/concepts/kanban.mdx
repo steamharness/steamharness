@@ -196,3 +196,19 @@ Use a stable request ID for `start`. The same source entry, ID and payload retur
 Load pages and images on demand. Ignore responses from an earlier run, page or identity, and revoke Blob URLs when replaced. History remains readable after stopping, cancellation and reopening; business pages do not copy the complete execution journal.
 
 Local resource previews in the same aggregate can list runs, read pages, query timelines and load images, but cannot start or stop tasks. Server static previews provide no local execution or history; open the project in a local workspace instead.
+
+## Connect an account-based Web application
+
+A complete H5 application that needs IndexedDB, same-origin APIs, WebSocket, or voice recording can explicitly declare `webApp`:
+
+```json
+{ "type": "kanban", "name": "Chat", "webApp": { "service": "example.chat", "permissions": ["microphone"] } }
+```
+
+Build the complete H5 into the current entry's `dist/steamharness/build/<entryId>/` and use relative asset paths. `service` identifies a host provider. Project declarations cannot supply API URLs, long-lived tokens, or arbitrary network permissions. The only optional permission currently supported is `microphone`.
+
+A compatible local host creates a separate loopback origin for each page. A proxy with a fixed upstream handles APIs, uploads, signed files, and WebSocket. The injected `window.steamHarnessWebApp` contains an `apiBase` under the current nonce's `/api`, a `session` issued specifically for this application, and `managed: true` for host-managed accounts. Keep that session in memory. Switching accounts or Servers closes the old origin and connections.
+
+A host extension must register exactly one provider matching the project ID, entry ID, and `service`. Standalone `steamharness web` has no account provider; show host sign-in guidance in that case. Studio rejects older CLIs and offers retry when authorization fails. Microphone declarations still require host and operating-system consent. Camera access is unsupported.
+
+Ordinary Kanban retains its existing sandbox. Server Web static previews do not implement this account protocol and report that a local host is required. Direct browser access to the application's own service uses the application's login flow.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Explicit Kanban Web applications use separate local origins, fixed HTTP/WebSocket proxies, scoped sessions, and declared microphone permissions; account changes close old connections. Kanban-only uploads can contain the complete static output without including build sources.
+
 - Added “Search memory” to the Bot memory tool permission group alongside save, get, update and delete.
 
 - Kanban bridge failures show the operation, error code, and diagnostic ID. Embedded conversation failures can be found by that ID in diagnostics, and the CLI host log records the underlying exception under the same ID; cross-window ownership, expired views, and Workflow message receipt failures show specific guidance, while business rejections retain their user-facing reason.

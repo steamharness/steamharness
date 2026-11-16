@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,6 +52,20 @@ describe("createProjectUploadPlan", () => {
     expect(plan.projectIgnorePresent).toBe(false);
     expect(plan.projectIgnoreConfigured).toBe(false);
     expect(plan.files.map((file) => file.path)).not.toContain("node_modules/pkg/index.js");
+  });
+  it("can ship only bundled Kanban assets without backend or build sources", async () => {
+    const root = await createProject({ defaultEntry: "board", entries: [{ entryId: "board", type: "kanban", name: "Chat", root: ".", entry: "dist/steamharness/build/board/index.html", webApp: { service: "sample.chat" } }] });
+    const output = path.join(root, "dist/steamharness/build/board");
+    await mkdir(output, { recursive: true });
+    await writeFile(path.join(root, "main.js"), "private build source");
+    await writeFile(path.join(root, "tsconfig.json"), "{}");
+    await writeFile(path.join(output, "index.html"), "<html><head></head></html>");
+    await writeFile(path.join(output, "app.js"), "window.loaded=true");
+    await writeFile(path.join(root, ".steamharnessignore"), "**\n!package.json\n!steamharness.json\n!dist/\n!dist/steamharness/\n!dist/steamharness/build/\n!dist/steamharness/build/board/\n!dist/steamharness/build/board/**\n");
+    const plan = await createProjectUploadPlan(root);
+    expect(plan.files.map(file => file.path)).toEqual([".steamharnessignore", "dist/steamharness/build/board/app.js", "dist/steamharness/build/board/index.html", "package.json", "steamharness.json"]);
+    const declaration = JSON.parse(await readFile(path.join(root, "steamharness.json"), "utf8"));
+    expect(declaration.entries[0].webApp).toEqual({service:"sample.chat"});
   });
 
   it("rejects symbolic links instead of following host paths", async () => {

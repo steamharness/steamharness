@@ -1,5 +1,7 @@
 # Unreleased
 
+- Project generation guidance covers explicit Kanban Web applications, scoped sessions, fixed proxies, and microphone consent.
+
 - The generator documents silent automatic memory, keyword retrieval at the start of each turn, and `memory_search` relevance, count and response limits.
 
 - Document Bot project memory settings, categorized entries, four built-in tools and revision checks in the generator reference.

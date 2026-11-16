@@ -1,9 +1,11 @@
+import { parseWebAppBindings, type WebAppBinding } from "./web-app-preview";
 import path from 'node:path';
 import { parseUserSettings, type UserSettings } from 'steamharness';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
 
 export interface WebHostConfiguration {
+  webApps?: Record<string, WebAppBinding>;
   connection?: WebConnection;
   surface: 'editor' | 'assistant';
   assistant?: NonNullable<Project['assistant']>;
@@ -65,7 +67,7 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     throw new Error('A dedicated assistant project and its workspace are required.');
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
-  return { surface: configuration.surface, assistant, assistantProjectDir,
+  return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     connection: parseHostAuthentication(configuration),
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };

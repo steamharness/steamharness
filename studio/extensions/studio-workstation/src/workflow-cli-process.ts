@@ -1,3 +1,4 @@
+import { openWebApp, type WebAppSession } from "./web-app-providers";
 import { t, locale as currentLocale } from './localization';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -111,6 +112,7 @@ export async function startProjectCli(options: {
   surface: 'editor' | 'assistant'; connection?: Connection; assistant?: Project['assistant']; signal?: AbortSignal;
   assistantProjectDir?: string;
   expectedProjectId?: string;
+  webAppEntries?: import("@steamharness/project-manifest").ProjectEntry[];
   entryId: string;
   resourceProjects?: string[];
   studioControl?: StudioControlConfiguration;
@@ -130,6 +132,30 @@ export async function startProjectCli(options: {
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
   let closing = false, finished = false, buffer = '', stderr = '';
+  let webAppFailed = false;
+  let webAppConnection = options.connection;
+  let webAppEpoch = 0, webAppAbort: AbortController | undefined;
+  let webAppSessions: WebAppSession[] = [];
+  const clearWebApps = () => { ++webAppEpoch; webAppAbort?.abort(); const sessions = webAppSessions; webAppSessions = []; for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); };
+  const refreshWebApps = async (connection: Connection | undefined) => {
+    clearWebApps(); webAppFailed = false;
+    if (!connection || closing || finished || !options.expectedProjectId || !options.webAppEntries?.length) return;
+    const epoch = webAppEpoch, abort = webAppAbort = new AbortController();
+    const sessions: WebAppSession[] = [];
+    try {
+      const bindings: Record<string, unknown> = {};
+      for (const entry of options.webAppEntries) {
+        const session = await openWebApp({ projectId: options.expectedProjectId, entryId: entry.entryId, service: entry.webApp!.service, connection, signal: abort.signal });
+        sessions.push(session); bindings[entry.entryId] = session.binding;
+      }
+      if (closing || finished || epoch !== webAppEpoch) { for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); return; }
+      webAppSessions = sessions;
+      child.stdin?.write(`${JSON.stringify({ type: 'web-apps', webApps: bindings })}\n`);
+    } catch {
+      for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined);
+      if (!abort.signal.aborted) { webAppFailed = true; events.emit('web-app-error'); }
+    }
+  };
   let exit: WebSessionExit | undefined;
   const diagnostics = () => cleanError(stderr).slice(-8_000).trim();
   let resourceProjectsKey = JSON.stringify(options.resourceProjects ?? []);
@@ -139,7 +165,7 @@ export async function startProjectCli(options: {
   let force: ReturnType<typeof setTimeout> | undefined;
   const close = (): Promise<void> => {
     if (!closing && !finished) {
-      closing = true;
+      closing = true; clearWebApps();
       child.stdin?.end(`${JSON.stringify({ type: 'close' })}\n`);
       force = setTimeout(() => child.kill('SIGKILL'), 5_000);
       force.unref();
@@ -154,7 +180,7 @@ export async function startProjectCli(options: {
     stderr = (stderr + chunk).slice(-8_000 - overlap);
   });
   child.once('close', (code, signal) => {
-    finished = true; clearTimeout(force); exit = { code, signal, stderr: diagnostics() };
+    finished = true; clearWebApps(); clearTimeout(force); exit = { code, signal, stderr: diagnostics() };
     events.emit('exit', exit); finishClose();
   });
   try {
@@ -177,7 +203,7 @@ export async function startProjectCli(options: {
             const message = JSON.parse(line) as WebReady;
             if (message.type !== 'ready') { continue; }
             const url = new URL(message.url);
-            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
+            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || (options.webAppEntries?.length && message.webAppProtocolVersion !== 1) || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             settle(undefined, message); return;
@@ -189,6 +215,7 @@ export async function startProjectCli(options: {
     });
     systemAiSupported = ready.systemAiConnectionProtocolVersion === 1;
     connectionKey = JSON.stringify(hostAuthentication(options.connection, options.surface, systemAiSupported));
+    void refreshWebApps(options.connection);
     child.stdout?.resume();
     child.on('error', () => void close());
     return { ready, closed, close,
@@ -206,7 +233,9 @@ export async function startProjectCli(options: {
         const key = JSON.stringify(authentication);
         if (key === connectionKey) { return; }
         connectionKey = key;
-        if (!closing && !finished) { child.stdin?.write(`${JSON.stringify({ type: 'auth', ...authentication })}\n`); }
+        webAppConnection = connection;
+        clearWebApps();
+        if (!closing && !finished) { child.stdin?.write(`${JSON.stringify({ type: 'auth', ...authentication })}\n`); void refreshWebApps(connection); }
       },
       updateResourceProjects: resourceProjects => {
         if (closing || finished) return;
@@ -215,6 +244,8 @@ export async function startProjectCli(options: {
         resourceProjectsKey = key;
         child.stdin?.write(`${JSON.stringify({ type: 'resource-projects', resourceProjects })}\n`);
       },
+      retryWebApps: () => refreshWebApps(webAppConnection),
+      onWebAppError: callback => { events.on('web-app-error', callback); if (webAppFailed) queueMicrotask(() => { if (events.listeners('web-app-error').includes(callback)) callback(); }); return { dispose: () => events.off('web-app-error', callback) }; },
       onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(() => { if (events.listeners('exit').includes(callback)) callback(exit); }); } return { dispose: () => events.off('exit', callback) }; },
     };
   } catch (error) { await close(); throw error; }

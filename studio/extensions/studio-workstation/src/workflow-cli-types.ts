@@ -9,6 +9,7 @@ export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
   assistantProtocolVersion?: number;
   accountProtocolVersion?: number;
+  webAppProtocolVersion?: number;
   systemAiConnectionProtocolVersion?: number;
   entriesProtocolVersion: number;
   traceProtocolVersion?: number;
@@ -24,6 +25,8 @@ export interface WebSession {
   updateAuth(connection?: Connection): void;
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
+  retryWebApps?(): Promise<void>;
+  onWebAppError?(callback: () => void): { dispose(): void };
   reconnect?(): Promise<boolean>;
   onReconnect?(callback: () => void): { dispose(): void };
   onExit(callback: (exit?: WebSessionExit) => void): { dispose(): void };

@@ -55,6 +55,10 @@ A three-column static board.
 
 When bundling JavaScript or styles, build locally and point the entry at the resulting HTML. Use relative asset paths and distribute the assets in the project archive. Server does not run project build scripts.
 
+For a project with only Kanban entries, use `.steamharnessignore` to upload the project declaration, dependency manifests, configuration, and complete static output while excluding build sources and backend code. Upload validation requires every resource in the declared output directory.
+
 ## Integrate with the host
 
 See [Kanban HTML projects](/en/concepts/kanban) for configuration, page methods, conversation subscriptions, and Workflow calls. Browser pages receive no long-lived host credentials.
+
+For a complete H5 application with storage, APIs, WebSocket, or microphone access, declare `webApp` and register a host provider as described in [Web applications](/en/concepts/kanban#connect-an-account-based-web-application). Ordinary HTML templates do not receive these capabilities automatically.

@@ -44,14 +44,14 @@ export function resolveProjectUploadRequiredPaths(
     const prefix = entry.root === "." ? "" : `${entry.root}/`;
     required.add(projectEntryFilePath(entry));
     if (entry.configuration) required.add(`${prefix}${entry.configuration}`);
-    for (const filename of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "tsconfig.json"]) {
+    for (const filename of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", ...(entry.type === "kanban" ? [] : ["tsconfig.json"])]) {
       if (normalizedAvailablePaths.has(`${prefix}${filename}`)) required.add(`${prefix}${filename}`);
     }
     const artifactDir = entry.type === "kanban" ? entry.entry.slice(0, entry.entry.lastIndexOf("/") + 1) : undefined;
     for (const file of normalizedAvailablePaths) {
       if (artifactDir !== undefined && file.startsWith(artifactDir) && !file.endsWith(".map")) required.add(file);
       if (!file.startsWith(prefix)) continue;
-      if (/\.[cm]?[jt]sx?$/.test(file) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) required.add(file);
+      if (entry.type !== "kanban" && /\.[cm]?[jt]sx?$/.test(file) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) required.add(file);
     }
   }
   return [...required].sort();

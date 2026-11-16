@@ -683,6 +683,29 @@ test("Storage atomically checks project configuration versions and isolates acco
   }finally{await rm(dataRoot,{recursive:true,force:true});}
 });
 
+test("Storage refuses remote Web application previews and preview capabilities", async () => {
+  const dataRoot = await mkdtemp(path.join(tmpdir(), "web-app-preview-storage-"));
+  const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, buildInfo: testBuildInfo });
+  storage.getProjectAccessSummary = async () => ({ projectId: DEMO_WF_ID, projectName: "Chat", visibility: "private", access: resolveResourceAccess([{ type: "project", id: DEMO_WF_ID, role: "developer" }]) });
+  try {
+    await mkdir(sourceRoot, { recursive: true });
+    await writeProjectFixture(path.join(sourceRoot, "package.json"), JSON.stringify({ id: DEMO_WF_ID, name: "Chat", version: "0.1.0", devDependencies: testToolchainDependencies, defaultEntry: "main", entries: [{ entryId: "main", name: "Chat", type: "kanban", root: ".", entry: "index.html", webApp: { service: "sample.chat" } }], projectInfo: DECLARED_SERVER_PROJECT_INFO }));
+    await writeFile(path.join(sourceRoot, "index.html"), "<!doctype html>");
+    const options = { projectName: DEMO_WF_ID, actorId: "user-a", target: "draft", entryId: "main" };
+    for (const operation of [() => storage.getKanbanWorkspace(options), () => storage.issueKanbanPreviewCapability(options)]) {
+      await assert.rejects(operation(), error => {
+        assert.equal((error as { statusCode: number }).statusCode, 409);
+        assert.match((error as Error).message, /requires a local host/);
+        return true;
+      });
+    }
+  } finally {
+    await storage.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
 test("Storage keeps draft configuration values when an older version is read and edited", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "project-configuration-targets-"));
   const draft = path.join(dataRoot,"projects",DEMO_WF_ID,"draft","source");

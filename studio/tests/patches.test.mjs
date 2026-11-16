@@ -49,7 +49,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
     'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts'];
-  const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts']);
+  const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
+    'src/vs/code/electron-main/app.ts']);
   const index = path.join(upstream, '.git/index');
   await applyPatches(ROOT, upstream);
   assert.doesNotMatch(await fs.readFile(path.join(upstream, files[0]), 'utf8'), /\{ id: '(?:databases|kv|knowledge)'/u);
