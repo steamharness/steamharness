@@ -161,6 +161,58 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       check('macOS: mode controls clear native window buttons at different zoom levels and reclaim the space in fullscreen');
     }
 
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'titlebar') {
+      await call({ action: 'untitled', text: 'Auxiliary window title-bar probe.' });
+      await command('setContext', 'studio.projectAvailable', true);
+      await command('setContext', 'studio.projectReleaseAvailable', true);
+      const titlebar = page.locator('.part.titlebar .titlebar-container').first();
+      const adjacent = titlebar.locator('.center-adjacent-toolbar-container');
+      await until(() => adjacent.locator('.action-item').count(), count => count >= 2, 'Title-bar actions did not appear');
+      await page.setViewportSize({ width: 800, height: 960 });
+      await until(() => titlebar.getAttribute('class'), value => value?.includes('studio-narrow-titlebar'), 'Main title bar did not enter narrow mode');
+      await command('setContext', 'studio.projectAvailable', true);
+      await command('setContext', 'studio.projectReleaseAvailable', true);
+      await until(() => adjacent.locator('.studio-titlebar-primary-run').count(), Boolean, 'Run action disappeared in narrow mode');
+      assert.equal(await page.locator('.studio-mode-toggle').isVisible(), true);
+      assert.equal(await titlebar.locator('.titlebar-center').isVisible(), false);
+      assert.equal(await adjacent.locator('.action-item:visible').count(), 1);
+      assert.equal(await adjacent.locator('.studio-titlebar-primary-run:visible').count(), 1);
+      assert.equal(await titlebar.locator('.action-toolbar-container').isVisible(), false);
+      await page.setViewportSize({ width: 1440, height: 960 });
+      await until(() => titlebar.getAttribute('class'), value => !value?.includes('studio-narrow-titlebar'), 'Main title bar did not restore full mode');
+      assert.ok(await adjacent.locator('.action-item:visible').count() >= 2);
+      check(`${language}: main title bar keeps mode and run when narrow, then restores wide controls`);
+
+      const auxiliaryStyles = await page.evaluate(() => {
+        const shell = document.createElement('div');
+        shell.className = 'monaco-workbench';
+        shell.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:52px';
+        const titlebar = document.querySelector('.part.titlebar').cloneNode(true);
+        shell.append(titlebar); document.body.append(shell);
+        const container = shell.querySelector('.titlebar-container');
+        container.classList.add('studio-narrow-titlebar', 'studio-auxiliary-titlebar', 'has-center');
+        const toolbar = shell.querySelector('.action-toolbar-container .actions-container');
+        toolbar.replaceChildren();
+        toolbar.closest('.action-toolbar-container').classList.remove('has-no-actions');
+        const pin = document.createElement('li'); pin.className = 'action-item icon'; pin.textContent = 'pin'; toolbar.append(pin);
+        const visible = selector => !!shell.querySelector(selector)?.checkVisibility();
+        const result = {
+          commandCenter: visible('.command-center-center'),
+          navigation: visible('.command-center > .monaco-toolbar > .monaco-action-bar > .actions-container > .action-item:not(.command-center-center)'),
+          run: visible('.studio-titlebar-primary-run'),
+          releaseRun: visible('.center-adjacent-toolbar-container .action-item:not(.studio-titlebar-primary-run)'),
+          update: visible('.update-toolbar-container'),
+          alwaysOnTop: visible('.action-toolbar-container .action-item'),
+        };
+        shell.remove(); return result;
+      });
+      assert.deepEqual(auxiliaryStyles, { commandCenter: true, navigation: false, run: true, releaseRun: false, update: false, alwaysOnTop: true });
+      const manifest = JSON.parse(await readFile(path.join(ROOT, 'extensions/studio-workstation/package.json'), 'utf8'));
+      assert.equal(manifest.contributes.menus['editor/title'].some(item => item.command === 'studio.openProject'), false);
+      check(`${language}: auxiliary title bar retains command center, run and always-on-top; editor tabs omit duplicate run`);
+      continue;
+    }
+
     const project = path.join(folder, 'conversation'); await mkdir(project);
     await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
     await symlink(path.join(sourceRoot, 'harness'), path.join(project, 'node_modules/steamharness'), 'dir');
