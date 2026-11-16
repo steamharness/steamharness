@@ -1,0 +1,114 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index c253f231d7bd016abf2fdc8ac6553c5a99dfdab1..0c6acd7d5927005f8ed98c78aa72207d4c4ed632 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -84,6 +84,7 @@
+ }
+ 
+ .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
++.monaco-workbench.studio-narrow-titlebar .studio-steam-toggle-tools { display: none; }
+ .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-toggle-tools {
+ 	display: inline-flex;
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index 52ff78eb5966757d69e88e617793a8a735439d55..53606c6ab0018a27c170a022ffdb24426068ef72 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -553,3 +553,19 @@
+ 	width: 12px;
+ 	height: 12px;
+ }
++
++/* Keep the project run available when the native window leaves little title-bar space. */
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .center-adjacent-toolbar-container .action-item:not(.studio-titlebar-primary-run),
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .update-toolbar-container {
++	display: none;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-left > .window-appicon,
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-left > .menubar,
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-right > .action-toolbar-container {
++	display: none;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar.studio-auxiliary-titlebar > .titlebar-center > .window-title > .command-center > .monaco-toolbar > .monaco-action-bar > .actions-container > .action-item:not(.command-center-center) {
++	display: none;
++}
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 2244280a06fc3b186a6119ce48562323b56a57e3..64d9723f9e0a18db7aad778d717387685fce7901 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -72,6 +72,7 @@ class StudioProjectRunActionViewItem extends MenuEntryActionViewItem {
+ 		this.options.label = false;
+ 		super.render(container);
+ 		container.classList.add('studio-workflow-run');
++		container.classList.toggle('studio-titlebar-primary-run', this.action.id === 'studio.openProject');
+ 	}
+ }
+ 
+@@ -313,6 +314,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 	private readonly isAuxiliary: boolean;
+ 	private isCompact = false;
++	private isStudioTitlebarNarrow = false;
+ 
+ 	private readonly isCompactContextKey: IContextKey<boolean>;
+ 
+@@ -487,6 +489,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 	protected override createContentArea(parent: HTMLElement): HTMLElement {
+ 		this.element = parent;
+ 		this.rootContainer = append(parent, $('.titlebar-container'));
++		this.rootContainer.classList.toggle('studio-auxiliary-titlebar', this.isAuxiliary);
+ 		// Measure in the render phase so DOM reads do not force layout during startup.
+ 		this.titleBarToolBarOverflowScheduler = this._register(new AnimationFrameScheduler(this.rootContainer, () => this.updateTitleBarToolBarOverflow()));
+ 
+@@ -798,6 +801,12 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 				actions.primary.push(GLOBAL_ACTIVITY_TITLE_ACTION);
+ 			}
+ 
++			if (this.isStudioTitlebarNarrow) {
++				const alwaysOnTop = new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop']);
++				actions.primary.splice(0, actions.primary.length, ...actions.primary.filter(action => this.isAuxiliary && alwaysOnTop.has(action.id)));
++				actions.secondary.length = 0;
++			}
++
+ 			this.actionToolBar.setActions(prepareActions(actions.primary), prepareActions(actions.secondary));
+ 		};
+ 
+@@ -998,6 +1007,17 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		}
+ 
+ 		const zoomFactor = getZoomFactor(getWindow(this.element));
++		const narrow = dimension.width <= 960;
++		if (this.isStudioTitlebarNarrow !== narrow) {
++			this.isStudioTitlebarNarrow = narrow;
++			this.rootContainer.classList.toggle('studio-narrow-titlebar', narrow);
++			if (!this.isAuxiliary) {
++				this.layoutService.mainContainer.classList.toggle('studio-narrow-titlebar', narrow);
++			}
++			if (this.actionToolBar) {
++				this.createActionToolBarMenus();
++			}
++		}
+ 
+ 		this.element.style.setProperty('--zoom-factor', zoomFactor.toString());
+ 		this.rootContainer.classList.toggle('counter-zoom', this.preventZoom);
+@@ -1007,7 +1027,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 			this.customMenubar.value.layout(menubarDimension);
+ 		}
+ 
+-		const hasCenter = this.isCommandCenterVisible || this.title.textContent !== '';
++		const hasCenter = (this.isAuxiliary || !narrow) && (this.isCommandCenterVisible || this.title.textContent !== '');
+ 		this.rootContainer.classList.toggle('has-center', hasCenter);
+ 	}
+ 
+@@ -1028,6 +1048,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 	override dispose(): void {
+ 		this._onWillDispose.fire();
++		if (!this.isAuxiliary) {
++			this.layoutService.mainContainer.classList.remove('studio-narrow-titlebar');
++		}
+ 
+ 		super.dispose();
+ 	}

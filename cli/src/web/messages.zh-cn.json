@@ -1017,5 +1017,12 @@
   "Crop height (px)": "裁剪高度（像素）",
   "Reset crop": "重置裁剪",
   "Cropping requires PNG, JPEG or WebP in the accepted file types.": "启用裁剪时，允许的文件类型需要包含 PNG、JPEG 或 WebP。",
-  "Optional Server connection": "可选的 Server 连接"
+  "Optional Server connection": "可选的 Server 连接",
+  "Bot memory": "Bot 记忆",
+  "Save memory": "存记忆",
+  "Get memory": "取记忆",
+  "Search memory": "搜记忆",
+  "Update memory": "改记忆",
+  "Delete memory": "删记忆",
+  "Share categorized memories across conversations in this Bot. Turning memory off preserves saved entries. Changes apply on the next execution.": "在此 Bot 的会话间共享分类记忆。关闭后保留已存条目，修改在下次执行生效。"
 }

@@ -3,6 +3,7 @@ import { t } from './localization';
 
 export interface ConversationAccess { readOnly: boolean; reason?: 'pending' | 'opened' | 'running' }
 interface Owner { lease: RuntimeHistoryLease; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
+const ownershipConflict = () => Object.assign(new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.')), { code: 'CONVERSATION_OWNED_ELSEWHERE' });
 
 /** Persistence owners protect execution across windows, processes and restarts. */
 export class ConversationOwnership {
@@ -35,7 +36,7 @@ export class ConversationOwnership {
     catch (error) { this.release(scope); this.lost(scope, error); return false; }
   }
   lease(id: string): RuntimeHistoryLease {
-    if (!this.owns(id)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    if (!this.owns(id)) throw ownershipConflict();
     return this.owners.get(this.scope(id))!.lease;
   }
   takeAcquired(): Set<string> { const acquired = new Set(this.acquired); this.acquired.clear(); return acquired; }
@@ -91,12 +92,12 @@ export class ConversationOwnership {
   }
   async assertWritable(id: string, clientId?: string): Promise<void> {
     const owner = await this.acquire(id), writer = owner?.clients.get(id);
-    if (!owner || clientId && writer && writer !== this.writer(clientId)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    if (!owner || clientId && writer && writer !== this.writer(clientId)) throw ownershipConflict();
     owner.lease.assertOwned(); if (clientId) owner.clients.set(id, this.writer(clientId));
   }
   async hold(id: string): Promise<() => void> {
     const owner = await this.acquire(id);
-    if (!owner) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    if (!owner) throw ownershipConflict();
     owner.retained++;
     return () => { owner.retained--; };
   }
@@ -107,7 +108,7 @@ export class ConversationOwnership {
   async independent(id: string): Promise<() => void> {
     const previous = this.scopes.get(id) ?? id; this.scopes.set(id, id);
     const owner = await this.acquire(id);
-    if (!owner) { this.scopes.set(id, previous); throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.')); }
+    if (!owner) { this.scopes.set(id, previous); throw ownershipConflict(); }
     owner.retained++;
     const parent = this.owners.get(previous), client = parent?.clients.get(id);
     if (client && previous !== id) { parent!.clients.delete(id); owner.clients.set(id, client); }

@@ -118,15 +118,25 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 
 describe('Kanban CLI Web workspace', () => {
   it('exposes safe runtime failures, clears stale evidence, and queries the exact live page without writing', async () => {
-    const { app, post, bridge, state, runtime } = await fixture();
-    await bridge('files.readFile', { fileId: 'wf_ab12' });
+    const { app, post, bridge, state } = await fixture();
+    const hostLog = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'http://127.0.0.1:12345/studio-control');
+    vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', 'test-capability');
+    const originalFetch = globalThis.fetch;
+    const studioFetch = vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => String(url).endsWith('/studio-control')
+      ? Promise.reject(new Error('private-server-token', { cause: new DOMException('private-timeout', 'TimeoutError') }))
+      : originalFetch(url, options));
+    const response = await bridge('studio.getLocalAnalysis');
+    expect(response).toMatchObject({ ok: false, error: { code: 'KANBAN_BRIDGE_ERROR', category: 'timeout', diagnosticId: expect.any(String) } });
+    expect(JSON.stringify(response)).not.toContain('private-');
+    expect(hostLog.mock.calls.map(([chunk]) => String(chunk)).find(line => line.includes(response.error.diagnosticId))).toContain('TimeoutError');
     const inspect = async (call?: object) => (await post({ type: 'kanban-diagnostics', ...(call ? { call } : {}) }).then(response => response.json())).messages[0].value;
     const failed = await inspect();
     expect(failed).toMatchObject({ available: true, projectId: id, entryId: 'main', instances: [], requests: [
-      { operation: 'files.readFile', fileId: 'wf_ab12', ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'local' }], error: { category: 'other' } },
+      { operation: 'studio.getLocalAnalysis', diagnosticId: response.error.diagnosticId, ok: false, attempts: [{ source: 'host' }], error: { category: 'timeout' } },
     ] });
     expect(JSON.stringify(failed)).not.toContain('private-');
-    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+    expect(studioFetch.mock.calls.some(([url]) => String(url).endsWith('/studio-control'))).toBe(true);
     const hub = app.kanbanController!.methods, disconnect = hub.connect('diagnostic-client');
     const configurationId = (await state()).kanban.configuration.id;
     hub.publish({ clientId: 'diagnostic-client', instanceId: 'page', configurationId, ready: true, presentation: { mode: 'fullscreen' }, methods: [
@@ -144,6 +154,19 @@ describe('Kanban CLI Web workspace', () => {
     expect(await inspect()).toMatchObject({ instances: [], requests: [] });
     expect((await post({ type: 'kanban-diagnostics', call })).status).toBe(400);
     disconnect();
+  });
+  it('records embedded conversation failures under the displayed diagnostic id', async () => {
+    const { bridge, post } = await fixture();
+    const invalid = await bridge('conversations.openView', { entryId: 'bot', conversationId: 'new-chat', viewId: 'view', forbidden: 'private' });
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'KANBAN_BRIDGE_INVALID_REQUEST' } });
+    expect(invalid.error).not.toHaveProperty('diagnosticId');
+    const response = await bridge('conversations.openView', { entryId: 'bot', conversationId: 'new-chat', viewId: 'view' });
+    expect(response).toMatchObject({ ok: false, error: { code: 'ENTRY_RUNTIME_UNAVAILABLE', diagnosticId: expect.any(String) } });
+    const diagnostics = await post({ type: 'kanban-diagnostics' }).then(value => value.json());
+    expect(diagnostics.messages[0].value.requests).toContainEqual(expect.objectContaining({
+      operation: 'conversations.openView', diagnosticId: response.error.diagnosticId, ok: false,
+      error: expect.objectContaining({ code: 'ENTRY_RUNTIME_UNAVAILABLE' }),
+    }));
   });
   it('routes local Studio analysis through its read-only host capability without Server login', async () => {
     const { bridge, runtime } = await fixture();

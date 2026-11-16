@@ -69,13 +69,13 @@ it('serves mixed and repeated entry types through one host and isolates drafts, 
   await f.call('agent', { type: 'draft', text: 'Agent draft', attachments: [] });
   await f.call('assistant', { type: 'draft', text: 'Assistant draft', attachments: [] });
   await f.call('agent', { type: 'project-configuration', call: { action: 'save', revision: a.configurations.revision, id: a.configurations.activeConfigurationId, values: { label: 'Only agent' } } });
-  expect((await f.state('assistant')).configurations.configurations[0].values).toEqual({});
+  expect((await f.state('assistant')).configurations.configurations[0].values).toEqual({ STEAMHARNESS_BOT_MEMORY_ENABLED: true });
   expect((await f.post('assistant', { type: 'draft', applicationId: `${a.project.id}:agent`, text: 'Wrong entry', attachments: [] })).ok).toBe(false);
   await f.reopen();
   const restoredA = await f.state('agent'), restoredB = await f.state('assistant');
   expect(JSON.stringify(restoredA)).toContain('Agent draft'); expect(JSON.stringify(restoredA)).not.toContain('Assistant draft');
   expect(JSON.stringify(restoredB)).toContain('Assistant draft'); expect(JSON.stringify(restoredB)).not.toContain('Agent draft');
-  expect(restoredA.configurations.configurations[0].values).toEqual({ label: 'Only agent' });
+  expect(restoredA.configurations.configurations[0].values).toEqual({ label: 'Only agent', STEAMHARNESS_BOT_MEMORY_ENABLED: true });
   expect((await f.state('board')).project.projectType).toBe('kanban');
 });
 
@@ -237,6 +237,29 @@ it('returns all authorized Workflow receipts to an embedded composer without wai
   const request = vi.mocked(f.runtime.run).mock.calls.at(-1)![0];
   expect(request.entryCall).toMatchObject({ entryId: 'board' });
   expect(request.args).toContain(JSON.stringify({ threadId: 'topic', conversationId: 'composer-session', text: '@bot:all review', params: {}, requestId: 'stable-submission' }));
+  await bridge('conversations.closeView', { viewId });
+});
+
+it('shows a Workflow business rejection and links embedded send failures to Kanban diagnostics', async () => {
+  const f = await fixture(), board = await f.state('board');
+  const bridge = (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,
+    call: { requestId: randomUUID(), operation, input } });
+  const viewId = 'rejected-composer';
+  expect((await bridge('conversations.openView', { viewId, entryId: 'agent', conversationId: 'composer-session',
+    submit: { entryId: 'workflow', entrypointId: 'operation', payload: { threadId: 'topic' } } })).ok).toBe(true);
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'success', result: { data: { output: { data: {
+    errCode: 409, errMessage: '请先恢复对话，再继续运行。',
+  } } } } } as Report);
+  const rejected = await bridge('conversations.viewMessage', { viewId, message: { type: 'send', text: 'Continue', params: {}, requestId: 'rejected' } });
+  expect(rejected).toMatchObject({ ok: false, error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: '请先恢复对话，再继续运行。', diagnosticId: expect.any(String) } });
+  const diagnostics = await f.call('board', { type: 'kanban-diagnostics' });
+  expect(diagnostics.value.requests).toContainEqual(expect.objectContaining({
+    operation: 'conversations.viewMessage', diagnosticId: rejected.error.diagnosticId, ok: false,
+    error: expect.objectContaining({ code: 'KANBAN_SUBMISSION_REJECTED' }),
+  }));
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'success', result: { data: { output: { data: { errCode: 0, errMessage: '', data: [] } } } } } as Report);
+  const invalid = await bridge('conversations.viewMessage', { viewId, message: { type: 'send', text: 'Continue', params: {}, requestId: 'invalid' } });
+  expect(invalid).toMatchObject({ ok: false, error: { code: 'KANBAN_SUBMISSION_INVALID_RECEIPT' } });
   await bridge('conversations.closeView', { viewId });
 });
 

@@ -13,6 +13,19 @@ let readConfiguration: () => Promise<ProjectConfigurationState>;
 let beforeSelect: () => Promise<void>;
 const message=(data:unknown)=>window.dispatchEvent(new MessageEvent('message',{data,source:null}));
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
+it('saves the Bot memory switch in project configuration and restores its default',async()=>{
+ state=createConfigurationState([{name:'STEAMHARNESS_BOT_MEMORY_ENABLED',type:'boolean',label:'Bot memory',defaultValue:true}],()=> 'memory-profile');
+ await openPanel();
+ let toggle=document.querySelector<HTMLInputElement>('input[aria-label="Bot memory"]')!;
+ expect(toggle.checked).toBe(true);
+ expect(document.body.textContent).toContain('Turning memory off preserves saved entries.');
+ toggle.checked=false;toggle.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values.STEAMHARNESS_BOT_MEMORY_ENABLED).toBe(false);
+ toggle=document.querySelector<HTMLInputElement>('input[aria-label="Bot memory"]')!;expect(toggle.checked).toBe(false);
+ button('Restore default for Bot memory').click();button('Save').click();await settle();
+ expect(state.configurations[0]!.values.STEAMHARNESS_BOT_MEMORY_ENABLED).toBeUndefined();
+ expect(document.querySelector<HTMLInputElement>('input[aria-label="Bot memory"]')!.checked).toBe(true);
+});
 beforeEach(()=>{
  state=createConfigurationState([{name:'title',type:'string',defaultValue:'Original'},{name:'data',type:'json',defaultValue:null}],()=> 'profile');
  fail=false;

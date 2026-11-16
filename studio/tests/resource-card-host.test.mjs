@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-resource-cards.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
-const result = { type: 'resource-preview', id: '00000000-0000-0000-0000-000000000001', url: '/entries/main/resource/00000000-0000-0000-0000-000000000001', action: 'open', card: { kind: 'knowledge', target: { database:'data', projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',entryId:'database',documentId:'doc' } } };
+const result = { type: 'resource-preview', id: '00000000-0000-0000-0000-000000000001', url: '/entries/main/resource/00000000-0000-0000-0000-000000000001', action: 'open', card: { kind: 'file', target: { projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',entryId:'main',filePath:'notes.md' } } };
 
 function fixture(fetcher) {
   const module = { exports: {} }, opened = [], messages = [];
@@ -25,7 +25,7 @@ test('host re-resolves a saved card before opening it and never trusts client-su
   await tick();
   assert.equal(requested.url, 'http://127.0.0.1:3333/entries/main/api/message'); assert.equal(requested.headers.Authorization, `Bearer ${'a'.repeat(64)}`);
   assert.deepEqual(JSON.parse(requested.body), { type: 'resource', action: 'open', cardId: 'card', messageId: 'message' });
-  assert.equal(opened.length, 1); assert.equal(opened[0].card.target.entryId, 'database'); binding.dispose();
+  assert.equal(opened.length, 1); assert.equal(opened[0].card.target.entryId, 'main'); binding.dispose();
 });
 
 test('a denied resource does not open a panel and reports the server error', async () => {

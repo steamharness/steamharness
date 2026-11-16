@@ -1,5 +1,9 @@
 # Unreleased
 
+- The generator documents silent automatic memory, keyword retrieval at the start of each turn, and `memory_search` relevance, count and response limits.
+
+- Document Bot project memory settings, categorized entries, four built-in tools and revision checks in the generator reference.
+
 - Document Kanban timeline reads, capture-time ordering, and bounded viewer caches.
 
 - Document background Workflow controls and paged results for Kanban projects.

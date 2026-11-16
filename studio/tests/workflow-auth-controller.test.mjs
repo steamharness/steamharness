@@ -104,15 +104,15 @@ test('Server pages reuse Studio credentials and discard a handoff if the account
   f.fetch = async (url, options) => {
     assert.equal(url, 'http://127.0.0.1:7126/api/auth/browser-session');
     assert.equal(options.headers.Authorization, 'Bearer test-token');
-    assert.deepEqual(JSON.parse(options.body), { returnTo: '/databases/main' });
+    assert.deepEqual(JSON.parse(options.body), { returnTo: '/projects/main' });
     return Response.json({ errCode: 0, data: { code } });
   };
-  await f.controller.openServerPage('/databases/main');
+  await f.controller.openServerPage('/projects/main');
   assert.equal(f.executed.at(-1).id, 'simpleBrowser.show');
   assert.deepEqual([...f.executed.at(-1).args], [`http://127.0.0.1:7126/api/auth/browser-session?code=${code}`]);
   let finish;
   f.fetch = () => new Promise(resolve => { finish = resolve; });
-  const pending = f.controller.openServerPage('/databases/main');
+  const pending = f.controller.openServerPage('/projects/main');
   await f.controller.invalidate(f.controller.getConnection());
   finish(Response.json({ errCode: 0, data: { code } }));
   await pending;

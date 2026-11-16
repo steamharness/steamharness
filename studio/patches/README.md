@@ -88,8 +88,6 @@
 
 `0064-studio-windows-background-updater-paths.patch` 统一安装目标与后台更新辅助程序的扩展长度路径转换，避免传统目录替换在较深依赖路径上重试失败。
 
-`0066-studio-database-workspace.patch` 将数据库目录加入 Steam 工具，并把独立数据标签归入数据库工具分类，保留原生标签操作。
-
 `0067-studio-start-recent-projects.patch` 为最近项目中当前窗口打开的文件夹或工作区显示“当前项目”标记，状态与双语标签由 Studio 扩展提供。
 
 `0070-studio-start-partial-status.patch` 让开始页展示可读取项目的统计，局部项目异常不再使整组计数显示为不可用；具体读取异常仍由 Studio Analysis 展示。

@@ -1,0 +1,27 @@
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 107bc870ca40fb6e53a3b5fedb4cca3ba4bc675f..49f5dab60f4ec7a430982ab08a7d6d86f313c3be 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -29,9 +29,6 @@ export const studioSteamToolDefinitions = [
+ 	{ id: 'editor', icon: 'code', editor: true },
+ 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
+ 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
+-	{ id: 'databases', icon: 'database', view: 'studio.databases' },
+-	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+-	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+ 	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
+ 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index 60e37c03aef66bc2fd151985ba9f12279cecb4a3..0a5da0f0bc5d86511365da7cd32fd04735af366a 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -478,7 +478,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (editor instanceof StudioToolViewInput) { id = editor.toolId; }
+ 		else if (editor instanceof WebviewInput) {
+ 			const type = editor.webview.providedViewType;
+-			id = type === 'studio.databaseData' ? 'databases' : type === 'studio.settings' ? 'settings' : type === 'studio.login' ? 'login' : type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
++			id = type === 'studio.settings' ? 'settings' : type === 'studio.login' ? 'login' : type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
+ 		} else if (editor instanceof EditorInput && editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
+ 		else if (editor instanceof EditorInput && editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
+ 		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }

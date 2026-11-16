@@ -9,11 +9,13 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import ts from "typescript";
 import { getUserSettings, type UserSettings } from "./user-settings";
 import { setTimeout as delay } from "node:timers/promises";
 import {resolveProjectConfigurationAccess,type ConfigurationConnection} from './configuration-access';
+import { BOT_MEMORY_CONFIGURATION_KEY, botMemoryConfigurationField } from "./agent/memory-configuration";
+import { findBotMemoryDefinition } from "./agent/memory-source";
 export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
@@ -48,39 +50,45 @@ export function inspectProjectAgentModelUsage(projectDir: string, entryFile: str
   return { found: discoverProjectAgentModels(projectDir, undefined, entryFile, "found", aggregateDir), projectModels: discoverProjectAgentModels(projectDir, undefined, entryFile, "projectModels", aggregateDir) };
 }
 
-type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" = "found", aggregateDir = projectDir): boolean {
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean; botMemoryDisabled: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" | "botMemoryDisabled" = "found", aggregateDir = projectDir): boolean {
   // Kanban HTML is an artifact outside its source root, never executable Agent source.
   if (entryFile && /\.html$/i.test(entryFile)) return false;
   const release = readProjectReleaseSync(aggregateDir);
   if (release) {
     const entry = release.entries.find(item => path.resolve(aggregateDir, item.root, item.entry) === path.resolve(entryFile ?? ""));
     if (!entry) throw new Error("Agent model metadata requires a registered release entry.");
-    return readReleaseStructureSync(aggregateDir, entry.entryId)?.agentModels?.[mode] === true;
+    // New releases carry the memory default in their separate configuration file.
+    // Releases predating project memory use the default-on switch.
+    if (mode === "botMemoryDisabled") return false;
+    const report = readReleaseStructureSync(aggregateDir, entry.entryId);
+    return report?.agentModels?.[mode] === true;
   }
+  const entrySources = entryFile ? projectEntrySources(projectDir, entryFile) : undefined;
+  const memoryDefinition = entryFile && entrySources ? findBotMemoryDefinition(entryFile, entrySources) : undefined;
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
-    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of entrySources ? entrySources.map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }
       if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || /(?:\.d|\.test|\.spec)\.[cm]?[jt]sx?$/.test(entry.name)) continue;
       const info = statSync(file);
       if (info.size > 1024 * 1024) continue;
-      const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+      const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}:${memoryDefinition?.file ?? ""}:${memoryDefinition?.start ?? ""}`;
       const previous = cache?.get(file);
       if (previous?.stamp === stamp) { if (previous[mode]) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const factories = new Set(["createAgentNode", "defineBot", "createAgentProjectParamResolver"]);
-      const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
+      const imports = new Map<string, string>(), namespaces = new Set(["steamharness"]);
       for (const statement of source.statements) {
         if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text) || statement.importClause?.isTypeOnly) continue;
         const clause = statement.importClause;
         if (clause?.name) namespaces.add(clause.name.text);
         if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) namespaces.add(clause.namedBindings.name.text);
         if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) for (const binding of clause.namedBindings.elements) {
-          if (!binding.isTypeOnly && factories.has(binding.propertyName?.text ?? binding.name.text)) imports.add(binding.name.text);
+          if (!binding.isTypeOnly && factories.has(binding.propertyName?.text ?? binding.name.text)) imports.set(binding.name.text, binding.propertyName?.text ?? binding.name.text);
         }
       }
       // Resolve local constants without evaluating project code. Unknown options
@@ -111,7 +119,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       };
       collect(source);
       const unwrap = (value: ts.Expression, seen = new Set<ts.Node>()): ts.Expression => {
-        if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value)) return unwrap(value.expression, seen);
+        if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value) || ts.isNonNullExpression(value)) return unwrap(value.expression, seen);
         if (ts.isIdentifier(value)) for (let owner: ts.Node | undefined = value.parent; owner; owner = owner.parent) {
           const declarations = constants.get(owner);
           if (!declarations?.has(value.text)) continue;
@@ -137,15 +145,24 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
         }
         return selected;
       };
-      let found = false, projectModels = false;
+      let found = false, projectModels = false, botMemoryDisabled = false;
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node)) {
           const expression = node.expression;
           if (ts.isIdentifier(expression) && imports.has(expression.text) ||
             ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression) && namespaces.has(expression.expression.text) && factories.has(expression.name.text)) {
             found = true;
-            const isBot = ts.isPropertyAccessExpression(expression) ? expression.name.text === "defineBot" : expression.getText(source) === "defineBot";
+            const isBot = ts.isPropertyAccessExpression(expression) ? expression.name.text === "defineBot" : ts.isIdentifier(expression) && imports.get(expression.text) === "defineBot";
             const argument = node.arguments[0] && unwrap(node.arguments[0]);
+            // Keep an explicit opt-out for legacy export shapes we cannot resolve statically.
+            if (isBot && (!memoryDefinition || memoryDefinition.file === file && memoryDefinition.start === node.getStart(source)) && argument && ts.isObjectLiteralExpression(argument)) {
+              const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined => {
+                const field = [...object.properties].reverse().find(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) && item.name.text === name);
+                return field && ts.isPropertyAssignment(field) ? unwrap(field.initializer) : field && ts.isShorthandPropertyAssignment(field) ? unwrap(field.name) : undefined;
+              };
+              const memory = property(argument, "memory");
+              if (memory && ts.isObjectLiteralExpression(memory)) botMemoryDisabled ||= property(memory, "enabled")?.kind === ts.SyntaxKind.FalseKeyword;
+            }
             const agent = isBot && argument && ts.isObjectLiteralExpression(argument)
               ? argument.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && property.name.getText(source) === "agent")?.initializer : undefined;
             const mode = modelSource(isBot ? agent : node.arguments[0]);
@@ -154,7 +171,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); cache?.set(file, { stamp, found, projectModels }); if ({ found, projectModels }[mode]) return true;
+      visit(source); cache?.set(file, { stamp, found, projectModels, botMemoryDisabled }); if ({ found, projectModels, botMemoryDisabled }[mode]) return true;
     }
     return false;
   };
@@ -166,7 +183,13 @@ function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?:
     && !discoverProjectAgentModels(projectDir, cache, entryFile, "projectModels", aggregateDir);
 }
 
-function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, aggregateDir = projectDir) {
+function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, aggregateDir = projectDir, bot = false) {
+  if (bot) {
+    const field = definition.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY);
+    if (field && field.type !== "boolean") throw new ProjectConfigurationError("Bot memory configuration must be a boolean field.");
+    if (!field) definition.fields.push(botMemoryConfigurationField(!discoverProjectAgentModels(projectDir, cache, entryFile, "botMemoryDisabled", aggregateDir)));
+    else if (field.defaultValue === undefined) field.defaultValue = !discoverProjectAgentModels(projectDir, cache, entryFile, "botMemoryDisabled", aggregateDir);
+  }
   if (!discoverProjectAgentModels(projectDir, cache, entryFile, "found", aggregateDir)) return;
   if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) definition.fields.unshift({ ...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD), ...definition.agentModelPolicy });
 }
@@ -190,13 +213,22 @@ function withoutProjectAgentModels(state: ProjectConfigurationState): ProjectCon
       ...(state.template.profilePolicy ? { profilePolicy: profiles(state.template.profilePolicy) } : {}) } } : {}) };
 }
 
-export function readProjectConfigurationDefinition(projectDir: string, entryId?: string) {
+export function readProjectConfigurationDefinition(projectDir: string, entryId?: string, options: {
+  /** Authoring overrides, relative to the registered entry root. Project code is never executed. */
+  sourceEntry?: string; configurationFile?: string;
+} = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, entryId);
-  const file = resolved.configurationPath;
   projectDir = resolved.rootDir;
+  const override = (file: string) => {
+    const target = path.resolve(projectDir, file), relative = path.relative(realpathSync(projectDir), existsSync(target) ? realpathSync(target) : target);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error("Configuration inspection overrides must stay inside their registered root.");
+    return target;
+  };
+  const file = options.configurationFile === undefined ? resolved.configurationPath : override(options.configurationFile);
+  const modulePath = options.sourceEntry === undefined ? resolved.modulePath : override(options.sourceEntry);
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
-  addAgentConfigurationFields(definition, projectDir, resolved.modulePath, undefined, resolved.projectDir);
-  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath, undefined, getUserSettings(), resolved.projectDir) && !definition.fields.some(field => field.control === "agent-model")) {
+  addAgentConfigurationFields(definition, projectDir, modulePath, undefined, resolved.projectDir, resolved.registration.type === "bot");
+  if (usesOnlyUserAgentModels(projectDir, modulePath, undefined, getUserSettings(), resolved.projectDir) && !definition.fields.some(field => field.control === "agent-model")) {
     definition.agentModelPolicy = configurationAgentModelPolicy(definition);
     definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
   }
@@ -216,9 +248,9 @@ export interface LocalProjectConfigurationOptions {
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
-  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId) + (readProjectReleaseSync(resolved.projectDir) ? ":release" : ""), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
+  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, bot: resolved.registration.type === "bot", entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId) + (readProjectReleaseSync(resolved.projectDir) ? ":release" : ""), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
 }
-async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
+async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions & { bot?: boolean } = {}) {
   const directory=await realpath(projectDir);
   if (!options.identity || !options.entryId) throw new Error("A registered project entry is required.");
   const agentModelSources: AgentModelSourceCache = new Map();
@@ -260,7 +292,7 @@ export async function assertCurrentProjectConfigurationAccess():Promise<void>{
   await assertProjectConfigurationAccess(directory.directory,snapshot,directory.entryId);
 }
 
-async function createProjectConfigurationStoreForIdentity(projectDir: string, options: LocalProjectConfigurationOptions = {}, agentModelSources:AgentModelSourceCache=new Map(), local=options.storageKey===undefined) {
+async function createProjectConfigurationStoreForIdentity(projectDir: string, options: LocalProjectConfigurationOptions & { bot?: boolean } = {}, agentModelSources:AgentModelSourceCache=new Map(), local=options.storageKey===undefined) {
   const directory = await realpath(projectDir);
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const key = createHash("sha256").update(options.storageKey ?? options.identity!).digest("hex");
@@ -280,7 +312,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    addAgentConfigurationFields(definition, directory, options.entryFile, agentModelSources, options.accessProjectDir ?? directory);
+    addAgentConfigurationFields(definition, directory, options.entryFile, agentModelSources, options.accessProjectDir ?? directory, options.bot);
     return definition;
   };
   const verifiedTemplate = async (value: ProjectConfigurationTemplate): Promise<boolean> => {
@@ -316,7 +348,23 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     const definition = options.fields === undefined ? await declared() : {fields:options.fields,agentModelPolicy:options.agentModelPolicy};
     const policy = configurationAgentModelPolicy(definition,template??{fields:[]});
     let state = readConfigurationState(stored, template?.fields ?? definition.fields, () => `default-${key.slice(0, 24)}`,policy);
-    if (template) state = bindConfigurationTemplate(state, template);
+    if (template) {
+      // Keep verified template bytes intact when adding a new host-owned field
+      // to an older installation. Rebinding must preserve its saved overrides.
+      const memory = options.bot && !template.fields.some(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)
+        ? definition.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY) : undefined;
+      const memoryValues = new Map(state.configurations.map(profile => [profile.id, profile.values[BOT_MEMORY_CONFIGURATION_KEY]]));
+      state = bindConfigurationTemplate(state, template);
+      if (memory) {
+        state.fields = [...state.fields.filter(field => field.name !== memory.name), memory];
+        state.customFields = state.customFields.filter(field => field.name !== memory.name);
+        for (const profile of state.configurations) {
+          const value = memoryValues.get(profile.id);
+          if (value !== undefined && typeof value !== "boolean") throw new ProjectConfigurationError("Bot memory configuration must be a boolean.");
+          profile.values[memory.name] = value ?? memory.defaultValue!;
+        }
+      }
+    }
     if(options.profilePolicy)state=bindConfigurationProfiles(state,options.profilePolicy);
     // Views and snapshots enforce the current role while preserving the saved selection.
     const changed = !isDeepStrictEqual(stored,state);

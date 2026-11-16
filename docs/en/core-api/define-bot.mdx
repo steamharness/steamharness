@@ -3,7 +3,7 @@ title: "defineBot"
 description: "Declare a Bot project with a fixed Core Agent runtime."
 ---
 
-`steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })` returns a `BotExecutorDefinition` with `projectType: "bot"`. The output is always `AgentOutputPayload`; the final answer item is `agent-answer`. Custom workflows, coreAgent wrappers, createInput, tokenUsage and outputItemId overrides are rejected. The former `conversation` project type and factories are removed.
+`steamharness.defineBot({ name?, memory?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })` returns a `BotExecutorDefinition` with `projectType: "bot"`. The output is always `AgentOutputPayload`; the final answer item is `agent-answer`. Custom workflows, coreAgent wrappers, createInput, tokenUsage and outputItemId overrides are rejected. The former `conversation` project type and factories are removed.
 
 Configure models, prompts, skills, permissions, tools and sessions through `agent`. Core provides Model, Effort, Plan and permission parameters. Customize them through `agent.paramOptions`; top-level `params` adds business fields without replacing reserved fields. Fixed values remain enforced after input preparation.
 
@@ -25,6 +25,49 @@ export default executor;
 Models default to host settings, or project configuration in standalone CLI Web. Set `agent.modelSource: "project"` to require project models. Tool declarations retain host approval and permission checks. Register the project UUID and entry in `steamharness.json` with `type: "bot"`.
 
 Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
+
+## Project memory
+
+Project memory is enabled by default. Conversations in the same project and Bot entry share memories. Other projects and entries have separate storage. Each entry has a `category` and `key`, so project facts, decisions and procedures can be kept apart.
+
+Open the active configuration under **Project configurations**, toggle **Bot memory**, and save. Subsequent executions use the setting; saved run snapshots keep their original configuration. Turning memory off removes its tools and guidance from that execution while preserving saved entries. Turn it on again to retrieve them.
+
+`memory.enabled` sets the initial default and defaults to `true`. Saved project configuration takes precedence over the source default. This declaration starts new configurations with memory off; users can still enable it in the interface:
+
+```ts
+export const executor = steamharness.defineBot({
+  memory: { enabled: false },
+  agent: { systemPrompt: "You are a project assistant." },
+});
+```
+
+The boolean configuration key is `STEAMHARNESS_BOT_MEMORY_ENABLED`; you usually do not need to declare it in `configuration.json`. An explicit declaration must use type `boolean`. If `defaultValue` is omitted, it inherits `memory.enabled` from the Bot exported by that entry. Other Bot declarations do not change this default.
+
+Core provides these tools alongside business tools supplied by `agent.extraTools` and `agent.createTools`. A conflicting memory tool name in either place causes an execution error:
+
+| Tool | Arguments and result |
+| --- | --- |
+| `memory_save` | `category`, `key`, `content`. Creates an entry and returns its revision. An existing category/key is never overwritten. |
+| `memory_get` | No filters lists categories. `category` or `query` returns entry summaries. `category` and `key` reads a full entry, returning `memory: null` when absent. |
+| `memory_search` | A `keywords` array, with optional `category`, `match` (`any` by default, or `all`), `limit` and `offset`. Returns summaries ranked by keyword coverage and relevance, including Chinese substring matches. |
+| `memory_update` | `category`, `key`, `content`, `expectedRevision`. Replaces an entry's content and returns a new revision. |
+| `memory_delete` | `category`, `key`, `expectedRevision`. Deletes only the specified entry. |
+
+At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog.
+
+`memory_search` returns up to 5 entries by default, with a maximum `limit` of 10. Each excerpt contains at most 240 characters around a matching passage, and the complete search result stays within 6,000 characters. Pass up to 12 keywords, each at most 80 characters and at most 500 characters combined. `any` matches one or more keywords; `all` requires every keyword. Matching is literal and supports Chinese.
+
+Search results include the category, key, revision and matched keywords. Use `memory_get` to read a relevant entry in full, up to 8,000 characters. When more results exist, `nextOffset` provides the next `offset`. Prefer narrower keywords over paging through every memory.
+
+Category and summary lists from `memory_get` still accept `limit` (default 10, maximum 20) and `offset`. Its `query` accepts up to 12 whitespace-separated terms that must all match. These summaries contain the first 240 characters of content.
+
+Before an update or deletion, read the entry's `revision` and pass it as `expectedRevision`. On a version conflict, retrieve the latest entry before deciding what to change. Tools retain host permission and approval checks. Plan and read-only runs offer `memory_get` and `memory_search` only.
+
+Core's built-in guidance tells the Bot to maintain memory silently. It judges whether confirmed project facts, decisions, procedures or preferences will help future conversations and saves them without waiting for a request to remember. It checks for duplicates, updates changed facts and deletes facts confirmed obsolete or explicitly forgotten, without routine confirmation or memory announcements.
+
+The model decides what to retain from the conversation; it does not copy every message. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress, guesses and information the user explicitly asks not to retain should not be stored.
+
+Memories persist in SQLite on the execution host across its conversations and restarts. There is no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 
 ## Skills and host previews
 

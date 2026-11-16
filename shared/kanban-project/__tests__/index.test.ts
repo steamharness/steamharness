@@ -223,7 +223,31 @@ describe("kanban project contract", () => {
     });
   });
 
-  it("accepts only nonce-bound parent replies", async () => {
+  it("passes only an explicit short Workflow rejection detail", () => {
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "请先恢复会话。",
+    }))).toEqual({
+      code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message.", detail: "请先恢复会话。",
+    });
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "Bearer private-token\n/private/path",
+    }))).toEqual({ code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message." });
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "x".repeat(501),
+    }))).toEqual({ code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message." });
+  });
+
+  it("preserves allowlisted failures in Workflow causes without exposing raw reports", () => {
+    const cause = { name: "WorkflowError", code: "KANBAN_SUBMISSION_REJECTED", message: "private host details" };
+    expect(createKanbanBridgeError(new Error("Workflow failed at /private", { cause: { cause } }))).toEqual({
+      code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message.",
+    });
+    const circular: Record<string, unknown> = { code: "PRIVATE_DETAIL", message: "private" };
+    circular.cause = circular;
+    expect(createKanbanBridgeError({ safeCause: circular })).toEqual({ code: "KANBAN_BRIDGE_ERROR", message: "Kanban bridge request failed." });
+  });
+
+  it("accepts only nonce-bound parent replies and sanitizes bridge errors", async () => {
     const listeners: Array<(event: MessageEvent) => void> = [];
     const posted: Array<Record<string, unknown>> = [];
     const parent = { postMessage: vi.fn((message: Record<string, unknown>) => posted.push(message)) };
@@ -238,9 +262,21 @@ describe("kanban project contract", () => {
     await expect(pending).resolves.toEqual({ id: 'guide' });
     for (const code of ['KANBAN_DATA_OPERATION_FAILED', '__proto__']) {
       const failure = data.getLocalAnalysis();
-      dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false, error: { code, message: '/private/secret' } });
-      await expect(failure).rejects.toMatchObject({ code: code === '__proto__' ? 'KANBAN_BRIDGE_ERROR' : code });
+      dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false, error: { code, message: '/private/secret', detail: '/private/secret', diagnosticId: '/private/secret' } });
+      await expect(failure).rejects.toMatchObject({ code: code === '__proto__' ? 'KANBAN_BRIDGE_ERROR' : code, message: expect.not.stringContaining('/private/secret') });
     }
+    const rejection = pageWindow.steamHarnessKanban.entries.get('main').runEntrypoint('summarize');
+    const diagnosticId = '12345678-1234-1234-1234-123456789abc';
+    dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false,
+      error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: '请先恢复会话。', diagnosticId, category: 'other' } });
+    await expect(rejection).rejects.toMatchObject({ code: 'KANBAN_SUBMISSION_REJECTED', operation: 'entries.runEntrypoint', diagnosticId,
+      message: expect.stringContaining(`请先恢复会话。 [operation: entries.runEntrypoint; code: KANBAN_SUBMISSION_REJECTED; diagnostic: ${diagnosticId}]`) });
+    const malformed = pageWindow.steamHarnessKanban.entries.get('main').runEntrypoint('summarize');
+    dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false,
+      error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: 'private-token\n/private/path', diagnosticId: '/private/path', category: 'private' } });
+    await expect(malformed).rejects.toMatchObject({ code: 'KANBAN_SUBMISSION_REJECTED', message: expect.not.stringContaining('private') });
+    const circular: Record<string, unknown> = {}; circular.self = circular;
+    await expect(pageWindow.steamHarnessKanban.entries.get('main').runEntrypoint('summarize', circular as unknown as readonly string[])).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
     parent.postMessage.mockImplementationOnce(() => { throw new DOMException('private clone failure', 'DataCloneError'); });
     await expect(data.getLocalAnalysis()).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
   });

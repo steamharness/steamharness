@@ -892,11 +892,6 @@
           "command": "studio.openDocumentPreview",
           "when": "resourceExtname =~ /\\.(tex|latex)$/i && activeCustomEditorId != studio.formulaPreview",
           "group": "navigation@1"
-        },
-        {
-          "command": "studio.openProject",
-          "when": "studio.projectAvailable",
-          "group": "navigation@0"
         }
       ]
     },

@@ -1,5 +1,15 @@
 # Unreleased
 
+- Added “Search memory” to the Bot memory tool permission group alongside save, get, update and delete.
+
+- Kanban bridge failures show the operation, error code, and diagnostic ID. Embedded conversation failures can be found by that ID in diagnostics, and the CLI host log records the underlying exception under the same ID; cross-window ownership, expired views, and Workflow message receipt failures show specific guidance, while business rejections retain their user-facing reason.
+
+- Fixed Bot release memory defaults to use the selected release entry and configuration file, fill omitted defaults, and preserve v2 configuration profiles.
+
+- Fix New conversation reusing a blank Bot conversation already open in another window. Each click now creates an independent conversation that can send messages.
+
+- Bot project configurations include a default-on memory switch and a Bot memory tool permission group. Releases preserve the source default, older installed configurations gain the switch, and disabling memory preserves saved entries.
+
 - Fix large inline images leaving the result page on progress text with a running indicator. Completed records display their saved images after refreshing the page.
 
 - Kanban can query the complete Workflow timeline and navigate captured frames through local journals and attachments, including read-only previews.

@@ -48,6 +48,9 @@ describe("aggregate project manifest", () => {
       const p = pkg(); Object.assign(p, removed);
       expect(() => readProjectManifest(p)).toThrow();
     }
+    const withDatabase = pkg();
+    Object.assign(withDatabase.entries[0]!, { databases: [] });
+    expect(() => readProjectManifest(withDatabase)).toThrow("unsupported fields");
     expect(() => readProjectManifest({ id, name: "old" })).toThrow();
   });
   it("rejects entry roots and files escaping through symlinks", async () => {

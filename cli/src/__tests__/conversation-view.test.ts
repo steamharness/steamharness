@@ -6,7 +6,7 @@ describe('Embedded Conversation scope', () => {
     expect(scopeConversationViewMessage({ type: 'send', sessionId: 'bot-private', text: 'Hello', clientId: 'forged' }, 'bot-private', '/project', 'trusted'))
       .toMatchObject({ clientId: 'trusted', projectUri: '/project', sessionId: 'bot-private' });
     for (const message of [{ type: 'send', sessionId: 'other' }, { type: 'send', projectUri: '/other' },
-      { type: 'project-configuration', call: { action: 'save' } }, { type: 'databases' }, { type: 'login' },
+      { type: 'project-configuration', call: { action: 'save' } }, { type: 'admin' }, { type: 'login' },
       { type: 'navigate', id: 'other', updates: [] }, { type: 'navigate', id: 'bot-private', updates: [{ id: 'other' }] },
       { type: 'navigate', id: 'bot-private', updates: [{ id: 'bot-private', create: true }] }])
       expect(() => scopeConversationViewMessage(message, 'bot-private', '/project', 'trusted')).toThrow();

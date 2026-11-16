@@ -1122,7 +1122,7 @@ export function inspectLocalProjectStructure(options: {
   if (options.sourceEntry !== undefined && (path.relative(rootDir, modulePath).startsWith("..") || path.isAbsolute(path.relative(rootDir, modulePath)))) throw new Error("Alternate source entry must stay inside its registered root.");
   const projectName = options.projectName ?? registration.name;
   const identity = { projectId: manifest.projectId, entryId: registration.entryId, entryName: registration.name, entries: manifest.entries, defaultEntry: manifest.defaultEntry };
-  const configuration = readProjectConfigurationDefinition(declaration.projectDir, registration.entryId);
+  const configuration = readProjectConfigurationDefinition(declaration.projectDir, registration.entryId, { sourceEntry: options.sourceEntry });
   const released = readReleaseStructureSync(declaration.projectDir, registration.entryId);
   if (released) return { ...released.report, ...identity, distribution: "release", configuration, workflow: { ...released.report.workflow, dir: declaration.projectDir } } as StructureReport;
   if (registration.type === "kanban") {

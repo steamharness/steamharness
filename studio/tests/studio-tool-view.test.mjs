@@ -43,8 +43,8 @@ function fixture(t) {
   let Editor, Serializer;
   const common = { EditorInput, EditorPane, Dimension: { None: { width: 0, height: 0 } }, CancellationToken: { None: { isCancellationRequested: false } },
     Orientation: { VERTICAL: 1 }, EditorInputCapabilities: { Readonly: 1, Singleton: 2 },
-    studioModeState: { state: { labels: { kv: 'KV Storage' } }, onDidChangeState: () => ({ dispose() {} }) },
-    studioSteamToolDefinitions: [{ id: 'kv', view: 'studio.kv', icon: 'database' }, { id: 'terminal', view: 'terminal' }],
+    studioModeState: { state: { labels: { info: 'Project Information' } }, onDidChangeState: () => ({ dispose() {} }) },
+    studioSteamToolDefinitions: [{ id: 'info', view: 'studio.projectInfo', icon: 'package' }, { id: 'terminal', view: 'terminal' }],
     ThemeIcon: { fromId: id => ({ id }) }, SyncDescriptor: class {},
     Registry: { as: () => ({ registerEditorPane: descriptor => { Editor = descriptor; }, registerEditorSerializer: (_id, ctor) => { Serializer = ctor; } }) },
     EditorExtensions: {}, EditorPaneDescriptor: { create: ctor => ctor },
@@ -53,7 +53,7 @@ function fixture(t) {
   runInNewContext(code, { module, exports: module.exports, require: () => new Proxy(common, { get: (object, key) => object[key] ?? (() => undefined) }) });
   const views = { openView: async () => view };
   const editor = new Editor({}, {}, {}, {}, views); editor.createEditor(host);
-  const input = new module.exports.StudioToolViewInput('kv', 'studio.kv');
+  const input = new module.exports.StudioToolViewInput('info', 'studio.projectInfo');
   t.after(() => editor.dispose());
   return { editor, input, views, view, parent, element, next, host, dimensions, visibility, serializer: new Serializer(), token: common.CancellationToken.None };
 }
@@ -85,7 +85,7 @@ test('a delayed view resolution cannot attach after its native tab is hidden or 
 
 test('native tab serialization restores the retained view and rejects unknown or malformed tools', t => {
   const f = fixture(t), saved = f.serializer.serialize(f.input), restored = f.serializer.deserialize({}, saved);
-  assert.equal(restored.viewId, 'studio.kv'); assert.equal(restored.getName(), 'KV Storage'); assert.equal(restored.matches(f.input), true);
+  assert.equal(restored.viewId, 'studio.projectInfo'); assert.equal(restored.getName(), 'Project Information'); assert.equal(restored.matches(f.input), true);
   for (const value of ['invalid json', '{"toolId":"terminal"}', '{"toolId":"unknown"}', 'null']) {
     assert.equal(f.serializer.deserialize({}, value), undefined);
   }

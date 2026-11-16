@@ -12,6 +12,7 @@ import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryReco
 import { agentRuntimeSessionKey, type RuntimeHistoryLease, type RuntimePersistence } from "./history";
 import { SnapshotMemoryStorage } from "./memory";
 import { createLocalOutputJournal } from "./output-journal";
+import { createSqliteBotMemoryStore, type BotMemoryStore } from "./bot-memory";
 
 export interface LocalRuntimePersistenceOptions {
   /** Host-owned directory, isolated by project/entry and optionally account. */
@@ -30,6 +31,7 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
   let closed = false;
   const leases = new Map<string, RuntimeHistoryLease>();
   const agents = new Set<() => Promise<void>>();
+  const memories = new Map<string, BotMemoryStore>();
   const assertOpen = () => { if (closed) throw new Error("Local runtime persistence is closed."); };
   const db = () => {
     assertOpen();
@@ -66,6 +68,13 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
   const outputs = createLocalOutputJournal(db);
 
   return {
+    botMemory(scope) {
+      assertOpen();
+      const key = JSON.stringify([scope.projectId.toLowerCase(), scope.entryId]);
+      let memory = memories.get(key);
+      if (!memory) { memory = createSqliteBotMemoryStore({ ...scope, file: path.join(directory, "memories", `${digest(key)}.sqlite`) }); memories.set(key, memory); }
+      return memory;
+    },
     async readRunOutputPage(runId, page, pageSize) { return outputs.page(runId, page, pageSize); },
     async readRunOutputTimeline(runId, query) { return outputs.timeline(runId, query); },
     async readRunOutputDetails(runId) { return outputs.details(runId); },
@@ -182,7 +191,7 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
     async close() {
       if (closed) return;
       try { await Promise.all([...agents].map(release => release())); await Promise.all([...leases.values()].map(lease => lease.close())); }
-      finally { closed = true; database?.close(); database = undefined; }
+      finally { closed = true; for (const memory of memories.values()) memory.close(); memories.clear(); database?.close(); database = undefined; }
     },
   };
 }

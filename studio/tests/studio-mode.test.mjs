@@ -43,17 +43,16 @@ function fixture(t, saved = new Map(), initialState = {}, initiallyRendered = tr
     setMode(steam, busy, targetSteam = steam) { this.steam = steam; this.busy = busy; this.targetSteam = targetSteam; } };
   const register = (id, handler) => { commands.set(id, handler); return { dispose: () => commands.delete(id) }; };
   const containers = new Map([
-    ['studio-kv', { id: 'studio-kv', location: 1 }], ['studio-knowledge', { id: 'studio-knowledge', location: 1 }],
     ['studio-info', { id: 'studio-info', location: 0 }], ['studio-assistant', { id: 'studio-assistant', location: 2 }],
     ['studio-versions', { id: 'studio-versions', location: 0 }], ['studio-trace', { id: 'studio-trace', location: 1 }],
     ['studio-steam-tools', { id: 'studio-steam-tools', location: 2 }], ['files', { id: 'files', location: 0 }],
     ['terminal', { id: 'terminal', location: 1 }],
   ]);
-  const viewContainers = { 'studio.kv': 'studio-kv', 'studio.knowledge': 'studio-knowledge', 'studio.projectInfo': 'studio-info',
+  const viewContainers = { 'studio.projectInfo': 'studio-info',
     'studio.developerAssistant': 'studio-assistant', 'studio.versions': 'studio-versions', 'studio.trace': 'studio-trace', 'studio.steamTools': 'studio-steam-tools', terminal: 'terminal' };
   const visible = new Map(Object.values(parts).map(part => [part, true]));
   const sizes = new Map(Object.values(parts).map((part, index) => [part, { width: 48 + index * 100, height: 720 }]));
-  const active = new Map([[0, 'files'], [1, 'studio-kv'], [2, 'studio-assistant']]);
+  const active = new Map([[0, 'files'], [1, 'studio-trace'], [2, 'studio-assistant']]);
   const classes = new Set();
   const document = { documentElement: { classList: { add: (...names) => names.forEach(name => classes.add(name)), remove: (...names) => names.forEach(name => classes.delete(name)) } },
     startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished, skipTransition: () => calls.push('skipTransition') }; } };
@@ -234,7 +233,7 @@ for (const releaseOnly of [false, true]) {
     const f = fixture(t); f.state.state.releaseOnly = releaseOnly;
     f.publish(true); await f.run('EnterSteamMode');
     assert.equal(f.visible.get('auxiliary'), false);
-    await f.run('OpenSteamTool', 'kv');
+    await f.run('OpenSteamTool', 'trace');
     assert.equal(f.visible.get('auxiliary'), true);
     f.publish(true); await f.run('EnterSteamMode');
     assert.equal(f.visible.get('auxiliary'), true, 'Repeated availability updates must retain a manual open');
@@ -259,14 +258,14 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   assert.equal(f.visible.get('auxiliary'), false);
   await f.run('OpenSteamTools');
   assert.equal(f.sizes.get('auxiliary').width, 480);
-  await f.run('OpenSteamTool', 'kv'); await f.run('OpenSteamTool', 'info');
-  assert.equal(f.containers.get('studio-kv').location, 2);
+  await f.run('OpenSteamTool', 'trace'); await f.run('OpenSteamTool', 'info');
+  assert.equal(f.containers.get('studio-trace').location, 2);
   assert.equal(f.containers.get('studio-info').location, 2);
   await f.run('OpenSteamTools'); assert.equal(f.active.get(2), 'studio-steam-tools');
   await f.run('EnterIdeMode');
   assert.equal(f.state.steam, false); assert.equal(f.options, false);
   assert.equal(f.settings.get('side'), 'right');
-  assert.equal(f.containers.get('studio-kv').location, 1);
+  assert.equal(f.containers.get('studio-trace').location, 1);
   assert.equal(f.containers.get('studio-info').location, 0);
   assert.equal(f.chromeHidden, false);
   assert.deepEqual(f.visible, beforeVisible); assert.deepEqual(f.sizes, beforeSizes); assert.deepEqual(f.active, beforeActive);
@@ -437,11 +436,11 @@ test('a superseded layout failure rolls back before retrying the newest Steam re
 });
 
 test('project removal restores the IDE and persisted tool positions after a restart', async t => {
-  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); await f.run('OpenSteamTool', 'knowledge');
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); await f.run('OpenSteamTool', 'trace');
   const saved = new Map(f.saved);
   const restored = fixture(t, saved);
   restored.publish(false); await restored.run('EnterIdeMode');
-  assert.equal(restored.state.steam, false); assert.equal(restored.containers.get('studio-knowledge').location, 1);
+  assert.equal(restored.state.steam, false); assert.equal(restored.containers.get('studio-trace').location, 1);
   assert.equal(saved.has('studio.ideLayout'), false); assert.equal(saved.get('studio.workbenchMode'), 'ide');
 });
 
@@ -454,7 +453,7 @@ test('an immediate restart restores Steam mode and the saved IDE layout before d
   assert.equal(restarted.visible.get('sidebar'), false);
   await restarted.run('EnterIdeMode');
   assert.equal(restarted.visible.get('sidebar'), true);
-  assert.equal(restarted.containers.get('studio-kv').location, 1);
+  assert.equal(restarted.containers.get('studio-trace').location, 1);
 });
 
 test('failed preparation, invalid tools and duplicate updates preserve the current layout', async t => {
@@ -462,11 +461,11 @@ test('failed preparation, invalid tools and duplicate updates preserve the curre
   await f.run('EnterSteamMode'); assert.equal(f.state.steam, false); assert.equal(f.options, false);
   f.prepare = async () => true; await f.run('EnterSteamMode');
   const count = f.calls.length;
-  const moves = f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-kv').length;
+  const moves = f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-trace').length;
   await f.run('OpenSteamTool', '__proto__'); f.publish(true); f.publish(true);
   await f.run('EnterSteamMode'); assert.equal(f.calls.length, count);
-  await f.run('OpenSteamTool', 'kv'); await f.run('OpenSteamTool', 'kv');
-  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-kv').length, moves);
+  await f.run('OpenSteamTool', 'trace'); await f.run('OpenSteamTool', 'trace');
+  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-trace').length, moves);
 });
 
 test('cold startup shows the live Steam layout while preparation is pending', async t => {

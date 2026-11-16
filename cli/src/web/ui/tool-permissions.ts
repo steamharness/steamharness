@@ -6,6 +6,7 @@ const categories: [string, RegExp][] = [
   ['File tools', /^(read|write|edit|grep|find|ls)$/],
   ['Shell commands', /^bash$/],
   ['Agent tools', /^(update_plan|subagent|tool_search|codemode|ask_user)$/],
+  ['Bot memory', /^memory_(save|get|update|delete|search)$/],
   ['Studio', /^workflow-studio_/],
   ['Resource cards', /^workflow-ui_/],
 ];
@@ -53,7 +54,7 @@ export function toolPermissions(tools: Tool[], policies: ToolPolicies, changed: 
       view = { details, count: groupCount, rows: [] }; groups.set(group.id, view);
     }
     const row = document.createElement('tr'); const label = document.createElement('td');
-    const title = tool.label || tool.name; label.textContent = title; label.title = tool.description || tool.name;
+    const title = /^memory_(save|get|update|delete|search)$/.test(tool.name) ? t(tool.label || tool.name) : tool.label || tool.name; label.textContent = title; label.title = tool.description || tool.name;
     if (title !== tool.name) { const name = document.createElement('small'); name.className = 'permission-tool-name'; name.textContent = tool.name; label.append(name); }
     if (tool.description) { const description = document.createElement('p'); description.className = 'permission-tool-description'; description.textContent = tool.description; label.append(description); }
     row.append(label);

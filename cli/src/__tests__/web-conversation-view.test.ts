@@ -95,17 +95,37 @@ it.each([false, true])('does not flash an ownership warning when leaving a popul
   f.receive([original, blank], original.id, { readOnly, reason: readOnly ? 'opened' : undefined });
   expect(notice.hidden).toBe(!readOnly);
   document.querySelector<HTMLButtonElement>('#new')!.click();
-  expect(f.requests().at(-1)).toMatchObject({ id: blank.id });
+  const request = f.requests().at(-1), id = request.id as string;
+  expect(id).toMatch(/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i);
+  expect(id).not.toBe(blank.id);
+  expect(request.updates).toContainEqual({ id, create: true, draft: { text: '', attachments: [] } });
   expect(document.querySelector('#transcript-content')!.textContent).not.toContain('Previous answer');
   expect(notice.hidden).toBe(true);
   f.receive([original, blank], original.id, { readOnly: true, reason: 'opened' });
   expect(notice.hidden).toBe(true);
-  f.receive([original, blank], blank.id, { readOnly: true, reason: 'pending' });
+  f.receive([original, blank, session(id)], id, { readOnly: true, reason: 'pending' });
   expect(notice.hidden).toBe(true); expect(f.input.disabled).toBe(true);
-  f.receive([original, blank], blank.id, { readOnly: false });
+  f.emit({ type: 'navigated', requestId: request.requestId, activeId: id });
+  f.receive([original, blank, session(id)], id, { readOnly: false });
   expect(notice.hidden).toBe(true); expect(f.input.disabled).toBe(false);
-  f.receive([original, blank], blank.id, { readOnly: true, reason: 'opened' });
+  f.receive([original, blank, session(id)], id, { readOnly: true, reason: 'opened' });
   expect(notice.hidden).toBe(false); expect(f.input.disabled).toBe(true);
+});
+
+it('creates a distinct conversation when the current and historical blanks belong to another window', async () => {
+  const f = await fixture();
+  const occupied = session('occupied'), other = session('other-blank');
+  f.receive([occupied, other], occupied.id, { readOnly: true, reason: 'opened' });
+  document.querySelector<HTMLButtonElement>('#new')!.click();
+  const request = f.requests().at(-1), id = request.id as string;
+  expect(id).not.toBe(occupied.id); expect(id).not.toBe(other.id);
+  expect(request.updates.filter((update: { create?: boolean }) => update.create)).toEqual([{ id, create: true, draft: { text: '', attachments: [] } }]);
+  f.emit({ type: 'navigated', requestId: request.requestId, activeId: id });
+  f.receive([occupied, other, session(id)], id, { readOnly: false });
+  expect(f.input.disabled).toBe(false);
+  f.input.value = 'Independent message'; f.input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'send', sessionId: id, text: 'Independent message' }));
 });
 
 it('restores a compact file reference but saves and submits its complete path after editing surrounding text', async () => {

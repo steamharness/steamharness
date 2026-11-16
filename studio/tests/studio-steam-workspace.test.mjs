@@ -51,7 +51,7 @@ class WebviewInput extends EditorInput {
 class CustomEditorInput extends WebviewInput {
   constructor(name, resource) { super(name); this.resource = resource; this.webview.providedViewType = 'test.file-preview'; }
 }
-const tools = [{ id: 'editor', icon: 'code', editor: true }, { id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' }, { id: 'login', icon: 'sign-in', command: 'studio.openLogin' }, ...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
+const tools = [{ id: 'editor', icon: 'code', editor: true }, { id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' }, { id: 'login', icon: 'sign-in', command: 'studio.openLogin' }, ...['info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: id === 'info' ? 'studio.projectInfo' : `studio.${id}` })),
   { id: 'terminal', icon: 'terminal', view: 'terminal' }, { id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }];
 class StudioToolViewInput extends EditorInput {
   constructor(toolId, viewId) { super(toolId); this.toolId = toolId; this.viewId = viewId; }
@@ -212,20 +212,20 @@ test('the runtime remains pinned while files, explicit targets and separate wind
 test('native file and resource parts have separate groups and preserve their exact inputs when switching categories', async t => {
   const f = fixture(t); await f.workspace.activate();
   const source = file('index.ts'); source.dirty = true;
-  await f.open(source); await f.workspace.openTool('kv');
-  const retained = f.parts.get('kv').activeGroup.activeEditor;
-  await f.open(panel('kv')); await f.workspace.openTool('editor');
+  await f.open(source); await f.workspace.openTool('info');
+  const retained = f.parts.get('info').activeGroup.activeEditor;
+  await f.open(panel('info')); await f.workspace.openTool('editor');
   assert.equal(f.right.activeEditor, source); assert.equal(f.sidebarVisible, true);
-  await f.workspace.openTool('kv');
-  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['kv', 'kv 2']);
-  assert.equal(f.parts.get('kv').groups[0].contains(retained), true);
-  assert.equal(f.parts.get('kv').options.showTabs, 'multiple'); assert.equal(f.parts.get('kv').options.editorActionsLocation, 'default');
+  await f.workspace.openTool('info');
+  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['info', 'info 2']);
+  assert.equal(f.parts.get('info').groups[0].contains(retained), true);
+  assert.equal(f.parts.get('info').options.showTabs, 'multiple'); assert.equal(f.parts.get('info').options.editorActionsLocation, 'default');
   assert.equal(f.right.contains(source), true); assert.equal(f.sidebarVisible, false);
 });
 
-test('all six retained views and independent panels share their own native category without duplicating the retained input', async t => {
+test('all four retained views and independent panels share their own native category without duplicating the retained input', async t => {
   const f = fixture(t); await f.workspace.activate();
-  for (const kind of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
+  for (const kind of ['info', 'assistant', 'versions', 'trace']) {
     await f.workspace.openTool(kind); const retained = f.parts.get(kind).groups[0].editors[0];
     await f.workspace.openTool(kind); await f.open(panel(kind));
     assert.equal(f.instances.length, 2); assert.equal(f.parts.get(kind).groups[0].editors[0], retained);
@@ -235,13 +235,13 @@ test('all six retained views and independent panels share their own native categ
 
 test('settings owns a native category across mode changes and preserves the project and other tools', async t => {
   const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
-  await f.left.openEditor(runtime); await f.workspace.activate(); await f.workspace.openTool('kv');
-  const resource = f.parts.get('kv').activeGroup.activeEditor;
+  await f.left.openEditor(runtime); await f.workspace.activate(); await f.workspace.openTool('info');
+  const resource = f.parts.get('info').activeGroup.activeEditor;
   await f.workspace.openTool('settings'); assert.deepEqual(f.calls.at(-1), ['studio.openSettings']);
   const settings = new WebviewInput('Settings'); settings.webview.providedViewType = 'studio.settings';
   await f.open(settings);
   assert.equal(f.active, 'settings'); assert.equal(f.parts.get('settings').activeGroup.activeEditor, settings);
-  assert.equal(f.parts.get('kv').activeGroup.activeEditor, resource); assert.equal(f.left.activeEditor, runtime);
+  assert.equal(f.parts.get('info').activeGroup.activeEditor, resource); assert.equal(f.left.activeEditor, runtime);
   await f.workspace.deactivate(f.left); assert.equal(f.left.contains(settings), true);
   await f.workspace.activate();
   assert.equal(f.parts.get('settings').activeGroup.activeEditor, settings); assert.equal(f.left.activeEditor, runtime);
@@ -251,19 +251,19 @@ test('settings owns a native category across mode changes and preserves the proj
 
 test('login has its own native category and survives mode changes alongside settings and the running project', async t => {
   const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
-  await f.left.openEditor(runtime); await f.workspace.activate(); await f.workspace.openTool('kv');
-  const resource = f.parts.get('kv').activeGroup.activeEditor;
+  await f.left.openEditor(runtime); await f.workspace.activate(); await f.workspace.openTool('info');
+  const resource = f.parts.get('info').activeGroup.activeEditor;
   const settings = new WebviewInput('Settings'); settings.webview.providedViewType = 'studio.settings'; await f.open(settings);
   await f.workspace.openTool('login'); assert.deepEqual(f.calls.at(-1), ['studio.openLogin']);
   const login = new WebviewInput('Sign In'); login.webview.providedViewType = 'studio.login'; await f.open(login);
   assert.equal(f.active, 'login'); assert.equal(f.parts.get('login').activeGroup.activeEditor, login);
   assert.equal(f.parts.get('settings').activeGroup.activeEditor, settings);
-  assert.equal(f.parts.get('kv').activeGroup.activeEditor, resource);
+  assert.equal(f.parts.get('info').activeGroup.activeEditor, resource);
   await f.workspace.deactivate(f.left); assert.equal(f.left.contains(login), true);
   await f.workspace.activate();
   assert.equal(f.parts.get('login').activeGroup.activeEditor, login);
-  await f.workspace.openTool('kv');
-  assert.equal(f.parts.get('kv').activeGroup.activeEditor.viewId, resource.viewId); assert.equal(f.left.activeEditor, runtime);
+  await f.workspace.openTool('info');
+  assert.equal(f.parts.get('info').activeGroup.activeEditor.viewId, resource.viewId); assert.equal(f.left.activeEditor, runtime);
   await f.workspace.openTool('login');
   await f.workspace.close('login');
   assert.equal(f.tabs.some(tab => tab.id === 'login'), false);
@@ -271,31 +271,31 @@ test('login has its own native category and survives mode changes alongside sett
 });
 
 test('closing a native child selects a sibling in the same tool and respects a close veto', async t => {
-  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
-  await f.open(panel('kv')); const second = f.activeInstance;
-  await f.open(panel('kv', 'kv 3')); const third = f.activeInstance;
-  const group = f.parts.get('kv').groups[0]; group.veto = true;
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('info');
+  await f.open(panel('info')); const second = f.activeInstance;
+  await f.open(panel('info', 'info 3')); const third = f.activeInstance;
+  const group = f.parts.get('info').groups[0]; group.veto = true;
   assert.equal(await f.workspace.close(third, true), false); assert.equal(f.instances.length, 3);
   group.veto = false; await f.workspace.close(third, true);
-  assert.equal(f.active, 'kv'); assert.equal(f.activeInstance, second);
+  assert.equal(f.active, 'info'); assert.equal(f.activeInstance, second);
 });
 
 test('a dirty close cancellation stops Close Others and preserves remaining tool categories', async t => {
-  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('info');
   const source = file('dirty.ts'); source.dirty = true; await f.open(source);
-  await f.workspace.openTool('knowledge'); f.right.veto = true;
-  await f.workspace.closeTabs('kv', 'others');
-  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv', 'editor', 'knowledge']);
+  await f.workspace.openTool('trace'); f.right.veto = true;
+  await f.workspace.closeTabs('info', 'others');
+  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['info', 'editor', 'trace']);
   assert.equal(f.right.contains(source), true);
 });
 
 test('Close Others and Close All operate on tool categories while preserving the runtime', async t => {
   const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
   await f.left.openEditor(runtime); await f.workspace.activate();
-  await f.workspace.openTool('kv'); await f.workspace.openTool('knowledge'); await f.open(file('index.ts'));
-  await f.workspace.closeTabs('kv', 'others');
-  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv']); assert.equal(f.left.activeEditor, runtime);
-  await f.workspace.closeTabs('kv', 'all');
+  await f.workspace.openTool('info'); await f.workspace.openTool('trace'); await f.open(file('index.ts'));
+  await f.workspace.closeTabs('info', 'others');
+  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['info']); assert.equal(f.left.activeEditor, runtime);
+  await f.workspace.closeTabs('info', 'all');
   assert.equal(f.tabs.length, 0); assert.equal(f.visibleView, 'studio.steamTools'); assert.equal(f.left.activeEditor, runtime);
 });
 
@@ -304,8 +304,8 @@ test('a selection made while close is awaiting a native confirmation owns the vi
   const id = f.activeInstance; let release;
   f.right.beforeClose = () => new Promise(resolve => { release = resolve; });
   const closing = f.workspace.close(id, true);
-  await f.workspace.openTool('kv'); release(); await closing;
-  assert.equal(f.active, 'kv'); assert.equal(f.instances[0].label, 'kv');
+  await f.workspace.openTool('info'); release(); await closing;
+  assert.equal(f.active, 'info'); assert.equal(f.instances[0].label, 'info');
 });
 
 test('returning to IDE keeps dirty objects and retires synthetic view tabs without recreating controllers', async t => {
@@ -320,38 +320,38 @@ test('returning to IDE keeps dirty objects and retires synthetic view tabs witho
 });
 
 test('the selected retained view survives mode changes with additional instances, and closing it prevents resurrection', async t => {
-  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
-  const original = f.activeInstance; await f.open(panel('kv'));
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('info');
+  const original = f.activeInstance; await f.open(panel('info'));
   await f.workspace.select(original, true); await f.workspace.deactivate(f.left); await f.workspace.activate();
   assert.equal(f.instances.length, 2);
-  assert.equal(f.parts.get('kv').activeGroup.activeEditor instanceof StudioToolViewInput, true);
+  assert.equal(f.parts.get('info').activeGroup.activeEditor instanceof StudioToolViewInput, true);
   await f.workspace.close(f.activeInstance, true);
   await f.workspace.deactivate(f.left); await f.workspace.activate();
   assert.equal(f.instances.length, 1);
-  assert.equal(f.parts.get('kv').activeGroup.editors.some(editor => editor instanceof StudioToolViewInput), false);
+  assert.equal(f.parts.get('info').activeGroup.editors.some(editor => editor instanceof StudioToolViewInput), false);
 });
 
 test('closing the last native tool tab does not reopen the category on a later mode change', async t => {
-  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('knowledge');
-  await f.parts.get('knowledge').activeGroup.closeEditor(f.parts.get('knowledge').activeGroup.activeEditor);
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('trace');
+  await f.parts.get('trace').activeGroup.closeEditor(f.parts.get('trace').activeGroup.activeEditor);
   assert.equal(f.visibleView, 'studio.steamTools');
   await f.workspace.deactivate(f.left); await f.workspace.activate();
-  assert.equal(f.tabs.some(tab => tab.id === 'knowledge'), false);
+  assert.equal(f.tabs.some(tab => tab.id === 'trace'), false);
 });
 
 test('old mixed part restoration redistributes real inputs and preserves a saved empty Editor category', async t => {
   const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['editor'], active: 'editor', emptyEditor: true }], ['studio.workbenchMode', 'steam']]);
-  const f = fixture(t, saved), kv = panel('kv');
-  await f.right.openEditor(kv); await f.workspace.activate();
+  const f = fixture(t, saved), info = panel('info');
+  await f.right.openEditor(info); await f.workspace.activate();
   assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0); assert.equal(f.sidebarVisible, true);
-  assert.equal(f.parts.get('kv').groups[0].contains(kv), true); assert.equal(f.right.contains(kv), false);
+  assert.equal(f.parts.get('info').groups[0].contains(info), true); assert.equal(f.right.contains(info), false);
 });
 
 test('each saved category restores its native part and inactive default views without stealing selection', async t => {
-  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['kv', 'knowledge'], parts: ['editor', 'kv', 'knowledge'], active: 'kv' }], ['studio.workbenchMode', 'steam']]);
+  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['info', 'trace'], parts: ['editor', 'info', 'trace'], active: 'info' }], ['studio.workbenchMode', 'steam']]);
   const f = fixture(t, saved); await f.workspace.activate();
-  assert.equal(f.parts.size, 3); assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv', 'knowledge']); assert.equal(f.active, 'kv');
-  assert.deepEqual(saved.get('studio.steamWorkspaceTabs').parts, ['editor', 'kv', 'knowledge']);
+  assert.equal(f.parts.size, 3); assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['info', 'trace']); assert.equal(f.active, 'info');
+  assert.deepEqual(saved.get('studio.steamWorkspaceTabs').parts, ['editor', 'info', 'trace']);
 });
 
 test('split groups keep a copied file independently and preserve their ownership after one tab closes', async t => {
@@ -362,10 +362,10 @@ test('split groups keep a copied file independently and preserve their ownership
 });
 
 test('native toolbar additions honor the group in their command context instead of the globally active category', async t => {
-  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
-  const kvGroup = f.parts.get('kv').addGroup(); await f.workspace.openTool('knowledge');
-  await f.workspace.newInstance(undefined, kvGroup.id);
-  assert.equal(f.activeGroup, kvGroup); assert.deepEqual(f.calls.at(-1), ['studio.createToolInstance', 'kv']);
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('info');
+  const infoGroup = f.parts.get('info').addGroup(); await f.workspace.openTool('trace');
+  await f.workspace.newInstance(undefined, infoGroup.id);
+  assert.equal(f.activeGroup, infoGroup); assert.deepEqual(f.calls.at(-1), ['studio.createToolInstance', 'info']);
 });
 
 test('Explorer previews keep sidebar focus, native close leaves an empty Editor, and hide/show retains the input', async t => {
@@ -407,9 +407,9 @@ test('browser add uses a fresh page and category routing retains files and secon
 test('a recreated primary project stays in the main group while an old restored input is alive', async t => {
   const f = fixture(t), old = new WebviewInput('Restored project', 'file:///project');
   await f.left.openEditor(old); await f.workspace.activate();
-  await f.workspace.openTool('kv');
+  await f.workspace.openTool('info');
   const fresh = new WebviewInput('Fresh project', 'file:///project');
-  assert.equal(f.policy.getEditorOpenTarget(fresh, f.parts.get('kv').activeGroup), f.left);
+  assert.equal(f.policy.getEditorOpenTarget(fresh, f.parts.get('info').activeGroup), f.left);
   await f.open(fresh);
   assert.equal(f.left.activeEditor, fresh);
   assert.equal(f.workspace.hasProject, true);

@@ -75,6 +75,9 @@ type PiAgent = DurableAgent;
 type PiAgentTool = PiAgent["state"]["tools"][number];
 
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
+  /** Core-owned guidance for Bot project memory, including custom and prepared personas. */
+  botMemoryPrompt?: string;
+  botMemoryRecall?: import("./memory").BotMemoryRecall;
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
@@ -217,7 +220,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   }
 
   /**
-   * Replaces the caller-supplied tools.
+   * Replaces per-run tools while retaining configured extra tools.
    *
    * Called per run by the node: those tools close over the run's
    * `NodeContext`, so they cannot be built once alongside the runtime.
@@ -225,7 +228,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   setExternalTools(tools: readonly PiAgentTool[], catalogs: readonly import("./extensions").AgentToolCatalog[] = []): void {
     if (catalogs.length && !this.options.session?.toolSearch) throw new Error("Deferred tools require session.toolSearch.");
     this.catalogsChanged ||= !!(catalogs.length || this.externalCatalogs.length);
-    this.externalTools = [...tools];
+    this.externalTools = [...(this.options.extraTools ?? []), ...tools];
     this.externalCatalogs = [...catalogs];
   }
 
@@ -417,6 +420,8 @@ class ProjectAgentRuntime implements AgentRuntime {
         interruptSession: this.options.interruptSession,
         workdir: this.options.workdir,
         storage: this.options.storage,
+        botMemoryPrompt: this.options.botMemoryPrompt,
+        botMemoryRecall: this.options.botMemoryRecall,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
         contextUsage: () => this.getContextUsage(),
@@ -857,7 +862,7 @@ function applyRunConfiguration(
   const systemPrompt = parsed.agent === "plan"
     ? [AGENT_PLAN_SYSTEM_PROMPT, parsed.systemPrompt].filter(isNonEmpty).join("\n\n")
     : parsed.systemPrompt ?? options.systemPrompt ?? defaultAgentSystemPrompt();
-  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].filter(isNonEmpty).join("\n\n");
+  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, options.botMemoryPrompt].filter(isNonEmpty).join("\n\n");
 
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.

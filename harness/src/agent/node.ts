@@ -47,6 +47,7 @@ import {
 } from "./plan";
 import { createAgentRuntime, resolveAgentWorkdir, type AgentRuntimeInternalOptions } from "./runtime";
 import { createSkillTools } from "./skills";
+import { BOT_MEMORY_SYSTEM_PROMPT, BOT_MEMORY_TOOL_NAMES, createBotMemoryRecall, createBotMemoryTools, isBotMemoryEnabled } from "./memory";
 import { DEFAULT_AGENT_EFFORT, DEFAULT_AGENT_MODE } from "./types";
 import type {
   AgentContextUsage,
@@ -270,6 +271,15 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         const roots = this.options.skills.directories.map(directory => path.resolve(String(context.metadata?.entryRootDir ?? process.cwd()), directory));
         const skills = await createSkillTools({ directories: roots, approve: async (name, args) => { await gate.approve({ name, arguments: args }, context); } });
         toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
+      }
+      const bot = botNodeLifecycle(this);
+      if (bot && [...(this.options.extraTools ?? []), ...(toolSet?.tools ?? [])].some(tool => BOT_MEMORY_TOOL_NAMES.includes(tool.name as typeof BOT_MEMORY_TOOL_NAMES[number]))) {
+        throw new Error("Bot memory_* tool names are reserved by Core.");
+      }
+      if (bot && isBotMemoryEnabled(context, bot.memoryDefaultEnabled)) {
+        const tools = createBotMemoryTools({ context, defaultEnabled: bot.memoryDefaultEnabled, input: runInput,
+          readOnly: (runInput.agent ?? this.options.mode) === "plan" || resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy) === "read-only" });
+        toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...tools] };
       }
       if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
       const runInScope = AsyncLocalStorage.snapshot();
@@ -678,8 +688,12 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     if (durable && !this.options.storage && !persistence) {
       throw new Error("Durable conversations require runtime persistence or an explicit storage factory.");
     }
+    const botMemory = botNodeLifecycle(this);
+    const memoryEnabled = botMemory && isBotMemoryEnabled(context, botMemory.memoryDefaultEnabled);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
+      botMemoryPrompt: memoryEnabled ? BOT_MEMORY_SYSTEM_PROMPT : undefined,
+      botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,
       sessionLease: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionLease(context.conversation.conversationId) : undefined,
       sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,

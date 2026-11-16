@@ -48,7 +48,7 @@ test("workflow generator reads independent SDK and adjacent CLI versions without
     assert.equal(project.entries.length, 1);
     assert.deepEqual(project.entries[0], {
       entryId: "main", type: "workflow", name: "standalone-check", root: ".",
-      entry: "index.ts", configuration: "configuration.json", databases: [],
+      entry: "index.ts", configuration: "configuration.json",
     });
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

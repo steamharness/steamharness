@@ -860,7 +860,7 @@ function initialize(): void {
     if (!state) { return; }
     agentNavigation = undefined;
     saveDraft(false);
-    let session = id ? state.sessions.find(entry => entry.id === id) : state.sessions.find(entry => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
+    let session = id ? state.sessions.find(entry => entry.id === id) : undefined;
     if (!session && id) { return; }
     if (!session) {
       session = blankSession(crypto.randomUUID());

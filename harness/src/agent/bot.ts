@@ -22,6 +22,8 @@ import { defineProject, runStreamNode } from "../workflow/index";
 import { createOutputNode, createOutputPayload } from "../node/output/index";
 import { HarnessError } from "../workflow/errors";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
+import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration";
+import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
 
 export interface BotInputContext extends NodeContext {
   readonly args: string[];
@@ -44,6 +46,8 @@ export type BotConversationOptions = Omit<ConversationDefinition, "durable" | "i
 };
 export interface BotDefinition<Input extends AgentInput = AgentInput> {
   name?: string;
+  /** Project memory defaults to enabled; the saved project configuration can override it. */
+  memory?: BotMemoryOptions;
   agent?: BotAgentOptions<Input>;
   tools?: ToolPermissionDefinition[];
   params?: BotParamDeclaration[];
@@ -81,7 +85,7 @@ export function botParams(agent: Pick<AgentProjectOptions, "paramOptions" | "mod
 }
 export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | "skills"> & { createSession?: unknown } = {}, overrides: ToolPermissionDefinition[] = []): ToolPermissionDefinition[] {
   normalizeToolPermissionDefinitions(overrides);
-  const defaults = [...readAgentToolDefinitions(agent.tools), { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
+  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
     ...(agent.session?.subagents || agent.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ...(agent.skills ? [{ name: "skill", label: "Skills", enabled: true, autoApprove: true }] : []),
     ...(agent.session?.toolSearch ? [{ name: "tool_search", label: "Find tools", enabled: true, autoApprove: true }] : []),
@@ -92,7 +96,7 @@ export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | 
 /** A project supplies policy and hooks; only Core supplies its executable workflow. */
 export function defineBot<Input extends AgentInput = AgentInput>(options: BotDefinition<Input> = {}): BotExecutorDefinition<Input> {
   if (!options || typeof options !== "object" || Array.isArray(options)) invalid("defineBot requires a configuration object.");
-  const allowed = new Set(["name", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
+  const allowed = new Set(["name", "memory", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
   for (const key of Object.keys(options)) if (!allowed.has(key)) invalid(`Unsupported Bot field "${key}". Use defineBot configuration and hooks.`);
   if (options.agent === null) invalid("Bot agent settings must be an object.");
   const agent = options.agent ?? {};
@@ -101,6 +105,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     if (Object.hasOwn(agent, key)) invalid(`Bot agent.${key} is not customizable.`);
   }
   const params = botParams(agent, options.params);
+  const memoryDefaultEnabled = botMemoryDefault(options.memory);
   const conversation = botConversationDefaults(options.conversation);
   const fields = normalizeProjectParamDeclarations(params).params;
   assertConversationCommands(conversation.commands, fields);
@@ -205,7 +210,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
       } })) };
     } } : {}),
     ...(agent.createSession ? { createSession: context => agent.createSession!(context, current.getStore()!) } : {}) };
-  const core = createCoreBotProject(coreOptions, { prepare: (input, context) => prepare(input, context, true), completed });
+  const core = createCoreBotProject(coreOptions, { memoryDefaultEnabled, prepare: (input, context) => prepare(input, context, true), completed });
   const workflow = registerAgentProject(defineProject<Input, AgentOutputPayload>({
     name: options.name ?? "bot",
     async run(input, context) {

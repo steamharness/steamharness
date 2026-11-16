@@ -37,6 +37,8 @@ pnpm exec steamharness web . --release --entry agent
 
 The release project is written to `dist/steamharness/release/project/`, with its archive under `dist/steamharness/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
 
+Bot memory defaults come from the selected release entry and configuration definition, including `entry` and `configuration` under `release.entryOverrides`. Adding the memory switch preserves v2 configuration profiles.
+
 Project declarations, configuration definitions, and extra JSON assets are minified to a single line. Field names, string content, and original number literals are preserved. Server configuration publication also minifies JSON before updating the file inventory.
 
 The v2 `structure.json` format keeps project ID, entry ID, entry name, and type in plain text, with internal structure encoded as `brotli-base64`. The SDK, CLI, and Server share a decoder for inspection, execution, and static validation.
@@ -63,9 +65,13 @@ CLI Web and Studio can display inline images in run results. Click an image to e
 
 Use [workspace commands](/en/cli/server-workspace) for remote static project management. Server never executes project code.
 
-Kanban cards in assistant replies preview their saved project, entry and configuration, keeping the owning host's entry prefix in resource URLs. Studio's `get_kanban_diagnostics` covers both open workspace boards and assistant cards, returning page instances, configuration identity and the latest 50 reads; `previews` identifies card sources. Use the current `instanceId` and `configurationId` to call page methods explicitly declared `readOnly: true` and verify actual state such as image readiness.
+Kanban cards in assistant replies preview their saved project, entry and configuration, keeping the owning host's entry prefix in resource URLs. Studio's `get_kanban_diagnostics` covers both open workspace boards and assistant cards, returning page instances, configuration identity and the latest 50 requests; `previews` identifies card sources. Use the current `instanceId` and `configurationId` to call page methods explicitly declared `readOnly: true` and verify actual state such as image readiness.
 
 Closing or refreshing a card invalidates its old instance; missing live instances do not prove successful rendering. File bridge reads allow up to 120 seconds without an earlier transport timeout; reads exceeding that limit still require investigation of the file path.
+
+When a Kanban board or embedded conversation fails, note the operation and error code in the alert. If it includes a diagnostic ID, use Studio's `get_kanban_diagnostics` to find that ID among recent requests for the board or card. Failed requests include a category, such as timeout, connection, or permission; file and database reads also list the sources they tried.
+
+Search the CLI host log for the same ID to find the underlying exception. Read diagnostics before refreshing the board, which clears these records. A Workflow business rejection shows its user-facing reason; other host exceptions do not expose raw paths or credentials to the page.
 
 ## User models and permissions
 

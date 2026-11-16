@@ -252,7 +252,7 @@ test("createEmbeddedBotExecutor produces a complete conversation executor", () =
   assert.equal(executor.tokenUsage?.enabled, true);
 
   const toolNames = (executor.tools ?? []).map((tool) => tool.name).sort();
-  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "sleep", "update_plan", "write"]);
+  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "memory_delete", "memory_get", "memory_save", "memory_search", "memory_update", "read", "sleep", "update_plan", "write"]);
 
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(

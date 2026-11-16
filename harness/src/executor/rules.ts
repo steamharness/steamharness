@@ -1,4 +1,5 @@
 import { botConversationDefaults, botParams, botTools } from "../agent/bot";
+import { botMemoryDefault, type BotMemoryOptions } from "../agent/memory-configuration";
 import { projectEntrySources } from "../project-sources";
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
@@ -1935,10 +1936,15 @@ function analyzeSourceFile(
       analysis.executorConfigurationViolations.push({ type: "invalid_executor_project_type", name: "projectType", message: "Bot projects must use defineBot.", locations: [location] });
     }
     if (bot) {
-      const allowed = new Set(["name", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
+      const allowed = new Set(["name", "memory", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
       for (const property of objectArg.properties) {
         const name = property.name ? readStructurePropertyName(property.name) : undefined;
         if (!name || !allowed.has(name)) analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: name ?? "spread", message: `Unsupported Bot field ${name ?? "spread"}.`, locations: [location] });
+      }
+      const memory = findStaticPropertyAssignment(objectArg, "memory");
+      if (memory) {
+        try { botMemoryDefault(readParamLiteral(memory.initializer) as BotMemoryOptions); }
+        catch (error) { analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: "memory", message: String(error), locations: [createLocation(cwd, filePath, sourceFile, memory)] }); }
       }
     }
 

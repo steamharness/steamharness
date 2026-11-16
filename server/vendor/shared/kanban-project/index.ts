@@ -116,6 +116,9 @@ export interface KanbanBridgeCall {
 export interface KanbanBridgeError {
   code: string;
   message: string;
+  detail?: string;
+  category?: "timeout" | "cancelled" | "connection" | "permission" | "missing" | "other";
+  diagnosticId?: string;
 }
 
 const KANBAN_BRIDGE_SAFE_ERRORS = {
@@ -126,6 +129,10 @@ const KANBAN_BRIDGE_SAFE_ERRORS = {
   KANBAN_BRIDGE_UNAVAILABLE: "Kanban project data is unavailable in this host.",
   KANBAN_BRIDGE_SESSION_INVALID: "The Kanban preview session is invalid or expired.",
   KANBAN_BRIDGE_SERVER_ERROR: "Kanban project data operation failed.",
+  CONVERSATION_OWNED_ELSEWHERE: "This conversation is open or running in another window. Read it here or start a new conversation.",
+  KANBAN_CONVERSATION_VIEW_LIMIT: "Too many embedded conversations are open. Close one and try again.",
+  KANBAN_SUBMISSION_REJECTED: "The Workflow rejected the message.",
+  KANBAN_SUBMISSION_INVALID_RECEIPT: "The Workflow did not return a valid message receipt.",
   KANBAN_DATA_OPERATION_FAILED: "Kanban project data operation failed.",
   KANBAN_FILE_UNAVAILABLE: "Kanban file is unavailable in this project.",
   KANBAN_FILE_TOO_LARGE: "Kanban files cannot exceed 50 MiB.",
@@ -398,7 +405,8 @@ const copyBridge=window.document?.addEventListener?(${installProjectCopyBridge.t
   }}):{command:()=>false,dispose:()=>{}};
 const clearConversations=()=>{for(const stop of [...conversationListeners.values()].map(value=>value.stop))stop();for(const view of [...conversationViews.values()])view.stop();};
 const clone=()=>JSON.parse(JSON.stringify(current));
-const createError=(message,code)=>{const error=new Error(message);if(code)Object.defineProperty(error,"code",{value:code,enumerable:true});return error;};
+const createError=(message,code,operation,diagnosticId,category)=>{const error=new Error(message);for(const [key,value] of Object.entries({code,operation,diagnosticId,category}))if(value)Object.defineProperty(error,key,{value,enumerable:true});return error;};
+const describeError=(message,code,operation,diagnosticId,category)=>createError(message+" ["+["operation: "+operation,"code: "+code,...(category&&category!=="other"?["category: "+category]:[]),...(diagnosticId?["diagnostic: "+diagnosticId]:[])].join("; ")+"]",code,operation,diagnosticId,category);
 const invalidRequest=()=>createError("The Kanban bridge request is invalid.","KANBAN_BRIDGE_INVALID_REQUEST");
 const isSafeErrorCode=(code)=>typeof code==="string"&&Object.prototype.hasOwnProperty.call(safeErrorMessages,code);
 const isJsonValue=(value,seen=new Set())=>{
@@ -419,8 +427,8 @@ const request=(operation,input)=>{
   if(pending.size>=${KANBAN_BRIDGE_MAX_PENDING_REQUESTS})return Promise.reject(createError("Too many Kanban bridge requests are pending.","KANBAN_BRIDGE_BUSY"));
   const requestId=Date.now().toString(36)+"-"+(++sequence).toString(36);
   return new Promise((resolve,reject)=>{
-    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(createError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT"));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:(operation==="entries.runEntrypoint"||operation==="conversations.viewMessage")?${KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
-    pending.set(requestId,{resolve,reject,timeout});
+    const timeout=window.setTimeout(()=>{pending.delete(requestId);reject(describeError("Kanban bridge request timed out.","KANBAN_BRIDGE_TIMEOUT",operation));},operation.startsWith("files.")?${KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS}:(operation==="entries.runEntrypoint"||operation==="conversations.viewMessage")?${KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS}:${KANBAN_BRIDGE_REQUEST_TIMEOUT_MS});
+    pending.set(requestId,{resolve,reject,timeout,operation});
     try{window.parent.postMessage({type:${requestMessage},nonce:${safeNonce},requestId,operation,input},"*");}
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
   });
@@ -559,7 +567,11 @@ window.addEventListener("message",function(event){
   pending.delete(event.data.requestId);
   window.clearTimeout(entry.timeout);
   if(event.data.ok===true)entry.resolve(event.data.value);
-  else{const code=event.data.error?.code;const safe=isSafeErrorCode(code);entry.reject(createError(safe?safeErrorMessages[code]:"Kanban bridge request failed.",safe?code:"KANBAN_BRIDGE_ERROR"));}
+  else{const error=event.data.error,code=isSafeErrorCode(error?.code)?error.code:"KANBAN_BRIDGE_ERROR";
+    const diagnosticId=typeof error?.diagnosticId==="string"&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(error.diagnosticId)?error.diagnosticId:undefined;
+    const category=["timeout","cancelled","connection","permission","missing","other"].includes(error?.category)?error.category:undefined;
+    const detail=code==="KANBAN_SUBMISSION_REJECTED"&&typeof error?.detail==="string"&&error.detail.trim().length>0&&error.detail.length<=500&&!/[\\u0000-\\u001f\\u007f]/.test(error.detail)?error.detail.trim():undefined;
+    entry.reject(describeError((safeErrorMessages[code]||"Kanban bridge request failed.")+(detail?" "+detail:""),code,entry.operation,diagnosticId,category));}
 });
 if(document.readyState==="loading")window.addEventListener("DOMContentLoaded",ready,{once:true});else ready();
 })();</script>`;
@@ -592,9 +604,11 @@ export function createKanbanBridgeError(reason: unknown): KanbanBridgeError {
       typeof code === "string" &&
       Object.prototype.hasOwnProperty.call(KANBAN_BRIDGE_SAFE_ERRORS, code)
     ) {
+      const detail = code === "KANBAN_SUBMISSION_REJECTED" ? Object.getOwnPropertyDescriptor(cause, "publicMessage")?.value : undefined;
       return {
         code,
         message: KANBAN_BRIDGE_SAFE_ERRORS[code as keyof typeof KANBAN_BRIDGE_SAFE_ERRORS],
+        ...(typeof detail === "string" && detail.trim().length > 0 && detail.length <= 500 && !/[\u0000-\u001f\u007f]/.test(detail) ? { detail: detail.trim() } : {}),
       };
     }
     causes.push(cause["cause"], cause["safeCause"]);

@@ -6,7 +6,7 @@ import ts from "typescript";
 export function projectEntrySources(projectDir: string, entryFile: string): string[] {
   const root = realpathSync(projectDir);
   const files = new Set<string>();
-  const scan = (file: string, dependency = false): void => {
+  const scan = (file: string): void => {
     const resolved = realpathSync(file);
     const relative = path.relative(root, resolved);
     if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error("Entry source escapes its declared root.");
@@ -16,7 +16,7 @@ export function projectEntrySources(projectDir: string, entryFile: string): stri
     for (const imported of imports) {
     if (!imported.fileName.startsWith(".")) continue;
     const module = ts.resolveModuleName(imported.fileName, resolved, { moduleResolution: ts.ModuleResolutionKind.Bundler, allowJs: true }, ts.sys).resolvedModule;
-    if (module && !module.isExternalLibraryImport && !module.resolvedFileName.endsWith(".d.ts")) scan(module.resolvedFileName, true);
+    if (module && !module.isExternalLibraryImport && !module.resolvedFileName.endsWith(".d.ts")) scan(module.resolvedFileName);
     }
   };
   scan(entryFile);
