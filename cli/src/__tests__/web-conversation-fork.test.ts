@@ -51,7 +51,7 @@ it('forks through the page protocol without system AI and resumes only when the 
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'fork-fixture', version: '1.0.0',
       devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',
-      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
     const source = `
 
       export const executor = steamharness.defineBot({

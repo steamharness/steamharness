@@ -36,7 +36,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Conversation Demo",
-          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}], defaultEntry:"main",
           projectCard: {
             icon: "bot",
             iconUrl: "https://example.test/bot.png",
@@ -60,7 +60,7 @@ describe("ProjectListPage management table", () => {
       projects: [createProject({
         id: "conversation-localized",
         name: "Conversation Localized",
-        entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+        entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}], defaultEntry:"main",
       })],
     });
 
@@ -82,7 +82,7 @@ describe("ProjectListPage management table", () => {
       projects: [createProject({
         id: "kanban-demo",
         name: "Product Board",
-        entries: [{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",databases:[]}], defaultEntry:"main",
+        entries: [{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html"}], defaultEntry:"main",
       })],
     });
 
@@ -186,7 +186,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Chat Runner",
-          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+          entries: [{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}], defaultEntry:"main",
           projectCard: {
             icon: "message-circle",
             iconBackgroundColor: "#0f766e",
@@ -315,7 +315,7 @@ function createProject(overrides: Partial<Summary>): Summary {
   return {
     id: "demo",
     name: "Demo",
-    entries: [{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
+    entries: [{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}], defaultEntry:"main",
     projectCard: {
       icon: "workflow",
       iconBackgroundColor: "#2563eb",

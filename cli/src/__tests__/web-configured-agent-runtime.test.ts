@@ -32,7 +32,7 @@ it('loads user models through the host and worker without project configuration,
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }]  }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }]  }));
     await writeFile(path.join(directory, 'index.ts'), `
 
       export const executor = steamharness.defineBot({
@@ -155,7 +155,7 @@ it('runs saved system and third-party models through the real Web worker with re
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] }));
     await writeFile(path.join(directory, 'index.ts'), `
 
       export const executor = steamharness.defineBot({
@@ -290,7 +290,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}], devDependencies: { steamharness: await resolveHarnessVersion() } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}], devDependencies: { steamharness: await resolveHarnessVersion() } }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineBot({ agent: { modelSource: '${modelSource}', tools: [], session: { compaction: { enabled: false } } } });
     `);

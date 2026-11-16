@@ -30,7 +30,7 @@
 .project-server-check > :last-child { flex-shrink: 0; color: var(--vscode-descriptionForeground); }
 .project-server-check[data-status="action-required"] > :last-child { color: var(--vscode-editorWarning-foreground); }
 #server-guidance-steps { color: var(--vscode-foreground); }
-.project-server-guidance-actions #server-guidance-create, .project-server-guidance-actions #server-guidance-databases { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.project-server-guidance-actions #server-guidance-create { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .project-server-create { max-width: min(560px, calc(100vw - 32px)); }
 .project-server-create .dialog-body { display: flex; flex-direction: column; gap: 16px; }
 .project-server-create p { margin: 0; line-height: 1.6; user-select: text; }

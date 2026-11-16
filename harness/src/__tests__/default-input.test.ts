@@ -77,7 +77,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-conversation-input-"));
   try {
     await Promise.all([
-      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}],
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}],
         name: "conversation-structure-test",
         version: "0.1.0",
         type: "module",

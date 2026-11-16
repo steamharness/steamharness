@@ -23,8 +23,6 @@ Studio generates local source, opens the project window, installs dependencies, 
 | --- | --- |
 | Hello workflow | Streams `Hello` without calling a model |
 | Bot | Uses the Core Agent for continuing conversations and requires an available model |
-| Basic board | Manages tasks; requires a relational database, schema migration, and entry binding |
-| Parameterized board | Configures the title and completed column through parameters; set up the resources declared by the template |
 
 ## Resume failed setup
 
@@ -34,7 +32,7 @@ Dependency installation, registration, and validation have separate statuses. A 
 2. Fix the network, sign-in, or declaration problem.
 3. Select **Retry project setup**. Installed dependencies and an already allocated project ID are reused.
 
-Registration requires sign-in; sign in and retry if it failed. If the registration account changed, follow the prompt to use the appropriate account. Applying for a new identity does not transfer old data grants: request access and bind the resources again.
+Registration requires sign-in; sign in and retry if it failed. If the registration account changed, follow the prompt to use the appropriate account.
 
 ## Open existing source
 
@@ -48,4 +46,4 @@ A new window preserves the original window and unsaved files. Opening in the cur
 
 Under **New Project → Import from link**, paste a Server Web version share link and select **Import**. The import uses the default project directory without a template or project name. It remains available when the template list cannot load.
 
-A private project may require approved guest access. After downloading, install dependencies and check the current account's database and knowledge grants. See [uploads, downloads, and versions](/en/guides/studio/versions).
+A private project may require approved guest access. After downloading, install dependencies. See [uploads, downloads, and versions](/en/guides/studio/versions).

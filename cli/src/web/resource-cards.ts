@@ -1,7 +1,6 @@
 import { isConfigurationValue, type ConfigurationValues } from "@steamharness/project-configuration";
 import { t } from './localization';
 import type { OutputItem } from './workflow-types';
-import { parseWorkflowResourceReader, type WorkflowResourceReader } from './resource-reader-contract';
 
 export interface ResourceCardReference {
   cardId: string;
@@ -11,9 +10,8 @@ export interface ResourceCardReference {
 }
 
 export interface ResourceCard {
-  reader?: WorkflowResourceReader;
   id: string;
-  kind: 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
+  kind: 'project' | 'browser' | 'file' | 'kanban';
   title: string;
   target: Record<string, string>;
   itemId?: string;
@@ -48,9 +46,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     if (!descriptor) {
       const target: Record<string, unknown> = { source: 'local', projectId, entryId };
       let kind: ResourceCard['kind'] | undefined;
-      if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
-        kind = 'knowledge'; Object.assign(target, { projectId: input.projectId ?? projectId, knowledgeBase: input.knowledgeBase, documentId: input.documentId ?? record(output?.document)?.id });
-      } else if (tool === 'read' || tool === 'workflow-desktop_open_dock_tool' && input.tool === 'files') {
+      if (tool === 'read' || tool === 'workflow-desktop_open_dock_tool' && input.tool === 'files') {
         kind = 'file'; target.filePath = input.filePath ?? input.path;
       } else if (tool === 'workflow-desktop_open_project' && input.kind === 'project') {
         kind = 'project'; target.projectId = input.targetId;
@@ -60,14 +56,13 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
         if (input.tool === 'open-project' && input.openedProjectKind === 'project') { kind = 'project'; target.projectId = input.openedProjectId; }
       }
       if (!kind) { continue; }
-      if (kind === 'knowledge') { target.source = input.source ?? storageSource; }
       descriptor = { kind, target, title: record(output?.document)?.title };
     }
     const kind = descriptor.kind as ResourceCard['kind'];
-    if (!['knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
+    if (!['project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
     const target = Object.fromEntries(Object.entries(record(descriptor.target) ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length < 8192));
     if (target.source === 'current') {
-      target.source = kind === 'knowledge' ? storageSource : 'local';
+      target.source = 'local';
       target.projectId ??= projectId; target.entryId ??= entryId;
     }
     if (target.source && !['local', 'server'].includes(target.source)) { continue; }
@@ -76,32 +71,19 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     } else {
       target.source ??= 'local'; target.projectId ??= projectId;
       if (target.projectId === projectId) target.entryId ??= entryId;
-      if (!target.entryId || kind === 'knowledge' && !target.knowledgeBase && !descriptor.reader) continue;
+      if (!target.entryId) continue;
       if (target.scope === 'conversation') { target.conversationId ??= conversationId; }
       if (kind === 'file' && (!target.filePath || /^(?:[\\/]|[a-z]:)|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(target.filePath))) { continue; }
     }
-    let reader: WorkflowResourceReader | undefined;
-    if (descriptor.reader !== undefined) {
-      try {
-        if (kind !== 'knowledge' || target.source !== 'local' || target.projectId !== projectId) continue;
-        reader = parseWorkflowResourceReader(descriptor.reader);
-      } catch { continue; }
-    }
-    const id = string(descriptor.cardId) ?? `${kind}:${JSON.stringify(target)}${reader ? `:${JSON.stringify(reader)}` : ""}`;
-    // Keep saved-card identities stable while repairing older display metadata.
-    if (kind === 'knowledge' && reader && !target.documentId) target.query ??= string(input.query) ?? string(output?.query) ?? '';
+    const id = string(descriptor.cardId) ?? `${kind}:${JSON.stringify(target)}`;
     if (!target.query) delete target.query;
     const explicitTitle = string(descriptor.title);
     const humanTitle = explicitTitle !== target.projectId && explicitTitle !== target.documentId ? explicitTitle : undefined;
-    const knowledgeTitle = string(record(output?.document)?.title) ?? string(output?.title) ?? string(input.title);
-    const fallback = kind === 'knowledge'
-      ? knowledgeTitle ?? (target.query ? t('Knowledge search: {0}', target.query) : target.documentId ? t('Knowledge document') : t('Knowledge documents'))
-      : kind === 'file' ? target.filePath?.split(/[\\/]/).at(-1) ?? t('File')
+    const fallback = kind === 'file' ? target.filePath?.split(/[\\/]/).at(-1) ?? t('File')
       : kind === 'browser' ? target.url ?? t('Browser') : kind === 'kanban' ? t('Kanban') : t('Project');
     const title = (humanTitle ?? fallback).slice(0, 200);
     const kanban = record(descriptor.kanban), values = record(kanban?.values);
     cards.set(id, { id, kind, title, target, itemId: item.id ?? String(index),
-      ...(reader ? { reader } : {}),
       ...(typeof descriptor.preview === 'boolean' ? { preview: descriptor.preview } : {}),
       ...(typeof descriptor.pinned === 'boolean' ? { pinned: descriptor.pinned } : {}),
       ...(kind === 'kanban' && ['preview', 'save'].includes(String(kanban?.mode)) && values && Object.keys(values).length <= 100

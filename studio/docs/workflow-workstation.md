@@ -33,11 +33,11 @@ Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开
 
 参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。使用系统 AI 的项目需要有效的 SteamHarness Server 登录，或项目自身所需的服务配置。
 
-数据库工具列出当前 Server 的关系资源与知识库，并打开 Server Web 管理页面。对话资源卡片支持已授权的知识与看板预览，见 [数据库与资源管理](resource-panel.md)。Workflow 和 Conversation 的轨迹面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
+对话资源卡片支持看板预览。Workflow 和 Conversation 的轨迹面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
 
 Studio 小助手使用独立应用及其 Core/CLI 依赖，工具工作目录采用 VS Code 当前打开的文件夹。多文件夹工作区跟随活动文件所属的根目录，其余已打开的文件夹作为关联根；聚焦小助手或工作区外的文件时保留当前目录。切换文件夹前停止并保存旧会话，历史按文件夹分别保存；未打开文件夹时显示打开文件夹入口。Permission 默认 Auto approve，可访问进程有权限的所有本地目录；Studio 和 CLI Web 保留内置项目声明的默认值，已有会话沿用保存的权限选择。Workspace / Read only 保留登记工作区的目录限制，提示词与控制工具均跟随本轮选择。
 
-小助手在同一 projectId 下注册 `main` Conversation 和 `studio-control` Workflow 两个入口，默认打开 `main`。控制入口与小助手统一安装和分发，小助手按需通过自身的 `mcp --entry studio-control` 调用编辑器状态、诊断、文件定位、主题、终端及视图操作，保留本轮权限与工具审批。`get_entries` 查询聚合项目的身份、默认入口和已注册入口，不授予数据库访问权。也可打开小助手项目根目录，直接运行控制入口，无需模型对话；不要将其子目录作为独立项目安装。
+小助手在同一 projectId 下注册 `main` Conversation 和 `studio-control` Workflow 两个入口，默认打开 `main`。控制入口与小助手统一安装和分发，小助手按需通过自身的 `mcp --entry studio-control` 调用编辑器状态、诊断、文件定位、主题、终端及视图操作，保留本轮权限与工具审批。`get_entries` 查询聚合项目的身份、默认入口和已注册入口。也可打开小助手项目根目录，直接运行控制入口，无需模型对话；不要将其子目录作为独立项目安装。
 
 ## 运行与数据
 

@@ -2,7 +2,7 @@ import { createLocalProjectConfigurationStore, resolveProjectEntrySync, readCach
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
-import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanDatabaseRevision } from '@steamharness/kanban-project';
+import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition } from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
 import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
@@ -19,14 +19,10 @@ export class KanbanController {
   workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
   preview!: KanbanPreview;
-  databaseRevisions: KanbanDatabaseRevision[] = [];
-  databaseWarning = '';
   serverDataIssue?: ProjectServerIssue;
   private watcher?: FSWatcher;
   private previewDeclarations = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
-  private poll?: ReturnType<typeof setInterval>;
-  private polling = false;
   private disposed = false;
   private generation = 0;
   private readonly requests = new Set<AbortController>();
@@ -46,7 +42,7 @@ export class KanbanController {
   }
   configuration(): KanbanInjectedConfiguration { const snapshot = configurationSnapshot(this.workspace, undefined, false); return { id: snapshot.id, name: snapshot.name, params: snapshot.values }; }
   configurationChanged(state: ProjectConfigurationState): void { this.workspace = state; if (this.preview) { this.newPreview(); this.hooks.changed(); } }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, databaseRevisions: this.databaseRevisions, databaseWarning: this.databaseWarning, serverDataIssue: this.serverDataIssue }; }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, serverDataIssue: this.serverDataIssue }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();
@@ -60,7 +56,6 @@ export class KanbanController {
       });
       this.watcher.on('error', error => this.hooks.log(String(error)));
     } catch (error) { this.hooks.log(String(error)); }
-    this.poll = setInterval(() => { if (!this.polling) { this.polling = true; void this.updateRevisions().finally(() => { this.polling = false; }); } }, 2_000); this.poll.unref();
   }
   async refresh(checkConnections = false): Promise<void> {
     const declaration = resolveProjectEntrySync(this.project.folderPath, this.project.entryId);
@@ -69,8 +64,6 @@ export class KanbanController {
       path.join(declaration.rootDir, 'steamharness.json'), path.join(declaration.rootDir, 'package.json'), declaration.configurationPath,
     ].filter((file): file is string => typeof file === 'string').map(file => path.relative(this.project.folderPath, file).replaceAll('\\', '/')));
     this.project.entryRoot = declaration.rootDir;
-    this.project.databases = declaration.registration.databases;
-    this.project.knowledgeBases = declaration.registration.knowledgeBases ?? [];
     this.project.kanban = { artifactDir: path.posix.dirname(declaration.registration.entry), entry: path.posix.basename(declaration.registration.entry) };
     this.newPreview();
     if (checkConnections) await this.hooks.projectChanged?.();
@@ -159,7 +152,7 @@ export class KanbanController {
         });
       }
       if (result === undefined) {
-        attempts.push({ source: call.operation === 'studio.getLocalAnalysis' ? 'host' : 'database' });
+        attempts.push({ source: call.operation === 'studio.getLocalAnalysis' ? 'host' : 'local' });
         result = call.operation === 'studio.getLocalAnalysis' ? await requestStudioAnalysis(process.env, abort.signal) : await this.runtime.kanbanBridge!(this.project, call, abort.signal);
       }
       if (generation !== this.generation || this.disposed) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
@@ -170,19 +163,7 @@ export class KanbanController {
       throw error;
     } finally { this.requests.delete(abort); }
   }
-  authenticationChanged() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.databaseRevisions = []; this.databaseWarning = ''; this.serverDataIssue = undefined; }
+  authenticationChanged() { this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.serverDataIssue = undefined; }
   projectChecksChanged() { this.hooks.changed(); }
-  private async updateRevisions() {
-    if (this.disposed || !this.runtime.kanbanBridge) return;
-    const generation = this.generation;
-    const revisions: KanbanDatabaseRevision[] = []; const errors: string[] = [];
-    for (const requirement of this.project.knowledgeBases ?? []) {
-      try { revisions.push({ kind: 'knowledgeBases', alias: requirement.alias, revision: String(await this.runtime.kanbanBridge(this.project, { requestId: `knowledge-revision:${requirement.alias}`, operation: 'knowledge.revision', input: { knowledgeBase: requirement.alias } })) }); }
-      catch { errors.push(requirement.alias); }
-    }
-    if (generation !== this.generation || this.disposed) return;
-    const warning = errors.length ? `Database access requires attention: ${errors.join(', ')}` : '';
-    if (JSON.stringify(revisions) !== JSON.stringify(this.databaseRevisions) || warning !== this.databaseWarning) { this.databaseRevisions = revisions; this.databaseWarning = warning; this.hooks.changed(); }
-  }
-  async close() { this.disposed = true; this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); clearInterval(this.poll); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
+  async close() { this.disposed = true; this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
 }

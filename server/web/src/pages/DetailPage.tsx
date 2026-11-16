@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { LayoutDashboard, Layers, Database, Settings2, Package, Users, Mail, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Layers, Settings2, Package, Users, Mail, type LucideIcon } from 'lucide-react';
 import type { ServerWebResourceKey } from '@steamharness/i18n';
 import { useTranslation } from '@steamharness/i18n/react';
 import { SelectField } from '@/components/ui';
@@ -12,7 +12,6 @@ import { ProjectMembersTab } from './detail/ProjectMembersTab';
 import { ProjectInvitationsTab } from './detail/ProjectInvitationsTab';
 import { ProjectConfigurationsTab } from './detail/ProjectConfigurationsTab';
 import { VersionsTab } from './detail/VersionsTab';
-import { DatabaseSpacesPage } from './DatabaseSpacesPage';
 import type { DetailPageProps } from './detail/types';
 export type { DetailPageProps } from './detail/types';
 export const DETAIL_NAV_GROUPS: Array<{id:string;label:ServerWebResourceKey;items:Array<{tab:DetailTab;label:ServerWebResourceKey;icon:LucideIcon}>}> = [
@@ -20,7 +19,6 @@ export const DETAIL_NAV_GROUPS: Array<{id:string;label:ServerWebResourceKey;item
     {tab:'project',label:'detailNavOverview',icon:LayoutDashboard},
     {tab:'entries',label:'aggregateEntries',icon:Layers},
     {tab:'configurations',label:'projectConfigurations',icon:Settings2},
-    {tab:'databases',label:'databaseSpaces',icon:Database},
     {tab:'settings',label:'detailNavSettings',icon:Settings2},
     {tab:'versions',label:'detailNavVersions',icon:Package},
   ]},
@@ -40,7 +38,6 @@ export function DetailPage(props:DetailPageProps){
     {active==='members'&&<ProjectMembersTab {...props}/>}
     {active==='invitations'&&<ProjectInvitationsTab {...props}/>}
     {active==='versions'&&<VersionsTab {...props}/>}
-    {active==='databases'&&<DatabaseSpacesPage key={props.project.id} project={props.project} onDirtyChange={props.onDirtyChange}/>}
     {active==='configurations'&&<><div className="p-4"><SelectField aria-label={t('aggregateEntries')} value={entryId} onValueChange={value => { setEntryId(value); props.onSelectEntry?.(value); }} options={props.project.entries.map(entry=>({value:entry.entryId,label:`${entry.name} · ${entry.type}`,icon:<img className="size-5 rounded" src={projectAvatarDataUrl(entry.projectCard,entry.type)} alt=""/>}))}/></div><ProjectConfigurationsTab key={`${props.project.id}/${entryId}`} project={props.project} entryId={entryId}/></>}
   </div>;
 }

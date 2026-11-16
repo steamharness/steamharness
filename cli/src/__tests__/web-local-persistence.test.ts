@@ -26,9 +26,9 @@ it('persists and reopens offline history through the default host backend withou
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-local-history-'));
   const projectId = randomUUID();
   directories.push({ directory, projectId });
-  const entry = { entryId: 'main', name: 'Offline', type: 'bot' as const, root: '.', entry: 'index.ts', databases: [] };
+  const entry = { entryId: 'main', name: 'Offline', type: 'bot' as const, root: '.', entry: 'index.ts' };
   const project: Project = { id: projectId, entryId: 'main', aggregateName: 'Offline', defaultEntry: 'main', entries: [entry],
-    entryRoot: directory, folderPath: directory, uri: '', name: 'Offline', projectType: 'bot', databases: [], fields: [], entrypoints: [] };
+    entryRoot: directory, folderPath: directory, uri: '', name: 'Offline', projectType: 'bot', fields: [], entrypoints: [] };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: projectId, name: 'offline-history', version: '0.1.0', entries: [entry], defaultEntry: 'main' }));
   await writeFile(path.join(directory, 'index.ts'), 'export {};');
   const runtime: Runtime = {
@@ -36,7 +36,7 @@ it('persists and reopens offline history through the default host backend withou
     resolveParams: vi.fn(async () => ({ params: {} })),
     run: vi.fn(async request => ({ status: 'success', runId: request.runId, output: { items: [{ id: 'answer', title: 'Answer', content: 'Offline reply', contentType: 'markdown' }] } })),
     cancel: vi.fn(), dispose: vi.fn(), uploadFiles: vi.fn(async () => []), readFile: vi.fn(async () => { throw new Error('Unknown file.'); }),
-    deleteFiles: vi.fn(async () => {}), readResource: vi.fn(async () => null), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
+    deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
   };
   const originalFetch = globalThis.fetch;
   const remoteRequests: string[] = [];

@@ -25,7 +25,7 @@ test('structure carries image settings into the exact entrypoint and rejects non
   try {
     await writeProjectFixture(path.join(projectDir, 'package.json'), JSON.stringify({
       id: crypto.randomUUID(), name: 'image-param-test', version: '0.1.0', type: 'module', defaultEntry: 'main',
-      entries: [{ entryId: 'main', name: 'Main', type: 'workflow', root: '.', entry: 'index.ts', databases: [] }],
+      entries: [{ entryId: 'main', name: 'Main', type: 'workflow', root: '.', entry: 'index.ts' }],
     }));
     const source = (settings: string) => `const flow = steamharness.defineProject({ name: 'Image', run: async () => ({ errCode: 0, errMessage: '' }) });
       export const executor = steamharness.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({

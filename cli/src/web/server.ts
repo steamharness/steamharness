@@ -43,11 +43,9 @@ import { pathReferences } from './conversation-paths';
 import { projectMentionFiles } from './mention-files';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
-import { ProjectServerConnection, projectServerAccessFailure, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
-import { projectStartupInspector } from './project-startup-checks';
+import { ProjectServerConnection, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
-import { DatabaseManagement } from './database-management';
 import { projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import type { EntryConversationSnapshot } from 'steamharness';
@@ -162,29 +160,21 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           projectId: source.id, actor: { userId: account.user?.userId, isSystemAdmin: false }, abortSignal,
           action: call.operation === 'entries.workflow' ? 'workflow-control' : call.operation === 'entries.runEntrypoint' ? 'workflow' : 'snapshot', input: call.input, sourceEntryId: source.entryId });
       }
-      return executor.kanbanBridge!(source, call);
+      throw Object.assign(new Error('The requested Kanban file is unavailable.'), { code: 'KANBAN_FILE_UNAVAILABLE' });
     },
     run: async (request, emit) => {
-      const runConnection = connection;
       const abort = new AbortController(); waitingRuns.set(abort, request.runId);
       try {
         if (projectServer?.blocking) await Promise.race([projectServer.assertReady(), new Promise<never>((_resolve, reject) => {
           abort.signal.addEventListener('abort', () => reject(new Error(t('Stopped'))), { once: true });
         })]);
         if (abort.signal.aborted) throw new Error(t('Stopped'));
-        const report = await executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit);
-        if (!abort.signal.aborted && report.status === 'failed') observeStorageFailure((report.error ?? report.result?.error)?.metadata, runConnection);
-        return report;
-      } catch (error) {
-        if (!abort.signal.aborted) observeStorageFailure((error as { metadata?: Record<string, unknown> }).metadata, runConnection);
-        throw error;
+        return await executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit);
       } finally { waitingRuns.delete(abort); }
     },
     resolveParams: async (...args) => {
       if (projectServer?.blocking) projectServer.assertAvailable();
-      const resolvingConnection = connection;
-      try { return await executor.resolveParams(...args); }
-      catch (error) { observeStorageFailure((error as { metadata?: Record<string, unknown> }).metadata, resolvingConnection); throw error; }
+      return executor.resolveParams(...args);
     },
     cancel: runId => { cancelWaitingRuns(runId); executor.cancel(runId); },
     dispose: () => { cancelWaitingRuns(); executor.dispose(); },
@@ -201,7 +191,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
     project.fields = view.fields; project.entrypoints = view.entrypoints;
   };
-  const databases = new DatabaseManagement(project, () => connection);
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
     : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id, project.entryId));
@@ -318,16 +307,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
   projectServer = new ProjectServerConnection(project.id, () => connection, () => {
-    if (projectServer) projectServer.state.blocking = ((project.knowledgeBases?.length ?? 0) > 0);
     kanbanController?.projectChecksChanged(); broadcast();
-  }, { blocking: ((project.knowledgeBases?.length ?? 0) > 0), inspect: projectStartupInspector(project, (alias, kind) => databases.assertBound(alias, kind), () => databases.refreshDeclaration()) });
-  const observeStorageFailure = (metadata: Record<string, unknown> | undefined, previous: WebConnection | undefined) => {
-    if (isKanban) return;
-    if (!previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
-    const failure = projectServerAccessFailure(metadata, project, connection);
-    if (!failure) return;
-    void projectServer!.reportFailure(failure);
-  };
+  }, { blocking: false });
   const projectCreation = new ProjectServerCreation(project, () => connection,
     () => account.status === 'authenticated' && account.user ? `${authIdentity}\n${account.user.userId}` : '',
     () => projectServer?.state.issue ?? kanbanController?.serverDataIssue, async () => {
@@ -557,9 +538,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   await initializeRuntimeStorage();
   await refreshAuth();
-  const selectedSession = controller?.sessions.find(session => session.id === saved.activeId) ?? controller?.current;
-  const previousReport = isProject ? projectController?.runs[0]?.report : selectedSession?.messages.at(-1)?.report;
-  if (previousReport?.status === 'failed') observeStorageFailure((previousReport.error ?? previousReport.result?.error)?.metadata, connection);
   const authPoll = setInterval(() => void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`)), 5_000); authPoll.unref();
   const { capability, cookie } = credentials;
   let replacementId: string | undefined;
@@ -600,12 +578,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
-    if (message.type === 'databases') {
-      const value = await databases.dispatch(message);
-      if (message.action === 'bind') await projectServer!.restart();
-      broadcast();
-      return [{ type: 'databases-result', requestId: message.requestId, value }];
-    }
     if (message.type === 'project-server-check') {
       const revision = ++projectCheckRevision;
       // Information edits affect the next check without reloading workflows or
@@ -617,7 +589,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const projectInfo = declaration ? readProjectInfo(declaration.entries.find(entry => entry.entryId === project.entryId)) : project.projectInfo;
       if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
       project.projectInfo = projectInfo;
-      projectServer!.state.blocking = ((project.knowledgeBases?.length ?? 0) > 0);
       await refreshAuth(true);
       await projectServer?.settled();
       return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
@@ -684,17 +655,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       try { return [{ type: 'resource-data', requestId: message.requestId, data: resources.get(String(message.id)) }]; }
       catch (error) { if (!message.reference) { throw error; } }
     }
-    if (['resource-data', 'resource-refresh', 'resource-select'].includes(message.type)) {
+    if (['resource-data', 'resource-refresh'].includes(message.type)) {
       // Only a saved card may restore an expired preview; never accept a client-supplied resource target.
       const card = message.reference ? findResourceCard(message.reference).card : resources.get(String(message.id)).card;
-      const selection = message.selection;
-      const target = { ...card.target };
-      if (selection && card.kind === 'knowledge') {
-        for (const key of card.kind === 'knowledge' ? ['documentId'] : ['key', 'scope', 'conversationId']) {
-          if (typeof selection[key] === 'string' && selection[key].length <= 8192) { target[key] = selection[key]; }
-        }
-      }
-      const preview = await resources.open({ ...card, target });
+      const preview = await resources.open(card);
       return [{ type: 'resource-data', requestId: message.requestId, id: preview.id, data: preview.data }];
     }
     if (message.type === 'resource-bridge') { return [{ type: 'resource-bridge', requestId: message.requestId, value: await resources.bridge(String(message.id), message.call) }]; }

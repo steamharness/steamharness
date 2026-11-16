@@ -19,7 +19,7 @@ test("Server publishes and downloads a compiled release without executing its co
     const files: Record<string, string> = {
       "steamharness.json": JSON.stringify({ id: projectId, name: "Compiled", version: "1.0.0", defaultEntry: "main", entries: [{ entryId: "main", root: "entries/main" }] }),
       "package.json": JSON.stringify({ name: "compiled", type: "module", devDependencies: { steamharness: coreVersion } }),
-      "entries/main/steamharness.json": JSON.stringify({ name: "Main", type: "workflow", entry: "index.mjs", configuration: "configuration.json", databases: [] }),
+      "entries/main/steamharness.json": JSON.stringify({ name: "Main", type: "workflow", entry: "index.mjs", configuration: "configuration.json" }),
       "entries/main/index.mjs": 'throw new Error("Server must never execute a release");',
       "entries/main/configuration.json": JSON.stringify(definition),
       "entries/main/structure.json": JSON.stringify({ version: 1, report: { projectId, entryId: "main", projectType: "workflow", workflow: { name: "Main", dir: ".", files: [] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, diagnostics: { violations: [], warnings: [] }, entrypoints: [{ id: "main", title: "Main" }] }, scripts: { violations: [], definedNodes: [] } }),
@@ -33,7 +33,7 @@ test("Server publishes and downloads a compiled release without executing its co
     const sourceDeclaration = { id: projectId, name: "Compiled", version: "1.0.0", defaultEntry: "main", entries: [{ entryId: "main", root: "entries/main" }] };
     await storage.createProjectFromFiles({ projectName: projectId, files: [
       { path: "steamharness.json", content: JSON.stringify(sourceDeclaration) }, { path: "package.json", content: files["package.json"] },
-      { path: "entries/main/steamharness.json", content: JSON.stringify({ name: "Main", type: "workflow", entry: "index.ts", configuration: "configuration.json", databases: [] }) },
+      { path: "entries/main/steamharness.json", content: JSON.stringify({ name: "Main", type: "workflow", entry: "index.ts", configuration: "configuration.json" }) },
       { path: "entries/main/index.ts", content: 'throw new Error("Server must never execute source");' },
       { path: "entries/main/configuration.json", content: JSON.stringify(sourceDefinition) },
     ] });

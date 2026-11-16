@@ -78,7 +78,7 @@ export class ProjectServerCreation {
       if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
 
         || JSON.stringify(readProjectInfo(pkg)) !== JSON.stringify(confirmation.projectInfo)) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
-      const manifest = await readProjectManifestFromDirectory(this.project.folderPath, {});
+      const manifest = await readProjectManifestFromDirectory(this.project.folderPath);
       this.assertCurrent(confirmation.connection, confirmation.identity);
       if (this.confirmations.get(confirmation.context.token) !== confirmation || confirmation.expiresAt <= Date.now() || confirmation.abort.signal.aborted) {
         throw new Error(t('Project creation confirmation expired. Open the dialog again.'));

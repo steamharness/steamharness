@@ -25,7 +25,6 @@
       "name": "Studio Analysis",
       "root": ".",
       "entry": "dist/steamharness/build/main/index.html",
-      "databases": [],
       "configuration": "configuration.json"
     }
   ],

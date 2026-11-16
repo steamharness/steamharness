@@ -28,21 +28,21 @@ function fixture(tools: Tool[], policies: ToolPolicies = {}) {
 
 it('groups interleaved built-in, project and MCP tools without losing or duplicating registrations', () => {
   const f = fixture([
-    { name: 'read' }, { name: 'kb_list_documents' }, { name: 'bash' }, { name: 'db_rows' },
+    { name: 'read' }, { name: 'tracker_list' }, { name: 'bash' }, { name: 'project_lookup' },
     { name: 'write' }, { name: 'workflow-studio_open_file' }, { name: 'update_plan' }, { name: 'skill' },
-    { name: 'kb_get_document' }, { name: 'db_status' },
+    { name: 'tracker_get' }, { name: 'project_status' },
     { name: 'tikhub_search_posts' }, { name: 'minimax_understand_media' }, { name: 'tikhub_fetch_post' },
     { name: 'mcp__issue_tracker__list' }, { name: 'mcp__issue_tracker__get' }, { name: 'custom' },
     { name: 'workflow-ui_present_card' }, { name: 'tool_search' },
   ]);
   expect(f.sections().map(section => section.querySelector('.tool-group-title')?.textContent)).toEqual([
-    'File tools', 'Knowledge', 'Shell commands', 'Data storage', 'Studio', 'Agent tools',
+    'File tools', 'tracker', 'Shell commands', 'project', 'Studio', 'Agent tools',
     'tikhub', 'minimax', 'issue_tracker', 'Other tools', 'Resource cards',
   ]);
   expect(f.root.querySelectorAll('tbody tr')).toHaveLength(17);
   expect(f.sections().every(section => !section.open)).toBe(true);
   expect(f.section('File tools').querySelector('.tool-group-count')?.textContent).toBe('2 tools');
-  expect(f.section('Knowledge').querySelector('tbody')?.textContent).toBe('kb_list_documentskb_get_document');
+  expect(f.section('tracker').querySelector('tbody')?.textContent).toBe('tracker_listtracker_get');
   const files = f.section('File tools');
   files.querySelector('summary')!.click();
   expect(files.open).toBe(true);
@@ -54,17 +54,17 @@ it('groups interleaved built-in, project and MCP tools without losing or duplica
 it('searches names, labels and descriptions, expands matches and restores sections after clearing', async () => {
   const f = fixture([
     { name: 'read', label: 'Read file' },
-    { name: 'kb_get_document', label: 'Find a note', description: 'Retrieve stored Markdown.' },
-    { name: 'kb_delete_document', label: 'Delete a note' }, { name: 'db_rows' },
+    { name: 'tracker_get', label: 'Find an issue', description: 'Retrieve issue metadata.' },
+    { name: 'tracker_delete', label: 'Delete an issue' }, { name: 'project_lookup' },
   ]);
-  const files = f.section('File tools'), knowledge = f.section('Knowledge');
+  const files = f.section('File tools'), tracker = f.section('tracker');
   const toggled = new Promise(resolve => files.addEventListener('toggle', resolve, { once: true }));
   files.querySelector('summary')!.click();
   await toggled;
-  for (const query of ['KB_GET', 'find a note', 'stored markdown']) {
+  for (const query of ['TRACKER_GET', 'find an issue', 'issue metadata']) {
     f.search(query);
-    expect(files.hidden).toBe(true); expect(knowledge.hidden).toBe(false); expect(knowledge.open).toBe(true);
-    expect(Array.from(knowledge.querySelectorAll('tbody tr')).filter(row => !(row as HTMLElement).hidden)).toHaveLength(1);
+    expect(files.hidden).toBe(true); expect(tracker.hidden).toBe(false); expect(tracker.open).toBe(true);
+    expect(Array.from(tracker.querySelectorAll('tbody tr')).filter(row => !(row as HTMLElement).hidden)).toHaveLength(1);
     expect(f.root.querySelector('.tool-count')?.textContent).toBe('1 of 4 tools');
   }
   f.search('no such tool');
@@ -72,40 +72,40 @@ it('searches names, labels and descriptions, expands matches and restores sectio
   expect(f.root.lastElementChild?.textContent).toBe('No matching tools'); expect((f.root.lastElementChild as HTMLElement).hidden).toBe(false);
   f.search('  ');
   expect(f.sections().every(section => !section.hidden)).toBe(true);
-  expect(files.open).toBe(true); expect(knowledge.open).toBe(false);
+  expect(files.open).toBe(true); expect(tracker.open).toBe(false);
   expect(f.root.querySelector('.tool-count')?.textContent).toBe('4 tools');
-  f.dialogs.close(); f.dialogs.permissions({ fields: [], tools: [{ name: 'read' }, { name: 'kb_get_document' }] }, {}, f.changed);
+  f.dialogs.close(); f.dialogs.permissions({ fields: [], tools: [{ name: 'read' }, { name: 'tracker_get' }] }, {}, f.changed);
   const reopened = document.querySelectorAll<HTMLDetailsElement>('.tool-permission-section');
   expect(reopened[0].open).toBe(true); expect(reopened[1].open).toBe(false);
   expect(f.changed).not.toHaveBeenCalled();
 });
 
 it('restores a just-opened section when search starts before its native toggle event', () => {
-  const f = fixture([{ name: 'read' }, { name: 'kb_get_document' }]);
+  const f = fixture([{ name: 'read' }, { name: 'tracker_get' }]);
   const files = f.section('File tools'); files.querySelector('summary')!.click();
-  f.search('kb_get'); f.search('');
-  expect(files.open).toBe(true); expect(f.section('Knowledge').open).toBe(false);
+  f.search('tracker_get'); f.search('');
+  expect(files.open).toBe(true); expect(f.section('tracker').open).toBe(false);
 });
 
 it('keeps hidden tool policies and independent defaults when changing a filtered tool', () => {
   const policies = { read: { enabled: false, autoApprove: true } };
   const f = fixture([
     { name: 'read', label: 'Duplicate label' },
-    { name: 'kb_get_document', label: 'Duplicate label', enabled: false, autoApprove: true },
+    { name: 'tracker_get', label: 'Duplicate label', enabled: false, autoApprove: true },
     { name: 'custom' },
   ], policies);
   const read = f.section('File tools').querySelector<HTMLInputElement>('input')!;
   expect(read.checked).toBe(false);
-  f.search('kb_get');
-  const [enabled, autoApprove] = f.section('Knowledge').querySelectorAll<HTMLInputElement>('input');
-  expect(enabled.ariaLabel).toContain('kb_get_document');
+  f.search('tracker_get');
+  const [enabled, autoApprove] = f.section('tracker').querySelectorAll<HTMLInputElement>('input');
+  expect(enabled.ariaLabel).toContain('tracker_get');
   expect(enabled.checked).toBe(false); expect(autoApprove.checked).toBe(true);
   enabled.click();
   const first = f.changed.mock.calls[0][0];
-  expect(first).toEqual({ read: { enabled: false, autoApprove: true }, kb_get_document: { enabled: true, autoApprove: true }, custom: { enabled: true, autoApprove: false } });
+  expect(first).toEqual({ read: { enabled: false, autoApprove: true }, tracker_get: { enabled: true, autoApprove: true }, custom: { enabled: true, autoApprove: false } });
   autoApprove.click();
-  expect(f.changed.mock.calls[1][0].kb_get_document).toEqual({ enabled: true, autoApprove: false });
-  expect(first.kb_get_document.autoApprove).toBe(true);
+  expect(f.changed.mock.calls[1][0].tracker_get).toEqual({ enabled: true, autoApprove: false });
+  expect(first.tracker_get.autoApprove).toBe(true);
   expect(policies).toEqual({ read: { enabled: false, autoApprove: true } });
   f.search(''); expect(read.checked).toBe(false);
 });
@@ -159,22 +159,22 @@ it('separates skill guides into a read-only tab and preserves their policy when 
 });
 
 it('supports keyboard tabs and retains tool search and collapse state across tab changes', () => {
-  const f = fixture([{ name: 'read' }, { name: 'kb_get_document' }, { name: 'skill' }]);
+  const f = fixture([{ name: 'read' }, { name: 'tracker_get' }, { name: 'skill' }]);
   const [tools, skills] = document.querySelectorAll<HTMLButtonElement>('.project-information-tabs [role=tab]');
   for (const tab of [tools, skills]) {
     const panel = document.getElementById(tab.getAttribute('aria-controls')!)!;
     expect(panel.getAttribute('role')).toBe('tabpanel'); expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
   }
   f.section('File tools').querySelector('summary')!.click();
-  f.search('kb_get');
+  f.search('tracker_get');
   tools.focus();
   tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(skills); expect(skills.tabIndex).toBe(0); expect(tools.tabIndex).toBe(-1);
   expect(skills.getAttribute('aria-selected')).toBe('true'); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true);
   skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(tools); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
-  expect(f.root.querySelector<HTMLInputElement>('[type=search]')?.value).toBe('kb_get');
-  expect(f.section('Knowledge').open).toBe(true); expect(f.section('File tools').hidden).toBe(true);
+  expect(f.root.querySelector<HTMLInputElement>('[type=search]')?.value).toBe('tracker_get');
+  expect(f.section('tracker').open).toBe(true); expect(f.section('File tools').hidden).toBe(true);
   tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
   expect(document.activeElement).toBe(skills);
   skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
@@ -182,7 +182,7 @@ it('supports keyboard tabs and retains tool search and collapse state across tab
   tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   expect(document.activeElement).toBe(skills);
   tools.click(); f.search('');
-  expect(f.section('File tools').open).toBe(true); expect(f.section('Knowledge').open).toBe(false);
+  expect(f.section('File tools').open).toBe(true); expect(f.section('tracker').open).toBe(false);
   expect(f.changed).not.toHaveBeenCalled();
 });
 

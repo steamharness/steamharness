@@ -13,10 +13,10 @@ Use `json` when a script needs run status, output, or errors. It executes the pr
 
 ```sh
 pnpm exec steamharness json .
-pnpm exec steamharness json . --entry database --entrypoint search -- --query example
+pnpm exec steamharness json . --entry workflow --entrypoint summarize -- --text example
 ```
 
-The second example selects a declared `database` entry and `search` operation. Omitting `--entry` uses `defaultEntry`; unknown IDs fail. Put business arguments after `--`.
+The second example selects a declared `workflow` entry and `summarize` operation. Omitting `--entry` uses `defaultEntry`; unknown IDs fail. Put business arguments after `--`.
 
 ## Read the report
 

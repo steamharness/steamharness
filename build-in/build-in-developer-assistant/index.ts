@@ -43,8 +43,7 @@ export const executor = steamharness.defineBot<AgentInput>({
       await toolApproval.approve({ name: toolId, arguments: args }, context);
     };
 
-    // Run-scoped Knowledge address the assistant's own store, not the
-    // user's project. Studio Control provides editor capabilities separately.
+    // Offer only capability tools used by the assistant.
     const capabilityToolIdsToOffer = new Set([
       "workflow-ui_present_card",
     ]);

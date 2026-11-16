@@ -39,7 +39,7 @@ test("PostgreSQL startup initializes access columns on 00000000-0000-4000-8000-0
     await db.init();
     const session = await auth.signInBootstrapAdmin({ email: "admin@init.test", password: "init-test-password" });
     await accounts.upsertUserProfile({ userId: "ordinary", email: "ordinary@init.test" });
-    await pool.query("insert into projects(id,name,owner_user_id,entries,default_entry) values('00000000-0000-4000-8000-000000000200','Existing',$1,$2::jsonb,'main')", [session.user.userId,JSON.stringify([{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}])]);
+    await pool.query("insert into projects(id,name,owner_user_id,entries,default_entry) values('00000000-0000-4000-8000-000000000200','Existing',$1,$2::jsonb,'main')", [session.user.userId,JSON.stringify([{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}])]);
     await pool.query("insert into project_members(project_id,user_id,role) values('00000000-0000-4000-8000-000000000200',$1,'owner')", [session.user.userId]);
     // Retired source-download requests are neither read nor migrated into membership requests.
     await pool.query(`create table project_access_requests (
@@ -211,7 +211,7 @@ test(
       await storage.createProject({
         projectId,
         projectName: "Team project",
-        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
+        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],defaultEntry:"main",
         projectInfo: info,
         ownerUserId: bob.userId,
         groupId: leaf.id,
@@ -250,7 +250,7 @@ test(
       await storage.createProject({
         projectId: personal,
         projectName: "Personal",
-        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
+        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],defaultEntry:"main",
         projectInfo: info,
         ownerUserId: dave.userId,
       });
@@ -395,7 +395,7 @@ test(
         name: "Unauthorized rename",
         version: "1.0.0",
         devDependencies: { steamharness: coreVersion },
-         defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: info ,
+         defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json"}], projectInfo: info ,
       };
       await storage.saveDraftFiles({
         projectName: projectId,
@@ -507,18 +507,14 @@ test(
           .status,
         403,
       );
-      assert.equal((await request("eve", `/projects/${projectId}/kv`)).status,404);
       assert.equal((await request("eve", `/projects/${projectId}/draft/files`,"PUT",{files:[]})).status,403);
       assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`, "POST", {
         entryId: "main",
         call: {
-          requestId: "unauthorized-write", operation: "database.query",
-          input: { database: "data", schemaHash: "a".repeat(64), binding: {}, request: { operation: "insert", model: "Task", data: { title: "Denied" } } },
+          requestId: "unauthorized-read", operation: "files.readFile",
+          input: { fileId: "wf_ab12" },
         },
       })).status, 403);
-      assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`, "POST", {
-        entryId: "main", call: { requestId: "retired-api", operation: "kv.setValue", input: { database: "data", key: "x", value: 1 } },
-      })).status, 400);
       assert.equal(
         (await request("eve", `/projects/${projectId}/files`, "POST", {}))
           .status,

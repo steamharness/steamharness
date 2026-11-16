@@ -46,7 +46,7 @@ describe("packaged workflow generator", () => {
     } finally { await rm(target, { recursive: true, force: true }); }
   });
 
-  it.each(['workflow', 'bot', 'kanban'].flatMap(projectType => ['configuration.json', '.steamharnessignore'].map(filename => [projectType, filename])))('rejects conflicting %s %s before creating any project files', async (projectType, filename) => {
+  it.each(['workflow', 'bot'].flatMap(projectType => ['configuration.json', '.steamharnessignore'].map(filename => [projectType, filename])))('rejects conflicting %s %s before creating any project files', async (projectType, filename) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-generator-conflict-'));
     try {
       const target = path.join(directory, 'existing'); await mkdir(target);
@@ -81,7 +81,7 @@ describe("packaged workflow generator", () => {
 
       const project=JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"));
       expect(project.defaultEntry).toBe("main");
-      expect(project.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json", databases: [] }]);
+      expect(project.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json" }]);
       expect(generated).not.toHaveProperty("projectType");
       expect(generated).not.toHaveProperty("release");
       expect(project.projectCard).toEqual({

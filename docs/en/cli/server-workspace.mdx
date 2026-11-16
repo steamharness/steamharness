@@ -29,7 +29,7 @@ One archive contains every registered entry, dependency declaration, and Kanban 
 
 Client creation requests a Server identity. The CLI can explicitly create a project and replace the local aggregate identity with `upload --create`; `--group-id` selects its group. Confirm the intended identity and ownership first.
 
-Project membership and group inheritance use fixed roles. Database and knowledge grants are managed separately and are not obtained through source downloads.
+Project membership and group inheritance use fixed roles.
 
 ## Transfers and configuration
 
@@ -40,6 +40,6 @@ Project membership and group inheritance use fixed roles. Database and knowledge
 | `file-upload`, `file-download`, `file-delete` | Manage business files |
 | `--server`, `--token` | Override connection settings explicitly |
 
-Configuration templates, schemes, snapshots, and attachments are scoped to entries. Server maintains relational bindings by account, project, entry, and alias; archives carry no account bindings. Knowledge access follows declarations and grants. Keep credentials in host configuration.
+Configuration templates, schemes, snapshots, and attachments are scoped to entries. Keep credentials in host configuration.
 
 See [workspace help](/en/cli/workspace/help) for the complete command list.

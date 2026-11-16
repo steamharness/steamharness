@@ -1,7 +1,5 @@
-import { DatabaseSpacesPage } from "./pages/DatabaseSpacesPage";
-
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Database, Loader2, RefreshCw, Settings2 } from "lucide-react";
+import { KeyRound, Loader2, RefreshCw, Settings2 } from "lucide-react";
 import { resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 import { toast } from "sonner";
 import { ThemeProvider, useTheme } from "next-themes";
@@ -14,7 +12,6 @@ import { LoginPage } from "./components/LoginPage";
 import { Badge } from "@/components/ui/badge";
 import { AccountPage } from "./pages/AccountPage";
 import { AccountInvitePage } from "./pages/AccountInvitePage";
-import { ConfirmActionDialog } from "./components/ConfirmActionDialog";
 import { AuditPage } from "./pages/AuditPage";
 import { DetailPage, getDetailNavGroups, resolveDetailTab } from "./pages/DetailPage";
 import { InviteAcceptPage } from "./pages/InviteAcceptPage";
@@ -35,18 +32,6 @@ import { getProjectDisplayName } from "./utils/project-presentation";
 // keeps all server/web server-backed table pagination at 20 rows.
 const RUN_PAGE_SIZE = 20;
 const AUDIT_PAGE_SIZE = 20;
-
-type PendingKnowledgeNavigation = {
-  route: AppRoute;
-  options: { replace?: boolean; skipKnowledgeGuard?: boolean };
-  onConfirm?: () => void;
-};
-
-function leavesKnowledgeWorkspace(current: AppRoute, next: AppRoute): boolean {
-  if (current.page === "databases") return next.page !== "databases" || next.id !== current.id;
-  return current.page === "detail" && current.tab === "databases" &&
-    (next.page !== "detail" || next.id !== current.id || next.tab !== "databases");
-}
 
 function pushToast(tone: "success" | "error", message: string) {
   toast[tone](message);
@@ -97,9 +82,6 @@ function AppContent() {
   const [createdApiKeyToken, setCreatedApiKeyToken] = useState<string | null>(null);
   const [latestInvitation, setLatestInvitation] = useState<UserInvitationResult | null>(null);
   const [selectedId, setSelectedId] = useState(() => readRouteProjectId(parseRoute(window.location.pathname)));
-  const [detailRefreshToken, setDetailRefreshToken] = useState(0);
-  const [detailContentBusy, setDetailContentBusy] = useState(false);
-  const [pendingKnowledgeNavigation, setPendingKnowledgeNavigation] = useState<PendingKnowledgeNavigation | null>(null);
   const [auditFilters, setAuditFilters] = useState<AuditFilters>(DEFAULT_AUDIT_FILTERS);
   const [detail, setDetail] = useState<DetailState>(DEFAULT_DETAIL);
   const [localePreference, setLocalePreference] = useState<LocalePreference>(() => readStoredLocale(LOCALE_STORAGE_KEY));
@@ -115,7 +97,6 @@ function AppContent() {
   const requestedDetailTab = route.page === "detail" ? route.tab : undefined;
   const selectedIdRef = useRef(selectedId);
   const routeRef = useRef(route);
-  const knowledgeDraftDirtyRef = useRef(false);
   selectedIdRef.current = selectedId;
   routeRef.current = route;
 
@@ -141,30 +122,11 @@ function AppContent() {
     replaceCurrentRouteIfNeeded();
     function handlePopState() {
       const nextRoute = parseRoute(window.location.pathname);
-      if (knowledgeDraftDirtyRef.current && leavesKnowledgeWorkspace(routeRef.current, nextRoute)) {
-        window.history.pushState(null, "", routeToPath(routeRef.current));
-        // The browser already moved to `nextRoute` before popstate. Restore
-        // the current page for the decision, then replace that temporary
-        // history entry after confirmation so Back never returns to a draft
-        // the user explicitly discarded.
-        setPendingKnowledgeNavigation({ route: nextRoute, options: { replace: true } });
-        return;
-      }
       setRoute(nextRoute);
       setSelectedId(readRouteProjectId(nextRoute));
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!knowledgeDraftDirtyRef.current) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   useEffect(() => {
@@ -222,7 +184,7 @@ function AppContent() {
     if (route.page !== "detail" || !selectedProject || !activeDetailTab || route.tab === activeDetailTab) return;
     navigateTo(
       { page: "detail", id: selectedProject.id, tab: activeDetailTab },
-      { replace: true, skipKnowledgeGuard: true },
+      { replace: true },
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDetailTab, route, selectedProject?.id]);
@@ -719,20 +681,12 @@ function AppContent() {
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
     setSelectedId("");
-    navigateTo({ page: "login" }, { replace: true, skipKnowledgeGuard: true });
+    navigateTo({ page: "login" }, { replace: true });
     detailProjectIdRef.current = null;
     setDetail(DEFAULT_DETAIL);
   }
 
   async function logout() {
-    if (knowledgeDraftDirtyRef.current && leavesKnowledgeWorkspace(routeRef.current, { page: "login" })) {
-      setPendingKnowledgeNavigation({
-        route: { page: "login" },
-        options: { replace: true, skipKnowledgeGuard: true },
-        onConfirm: () => { void completeLogout(); },
-      });
-      return;
-    }
     await completeLogout();
   }
 
@@ -746,7 +700,7 @@ function AppContent() {
     void i18n.changeLanguage(resolveLocalePreference(preference));
   }
 
-  function navigateTo(nextRoute: AppRoute, options: { replace?: boolean; skipKnowledgeGuard?: boolean } = {}) {
+  function navigateTo(nextRoute: AppRoute, options: { replace?: boolean } = {}) {
     if (session.status === "ready") {
       if (nextRoute.page === "projects" && !canViewProjects) {
         nextRoute = { page: "settings", tab: "profile" };
@@ -757,10 +711,6 @@ function AppContent() {
       if (nextRoute.page === "admin" && nextRoute.tab === "users" && !canViewUsers) {
           nextRoute = { page: "settings", tab: "profile" };
       }
-    }
-    if (!options.skipKnowledgeGuard && knowledgeDraftDirtyRef.current && leavesKnowledgeWorkspace(routeRef.current, nextRoute)) {
-      setPendingKnowledgeNavigation({ route: nextRoute, options });
-      return;
     }
     const path = routeToPath(nextRoute);
     setRoute(nextRoute);
@@ -882,7 +832,7 @@ function AppContent() {
     {
       id: "settings-api-keys",
       label: t("accountApiKey"),
-      icon: Database,
+      icon: KeyRound,
       active: page === "settings" && settingsTab === "api-keys",
       onClick: () => navigateTo({ page: "settings", tab: "api-keys" }),
     },
@@ -905,7 +855,6 @@ function AppContent() {
     } : null,
   ].filter((item): item is NonNullable<typeof item> => item !== null);
   const consoleNavItems = [
-    {id:"databases",label:t("databaseSpaces"),icon:Database,active:page==="databases",onClick:()=>navigateTo({page:"databases"})},
     {id:"groups",label:t("accessGroups"),icon:CONSOLE_NAV_ICONS.projects,active:page==="groups",onClick:()=>navigateTo({page:"groups"})},
     canViewProjects ? {
       id: "projects",
@@ -966,7 +915,6 @@ function AppContent() {
   const refreshBusy = Boolean(busy.global || (
     page === "detail" ? renderedBusy.project
       || (activeDetailTab === "invitations" && (busy.invitation || busy.revokeInvitationId))
-      || (activeDetailTab === "databases" && detailContentBusy)
       : page === "settings" ? settingsBusy[settingsTab]
       : page === "admin" ? adminBusy[adminTab]
       : false
@@ -986,7 +934,6 @@ function AppContent() {
     }
     if (page === "detail") {
       if (!selectedProject) return loadProjects({ keepSelection: true });
-      if (activeDetailTab === "databases") setDetailRefreshToken(current => current + 1);
       await Promise.all([
         loadProjects({ keepSelection: true }),
         loadProjectDetail(selectedProject.id),
@@ -1003,7 +950,7 @@ function AppContent() {
     loading: refreshBusy,
   }];
 
-  if (page === "projects" || page === "groups" || page === "databases") {
+  if (page === "projects" || page === "groups") {
     return (
       <AppLayout
         principalLabel={principalLabel}
@@ -1016,7 +963,7 @@ function AppContent() {
         onBrandClick={() => navigateTo({ page: "projects" })}
         onLogout={logout}
       >
-        {page==="databases" ? <DatabaseSpacesPage key="database-workspace" spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
+        {page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
           total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
           onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}
@@ -1148,9 +1095,6 @@ function AppContent() {
           onRemoveProjectMember={(userId) => void removeProjectMember(userId)}
           onCreateProjectInvitation={async (role) => await createProjectInvitation(role)}
           onRevokeProjectInvitation={(invitationId) => void revokeProjectInvitation(invitationId)}
-          refreshToken={detailRefreshToken}
-          onContentBusyChange={setDetailContentBusy}
-          onDirtyChange={value => { knowledgeDraftDirtyRef.current = value; }}
           onNavigateTab={navigateDetail}
           onNavigateProjectTab={(projectId, tab) => navigateTo({ page: "detail", id: projectId, tab })}
           sidebarCollapsed={false}
@@ -1158,28 +1102,6 @@ function AppContent() {
         />
       )}
       </AppLayout>
-      <ConfirmActionDialog
-        action={pendingKnowledgeNavigation ? {
-          title: t("databaseDiscardDraft"),
-          description: t("databaseDiscardDescription"),
-          confirmLabel: t("appKnowledgeGuardConfirm"),
-          cancelLabel: t("appKnowledgeGuardCancel"),
-          tone: "warning",
-          onConfirm: () => {
-            const pending = pendingKnowledgeNavigation;
-            setPendingKnowledgeNavigation(null);
-            knowledgeDraftDirtyRef.current = false;
-            if (pending?.onConfirm) {
-              pending.onConfirm();
-              return;
-            }
-            if (pending) navigateTo(pending.route, { ...pending.options, skipKnowledgeGuard: true });
-          },
-        } : null}
-        onOpenChange={(open) => {
-          if (!open) setPendingKnowledgeNavigation(null);
-        }}
-      />
     </>
   );
 }

@@ -22,7 +22,6 @@ await symlink(await realpath(path.join(example,'node_modules/esbuild')),path.joi
 const cliVersion = JSON.parse(await readFile(path.join(projectDir, 'node_modules/@steamharness/cli/package.json'), 'utf8')).version;
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(example, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
 const server = await createKanbanTestServer();
-await server.registerProject(projectDir);
 const proof = { cliVersion, checks: [], screenshots: [], errors: [] };
 const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve)); const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
 const log = await open(path.join(proofDir, 'desktop.log'), 'w');

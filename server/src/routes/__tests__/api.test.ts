@@ -45,7 +45,7 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
         artifactDir: "dist",
         entry: "pages/board view.htm",
 
-        entryId:"board",databases:[],configurations: [],
+        entryId:"board",configurations: [],
       };
     },
     issueKanbanPreviewCapability: async (options) => {
@@ -951,39 +951,7 @@ test("configuration routes reject unreadable projects before reaching the store"
   }assert.equal(called,false);}finally{await server.close();}
 });
 
-function entrySet(type: "workflow"|"bot"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts",databases:[]}]; }
-
-test('knowledge resource cards resolve the selected entry and reject removed KV requests',async()=>{
-  const calls:unknown[]=[];
-  const storage=createStorageStub({ entryKnowledgeBases:async(...args)=>{calls.push(args);return {get:(alias:string)=>{assert.equal(alias,'data');return {getDocument:async(id:string)=>({id,title:'Guide',markdown:'shared'})};}} as unknown as Awaited<ReturnType<Storage['entryKnowledgeBases']>>;} });
-  const server=await listen(storage,createPrincipal(false));
-  const post=(body:unknown)=>fetch(server.url('/api/projects/demo/entries/agent/resources/read'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  try{
-    assert.equal((await (await post({kind:'knowledge',knowledgeBase:'data',documentId:'guide'})).json()).data.id,'guide');
-    assert.deepEqual(calls[0],['demo','agent',{userId:'user-1',isSystemAdmin:false}]);
-    assert.equal((await post({kind:'kv',database:'data',key:'x'})).status,400);
-    for(const route of ['/api/projects/demo/kv','/api/projects/demo/storage','/api/projects/demo/knowledge','/api/database-spaces'])assert.equal((await fetch(server.url(route))).status,404);
-  }finally{await server.close();}
-});
-
-test('Kanban bridges enforce project roles before reaching the relationship database',async()=>{
-  let calls=0;
-  const storage=createStorageStub({
-    getProjectAccessSummary:async projectId=>({projectId,projectName:'Board',visibility:'private',member:{projectId,userId:'user-1',role:'guest',createdAt:'2026-10-27'}}),
-    entryDatabaseRequirements:async()=>['data'],
-    relationalDatabases:{resolveQueryBinding:async()=>{calls++;return {alias:'data'};}} as unknown as NonNullable<Storage['relationalDatabases']>,
-  });
-  const server=await listen(storage,createPrincipal(false));
-  const post=(operation:string,input:unknown)=>fetch(server.url('/api/projects/demo/kanban/bridge'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entryId:'board',call:{requestId:operation,operation,input}})});
-  const input={database:'data',schemaHash:'a'.repeat(64)};
-  try{
-    assert.equal((await post('database.resolve',input)).status,200);
-    assert.equal((await post('database.query',{...input,binding:{alias:'data'},request:{operation:'insert',model:'Task',data:{}}})).status,403);
-    assert.equal((await post('files.createFile',{knowledgeBase:'data',name:'map.png',mimeType:'image/png',base64:'aA=='})).status,403);
-    assert.equal((await post('kv.getValue',{database:'data',key:'x'})).status,400);
-    assert.equal(calls,1);
-  }finally{await server.close();}
-});
+function entrySet(type: "workflow"|"bot"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts"}]; }
 
 test('project creation rejects legacy declarations, duplicate entries and invalid defaults',async()=>{
   let calls=0;

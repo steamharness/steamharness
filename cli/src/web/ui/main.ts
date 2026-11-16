@@ -96,7 +96,7 @@ function initialize(): void {
     open: () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project, 'configurations'); } },
     isOpen: () => dialogs.activeSection === 'configurations',
   });
-  const aggregateToolbar = mountAggregateToolbar(vscode);
+  mountAggregateToolbar();
 
   interface State { conversationUi?: KanbanConversationUi; serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
@@ -127,7 +127,6 @@ function initialize(): void {
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
     create: () => vscode.postMessage({ type: 'create-cloud-project' }),
-    databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
     account: () => { vscode.postMessage({ type: 'open-account' }); },
     information: () => { if (state) dialogs.projectInfo(state.project); },
     open: () => vscode.postMessage({ type: 'open-server-project' }),
@@ -273,7 +272,7 @@ function initialize(): void {
     resume: () => post({ type: 'queue-run' }),
     changed: () => queueMicrotask(() => { if (state) render(state, false); }),
   });
-  const dialogs = new ConversationTools(aggregateToolbar.databases, {
+  const dialogs = new ConversationTools({
     path: target => post({ type: 'open-path', ...target }),
     browser: url => post({ type: 'open-url', url }),
     account: () => post({ type: 'open-account' }),

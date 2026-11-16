@@ -9,12 +9,10 @@ import {
   KANBAN_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_BRIDGE_RESPONSE_MESSAGE,
-  KANBAN_DATABASE_REVISION_MESSAGE,
   KANBAN_PREVIEW_READY_MESSAGE,
   KANBAN_PRESENTATION_MESSAGE,
   parseKanbanBridgeCall,
   type KanbanBridgeCall,
-  type KanbanDatabaseRevision,
   type KanbanPresentationMode,
 } from "./index";
 import "./styles.css";
@@ -29,8 +27,6 @@ export interface KanbanPreviewFrameProps {
   configuration?: { id: string; name: string; params: Record<string, unknown> };
   onRetry?: () => void;
   onBridgeRequest?: (call: KanbanBridgeCall) => Promise<unknown> | unknown;
-  databaseRevisions?: readonly KanbanDatabaseRevision[];
-  databaseWarning?: string;
   compact?: boolean;
   presentationMode?: KanbanPresentationMode;
   methodRegistry?: KanbanMethodRegistry;
@@ -68,23 +64,8 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
       presentation: { mode: presentationModeRef.current },
     }, "*");
   };
-  const postRevisions = () => {
-    const target = iframeRef.current?.contentWindow;
-    if (!target) return;
-    for (const revision of props.databaseRevisions ?? []) {
-      target.postMessage({
-        type: KANBAN_DATABASE_REVISION_MESSAGE,
-        nonce: props.previewNonce,
-        alias: revision.alias,
-        ...(revision.kind ? { kind: revision.kind } : {}),
-        revision: revision.revision,
-      }, "*");
-    }
-  };
-
   useEffect(postConfiguration, [props.configuration, props.previewNonce]);
   useEffect(postPresentation, [presentationMode, props.previewNonce]);
-  useEffect(postRevisions, [props.previewNonce, props.previewUrl, props.databaseRevisions, version]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -185,11 +166,6 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
 
   return (
     <div className="kanban-preview" data-loading={loading ? "true" : "false"} data-compact={props.compact ? "true" : undefined}>
-      {props.databaseWarning ? (
-        <div className="kanban-database-warning" role="status">
-          <AlertCircle aria-hidden="true" /><span>{props.databaseWarning}</span>
-        </div>
-      ) : null}
       {loading ? <div className="kanban-preview-loading"><Loader2 className="kanban-spin" />{t("loadingHtml")}</div> : null}
       {error ? (
         <div className="kanban-preview-error" role="alert">
@@ -208,7 +184,7 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
         title={t("kanbanPreviewTitle", { name: props.projectName })}
         src={props.previewUrl}
         sandbox="allow-scripts"
-        onLoad={() => { postPresentation(); postConfiguration(); postRevisions(); }}
+        onLoad={() => { postPresentation(); postConfiguration(); }}
         onError={() => { setLoading(false); setError(t("htmlPreviewLoadFailed")); }}
       />
     </div>

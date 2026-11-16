@@ -42,7 +42,7 @@ test('range parameters preserve zero bounds, reject invalid definitions and vali
 test('static structure retains numeric slider metadata and a separate prompt step', async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), 'steamharness-range-'));
   try {
-    await writeProjectFixture(path.join(projectDir, 'package.json'), JSON.stringify({ id: crypto.randomUUID(), defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'workflow', root: '.', entry: 'index.ts', databases: [] }], name: 'range-test', version: '0.1.0', type: 'module' }));
+    await writeProjectFixture(path.join(projectDir, 'package.json'), JSON.stringify({ id: crypto.randomUUID(), defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'workflow', root: '.', entry: 'index.ts' }], name: 'range-test', version: '0.1.0', type: 'module' }));
     await writeFile(path.join(projectDir, 'index.ts'), `const flow = steamharness.defineProject({ name: 'Range', run: async () => ({ errCode: 0, errMessage: '' }) });
       export const executor = steamharness.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow,
       params: [{ name: 'threshold', flag: '--threshold', type: 'number', control: 'range', range: { min: -1, max: 1, step: 0.01 }, step: 2, defaultValue: '0.8' }], createInput({ paramValues }) { return paramValues; } })] });`);
@@ -115,7 +115,7 @@ test("conversation structure reports every declared parameter action", async () 
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-actions-"));
   try {
     await Promise.all([
-      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}],
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}],
         name: "param-actions-structure-test", version: "0.1.0", type: "module",
       })),
       writeFile(path.join(projectDir, "index.ts"), `
@@ -390,7 +390,7 @@ test("parameter resolution without database access works offline and ignores pro
     id: projectId,
     name: "server-param-resolver",
     type: "module",
-    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     `(globalThis as Record<string, unknown>)[${JSON.stringify(importMarker)}] = true;`,
@@ -483,7 +483,7 @@ async function createResolverProject(): Promise<string> {
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/param-resolver-test",
     type: "module",
-    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const testProject = steamharness.defineProject({ name: 'param-resolver-test', run: async () => ({ errCode: 0, errMessage: '' }) });",
@@ -520,7 +520,7 @@ async function createDateParamProject(): Promise<string> {
     id: "22222222-2222-4222-8222-222222222222",
     name: "@steamharness/date-param-test",
     type: "module",
-    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const outputNode = steamharness.createOutputNode({ name: 'output', format(input) { return input; } });",

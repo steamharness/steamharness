@@ -95,7 +95,7 @@ test('durable conversations use local persistence without requiring a Server con
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-required-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
-  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Requires storage', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Requires storage', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
   await writeFile(path.join(directory, 'index.ts'), botFixtureSource());
   const report = await runLocalProjectWithReport({ projectDir: directory, env: {} });
   assert.equal(report.status, 'success');
@@ -106,7 +106,7 @@ test('losing the runtime history lease aborts an executing conversation', { time
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-lost-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
-  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease loss', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+  await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease loss', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
   await writeFile(path.join(directory, 'index.ts'), botFixtureSource({ prepare: `
     const { writeFile } = await import('node:fs/promises');
     await writeFile(new URL('./started', import.meta.url), 'started');
@@ -139,7 +139,7 @@ for (const fails of [false, true]) test(`lease release failures remain in a stru
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Lease release', version: '1.0.0', defaultEntry: 'main',
-    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
   await writeFile(path.join(directory, 'index.ts'), botFixtureSource({ prepare: fails
     ? "throw new Error('Original business failure');" : "return { ...input, prompt: 'Success' };" }));
   const persistence = createMemoryRuntimePersistence(), acquire = persistence.acquire.bind(persistence);

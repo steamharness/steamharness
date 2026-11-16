@@ -71,11 +71,6 @@ async function verify(language) {
   }
   function field(label) { return page.locator('.part.sidebar .monaco-list-row').filter({ has: page.locator('.label-name', { hasText: new RegExp(`^${label}$`) }) }); }
   async function screenshot(name) { await page.mouse.move(300, 20); await pause(250); await page.screenshot({ path: path.join(proofDir, name) }); proof.screenshots.push(name); }
-  async function panel(name, selector) {
-    const tab = page.locator('.part.panel').getByRole('tab', { name: exact(name) });
-    if (!await tab.isVisible()) { await command('View: Toggle Panel Visibility'); }
-    await tab.click(); return frameFor(selector);
-  }
   try {
     for (let attempt = 0; attempt < 250; attempt++) { try { if ((await fetch(`http://127.0.0.1:${port}/json/version`)).ok) { break; } } catch {} if (child.exitCode !== null) { throw new Error('Studio exited during startup'); } await pause(100); }
     await desktop.waitUntilReady(child);
@@ -118,21 +113,7 @@ async function verify(language) {
     await trace.locator('.trace-row[data-lane=log] summary').click();
     await trace.locator('.trace-row[open] pre').filter({ hasText: '\u4e2d\u6587\u6267\u884c\u53c2\u6570' }).waitFor();
     await screenshot('run-trace.png'); proof.checks.push('Run icon tooltip, execution controls and trace labels are translated; actual logs stay intact');
-    const kv = await panel('KV', '#resources-app');
-    assert.equal(await kv.locator('#resource-search').getAttribute('placeholder'), t('Search keys or values'));
-    await kv.locator('#resource-new:not([disabled])').click();
-    await kv.locator('#detail-title-input').fill('i18n/sample'); await kv.locator('#detail-body').fill(JSON.stringify('\u4e2d\u6587\u539f\u6587'));
-    await kv.locator('#detail-save').click(); await kv.locator('.detail-content pre').filter({ hasText: '\u4e2d\u6587\u539f\u6587' }).waitFor();
-    await screenshot('kv.png');
-    const knowledge = await panel(t('Knowledge'), 'body[data-resource-kind=knowledge] #resources-app');
-    assert.equal(await knowledge.locator('#resource-search').getAttribute('placeholder'), t('Search document content'));
-    await knowledge.locator('#resource-new:not([disabled])').click();
-    await knowledge.locator('#detail-title-input').fill('\u4e2d\u6587\u6587\u6863'); await knowledge.locator('#detail-body').fill('# \u539f\u6587\n\n\u4fdd\u6301\u4e2d\u6587\u5185\u5bb9');
-    await knowledge.locator('#detail-save').click(); await knowledge.locator('.markdown-body').filter({ hasText: '\u4fdd\u6301\u4e2d\u6587\u5185\u5bb9' }).waitFor();
-    await screenshot('knowledge.png'); proof.checks.push('KV and knowledge controls follow VS Code and preserve saved content');
     await page.setViewportSize({ width: 1100, height: 850 }); await screenshot('narrow.png');
-    const dimensions = await knowledge.locator('body').evaluate(body => ({ width: body.clientWidth, scroll: body.scrollWidth }));
-    assert.ok(dimensions.scroll <= dimensions.width + 1, JSON.stringify(dimensions));
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.locator('.part.activitybar').getByRole('tab', { name: exact('Studio') }).click();
     for (const label of ['New File', 'New Terminal', 'Run Task', 'Source Control', 'Extensions', 'Settings']) { await field(t(label)).waitFor(); }

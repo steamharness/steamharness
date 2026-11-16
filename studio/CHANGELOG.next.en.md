@@ -31,7 +31,7 @@
 
 - [Fixed] System model catalogues reuse a 30-second host snapshot and shared refreshes while preserving manual refresh. Resource views briefly reuse display data, merge concurrent refreshes, and clear cached data immediately when accounts change.
 
-- [Fixed] Conversation, Workflow and assistant history default to local SQLite with file locks, and analysis reads local history. Bundled runtime storage avoids per-operation remote waits before replies. System AI and business resources keep separate authorization; cloud storage is explicit or used for on-demand background backup, preserving existing data.
+- [Fixed] Conversation, Workflow and assistant history default to local SQLite with file locks, and analysis reads local history. Bundled runtime storage avoids per-operation remote waits before replies. System AI keeps its authorization checks; cloud storage is explicit or used for on-demand background backup, preserving existing data.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
@@ -43,7 +43,6 @@
 
 - Fixed: Unhandled project shortcuts reach Studio while Kanban shortcuts take priority, including nested previews, without interrupting text editing or IME input.
 
-- Resource panels now list distinct databases by their host-managed names, with one option for databases shared across entries. Removed the local/server selector; a read-only icon shows the database location. Name updates and switches between shared entries preserve data and drafts.
 
 - Added Studio Control diagnostics for open Kanban entries and read-only page queries, scoped to the aggregate directory, entry and current configuration so the assistant can verify actual image readiness.
 
@@ -67,11 +66,9 @@
 
 - Added **Open Project Window** below Explorer's file tree. It lists only the current project and its entries; each click on an entry or its open icon creates and activates a separate native tab. Focusing tools or the Assistant preserves the current project's list.
 
-- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
-- Fixed database requests and reviews continuing across account changes, and catalog refreshes releasing active operation locks. Changes to `config.json` refresh project references. Project data tabs validate the alias ID and host so old drafts cannot write into a replacement database after migration.
 
-- Added: Database sidebar defaults to project usage with local, server, all and search filters. Independent data tabs reuse KV and knowledge panels; host requests, reviews and grants are also available through Steam database tools.
 
 - Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry.
 
@@ -79,7 +76,6 @@
 
 - Improvement: Start shows one card per aggregate and opens its default entry. Project windows and entry actions use icons with redesigned entry details. Removed split views; all entries, including the current one, can open and restore multiple independent native tabs on the shared host. Closing one tab leaves the others open. Entry icons and colors are independent; entry labels no longer repeat the root version.
 
-- Changed: entry information shows database aliases and IDs. Resource panels resolve host authorization from references, preserve entry isolation for multiple databases, and no longer read manifest permissions or host fields.
 
 - Improved model tables with compact rows, consistent hover backgrounds, inline custom-provider details, and locally bundled brand icons for common models.
 
@@ -94,7 +90,7 @@
 
 - Fixed remote entry configuration and upload revision queries using an unavailable Server API path. Requests preserve entry selection, cancellation and configuration conflict codes.
 
-- Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Entry resources use independently approved database spaces; host pages manage requests, approval and sharing. Transfers include the complete aggregate.
+- Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Transfers include the complete aggregate.
 
 - Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.
 
@@ -238,5 +234,3 @@
 
 - Removed the Assistant's Context parameter menu.
 - Removed the submenu used by single-parameter Quick triggers.
-
-- Keep project deployment configuration in root config.json, centralizing database aliases and IDs; package entries declare only the aliases they use. STEAMHARNESS_PROJECT_CONFIG can override deployment values; migration updates one ID, permissions remain host-managed, and distributions retain authored values.

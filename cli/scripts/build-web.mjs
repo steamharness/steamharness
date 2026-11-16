@@ -10,7 +10,6 @@ await build({ absWorkingDir: root, entryPoints: ['src/web/ui/main.ts'], outfile:
 await build({ absWorkingDir: root, entryPoints: ['src/web/ui/workflow-main.ts'], outfile: path.join(output, 'workflow-workspace.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/ui/kanban-main.ts'], outfile: path.join(output, 'kanban-workspace.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/ui/resource-preview.ts'], outfile: path.join(output, 'resource-preview.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
-await build({ absWorkingDir: root, entryPoints: ['src/web/kanban-data.ts'], outfile: path.join(output, 'kanban-data.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/local-analysis.ts'], outfile: path.join(output, 'local-analysis.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/project-data-directory.ts'], outfile: path.join(output, 'project-data-directory.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
 const require = createRequire(import.meta.url);

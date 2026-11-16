@@ -21,13 +21,13 @@ pnpm exec steamharness workspace versions <project-id>
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-一个归档覆盖全部注册入口、依赖声明和 Kanban 产物，排除 Git、`node_modules`、运行数据与凭据。下载后安装依赖，再检查入口的资源权限和绑定。
+一个归档覆盖全部注册入口、依赖声明和 Kanban 产物，排除 Git、`node_modules`、运行数据与凭据。下载后安装依赖，再检查项目访问权限。
 
 ## 注册与归属
 
 客户端创建流程会申请 Server 身份。CLI 的 `upload --create` 可显式创建项目并替换本地聚合身份，`--group-id` 选择归属组；操作前确认要使用的身份与归属。
 
-项目成员和组继承使用固定角色。关系库或知识库的访问授权单独管理，不随源码下载自动取得。
+项目成员和组继承使用固定角色。
 
 ## 传输与配置
 
@@ -38,6 +38,6 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 | `file-upload`、`file-download`、`file-delete` | 管理业务文件 |
 | `--server`、`--token` | 显式覆盖连接设置 |
 
-配置模板、方案、快照和附件按入口保存。关系库绑定由 Server 按账号、项目、入口和别名维护，归档不携带账号绑定。知识库按声明与授权连接。凭据应留在宿主配置中。
+配置模板、方案、快照和附件按入口保存。凭据应留在宿主配置中。
 
 完整命令列表见 [workspace help](/cli/workspace/help)。

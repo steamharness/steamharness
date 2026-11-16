@@ -72,7 +72,7 @@ async function fixture(fields:ProjectConfigurationField[],profilePolicy?:Configu
   const root=await mkdtemp(path.join(tmpdir(),'configuration-publication-'));
   const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
   const prepared=await storage.createProjectFromFiles({projectName:projectId,files:projectFixtureFiles([
-    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
+    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json"}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
     {path:'index.ts',content:'throw new Error("Server must never execute source");'},
     {path:'configuration.json',content:JSON.stringify({version:2,fields,...(profilePolicy?{profilePolicy}:{})})},
   ])});

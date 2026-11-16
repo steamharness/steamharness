@@ -24,9 +24,9 @@ it('reads exact attachment bytes for the selected version and carries the host c
   expect(options!.signal!.aborted).toBe(true);
 });
 
-it('allows project bridge lookup only when the attachment route or attachment is missing', async () => {
+it('rejects a missing attachment route without falling back to project data access', async () => {
   const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('API route not found.', { status: 404 }));
-  expect(await readConfigurationFile('map', state(), file.id, connection)).toBeUndefined();
+  await expect(readConfigurationFile('map', state(), file.id, connection)).rejects.toMatchObject({ code: 'KANBAN_FILE_UNAVAILABLE' });
   expect(fetcher).toHaveBeenCalledOnce();
   expect(await readConfigurationFile('map', state(), 'wf_cd34', connection)).toBeUndefined();
   expect(fetcher).toHaveBeenCalledOnce();

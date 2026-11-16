@@ -10,92 +10,47 @@ describe('custom tool resource cards', () => {
     content: { type: 'tool', tool, status, input: {}, output },
   });
 
-  it('keeps approved database metadata outside the model content while decoding a tool envelope', () => {
-    const payload = { document: { id: 'document', title: 'Guide' } };
-    const output = {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      details: { resourceCard: { kind: 'knowledge', target: { source: 'server', projectId: 'agent',entryId:'main',knowledgeBase:'data', documentId: 'document' } } },
-    };
-    expect(conversationResourceCards([item('kb_get_document', output)], projectId, "main", conversationId)).toEqual([
-      { id: 'knowledge:'+JSON.stringify({source:'server',projectId:'agent',entryId:'main',knowledgeBase:'data',documentId:'document'}), kind: 'knowledge',
-        target: { source: 'server', projectId: 'agent',entryId:'main',knowledgeBase:'data', documentId: 'document' }, title: 'Guide', itemId: 'tool-call' },
-    ]);
-    expect(JSON.parse(output.content[0].text)).toEqual(payload);
-  });
-
   it('extracts a map card from custom tool details with its stable card id', () => {
     const presentation = { action: 'upsert', cardId: 'map-2d', kind: 'project', title: 'Map',
-      target: { source: 'local', projectId,entryId:'map-2d' }, preview: true, pinned: true };
+      target: { source: 'local', projectId, entryId: 'map-2d' }, preview: true, pinned: true };
     const output = { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: { resourceCard: presentation } };
-    expect(conversationResourceCards([item('map_open_kanban', output)], projectId, "main", conversationId)).toEqual([
+    expect(conversationResourceCards([item('map_open_kanban', output)], projectId, 'main', conversationId)).toEqual([
       { id: 'map-2d', kind: 'project', title: 'Map', target: presentation.target, itemId: 'tool-call', preview: true, pinned: true },
     ]);
-    expect(conversationResourceCards([item('map_open_kanban', output, 'failed')], projectId, "main", conversationId)).toEqual([]);
+    expect(conversationResourceCards([item('map_open_kanban', output, 'failed')], projectId, 'main', conversationId)).toEqual([]);
   });
 
-  it('keeps document titles and Kanban parameters through updates and removes stable cards', () => {
+  it('updates a Kanban card without losing its configuration and removes it by id', () => {
     const target = { source: 'current', configurationId: 'named' };
-    const first = item('workflow-ui_present_card', { action: 'upsert', cardId: 'map', kind: 'kanban', target, preview: true, kanban: { mode: 'preview', values: { title: 'Initial' } } });
-    const updated = item('workflow-ui_present_card', { action: 'upsert', cardId: 'map', kind: 'kanban', target, preview: false, kanban: { mode: 'preview', values: { title: 'Updated' } } });
-    expect(conversationResourceCards([first, updated], projectId, "main", conversationId)).toMatchObject([{ id: 'map', preview: false, target: { source: 'local', projectId,entryId:'main', configurationId: 'named' }, kanban: { mode: 'preview', values: { title: 'Updated' } } }]);
-    expect(conversationResourceCards([first, item('workflow-ui_present_card', { action: 'remove', cardId: 'map' })], projectId, "main", conversationId)).toEqual([]);
-    expect(conversationResourceCards([item('kb_get_document', { document: { title: 'Guide' }, details: { resourceCard: { kind: 'knowledge', target: { source: 'server', projectId: 'agent',entryId:'main',knowledgeBase:'data', documentId: 'doc' } } } })], projectId, "main", conversationId)[0].title).toBe('Guide');
-  });
-
-  it('uses the declared current storage for built-in data tools and current cards while files stay local', () => {
-    const automatic = item('workflow-knowledge_knowledge_documents', { document: { id: 'doc' } }); (automatic.content as any).input={knowledgeBase:'data'};
-    const explicit = item('workflow-ui_present_card', { action: 'upsert', kind: 'knowledge', target: { source: 'current',knowledgeBase:'data', documentId: 'doc' } });
-    const file = item('workflow-ui_present_card', { action: 'upsert', kind: 'file', target: { source: 'current', filePath: 'README.md' } });
-    expect(conversationResourceCards([automatic], projectId, "main", conversationId, 'server')[0].target.source).toBe('server');
-    expect(conversationResourceCards([explicit], projectId, "main", conversationId, 'server')[0].target).toMatchObject({ source: 'server', projectId, documentId: 'doc' });
-    expect(conversationResourceCards([file], projectId, "main", conversationId, 'server')[0].target.source).toBe('local');
+    const first = item('workflow-ui_present_card', { action: 'upsert', cardId: 'map', kind: 'kanban', target, preview: true,
+      kanban: { mode: 'preview', values: { title: 'Initial' } } });
+    const updated = item('workflow-ui_present_card', { action: 'upsert', cardId: 'map', kind: 'kanban', target, preview: false,
+      kanban: { mode: 'preview', values: { title: 'Updated' } } });
+    expect(conversationResourceCards([first, updated], projectId, 'main', conversationId)).toMatchObject([
+      { id: 'map', preview: false, target: { source: 'local', projectId, entryId: 'main', configurationId: 'named' },
+        kanban: { mode: 'preview', values: { title: 'Updated' } } },
+    ]);
+    expect(conversationResourceCards([first, item('workflow-ui_present_card', { action: 'remove', cardId: 'map' })], projectId, 'main', conversationId)).toEqual([]);
   });
 
   it.each([
     ['kanban', { configurationId: 'named-map' }], ['project', { configurationId: 'named-map' }],
     ['file', { filePath: 'README.md' }],
-    ['knowledge', { knowledgeBase: 'data', documentId: 'doc' }],
-  ] as const)('preserves an explicit current %s target instead of replacing it with the conversation owner', (kind, fields) => {
+  ] as const)('preserves an explicit current %s target', (kind, fields) => {
     const target = { source: 'current', projectId: 'workspace', entryId: 'map-2d', ...fields };
     const presentation = { action: 'upsert', cardId: 'map', kind, target };
     const output = { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: {} };
-    expect(conversationResourceCards([item('workflow-ui_present_card', output)], projectId, 'main', conversationId, 'server')[0].target)
-      .toEqual({ ...target, source: kind === 'knowledge' ? 'server' : 'local' });
-    expect(target.source).toBe('current');
+    expect(conversationResourceCards([item('workflow-ui_present_card', output)], projectId, 'main', conversationId)[0].target)
+      .toEqual({ ...target, source: 'local' });
   });
 
-  it('rejects removed KV resource cards and tools', () => {
-    expect(conversationResourceCards([item('workflow-kv_kv_store', { value: 1 }), item('workflow-ui_present_card', { action: 'upsert', kind: 'kv', target: { database: 'data', key: 'map' } })], projectId, 'main', conversationId)).toEqual([]);
-  });
-
-  it('fills only missing current target identifiers and keeps a sibling entry', () => {
-    const presentation = { action: 'upsert', cardId: 'map', kind: 'kanban', target: { source: 'current', entryId: 'map-2d' } };
-    expect(conversationResourceCards([item('workflow-ui_present_card', presentation)], projectId, 'agent', conversationId)[0].target)
+  it('keeps a sibling entry and rejects unsafe file paths', () => {
+    const sibling = item('workflow-ui_present_card', { action: 'upsert', cardId: 'map', kind: 'kanban',
+      target: { source: 'current', entryId: 'map-2d' } });
+    expect(conversationResourceCards([sibling], projectId, 'agent', conversationId)[0].target)
       .toEqual({ source: 'local', projectId, entryId: 'map-2d' });
+    const unsafe = item('workflow-ui_present_card', { action: 'upsert', kind: 'file',
+      target: { source: 'local', filePath: '../secret.txt' } });
+    expect(conversationResourceCards([unsafe], projectId, 'main', conversationId)).toEqual([]);
   });
-
-  it('uses an independent knowledge alias for automatic cards and rejects the old database target', () => {
-    const automatic = item('workflow-knowledge_knowledge_documents', { document: { id: 'doc', title: 'Guide' } });
-    (automatic.content as any).input = { knowledgeBase: 'docs', database: 'unrelated-kv' };
-    expect(conversationResourceCards([automatic], projectId, 'main', conversationId)[0].target)
-      .toEqual({ source: 'local', projectId, entryId: 'main', knowledgeBase: 'docs', documentId: 'doc' });
-    const legacy = item('workflow-ui_present_card', { action: 'upsert', cardId: 'legacy', kind: 'knowledge',
-      target: { source: 'current', database: 'docs', documentId: 'doc' } });
-    expect(conversationResourceCards([legacy], projectId, 'main', conversationId)).toEqual([]);
-  });
-});
-
-it('repairs historical search and line-reader names without changing their saved card ids', () => {
-  const projectId = '6337b9e2-4881-4d20-b829-5f62f8555530';
-  const target = {source:'current',projectId,entryId:'database'};
-  const reader = {entrypointId:'knowledge-preview',args:['--payload','{}']};
-  const old = {id:'tool',metadata:{kind:'agent-part',partType:'tool'},content:{tool:'kb_search_documents',status:'success',input:{query:'干员'},output:{content:[{type:'text',text:JSON.stringify({query:'干员',matches:[]})}],details:{resourceCard:{kind:'knowledge',target,reader}}}}} as unknown as OutputItem;
-  const card = conversationResourceCards([old],projectId,'agent','conversation')[0];
-  expect(card.title).toBe('Knowledge search: 干员');expect(card.target.query).toBe('干员');
-  expect(card.id).toBe(`knowledge:${JSON.stringify({...target,source:'local'})}:${JSON.stringify(reader)}`);
-  const line = structuredClone(old);const content=line.content as any;
-  content.tool='kb_read_document_lines';content.input={id:'guide'};
-  content.output.content[0].text=JSON.stringify({documentId:'guide',title:'知识库阅读说明',lines:[]});
-  content.output.details.resourceCard.target.documentId='guide';
-  expect(conversationResourceCards([line],projectId,'agent','conversation')[0].title).toBe('知识库阅读说明');
 });

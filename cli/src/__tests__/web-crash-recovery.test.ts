@@ -42,7 +42,7 @@ it.each(['generation', 'uncooperative-tool'])('recovers a Bot after its CLI is S
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'crash-fixture', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },
-      defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+      defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import { writeFileSync } from 'node:fs';
 

@@ -165,7 +165,7 @@ async function selectionCopies(url, language) {
   };
   const embeddedResponse = await select(frame, '.assistant .message-content');
   await page.keyboard.press(copyKey); await copied(embeddedResponse);
-  await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Database binding error\nDiagnostic log: failed request' } })));
+  await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Project access error\nDiagnostic log: failed request' } })));
   const error = await select(frame, '#error'); await page.keyboard.press(copyKey); await copied(error);
   await frame.locator('#error').click({ button: 'right' });
   await page.waitForFunction(() => window.__menus.length === 1);

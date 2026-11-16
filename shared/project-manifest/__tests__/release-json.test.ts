@@ -18,7 +18,7 @@ async function fixture() {
   const documents = {
     "steamharness.json": { id: projectId, name: "Release project", version: "1.0.0", defaultEntry: "main", entries: [{ entryId: "main", root: "entries/main" }] },
     "package.json": { name: "release-project", version: "1.0.0", type: "module" },
-    "entries/main/steamharness.json": { name: "Main entry", type: "workflow", entry: "index.mjs", configuration: "configuration.json", databases: [] },
+    "entries/main/steamharness.json": { name: "Main entry", type: "workflow", entry: "index.mjs", configuration: "configuration.json" },
     "entries/main/configuration.json": { version: 1, fields: [{ name: "prompt", type: "string", defaultValue: "Keep  spaces\nand newlines" }] },
     "entries/main/structure.json": structure,
   };

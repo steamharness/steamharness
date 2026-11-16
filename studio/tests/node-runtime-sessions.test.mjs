@@ -33,9 +33,9 @@ test('runtime changes isolate new services and recovery keeps the original runti
     });
     input.on('line',line=>{const message=JSON.parse(line);if(message.type==='configure'){
       server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,
-        accountProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,userSettingsProtocolVersion:1,
+        accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),
-        project:{id:'project',name:'Project',projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[]}})));
+        project:{id:'project',name:'Project',projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]}})));
     }});
     input.on('close',()=>{process.stdin.pause();server.close();});
   `);

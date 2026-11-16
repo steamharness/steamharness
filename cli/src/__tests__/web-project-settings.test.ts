@@ -4,18 +4,17 @@ import { initI18n } from '@steamharness/i18n';
 import { AGENT_MODELS_CONFIGURATION_FIELD, createConfigurationState } from '@steamharness/project-configuration';
 import { ConversationTools } from '../web/ui/conversation-tools';
 import { mountProjectConfigurations, type ProjectConfigurationsPanel } from '../web/ui/project-configurations';
-import { ProjectDatabases } from '../web/ui/project-databases';
 import { projectInfoButton } from '../web/ui/toolbar';
 import type { Project, Tool, ToolPolicies } from '../web/workflow-types';
 
 const project: Project = {
   id: 'project', entryId: 'agent', aggregateName: 'Example project', name: 'Agent', defaultEntry: 'agent',
-  projectType: 'bot', entryRoot: '/project', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [], databases: [],
-  entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', root: '.', entry: 'index.ts', databases: [] }],
+  projectType: 'bot', entryRoot: '/project', folderPath: '/project', uri: 'file:///project', fields: [], entrypoints: [],
+  entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', root: '.', entry: 'index.ts' }],
 };
 const state = createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD, { name: 'title', type: 'string', defaultValue: 'Original' }], () => 'default');
 const host = { postMessage: vi.fn() };
-let dialogs: ConversationTools, databases: ProjectDatabases, readOnly: boolean, available: boolean;
+let dialogs: ConversationTools, readOnly: boolean, available: boolean;
 let configurations: ProjectConfigurationsPanel;
 let tools: Tool[], policies: ToolPolicies;
 let listener: EventListener | undefined;
@@ -42,8 +41,7 @@ beforeEach(() => {
   configurations = mountProjectConfigurations(host, {
     open: () => dialogs.projectInfo(project, 'configurations'), isOpen: () => dialogs.activeSection === 'configurations',
   });
-  databases = new ProjectDatabases(host);
-  dialogs = new ConversationTools(databases, {
+  dialogs = new ConversationTools({
     path: target => host.postMessage({ type: 'open-path', ...target }),
     account: () => host.postMessage({ type: 'open-account' }),
     configurations,
@@ -53,7 +51,7 @@ beforeEach(() => {
   document.getElementById('project-info')!.onclick = () => dialogs.projectInfo(project);
 });
 afterEach(() => {
-  dialogs.close(); databases.dispose(); if (listener) window.removeEventListener('message', listener); listener = undefined;
+  dialogs.close(); if (listener) window.removeEventListener('message', listener); listener = undefined;
   vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close'); document.body.replaceChildren();
 });
@@ -66,12 +64,12 @@ it('opens plan file references through the same editor callback as answer links'
   links[1].click(); expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'open-path', path: 'src/main.ts' });
 });
 
-it('opens one settings shell with six sections, accessible vertical navigation and no eager requests', () => {
+it('opens one settings shell with five sections, accessible vertical navigation and no eager requests', () => {
   const trigger = document.getElementById('project-info')!; trigger.focus(); trigger.click();
   const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
   expect(dialog.open).toBe(true); expect(document.querySelectorAll('dialog')).toHaveLength(1);
   expect(document.querySelector('.project-information-tabs')?.getAttribute('aria-orientation')).toBe('vertical');
-  expect([...document.querySelectorAll<HTMLButtonElement>('.project-information-tabs button')].map(button => button.dataset.tab)).toEqual(['overview', 'configurations', 'tools', 'skills', 'usage', 'databases']);
+  expect([...document.querySelectorAll<HTMLButtonElement>('.project-information-tabs button')].map(button => button.dataset.tab)).toEqual(['overview', 'configurations', 'tools', 'skills', 'usage']);
   expect(panel('overview').textContent).toContain('Example project'); expect(host.postMessage).not.toHaveBeenCalled();
   for (const button of document.querySelectorAll<HTMLButtonElement>('.project-information-tabs button')) {
     const target = document.getElementById(button.getAttribute('aria-controls')!)!;
@@ -128,15 +126,6 @@ it('allows retry after a usage timeout and clears account details on authenticat
   dialogs.closeUsage(); expect(dialogs.open).toBe(false);
   available = false; dialogs.projectInfo(project); expect(tab('usage')).toBeNull();
   expect(dialogs.activeSection).toBe('overview');
-});
-
-it('loads databases on demand once per open and retains their view across section changes', () => {
-  dialogs.projectInfo(project); expect(host.postMessage).not.toHaveBeenCalled();
-  dialogs.projectInfo(project, 'databases'); expect(host.postMessage).toHaveBeenCalledTimes(1);
-  const requestId = host.postMessage.mock.calls[0]![0].requestId;
-  expect(host.postMessage.mock.calls[0]![0]).toMatchObject({ type: 'databases', action: 'get' });
-  tab('overview').click(); tab('databases').click(); expect(host.postMessage).toHaveBeenCalledTimes(1);
-  dialogs.close(); dialogs.projectInfo(project, 'databases'); expect(host.postMessage.mock.calls.at(-1)![0].requestId).not.toBe(requestId);
 });
 
 it('updates read-only tool controls while keeping skills free of permission controls', () => {

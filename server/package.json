@@ -57,8 +57,6 @@
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
     "test:postgres": "node scripts/test-postgres.mjs",
     "test:runtime-storage": "node scripts/test-runtime-storage.mjs",
-    "test:relational-databases": "node scripts/test-relational-databases.mjs",
-    "database:dev": "node scripts/relational-dev.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:all": "pnpm typecheck && pnpm typecheck:web",
     "release:prepare": "node scripts/prepare-release.mjs"

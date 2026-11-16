@@ -1536,7 +1536,7 @@ test("a turn that keeps dropping gives up saying what happened", async () => {
 test("a turn cut off by the output limit is continued rather than finished", async () => {
   const requests: string[] = [];
   const { pi, ai } = await createFauxRuntime([
-    () => ai.fauxAssistantMessage([ai.fauxText("✅ 攻略拿到了。写入知识库：")], {
+    () => ai.fauxAssistantMessage([ai.fauxText("✅ 攻略拿到了。写入笔记：")], {
       stopReason: "length",
     }),
     ((request: { messages: Array<{ role: string; content: unknown }> }) => {
@@ -1553,7 +1553,7 @@ test("a turn cut off by the output limit is continued rather than finished", asy
 
     assert.equal(
       events.filter((event) => event.type === "text_delta").map((event) => event.delta).join(""),
-      "✅ 攻略拿到了。写入知识库：已写入",
+      "✅ 攻略拿到了。写入笔记：已写入",
     );
     const retries = events.filter((event) => event.type === "retry");
     assert.equal(retries.length, 1);
@@ -1569,14 +1569,14 @@ test("a turn cut off by the output limit is continued rather than finished", asy
   // composing did not fit, so it has to send that action on its own rather than
   // write its way up to it again and stop at the same ceiling.
   assert.equal(requests.length, 1);
-  assert.ok(requests[0]?.includes("✅ 攻略拿到了。写入知识库："), "the sentence stays");
+  assert.ok(requests[0]?.includes("✅ 攻略拿到了。写入笔记："), "the sentence stays");
   assert.match(requests[0] ?? "", /output token limit/);
   assert.match(requests[0] ?? "", /the tool call on its own/);
 });
 
 test("a turn that keeps hitting the output limit gives up saying what happened", async () => {
   const { pi, ai } = await createFauxRuntime(
-    Array.from({ length: 5 }, () => () => ai.fauxAssistantMessage([ai.fauxText("写入知识库：")], {
+    Array.from({ length: 5 }, () => () => ai.fauxAssistantMessage([ai.fauxText("写入笔记：")], {
       stopReason: "length",
     })),
   );
@@ -1608,7 +1608,7 @@ test("a turn that keeps hitting the output limit gives up saying what happened",
 
 test("an output-limit continuation does not spend the connection budget", async () => {
   const { pi, ai } = await createFauxRuntime([
-    () => ai.fauxAssistantMessage([ai.fauxText("写入知识库：")], { stopReason: "length" }),
+    () => ai.fauxAssistantMessage([ai.fauxText("写入笔记：")], { stopReason: "length" }),
     () => ai.fauxAssistantMessage([ai.fauxText("再试一次：")], {
       stopReason: "error",
       errorMessage: "terminated",
@@ -1669,7 +1669,7 @@ test("an output-limit stop with nothing produced is not continued", async () => 
 test("a response that promises a tool call and carries none is re-asked", async () => {
   const requests: string[] = [];
   const { pi, ai } = await createFauxRuntime([
-    () => ai.fauxAssistantMessage([ai.fauxText("✅ 攻略拿到了。写入知识库：")], {
+    () => ai.fauxAssistantMessage([ai.fauxText("✅ 攻略拿到了。写入笔记：")], {
       stopReason: "toolUse",
     }),
     ((request: { messages: Array<{ role: string; content: unknown }> }) => {
@@ -1702,7 +1702,7 @@ test("a response that promises a tool call and carries none is re-asked", async 
 
 test("a tool call that never arrives gives up saying what went missing", async () => {
   const { pi, ai } = await createFauxRuntime(
-    Array.from({ length: 12 }, () => () => ai.fauxAssistantMessage([ai.fauxText("写入知识库：")], {
+    Array.from({ length: 12 }, () => () => ai.fauxAssistantMessage([ai.fauxText("写入笔记：")], {
       stopReason: "toolUse",
     })),
   );

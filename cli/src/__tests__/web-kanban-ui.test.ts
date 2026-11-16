@@ -52,14 +52,14 @@ async function fixture(language: 'en' | 'zh-CN') {
   await vi.waitFor(() => expect(sources).toHaveLength(1));
   const receive = (state: object) => sources.at(-1)!.onmessage!({ data: JSON.stringify(state) });
   const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState, serverInstanceId = 'kanban-process') => receive({
-    type: 'state', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], databases: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D', databases: [] }] },
+    type: 'state', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D' }] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
       user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
     authenticationRevision: 1, stateRevision: revision, serverInstanceId,
     serverData,
     kanban: { revision, configuration: { id: 'profile', name: 'Default', params: {} },
       preview: { url: `/kanban/${nonce}/index.html`, nonce },
-      databaseRevisions: [], serverDataIssue },
+      serverDataIssue },
   });
   return { sources, sendState, receive, fetcher };
 }
@@ -305,14 +305,13 @@ it.each(['en', 'zh-CN'] as const)('offers recovery settings and explains project
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create cloud project' : '创建云端项目');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
-  expect(document.getElementById('database-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
   expect(frame.getAttribute('src')).toBeNull();
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message.type).toBe('project-server-check');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], databases: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D', databases: [] }] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
-      revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, databaseRevisions: [],
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D' }] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
+      revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' },
     } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
   });
   document.getElementById('server-guidance-retry')!.click();
@@ -320,26 +319,6 @@ it.each(['en', 'zh-CN'] as const)('offers recovery settings and explains project
   await vi.waitFor(() => expect(guidance.hidden).toBe(true));
   expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   expect(frame.src).toContain('/kanban/ready/index.html');
-});
-
-it.each(['en', 'zh-CN'] as const)('opens database management directly from blocked Kanban guidance (%s)', async language => {
-  const { sources, sendState, fetcher } = await fixture(language);
-  sources[0].onopen!();
-  sendState(1, 'blocked', { kind: 'setup-required', database: 'annotations' });
-  const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
-  expect(action.hidden).toBe(false); expect(action.disabled).toBe(false);
-  expect(action.textContent).toBe(language === 'en' ? 'Configure database' : '配置数据库');
-  fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
-    const message = JSON.parse(options.body);
-    expect(message).toMatchObject({ type: 'databases', action: 'get' });
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'databases-result', requestId: message.requestId, value: { requirements: [] } }] }) };
-  });
-  action.click();
-  const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
-  expect(dialog.open).toBe(true);
-  await vi.waitFor(() => expect(dialog.querySelector('.project-databases')!.getAttribute('aria-busy')).not.toBe('true'));
-  expect(document.querySelector<HTMLIFrameElement>('#kanban-preview')!.getAttribute('src')).toBeNull();
-  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
 });
 
 it('offers project creation without host upload support and hides it when access is denied', async () => {

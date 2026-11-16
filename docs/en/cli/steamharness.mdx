@@ -9,19 +9,19 @@ Run the installed CLI from the aggregate root using Node.js 24. Install project 
 
 ```sh
 pnpm exec steamharness check .
-pnpm exec steamharness check . --entry database
-pnpm exec steamharness structure . --entry database
-pnpm exec steamharness run . --entry database --entrypoint search -- --query example
-pnpm exec steamharness json . --entry database --entrypoint search -- --query example
+pnpm exec steamharness check . --entry workflow
+pnpm exec steamharness structure . --entry workflow
+pnpm exec steamharness run . --entry workflow --entrypoint summarize -- --text example
+pnpm exec steamharness json . --entry workflow --entrypoint summarize -- --text example
 pnpm exec steamharness web . --entry agent
-pnpm exec steamharness mcp . --entry database
+pnpm exec steamharness mcp . --entry workflow
 ```
 
 ## Entry selection
 
 `--entry` selects the window entry. `run`, `json`, `structure`, `mcp` and `web` default to `defaultEntry`. `check` inspects all entries unless `--entry` selects one. `--entrypoint` selects an operation inside a Workflow. Keep the two identifiers distinct.
 
-Entry IDs and paths follow the [reserved artifact name rules](/en/concepts/data-storage#artifacts-and-runtime-data), avoiding collisions with caches, reports, generated databases, and Windows device names.
+Entry IDs and paths follow the [reserved artifact name rules](/en/concepts/data-storage#artifacts-and-runtime-data), avoiding collisions with caches, reports, and Windows device names.
 
 Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects host text without altering business parameters.
 
@@ -31,7 +31,7 @@ Build a release from the aggregate root, or prepare the latest release when star
 
 ```sh
 pnpm exec steamharness release . --json
-pnpm exec steamharness run . --release --entry database --entrypoint search -- --query example
+pnpm exec steamharness run . --release --entry workflow --entrypoint summarize -- --text example
 pnpm exec steamharness web . --release --entry agent
 ```
 
@@ -79,17 +79,9 @@ See [CLI conversations, models, and tasks](/en/cli/agent-sessions).
 
 See [CLI conversations, models, and tasks](/en/cli/agent-sessions).
 
-## Database models and generation
-
-See [CLI data and runtime history](/en/cli/data).
-
 ## Platform runtime history
 
-See [CLI data and runtime history](/en/cli/data).
-
-## Knowledge and table management
-
-See [CLI data and runtime history](/en/cli/data).
+See [Runtime storage](/en/core-api/runtime-storage).
 
 ## Durable Agents and Studio Trace
 

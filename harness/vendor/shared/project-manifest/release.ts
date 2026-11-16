@@ -1,4 +1,4 @@
-import { DATABASE_UUID_PATTERN, isProjectEntryId } from "./identity";
+import { PROJECT_UUID_PATTERN, isProjectEntryId } from "./identity";
 import { PROJECT_RELEASE_BASE_DIRECTORY, isProjectToolArtifactPath } from "./artifact-paths";
 
 export const PROJECT_RELEASE_FILE = "steamharness.release.json";
@@ -99,7 +99,7 @@ export function parseProjectReleaseManifest(value: unknown): ProjectReleaseManif
   if (!object(value) || value.kind !== "steamharness.project.release" || value.version !== 1) throw new Error("Unsupported SteamHarness release format. Upgrade the host.");
   keys(value, ["kind", "version", "projectId", "projectVersion", "buildId", "inputHash", "entries", "files"], "release manifest");
   const hash = /^[a-f0-9]{64}$/;
-  if (typeof value.projectId !== "string" || !DATABASE_UUID_PATTERN.test(value.projectId) || typeof value.projectVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(value.projectVersion)
+  if (typeof value.projectId !== "string" || !PROJECT_UUID_PATTERN.test(value.projectId) || typeof value.projectVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(value.projectVersion)
     || typeof value.buildId !== "string" || !hash.test(value.buildId) || typeof value.inputHash !== "string" || !hash.test(value.inputHash)
     || !Array.isArray(value.entries) || !value.entries.length || value.entries.length > 64 || !Array.isArray(value.files) || !value.files.length) throw new Error("Invalid release manifest.");
   const ids = new Set<string>();

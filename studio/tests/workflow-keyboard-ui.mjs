@@ -14,7 +14,7 @@ const { projectFrameHtml } = await import('../extensions/studio-workstation/src/
 const directory = await mkdtemp(path.join(os.tmpdir(), 'studio-keyboard-ui-'));
 const previousAuth = process.env.STEAMHARNESS_CLI_AUTH_DIR;
 process.env.STEAMHARNESS_CLI_AUTH_DIR = path.join(directory, 'auth');
-const entries = ['workflow', 'bot', 'kanban'].map(type => ({ entryId: type, type, name: type, root: type, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json', databases: [] }));
+const entries = ['workflow', 'bot', 'kanban'].map(type => ({ entryId: type, type, name: type, root: type, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json' }));
 const id = randomUUID();
 let app, browser;
 const errors = [];
@@ -31,7 +31,7 @@ try {
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title><input id="board-input"><button id="board-action">Board</button>' : 'export {};');
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [] }));
   }
-  const projects = entries.map(entry => ({ id, name: entry.name, aggregateName: 'Keyboard regression', entries, entryId: entry.entryId, defaultEntry: 'conversation', entryRoot: path.join(directory, entry.root), databases: [], folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'main', title: 'Main', fields: [] }] : [] }));
+  const projects = entries.map(entry => ({ id, name: entry.name, aggregateName: 'Keyboard regression', entries, entryId: entry.entryId, defaultEntry: 'conversation', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'main', title: 'Main', fields: [] }] : [] }));
   const runtime = { available: true, inspect: async () => ({ projects, errors: [] }), resolveParams: async () => ({}), run: async () => ({ status: 'success' }), cancel() {}, dispose() {}, uploadFiles: async () => [], readFile() {}, deleteFiles() {}, readResource() {}, cancelConversation() {}, deleteConversation() {} };
   app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'history'), runtime, host: { surface: 'editor' } });
   await new Promise(resolve => shell.listen(0, '127.0.0.1', resolve));

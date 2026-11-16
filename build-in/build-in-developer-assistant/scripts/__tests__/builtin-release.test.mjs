@@ -63,8 +63,8 @@ describe("independent built-in project release", () => {
     expect(definition.entries.map(({ entryId, root }) => ({ entryId, root }))).toEqual(
       definition.projectDocument.entries.map(({ entryId, root }) => ({ entryId, root })),
     );
-    expect(definition.entries[0].databases).toEqual([]);
-    expect(definition.entries[1].databases).toEqual([]);
+    expect(definition.entries[0]).not.toHaveProperty('databases');
+    expect(definition.entries[1]).not.toHaveProperty('databases');
     expect(definition.defaultEntry).toBe("main");
     expect(definition.projectDocument.projectInfo).toMatchObject({
       localizedNames: {
@@ -427,10 +427,7 @@ function releaseManifest(definition) {
   const manifest = structuredClone({
     ...definition.packageJson,
     ...definition.projectDocument,
-    entries: definition.entries.map(({ databases, ...entry }) => ({
-      ...entry,
-      databases: databases.map(database => database.alias),
-    })),
+    entries: definition.entries,
   });
   const versions = {
     "steamharness": definition.components.harness,

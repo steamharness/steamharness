@@ -20,7 +20,7 @@ import { resolveSiblingWorkspaceRoot } from "./prepare-local-siblings.mjs";
  * go looking.
  *
  * Everything here is derived from Core's own source: the members of the
- * `workflow` namespace, and the members of the entry and database contexts it
+ * `workflow` namespace, and the members of the entry contexts it
  * hands a run. Nothing is editorial, so nothing here can quietly disagree with
  * the runtime — a renamed member fails `pnpm test` and `pnpm runtime-api-index`
  * writes the new text.
@@ -45,9 +45,6 @@ const END_MARKER = "<!-- runtime-api-index:end -->";
 const RESOURCE_INTERFACES = [
   { file: "entries/index.ts", name: "EntriesContext", title: "聚合入口目录" },
   { file: "entries/index.ts", name: "EntryContext", title: "Workflow 入口" },
-  { file: "database/index.ts", name: "RelationalDatabasesContext", title: "关系型数据库连接" },
-  { file: "knowledge-bases/index.ts", name: "KnowledgeBasesContext", title: "知识库目录" },
-  { file: "knowledge-bases/index.ts", name: "KnowledgeBaseContext", title: "知识库与附件" },
 ];
 
 export async function readRuntimeApiIndex() {
@@ -86,7 +83,7 @@ export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
   throw new Error("runtime-api.ts no longer declares projectRuntimeApi as an object literal.");
 }
 
-/** Parse the public entry and database interfaces without dropping unknown members. */
+/** Parse the public entry interfaces without dropping unknown members. */
 export async function readResourceContextMembers(coreSource = HARNESS_SOURCE) {
   return Promise.all(RESOURCE_INTERFACES.map(async ({ file: relative, name: interfaceName, title }) => {
     const file = path.join(coreSource, relative);
@@ -133,7 +130,7 @@ export async function renderRuntimeApiIndex() {
     "**判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：",
     "那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。",
     "",
-    "## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）",
+    "## 聚合入口（`context.entries`）",
     "",
   ];
 
@@ -146,8 +143,7 @@ export async function renderRuntimeApiIndex() {
   }
 
   lines.push(
-    "数据库在 steamharness.database.ts 与 steamharness.schema 中定义，入口 databases 声明别名，context.databases.connect(descriptor) 连接生成客户端。databaseId 绑定由 Server 按账号、projectId、entryId、alias 管理，绑定不授予权限。每次操作重新校验授权。",
-    "会话运行存储按账号、projectId + entryId + conversationId 隔离，与业务关系表独立。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
+    "会话运行存储按账号、projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
     "",
     "## 运行时成员（`steamharness.*`）",
     "",
@@ -171,8 +167,6 @@ export async function renderRuntimeCapabilities() {
     "export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):",
     ...resourceContexts.map(context => `- ${context.name}: ${context.members.map(member => member.signature).join(", ")}.`),
     "- context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.",
-    "- context.databases.connect(descriptor) connects a generated Node model client. Browser descriptors connect through window.steamHarnessKanban.databases.connect(descriptor) and expose structured rows/insert/update/delete. Server owns account, project, entry and alias bindings; there is no local business storage fallback.",
-    "- context.knowledgeBases.get(alias) uses independent knowledgeBases declarations and config mappings. Documents and attachments use the Server repository, with account grants and entry bindings checked on every access. There is no local knowledge fallback.",
     "`;", "",
   ].join("\n");
 }

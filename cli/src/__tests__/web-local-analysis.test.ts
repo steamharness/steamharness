@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createLocalActivityWriter, readLocalStudioAnalysis, requestStudioAnalysis, summarizeLocalRuns, type LocalRunSummary } from '../web/local-analysis';
-import { webProjectDataDirectory } from '../web/kanban-data';
+import { webProjectDataDirectory } from '../web/project-data-directory';
 import type { ConversationSession } from '../web/workflow-types';
 
 vi.mock('node:fs/promises', async importOriginal => {
@@ -26,7 +26,7 @@ async function fixture(kind: 'workflow'|'bot'|'kanban' = 'workflow') {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'local-analysis-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const folderPath = path.join(root, 'project'); await mkdir(folderPath);
   const reference = { entryId:'main', id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Imported', uri: pathToFileURL(folderPath).href, folderPath };
-  const manifest = { id: reference.id, name: 'Default', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',databases:[] as object[]}], projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' } }  };
+  const manifest = { id: reference.id, name: 'Default', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts'}], projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' } }  };
   await writeProjectFixture(path.join(folderPath, 'package.json'), JSON.stringify(manifest));await writeFile(path.join(folderPath,'index.ts'),'export {};');await writeFile(path.join(folderPath,'index.html'),'<html></html>');
   const storageDir = path.join(testDataDirectory(root)), directory = webProjectDataDirectory(storageDir, reference.id,"main"); await mkdir(directory, { recursive: true });
   const backend = createMemoryRuntimePersistence();
@@ -156,11 +156,10 @@ describe('local Studio analysis', () => {
     const runs = (await f.snapshot()).projects[0].runs;
     expect(runs.find(run => run.id === 'run')?.status).toBe('interrupted'); expect(runs.find(run => run.id === 'done')?.status).toBe('success');
   });
-  it('deduplicates real directories and includes local runs for entries using a Server database', async () => {
+  it('deduplicates real directories while retaining local runs', async () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
     const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing', inWorkspace: true }];
     const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects }); expect(value.projects).toHaveLength(2); expect(value.projects.find(project => project.inWorkspace)?.availability).toBe('missing');
-    await writeFile(path.join(f.folderPath, 'config.json'), JSON.stringify({version:1,databases:{data:'00000000-0000-4000-8000-000000000001'}}));
     expect((await f.snapshot()).projects).toHaveLength(1);
   });
   it('ignores deleted imported folders while retaining readable history and reporting missing workspace projects', async () => {
@@ -201,12 +200,10 @@ describe('local Studio analysis', () => {
     const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, persistenceForProject: f.persistence, projects: [{ ...f.reference, inWorkspace: true }] });
     expect(current.projects[0].availability).toBe('missing');
   });
-  it('reads local history from declarations without resolving deployment database bindings', async () => {
+  it('reads local history independently of project configuration', async () => {
     const f = await fixture(); await f.history([{ id: 'local-run', status: 'success' }]);
-    await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest,
-      entries: [{ ...f.manifest.entries[0], databases: ['data'] }] }));
     expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
-    await writeFile(path.join(f.folderPath, 'config.json'), 'invalid deployment configuration');
+    await writeFile(path.join(f.folderPath, 'config.json'), 'invalid project configuration');
     expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
   });
   it('keeps malformed root declarations unavailable instead of treating them as retired imports', async () => {

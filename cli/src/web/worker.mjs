@@ -145,7 +145,8 @@ try {
     ? core.withUserSettings(request.userSettings, run) : run();
   const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
-  const { readProjectInfo, readProjectCardMetadata, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
+  const { readProjectInfo, resolveProjectName } = await import('@steamharness/project-info');
+  const { readProjectCardMetadata } = await import('@steamharness/project-card-metadata');
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
@@ -161,7 +162,7 @@ try {
           id: manifest.projectId,
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
-          entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [],
+          entries: manifest.entries, defaultEntry: manifest.defaultEntry,
           runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
@@ -263,8 +264,6 @@ try {
       }
       await send('result', request.skillId === undefined ? await core.listLocalProjectSkills(options)
         : await core.readLocalProjectSkill({ ...options, skillId: request.skillId }));
-    } else if (request.method === 'kanban-bridge') {
-      await send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
     } else if (request.method === 'resolve') {
       await send('result', await resolveLocalProjectParams({
         projectDir: request.project.folderPath,
@@ -389,16 +388,6 @@ try {
         if (file?.reference.conversationId === request.conversationId) { await rm(path.join(filesDir, id), { recursive: true, force: true }); }
       }
       await send('result', { deleted: true });
-    } else if (request.method === 'resource') {
-      const target = request.target ?? {};
-      if (request.kind !== 'knowledge' || typeof target.knowledgeBase !== 'string') throw new Error('A declared resource alias is required.');
-      const registration = core.selectProjectEntry(await core.readProjectManifestFromDirectory(projectDir), request.project.entryId);
-      const connection = core.databaseConnectionFromEnv();
-      if (request.kind === 'knowledge') {
-        const bases = core.createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.knowledgeBases ?? [], host: connection ? core.createServerKnowledgeBaseHost(connection) : undefined });
-        const base = bases.get(target.knowledgeBase);
-        await send('result', target.documentId ? await base.getDocument(target.documentId) ?? null : await base.listDocuments({ pageSize: 100 }));
-      } else { throw new Error('Unsupported resource kind.'); }
     } else if (request.method === 'fork-conversation') {
       const { forkStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof forkStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');

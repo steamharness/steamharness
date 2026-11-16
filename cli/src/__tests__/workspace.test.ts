@@ -221,7 +221,7 @@ describe("server workspace CLI helpers", () => {
       name: "Kanban",
       version: "0.1.0",
 
-        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/board.html",databases:[]}],
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/board.html"}],
     }));
     await mkdir(path.join(sourceDir, "dist/steamharness/build/main"), { recursive: true });
     await mkdir(path.join(sourceDir, "src"), { recursive: true });
@@ -593,15 +593,15 @@ describe("server workspace CLI helpers", () => {
   it('packages every entry and its authored config separately from package.json',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
-      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'dist/steamharness/entries/map/build/map/index.html',databases:['data']}];
+      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts'},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts'},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'dist/steamharness/entries/map/build/map/index.html'}];
       await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',version: "0.1.0", defaultEntry:'one',entries}));
-      const config={version:1,knowledgeBases:{docs:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
+      const config={version:1};
       await writeFile(path.join(root,'config.json'),JSON.stringify(config));
       for(const entry of entries){const file=path.join(root,entry.type==='kanban'?'.':entry.root,entry.entry);await mkdir(path.dirname(file),{recursive:true});await writeFile(file,'export {};');}
       const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});
       const manifest=JSON.parse(readFileSync(path.join(staging,'aggregate','steamharness.json'),'utf8'));
       expect(manifest.entries).toHaveLength(3);expect(manifest.entries[2]).toEqual({entryId:'map',root:'map'});
-      expect(JSON.parse(readFileSync(path.join(staging,'aggregate','map','steamharness.json'),'utf8')).databases).toEqual(['data']);
+      expect(JSON.parse(readFileSync(path.join(staging,'aggregate','map','steamharness.json'),'utf8'))).toMatchObject({type:'kanban',name:'Map'});
       expect(JSON.parse(readFileSync(path.join(staging,'aggregate','config.json'),'utf8'))).toEqual(config);
       for(const entry of entries)expect(existsSync(path.join(staging,'aggregate',entry.type==='kanban'?'.':entry.root,entry.entry))).toBe(true);
     }finally{await rm(root,{recursive:true,force:true});}
@@ -735,7 +735,7 @@ describe("server workspace CLI helpers", () => {
 
 });
 
-function declaration(){return {defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]};}
+function declaration(){return {defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}]};}
 function createProjectInfo():Record<string,unknown>{return {localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}};}
 
 function runNode(

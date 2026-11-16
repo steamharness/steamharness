@@ -26,12 +26,10 @@ steamharness.isDesktop(): boolean
 
 ## 存储与平台分别配置
 
-业务关系库通过生成的描述符和 `context.databases.connect(descriptor)` 访问，Server 按账号与入口绑定选择获授权 PostgreSQL 资源。知识库使用 `context.knowledgeBases.get(alias)`。
-
 本地开发可以在同一台机器运行 Server 与 Docker PostgreSQL。运行历史的位置由[运行存储](/core-api/runtime-storage)决定，不能仅根据平台名称推断。
 
 ## 宿主资源管理
 
-Studio 和 CLI Web 通过经过鉴权的 Server Web 页面管理模型、数据、附件与账号权限，链接不含账号 token。
+Studio 和 CLI Web 通过经过鉴权的 Server Web 页面管理项目、附件与账号权限，链接不含账号 token。
 
-SQL 凭据、连接和绑定身份留在宿主；项目 RPC 与 Browser 页面只获得被允许的模型操作。此接口不提供本地数据库目录或 KV 管理上下文。
+项目 RPC 与 Browser 页面只获得被允许的宿主操作。

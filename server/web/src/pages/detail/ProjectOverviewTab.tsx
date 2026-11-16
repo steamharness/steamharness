@@ -9,8 +9,8 @@ export function ProjectOverviewTab({project}:DetailPageProps){
     <CardHeader><CardTitle>{getProjectDisplayName(project,i18n.language)}</CardTitle><CardDescription>{project.id}</CardDescription></CardHeader>
     <CardContent><p>{t('aggregateDefaultEntry')}: {project.defaultEntry}</p></CardContent>
   </Card><Card><CardHeader><CardTitle>{t('aggregateEntries')}</CardTitle><CardDescription>{t('aggregateEntriesDescription')}</CardDescription></CardHeader><CardContent>
-    <TablePanel><TableHeader><TableRow><TableHead>{t('aggregateEntryId')}</TableHead><TableHead>{t('projectSettingsDefaultName')}</TableHead><TableHead>{t('aggregateEntryType')}</TableHead><TableHead>{t('aggregateEntryPath')}</TableHead><TableHead>{t('databaseRequirements')}</TableHead></TableRow></TableHeader><TableBody>
-      {project.entries.map(entry=><TableRow key={entry.entryId}><TableCell>{entry.entryId}</TableCell><TableCell><div className="flex items-center gap-3"><ProjectAvatar card={entry.projectCard} projectType={entry.type} label={entry.name} /><span>{entry.name}</span></div></TableCell><TableCell><Badge variant="outline">{entry.type}</Badge></TableCell><TableCell><code>{entry.root}/{entry.entry}</code></TableCell><TableCell>{entry.databases.map(database=><p key={database}>{database}</p>)}</TableCell></TableRow>)}
+    <TablePanel><TableHeader><TableRow><TableHead>{t('aggregateEntryId')}</TableHead><TableHead>{t('projectSettingsDefaultName')}</TableHead><TableHead>{t('aggregateEntryType')}</TableHead><TableHead>{t('aggregateEntryPath')}</TableHead></TableRow></TableHeader><TableBody>
+      {project.entries.map(entry=><TableRow key={entry.entryId}><TableCell>{entry.entryId}</TableCell><TableCell><div className="flex items-center gap-3"><ProjectAvatar card={entry.projectCard} projectType={entry.type} label={entry.name} /><span>{entry.name}</span></div></TableCell><TableCell><Badge variant="outline">{entry.type}</Badge></TableCell><TableCell><code>{entry.root}/{entry.entry}</code></TableCell></TableRow>)}
     </TableBody></TablePanel>
   </CardContent></Card></div>;
 }

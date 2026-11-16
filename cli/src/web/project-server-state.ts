@@ -1,16 +1,10 @@
 import type { WebConnection } from './runtime';
 import type { AccountState } from './workflow-auth-client';
-import type { Project } from './workflow-types';
 import { t } from './localization';
-export interface ProjectServerIssue { kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable'; serverUrl?: string; projectId?: string; entryId?: string; database?: string; status?: number; reason?: 'invalid-project-response' }
-export interface ProjectServerCheck { id: string; projectId: string; entryId?: string; database?: string; stage: 'builtin' | 'registration' | 'database'; status: 'checking' | 'passed' | 'action-required' | 'waiting'; issue?: ProjectServerIssue }
+export interface ProjectServerIssue { kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable'; serverUrl?: string; projectId?: string; entryId?: string; status?: number; reason?: 'invalid-project-response' }
+export interface ProjectServerCheck { id: string; projectId: string; entryId?: string; stage: 'builtin' | 'registration'; status: 'checking' | 'passed' | 'action-required' | 'waiting'; issue?: ProjectServerIssue }
 export interface ProjectServerState { checking: boolean; issue?: ProjectServerIssue; blocking?: boolean; checks?: ProjectServerCheck[] }
 export type ProjectServerInspector = (connection: WebConnection | undefined, signal: AbortSignal, publish: (checks: ProjectServerCheck[]) => void, unavailable: ProjectServerIssue) => Promise<ProjectServerCheck[]>;
-export interface ProjectServerAccessFailure { serverUrl: string; projectId: string; entryId: string; database?: string; status?: number }
-export function projectServerAccessFailure(metadata: Record<string, unknown> | undefined, project: Project, connection: WebConnection | undefined): ProjectServerAccessFailure | undefined {
-  if (!connection || metadata?.code !== 'DATABASE_ACCESS_FAILED') return;
-  return { serverUrl: connection.serverUrl, projectId: project.id, entryId: project.entryId, database: typeof metadata.database === 'string' ? metadata.database : undefined, status: typeof metadata.status === 'number' ? metadata.status : undefined };
-}
 export function projectServerIssue(status: number, serverUrl: string): ProjectServerIssue | undefined {
   if (status === 401) return { kind: 'sign-in-required', serverUrl };
   if (status === 403) return { kind: 'access-denied', serverUrl };
@@ -35,17 +29,12 @@ export class ProjectServerConnection {
   private disposed = false;
   private checkedAt = 0;
   private authentication?: { connection: WebConnection; userId?: string };
-  private failure?: ProjectServerAccessFailure;
   private unavailable: ProjectServerIssue = { kind: 'sign-in-required' };
   get blocking(): boolean { return this.state.blocking !== false; }
   get ready(): boolean { return !this.disposed && this.checkedAt > 0 && !this.state.checking && !this.state.issue && (!!this.connection() || !!this.options.inspect); }
   constructor(private readonly projectId: string, private readonly connection: () => WebConnection | undefined, private readonly changed: () => void,
     private readonly options: { blocking?: boolean; inspect?: ProjectServerInspector } = {}) {
     if (options.blocking === false) this.state.blocking = false;
-  }
-  reportFailure(failure: ProjectServerAccessFailure): Promise<void> {
-    this.failure = failure;
-    return this.restart();
   }
   restart(): Promise<void> {
     this.request?.abort(); this.pending = undefined; this.checkedAt = 0;
@@ -60,7 +49,7 @@ export class ProjectServerConnection {
       && account.user?.userId === this.authentication.userId;
     if (!unchanged) {
       this.request?.abort(); this.pending = undefined; clearTimeout(this.retry); this.checkedAt = 0;
-      this.authentication = undefined; this.failure = undefined;
+      this.authentication = undefined;
       const blocking = this.state.blocking;
       this.state = { checking: true, ...(blocking === undefined ? {} : { blocking }) };
     }
@@ -95,9 +84,6 @@ export class ProjectServerConnection {
           }, this.unavailable);
           issue = checks.find(check => check.issue)?.issue;
         }
-        // The inspector revalidates the current binding and grant. A previous
-        // data error must not keep a repaired or newly approved entry blocked.
-        if (this.options.inspect && !issue) this.failure = undefined;
         if (connection && !issue && !this.options.inspect) issue = await checkProjectServer(this.projectId, connection, abort.signal);
       }
       catch { issue = { kind: 'connection-unavailable', serverUrl: connection?.serverUrl ?? this.unavailable.serverUrl }; }

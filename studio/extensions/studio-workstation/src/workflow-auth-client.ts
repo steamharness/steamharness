@@ -201,9 +201,6 @@ export class ServerClient {
     if (normalizeProjectServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new AuthError('Invalid resource server or project.'); }
     const prefix = `/api/projects/${encodeURIComponent(target.projectId)}`;
     const auth = { accessToken: connection.accessToken };
-    if (kind === 'knowledge') {
-      return this.request(`${prefix}/entries/${encodeURIComponent(target.entryId)}/resources/read`, { ...auth, method: 'POST', body: { kind: 'knowledge', knowledgeBase: target.knowledgeBase, ...(target.documentId ? { documentId: target.documentId } : {}) } });
-    }
     if (kind === 'file') {
       const result = await this.request<{ files: { path: string; content: string; encoding?: string }[] }>(`${prefix}/files?target=${encodeURIComponent(target.target || 'latest')}&includeBinary=true`, auth);
       const file = result.files.find((file) => file.path === target.filePath);

@@ -1,7 +1,7 @@
 import { createKanbanBridgeError, type KanbanBridgeCall } from '@steamharness/kanban-project';
 
 export interface KanbanReadAttempt {
-  source: 'configuration-cache' | 'configuration-attachment' | 'database' | 'host';
+  source: 'configuration-cache' | 'configuration-attachment' | 'local' | 'host';
   status?: number;
 }
 
@@ -12,7 +12,6 @@ export class KanbanDiagnostics {
   private entry(call: KanbanBridgeCall, configurationId: string, started: number, attempts: KanbanReadAttempt[], error?: unknown, pending = false) {
     return {
       operation: call.operation, configurationId, startedAt: started, durationMs: Date.now() - started,
-      ...(typeof call.input.database === 'string' ? { database: call.input.database } : {}),
       ...(call.operation === 'files.readFile' ? { fileId: String(call.input.fileId) } : {}),
       attempts, ok: pending ? null : error === undefined, status: pending ? 'pending' : error === undefined ? 'success' : 'error',
       ...(error === undefined ? {} : { error: { ...createKanbanBridgeError(error), category: failureCategory(error) } }),
@@ -48,8 +47,8 @@ function failureCategory(error: unknown): 'timeout' | 'cancelled' | 'other' {
     seen.add(reason);
     const value = reason as { name?: unknown; cause?: unknown; safeCause?: unknown; code?: unknown; message?: unknown };
     if (value.name === 'TimeoutError' || value.code === 'ETIMEDOUT' || value.code === 'UND_ERR_HEADERS_TIMEOUT' || value.code === 'KANBAN_BRIDGE_TIMEOUT') return 'timeout';
-    // Database consumer errors can serialize the cause into HarnessError and
-    // preserve only its message. Extract a category without returning that text.
+    // HarnessError can serialize a cause into its message. Extract a category
+    // without returning that text.
     if (typeof value.message === 'string' && /\b(?:timed out|aborted due to timeout|headers timeout)\b/i.test(value.message)) return 'timeout';
     if (value.name === 'AbortError') return 'cancelled';
     reasons.push(value.cause, value.safeCause);

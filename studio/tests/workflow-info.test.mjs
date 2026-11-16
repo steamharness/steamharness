@@ -10,7 +10,7 @@ runInNewContext(infoModule.outputFiles[0].text, { module: infoExports, exports: 
 const { projectInfoItems } = infoExports.exports;
 
 const project = (name = 'Example', projectType = 'workflow') => ({
-  id: '294b1eec-23fa-42cf-9fd3-2417f71c0570',name,aggregateName:'Aggregate',projectType,entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:projectType,root:'.',entry:projectType==='kanban'?'index.html':'index.ts',databases:[]}],databases:[], uri: `file:///${name}`, folderPath: `/${name}`, fields: [], entrypoints: [],
+  id: '294b1eec-23fa-42cf-9fd3-2417f71c0570',name,aggregateName:'Aggregate',projectType,entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:projectType,root:'.',entry:projectType==='kanban'?'index.html':'index.ts'}], uri: `file:///${name}`, folderPath: `/${name}`, fields: [], entrypoints: [],
 });
 const fields = items => Object.fromEntries(items.flatMap(item => [[item.id, item], ...Object.entries(fields(item.children ?? []))]));
 const values = items => Object.fromEntries(Object.values(fields(items)).filter(item => item.value !== undefined).map(item => [item.id, item.value]));
@@ -35,22 +35,14 @@ test('project declarations use the Desktop manifest fields and preserve extended
   assert.equal(fields(items)['platform:constructor'].label, 'constructor');
 });
 
-test('entry windows and empty database requirements are displayed for all types', () => {
+test('entry windows are displayed for all types', () => {
   for (const type of ['workflow', 'bot', 'kanban']) {
     const items = projectInfoItems(project('Example', type), {});
-    assert.equal(fields(items)['databases:empty'].label, 'Not declared');assert.equal(values(items)['window:main:id'],'main');
+    assert.equal(values(items)['window:main:id'],'main');
     assert.equal(values(items).type, type[0].toUpperCase() + type.slice(1));
     assert.equal(fields(items)['declarations:empty'].label, "Not declared");
     assert.equal(fields(items).entrypoints, undefined);
   }
-});
-
-test('database references show only the selected entry aliases without embedding host bindings', () => {
-  const current = project(); current.databases = ['notes'];
-  const items = projectInfoItems(current, {}), data = values(items);
-  assert.equal(data['database:notes:alias'],'notes');
-  assert.equal(data['database:notes:id'], undefined);
-  assert.equal(Object.keys(data).filter(key=>key.startsWith('database:notes:')).length,1);
 });
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-info-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });

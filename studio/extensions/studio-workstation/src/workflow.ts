@@ -6,7 +6,6 @@ import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
-import { DatabaseViews } from './workflow-databases-view';
 import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
 import { InfoView } from './workflow-info-view';
@@ -149,7 +148,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (disposed) { return; }
     projectWindows.update(provider.projects, activeProject());
     const target = currentProject();
-    databases.update(provider.projects, target);
     trace.update(provider.projects, target);
     versions.update(provider.projects, target);
     void info.update(provider.projects, target);
@@ -291,14 +289,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           });
           return;
         }
-        if (message?.type === 'workflow-database' && message.version === 1 && message.projectUri === project.uri && typeof message.alias === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
-          void databases.openProjectDatabase(project, message.alias).then(() => {
-            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', databaseOpened: { version: 1, requestId: message.requestId } });
-          }).catch(error => {
-            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', databaseOpened: { version: 1, requestId: message.requestId, error: error instanceof Error ? error.message : String(error) } });
-          });
-          return;
-        }
         if (message?.type === 'workflow-open-entry' && message.version === 1 && message.projectId === project.id && typeof message.entryId === 'string') {
           void openHostedEntry(message.entryId).catch(error => {
             output.appendLine(`Project window: ${String(error)}`);
@@ -427,7 +417,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     for (const listener of resourceBindings.get(preview) ?? []) listener.dispose();
     const url = new URL(result.url, origin); url.hash = new URL(session.ready.url).hash;
     preview.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(origin.port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
-    preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : 'preview');
+    preview.iconPath = new vscode.ThemeIcon('preview');
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];
@@ -441,7 +431,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const assistant = new AssistantViewProvider(context, launcher, output,
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
   const mode = new StudioModeController(context, output);
-  const databases = new DatabaseViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
     signal.throwIfAborted();
@@ -488,10 +477,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot));
   const info = new InfoView(context, versions);
   const toolInstances = new ToolInstances(context, (kind, subscriptions, restored) => {
-    if (kind === 'databases') {
-      const instance = new DatabaseViews(context, launcher, account, output, false, subscriptions);
-      return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolveWebviewView(view) };
-    }
     if (kind === 'trace') {
       const instance = new TraceView(context, openProject, output, trace, subscriptions);
       return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolve(view) };

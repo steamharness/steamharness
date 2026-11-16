@@ -165,7 +165,7 @@ async function createToolApprovalProject(): Promise<string> {
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/tool-approval-test",
       type: "module",
-      version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+      version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
     }),
   );
   await writeFile(

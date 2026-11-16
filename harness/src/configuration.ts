@@ -61,7 +61,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
-    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile, aggregateDir).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }

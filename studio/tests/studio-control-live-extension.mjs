@@ -22,7 +22,7 @@ async function run(context) {
   const outside = path.join(path.dirname(workdir), 'outside');
   const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a'];
   await mkdir(outside, { recursive: true });
-  const manifest = id => ({ id, name: 'Control test', version: "0.1.0",  defaultEntry:'main', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]  });
+  const manifest = id => ({ id, name: 'Control test', version: "0.1.0",  defaultEntry:'main', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}]  });
   await writeProjectFixture(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0])));
   await writeProjectFixture(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[1])));
   await writeFile(path.join(workdir, 'control.txt'), 'first\nsecond line\n');

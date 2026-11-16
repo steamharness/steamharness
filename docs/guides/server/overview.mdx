@@ -1,11 +1,11 @@
 ---
-title: "使用 Server Web 管理项目与数据"
-description: "登录后查找项目、管理版本与授权，并打开数据资源。"
+title: "使用 Server Web 管理项目"
+description: "登录后查找项目、管理版本与成员授权。"
 ---
 
-# 使用 Server Web 管理项目与数据
+# 使用 Server Web 管理项目
 
-Server Web 是 SteamHarness 的浏览器管理端。用它管理项目、版本、成员和数据；项目代码在本地 Studio 或 CLI 中执行。
+Server Web 是 SteamHarness 的浏览器管理端。用它管理项目、版本和成员；项目代码在本地 Studio 或 CLI 中执行。
 
 ## 项目工作台
 
@@ -15,16 +15,12 @@ Server Web 是 SteamHarness 的浏览器管理端。用它管理项目、版本�
 
 一个项目可包含多种入口，类型筛选匹配其中任意一种。上传归档必须包含非空 `entries` 和有效 `defaultEntry`，名称与展示信息按项目声明读取。
 
-## 项目与数据
+## 项目管理
 
 | 任务 | 入口 |
 | --- | --- |
 | 管理成员、组归属和访问申请 | [项目管理](/guides/server/project-management) |
 | 上传草稿、发布或下载版本 | [Workspace CLI](/cli/server-workspace) |
-| 创建关系库、授权、迁移模型与编辑表行 | 数据库目录中的关系库详情 |
-| 管理知识文档、搜索、版本与附件 | 数据库目录中的知识库详情 |
-
-关系库与知识库分别创建、授权和绑定。关系库绑定由 Server 按账号、项目、入口和别名管理；知识库还使用根配置中的别名映射。操作前检查资源授权，项目成员身份不会自动授予数据访问权。
 
 Kanban 可在受权限限制的静态 iframe 中预览。预览使用短期能力凭据，不继承账号凭据；需要执行项目逻辑时使用本地宿主。
 

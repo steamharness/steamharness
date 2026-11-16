@@ -9,19 +9,19 @@ description: "CLI 与聚合入口"
 
 ```sh
 pnpm exec steamharness check .
-pnpm exec steamharness check . --entry database
-pnpm exec steamharness structure . --entry database
-pnpm exec steamharness run . --entry database --entrypoint search -- --query example
-pnpm exec steamharness json . --entry database --entrypoint search -- --query example
+pnpm exec steamharness check . --entry workflow
+pnpm exec steamharness structure . --entry workflow
+pnpm exec steamharness run . --entry workflow --entrypoint summarize -- --text example
+pnpm exec steamharness json . --entry workflow --entrypoint summarize -- --text example
 pnpm exec steamharness web . --entry agent
-pnpm exec steamharness mcp . --entry database
+pnpm exec steamharness mcp . --entry workflow
 ```
 
 ## 入口选择
 
 `--entry` 选择窗口入口，省略时 `run`、`json`、`structure`、`mcp` 和 `web` 使用 `defaultEntry`。`check` 默认检查所有注册入口，加 `--entry` 只检查指定入口。`--entrypoint` 选择 Workflow 内部操作。两者不能混用。
 
-入口 ID 和路径须遵守[产物目录的保留名称规则](/concepts/data-storage#产物与运行数据目录)，不能与缓存、报告、数据库生成目录或 Windows 设备名冲突。
+入口 ID 和路径须遵守[产物目录的保留名称规则](/concepts/data-storage#产物与运行数据目录)，不能与缓存、报告或 Windows 设备名冲突。
 
 `--` 后的参数原样传给 Workflow。`--locale zh-CN|en` 控制宿主文案语言，不改变业务参数。
 
@@ -31,7 +31,7 @@ pnpm exec steamharness mcp . --entry database
 
 ```sh
 pnpm exec steamharness release . --json
-pnpm exec steamharness run . --release --entry database --entrypoint search -- --query example
+pnpm exec steamharness run . --release --entry workflow --entrypoint summarize -- --text example
 pnpm exec steamharness web . --release --entry agent
 ```
 
@@ -77,17 +77,9 @@ CLI Web 和 Studio 的运行结果支持内嵌图片，可点击放大并在历�
 
 完整操作见[CLI 会话、模型与任务](/cli/agent-sessions)。
 
-## 数据库模型与生成
-
-完整操作见[CLI 数据与运行历史](/cli/data)。
-
 ## 平台运行历史
 
-完整操作见[CLI 数据与运行历史](/cli/data)。
-
-## 知识库与表数据管理
-
-完整操作见[CLI 数据与运行历史](/cli/data)。
+完整操作见[运行存储](/core-api/runtime-storage)。
 
 ## 持久 Agent 与 Studio Trace
 

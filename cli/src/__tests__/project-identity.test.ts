@@ -15,7 +15,7 @@ const temporary: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(temporary.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'project-identity-')); temporary.push(directory);
-  const pkg = { id: oldId, name: 'Keep name', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] };
+  const pkg = { id: oldId, name: 'Keep name', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}] };
   const source = JSON.stringify(pkg, null, '\t').replaceAll('\n', '\r\n') + '\r\n';
   const filename = path.join(directory, 'steamharness.json'); await writeFile(filename, source);
   return { directory, filename, source, pkg };
@@ -83,7 +83,7 @@ it('releases the identity lock when its owner crashes so the user can retry', as
 it('locks separate confirmations and reuses an allocated ID when a concurrent manifest edit prevents applying it', async () => {
   const f = await fixture();
   const connection = { serverUrl: 'https://allocation.test', accessToken: 'test-token' };
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:f.directory,databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}], id: oldId, name: 'Keep name', uri: f.directory, folderPath: f.directory, projectType: 'workflow', fields: [], entrypoints: [], projectInfo: readProjectInfo(f.pkg) };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:f.directory,entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts"}], id: oldId, name: 'Keep name', uri: f.directory, folderPath: f.directory, projectType: 'workflow', fields: [], entrypoints: [], projectInfo: readProjectInfo(f.pkg) };
   const posts: unknown[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
     if (options?.method === 'POST') { posts.push(JSON.parse(String(options.body))); return Response.json({ errCode: 0, data: { projectId: newId, projectType: 'workflow' } }); }

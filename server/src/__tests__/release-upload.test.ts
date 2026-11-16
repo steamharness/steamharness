@@ -17,7 +17,7 @@ test('uploading a release preserves integrity after applying stored project meta
   const files: Record<string, string> = {
     'steamharness.json': JSON.stringify({ id: projectId, name: 'Uploaded name', version: '1.0.0', defaultEntry: 'main', entries: [{ entryId: 'main', root: 'entries/main' }] }),
     'package.json': JSON.stringify({ name: 'compiled-upload', type: 'module', devDependencies: { steamharness: coreVersion } }),
-    'entries/main/steamharness.json': JSON.stringify({ name: 'Main', type: 'workflow', entry: 'index.mjs', databases: [] }),
+    'entries/main/steamharness.json': JSON.stringify({ name: 'Main', type: 'workflow', entry: 'index.mjs' }),
     'entries/main/index.mjs': 'throw new Error("Server must not execute the project");',
     'entries/main/structure.json': JSON.stringify({ version: 1, report: { projectId, entryId: 'main', projectType: 'workflow', definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, diagnostics: { violations: [], warnings: [] } }, scripts: { definedNodes: [], violations: [] } }),
   };

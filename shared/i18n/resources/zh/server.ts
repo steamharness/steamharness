@@ -1,22 +1,6 @@
 import type { server as Enserver } from "../en/server.ts";
 
 export const server: typeof Enserver = {
-  databaseBindingUnavailable: "数据库绑定不可用或已撤销。",
-  databaseAuthorizationChanged: "数据库授权已变化，请恢复绑定。",
-  databaseRequestReviewed: "此数据库申请已处理。",
-  databaseReviewAuthority: "仅宿主管理员或已有空间负责人可以审批此申请。",
-  databaseApprovalCannotWiden: "审批不能扩大申请的数据库权限。",
-  databasePendingRequest: "此数据库别名已有待审批申请。",
-  databaseReplacementNeedsRevocation: "请先撤销当前绑定，再申请替换。",
-  databaseSpaceMissing: "此宿主不存在该数据库空间。",
-  databaseConsumerEntryMissing: "消费方入口尚未注册。",
-  databaseRequirementExceeded: "申请超出了声明的数据库需求。",
-  databaseExplicitDecisionRequired: "请明确批准或拒绝申请。",
-  databaseAliasUndeclared: "数据库别名尚未声明。",
-  databaseBindingRequired: "必须提供数据库绑定和消费方身份。",
-  databaseRevisionReadRequired: "订阅数据库修订需要读取权限。",
-  databaseUseKnowledgeApi: "请通过知识库接口访问。",
-  databaseGrantRevoked: "已撤销的授权不能轮换凭据。",
   projectIdServerAssigned: "项目 ID 由服务器分配。请创建新应用以申请新的 ID。",
   configurationPublicationRequired: "请先发布项目配置模板，再使用按角色控制的配置。",
   accessCreateLoginRequired: "请先登录账号，再创建项目。",

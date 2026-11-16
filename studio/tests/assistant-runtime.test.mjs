@@ -26,7 +26,7 @@ test('creation defers ID allocation to the project window and registration uses 
           if (allocate || deferProjectId !== true) throw new Error('Creation must defer registration');
           signal.throwIfAborted(); return { ...input, id: '', projectType: 'workflow', directory: input.parentDirectory };
         }, register: async (_directory, signal, allocate) => {
-          const id = await allocate({ name: 'Created', entries:[{entryId:'main',type:'workflow',name:'Created',root:'.',entry:'index.ts',databases:[]}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
+          const id = await allocate({ name: 'Created', entries:[{entryId:'main',type:'workflow',name:'Created',root:'.',entry:'index.ts'}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
           signal.throwIfAborted(); return id;
         } });` }));
     } }] });
@@ -68,8 +68,8 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const template = path.join(extension, 'dist/developer-assistant');
   await mkdir(template, { recursive: true });
   const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module', version: "0.1.0",  defaultEntry: 'main', entries: [
-    { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', databases: [] },
-    { entryId: 'studio-control', name: 'Studio Control', type: 'workflow', root: 'studio-control', entry: 'index.ts', databases: [] },
+    { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts' },
+    { entryId: 'studio-control', name: 'Studio Control', type: 'workflow', root: 'studio-control', entry: 'index.ts' },
   ]  };
   await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionError: 'Workflow "Project Assistant" script validation failed.' }));
   await writeFile(path.join(template, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');

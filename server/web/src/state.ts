@@ -20,11 +20,11 @@ export type SessionState =
       };
     };
 
-export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "entries" | "databases" | "versions";
+export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "entries" | "versions";
 
 export type AdminTab = "users" | "audit";
 export type SettingsTab = "profile" | "appearance" | "api-keys";
-export type Page = "login" | "device" | "projects" | "groups" | "databases" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
+export type Page = "login" | "device" | "projects" | "groups" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
 export type ThemeMode = "light" | "dark" | "system";
 
 export type AppRoute =
@@ -32,7 +32,6 @@ export type AppRoute =
   | { page: "device"; userCode?: string }
   | { page: "projects" }
   | { page: "groups"; id?: string }
-  | { page: "databases"; id?: string }
   | { page: "settings"; tab: SettingsTab }
   | { page: "admin"; tab: AdminTab }
   | { page: "detail"; id: string; tab: DetailTab; entryId?: string; }

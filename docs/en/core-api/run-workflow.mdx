@@ -107,7 +107,7 @@ steamharness.runProject<Input, Output>(
 
 ## Context reuse
 
-By default, the child workflow uses the same `databases`, `entries`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runProject` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunProject`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
+By default, the child workflow uses the same `entries`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runProject` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunProject`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
 
 Workflows may nest `runProject()` calls, but the default total depth is limited to `16`. This depth exists only in the execution trace. It does not create a nested entrypoint path or change the entrypoint identity used by APIs, permissions, or history.
 

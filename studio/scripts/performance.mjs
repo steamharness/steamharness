@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { build, stop } from 'esbuild';
 
 export async function runPerformance({ measure, PROFILE }) {
-  const metrics = [], require = createRequire(import.meta.url), disposable = { dispose() {} };
+  const metrics = [], require = createRequire(import.meta.url);
   const vscode = { workspace: { isTrusted: true }, env: { language: 'en' } };
   async function load(source) {
     const compiled = await build({ entryPoints: [source], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
@@ -35,27 +35,6 @@ export async function runPerformance({ measure, PROFILE }) {
       }
     } finally { models.dispose(); }
 
-    const { DatabaseViews } = await load('extensions/studio-workstation/src/workflow-databases-view.ts');
-    const projects = Array.from({ length: 6 }, (_, index) => ({ id: 'project', entryId: `entry-${index}`, uri: 'file:///fixture', name: 'Fixture', databases: ['main'] }));
-    requests = 0;
-    const launcher = { inspect: async () => ({ projects, errors: [] }), database: async input => {
-      requests++; await delay(PROFILE.networkMs);
-      return input.action === 'bindings' ? { bindings: [{ alias: 'main', databaseId: 'fixture' }] }
-        : { resources: [{ id: 'fixture', kind: 'databases', name: 'Fixture' }] };
-    } };
-    const views = new DatabaseViews({ subscriptions: [] }, launcher,
-      { getConnection: () => ({ serverUrl: 'https://performance.test', accessToken: 'fixture-only' }), onDidChange: () => disposable }, { appendLine() {} }, false);
-    views.update(projects, projects[0]);
-    try {
-      for (const [name, force, callers, expectedRequests, budgetMs] of [
-        ['cold', true, 1, 7, 250], ['reopen', false, 1, 0, 40], ['concurrent-refresh', true, 20, 7, 250],
-      ]) metrics.push(await measure(`studio.resources.${name}`, async () => {
-        const before = requests;
-        await Promise.all(Array.from({ length: callers }, () => views.refresh(force)));
-        assert.equal(views.error, ''); assert.equal(views.resources.length, 1); assert.equal(views.bindings.length, 6);
-        assert.equal(requests - before, expectedRequests); return { requests: requests - before };
-      }, { budgetMs, workload: { entries: 6, callers, expectedRequests } }));
-    } finally { views.dispose(); }
   } finally { stop(); }
   return metrics;
 }

@@ -154,7 +154,7 @@ test("each registered entry discovers its own model mode and imported Agent decl
   try {
     await declareConfigurationFixture(directory);
     const file = path.join(directory, "steamharness.json"), manifest = JSON.parse(await readFile(file, "utf8"));
-    manifest.entries.push({ entryId: "project-agent", name: "Project Agent", type: "workflow", root: ".", entry: "project.ts", configuration: "configuration.json", databases: [] });
+    manifest.entries.push({ entryId: "project-agent", name: "Project Agent", type: "workflow", root: ".", entry: "project.ts", configuration: "configuration.json" });
     await writeFile(file, JSON.stringify(manifest));
     await writeFile(path.join(directory, "index.ts"), "steamharness.defineBot({ agent: {modelSource:'user-settings'} });");
     await writeFile(path.join(directory, "project.ts"), "import './project-agent';");

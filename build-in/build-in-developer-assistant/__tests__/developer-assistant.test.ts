@@ -4,15 +4,11 @@ import { describe, expect, it } from "vitest";
 import { inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
 
 const projectDir = path.resolve(process.cwd());
-// Run-scoped Knowledge and KV must not expose the assistant's store as project data.
 const CORE_TOOL_NAMES = [
   "workflow-ui_present_card",
   "skill",
 ];
-const RUN_SCOPED_CORE_TOOL_NAMES = [
-  "workflow-knowledge_knowledge_documents",
-  "workflow-kv_kv_store",
-];
+const RUN_SCOPED_CORE_TOOL_NAMES = ["workflow-kv_kv_store"];
 const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls", "sleep"];
 const CONTROL_TOOL_NAMES = ["workflow-studio_get_configurations", "workflow-studio_manage_configurations", "workflow-studio_open_configurations", "workflow-studio_studio_state", "workflow-studio_get_entries", "workflow-studio_get_diagnostics", "workflow-studio_get_kanban_diagnostics", "workflow-studio_open_file",
   "workflow-studio_set_theme", "workflow-studio_open_terminal", "workflow-studio_show_view"];
@@ -20,11 +16,11 @@ const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
 
 describe("developer assistant workflow", () => {
-  it("keeps its distributed identity without requiring a data binding", async () => {
+  it("keeps its distributed identity", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
     expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "bot" });
-    expect(manifest.entries[0].databases).toEqual([]);
+    expect(manifest.entries[0]).not.toHaveProperty("databases");
   });
   it("registers Studio Control within the same project and analyzes each executor independently", () => {
     const aggregate = inspectAggregateProjectStructure(projectDir);
@@ -239,14 +235,10 @@ describe("developer assistant workflow", () => {
 
     expect(generatorSkill).toContain("references/project-repair.md");
     expect(generatorSkill).toContain("旧 CLI 返回 `0` 也不能证明 Desktop 能重新识别项目");
-    expect(generatorSkill).toContain("数据库绑定尚未完成");
     expect(repairReference).toContain("必需知识门禁");
     expect(repairReference).toContain("旧版 CLI 返回 `0` 也不能覆盖直接发现的合同错误");
-    expect(repairReference).toContain("context.databases.connect(descriptor)");
     expect(repairReference).toContain("不要把字段机械改名");
-    expect(repairReference).toContain("config.json 不存关系数据库 ID");
     expect(repairReference).toContain("代码工作区授权");
-    expect(repairReference).toContain("Server 数据资源授权");
   });
 
   it("documents how each parameter action renders", async () => {

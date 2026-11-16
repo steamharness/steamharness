@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultProjectInfo, createUndeclaredProjectInfo, listProjectSearchNames, matchesProjectSearch, normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, resolveProjectName, serializeProjectInfo, writeProjectInfo } from '../index';
 describe('aggregate project information',()=>{
-  it('keeps product information independent of database resources',()=>{
+  it('uses defaults when project information is absent',()=>{
     expect(readProjectInfo({name:'Project'})).toEqual(createUndeclaredProjectInfo());
-    expect(createDefaultProjectInfo()).not.toHaveProperty('dataStorage');
-    expect(createDefaultProjectInfo()).not.toHaveProperty('relatedProjects');
     expect(normalizeDeclaredProjectInfoInput({})).toEqual(createDefaultProjectInfo());
   });
-  it('rejects removed database and related-project declarations',()=>{
-    for(const field of ['dataStorage','relatedProjects']){
-      expect(()=>normalizeProjectInfo({[field]:[]})).toThrow(/removed/);
-      expect(()=>readProjectInfo({projectInfo:{[field]:[]}})).toThrow(/removed/);
-    }
+  it('rejects unsupported project information fields',()=>{
+    expect(()=>normalizeProjectInfo({unknownField:[]})).toThrow(/unsupported/);
+    expect(()=>readProjectInfo({projectInfo:{unknownField:[]}})).toThrow(/unsupported/);
   });
   it('normalizes names and preserves future declaration and platform IDs',()=>{
     const info=normalizeProjectInfo({localizedNames:{'zh-CN':' 中文名称 ',en:'English Name',ja:'日本語',empty:' '},declarations:['multilingual','future','multilingual'],platformSupport:{mode:'specific',platforms:['macos','future-os','macos']}});

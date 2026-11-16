@@ -4,7 +4,6 @@ import type { NodeContext } from "../../types/context";
 import { createMcpToolServer } from "../mcp/server";
 import { loadTypebox } from "../pi";
 import { KANBAN_METHODS_CAPABILITY } from "./kanban-methods";
-import { KNOWLEDGE_CAPABILITY } from "./knowledge";
 import { PRESENTATION_CARD_CAPABILITY } from "./presentation-card";
 import type { Capability } from "./types";
 
@@ -16,7 +15,6 @@ import type { Capability } from "./types";
  * asks before putting one in front of a model.
  */
 export const STEAMHARNESS_CAPABILITIES: readonly Capability[] = [
-  KNOWLEDGE_CAPABILITY,
   KANBAN_METHODS_CAPABILITY,
   PRESENTATION_CARD_CAPABILITY,
 ];

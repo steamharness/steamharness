@@ -107,7 +107,7 @@ steamharness.runProject<Input, Output>(
 
 ## 上下文复用
 
-子 workflow 默认使用同一个 `databases`、`entries`、`conversation`、`tokenUsage`、`files`、`providers`、`abortSignal` 和 `nodeHooks`。它不会创建独立 run report；`runProject` 调用本身和子节点事件都会进入父 workflow trace。普通顶层执行入口 `safeRunProject` 直接调用 `workflow.run(input, context)`，不会额外生成 `run-workflow` 包裹节点，因此静态结构和运行时 report 不会在根部多出一个合成节点。
+子 workflow 默认使用同一个 `entries`、`conversation`、`tokenUsage`、`files`、`providers`、`abortSignal` 和 `nodeHooks`。它不会创建独立 run report；`runProject` 调用本身和子节点事件都会进入父 workflow trace。普通顶层执行入口 `safeRunProject` 直接调用 `workflow.run(input, context)`，不会额外生成 `run-workflow` 包裹节点，因此静态结构和运行时 report 不会在根部多出一个合成节点。
 
 业务流程可以继续嵌套调用 `runProject()`，但默认总深度上限是 `16`。这个深度只存在于执行 trace，不会生成多级 entrypoint 路径，也不会改变 API、权限或历史记录的入口标识。
 

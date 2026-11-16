@@ -9,16 +9,15 @@ import { copyAssistantTemplate } from '../scripts/assistant-template.mjs';
 register();
 const { resolveProjectEntry } = await import('../../shared/project-manifest/node.ts');
 
-test('assistant bundles resolve every registered entry and its database configuration', async t => {
+test('assistant bundles resolve every registered entry', async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'studio-assistant-template-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const source = path.join(directory, 'source'), destination = path.join(directory, 'bundle');
   await mkdir(path.join(source, 'studio-control'), { recursive: true });
   await mkdir(path.join(source, 'skills'), { recursive: true });
-  const databaseId = '00000000-0000-4000-8000-000000000001';
   const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant', version: '0.1.9',
     defaultEntry: 'main', entries: [
-      { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', configuration: 'configuration.json', databases: ['memory'] },
+      { entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', configuration: 'configuration.json' },
       { entryId: 'studio-control', root: 'studio-control' },
     ],
   };
@@ -36,7 +35,6 @@ test('assistant bundles resolve every registered entry and its database configur
   const main = await resolveProjectEntry(destination, 'main');
   assert.equal(main.manifest.name, 'Assistant');
   assert.equal(main.manifest.version, '0.1.9');
-  assert.deepEqual(main.registration.databases, ['memory']);
   assert.equal((await resolveProjectEntry(destination, 'studio-control')).registration.projectCard.icon, 'cpu');
   for (const name of ['steamharness.json', 'studio-control/steamharness.json']) {
     assert.equal(await readFile(path.join(destination, name), 'utf8'), files[name]);

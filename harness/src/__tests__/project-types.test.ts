@@ -170,7 +170,7 @@ test("runtime rejects a conversation executor without projectType", async () => 
         name: "legacy-conversation-runtime",
         version: "0.1.0",
         type: "module",
-        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const legacyProject = steamharness.defineProject({
@@ -214,7 +214,7 @@ test("runtime rejects a Workflow executor without projectType", async () => {
         name: "inferred-workflow-runtime",
         version: "0.1.0",
         type: "module",
-        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const inferredProject = steamharness.defineProject({
@@ -297,7 +297,7 @@ test("runtime reports static violations before server storage connection checks"
         name: "legacy-runtime",
         version: "0.1.0",
         type: "module",
-        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         export const projectType = "workflow";
@@ -370,7 +370,7 @@ async function writeRuntimeProject(
       name: `${projectType}-mode`,
       version: "0.1.0",
       type: "module",
-      defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+      defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
     }), "utf8"),
     writeFile(path.join(projectDir, "index.ts"), projectType === "bot" ? botFixtureSource({ prepare: `if (!context.conversation.enabled) throw new Error("Bot conversation is disabled"); return { ...input, prompt: "Hello" };` }) : `
       const runtimeProject = steamharness.defineProject({

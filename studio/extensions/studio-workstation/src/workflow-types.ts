@@ -64,8 +64,6 @@ export interface Project extends Parameters {
   entries: import('@steamharness/project-manifest').ProjectEntry[];
   defaultEntry: string;
   entryRoot: string;
-  databases: string[];
-  knowledgeBases?: { alias: string; knowledgeBaseId: string }[];
   id: string;
   uri: string;
   folderPath: string;
@@ -160,7 +158,6 @@ export interface Runtime {
   uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;
   readFile(project: Project, id: string): Promise<{ reference: Attachment; path: string }>;
   deleteFiles(project: Project, conversationId: string, ids: string[]): Promise<void>;
-  readResource(project: Project, conversationId: string, kind: 'knowledge', target: Record<string, string>): Promise<unknown>;
   deleteConversation(project: Project, conversationId: string): Promise<void>;
   cancel(runId?: string): void;
   dispose(): void;

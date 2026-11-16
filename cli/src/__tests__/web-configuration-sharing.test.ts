@@ -27,13 +27,13 @@ async function fixture() {
   return async (name: string, kind: Project['projectType'], applicationId = id, assistant = false, projectDir?: string) => {
     const directory = projectDir ?? path.join(root, name);
     await mkdir(directory, {recursive:true});
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',configuration:'configuration.json',databases:[]}]}));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',configuration:'configuration.json'}]}));
     await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string'},{name:'enabled',type:'boolean'}]}));
     await writeFile(path.join(directory, 'index.ts'), 'export {};');
     if (kind === 'kanban') await writeFile(path.join(directory, 'index.html'), '<!doctype html><h1>Board</h1>');
-    const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts",databases:[]}],id:applicationId,name:'App',uri:'',folderPath:directory,projectType:kind,fields:[],entrypoints:kind === 'workflow' ? [{id:'main',title:'Main',fields:[]}] : [],
+    const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts"}],id:applicationId,name:'App',uri:'',folderPath:directory,projectType:kind,fields:[],entrypoints:kind === 'workflow' ? [{id:'main',title:'Main',fields:[]}] : [],
       ...(kind === 'workflow' ? {defaultEntrypoint:'main'} : {}), ...(assistant ? {assistant:{workdir:path.join(root,name,'workspace'),roots:[]}} : {})};
-    const runtime: Runtime = {available:true,inspect:vi.fn(async () => ({projects:[project],errors:[]})),resolveParams:vi.fn(async () => ({})),run:vi.fn(async () => ({status:'success'})),uploadFiles:vi.fn(async () => []),readFile:vi.fn(),deleteFiles:vi.fn(),cancelConversation:vi.fn(),deleteConversation:vi.fn(),readResource:vi.fn(),cancel:vi.fn(),dispose:vi.fn()};
+    const runtime: Runtime = {available:true,inspect:vi.fn(async () => ({projects:[project],errors:[]})),resolveParams:vi.fn(async () => ({})),run:vi.fn(async () => ({status:'success'})),uploadFiles:vi.fn(async () => []),readFile:vi.fn(),deleteFiles:vi.fn(),cancelConversation:vi.fn(),deleteConversation:vi.fn(),cancel:vi.fn(),dispose:vi.fn()};
     const app = await startWebServer({projectDir:directory,dataDir:testDataDirectory(directory, 'history'),runtime}); apps.push(app);
     const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')!;
     const post = (call: object) => fetch(`${app.origin}/api/message`, {method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({type:'project-configuration',call})});

@@ -1,143 +1,32 @@
 ---
-title: "Project storage"
-description: "Relational resources, independent knowledge bases and runtime storage"
+title: "Runtime and file storage"
+description: "Where runtime history, build artifacts, and project files are stored"
 ---
 
-# Project storage
+# Runtime and file storage
 
-Choose a storage API by distinguishing business data, knowledge content, and run history. Server authorizes business and knowledge resources. Run history defaults to host-local SQLite and does not require a Server connection.
+CLI Web and Studio save conversations, runs, queues, usage, and Agent state locally by default. These records do not live in project source or `dist/`. Local runs do not require a Server login.
 
-| Data | Storage and isolation | Project API |
-| --- | --- | --- |
-| Custom business models | Independent PostgreSQL database and roles for each explicitly created resource | `context.databases.connect(descriptor)` |
-| Knowledge documents, chunks, indexes and attachment metadata | Shared platform tables isolated by knowledge UUID and account grants | `context.knowledgeBases.get(alias)` |
-| Conversations, messages, runs, queues, usage and Agent state | Host-local SQLite by project, entry and session; cloud backup on demand | Host runtime storage |
-| Knowledge attachment contents | Private Server file storage; SQL retains metadata and checksums | `knowledge.files` |
+| Content | Location |
+| --- | --- |
+| Standalone SDK history | `~/.steamharness/runtime/<projectId>/<entryId>/` by default |
+| CLI Web history | An external directory selected with `--data-dir` |
+| Server runtime storage | Stored by Server after an explicit choice, subject to account and project access |
+| Managed project files | Uploaded to Server and read under project membership |
+| Configuration attachments | Read under the project, entry, and configuration version |
 
-Choose bindings according to the required isolation:
-
-- Creating a project or conversation does not allocate a PostgreSQL database.
-- Separate resources let two projects define different schemas for the same table name, such as `User`.
-- To share data, bind both projects to the same resource and grant access to each consumer.
-- Knowledge bases are independent resources and need no project-defined system tables.
+See [Runtime storage](/en/core-api/runtime-storage) for APIs, backups, and failures. See [Files](/en/concepts/files) for the distinction between managed files and configuration attachments.
 
 ## Artifacts and runtime data
 
-Keep every rebuildable SteamHarness output in the aggregate root's `dist/steamharness/`. SteamHarness creates only this one top-level directory under `dist/`; child entries share it:
+Rebuildable output lives under `dist/steamharness/` at the aggregate project root. Child entries do not create separate output roots.
 
 | Content | Path |
 | --- | --- |
-| Generated code for root database definitions | `dist/steamharness/generated/database/` |
-| Generated code for child database definitions | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/generated/database/` |
-| Compiled root entry code and static pages | `dist/steamharness/build/<entryId>/` |
-| Compiled child entry code and static pages | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
-| Tool caches, test reports, and packages | `dist/steamharness/cache/`, `dist/steamharness/reports/`, and `dist/steamharness/release/` |
-| Temporary build files | `dist/steamharness/tmp/` |
+| Root entry builds and static pages | `dist/steamharness/build/<entryId>/` |
+| Child entry builds and static pages | `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/` |
+| Cache, test reports, and releases | `dist/steamharness/cache/`, `dist/steamharness/reports/`, `dist/steamharness/release/` |
 
-Directory layout follows source roots and entry IDs. URL-encode the whole `entry.root`: for example, `apps/board` becomes `apps%2Fboard`. Entries under the same source root share generated code and write their builds to separate `build/<entryId>/` directories.
+Each builder cleans only its own output directory. Rebuilding after deleting `dist/` leaves runtime history outside the project intact.
 
-A builder may clean only its own subdirectory. Keep authored source, configuration, models, and migrations outside generated directories, and ignore `/dist/` in the root `.gitignore`.
-
-An `entryId` cannot use the managed directory names `steamharness`, `cache`, `reports`, `release`, or `tmp`, or Windows device names `con`, `prn`, `aux`, `nul`, `com1`–`com9`, or `lpt1`–`lpt9`. An explicit entry path inside `dist/` must use the current source root's `build/<entryId>/`, protecting `generated/` and other entries' outputs.
-
-### Keep persistent data outside the project
-
-Put sessions, checkpoints, and login state in the host application's data directory or the user directory, outside source and `dist/`.
-
-| Host | Location requirement |
-| --- | --- |
-| Standalone SDK | Defaults to `~/.steamharness/runtime/<projectId>/<entryId>/` |
-| CLI Web | `--data-dir` must be outside the project |
-
-After deleting `dist/`, regenerate and rebuild outputs; external runtime data is unaffected. Old paths are not read, migrated, or used as fallbacks. To move existing persistent data, close the host first, move it offline, and preserve file permissions.
-
-## Business databases
-
-1. Declare aliases in `steamharness.database.ts` and models in `database/<alias>/steamharness.schema`.
-2. Generate typed Node/Browser descriptors with the CLI.
-3. Use `steamharness database` to create a resource, grant access, migrate, and bind it.
-4. Connect through the generated descriptor in your runtime code.
-
-Server stores bindings by account, project, entry, and alias, outside legacy `config.databases`. Connecting does not create a database or apply migrations.
-
-```ts
-import { main } from "./dist/steamharness/generated/database/node/index.js";
-const db = await context.databases.connect(main);
-await db.user.create({ data: { id: "alice", name: "Alice" } });
-```
-
-See [SteamHarness Database](/en/core-api/database).
-
-## Knowledge declarations
-
-```sh
-steamharness knowledge create "Docs"
-steamharness knowledge bind . --entry main --alias docs --knowledge-base <UUID>
-```
-
-An entry declares `"knowledgeBases": ["docs"]` in `steamharness.json`. Root `config.json` stores deployment IDs:
-
-```json
-{
-  "version": 1,
-  "knowledgeBases": {
-    "docs": "00000000-0000-4000-8000-000000000001"
-  }
-}
-```
-
-Replace the example UUID with the created resource ID. Entries may share an alias, and an entry may declare multiple knowledge bases. `STEAMHARNESS_PROJECT_CONFIG` accepts JSON such as `{"knowledgeBases":{"docs":"00000000-0000-4000-8000-000000000002"}}` to override IDs by alias. It does not load `.env`; distribution retains the original file without writing environment values into source. Missing or duplicate aliases and invalid IDs fail explicitly.
-
-```ts
-const knowledge = context.knowledgeBases.get("docs");
-const doc = await knowledge.createDocument({ title: "Guide", markdown: "# Guide" });
-await knowledge.editDocument({ id: doc.id, markdown: "# Updated", expectedRevision: doc.revision });
-```
-
-When replacing a knowledge resource:
-
-1. Update its configured ID and establish the matching consumer binding on Server.
-2. Confirm account grants. Registered projects also require membership capabilities and an entry declaration.
-3. Reopen the entry to load the new binding.
-
-An old client cannot write its draft into the replacement resource. Revocation and grant-version changes also invalidate clients. `knowledge unbind` removes the Server binding but keeps the declaration for later reuse. See the [Knowledge API](/en/core-api/knowledge-documents).
-
-## Management
-
-Open **Databases** in Server Web, choose relational or knowledge resources, then search or create a resource.
-
-| Page | Available actions |
-| --- | --- |
-| Resource details | Manage account grants and project entry bindings |
-| Relational database | Inspect applied models, fingerprints, and paginated table data |
-| Knowledge base | Manage documents and attachments |
-
-Row edits require a complete stable key and the current row version. Conflicts retain your draft, and navigation protects unsaved edits.
-
-Studio's database view and CLI Web's project database panel show resource references and open the corresponding Server Web page without putting account tokens in links. These interfaces no longer expose KV editing or a local/remote KV switch. Legacy KV runtime and local storage APIs are removed without compatibility or automatic migration.
-
-## Client caches
-
-Personal configuration, user model settings, and run history remain on the host. Display data uses these caches:
-
-| Data | Scope and lifetime |
-| --- | --- |
-| System AI catalogue | Current process, scoped to service URL and account, 30 seconds |
-| CLI resource references and Studio resource views | Display snapshots reused for 5 seconds |
-
-Concurrent reads are merged. Refreshing or editing invalidates the relevant display cache; switching accounts clears old state. Execution checks bindings online, so a cached view is not proof of permission.
-
-Configuration templates and attachments retain their verified local snapshots and content caches. Knowledge text, search, publication, grants, resource creation and migrations require online confirmation. Attachment content can reuse bounded memory snapshots or conditional requests after online access checks. Sensitive catalogue credentials stay in memory. Caching does not add automatic uploads, offline authorization or background business writes.
-
-## Persistent history and failures
-
-Bot history uses local runtime storage by default, independently of business and knowledge resource grants and lifecycles. The view receives run events while history persists locally; on-demand backup runs in the background.
-
-| Situation | Effect on existing history |
-| --- | --- |
-| System AI or a business resource disconnects | That operation may fail, but saved history remains readable |
-| Explicit Server storage loses its connection, grant, or lease | Storage operations fail explicitly |
-| Cloud or legacy local records already exist | They are retained without automatic overwrite |
-| A project is deleted | Independent resources are not automatically deleted |
-
-See [runtime storage](/en/core-api/runtime-storage) for interfaces and backup behavior.
+Entry IDs cannot use the managed directory names `steamharness`, `cache`, `reports`, `release`, or `tmp`, or the Windows device names `con`, `prn`, `aux`, `nul`, `com1`–`com9`, and `lpt1`–`lpt9`. An entry path under `dist/` must point to its own `build/<entryId>/` directory.

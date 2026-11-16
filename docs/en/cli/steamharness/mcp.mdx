@@ -12,13 +12,13 @@ Use `mcp` to expose a registered Workflow's operations, parameters, and results.
 ## Command
 
 ```sh
-pnpm exec steamharness mcp . --entry database
+pnpm exec steamharness mcp . --entry workflow
 ```
 
-The project must declare the `database` entry. Without `--entry`, it uses `defaultEntry`. A client's `entrypointId` selects an operation within that Workflow and does not replace the aggregate `entryId`.
+The project must declare the `workflow` entry. Without `--entry`, it uses `defaultEntry`. A client's `entrypointId` selects an operation within that Workflow and does not replace the aggregate `entryId`.
 
 ## Permissions and recovery
 
 Every request and resume handle is bound to a project and entry. User identity, tool permissions, configuration snapshots, and cancellation propagate through calls. Resuming into another entry is rejected.
 
-Entries retain their own configuration, resource requirements, and conversation state. MCP does not allocate databases: create or obtain access to resources and bind the entry first. Unknown entries fail explicitly.
+Entries retain their own configuration and conversation state. Unknown entries fail explicitly.

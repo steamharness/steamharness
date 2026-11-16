@@ -43,8 +43,8 @@ pnpm exec steamharness workspace upload <project-id> --path .
 pnpm exec steamharness workspace publish <project-id> --release-log "Initial release"
 ```
 
-## Databases and entries
+## Aggregate entries
 
-Local commands read `entries` from the aggregate root. `--entry` selects an entry, while `check` validates all entries by default. Create, grant, migrate, and bind relational resources before use. Knowledge resources use separate declarations and bindings.
+Local commands read `entries` from the aggregate root. `--entry` selects an entry, while `check` validates all entries by default.
 
 CLI Web and Studio share user-level project registration. See [data storage](/en/concepts/data-storage) for storage locations and access rules.

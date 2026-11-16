@@ -28,11 +28,11 @@ slug: /
 
 ### Bot
 
-围绕消息和轮次组织任务，适合持续对话的助手。它使用同一套运行时，通过会话执行器接收输入；历史管理见[数据库与会话](/concepts/database-and-conversation)。
+围绕消息和轮次组织任务，适合持续对话的助手。它使用同一套运行时，通过会话执行器接收输入；历史管理见[运行存储](/core-api/runtime-storage)。
 
 ### Kanban
 
-用 HTML、CSS 和 JavaScript 编写页面，以 `index.html` 为入口。需要读取项目数据时，通过受限 Bridge 访问已绑定、已授权的关系库或知识库。
+用 HTML、CSS 和 JavaScript 编写页面，以 `index.html` 为入口。需要读取项目文件时，通过受限 Bridge 调用宿主提供的文件接口。
 
 ## 项目在哪里运行
 
@@ -40,7 +40,7 @@ slug: /
 | --- | --- |
 | Studio | 编辑源码、运行本地项目、查看结果和执行轨迹 |
 | 本地 CLI | 在终端运行、检查结构、输出 JSON 或提供 MCP 工具 |
-| Server | 保存源码、版本、成员、数据库、知识库和文件 |
+| Server | 保存源码、版本、成员和文件 |
 | Server Web 管理端 | 在浏览器中管理 Server 上的项目与资源 |
 | Store | 浏览、下载和发布项目版本 |
 
@@ -60,7 +60,7 @@ slug: /
 
 ## 项目数据与配置
 
-业务关系库、知识库和运行历史分别管理。关系库使用 `databases` 声明别名，由 Server 按账号、项目和入口维护绑定；知识库使用 `knowledgeBases` 声明。
+运行历史按项目和入口保存；项目文件遵循各自的访问权限。
 
 配置与会话按 `projectId + entryId` 隔离，修改配置从下一次运行生效。继续阅读[项目配置](/concepts/project-configuration)和[数据存储](/concepts/data-storage)。
 
@@ -93,7 +93,7 @@ slug: /
 
 根 `steamharness.json` 记录项目身份、版本和入口列表。Workflow、Bot 入口指向执行器源码，Kanban 入口指向构建后的 HTML。普通依赖由 `package.json` 和锁文件管理。
 
-具体声明见[Workflow 模型](/concepts/workflow-model)。迁移旧项目时，先阅读 [Core 0.2 迁移指南](/guides/migrate-core-0-2)。
+具体声明见[Workflow 模型](/concepts/workflow-model)。
 
 ## 内置项目
 

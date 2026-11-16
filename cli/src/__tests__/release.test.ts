@@ -25,7 +25,7 @@ async function fixture() {
   await mkdir(path.join(directory, "node_modules/@steamharness"), { recursive: true });
   await symlink(path.resolve("../harness"), path.join(directory, "node_modules/steamharness"), "dir");
   await symlink(path.resolve("."), path.join(directory, "node_modules/@steamharness/cli"), "dir");
-  const declaration = { id, name: "release-test", version: "1.0.0", defaultEntry: "main", entries: [{ entryId: "main", root: ".", name: "Main", type: "workflow", entry: "index.ts", databases: [] }], release: {} };
+  const declaration = { id, name: "release-test", version: "1.0.0", defaultEntry: "main", entries: [{ entryId: "main", root: ".", name: "Main", type: "workflow", entry: "index.ts" }], release: {} };
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(declaration));
   await writeFile(path.join(directory, "package.json"), JSON.stringify({ name: "release-test", type: "module", version: "1.0.0" }));
   await writeFile(path.join(directory, "index.ts"), source);
@@ -170,7 +170,7 @@ export const executor=steamharness.defineBot({name:'release-agent',agent:{modelS
 it("releases multiple roots and shared roots and serves detached Kanban HTML, CSS and dynamic JS", async () => {
   const { directory, declaration } = await fixture();
   await mkdir(path.join(directory, "apps/board"), { recursive: true });
-  await writeFile(path.join(directory, "apps/board/steamharness.json"), JSON.stringify({ name: "Board", type: "kanban", databases: [] }));
+  await writeFile(path.join(directory, "apps/board/steamharness.json"), JSON.stringify({ name: "Board", type: "kanban" }));
   const buildScript = `import{mkdir,writeFile}from'node:fs/promises';const root='dist/steamharness/entries/apps%2Fboard/build/board';await mkdir(root,{recursive:true});for(const [name,content]of Object.entries({'index.html':'<html><head><link rel="stylesheet" href="style.css"></head><body><script type="module" src="main.js"></script></body></html>','style.css':'body { color: red; }','main.js':'import("./dynamic.js").then(value=>document.body.textContent=value.answer)','dynamic.js':'export const answer="loaded"'}))await writeFile(root+'/'+name,content);`;
   await writeFile(path.join(directory, "build.mjs"), buildScript);
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [...declaration.entries, { ...declaration.entries[0], entryId: "alias" }, { entryId: "board", root: "apps/board" }], release: { build: [process.execPath, "build.mjs"] } }));

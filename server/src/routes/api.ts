@@ -1,7 +1,5 @@
 import { normalizeProjectManifest } from "@steamharness/project-manifest";
 import { createRuntimeStorageRouter } from './runtime-storage';
-import { createDatabaseRouter } from './databases';
-import { createKnowledgeBaseRouter } from './knowledge-bases';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
@@ -473,8 +471,6 @@ export function createApiRouter(
   const router = Router();
   router.use(createGroupRouter(storage));
   router.use(createRuntimeStorageRouter(storage));
-  router.use(createDatabaseRouter(storage));
-  router.use(createKnowledgeBaseRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
@@ -660,16 +656,6 @@ export function createApiRouter(
     }),
   );
 
-  router.post('/projects/:name/entries/:entryId/resources/read', authenticate, json, asyncHandler(async(req,res)=>{
-    await requireProjectReadAccess(req,storage);
-    const body=readRequiredRecord(req.body,'body');
-    if(Object.keys(body).some(key=>!['kind','knowledgeBase','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported knowledge resource fields.');
-    if(body['kind']!=='knowledge')throw new HttpError(400,400,'Unsupported resource kind.');
-    const base=(await storage.entryKnowledgeBases(req.params.name,req.params.entryId,requestActor(req))).get(requireString(body['knowledgeBase'],'knowledgeBase'));
-    const data=body['documentId']?await base.getDocument(requireString(body['documentId'],'documentId')):await base.listDocuments({pageSize:100});
-    res.json(ok(data??null));
-  }));
-
   router.post(
     "/projects/:name/kanban/bridge",
     authenticate,
@@ -677,7 +663,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const body = isRecord(req.body) ? req.body : {};
       const call = readKanbanBridgeCall(body["call"]);
-      const readOperation = (call.operation === "database.resolve" || call.operation === "database.query" && (call.input.request as {operation?: string})?.operation === "rows") || ["runtime.getLocale", "files.readFile", "knowledge.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
+      const readOperation = call.operation === "runtime.getLocale";
       await requireProjectReadAccess(req, storage);
       if (!readOperation) await requireProjectStorageWriteAccess(req, storage);
       const target = body["target"] === undefined ? "draft" : await readableTarget(req, storage, body["target"]);

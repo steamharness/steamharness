@@ -88,21 +88,21 @@ Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)�
 
 打开 `examples/bot` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
 
-标题栏左侧可切换 **IDE / Steam** 模式，并为 macOS 原生窗口按钮预留随缩放调整的空间。IDE 保留编辑器布局；Steam 隐藏活动栏、文件侧栏和底部面板，左侧显示项目运行页面，右侧通过“打开工具”使用数据库、知识库、项目信息、小助手、版本管理和运行追踪。返回 IDE 会恢复原有布局和编辑器，运行页面及未保存文件会保留。模式按工作区记忆，工具位置只在当前窗口临时调整；普通文件夹不能进入 Steam 模式。过渡动画遵循系统的“减少动态效果”设置。
+标题栏左侧可切换 **IDE / Steam** 模式，并为 macOS 原生窗口按钮预留随缩放调整的空间。IDE 保留编辑器布局；Steam 隐藏活动栏、文件侧栏和底部面板，左侧显示项目运行页面，右侧通过“打开工具”使用项目信息、小助手、版本管理和运行追踪。返回 IDE 会恢复原有布局和编辑器，运行页面及未保存文件会保留。模式按工作区记忆，工具位置只在当前窗口临时调整；普通文件夹不能进入 Steam 模式。过渡动画遵循系统的“减少动态效果”设置。
 
 Steam 工具区首次打开占窗口宽度的三分之一；拖动分隔线后的宽度按工作区保存，隐藏重开、模式往返及重载窗口都会恢复。窗口缩窄时临时限制宽度，保留用户选择的大小。
 
-小助手聚合项目注册默认的 `main` Conversation 和内置的 `studio-control` Workflow 两个入口，共用 projectId、依赖和分发。Studio Control 源码位于 `../build-in/build-in-developer-assistant/studio-control`；小助手通过自身的 `mcp --entry studio-control` 按需读取工作区和诊断、查询聚合入口、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_entries` 返回 projectId、defaultEntry 与入口清单，不赋予数据库访问权限。控制工具跟随本轮 Permission，并沿用工具审批与 Build/Plan 规则；终端工具不执行命令。认证回环连接在最后一个运行标签关闭、移除工作区或撤销信任后失效。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
+小助手聚合项目注册默认的 `main` Conversation 和内置的 `studio-control` Workflow 两个入口，共用 projectId、依赖和分发。Studio Control 源码位于 `../build-in/build-in-developer-assistant/studio-control`；小助手通过自身的 `mcp --entry studio-control` 按需读取工作区和诊断、查询聚合入口、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_entries` 返回 projectId、defaultEntry 与入口清单。控制工具跟随本轮 Permission，并沿用工具审批与 Build/Plan 规则；终端工具不执行命令。认证回环连接在最后一个运行标签关闭、移除工作区或撤销信任后失效。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
 
 在 Studio 中打开 `../build-in/build-in-developer-assistant` 项目根目录，也可以选择并直接运行 `studio-control` 入口，无需启动对话或配置模型。默认目录为聚合项目根目录，文件访问限定在登记的工作区。控制入口随小助手统一安装，不再单独打开或安装 `studio-control/` 子目录。
 
 执行 **Workflow: 打开 Studio 分析** 或点击 Workflow 项目列表标题栏的图表入口，可打开 `build-in/build-in-analysis` 源码提供的内置 Kanban。它汇总当前工作区和已导入本地项目的真实运行历史与活动状态，展示图表、项目表、运行明细、筛选及 CSV 导出，不读取服务器数据。聚合仓库中的 `../build-in/build-in-analysis` 也可以作为普通 Kanban 项目运行；修改页面源码后先执行 `pnpm build`。
 
-在完成扩展、同级 Core 和 CLI 构建后，`npm run test:analysis-live` 可使用隔离存储检验内置模板、真实项目 CLI、只读数据连接和项目范围更新；不会启动桌面窗口。
+在完成扩展、同级 Core 和 CLI 构建后，`npm run test:analysis-live` 可使用隔离存储检验内置模板、真实项目 CLI 和项目范围更新；不会启动桌面窗口。
 
 Studio 活动栏中的 **Workflow 项目** 列出当前文件夹及常见项目容器下的项目。Conversation 支持自定义参数、附件、工具确认与续跑、计划、输入队列、独立并发会话、历史与标签页恢复、输出和运行诊断；Workflow 支持入口选择和本地运行；Kanban 通过项目 CLI 打开静态产物、参数配置和数据 Bridge。能力范围见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
-数据库工具展示当前 Server 账号的关系数据库与知识库，并打开 Server Web 管理授权、绑定和数据。底部保留终端与执行轨迹，旧 KV 面板已移除。详见 [数据库与资源管理](docs/resource-panel.md)。
+底部保留终端与执行轨迹。
 
 Steam 工具区的子标签加号创建独立内容：小助手进入新对话，保留原标签的运行与草稿；各助手标签恢复自己选中的对话。资源、项目信息、版本和轨迹从默认浏览状态打开，编辑器、终端和浏览器分别创建新文件、新会话和新页面。
 

@@ -4,7 +4,7 @@ import { createDefaultProjectInfo } from '@steamharness/project-info';
 import { projectInformation } from '../web/ui/project-information';
 import type { Project } from '../web/workflow-types';
 
-const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: '448a05e4-6f18-4f62-b99e-413790796f4b', name: 'Display name',
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: '448a05e4-6f18-4f62-b99e-413790796f4b', name: 'Display name',
   manifest: { name: 'package-name', version: '1.2.3', description: 'Original description' },
   uri: 'file:///project', folderPath: '/project', projectType: 'bot', fields: [], entrypoints: [] };
 afterEach(() => initI18n({ preference: 'zh-CN' }));

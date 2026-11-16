@@ -26,7 +26,6 @@ An absent host marker defaults to `cli`; an unknown nonempty marker throws. Serv
 
 ## Configure storage separately
 
-Use generated descriptors with `context.databases.connect(descriptor)` for business databases. Server resolves an authorized PostgreSQL resource from the account and entry binding. Knowledge access uses `context.knowledgeBases.get(alias)`.
 
 Local development can run Server and Docker PostgreSQL on one machine. [Runtime storage](/en/core-api/runtime-storage) determines where history persists; do not infer it from the platform name.
 
@@ -34,4 +33,4 @@ Local development can run Server and Docker PostgreSQL on one machine. [Runtime 
 
 Studio and CLI Web open authenticated Server Web pages for models, data, attachments, and account grants. Links contain no account token.
 
-SQL credentials, connections, and binding identities remain in the host. Project RPC and Browser pages receive only authorized model operations. This API exposes neither local database directories nor a KV management context.
+Project RPC and Browser pages receive only authorized host operations.

@@ -56,9 +56,6 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
     row(`window:${entry.entryId}:type`, t('Project type'), t(typeNames[entry.type])),
     row(`window:${entry.entryId}:path`, t('Local path'), entry.type === 'kanban' ? entry.entry : `${entry.root}/${entry.entry}`),
   ], false), avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) }));
-  const databases = project.databases.map(database => group(`database:${database}`, database, 'database', [
-    row(`database:${database}:alias`, t('Database'), database),
-  ], false));
 
   const platforms = [row('platform-mode', t("Platform mode"), platform.mode === 'specific' ? t("Specific platforms")
     : platform.mode === undefined || platform.mode === 'agnostic' ? t("Platform independent") : text(platform.mode))];
@@ -73,7 +70,6 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
       .map(([locale, name]) => row(`name:${locale}`, locale, name))),
     group('platforms', t("Platform Support"), 'device-desktop', platforms),
     group('windows', t('Project windows'), 'window', entries, false),
-    group('databases', t('Database spaces'), 'database', databases, false),
   ];
   if (project.entrypoints.length) {
     items.push(group('entrypoints', t("Entrypoints"), 'run-all', project.entrypoints.map(entry => row(`entry:${entry.id}`, entry.title ?? entry.id,

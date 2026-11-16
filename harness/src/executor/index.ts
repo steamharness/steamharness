@@ -31,9 +31,6 @@ import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharnes
 import { projectEntryKey } from "@steamharness/project-manifest";
 import type { AccessActor } from "@steamharness/project-access";
 import { createExecutorResources, type EntryDeclaration } from "./entry-resources";
-import { closeDatabaseConnections } from "../database/runtime";
-import type { RelationalDatabasesContext } from "../database/index";
-import type { RelationalDatabaseHost } from "../database/host";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 type ProjectDataStorageLocation = "local" | "server";
 import { createLocalProjectConfigurationStore, getProjectConfiguration, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
@@ -137,9 +134,6 @@ export interface RunWorkspaceProjectOptions {
   entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
   actor?: AccessActor;
-  /** Trusted native host for relational connections; defaults to the signed-in Server. */
-  relationalDatabaseHost?: RelationalDatabaseHost;
-  knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   cwd?: string;
@@ -176,9 +170,6 @@ export interface RunLocalProjectOptions {
   entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
   actor?: AccessActor;
-  /** Trusted native host for relational connections; defaults to the signed-in Server. */
-  relationalDatabaseHost?: RelationalDatabaseHost;
-  knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   projectDir?: string;
@@ -267,7 +258,6 @@ async function runWorkspaceProjectWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -433,7 +423,6 @@ async function runWorkspaceProjectWithReportInternal(
       ),
     };
 
-    resourceDatabases = context.databases;
     runtime.throwIfAborted();
     result = await safeRunProject(execution.workflow, input, context);
   } catch (error) {
@@ -443,8 +432,7 @@ async function runWorkspaceProjectWithReportInternal(
       ? createAbortedProjectResult(runtime.abortSignal, options.projectName)
       : createProjectFailure(diagnosedError);
   } finally {
-    try { if (resourceDatabases) await closeDatabaseConnections(resourceDatabases); }
-    finally { result = await closeRuntimeStateStorage(activeRuntimeState, result!); }
+    result = await closeRuntimeStateStorage(activeRuntimeState, result!);
   }
 
   return runtime.finish({
@@ -487,7 +475,6 @@ async function debugWorkspaceProjectNodeWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -650,7 +637,6 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       ),
     };
 
-    resourceDatabases = context.databases;
     runtime.throwIfAborted();
     const debugOutput = entry.stream
       ? (await runStreamNode(requireStreamDebugNode(entry), input, context)).output
@@ -666,8 +652,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       ? createAbortedProjectResult(runtime.abortSignal, options.projectName)
       : createProjectFailure(diagnosedError);
   } finally {
-    try { if (resourceDatabases) await closeDatabaseConnections(resourceDatabases); }
-    finally { result = await closeRuntimeStateStorage(activeRuntimeState, result!); }
+    result = await closeRuntimeStateStorage(activeRuntimeState, result!);
   }
 
   return runtime.finish({
@@ -822,7 +807,6 @@ async function runLocalProjectWithReportInternal(
   let startedEventEmitted = false;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -997,7 +981,6 @@ async function runLocalProjectWithReportInternal(
       ),
     };
 
-    resourceDatabases = context.databases;
     throwIfRunLocalProjectAborted(abortController.signal, projectName);
     result = await safeRunProject(execution.workflow, input, context);
     if (abortController.signal.aborted) {
@@ -1020,8 +1003,7 @@ async function runLocalProjectWithReportInternal(
           diagnoseModuleImportError(error, projectDir, projectName) ?? error,
         );
   } finally {
-    try { if (resourceDatabases) await closeDatabaseConnections(resourceDatabases); }
-    finally { result = await closeRuntimeStateStorage(activeRuntimeState, result!); }
+    result = await closeRuntimeStateStorage(activeRuntimeState, result!);
   }
 
   const endedAt = new Date();
@@ -1406,7 +1388,7 @@ function readInputConversationId(input: unknown): string | undefined {
 }
 
 function readProjectStorageDeclaration(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): ProjectStorageDeclaration {
-  const resolved = resolveProjectEntrySync(projectDir, entryId, env);
+  const resolved = resolveProjectEntrySync(projectDir, entryId);
   return { ...resolved, projectId: resolved.manifest.projectId, entryId: resolved.registration.entryId };
 }
 
@@ -2144,7 +2126,7 @@ function readKanbanStructureFiles(projectDir: string, currentDir = projectDir): 
 }
 
 function assertLocalProjectIsExecutable(projectDir: string, projectName: string, entryId?: string, env?: NodeJS.ProcessEnv): void {
-  if (resolveProjectEntrySync(projectDir, entryId, env).registration.type !== "kanban") return;
+  if (resolveProjectEntrySync(projectDir, entryId).registration.type !== "kanban") return;
   throw new HarnessError({
     type: "input_validation",
     message: createKanbanExecutionUnsupportedMessage(projectName),

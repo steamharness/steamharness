@@ -30,7 +30,7 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: crypto.randomUUID(), name: 'Approval', version: '1.0.0', type: 'module', devDependencies: { steamharness: await resolveHarnessVersion() },
-      defaultEntry: 'main', entries: [{ entryId: 'main', type: 'bot', name: 'Approval', root: '.', entry: 'index.ts', databases: [] }] }));
+      defaultEntry: 'main', entries: [{ entryId: 'main', type: 'bot', name: 'Approval', root: '.', entry: 'index.ts' }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import { appendFile } from 'node:fs/promises';
       export const executor = steamharness.defineBot({

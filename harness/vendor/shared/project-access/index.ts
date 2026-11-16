@@ -112,7 +112,7 @@ export function canManageMember(
   );
 }
 
-/** Ordinary project membership requests are independent of database grants. */
+/** Ordinary project membership requests use the shared access policy. */
 export type ProjectAccessRequestStatus = "pending" | "approved" | "rejected";
 export interface ProjectAccessRequest {
   id: string; projectId: string; requesterUserId: string; reason: string;

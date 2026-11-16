@@ -9,7 +9,6 @@ import { createLocalRuntimePersistence } from './runtime-storage.mjs';
 import {
   inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
-  createKnowledgeBasesContext, createServerKnowledgeBaseHost, databaseConnectionFromEnv,
   readProjectManifestFromDirectorySync,
 } from './harness.mjs';
 
@@ -66,7 +65,6 @@ try {
           entryRoot: path.resolve(folderPath, registration.root),
           entries: manifest.entries,
           defaultEntry: manifest.defaultEntry,
-          databases: registration.databases,
           aggregateName: manifest.projectInfo?.localizedNames?.[language] ?? manifest.name,
           aggregateProjectCard: manifest.projectCard,
           projectCard: registration.projectCard,
@@ -179,13 +177,6 @@ try {
         if (file?.reference.conversationId === request.conversationId) { await rm(path.join(filesDir, id), { recursive: true, force: true }); }
       }
       send('result', { deleted: true });
-    } else if (request.method === 'resource') {
-      const target = request.target ?? {};
-      if (request.kind !== 'knowledge') throw new Error('Unsupported resource kind.');
-      const registration = readProjectManifestFromDirectorySync(projectDir).entries.find(entry => entry.entryId === request.project.entryId);
-      const connection = databaseConnectionFromEnv();
-      const base = createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration?.knowledgeBases ?? [], host: connection ? createServerKnowledgeBaseHost(connection) : undefined }).get(target.knowledgeBase);
-      send('result', target.documentId ? await base.getDocument(target.documentId) : await base.listDocuments({ pageSize: 100 }));
     } else if (request.method === 'delete-conversation') {
       for (const directory of await readdir(filesDir).catch(() => [])) {
         if (!/^wf_[a-f0-9]{32}$/.test(directory)) { continue; }

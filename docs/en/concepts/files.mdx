@@ -73,8 +73,6 @@ file.toJSON()
 
 `toLLMImagePart()` only accepts image files; non-images throw an input validation error.
 
-`context.knowledgeBases.get("docs").files.readFile(id)` reads a database attachment as a content snapshot. Calls such as `readBuffer()` and `readBase64()` on that handle reuse the downloaded content while checking the current database binding and read grant each time. Revoking or narrowing the grant also prevents reads through retained handles.
-
 ## Runtime build file
 
 To create a screenshot, export, or other file during a Workflow run, call `context.files.createFile(...)`:
@@ -96,10 +94,6 @@ Without a Server connection, generated-file creation throws instead of saving to
 
 After upload, `await context.files.resolveFile(reference)` resolves a file on the same Server for `readBuffer()`, `readBase64()`, or `readDataUrl()`. The remote store authenticates against the fixed managed endpoint and never trusts a reference's URL or local path for authenticated reads.
 
-Kanban pages use `createFile/readFile/deleteFile` on `window.steamHarnessKanban.knowledgeBases.get(alias).files` to access authorized knowledge-base attachments. See [Kanban data Bridge](/en/concepts/kanban#data-bridge).
-
-Server saves knowledge images and other attachments in separate private file storage; PostgreSQL retains metadata, sizes and content digests. Every read checks the current binding and account grant; JSON transport uses Base64. Legacy inline KV attachments are not migrated automatically. Backups must retain both PostgreSQL and file storage.
-
 Keep file bytes out of business rows and conversation history. For later turns, save the reference metadata from `file.toJSON()`.
 
 ### Multi-turn image editing
@@ -110,7 +104,7 @@ Bot mode stores only user prompts, result summaries, and `file.toJSON()` metadat
 
 Generated images are returned as `data:image/...;base64,...` previews in Markdown output items. Their bytes are not saved in conversation state, so a generated image does not automatically become input for the next turn.
 
-For reuse across pages or knowledge resources, create a Server file reference with `context.files.createFile(...)`.
+For later reuse, create a Server file reference with `context.files.createFile(...)`.
 
 ## CLI Web and server behavior
 

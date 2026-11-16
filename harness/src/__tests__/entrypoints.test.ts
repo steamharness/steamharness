@@ -205,7 +205,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
 test("workflow entrypoint structure resolves imported workflows and keeps registries scoped", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
   try {
-    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],
       name: "imported-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -289,7 +289,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
 test("workflow entrypoint structure resolves wrapped definitions and inline default exports", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
   try {
-    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],
       name: "wrapped-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -357,7 +357,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
 test("workflow entrypoint structure does not accept an unrelated same-name workflow", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
   try {
-    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],
       name: "colliding-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -479,7 +479,7 @@ test("workspace runtime layers prepare before inspection and started events incl
       name: projectName,
       version: "0.1.0",
       type: "module",
-      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
     }));
     await writeFile(path.join(projectDir, "index.ts"), `
       const mainProject = steamharness.defineProject({
@@ -722,7 +722,7 @@ async function createEntrypointProject(): Promise<string> {
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     let sharedRule;
@@ -817,7 +817,7 @@ async function createConversationProject(): Promise<string> {
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
-    defaultEntry:"main",entries:[{entryId:"main",type:"bot",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+    defaultEntry:"main",entries:[{entryId:"main",type:"bot",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), botFixtureSource({ properties: 'name: "conversation-flow",' }));
   return projectDir;

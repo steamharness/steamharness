@@ -7,7 +7,7 @@ description: "把全部注册入口打包为可上传的归档。"
 
 # workspace pack
 
-用 `workspace pack` 在本地打包整个聚合项目。它不会创建远程项目或数据库。
+用 `workspace pack` 在本地打包整个聚合项目。它不会创建远程项目。
 
 ## 命令
 
@@ -23,14 +23,7 @@ pnpm exec steamharness workspace pack <project-id> --path . --output dist/steamh
 | --- | --- |
 | 注册入口、依赖清单、业务配置定义 | 包含 |
 | Kanban 构建产物 | 包含已登记入口所需产物 |
-| 数据库定义和生成清单 | 检查并包含完整产物 |
 | 凭据、宿主运行数据、Git、`node_modules` | 排除 |
 | 缓存、报告、临时文件和归档输出目录 | 排除 |
 
-关系库的账号绑定由 Server 维护，不导出连接凭据或环境覆盖值。知识库引用和资源声明不授予访问权，接收方仍需取得授权。
-
-## 数据库生成与输出
-
-聚合根或注册入口目录存在 `steamharness.database.ts` 时，打包先生成 Node/Browser 描述符、类型和运行资产。通过清单校验的数据库产物必须完整，不能用 `.steamharnessignore` 排除。
-
-默认输出 `.tgz`，存放在项目根的 `dist/steamharness/release/`。打包结束只清理本次临时目录，其他入口的产物保留。路径规则见 [Database API](/core-api/database#构建与分发)。
+默认输出 `.tgz`，存放在项目根的 `dist/steamharness/release/`。打包结束只清理本次临时目录，其他入口的产物保留。路径规则见[运行与文件存储](/concepts/data-storage)。

@@ -7,7 +7,7 @@ import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/st
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
-const declaration = (type = 'workflow', identity = id) => ({ id: identity, name: 'Example', version: "0.1.0",  defaultEntry: 'main', entries: [{ entryId: 'main', type, name: 'Main', root: '.', entry: type === 'kanban' ? 'index.html' : 'index.ts', databases: [] }]  });
+const declaration = (type = 'workflow', identity = id) => ({ id: identity, name: 'Example', version: "0.1.0",  defaultEntry: 'main', entries: [{ entryId: 'main', type, name: 'Main', root: '.', entry: type === 'kanban' ? 'index.html' : 'index.ts' }]  });
 const manifest = (type, identity = id) => JSON.stringify(declaration(type, identity));
 const executor = type => `throw new Error('Must never execute'); export const executor = steamharness.defineExecutor({ projectType: '${type}' });`;
 class Emitter {
@@ -73,7 +73,7 @@ test('icons read the default registered entry without analyzing or executing pro
   });
   const aggregate = declaration('workflow');
   aggregate.entries.push({ entryId: 'chat', root: 'chat' });
-  f.files.set('vscode-remote://host/project/chat/steamharness.json', JSON.stringify({type:'bot', name:'Chat',entry:'index.ts',databases:[]}));
+  f.files.set('vscode-remote://host/project/chat/steamharness.json', JSON.stringify({type:'bot', name:'Chat',entry:'index.ts'}));
   aggregate.defaultEntry = 'chat';
   f.files.set('vscode-remote://host/project/steamharness.json', JSON.stringify(aggregate));
   assert.deepEqual(await f.types('vscode-remote://host/project'), { 'vscode-remote://host/project': 'bot' });

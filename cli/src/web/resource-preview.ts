@@ -17,7 +17,6 @@ import { KanbanMethodHub } from './kanban-methods';
 import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
 import { t, locale } from './localization';
 import { readLocalWorkflowResource } from './local-resource-reader';
-import { selectedKnowledgeReader } from './resource-reader-contract';
 
 export interface ResourcePreviewData {
   card: ResourceCard;
@@ -101,16 +100,12 @@ export class ResourcePreviews {
     const id = card.target.projectId ?? this.owner.id;
     const entryId = card.target.entryId ?? this.owner.entryId;
     if (card.target.source === 'server') {
-      if (card.kind === 'knowledge') {
-        if (id.toLowerCase() === this.owner.id.toLowerCase() && entryId === this.owner.entryId) { return this.owner; }
-        return { ...this.owner, id, entryId, uri: `workflow-server:${id}/${entryId}`, folderPath: '', name: id, projectType: 'workflow', fields: [], entrypoints: [] };
-      }
       const summary = await this.server(id, '');
       const registration = summary.entries.find((entry: any) => entry.entryId === entryId);
       if (!registration) throw new Error(t('The resource project is unavailable.'));
       return { ...this.owner, id, entryId, entries: summary.entries, defaultEntry: summary.defaultEntry,
         uri: `workflow-server:${id}/${entryId}`, folderPath: '', entryRoot: '', aggregateName: summary.name,
-        name: registration.name, projectType: registration.type, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [],
+        name: registration.name, projectType: registration.type,
         fields: [], entrypoints: [] };
     }
     const workspace = card.kind === 'kanban' || card.kind === 'project' ? this.owner.assistant?.workdir : undefined;
@@ -140,22 +135,8 @@ export class ResourcePreviews {
     const generation = this.generation;
     const project = await this.resolve(card);
     const id = randomUUID(), data: ResourcePreviewData = { card, project }, entry: PreviewEntry = { data, controller: new AbortController() };
-    const target = card.target, scopeId = target.conversationId ?? '';
-    if (card.kind === 'knowledge') {
-      if (card.reader) {
-        if (target.source === 'server' || project!.id !== this.owner.id) throw new Error('Resource readers must target the current local project.');
-        const result = await readLocalWorkflowResource(this.runtime, project!, project!.entryId, selectedKnowledgeReader(card.reader, target), this.lifetime.signal) as { errCode?: number; format?: string; content?: unknown; title?: string };
-        if (!result || result.errCode !== 0 || !['markdown', 'json'].includes(result.format ?? '')) throw new Error('Invalid resource reader result.');
-        data.content = result.content; data.format = result.format as 'markdown' | 'json';
-        if (typeof result.title === 'string' && result.title.trim()) data.card = { ...card, title: result.title.trim().slice(0, 200) };
-      } else {
-      data.content = target.source==='server'
-        ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,knowledgeBase:target.knowledgeBase,documentId:target.documentId})})
-        : await this.runtime.readResource(project!, scopeId, card.kind, target);
-      if (card.kind === 'knowledge' && (data.content === null || data.content === undefined)) { throw new Error(t('This resource no longer exists.')); }
-      data.format = card.kind === 'knowledge' && typeof (data.content as { markdown?: unknown }).markdown === 'string' ? 'markdown' : 'json';
-      }
-    } else if (card.kind === 'file') {
+    const target = card.target;
+    if (card.kind === 'file') {
       if (target.source === 'server') { throw new Error(t('Server source files cannot be previewed by this card.')); }
       const root = await realpath(project!.assistant?.workdir ?? project!.folderPath);
       const filename = await realpath(path.resolve(root, target.filePath));
@@ -334,7 +315,7 @@ export class ResourcePreviews {
       return result;
     }
     // Card previews are temporary and cannot mutate the target's stored data.
-    if (!(call.operation === 'database.query' && call.input.request && (call.input.request as { operation?: string }).operation === 'rows') && !['runtime.getLocale', 'database.resolve', 'knowledge.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
+    if (!['runtime.getLocale', 'files.readFile'].includes(call.operation)) {
       throw new Error(t('This resource preview is read-only.'));
     }
     if (call.operation === 'runtime.getLocale') { return locale(); }
@@ -355,7 +336,7 @@ export class ResourcePreviews {
         }
       }
       if (result === undefined) {
-        attempts.push({ source: 'database' });
+        attempts.push({ source: 'configuration-attachment' });
         if (data.card.target.source === 'server') {
           result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call, entryId: project.entryId }) }, call.operation === 'files.readFile' ? 120_000 : 30_000);
         } else {

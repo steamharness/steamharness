@@ -39,9 +39,8 @@ type ScheduleTrigger =
 ```json
 {
   "type": "workflow",
-  "name": "Database",
+  "name": "Scheduled workflow",
   "entry": "index.ts",
-  "databases": [],
   "schedulePresets": [
     {
       "id": "hourly",
@@ -87,4 +86,4 @@ Server 保存项目与数据，不调度或执行项目。本地应用可以使�
 
 ## 与 Kanban 联动
 
-知识库变更通过 `window.steamHarnessKanban.knowledgeBases.get(alias).subscribe(...)` 订阅；后续读取重新检查授权。关系模型使用生成的表 API 并显式刷新。定时任务与 fire 历史仍按 `projectId + entryId` 隔离，内部操作使用 `entrypointId`。
+定时任务与 fire 历史按 `projectId + entryId` 隔离，内部操作使用 `entrypointId`。

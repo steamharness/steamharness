@@ -28,11 +28,11 @@ Declare inputs, nodes, and execution order in TypeScript. Use workflows for data
 
 ### Bot
 
-Organize work around messages and rounds. A conversation executor accepts input using the same runtime as workflows. See [databases and conversations](/en/concepts/database-and-conversation) for history management.
+Organize work around messages and rounds. A conversation executor accepts input using the same runtime as workflows. See [runtime storage](/en/core-api/runtime-storage) for history management.
 
 ### Kanban
 
-Write HTML, CSS, and JavaScript with `index.html` as the entry. A restricted Bridge can access relational or knowledge resources that the entry has bound and the account is allowed to use.
+Write HTML, CSS, and JavaScript with `index.html` as the entry. A restricted Bridge can access project files through host-provided APIs.
 
 ## Where projects run
 
@@ -40,7 +40,7 @@ Write HTML, CSS, and JavaScript with `index.html` as the entry. A restricted Bri
 | --- | --- |
 | Studio | Edit source, run local projects, inspect results and traces |
 | Local CLI | Run tasks, inspect structure, export JSON, or expose MCP tools |
-| Server | Store source, versions, members, databases, knowledge bases, and files |
+| Server | Store source, versions, members, and files |
 | Server Web management console | Manage Server projects and resources in a browser |
 | Store | Browse, download, and publish project versions |
 
@@ -60,7 +60,7 @@ Project code runs on the machine hosting Studio or the local CLI. Server stores 
 
 ## Project data and configuration
 
-Business databases, knowledge bases, and runtime history have separate lifecycles. Declare relational aliases in `databases`; Server maintains their bindings by account, project, and entry. Declare knowledge resources in `knowledgeBases`.
+Runtime history is scoped to projects and entries; project files follow their own access permissions.
 
 Configuration and conversations are scoped by `projectId + entryId`. Configuration changes apply to subsequent runs. See [project configuration](/en/concepts/project-configuration) and [data storage](/en/concepts/data-storage).
 
@@ -93,7 +93,7 @@ The enhanced edition adds account-provided models, provider preferences, subscri
 
 The root `steamharness.json` declares project identity, version, and entries. Workflow and Bot entries point to executor source; Kanban entries point to built HTML. `package.json` and the lockfile manage ordinary dependencies.
 
-See the [workflow model](/en/concepts/workflow-model) for declarations. Read the [Core 0.2 migration guide](/en/guides/migrate-core-0-2) before updating an older project.
+See the [workflow model](/en/concepts/workflow-model) for declarations.
 
 ## Built-in projects
 

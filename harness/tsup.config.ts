@@ -1,4 +1,4 @@
-import { build, defineConfig } from "tsup";
+import { defineConfig } from "tsup";
 import path from "node:path";
 import { copyFile, cp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -11,9 +11,6 @@ export default defineConfig({
     agent: "src/agent/index.ts",
     "runtime-api": "src/runtime-api.ts",
     "runtime-storage": "src/runtime-storage/index.ts",
-    database: "src/database/index.ts",
-    "database/engine": "src/database/engine.ts",
-    "database/engine-browser": "src/database/engine-browser.ts",
     "node/output": "src/node/output/index.ts",
     "types/context": "src/types/context.ts",
     "executor/rules": "src/executor/rules.ts",
@@ -51,14 +48,10 @@ export default defineConfig({
       "@steamharness/project-manifest": ["./vendor/shared/project-manifest/index.ts"],
       "@steamharness/project-manifest/node": ["./vendor/shared/project-manifest/node.ts"],
     } },
-    entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "runtime-storage": "src/runtime-storage/index.ts", database: "src/database/index.ts", "database/engine": "src/database/engine.ts", "database/engine-browser": "src/database/engine-browser.ts", "node/output": "src/node/output/index.ts",
+    entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "runtime-storage": "src/runtime-storage/index.ts", "node/output": "src/node/output/index.ts",
       "types/context": "src/types/context.ts", "executor/rules": "src/executor/rules.ts" },
   },
   async onSuccess() {
-    // Pure definitions and browser model helpers must not inherit the Node banner.
-    await build({ config: false, entry: { database: "src/database/index.ts", "database/engine-browser": "src/database/engine-browser.ts" },
-      outDir: "dist", format: ["esm"], platform: "browser", target: "es2022", bundle: true, splitting: false,
-      clean: false, dts: false, tsconfig: "tsconfig.json" });
     await copyFile(codemodeRequire.resolve("quickjs-wasi/quickjs.wasm"), path.resolve("dist/quickjs.wasm"));
     await rm(path.resolve("dist/skills"), { recursive: true, force: true });
     await cp(path.resolve("src/agent/skills"), path.resolve("dist/skills"), { recursive: true });

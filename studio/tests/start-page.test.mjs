@@ -150,7 +150,7 @@ test('Start shows one aggregate card and opens the default entry even if it is n
   const entries = [['agent', 'conversation'], ['database', 'workflow'], ['map-2d', 'kanban'], ['minimax', 'workflow'], ['tikhub', 'workflow']];
   f.projects = entries.map(([entryId, projectType]) => ({ id, aggregateName: 'Aggregate', name: entryId,
     uri: 'file:///aggregate', folderPath: '/aggregate', entryId, projectType, defaultEntry: 'database',
-    entries: entries.map(([entryId,type])=>({entryId,type})), manifest: {version:'1.2.3'}, databases: [] }));
+    entries: entries.map(([entryId,type])=>({entryId,type})), manifest: {version:'1.2.3'} }));
   await f.execute('studio.refreshStart');
   assert.deepEqual((await f.state()).projects.map(({ uri, entryId, name, projectType }) => ({ uri, entryId, name, projectType })),
     [{ uri: 'file:///aggregate', entryId: 'database', name: 'Aggregate', projectType: 'aggregate' }]);

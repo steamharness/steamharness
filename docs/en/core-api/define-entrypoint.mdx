@@ -43,7 +43,7 @@ interface EntrypointGroupDefinition {
 | `tools` | `ToolPermissionDefinition[]` | Tools this entrypoint may invoke and their default approval policy. |
 | `tokenUsage` | `TokenUsageDefinition` | Token-usage reporting configuration for this entrypoint. |
 | `registry` | `NodeRegistryEntry[]` | Nodes that can be debugged separately for this entrypoint. |
-| `createContext` | `(context) => Partial<RunContext>` | Adds providers, metadata, and hooks for this entrypoint. databases, conversation, and files remain runtime-provided. |
+| `createContext` | `(context) => Partial<RunContext>` | Adds providers, metadata, and hooks for this entrypoint. Conversation and files remain runtime-provided. |
 
 `createInput`, `resolveParams`, each registry entry's `createInput`, and `createContext` receive a `ExecutorContext`. When a Workflow entrypoint runs, `entrypointId` and `entrypointTitle` identify the selected entrypoint. The runtime also writes those values to `RunContext.metadata`, runtime events, and the final report.
 
@@ -108,7 +108,6 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Parameter, attachment, and tool-policy drafts | Hosts isolate them by project, resolution target, and entrypoint. |
 | Entrypoint group expansion | shared runtime UI and CLI Web enable grouped UI only when at least one group is declared. They persist expansion by `projectId + resolved target` under a versioned localStorage key; ungrouped entries use a localized **Ungrouped** group. |
 | Registry and debug node | Only the selected entrypoint's registry is available. |
-| `context.databases` | Current aggregate entry bindings. Internal Workflow operations share them; use separate keys or spaces for business isolation. |
 | Bot | Does not use `defineEntrypoint` and does not accept entrypoint selection. |
 
 ## Errors
@@ -121,7 +120,7 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Unknown entrypoint requested | `input_validation` | Error metadata includes the default entrypoint and allowed entrypoints. |
 | Bot receives an entrypoint argument | `input_validation` | Bot remains single-entry; the argument is neither ignored nor silently redirected. |
 
-`entrypointId` identifies an operation inside a Workflow entry. It is distinct from the window `entryId` registered in the root manifest: `steamharness run . --entry database --entrypoint search`.
+`entrypointId` identifies an operation inside a Workflow entry. It is distinct from the window `entryId` registered in the root manifest: `steamharness run . --entry workflow --entrypoint summarize`.
 
 ## Read operations for resource previews
 

@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { projectEntryFilePath } from "./artifacts";
-import { PROJECT_MANIFEST_FILE, PROJECT_CONFIG_FILE, projectEntryConfigRoots, readProjectDeclaration, resolveProjectDatabases, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
+import { PROJECT_MANIFEST_FILE, projectEntryConfigRoots, readProjectDeclaration, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
 
 export function readProjectDocumentSync(projectDir: string): Record<string, unknown> {
   const root = realpathSync(projectDir), file = realpathSync(path.join(root, PROJECT_MANIFEST_FILE));
@@ -32,19 +32,11 @@ export async function readProjectDeclarationFromDirectory(projectDir: string): P
   })));
   return readProjectDeclaration(document, children);
 }
-export function readProjectManifestFromDirectorySync(projectDir: string, env: NodeJS.ProcessEnv = process.env): ProjectManifest {
-  const root = realpathSync(projectDir);
-  let config: unknown;
-  try { const file = realpathSync(path.join(root, PROJECT_CONFIG_FILE)); assertWithin(root, file); config = JSON.parse(readFileSync(file, "utf8")); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return resolveProjectDatabases(readProjectDeclarationFromDirectorySync(root), config, env);
+export function readProjectManifestFromDirectorySync(projectDir: string): ProjectManifest {
+  return readProjectDeclarationFromDirectorySync(projectDir);
 }
-export async function readProjectManifestFromDirectory(projectDir: string, env: NodeJS.ProcessEnv = process.env): Promise<ProjectManifest> {
-  const root = await realpath(projectDir);
-  let config: unknown;
-  try { const file = await realpath(path.join(root, PROJECT_CONFIG_FILE)); assertWithin(root, file); config = JSON.parse(await readFile(file, "utf8")); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return resolveProjectDatabases(await readProjectDeclarationFromDirectory(root), config, env);
+export async function readProjectManifestFromDirectory(projectDir: string): Promise<ProjectManifest> {
+  return readProjectDeclarationFromDirectory(projectDir);
 }
 
 export interface ResolvedProjectEntry {
@@ -66,9 +58,9 @@ export function resolveProjectDeclarationEntrySync(projectDir: string, entryId?:
   const registration = selectProjectEntry(manifest, entryId);
   return { projectDir: projectRoot, manifest, registration, ...resolveEntryFilesSync(projectRoot, registration) };
 }
-export function resolveProjectEntrySync(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): ResolvedProjectEntry {
+export function resolveProjectEntrySync(projectDir: string, entryId?: string): ResolvedProjectEntry {
   const projectRoot = realpathSync(projectDir);
-  const manifest = readProjectManifestFromDirectorySync(projectRoot, env);
+  const manifest = readProjectManifestFromDirectorySync(projectRoot);
   const registration = selectProjectEntry(manifest, entryId);
   return { projectDir: projectRoot, manifest, registration, ...resolveEntryFilesSync(projectRoot, registration) };
 }
@@ -83,9 +75,9 @@ function resolveEntryFilesSync(projectRoot: string, registration: Pick<ProjectEn
   if (!statSync(modulePath).isFile()) throw new Error(`Registered entry path is not a file: ${registration.entry}`);
   return { rootDir, modulePath, ...(registration.configuration === undefined ? {} : { configurationPath: file(registration.configuration) }) };
 }
-export async function resolveProjectEntry(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): Promise<ResolvedProjectEntry> {
+export async function resolveProjectEntry(projectDir: string, entryId?: string): Promise<ResolvedProjectEntry> {
   const root = await realpath(projectDir);
-  const manifest = await readProjectManifestFromDirectory(root, env);
+  const manifest = await readProjectManifestFromDirectory(root);
   return resolveRegisteredProjectEntry(root, manifest, selectProjectEntry(manifest, entryId));
 }
 export async function resolveRegisteredProjectEntry(projectDir: string, manifest: ProjectManifest, registration: ProjectEntry): Promise<ResolvedProjectEntry> {

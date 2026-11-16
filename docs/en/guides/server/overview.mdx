@@ -1,14 +1,14 @@
 ---
-title: "Manage projects and data in Server Web"
-description: "Find projects, manage versions and access, and open data resources."
+title: "Manage projects in Server Web"
+description: "Find projects and manage versions and member access."
 ---
 
 <span id="manage-projects-and-data-with-server-web"></span>
 <span id="project-workspace"></span>
 
-# Manage projects and data in Server Web
+# Manage projects in Server Web
 
-Server Web is SteamHarness's browser management console for projects, versions, members, and data. Project code executes locally in Studio or the CLI.
+Server Web is SteamHarness's browser management console for projects, versions, and members. Project code executes locally in Studio or the CLI.
 
 ## Project workbench
 
@@ -18,16 +18,12 @@ Server Web is SteamHarness's browser management console for projects, versions, 
 
 A project can contain several entry types; a filter matches any included type. Uploaded archives need nonempty `entries` and a valid `defaultEntry`. Names and presentation come from project declarations.
 
-## Projects and data
+## Project management
 
 | Task | Location |
 | --- | --- |
 | Members, group ownership, and access requests | [Project management](/en/guides/server/project-management) |
 | Upload drafts, publish, or download | [Workspace CLI](/en/cli/server-workspace) |
-| Create databases, grant access, migrate models, and edit rows | Relational resource details in the database directory |
-| Manage documents, search, revisions, and attachments | Knowledge resource details in the database directory |
-
-Relational and knowledge resources are created, granted, and bound separately. Server maintains relational bindings by account, project, entry, and alias. Knowledge resources also use the root configuration's alias mapping. Membership alone grants no data access.
 
 Kanban previews run in permission-constrained static iframes using short-lived capabilities rather than inherited account credentials. Use a local host for executable project operations.
 

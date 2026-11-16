@@ -13,10 +13,10 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function card(id: string, kind: 'knowledge'): OutputItem {
+function card(id: string): OutputItem {
   return { id, metadata: { kind: 'agent-part', partType: 'tool' }, content: {
-    tool: 'db_status', status: 'success', output: { details: { resourceCard: { kind,
-      title: id, target: { source: 'local', projectId: 'scroll-test', entryId: 'main', knowledgeBase: 'docs', documentId: id },
+    tool: 'workflow-desktop_open_project', status: 'success', output: { details: { resourceCard: { kind: 'project',
+      title: id, target: { source: 'local', projectId: 'scroll-test', entryId: 'main' },
     } } },
   } };
 }
@@ -55,7 +55,7 @@ it('keeps batched resource cards and asynchronous layout changes visible until t
     scrollTop: { get: () => top, set: value => { top = value; clamp(); } },
   });
   const resize = () => { for (const observer of observers) if (observer.targets.has(content) || observer.targets.has(transcript)) observer.callback([], {} as ResizeObserver); };
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/scroll-test',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'bot', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/scroll-test',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'bot', fields: [], entrypoints: [] };
   const message: ConversationMessage = { id: 'answer', role: 'assistant', content: '', status: 'running', items: [] };
   const emit = (activeId = 'session') => {
     window.dispatchEvent(new MessageEvent('message', { data: {
@@ -68,7 +68,7 @@ it('keeps batched resource cards and asynchronous layout changes visible until t
   expect(top).toBe(600);
   height = 700; clamp();
   height = 1600;
-  message.items = [card('document', 'knowledge'), card('index', 'knowledge')];
+  message.items = [card('document'), card('index')];
   emit();
   transcript.dispatchEvent(new Event('scroll'));
   resize(); frame();

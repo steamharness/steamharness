@@ -56,7 +56,7 @@ class Element {
   click() { this.onclick?.(); this.events.get('click')?.({ preventDefault() {} }); }
 }
 
-const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/workflow-ui',databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}],
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/workflow-ui',entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts"}],
   id: 'workflow-ui', uri: 'file:///workflow-ui', folderPath: '/workflow-ui', name: 'Studio Control', projectType: 'workflow', fields: [],
   defaultEntrypoint: 'theme', entrypoints: [
     { id: 'theme', title: 'Set Studio theme', fields: [{ name: 'theme', label: 'Theme', type: 'string', required: true }] },

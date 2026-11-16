@@ -49,7 +49,7 @@ test('every translated contribution resolves in English and Chinese', async () =
 for (const language of ['en', 'zh-cn']) {
   test(`${language} localizes information and traces while preserving project values and execution content`, () => {
     configureLocalization(language === 'en' ? {} : chinese, language);
-    const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],databases:[],entrypoints: [] };
+    const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}],entrypoints: [] };
     const items = projectInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0',  projectInfo: {
       declarations: ['multilingual'], localizedNames: { en: 'My project', 'zh-CN': '\u6211\u7684\u9879\u76ee' },
     }  });

@@ -114,7 +114,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       const child = record(document) && projectType(document.type)
         && !['id', 'version', 'defaultEntry', 'entries'].some(key => Object.hasOwn(document, key));
       if (!reference.inWorkspace && (document === undefined || child)) { continue; }
-      // Local history needs declarations only, independent of deployment database bindings.
+      // Local history needs only the project declaration.
       const manifest = await readProjectDeclarationFromDirectory(directory);
       if (!sameProjectId(manifest.projectId, reference.id)) { throw new Error('Project identity changed.'); }
       for (const entry of manifest.entries) {

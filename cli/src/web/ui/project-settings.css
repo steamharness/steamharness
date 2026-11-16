@@ -121,12 +121,6 @@
 .project-settings-usage .usage-period-amount { flex-wrap: wrap; }
 .project-settings-usage .usage-period-amount > strong { font-variant-numeric: tabular-nums; }
 .project-settings-usage .usage-status { justify-content: center; padding: 28px 12px; text-align: center; overflow-wrap: anywhere; }
-.project-settings-panel .database-card { gap: 14px; padding: 20px; border-radius: 10px; background: var(--settings-surface); }
-.project-settings-panel .database-card-heading { flex-wrap: wrap; }
-.project-settings-panel .database-name { flex-basis: 140px; }
-.project-settings-panel .database-form { padding: 16px; border-radius: 8px; }
-.project-settings-panel .database-form > label { min-width: 0; }
-.project-settings-panel .database-form input { padding: 7px 10px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: 5px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
 .project-information-dialog [hidden] { display: none !important; }
 
 @media (max-width: 680px) {
@@ -151,5 +145,4 @@
   .project-settings-panel .permissions-table th:nth-child(2) { width: 52px; }
   .project-settings-panel .permissions-table th:nth-child(3) { width: 76px; }
   .project-settings-panel .permissions-table :is(td, th) { padding: 10px 6px; }
-  .project-settings-panel .database-card { padding: 16px; }
 }

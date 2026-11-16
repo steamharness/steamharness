@@ -23,9 +23,9 @@ it('lists and previews the selected agent through the real worker and authentica
   const version = JSON.parse(await readFile(path.join(harness, 'package.json'), 'utf8')).version;
   await writeProjectFixture(path.join(root, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Skill catalog', version: '1.0.0', type: 'module',
     devDependencies: { steamharness: version }, defaultEntry: 'main', entries: [
-      { entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] },
-      { entryId: 'child', name: 'Child', type: 'bot', root: 'child', entry: 'index.ts', databases: [] },
-      { entryId: 'plain', name: 'Plain workflow', type: 'workflow', root: 'plain', entry: 'index.ts', databases: [] },
+      { entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' },
+      { entryId: 'child', name: 'Child', type: 'bot', root: 'child', entry: 'index.ts' },
+      { entryId: 'plain', name: 'Plain workflow', type: 'workflow', root: 'plain', entry: 'index.ts' },
     ] }));
   await mkdir(path.join(root, 'guides', 'large'), { recursive: true });
   const content = '---\nname: large\ndescription: Full project guide\n---\n# Guide\n' + '中文内容😀\n'.repeat(50_000) + '\nEND_OF_GUIDE';

@@ -1,7 +1,6 @@
 import { resolveProjectDistribution } from "./release/build";
 import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { PROJECT_RELEASE_BASE_DIRECTORY, type ProjectDistributionMode } from "@steamharness/project-manifest";
-import { prepareProjectDatabaseArtifacts } from "./database-generation";
 import { isProjectUploadExcludedPath } from "@steamharness/project-upload";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
@@ -445,7 +444,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   assertApiOk(result); if (!result.data) throw new Error("Project download is unavailable.");
   const targetDir = parsed.options.path ? path.resolve(parsed.options.path) : path.join(resolveRepoRoot(), "workspace", "workflow", projectArg);
   await materializeAggregateDownload({ ...result.data, projectId }, targetDir);
-  printApiResponse({ ...result, data: { projectId, path: targetDir, entries: (await readProjectManifestFromDirectory(targetDir, {})).entries } });
+  printApiResponse({ ...result, data: { projectId, path: targetDir, entries: (await readProjectManifestFromDirectory(targetDir)).entries } });
 }
 
 interface AggregateDownload { projectId: string; resolvedTarget?: string; sourceHash?: string; files: Array<{path:string;content:string;encoding?:"base64"}> }
@@ -470,7 +469,7 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
       const filename = normalizeProjectFilePath(file.path);
       if (filename.startsWith("dist/") && !included.has(filename)) throw new Error("Invalid downloaded project artifact.");
     }
-    const manifest = await readProjectManifestFromDirectory(stage, {});
+    const manifest = await readProjectManifestFromDirectory(stage);
     for (const entry of manifest.entries) {
       const templateFile = download.files.find(file => file.path === configurationTemplatePath(entry.entryId));
       if (!templateFile) continue;
@@ -603,7 +602,7 @@ async function readProjectPackageContext(
     ? packageJson.id.trim()
     : undefined;
   const projectName = readRequiredPackageString(packageJson, "name");
-  const manifest = await readProjectManifestFromDirectory(projectDir, {});
+  const manifest = await readProjectManifestFromDirectory(projectDir);
 
   return {
     projectArg,
@@ -827,7 +826,6 @@ async function stageProjectSource(options: {
   projectName: string;
   stagingRoot: string;
 }): Promise<void> {
-  if (!readProjectReleaseSync(options.projectDir)) await prepareProjectDatabaseArtifacts(options.projectDir);
   const uploadPlan=await copyProjectSource(options.projectDir,path.join(options.stagingRoot,options.projectName));
   if(!uploadPlan.projectIgnoreConfigured)process.stderr.write(`${i18n.t('projectIgnoreWarning',{ns:'cli',files:uploadPlan.files.length,bytes:uploadPlan.totalBytes})}\n`);
 }

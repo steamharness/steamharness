@@ -55,26 +55,6 @@ test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", (
   assert.equal(readEntrypointOutput(undefined), undefined);
 });
 
-test("runProject shares persistentValue with child workflows", async () => {
-  const context = createTestProjectContext();
-  await context.knowledgeBases.get("data").createDocument({ id: "shared-key", title: "Shared", markdown: "from-persistent-parent" });
-
-  const child: Definition<Record<string, never>, { value: unknown }> = {
-    name: "child-workflow",
-    async run(input, childContext) {
-      return {
-        value: (await childContext.knowledgeBases.get("data").getDocument("shared-key"))?.markdown,
-      };
-    },
-  };
-
-  const output = await runProject(child, {}, context);
-
-  assert.deepEqual(output, {
-    value: "from-persistent-parent",
-  });
-});
-
 test("safeRunProject top-level execution does not emit a synthetic run-workflow node", async () => {
   const starts: NodeExecutionHookStartEvent[] = [];
   const context = createTestProjectContext({

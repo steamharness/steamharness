@@ -22,7 +22,6 @@ Use this binding for examples that call `steamharness.*`. For complete project f
 | --- | --- |
 | `globalThis.steamharness` | Host-injected runtime for nodes, executors, Agents, and other workflow APIs. |
 | `steamharness` package entry | SDK exports for the CLI, Server, tests, and custom hosts. |
-| [`steamharness/database`](/en/core-api/database) | Database definitions and typed Node/Browser descriptors. |
 
 ## Runtime API index
 
@@ -49,8 +48,7 @@ Use this binding for examples that call `steamharness.*`. For complete project f
 | [`runIf`](/en/core-api/run-if) |Execute the if / else-if / else branch and write the branch selection to the run report and Diagram.|
 | [`runFor`](/en/core-api/run-for) |Execute a traceable for loop and let Diagram display the loop body with the loop container.|
 | [`runWhile`](/en/core-api/run-while) |Execute the traceable while loop and let Diagram display the loop body with the loop container.|
-| [`runProject`](/en/core-api/run-workflow) |Call another workflow in the current context, sharing database connections, session, provider, token usage, and trace.|
-| [`Knowledge Documents`](/en/core-api/knowledge-documents) | Manage Markdown knowledge documents through independent knowledgeBases declarations, account grants and bindings. |
+| [`runProject`](/en/core-api/run-workflow) | Call another workflow in the current context, sharing session, provider, token usage, and trace. |
 | [`getConfig`](/en/core-api/get-config) |Read a native JSON configuration value from the current run snapshot.|
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|
 | [`getRuntimeLocale`](/en/core-api/runtime-locale) |Reads the Simplified Chinese or English language selected by the current host for localized visible output.|
@@ -74,7 +72,6 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 | --- | --- | --- |
 | `config` | `ConfigurationValues` | Immutable configuration values for this run. |
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
-| `databases` | `RelationalDatabasesContext` | Connect a generated descriptor to an independently authorized relational database. |
 | `entries` | `EntriesContext` | List entries and invoke aggregate Workflows with authorization checks. |
 | `projectId` / `entryId` | `string` | Aggregate and current window identity. |
 | `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|

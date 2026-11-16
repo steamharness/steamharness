@@ -55,7 +55,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     for (const pending of serverProjectRequests.values()) { clearTimeout(pending.timer); pending.reject(new Error(t('Connection interrupted.'))); }
     serverProjectRequests.clear();
   });
-  let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
+  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
@@ -239,8 +239,6 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (pending) { clearTimeout(pending.timer); serverProjectRequests.delete(result.requestId); result.error ? pending.reject(new Error(result.error)) : pending.resolve(); }
     }
     if (event.data.resourceVersion === 1) { resourceHost = true; }
-    if (event.data.databaseVersion !== undefined) databaseHost = event.data.databaseVersion === 1;
-    if (event.data.databaseOpened?.version === 1) emit({ type: 'database-open-result', ...event.data.databaseOpened });
     if (event.data.recoveryVersion === 1) recovery.enabled = true;
     if (event.data.recovery) recovery.receive(event.data.recovery);
     if (event.data.nativePasteVersion !== undefined) { nativePasteHost = event.data.nativePasteVersion === 1; }
@@ -405,11 +403,6 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'ready') { return; }
       if (message.type === 'trace-active') { trace.select(message.sessionId); return; }
       if (message.type === 'reconnect') { await connection.reconnect(); return; }
-      if (message.type === 'database-open') {
-        if (databaseHost) window.parent.postMessage({ type: 'workflow-database', version: 1, requestId: message.requestId, alias: message.alias, projectUri: message.projectUri }, '*');
-        else emit({ type: 'database-open-result', requestId: message.requestId, error: t('Data preview is not available in this Web session. Open the database in Studio or Server Web.') });
-        return;
-      }
       if (message.type === 'resource' && message.action !== 'inline' && resourceHost) {
         window.parent.postMessage({ type: 'workflow-resource', version: 1, request: message }, '*'); return;
       }

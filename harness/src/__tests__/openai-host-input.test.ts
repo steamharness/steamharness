@@ -56,7 +56,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       name: projectName,
       version: "0.1.0",
       type: "module",
-      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
+      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}], projectInfo:{},
     }), "utf8");
     await writeFile(path.join(projectDir, "index.ts"), `
       const openaiProject = steamharness.defineProject({

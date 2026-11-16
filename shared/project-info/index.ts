@@ -26,7 +26,6 @@ export function createDefaultProjectInfo(): ProjectInfoContract { return { local
 export function createUndeclaredProjectInfo(): ProjectInfoContract { return createDefaultProjectInfo(); }
 export function normalizeProjectInfo(value: unknown): ProjectInfoContract {
   if (!isRecord(value)) throw new Error("steamharness.json.projectInfo must be an object.");
-  if ("relatedProjects" in value || "dataStorage" in value) throw new Error("Project database and related-project declarations were removed. Register entry database requirements instead.");
   if (Object.keys(value).some(key => !["localizedNames", "declarations", "platformSupport"].includes(key))) throw new Error("steamharness.json.projectInfo contains unsupported fields.");
   return { localizedNames: normalizeLocalizedNames(value.localizedNames), declarations: normalizeIds(value.declarations, "steamharness.json.projectInfo.declarations"), platformSupport: normalizePlatformSupport(value.platformSupport) };
 }

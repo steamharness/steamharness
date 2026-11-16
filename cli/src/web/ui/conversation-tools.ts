@@ -7,13 +7,11 @@ import { usageAmount, usagePeriods } from './ai-usage';
 import { imagePreview } from './image-preview';
 import { toolsAndSkills } from './tools-and-skills';
 import { SkillGuides, type SkillGuidesLoader } from './skill-guides';
-import type { ProjectDatabases } from './project-databases';
 import type { ProjectConfigurationsPanel } from './project-configurations';
-import './project-databases.css';
 import './project-settings.css';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 
-export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases';
+export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
   browser?(url: string): void;
@@ -43,7 +41,7 @@ export class ConversationTools {
   private opener?: HTMLElement;
   private skillGuides?: SkillGuides;
   private readonly toolSections = new Map<string, boolean>();
-  constructor(private readonly databases?: ProjectDatabases, private readonly settings: ProjectSettingsOptions = {}) {
+  constructor(private readonly settings: ProjectSettingsOptions = {}) {
     this.dialog.id = 'project-information-dialog'; this.dialog.className = 'conversation-dialog';
     this.title.id = 'conversation-dialog-title'; this.dialog.setAttribute('aria-labelledby', this.title.id);
     const header = document.createElement('header'); header.append(this.title, iconButton('close', t("Close"), () => this.close()));
@@ -194,10 +192,6 @@ export class ConversationTools {
       const refresh = this.refresh = iconButton('refresh', t('Refresh usage'), () => this.loadUsage(usage.load));
       toolbar.append(refresh); this.usageBody = document.createElement('div'); container.append(toolbar, this.usageBody);
       add('usage', t('AI usage'), 'graph', t('Account balance and current subscription usage.'), container, () => { this.usageOpen = true; this.loadUsage(usage.load); });
-    }
-    if (project && this.databases) {
-      const container = document.createElement('div');
-      add('databases', t('Databases'), 'database', t('Linked databases and the entries that use them.'), container, () => { this.disposeProject = this.databases!.mount(container, project); });
     }
     this.selectSection = id => {
       const selected = tabs.find(item => item.id === id) ?? tabs[0]; if (!selected) return;

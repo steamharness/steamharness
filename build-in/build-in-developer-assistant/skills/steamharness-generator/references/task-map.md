@@ -10,11 +10,10 @@
 | 在已有 workflow 中嵌入 Agent 节点 | `steamharness.createAgentNode`；`AgentNodeOptions`、`AgentInput` | `steamharness-api.md`「Agent（pi SDK 能力层）」与「节点」 | 对节点做类型检查及运行 smoke |
 | 仅在宿主或测试中构造 Agent executor | `steamharness.defineBot`；`AgentProjectOptions` | `steamharness-api.md`「Agent（pi SDK 能力层）」 | 不把返回对象当作项目的静态声明 |
 | 定义 Workflow 主字段、Conversation Quick/Mode/Auxiliary 或联动 | `ParamDeclaration`、`BotParamDeclaration`、`ParamResolverContext`、`ParamResolveResult` | `references/param-panels.md`；`steamharness-api.md`「参数」 | `structure` 检查 `params` 与 `paramLayout.actions` |
-| 输出正文、详情或文件 | `steamharness.createOutputNode`、`runStreamNode`、`createOutputItemChunk`；`RunOutputPayload`、`OutputItem` | `steamharness-api.md`「必需本地类型」与「节点」 | run/json 检查正文 item 与详情 item |
-| 读取或修改项目数据 | `RunContext`；`steamharness/database` 的 `RelationalDatabasesContext` | `steamharness-api.md`「业务数据库与独立知识库」「项目知识文档」 | 使用隔离本地 Docker 数据库，按声明、绑定与有效授权检查 |
-| 处理 Kanban 页面与命名参数 | `steamharness.json.entries`、`configuration.json` | `steamharness-api.md`「Kanban 静态项目」；`assets/kanban/` | 构建产物入口、`structure` 及实际页面就绪状态 |
+| 输出正文、详情或文件 | `steamharness.createOutputNode`、`runStreamNode`、`createOutputItemChunk`；`RunContext`、`RunOutputPayload`、`OutputItem` | `steamharness-api.md`「必需本地类型」与「节点」 | run/json 检查正文 item 与详情 item |
+| 处理 Kanban 页面与命名参数 | `steamharness.json.entries`、`configuration.json` | `steamharness-api.md`「Kanban 静态入口」 | 构建产物入口、`structure` 及实际页面就绪状态 |
 | 排查 Kanban 运行时加载失败 | Studio Control `get_kanban_diagnostics` | `steamharness-api.md`「Kanban 静态入口」与「工作流能力工具」 | 实际入口、配置、桥接路由与只读页面方法；无实例时明确未验证 |
-| 上传图片、文件或迁移本地底图 | Kanban `knowledgeBases.get(alias).files`、配置附件；CLI `workspace file-upload/file-download` 仅用于项目托管文件 | `steamharness-api.md`「Kanban 静态入口」与 File param 契约 | 按消费端同一路径读回原始字节，再确认页面解码及就绪；关系表只存引用 |
+| 上传项目文件 | CLI `workspace file-upload/file-download` | `steamharness-api.md` 的项目文件契约 | 按消费端同一路径读回原始字节 |
 
 项目源码的类型提示可以使用 `import type { AgentInput, ParamDeclaration } from "steamharness"`，或 `import type { RuntimeApi } from "steamharness/runtime-api"`。`steamharness` 本身必须来自宿主注入；不要从包中做运行时 import。声明要进入 Desktop 的结构报告时，`defineExecutor` 接收内联对象；`params`、`tools`、`conversation` 和 `tokenUsage` 保持内联字面量。详细字段与限制以对应章节为准。
 

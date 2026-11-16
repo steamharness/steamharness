@@ -6,7 +6,7 @@
 **判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：
 那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。
 
-## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）
+## 聚合入口（`context.entries`）
 
 ### 聚合入口目录（`EntriesContext`）
 
@@ -21,29 +21,7 @@
 - `listEntrypoints()`
 - `runEntrypoint(entrypointId, args, options)`
 
-### 关系型数据库连接（`RelationalDatabasesContext`）
-
-- `connect(descriptor)`
-
-### 知识库目录（`KnowledgeBasesContext`）
-
-- `list()`
-- `get(alias)`
-
-### 知识库与附件（`KnowledgeBaseContext`）
-
-- `listDocuments(input)`
-- `getDocument(id)`
-- `createDocument(input)`
-- `editDocument(input)`
-- `deleteDocument(id, expectedRevision)`
-- `searchDocuments(input)`
-- `readDocumentLines(input)`
-- `getRevision()`
-- `files`
-
-数据库在 steamharness.database.ts 与 steamharness.schema 中定义，入口 databases 声明别名，context.databases.connect(descriptor) 连接生成客户端。databaseId 绑定由 Server 按账号、projectId、entryId、alias 管理，绑定不授予权限。每次操作重新校验授权。
-会话运行存储按账号、projectId + entryId + conversationId 隔离，与业务关系表独立。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
+会话运行存储按账号、projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
 
 ## 运行时成员（`steamharness.*`）
 

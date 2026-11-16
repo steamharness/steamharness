@@ -1,129 +1,46 @@
 ---
 title: "Workflow capabilities"
-description: "Built-in tools connecting a project to knowledge, host configuration, and Bot resource cards."
+description: "Use host project capabilities from Agents and MCP"
 ---
 
 # Workflow capabilities
 
-Use project capability tools to access knowledge, databases, host configuration, and resource cards. Each capability shares one JSON Schema and implementation across native Agent tools and MCP, preserving tool names, descriptions, and parameters.
+Project capability tools expose host configuration, Kanban page methods, and Bot resource cards. Each capability shares a JSON Schema and implementation across native Agent tools and MCP. Declare the tool IDs you need in the executor's `tools` list.
 
-| Capability | MCP server id | Tool id |
-| --- | --- | --- |
-| Knowledge documents | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
-| Bot resource card | `workflow-ui` | `workflow-ui_present_card` |
-
-The tool ids are stable: a host grants, approves and resumes by them, so do not rename them.
-
-## Example
-
-```ts
-const approval = steamharness.createToolApprovalGate();
-
-const node = steamharness.createAgentNode({
-  provider: "anthropic",
-  async createTools(context) {
-    return steamharness.createProjectCapabilityTools({
-      context,
-      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
-    });
-  },
-});
-```
-
-The tools must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.
-
-Knowledge tools require a `knowledgeBase` alias, checked against entry requirements and Server grants. Business data uses project-defined model tools; there is no built-in KV tool. Resource cards and Kanban method targets carry `projectId + entryId`.
-
-## Signature
-
-```ts
-const tools: AgentTool[] = await steamharness.createProjectCapabilityTools({
-  context: NodeContext,
-  approve?: (toolId: string, args: unknown) => Promise<void>,
-});
-
-const server: Server = await steamharness.createProjectCapabilityServer(toolId, {
-  context: NodeContext,
-  approve?: (toolId: string, args: unknown) => Promise<void>,
-});
-
-const result: unknown = await steamharness.runProjectCapabilityAction(toolId, context, args);
-const toolIds: string[] = steamharness.listProjectCapabilityToolIds();
-```
-
-| Member | Description |
+| Capability | Tool ID |
 | --- | --- |
-| `createProjectCapabilityTools(options)` | Returns the native tools to hand an agent, via `extraTools` or [createAgentNode](./create-agent-node.mdx)'s `createTools`. |
-| `createProjectCapabilityServer(toolId, options)` | Returns one capability as an MCP server to `connect(transport)` yourself. Throws on an unknown tool id. |
-| `runProjectCapabilityAction(toolId, context, args)` | Runs one action by tool id. |
-| `listProjectCapabilityToolIds(options)` | Lists the tool ids this run will offer. |
+| Kanban page methods | `steamharness-kanban_kanban_methods` |
+| Bot resource cards | `workflow-ui_present_card` |
 
-## Tool approval
-
-These tools are **not governed by `permissionPolicy`** — that policy only covers the seven built-in coding tools, as [createAgent](./create-agent.mdx) explains under "Your own tools". The host's own catalogue governs them: a project declares these tool ids in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove` decides whether it needs approval. Wiring `approve` to `steamharness.createToolApprovalGate().approve(...)` puts them on the same approval chain.
-
-Resuming a paused approval goes through `runProjectCapabilityAction`: the paused turn is over, and the approved call can only be addressed by the tool id the host approved, not by the closure that built it.
-
-## Argument checks
-
-Every capability publishes a JSON Schema and enforces it in the implementation too: an MCP client is not bound by the schema and the agent SDK treats it as a type assertion, so a bound that lives only in the schema is not a bound. Knowledge `markdown` ≤ 200,000, `title`/`documentId` ≤ 200, `query` ≤ 500, `cursor` ≤ 80. Exceeding one fails as `input_validation`.
-
-## Reading large results
-
-Knowledge `list/get/search/read_lines` share a result pagination protocol across native tools, MCP and direct action APIs. Small results keep their existing shape. Results exceeding 40,000 UTF-8 bytes return `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`; the complete serialized envelope also fits within that byte limit.
-
-Keep the original read arguments and add `resultOffset: nextOffset` and the previous `resultHash`. Concatenate `content` in order, then parse the complete JSON. Offsets count UTF-16 code units; `resultLimit` (a positive integer up to 200000) can request smaller pages. If the result changes, hash validation rejects the continuation; restart at `resultOffset: 0` without the hash. Entry `cursor` values and result character offsets serve separate purposes.
-
-Writes reject result pagination arguments, preventing continuation from repeating a mutation. Knowledge create/edit echoes at most 4000 body characters when requested. Knowledge `maxMarkdownLength` must be an integer from 100 to 20000 and `includeMarkdown` must be boolean. Invalid values fail before writing.
-
-## Host configuration
-
-Host configuration appears only when the host injected a loopback bridge: `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` and `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` must both be present, and the address must be a credential-free `http://127.0.0.1` loopback endpoint. If either is missing the capability is not exposed; when the address does not qualify, `isProjectCapabilityAvailable` returns `false` so one configuration error cannot take the other capabilities down with it, and the reason is reported when the tool is actually called rather than dialling with the token attached.
-
-## Bot resource cards
-
-Successful Core knowledge results can carry resource-card summaries. Hosts display and open resources according to their capabilities. Targets retain the knowledge document ID, and access is checked again when opened.
-
-Custom tools used by `createAgentNode` / `defineBot` can attach a summary in `details.resourceCard` on a successful result. Core preserves it in the existing tool output and shared runtime UI generates the card automatically; tool `content` and the ordinary message API stay the same. `kind` accepts `knowledge`, `project`, `kanban`, `browser`, or `file`; `operation` is `read`, `write`, `open`, or `show`; the optional `title` is at most 200 characters. `target` uses the fields described below.
-
-Resource tools identify the target `projectId`, `entryId`, and the corresponding alias: `knowledgeBase` for knowledge. Failed calls keep their tool error and do not generate successful cards. A summary does not execute writes or pin commands; use the explicit card capability for pins and Kanban parameters.
+## Create and call tools
 
 ```ts
-return {
-  content: [{ type: "text", text: JSON.stringify(document) }],
-  details: {
-    resourceCard: {
-      kind: "knowledge",
-      operation: "read",
-      title: document.title,
-      target: { source: "server", projectId: context.projectId, entryId: context.entryId, knowledgeBase: "docs", documentId: document.id },
-    },
-  },
-};
+const tools = await steamharness.createProjectCapabilityTools({
+  context,
+  approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+});
+
+const ids = steamharness.listProjectCapabilityToolIds();
+const result = await steamharness.runProjectCapabilityAction(ids[0], context, args);
 ```
 
-`workflow-ui_present_card` sends a structured command through the existing tool result; the ordinary message API does not change. Enable the tool in `executor.tools`. A stable `cardId` identifies a card: `action: "upsert"` creates or updates it, while `action: "remove"` accepts only `cardId` and removes it. `pinned` controls the current client's per-conversation pin state; an explicit Agent pin command can override the user's previous pin choice.
+`createProjectCapabilityServer(toolId, { context, approve })` wraps one capability as an MCP server. Unknown tool IDs throw. Use `isProjectCapabilityAvailable(toolId)` to check whether the current host offers a capability before displaying it.
 
-The top-level `preview: boolean` applies to `kanban`, `project`, or `browser` cards and controls whether the upper-right preview opens by default. Recognized Kanban projects and browser cards preview and pin by default; pass `false` to disable the preview. The preview sits beside the transcript and moves above it in narrow windows. Clicking a Kanban `project` card opens its Dock preview. A target uses `source` (`local`, `server`, or `current` for the current host project) and `projectId` where applicable.
+The executor's `tools` declaration controls approval. After a pause, resume through `runProjectCapabilityAction` using the approved tool ID; the Agent turn that created the original closure has ended.
 
-In Developer Assistant, `current` resolves to the project being worked on, while the assistant's own knowledge calls still target the assistant project. Browser targets use an HTTP(S) `url`; local files use a project-relative `filePath`; knowledge documents use an independent `knowledgeBase` alias and `documentId`. The host checks access again when a card is opened.
+## Resource cards
+
+`workflow-ui_present_card` identifies cards by a stable `cardId`. Use `action: "upsert"` to create or update one, and `action: "remove"` to remove it. Supported kinds are `project`, `kanban`, `browser`, and `file`. File paths are project-relative; browser URLs use HTTP(S).
 
 ```json
 {
   "action": "upsert",
   "cardId": "roadmap-board",
   "kind": "kanban",
-  "target": { "source": "current", "entryId": "map", "configurationId": "configuration-id" },
+  "target": { "source": "current", "entryId": "map" },
   "pinned": true,
-  "preview": true,
-  "kanban": { "mode": "preview", "values": { "title": "Roadmap" } }
+  "preview": true
 }
 ```
 
-File card example: `{"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}`. The path field is `filePath`; the tool schema lists the supported target fields. Omit `preview` for file and knowledge cards; explicit `false` is ignored, while `true` is rejected. Runtime errors for unknown target fields name the field and list valid fields so callers can correct and retry.
-
-`kanban.mode: "preview"` applies temporary native JSON overrides to that preview. Save values through Studio Control `manage_configurations` with an explicit storage, project, configuration ID and revision. History replay never writes configurations.
-
-Kanban and project cards accept `target.configurationId` from Studio Control `get_configurations`. Explicit IDs keep a fixed profile without selecting it. Missing IDs use the active profile when opening the preview. A deleted profile is unavailable. See [Project configurations](/en/concepts/project-configuration).
-
-Pinned previews have a border on every side. The bottom handle supports pointer and keyboard height adjustments, capped at `50%` of the conversation content area. Each client remembers the height per conversation, and smaller containers retain the cap. Collapsed previews keep only their title.
+`preview` applies to Kanban, project, and browser cards. Select an existing configuration with `target.configurationId`, or supply temporary values with `kanban: { mode: "preview", values }`. Cards do not save configuration values; use Studio Control `manage_configurations` for that.

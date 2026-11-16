@@ -171,7 +171,6 @@ describe("VS Code assistant host", () => {
     expect(input.systemPrompt).toContain("run independently from any project opened in the editor");
     expect(input.systemPrompt).toContain("Do not infer additional roots from folders opened in VS Code");
     expect(input.systemPrompt).toContain("Use get_entries");
-    expect(input.systemPrompt).toContain("database access requires a separately approved binding");
     expect(input.systemPrompt).not.toContain("Workspace-specific recovery policy");
     expect(input.systemPrompt).not.toContain("call create_cloud_app");
     expect(input.systemPrompt).toContain("Current \\u003cproject\\u003e");

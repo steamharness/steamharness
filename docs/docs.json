@@ -57,7 +57,6 @@
                   "guides/studio/interface",
                   "guides/studio/models",
                   "guides/studio/configuration",
-                  "guides/studio/data",
                   "guides/studio/versions",
                   "guides/studio/analysis",
                   "guides/studio/assistant"
@@ -69,8 +68,7 @@
                   "guides/development/workflow",
                   "guides/development/conversation",
                   "guides/development/kanban",
-                  "guides/testing",
-                  "guides/migrate-core-0-2"
+                  "guides/testing"
                 ]
               },
               {
@@ -95,7 +93,6 @@
                   "concepts/payloads-and-errors",
                   "concepts/project-configuration",
                   "concepts/data-storage",
-                  "concepts/database-and-conversation",
                   "concepts/files",
                   "concepts/llm-provider"
                 ]
@@ -123,7 +120,6 @@
                   "core-api/user-settings",
                   "core-api/create-agent",
                   "core-api/runtime-storage",
-                  "core-api/database",
                   "core-api/create-agent-node",
                   "core-api/define-bot",
                   "core-api/connect-mcp-server",
@@ -136,7 +132,6 @@
                   "core-api/run-for",
                   "core-api/run-while",
                   "core-api/run-workflow",
-                  "core-api/knowledge-documents",
                   "core-api/get-config",
                   "core-api/runtime-platform",
                   "core-api/runtime-locale",
@@ -163,7 +158,6 @@
                   "cli/steamharness",
                   "cli/web",
                   "cli/agent-sessions",
-                  "cli/data",
                   "cli/steamharness/run",
                   "cli/steamharness/json",
                   "cli/steamharness/structure",
@@ -348,7 +342,6 @@
                   "en/guides/studio/interface",
                   "en/guides/studio/models",
                   "en/guides/studio/configuration",
-                  "en/guides/studio/data",
                   "en/guides/studio/versions",
                   "en/guides/studio/analysis",
                   "en/guides/studio/assistant"
@@ -360,8 +353,7 @@
                   "en/guides/development/workflow",
                   "en/guides/development/conversation",
                   "en/guides/development/kanban",
-                  "en/guides/testing",
-                  "en/guides/migrate-core-0-2"
+                  "en/guides/testing"
                 ]
               },
               {
@@ -386,7 +378,6 @@
                   "en/concepts/payloads-and-errors",
                   "en/concepts/project-configuration",
                   "en/concepts/data-storage",
-                  "en/concepts/database-and-conversation",
                   "en/concepts/files",
                   "en/concepts/llm-provider"
                 ]
@@ -414,7 +405,6 @@
                   "en/core-api/user-settings",
                   "en/core-api/create-agent",
                   "en/core-api/runtime-storage",
-                  "en/core-api/database",
                   "en/core-api/create-agent-node",
                   "en/core-api/define-bot",
                   "en/core-api/connect-mcp-server",
@@ -427,7 +417,6 @@
                   "en/core-api/run-for",
                   "en/core-api/run-while",
                   "en/core-api/run-workflow",
-                  "en/core-api/knowledge-documents",
                   "en/core-api/get-config",
                   "en/core-api/runtime-platform",
                   "en/core-api/runtime-locale",
@@ -454,7 +443,6 @@
                   "en/cli/steamharness",
                   "en/cli/web",
                   "en/cli/agent-sessions",
-                  "en/cli/data",
                   "en/cli/steamharness/run",
                   "en/cli/steamharness/json",
                   "en/cli/steamharness/structure",

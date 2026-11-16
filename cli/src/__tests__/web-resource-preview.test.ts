@@ -21,21 +21,21 @@ afterEach(async () => { for(const previews of openedPreviews.splice(0))previews.
 async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-resource-'))); folders.push(root);
   const storageDir = path.join(testDataDirectory(root));
-  const owner: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:root,databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'ed18b4ed-5d84-4143-babe-407142cb33e9', uri: '', name: 'Owner', folderPath: root, projectType: 'bot', fields: [], entrypoints: [] };
+  const owner: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:root,entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'ed18b4ed-5d84-4143-babe-407142cb33e9', uri: '', name: 'Owner', folderPath: root, projectType: 'bot', fields: [], entrypoints: [] };
   await writeProjectFixture(path.join(root, 'package.json'), JSON.stringify({ id:owner.id,name:'Owner',version: "0.1.0", entries:owner.entries,defaultEntry:'main' }));
   const board = { ...owner, id: '26649e36-f751-43bc-9eb1-a4a041623f3c', name: 'Board', folderPath: path.join(root, 'board'), projectType: 'kanban' as const,
-    entryRoot:path.join(root,'board'),entries:[{entryId:'main',name:'Main',type:'kanban' as const,root:'.',entry:'dist/steamharness/build/main/index.html',configuration:'configuration.json',databases:[]}],kanban: { artifactDir: 'dist/steamharness/build/main', entry: 'index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
+    entryRoot:path.join(root,'board'),entries:[{entryId:'main',name:'Main',type:'kanban' as const,root:'.',entry:'dist/steamharness/build/main/index.html',configuration:'configuration.json'}],kanban: { artifactDir: 'dist/steamharness/build/main', entry: 'index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
   await mkdir(path.join(board.folderPath, 'dist/steamharness/build/main'), { recursive: true });
   await writeProjectFixture(path.join(board.folderPath, 'package.json'), JSON.stringify({id:board.id,name:'Board',version: "0.1.0", entries:board.entries,defaultEntry:'main'}));
   await writeFile(path.join(board.folderPath, 'dist/steamharness/build/main/index.html'), '<html><head></head><body>Map preview</body></html>');
   await writeFile(path.join(root,'index.ts'),'export {};');
   await writeFile(path.join(board.folderPath,'configuration.json'),JSON.stringify({version:1,fields:board.fields}));
-  const runtime = { inspect: vi.fn(async () => ({ projects: [board], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
+  const runtime = { inspect: vi.fn(async () => ({ projects: [board], errors: [] })),
     kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as Runtime;
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [board.folderPath]);
   openedPreviews.push(previews);
-  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(kind==='knowledge'?{knowledgeBase:'data'}:{}),...target}, ...extra });
+  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...target}, ...extra });
   return { root, owner, board, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
 }
 
@@ -51,17 +51,15 @@ function largePng(): Buffer {
 }
 
 describe('resource previews', () => {
-  it('reads local knowledge and Kanban data through declared Workflow operations and cancels closed previews', async () => {
+  it('reads declared local Workflow operations from Kanban previews and cancels closed previews', async () => {
     const { owner, board, runtime, previews, card } = await fixture();
     board.id = owner.id; owner.folderPath = board.folderPath; owner.entryId = 'agent';
-    const database = { ...owner, entryId: 'database', projectType: 'workflow', entrypoints: [{ id: 'read', readOnly: true }, { id: 'write' }] } as Project;
-    vi.mocked(runtime.inspect).mockImplementation(async (_paths, entryId) => ({ projects: entryId === 'database' ? [database] : [board], errors: [] }));
-    runtime.run = vi.fn(async () => ({ status: 'success', result: { data: { errCode: 0, output: { errCode: 0, format: 'markdown', content: '# Local knowledge' } } } }));
-    const knowledge = await previews.open(card('knowledge', { source: 'local', projectId: owner.id, entryId: 'database' }, { reader: { entrypointId: 'read' } }));
-    expect(knowledge.data.content).toBe('# Local knowledge');
+    const workflow = { ...owner, entryId: 'workflow', projectType: 'workflow', entrypoints: [{ id: 'read', readOnly: true }, { id: 'write' }] } as Project;
+    vi.mocked(runtime.inspect).mockImplementation(async (_paths, entryId) => ({ projects: entryId === 'workflow' ? [workflow] : [board], errors: [] }));
+    runtime.run = vi.fn(async () => ({ status: 'success', result: { data: { errCode: 0, output: { errCode: 0, format: 'markdown', content: '# Workflow result' } } } }));
     const preview = await previews.open(card('kanban', { source: 'local', projectId: owner.id, entryId: 'main' }));
-    const call = { requestId: 'read', operation: 'entries.runEntrypoint', input: { entryId: 'database', entrypointId: 'read', args: [], requestId: 'read' } };
-    expect(await previews.bridge(preview.id, call)).toMatchObject({ content: '# Local knowledge' });
+    const call = { requestId: 'read', operation: 'entries.runEntrypoint', input: { entryId: 'workflow', entrypointId: 'read', args: [], requestId: 'read' } };
+    expect(await previews.bridge(preview.id, call)).toMatchObject({ content: '# Workflow result' });
     await expect(previews.bridge(preview.id, { ...call, input: { ...call.input, entrypointId: 'write' } })).rejects.toThrow('read-only');
     const signal = vi.mocked(runtime.run).mock.calls.at(-1)![0].abortSignal!;
     previews.close(); expect(signal.aborted).toBe(true);
@@ -91,11 +89,11 @@ describe('resource previews', () => {
     previews.methodReply(preview.id, { ...state, requestId: invoke.requestId, ok: true, value: { imageReady: false } });
     expect((await checking).result).toEqual({ imageReady: false });
     vi.mocked(runtime.kanbanBridge!).mockRejectedValueOnce(new Error('private backend token', { cause: new DOMException('private details', 'TimeoutError') }));
-    await expect(previews.bridge(preview.id, { requestId: 'file-read', operation: 'files.readFile', input: { knowledgeBase: 'data', fileId: 'wf_ab12' } })).rejects.toThrow();
+    await expect(previews.bridge(preview.id, { requestId: 'file-read', operation: 'files.readFile', input: { fileId: 'wf_ab12' } })).rejects.toThrow();
     const diagnostics = await previews.diagnostics(target);
     expect(diagnostics.previews[0]).toMatchObject({ source: 'resource-card', previewId: preview.id });
     expect(diagnostics.requests[0]).toMatchObject({ configurationId: state.configurationId, fileId: 'wf_ab12', error: { category: 'timeout' },
-      attempts: [{ source: 'configuration-cache' }, { source: 'database' }] });
+      attempts: [{ source: 'configuration-cache' }, { source: 'configuration-attachment' }] });
     expect(JSON.stringify(diagnostics)).not.toContain('private');
     const pending = expect(previews.diagnostics({ ...target, call })).rejects.toThrow('changed or closed');
     previews.methodClose(preview.id, state); await pending;
@@ -103,13 +101,6 @@ describe('resource previews', () => {
     previews.clear();
     expect((await previews.diagnostics(target)).available).toBe(false);
     expect(() => previews.methodState(preview.id, state)).toThrow('access changed');
-  });
-
-  it('uses the board resource owner and exact conversation scope rather than the caller storage', async () => {
-    const { previews, card, board, runtime } = await fixture();
-    const result = await previews.open(card('knowledge', { source: 'local', projectId: board.id, documentId: 'doc', conversationId: 'target-session' }));
-    expect(result.data).toMatchObject({ format: 'markdown', content: { markdown: '# Document' }, project: { id: board.id, folderPath: board.folderPath } });
-    expect(runtime.readResource).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), 'target-session', 'knowledge', expect.objectContaining({ documentId: 'doc' }));
   });
 
   it('previews imported projects even when they are not execution relations', async () => {
@@ -148,24 +139,6 @@ describe('resource previews', () => {
     await expect(previews.open(card('kanban', { source: 'local', projectId: owner.id }))).rejects.toThrow('The resource project is unavailable.');
     expect(runtime.inspect).toHaveBeenCalledWith([workdir], 'main');
     expect(runtime.inspect).toHaveBeenCalledTimes(1);
-  });
-
-  it('checks Server read access for foreign Knowledge and keeps credentials out of the preview data', async () => {
-    const { previews, card } = await fixture();
-    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Foreign document' } })));
-    const result = await previews.open(card('knowledge', { source: 'server', projectId: 'database', documentId: 'doc' }));
-    expect(fetcher).toHaveBeenCalledWith('https://steamharness.test/api/projects/database/entries/main/resources/read', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]!.body))).toEqual({ kind: 'knowledge', knowledgeBase: 'data', documentId: 'doc' });
-    expect(result.data.format).toBe('markdown'); expect(JSON.stringify(result)).not.toContain('test-only-token');
-    fetcher.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
-    await expect(previews.open(card('knowledge', { source: 'server', projectId: 'private', documentId: 'doc' }))).rejects.toThrow('Access denied');
-  });
-
-  it('retains the current project identity when opening its server resources', async () => {
-    const { previews, card, owner } = await fixture();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Document' } })));
-    const result = await previews.open(card('knowledge', { source: 'server', projectId: owner.id, documentId: 'doc' }));
-    expect(result.data.project).toBe(owner);
   });
 
   it('does not guess a local directory from a card project UUID', async () => {
@@ -292,12 +265,11 @@ describe('resource previews', () => {
     } finally { await app.close(); }
   });
 
-  it('allows preview reads but blocks data mutations and invalidates open previews on logout', async () => {
+  it('allows file preview reads and invalidates open previews on logout', async () => {
     const { previews, card, board, runtime, logout } = await fixture();
     const result = await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: true }));
-    await previews.bridge(result.id, { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } });
-    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), expect.objectContaining({ operation: 'database.query' }));
-    await expect(previews.bridge(result.id, { requestId: 'write', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'insert', model: 'Task', data: { title: 'changed' } } } })).rejects.toThrow('read-only');
+    await previews.bridge(result.id, { requestId: 'read', operation: 'files.readFile', input: { fileId: 'wf_ab12' } });
+    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), expect.objectContaining({ operation: 'files.readFile' }));
     logout(); expect(() => previews.get(result.id)).toThrow(); expect(await previews.asset(new URL(result.data.kanban!.url, 'http://localhost'))).toBeUndefined();
   });
 
@@ -306,7 +278,7 @@ describe('resource previews', () => {
     const result = await previews.open(card('kanban', { source: 'local', projectId: board.id }));
     let finish!: (value: unknown) => void;
     vi.mocked(runtime.kanbanBridge!).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } });
+    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'files.readFile', input: { fileId: 'wf_ab12' } });
     const rejected = expect(reading).rejects.toThrow('Resource access changed');
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
     previews.clear(); finish({ private: 'previous account data' });
@@ -317,7 +289,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const prefix = 'https://steamharness.test/api/projects/board/kanban/previews/nonce/browser/local/';
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => new Response(JSON.stringify({ errCode: 0, data:
-      new URL(String(url)).pathname.endsWith('/board')?{id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html',databases:[]}]}: String(url).includes('/configurations?') ? createConfigurationState([],()=> 'default') : {
+      new URL(String(url)).pathname.endsWith('/board')?{id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html'}]}: String(url).includes('/configurations?') ? createConfigurationState([],()=> 'default') : {
         manifest: { params: [] }, configurations: [], preview: { url: `${prefix}index.html`, nonce: 'nonce' },
       } })));
     const result = await previews.open(card('kanban', { source: 'server', projectId: 'board' }));
@@ -328,38 +300,6 @@ describe('resource previews', () => {
     expect(await reading).toBeUndefined();
   });
 
-  it('preserves open previews for unchanged host credentials and invalidates them on logout', async () => {
-    const { owner, runtime, storageDir } = await fixture();
-    vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] });
-    runtime.dispose = vi.fn();
-    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
-    vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => String(url).endsWith('/api/auth/me')
-      ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } } })))
-      : originalFetch(url, init));
-    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor', connection } });
-    const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
-      headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
-    try {
-      app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
-        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge', target: { entryId:'main',knowledgeBase:'data',source: 'current', documentId: 'doc' } } } }] });
-      const result = await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json();
-      const id = result.messages[0].id;
-      await app.setHostConnection({ ...connection });
-      expect(await (await request({ type: 'resource-data', id })).json()).toMatchObject({ messages: [{ data: { content: { markdown: '# Document' } } }] });
-      const snapshot = () => originalFetch(new URL('/api/resource-state', app.url), {
-        headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}` },
-      }).then(response => response.json());
-      const before = await snapshot();
-      app.setHostResourceProjects([]);
-      const after = await snapshot();
-      expect(after.authenticationRevision).toBe(before.authenticationRevision);
-      expect(after.resourceRevision).toBeGreaterThan(before.resourceRevision);
-      expect((await request({ type: 'resource-data', id })).ok).toBe(false);
-      await app.setHostConnection(undefined);
-      expect((await request({ type: 'resource-data', id })).ok).toBe(false);
-    } finally { await app.close(); }
-  });
-
   it('keeps remote Kanban assets available after verifying the same account', async () => {
     const { owner, runtime, storageDir } = await fixture();
     vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
@@ -368,7 +308,7 @@ describe('resource previews', () => {
       const address = String(url);
       if (!address.startsWith(connection.serverUrl)) { return originalFetch(url, init); }
       const data = address.endsWith('/api/auth/me') ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } }
-        : new URL(address).pathname.endsWith('/board') ? {id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html',databases:[]}]}
+        : new URL(address).pathname.endsWith('/board') ? {id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html'}]}
         : address.includes('/configurations?') ? createConfigurationState([],()=> 'default')
         : address.includes('/kanban?') ? { manifest: { params: [] }, configurations: [],
           preview: { url: `${connection.serverUrl}/api/projects/board/kanban/previews/nonce/browser/local/index.html`, nonce: 'nonce' } }
@@ -390,7 +330,7 @@ describe('resource previews', () => {
     } finally { await app.close(); }
   });
 
-  it('opens and restores a current assistant map card with its named configuration and server data', async () => {
+  it('opens and restores a current assistant map card with its named configuration', async () => {
     const { owner, board, runtime, storageDir } = await fixture();
     await writeFile(path.join(board.folderPath, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string' }] }));
     const store = await createLocalProjectConfigurationStore(board.folderPath);
@@ -402,14 +342,10 @@ describe('resource previews', () => {
     const map: Project = { ...board };
     vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : map], errors: [] }));
     runtime.dispose = vi.fn();
-    vi.mocked(runtime.kanbanBridge!).mockResolvedValue({key:'map',value:{points:['Spawn']}});
     const originalFetch = globalThis.fetch, connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
       if (String(url).endsWith('/api/auth/me')) {
         return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.test', displayName: 'User' } } })));
-      }
-      if (String(url) === `${connection.serverUrl}/api/projects/${map.id}/kanban/bridge`) {
-        return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { key: 'map', value: { points: ['Spawn'] } } })));
       }
       return originalFetch(url, init);
     });
@@ -437,12 +373,8 @@ describe('resource previews', () => {
         expect(preview.data).toMatchObject({ format: 'kanban', project: { id: map.id },
           kanban: { configuration: { id: configurationId, params: { title: 'Named map' } } } });
         expect(await (await originalFetch(new URL(preview.data.kanban.url, app.url))).text()).toContain('Map preview');
-        const call = { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } };
-        expect(await request({ type: 'resource-bridge', id: preview.id ?? opened.id, call })).toMatchObject({ value: { value: { points: ['Spawn'] } } });
-        expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({id:map.id,entryId:'main'}),call);
       }
       expect(await store.read()).toEqual(configuration);
-      expect(runtime.kanbanBridge).toHaveBeenCalled();
       expect(app.project.id).toBe(owner.id);
     } finally { await app.close(); }
   });
@@ -489,33 +421,6 @@ describe('resource previews', () => {
     } finally { await app.close(); }
   });
 
-  it('rechecks server access when recovering an expired saved card', async () => {
-    const { owner, runtime, storageDir } = await fixture();
-    vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
-    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
-    const remote = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => String(url).startsWith(connection.serverUrl)
-      ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: String(url).endsWith('/api/auth/me')
-        ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } } : { markdown: '# Server document' } })))
-      : originalFetch(url, init));
-    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor', connection } });
-    const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
-      headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
-    app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
-      content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge',
-        target: {entryId:'main',knowledgeBase:'data', source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
-    try {
-      await app.controller!.persist();
-      const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json()).messages[0];
-      const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
-      await app.setHostConnection(undefined);
-      const calls = remote.mock.calls.length;
-      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'Please sign in to preview this server resource.' });
-      expect(remote).toHaveBeenCalledTimes(calls);
-      await app.setHostConnection(connection);
-      remote.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
-      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'Access denied' });
-    } finally { await app.close(); }
-  });
 });
 
 it('refreshes a board map card after its configuration changes through another surface',async()=>{
@@ -528,16 +433,4 @@ it('refreshes a board map card after its configuration changes through another s
   await vi.waitFor(()=>expect(()=>previews.get(opened.id)).toThrow(),{timeout:2500});
   const refreshed=await previews.open(card('kanban',{source:'local',projectId:board.id}));
   expect(refreshed.data.kanban?.configuration.params.label).toBe('updated');
-});
-
-it('local knowledge selection reaches the reader and uses its resolved document name',async()=>{
- const {owner,runtime,previews,card}=await fixture();
- const database={...owner,entryId:'database',projectType:'workflow',entrypoints:[{id:'knowledge-preview',readOnly:true}]} as Project;
- vi.mocked(runtime.inspect).mockResolvedValue({projects:[database],errors:[]});
- runtime.run=vi.fn(async()=>({status:'success',result:{data:{errCode:0,output:{errCode:0,title:'知识库阅读说明',format:'markdown',content:'# 正文'}}}}));
- const savedReader={entrypointId:'knowledge-preview',args:['--payload','{}']};
- const result=await previews.open(card('knowledge',{source:'local',projectId:owner.id,entryId:'database',documentId:'guide',query:'干员'},{reader:savedReader}));
- expect(result.data.card.title).toBe('知识库阅读说明');
- expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({args:['--payload','{}','--document-id','guide','--query','干员'],readOnly:true}),expect.any(Function));
- expect(savedReader.args).toEqual(['--payload','{}']);
 });

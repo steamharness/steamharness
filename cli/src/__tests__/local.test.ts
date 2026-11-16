@@ -272,37 +272,6 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-it("structure rejects obsolete related-project fields before reporting success", async () => {
-  const projectDir = await createArgsEchoProject();
-  const packagePath = path.join(projectDir, "steamharness.json");
-  const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
-    projectInfo: Record<string, unknown>;
-  };
-  manifest.projectInfo.relatedProjects = [{
-    alias: "stocks",
-    projectId: "22222222-2222-4222-8222-222222222222",
-    access: { read: "all", write: "none" },
-  }];
-  await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-  const output: string[] = [];
-  const originalLog = console.log;
-  console.log = ((value?: unknown) => output.push(String(value ?? ""))) as typeof console.log;
-
-  try {
-    assert.equal(await main(["structure", projectDir]), 1);
-    const report = JSON.parse(output.join("\n")) as {
-      diagnostics: { error?: { message?: string } };
-    };
-    assert.match(
-      report.diagnostics.error?.message ?? "",
-      /Project database and related-project declarations were removed|steamHarness\.projectInfo\.relatedProjects was removed/,
-    );
-  } finally {
-    console.log = originalLog;
-    await rm(projectDir, { recursive: true, force: true });
-  }
-});
-
 it("run command parses tool permission overrides before workflow args", () => {
   const parsed = parseProjectArgs([
     path.join(os.tmpdir(), "workflow"),
@@ -533,7 +502,7 @@ async function createArgsEchoProject(declareStorage = true): Promise<string> {
       type: "module",
       devDependencies: { "steamharness": await resolveHarnessVersion() },
       ...(declareStorage
-        ? {  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{}  }
+        ? {  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}], projectInfo:{}  }
         : {}),
     }),
   );

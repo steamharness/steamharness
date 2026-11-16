@@ -79,7 +79,7 @@ async function renderConversation() {
   vi.stubGlobal('cancelAnimationFrame', () => {});
   document.body.innerHTML = '<div id="app"></div>'; await import('../web/ui/main');
   const project: Project = { id: 'header', uri: 'studio-assistant:workspace', folderPath: '/assistant', name: 'Project Assistant', projectType: 'bot', fields: [], entrypoints: [],
-    entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/assistant', databases: [], entries: [],
+    entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/assistant', entries: [],
     assistant: { workdir: '/workspace', roots: [{ uri: 'file:///workspace', folderPath: '/workspace', name: 'steamharness-lol' }] } };
   const sessions: ConversationSession[] = [
     { id: 'active', title: 'Find game information', activeRunId: 'run-one', messages: [{ id: 'input', role: 'user', content: 'Find information' }] },

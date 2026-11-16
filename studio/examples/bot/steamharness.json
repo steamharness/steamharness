@@ -17,8 +17,7 @@
       "type": "bot",
       "name": "Studio Bot",
       "root": ".",
-      "entry": "index.ts",
-      "databases": []
+      "entry": "index.ts"
     }
   ],
   "defaultEntry": "main"

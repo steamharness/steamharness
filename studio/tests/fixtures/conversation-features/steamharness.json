@@ -7,11 +7,7 @@
       "type": "bot",
       "name": "Conversation migration fixture",
       "root": ".",
-      "entry": "index.ts",
-      "databases": [],
-      "knowledgeBases": [
-        "docs"
-      ]
+      "entry": "index.ts"
     }
   ],
   "defaultEntry": "main",

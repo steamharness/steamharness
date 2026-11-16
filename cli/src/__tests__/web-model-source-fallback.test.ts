@@ -32,7 +32,7 @@ it('falls back to project models in standalone Web and follows later host capabi
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'model-modes', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: projectId, name: 'model-modes', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
     await writeFile(path.join(directory, 'index.ts'), `
 
       export const executor = steamharness.defineBot({

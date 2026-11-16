@@ -5,7 +5,6 @@ import type {
 } from "../provider/llm/types";
 import type { ConversationContext } from "../conversation/index";
 import type { FileStore } from "../files/index";
-import type { RelationalDatabasesContext } from "../database/index";
 import type { EntriesContext } from "../entries/index";
 import type { AccessActor } from "@steamharness/project-access";
 import type { TokenUsageContext } from "../token-usage/index";
@@ -101,8 +100,6 @@ export interface NodeContext {
   entryId: string;
   config: import("../configuration").ConfigurationValues;
   providers: ProviderRegistry;
-  databases: RelationalDatabasesContext;
-  knowledgeBases: import('../knowledge-bases/index').KnowledgeBasesContext;
   entries: EntriesContext;
   actor?: AccessActor;
   conversation: ConversationContext;

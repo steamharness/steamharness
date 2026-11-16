@@ -445,7 +445,7 @@ test("Storage creates a readable random avatar when no projectCard is supplied",
     } } as unknown as DatabaseRepository });
   try {
     for (const projectType of ["workflow", "bot", "kanban"] as const) {
-      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:projectType==="kanban"?"index.html":"index.ts",databases:[]}],defaultEntry:"main", projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
+      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:projectType==="kanban"?"index.html":"index.ts"}],defaultEntry:"main", projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
       assert.equal(saved!.icon, defaultProjectCardIcon(projectType));
       assert.ok(getProjectCardColorContrastRatio(saved!.iconColor!, saved!.iconBackgroundColor) >= 4.5);
     }
@@ -498,7 +498,7 @@ test("Storage reuses an existing project without overwriting management fields",
     const restored = await storage.createProject({
       projectId: DEMO_WF_ID,
       projectName: DEMO_WF_ID,
-      entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
+      entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}],defaultEntry:"main",
       projectInfo,
       projectCard,
       ownerUserId: "owner-1",
@@ -587,7 +587,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
   try {
     await storage.init();
     await writeFileVersion(dataRoot, DEMO_CONV_WF_ID, "1.0.0", "2026-05-21T00:00:00.000Z", {
-       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",configuration:"configuration.json"}],
         projectInfo: DECLARED_SERVER_PROJECT_INFO,
         projectCard: {
           icon: "bot",
@@ -662,7 +662,7 @@ test("Storage atomically checks project configuration versions and isolates acco
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(sourceRoot,{recursive:true});
-    await writeProjectFixture(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
+    await writeProjectFixture(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json"}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
     await writeFile(path.join(sourceRoot,"index.html"),"<!doctype html>");
     await writeFile(path.join(sourceRoot,"configuration.json"),JSON.stringify({version:1,fields:[{name:"title",type:"string",defaultValue:"Roadmap"}]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
@@ -691,7 +691,7 @@ test("Storage keeps draft configuration values when an older version is read and
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
-    await writeProjectFixture(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
+    await writeProjectFixture(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json"}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
     await writeFile(path.join(draft,"index.ts"),'throw new Error("static source only");');
     await writeFile(path.join(draft,"configuration.json"),JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]}));
     await writeProjectFixture(path.join(version,"package.json"),await readFile(path.join(draft,"package.json")));
@@ -1083,7 +1083,7 @@ async function writePublishableDraft(dataRoot: string, projectName: string): Pro
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json"}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
     }),
     "utf8",
   );
@@ -1112,7 +1112,7 @@ async function writeFileVersion(
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json"}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
       ...packageJsonOverrides,
     }),
     "utf8",
@@ -1166,7 +1166,7 @@ function createDbProjectRecord(projectId: string, latest: string | null) {
   return {
     id: projectId,
     name: projectId,
-    entries:[{entryId:"main",name:"Main",type:"workflow" as const,root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
+    entries:[{entryId:"main",name:"Main",type:"workflow" as const,root:".",entry:"index.ts"}],defaultEntry:"main",
     projectCard: {
       icon: "workflow",
       iconBackgroundColor: "#2563eb",

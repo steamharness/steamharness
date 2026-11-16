@@ -13,7 +13,7 @@ export async function declareConfigurationFixture(directory:string):Promise<stri
   return directory;
 }
 export async function writeConfigurationFixtureManifest(directory:string,id:string=randomUUID()){
-  await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'configuration-test',type:'module',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}));
+  await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'configuration-test',type:'module',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',configuration:'configuration.json'}]}));
 }
 export async function configurationFixtureStore(directory:string,options:LocalProjectConfigurationOptions={}){
   await declareConfigurationFixture(directory);

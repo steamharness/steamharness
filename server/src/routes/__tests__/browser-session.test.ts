@@ -9,7 +9,7 @@ import { fail, toHttpError } from "../../protocol";
 import { createAuthRouter } from "../auth";
 
 const token = "wf_api_studio_browser_test";
-const returnTo = "/databases/00000000-0000-4000-8000-000000000001";
+const returnTo = "/detail/00000000-0000-4000-8000-000000000001";
 
 async function fixture(t: test.TestContext) {
   const secret = process.env.STEAMHARNESS_AUTH_COOKIE_SECRET;
@@ -50,7 +50,7 @@ async function fixture(t: test.TestContext) {
   return { state, issue, consume, session: (cookie: string) => fetch(`${base}/api/auth/session`, { headers: { Cookie: cookie } }) };
 }
 
-test("Studio browser handoff opens the requested database with the same account and key", async t => {
+test("Studio browser handoff opens the requested project with the same account and key", async t => {
   const f = await fixture(t), issued = await f.issue();
   assert.equal(issued.status, 200);
   assert.equal(issued.headers.get("cache-control"), "no-store");
@@ -79,7 +79,7 @@ test("Studio browser handoff opens the requested database with the same account 
 test("handoff rejects missing credentials, external redirects and replay after expiration", async t => {
   const f = await fixture(t);
   assert.equal((await f.issue(returnTo, {})).status, 401);
-  for (const target of ["https://attacker.test", "//attacker.test", "/\\attacker.test", "/a/..//attacker.test", "/databases\r\nLocation: bad"]) {
+  for (const target of ["https://attacker.test", "//attacker.test", "/\\attacker.test", "/a/..//attacker.test", "/detail\r\nLocation: bad"]) {
     assert.equal((await f.issue(target)).status, 400, target);
   }
   const { data } = await (await f.issue()).json();

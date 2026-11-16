@@ -21,11 +21,11 @@ Use the [Workspace CLI](/en/cli/server-workspace) to pack locally or separate up
 1. Open **Versions** and select a version, or start a download from the start page.
 2. Wait for download and validation.
 3. Choose the current window or a new window.
-4. Install dependencies in the project terminal and check resource grants and entry bindings.
+4. Install dependencies in the project terminal, then run `steamharness check .` to validate the entries.
 
 Downloads preserve every entry's relative path. The default destination is `Documents/steamharness-projects/<name>-<version>` under your home directory. A conflicting folder name gets a numeric suffix rather than overwriting existing files.
 
-Archives retain resource declarations but exclude host credentials and business data. Server maintains account-specific relational bindings; check them again under the current identity. Source downloads also require project membership or approved access.
+Archives exclude host credentials and runtime data. Source downloads require project membership or approved access.
 
 ## Export run content
 
@@ -37,7 +37,6 @@ Exporting a conversation, message, or workflow record opens the native save dial
 | --- | --- |
 | Project is not registered | Apply for an application ID in the run UI |
 | Version already exists | Update the project version before publishing again |
-| Downloaded project will not run | Install dependencies and check entry files and resource grants |
-| Database is unavailable | Check account grants, bindings, and Server/PostgreSQL connectivity |
+| Downloaded project will not run | Install dependencies and run `steamharness check .` to validate entry files |
 
 Uploads and downloads require the Node extension host. Project tabs, recent projects, and resource views show the local version; the version panel shows Server history.

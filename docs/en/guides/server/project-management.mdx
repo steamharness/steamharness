@@ -1,11 +1,11 @@
 ---
 title: "Project management"
-description: "Manage aggregate entries, membership, versions and independent data resources."
+description: "Manage aggregate entries, membership, versions, and configurations."
 ---
 
 # Project management
 
-Open project details in Server Web, then choose members, versions, configuration, or databases. Entries share a project version; membership and data-resource grants are managed separately.
+Open project details in Server Web, then choose members, versions, or configuration. Entries share a project version.
 
 The aggregate entry list displays each entry’s `projectCard` icon, foreground and background. These properties live in entry declarations and travel with source uploads and version snapshots. Entries have no independent versions; the aggregate owns the root version.
 
@@ -23,12 +23,12 @@ Accounts are ordinary users or system administrators. Business access is assigne
 
 | Role | Cumulative capabilities |
 | --- | --- |
-| `guest` | Read projects, published versions, authorized knowledge resources, project files and previews; download published source to run locally. |
-| `developer` | Edit drafts, upload, publish and write Server authorized knowledge resources and project files. |
+| `guest` | Read projects, published versions, project files and previews; download published source to run locally. |
+| `developer` | Edit drafts, upload, publish, and manage project files. |
 | `maintainer` | Manage project information, icons, visibility and official configurations; manage guests and developers. |
 | `owner` | Assign every role, manage owners, delete projects and transfer ownership. |
 
-Cookie and API key requests use current account status and memberships. Revocation, disabling an account or making a public project private affects subsequent requests immediately, including previews. Local execution still requires grants for the database or knowledge base being accessed; project membership does not directly grant resource access. Personal configurations remain available within published field rules.
+Cookie and API key requests use current account status and memberships. Revocation, disabling an account or making a public project private affects subsequent requests immediately, including previews. Personal configurations remain available within published field rules.
 
 ## Groups and subgroups
 
@@ -52,7 +52,7 @@ Top-level groups and personal projects retain at least one active owner, protect
 
 ## Source and versions
 
-Server assigns a fresh aggregate UUID on creation and cloning, registering `entries`, `defaultEntry`, metadata and ownership before source upload. Entries can then request spaces; approval and binding are required for data access. Static previews and publication require source upload.
+Server assigns a fresh aggregate UUID on creation and cloning, registering `entries`, `defaultEntry`, metadata and ownership before source upload. Static previews and publication require source upload.
 
 Uploads only extract, statically validate and save files. Server never installs dependencies, builds or executes uploaded code. Failures preserve drafts and published versions. Publication saves an immutable snapshot and updates `latest`; duplicate versions return `409`.
 
@@ -62,9 +62,9 @@ The v2 `structure.json` format encodes internal structure while keeping project 
 
 A developer upload cannot modify management metadata or ownership. Guests download published versions; draft reads require developer access. Archives exclude KV, PersistentValue, SQLite, environment files and CLI credentials.
 
-## Entries and data resources
+## Entries and configuration
 
-All aggregate entries share a project version, source archive and installation unit; configurations are entry-scoped. Accounts explicitly create, grant, migrate and bind relational resources. Knowledge bases use independent knowledgeBases declarations and root alias-to-UUID mappings, with STEAMHARNESS_PROJECT_CONFIG deployment overrides. Membership protects project source and configuration; data access checks the relevant account resource grant and effective binding. Binding grants no access; deleting a project retains independent resources.
+All aggregate entries share a project version, source archive, and installation unit. Configurations are entry-scoped. Membership protects project source and configuration.
 
 ## System administration and audit
 
@@ -99,15 +99,3 @@ After selecting a published version, users can read and edit permitted personal 
 Projects declaring `profilePolicy` filter configurations using actual project and inherited group roles. Guests see only guest base profiles such as Ask and may edit permitted values, while developers may use Build and manage personal profiles. Personal requests cannot change fixed modes, role labels, or minimum roles. Configuration responses, personal exports, and attachment reads share these checks. See [Project configurations](/en/concepts/project-configuration).
 
 Personal configurations for v2 projects default to the latest published template. Source-draft access does not expose unpublished author fields or defaults. Maintainers, owners and system administrators retain official draft management. Role-controlled configurations must have a published template before developers use them.
-
-## Manage databases and knowledge bases
-
-The database catalog separates relational and knowledge resources with search and server pagination. Relational details show applied models, fields, fingerprints and paginated rows, with JSON insert/update/delete. Updates and deletes require a complete stable key and current row version. Knowledge details provide document lists, search, revision-aware editing and attachments. Resource pages manage account read/write grants and entry bindings. Navigation protects unsaved drafts; conflicts retain edits. Table DateTime values use ISO strings with a timezone and UTC semantics, and mapped enums use authored names. See the [Database API](/en/core-api/database) for encoding details.
-
-Knowledge attachment contents use Server private file storage; PostgreSQL retains metadata, size and SHA-256. Backups must retain both the database and file storage directory. Legacy KV attachments are not imported, and there is no dual write or local fallback.
-
-Studio and CLI Web deduplicate references by resource kind and UUID and open Server Web resource pages without putting account tokens in URLs. Visible KV editing and the local/remote KV switch have been removed. Account changes abort old requests and clear the catalog; changed bindings or grants invalidate old clients. Attachment preparation disables duplicate uploads, and closing the page cancels late results.
-
-### Upload generated artifacts
-
-Projects can include each source root's generated Node/Browser database assets and registered entries' static `build/<entryId>/` outputs under `dist/steamharness/`. Server verifies the inventory, definition and model fingerprints, and artifact SHA-256 without executing `steamharness.database.ts` or generated clients or installing dependencies. Other local `.steamharness` runtime data remains excluded. Regenerate changed models locally before upload. See [SteamHarness Database](/en/core-api/database).

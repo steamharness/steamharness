@@ -60,7 +60,7 @@ async function fixture(t, services) {
 }
 
 const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a', '4d8d3580-6356-42b1-a8f0-2a14b0a7b955'];
-const manifest = id => ({ id, name: 'Notes', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[]}],projectInfo:{ localizedNames:{en:'English notes','zh-cn':'Chinese notes'} }  });
+const manifest = id => ({ id, name: 'Notes', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts'}],projectInfo:{ localizedNames:{en:'English notes','zh-cn':'Chinese notes'} }  });
 const saveManifest = (directory, value) => writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(value));
 
 test('entry queries return the aggregate registrations and reject removed operations', async t => {
@@ -74,7 +74,7 @@ test('Kanban runtime diagnostics enforce project paths and entry types under eve
   const calls = [];
   const f = await fixture(t, { configuration: async () => ({}), kanban: async input => { calls.push(input); return { available: true }; } });
   const project = { ...manifest(ids[0]), entries: [
-    { entryId: 'map-2d', name: 'Map', type: 'kanban', root: '.', entry: 'index.html', databases: [] },
+    { entryId: 'map-2d', name: 'Map', type: 'kanban', root: '.', entry: 'index.html' },
     ...manifest(ids[0]).entries,
   ] };
   await writeFile(path.join(f.workdir, 'index.html'), '<html></html>');

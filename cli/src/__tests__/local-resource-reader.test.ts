@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readLocalWorkflowResource } from '../web/local-resource-reader';
-import { conversationResourceCards } from '../web/resource-cards';
 import type { Project, Runtime } from '../web/workflow-types';
 const owner = {id:'project',entryId:'agent',folderPath:'/fixture/project',uri:'file:///fixture/project'} as Project;
 const target = {...owner,entryId:'database',projectType:'workflow',entrypoints:[{id:'read',readOnly:true},{id:'write'}]} as Project;
@@ -16,19 +15,4 @@ describe('local resource readers',()=>{
     await expect(readLocalWorkflowResource(host,owner,'database',{entrypointId:'read'})).rejects.toThrow('same project');
     abort.abort();await expect(readLocalWorkflowResource(host,owner,'database',{entrypointId:'read'},abort.signal)).rejects.toThrow();
   });
-  it('keeps local knowledge cards without a remote alias and drops server or malformed readers',()=>{
-    const card=(reader:unknown,source='current')=>[{metadata:{kind:'agent-part',partType:'tool'},content:{status:'success',tool:'kb_get_document',output:{details:{resourceCard:{kind:'knowledge',target:{source,projectId:'project',entryId:'database'},reader}}}}}];
-    expect(conversationResourceCards(card({entrypointId:'read'}) as any,'project','agent','conversation')[0]).toMatchObject({reader:{entrypointId:'read'},target:{source:'local',entryId:'database'}});
-    expect(conversationResourceCards(card({entrypointId:'read'},'server') as any,'project','agent','conversation')).toEqual([]);
-    expect(conversationResourceCards(card({entrypointId:'../escape'}) as any,'project','agent','conversation')).toEqual([]);
-  });
-});
-
-it('binds document selection and search query without rewriting the saved reader arguments',async()=>{
- const {selectedKnowledgeReader}=await import('../web/resource-reader-contract');
- const reader={entrypointId:'preview',args:['--payload','{"query":"干员"}']};
- const selected=selectedKnowledgeReader(reader,{documentId:'guide',query:'干员'});
- expect(selected.args).toEqual([...reader.args,'--document-id','guide','--query','干员']);
- expect(reader.args).toEqual(['--payload','{"query":"干员"}']);
- expect(selectedKnowledgeReader(reader,{documentId:'',query:'干员'}).args).toContain('');
 });

@@ -98,7 +98,7 @@ it("creates custom file definitions with accept restrictions through the panel",
 });
 it.each(["workflow","bot","kanban"] as const)("shows the same configuration editor for %s",async projectType=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
- await render(<ProjectConfigurationsTab entryId="main" project={{...project,entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[]}]}}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={{...project,entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts"}]}}/>);
  expect(await screen.findByLabelText("label")).toHaveProperty("value","Original");
  expect(screen.getByRole("button",{name:"Add field"})).toBeTruthy();
 });

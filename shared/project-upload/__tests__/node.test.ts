@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { copyProjectUploadFiles, createProjectUploadPlan } from "../node";
+import { createProjectUploadPlan } from "../node";
 
 const tempDirectories: string[] = [];
 
@@ -13,27 +13,9 @@ afterEach(async () => {
 });
 
 describe("createProjectUploadPlan", () => {
-  it("requires config.json when present and copies authored values without environment overrides", async () => {
-    const root = await createProject({defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"],knowledgeBases:["docs"]}]});
-    const target = await mkdtemp(path.join(os.tmpdir(), "config-upload-")); tempDirectories.push(target);
-    const config = { version: 1, knowledgeBases: { docs: "00000000-0000-4000-8000-000000000001" } };
-    await writeFile(path.join(root, "index.ts"), "export {};");
-    await writeFile(path.join(root, "config.json"), JSON.stringify(config));
-    await writeFile(path.join(root, ".steamharnessignore"), "config.json\n");
-    await expect(createProjectUploadPlan(root)).rejects.toThrow('Required upload path "config.json"');
-    await writeFile(path.join(root, ".steamharnessignore"), "");
-    const before = process.env.STEAMHARNESS_PROJECT_CONFIG;
-    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ knowledgeBases: { docs: "00000000-0000-4000-8000-000000000002" } });
-    try { await copyProjectUploadFiles(root, target); }
-    finally { if (before === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = before; }
-    expect(JSON.parse(await readFile(path.join(target, "config.json"), "utf8"))).toEqual(config);
-    const pkg = JSON.parse(await readFile(path.join(target, "steamharness.json"), "utf8"));
-    expect(pkg.entries[0].databases).toEqual(["data"]);
-    expect(pkg.entries[0].knowledgeBases).toEqual(["docs"]);
-  });
   it("includes a git-ignored Kanban artifact and applies only .steamharnessignore", async () => {
     const root = await createProject({
-      defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/board.html",databases:[]}],
+      defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/board.html"}],
     });
     const output = path.join(root, "dist/steamharness/build/board");
     await mkdir(output, { recursive: true });
@@ -107,7 +89,7 @@ async function createProject(steamHarness?: Record<string, unknown>): Promise<st
     id: "00000000-0000-4000-8000-000000000001",
     name: "upload-test",
     version: "0.1.0",
-    ...(steamHarness ?? {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]}),
+    ...(steamHarness ?? {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts"}]}),
   }));
   await writeFile(path.join(root, "package.json"), JSON.stringify({name:"npm-only",version:"9.9.9"}));
   return root;

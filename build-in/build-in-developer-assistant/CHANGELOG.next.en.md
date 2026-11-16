@@ -39,13 +39,13 @@
 - Project generation documents release commands, entry/configuration selection and distribution validation.
 
 - Generator documents local entry discovery and native Conversation mounting, including business submission receipts, session isolation, and view disposal.
-- Generator templates and guidance group entry builds and database generation under the same source root namespace.
+- Generator templates and guidance group entry builds by source root.
 
 - Generator guidance covers reserved entry names, isolated package staging, and complete download validation.
 
 - Generator templates, built-in caches, reports, and archives use aggregate root dist. Generated Kanban entries use dist/steamharness/build/main/index.html and runtime data lives in host or user directories.
 
-- [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines, public database error codes, and receipt checks after timeouts.
+- [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines and receipt checks after timeouts.
 
 - Updated generation guidance for the 120-second aggregate Workflow receipt deadline, retaining request IDs and checking receipts after timeouts without automatically replaying writes.
 
@@ -57,15 +57,11 @@
 
 - Document reserved model names, UTC dates, mapped enums and document version preservation for independent conversations in generation guidance.
 
-- Changed: generator and repair guidance use relational models, Server bindings and independent knowledge bases. Board templates remove local KV and temporary write modes, retain failed drafts and keep the original page connection.
 
-- Updated generation rules and tool contracts for independent knowledgeBases, versioned documents and private attachments, distinguishing relational Server bindings from knowledge deployment mappings.
 
-- Document local SQLite as the default conversation, run history and Agent backend, with explicit cloud storage or on-demand background snapshot backup and separate system AI and business-resource authorization.
+- Document local SQLite as the default conversation, run history and Agent backend, with explicit cloud storage or on-demand background snapshot backup and separate system AI authorization.
 
-- Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; browsers use restricted table queries.
 
-- Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
 
 - Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries.
 
@@ -73,7 +69,7 @@
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
-- Fixed both generated boards to use the database alias API, clearly mark temporary edits without a binding, and prevent overwriting tasks after failed reads. Preflight checks include configuration, ignore files and symlink conflicts to avoid partial projects; database binding guidance is corrected. Generator scaffolds also support names beginning with digits and multiline prompts.
+- Fixed generator preflight checks for configuration, ignore files and symlink conflicts to avoid partial projects. Generator scaffolds support names beginning with digits and multiline prompts.
 
 - Fixed: Existing Assistant conversations discover newly added Studio diagnostics while keeping existing tools usable. Catalog additions preserve checks on existing definitions and permissions.
 
@@ -81,7 +77,7 @@
 
 - Added: Generator guidance covers single subagent model fields and Core bindings, reusing configured models with inheritance and authorization constraints.
 
-- Added Kanban runtime diagnostics and page-readiness checks to the assistant. Project-managed files, configuration attachments and database files now have distinct import guidance; backend readback does not prove rendering, and timeouts require transport diagnosis before image transcoding.
+- Added Kanban runtime diagnostics and page-readiness checks to the assistant. Project-managed files and configuration attachments have distinct import guidance; backend readback does not prove rendering, and timeouts require transport diagnosis before image transcoding.
 
 - Added generator guidance for named agents, durable concurrency queues, management commands and staged safe retries.
 
@@ -99,13 +95,12 @@
 
 - Fixed assistant skill pagination and recovery so implementation and checks can finish in one run. Read-only subagents can read bundled skills and inherit the current model. Clarified filePath card arguments, deferred tool discovery scope and project-local CLI use.
 
-- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
 - Fixed Core Agent input to exclude disabled fields, enforce fixed user-setting bindings, preserve legacy model and mode flags, and keep message text out of parameter parsing. Static inheritance supports shorthand references and namespace imports; undefined field overrides retain existing defaults.
 
 - The assistant and generated Agent examples now inherit Core parameters without duplicate declarations, preserving separate model and effort controls, Plan approval and user permission settings. Generator guidance covers business wrappers, hidden fields and fixed values.
 
-- Changed: generators, templates and examples use alias/databaseId references and document multiple databases, shared entries and host-managed permissions. Project code continues to access databases by entry-local alias.
 
 - The assistant now separates model and effort controls and uses the available model catalogue automatically loaded by the host. Its model menu groups sources and provides Add model at the bottom.
 
@@ -114,9 +109,8 @@
 - The assistant now defaults to user models from host settings, supports conversation overrides and reset, and opens available models before Manage models. Active and background tasks retain their settings snapshot.
 - Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation.
 
-- Fixed Kanban template instructions to use KV and knowledge APIs under a declared database alias with explicit request, approval and binding.
 
-- Breaking: the generator, templates and API references use aggregate entries and independently approved database bindings. Calls use context.entries and storage uses context.databases. Related-project declarations and combined publication locks are removed.
+- Breaking: the generator, templates and API references use aggregate entries. Calls use context.entries. Related-project declarations and combined publication locks are removed.
 
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.
 
@@ -247,5 +241,3 @@
 - Removed Project Assistant's Context parameter menu; the context window now comes from the model itself.
 - Removed Desktop Control integration, its built-in dependency, and unadapted Kanban host control tools.
 - Removed Conversation's enable setting and custom main field declarations.
-
-- Keep project deployment configuration in root config.json, centralizing database aliases and IDs; package entries declare only the aliases they use. STEAMHARNESS_PROJECT_CONFIG can override deployment values; migration updates one ID, permissions remain host-managed, and distributions retain authored values.

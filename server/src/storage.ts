@@ -3,10 +3,8 @@ import { readProjectReleaseSync, sealProjectRelease } from "@steamharness/projec
 import { restrictReleasePublication } from "@steamharness/project-configuration";
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
-import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, type ProjectEntry } from '@steamharness/project-manifest';
 import { RuntimeStorageRepository } from './runtime-storage/repository';
-import { RelationalDatabaseRepository } from './relational-databases/repository';
-import { KnowledgeBaseRepository } from './knowledge-bases';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
@@ -285,7 +283,6 @@ export interface ProjectCreateResult {
 }
 
 export interface KanbanWorkspaceState {
-  knowledgeBases?: import("steamharness").KnowledgeBaseRequirement[];
   projectId: string;
   projectName: string;
   target: string;
@@ -293,7 +290,6 @@ export interface KanbanWorkspaceState {
   artifactDir: string;
   entry: string;
   entryId: string;
-  databases: string[];
   configurations: ProjectConfiguration[];
   activeConfigurationId?: string;
 }
@@ -343,9 +339,7 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 export class Storage {
-  readonly knowledgeBases: KnowledgeBaseRepository;
   readonly runtimeStorage?: RuntimeStorageRepository;
-  readonly relationalDatabases?: RelationalDatabaseRepository;
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
@@ -369,7 +363,6 @@ export class Storage {
     dataRoot?: string;
     db?: DatabaseRepository;
     runtimeStorage?: RuntimeStorageRepository;
-    relationalDatabases?: RelationalDatabaseRepository;
     artifacts?: ArtifactStorage;
     objectStorage?: ObjectStorage;
     kanbanPreviewCapabilitySecret?: string;
@@ -380,8 +373,6 @@ export class Storage {
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
     this.runtimeStorage = options.runtimeStorage ?? (options.db ? new RuntimeStorageRepository(options.db.connectionString) : undefined);
-    this.relationalDatabases = options.relationalDatabases;
-    this.knowledgeBases = new KnowledgeBaseRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
     this.kanbanPreviewCapabilitySecret = options.kanbanPreviewCapabilitySecret?.trim() ||
@@ -395,9 +386,7 @@ export class Storage {
     this.buildInfo ??= await readServerBuildInfo({ repoRoot: this.repoRoot, serverRoot: this.serverRoot,
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
-    await this.knowledgeBases.init();
     await this.runtimeStorage?.init();
-    await this.relationalDatabases?.init();
     await this.resumePendingPreparationJobs();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
@@ -1400,7 +1389,7 @@ export class Storage {
 
   async configurationTemplate(projectName: string, target = "latest", entryId?: string): Promise<ProjectConfigurationTemplate | undefined> {
     const source = await this.resolveSourceTarget(projectName, target);
-    const registration = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir, {}), entryId);
+    const registration = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir), entryId);
     if (this.db) {
       const cached = await this.db.readConfigurationTemplate(projectName, registration.entryId, source.resolvedTarget);
       if (cached) return parseConfigurationTemplate(cached);
@@ -1445,7 +1434,7 @@ export class Storage {
       target = "latest";
     }
     const source = await this.resolveSourceTarget(options.projectName, target);
-    const entry = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir, {}), options.entryId);
+    const entry = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir), options.entryId);
     const entryId = entry.entryId;
     options = { ...options, entryId };
     try {
@@ -1869,7 +1858,7 @@ export class Storage {
       const distribution = projectManifestForDistribution(await readProjectDocument(sourceDir));
       await writeJson(path.join(sourceDir, "steamharness.json"), distribution);
       if (projectRelease) sealProjectRelease(sourceDir, projectRelease);
-      const published = await readProjectManifestFromDirectory(sourceDir, {});
+      const published = await readProjectManifestFromDirectory(sourceDir);
       const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });
       const manifest: Manifest = { projectId: options.projectName, projectName: metadata.name, version,
@@ -1896,8 +1885,6 @@ export class Storage {
   }
 
   async close(): Promise<void> {
-    await this.knowledgeBases.close();
-    await this.relationalDatabases?.close();
     await this.runtimeStorage?.close();
     await this.db?.close();
   }
@@ -2695,7 +2682,7 @@ export class Storage {
         throw new HttpError(
           500,
           500,
-          "Workflow object storage is required to publish database-backed project versions.",
+          "Workflow object storage is required to publish project versions.",
         );
       }
       return undefined;
@@ -2785,34 +2772,12 @@ export class Storage {
     const target = requestedTarget?.trim() || "draft";
     const resolved = await this.resolveSourceTarget(projectName, target);
     const metadata = await this.readPackageMetadataForTarget(projectName, resolved.resolvedTarget);
-    const registration = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
+    const registration = selectProjectEntry({ entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
     const artifact = registration.entry;
-    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [], target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
+    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }
 
-  async entryDatabaseRequirements(projectId: string, entryId: string, target = "draft") {
-    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
-    return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).databases;
-  }
-  async entryKnowledgeBaseRequirements(projectId: string, entryId: string, target = "draft") {
-    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
-    return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).knowledgeBases ?? [];
-  }
-  async entryKnowledgeBases(projectId: string, entryId: string, actor: AccessActor, target = "draft") {
-    if (!actor.userId) throw new HttpError(401, 401, "Account login is required for knowledge bases.");
-    await this.requireProjectCapability(projectId, actor, "read");
-    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
-    const entry = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
-    const { createKnowledgeBasesContext } = await import("steamharness");
-    return createKnowledgeBasesContext({ projectId, entryId: entry.entryId, requirements: entry.knowledgeBases ?? [], host: {
-      resolve: async identity => { await this.requireProjectCapability(projectId, actor, "read"); return this.knowledgeBases.resolveBinding(actor.userId!, identity); },
-      operation: async (identity, binding, operation, input) => {
-        await this.requireProjectCapability(projectId, actor, /\.(?:create|edit|delete)/.test(operation) ? "writeData" : "read");
-        return this.knowledgeBases.operation(actor.userId!, identity.knowledgeBaseId, operation, input as Record<string, unknown>, { identity, binding });
-      },
-    } });
-  }
 
   private projectsRoot(): string {
     return path.join(this.dataRoot, "projects");
@@ -2940,9 +2905,7 @@ export async function createStorageFromEnv(): Promise<Storage> {
   const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
   const objectStorage = createProjectObjectStorageFromEnv({ dataRoot });
-  const databaseAdminUrl = process.env.STEAMHARNESS_SERVER_DATABASE_ADMIN_URL?.trim();
-  const relationalDatabases = databaseAdminUrl ? new RelationalDatabaseRepository(connectionString, { adminConnectionString: databaseAdminUrl }) : undefined;
-  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString), relationalDatabases,
+  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
   await storage.init();
   return storage;
@@ -2959,9 +2922,9 @@ async function validateProjectPackage(
 
   try {
     const { resolveProjectEntry } = await import("@steamharness/project-manifest/node");
-    const manifest = await readProjectManifestFromDirectory(sourceDir, {});
+    const manifest = await readProjectManifestFromDirectory(sourceDir);
     for (const entry of manifest.entries) {
-      await resolveProjectEntry(sourceDir, entry.entryId, {});
+      await resolveProjectEntry(sourceDir, entry.entryId);
       readProjectConfigurationDefinition(sourceDir, entry.entryId);
     }
     await createProjectUploadPlan(sourceDir);
@@ -3007,7 +2970,7 @@ async function readProjectPackageMetadata(
   }
 
   let manifest;
-  try { manifest = await readProjectManifestFromDirectory(sourceDir, {}); }
+  try { manifest = await readProjectManifestFromDirectory(sourceDir); }
   catch (error) { throw new HttpError(400, 400, error instanceof Error ? error.message : 'Invalid aggregate project.'); }
   return {
     id,
@@ -3908,12 +3871,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Apply host deployment overrides to the normalized metadata for this source target. */
-function configuredDatabaseEntry(entries: ProjectEntry[], defaultEntry: string, entryId?: string): ProjectEntry {
-  const entry = selectProjectEntry({ entries, defaultEntry }, entryId);
-  if (process.env[PROJECT_CONFIG_ENV] === undefined) return entry;
-  const config = readProjectConfig({
-    version: 1,
-    knowledgeBases: Object.fromEntries(entries.flatMap(item => (item.knowledgeBases ?? []).map(base => [base.alias, base.knowledgeBaseId]))),
-  }, process.env);
-  return { ...entry, ...(entry.knowledgeBases ? { knowledgeBases: entry.knowledgeBases.map(base => ({ ...base, knowledgeBaseId: config.knowledgeBases![base.alias]! })) } : {}) };
-}

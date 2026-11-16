@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.useFakeTimers(); initI18n({ preference: 'en' }); load.mockReset();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value(this: HTMLDialogElement) { this.open = false; } });
-  dialogs = new ConversationTools(undefined, { skills: { load } });
+  dialogs = new ConversationTools({ skills: { load } });
   dialogs.permissions({ fields: [], tools: [{ name: 'read' }, { name: 'skill', label: 'List and read skill guides' }] }, {}, vi.fn());
 });
 afterEach(() => {

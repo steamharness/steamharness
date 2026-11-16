@@ -11,11 +11,11 @@ Use `steamharness/runtime-storage` to persist run history and Agent checkpoints.
 
 CLI Web, Studio Bot/Workflow history and assistant sessions use host-managed local SQLite by default, including messages, queued inputs, drafts, parameters, runs, events, usage and Agent checkpoints. Projects and entries have separate stores; assistants also use their working directory. Execution checkpoints commit locally, streaming output is displayed immediately, and coalesced history saves do not wait for cloud writes.
 
-Local persistence requires no platform sign-in or database connection. System AI, business databases, knowledge and protected configuration retain their own authorization. Local write failures are reported without falling back to temporary memory. Existing cloud records and legacy JSON/SQLite files are preserved and never overwritten automatically; import them explicitly when needed.
+Local persistence requires no platform sign-in or database connection. System AI and protected configuration retain their own authorization. Local write failures are reported without falling back to temporary memory. Existing cloud records and legacy JSON/SQLite files are preserved and never overwritten automatically; import them explicitly when needed.
 
 Explicit Server repositories isolate records by account, project and entry. workspaces/resolve checks membership for registered projects; only missing projects use account-private workspaces. A 403 never falls back. Conversations add shared rows without creating PostgreSQL databases.
 
-Workspace files, attachments and temporary activity notifications remain host managed and need separate backups. Business models continue to use [SteamHarness Database](/en/core-api/database), independently of runtime history storage.
+Workspace files, attachments and temporary activity notifications remain host managed and need separate backups.
 
 ## Local persistence and optional backups
 

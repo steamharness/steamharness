@@ -67,7 +67,7 @@ test("inspects a Kanban project from a configured artifact directory", async () 
         name: "Kanban Artifact Test",
         version: "0.1.0",
 
-          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/pages/board.html",databases:[]}],
+          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/pages/board.html"}],
       })),
       writeFile(path.join(projectDir, "dist/steamharness/build/board/pages", "board.html"), "<!doctype html>"),
     ]);
@@ -131,7 +131,7 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
       name: "Kanban Symlink Test",
       version: "0.1.0",
 
-        defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/index.html",databases:[]}],
+        defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/steamharness/build/board/index.html"}],
     }));
 
     assert.throws(
@@ -154,7 +154,7 @@ async function createKanbanFixture(): Promise<string> {
       name: "Kanban Test",
       version: "0.1.0",
 
-          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],
+          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"index.html",configuration:"configuration.json"}],
     })),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>"),
     writeFile(path.join(projectDir, "configuration.json"), JSON.stringify({

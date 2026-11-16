@@ -14,7 +14,7 @@ async function fixture() {
   const rootDir = path.join(directory, "values"), applicationId = randomUUID();
   const application = async (name: string, id: string | undefined = applicationId) => {
     const project = path.join(directory, name); await mkdir(project);
-    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id,type:"module",version: "0.1.0", defaultEntry:"main",entries:["main","second"].map(entryId=>({entryId,type:"workflow",name:entryId,root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}))}));
+    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id,type:"module",version: "0.1.0", defaultEntry:"main",entries:["main","second"].map(entryId=>({entryId,type:"workflow",name:entryId,root:".",entry:"index.ts",configuration:"configuration.json"}))}));
     await writeFile(path.join(project, "index.ts"),"export {};");
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1,fields:[{name:"label",type:"string"},{name:"enabled",type:"boolean"}]}));
     return project;

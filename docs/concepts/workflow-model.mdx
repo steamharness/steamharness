@@ -9,7 +9,7 @@ description: "当前 steamharness 的 Workflow、Node、Provider、Executor 和 
 
 项目身份从根 `steamharness.json` 读取，入口设置来自已登记的声明文件，不读取或兼容 `package.json.id`、`package.json.steamHarness`。npm 名称与版本可与项目名称和版本不同。根可包含 `id`、`name`、`version`、`defaultEntry`、`entries` 以及可选的 `description`、`projectCard`、`projectInfo`、`builtinRelease`。
 
-父项目只用 `{ "entryId": "agent", "root": "agent" }` 登记子入口；子目录的 `steamharness.json` 提供 `type`、`name`、`entry`、`configuration`、`projectCard`、`projectInfo`、`databases`、`schedulePresets`。子配置不能声明 ID、版本或嵌套入口，路径相对该子目录。未登记的子配置不会扫描或加载。根入口用 `root: "."` 完整内联，子引用不能携带覆盖字段，也不继承根配置。所有已引用配置都是上传、下载和内置项目分发的必需文件。
+父项目只用 `{ "entryId": "agent", "root": "agent" }` 登记子入口；子目录的 `steamharness.json` 提供 `type`、`name`、`entry`、`configuration`、`projectCard`、`projectInfo`、`schedulePresets`。子配置不能声明 ID、版本或嵌套入口，路径相对该子目录。未登记的子配置不会扫描或加载。根入口用 `root: "."` 完整内联，子引用不能携带覆盖字段，也不继承根配置。所有已引用配置都是上传、下载和内置项目分发的必需文件。
 
 ## Runtime API
 
@@ -43,13 +43,6 @@ steamharness.runIf
 steamharness.runFor
 steamharness.runWhile
 steamharness.runProject
-workflow.listKnowledgeDocuments
-steamharness.getKnowledgeDocument
-steamharness.createKnowledgeDocument
-workflow.editKnowledgeDocument
-workflow.deleteKnowledgeDocument
-workflow.searchKnowledgeDocuments
-steamharness.readKnowledgeDocumentLines
 steamharness.getConfig
 steamharness.getRuntimePlatform
 steamharness.getRuntimeLocale
@@ -362,10 +355,6 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
       "root": "agent"
     },
     {
-      "entryId": "database",
-      "root": "database"
-    },
-    {
       "entryId": "map",
       "root": "map"
     }
@@ -384,24 +373,7 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
     "iconColor": "#ffffff",
     "iconBackgroundColor": "#0f766e"
   },
-  "databases": [
-    "data"
-  ],
   "entry": "index.ts"
-}
-```
-
-`database/steamharness.json`
-
-```json
-{
-  "type": "workflow",
-  "name": "Database operations",
-  "databases": [
-    "data"
-  ],
-  "entry": "index.ts",
-  "configuration": "configuration.json"
 }
 ```
 
@@ -411,21 +383,7 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 {
   "type": "kanban",
   "name": "Map",
-  "databases": [
-    "data"
-  ],
   "entry": "dist/steamharness/entries/map/build/map/index.html"
-}
-```
-
-根目录 `config.json`：
-
-```json
-{
-  "version": 1,
-  "databases": {
-    "data": "00000000-0000-4000-8000-000000000001"
-  }
 }
 ```
 
@@ -433,4 +391,4 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 
 路径必须在聚合目录内，不能包含 `..`、绝对路径或宿主数据目录。静态分析只扫描对应入口的根目录与注册文件，允许聚合包含不同 executor。每个 Workflow／Bot 模块的 executor 类型须匹配注册类型；Kanban 指向构建完成的 HTML。只有根声明拥有 SteamHarness 身份，子目录保留各自的普通 npm 包和依赖。
 
-旧根类型、数据位置和项目关系声明直接拒绝；新项目使用全新声明与数据。数据库使用 [独立空间](/concepts/data-storage)，聚合内调用使用 `context.entries.get(entryId)`。
+聚合内调用使用 `context.entries.get(entryId)`。

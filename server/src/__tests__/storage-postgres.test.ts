@@ -37,11 +37,11 @@ test('PostgreSQL configuration profiles use inherited project roles, preserve pe
     await db.access.setMember('group',group.id,'developer','developer',author);
     await db.access.setMember('group',child.id,'developer','guest',author);
     const id=randomUUID(),projectInfo={localizedNames:{},declarations:[],platformSupport:{mode:'agnostic' as const},};
-    await storage.createProject({projectId:id,projectName:'Role profiles',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",ownerUserId:'author',groupId:child.id,visibility:'public',projectInfo});
+    await storage.createProject({projectId:id,projectName:'Role profiles',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}],defaultEntry:"main",ownerUserId:'author',groupId:child.id,visibility:'public',projectInfo});
     const core=JSON.parse(await readFile(new URL('../../node_modules/steamharness/package.json',import.meta.url),'utf8'));
     const policy={version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]};
     await storage.saveDraftFiles({projectName:id,files:projectFixtureFiles([
-      {path:'package.json',content:JSON.stringify({id,name:'Role profiles',version:'1.0.0',devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo})},
+      {path:'package.json',content:JSON.stringify({id,name:'Role profiles',version:'1.0.0',devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",configuration:"configuration.json"}],projectInfo})},
       {path:'index.ts',content:'throw new Error("Static configuration operations must not execute source");'},
       {path:'configuration.json',content:JSON.stringify({version:2,fields:[{name:'mode',type:'string',sharing:{publish:true,includeValue:true,editable:false}},{name:'model',type:'string'}],profilePolicy:policy})},
     ])});
@@ -110,12 +110,12 @@ test("PostgreSQL preserves source AI policy through stale drafts and hidden publ
     await db.init(); await accounts.init();
     for (const userId of ["author","recipient"]) await accounts.upsertUserProfile({userId,email:`${userId}@test.local`});
     const id=randomUUID(),projectInfo={localizedNames:{},declarations:[],platformSupport:{mode:"agnostic" as const},};
-    await storage.createProject({projectId:id,projectName:"AI policy",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",ownerUserId:"author",projectInfo});
+    await storage.createProject({projectId:id,projectName:"AI policy",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts"}],defaultEntry:"main",ownerUserId:"author",projectInfo});
     await db.access.setMember('project',id,'recipient','guest',{userId:'author',isSystemAdmin:false});
     const core = JSON.parse(await readFile(new URL("../../node_modules/steamharness/package.json",import.meta.url),"utf8"));
     const definition = (restricted:boolean)=>JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,...(restricted?{allowThirdParty:false}:{})}]});
     await storage.saveDraftFiles({projectName:id,files:projectFixtureFiles([
-      {path:"package.json",content:JSON.stringify({id,name:"AI policy",version:"1.0.0",devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo})},
+      {path:"package.json",content:JSON.stringify({id,name:"AI policy",version:"1.0.0",devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"bot",root:".",entry:"index.ts",configuration:"configuration.json"}],projectInfo})},
       {path:"index.ts",content:'throw new Error("must not execute"); steamharness.createAgentNode();'},
       {path:"configuration.json",content:definition(false)},
     ])});
@@ -170,7 +170,7 @@ test('Server startup preserves unsupported project rows, snapshots and storage',
     assert.equal((await raw.query('select count(*)::int as total from project_versions where project_id=$1', [id])).rows[0].total, 1);
     assert.deepEqual(await db.listProjects(), []);
     assert.equal(await db.getProject(id), undefined);
-    const entries = JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]);
+    const entries = JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}]);
     const currentId = randomUUID();
     await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'New project',$2,'main')`, [currentId, entries]);
     await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'Missing default',$3,null),($2,'Missing entries',null,'main')`, [randomUUID(), randomUUID(), entries]);

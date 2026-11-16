@@ -12,7 +12,6 @@ export async function runPerformance({ measure, PROFILE }) {
   const { createMemoryRuntimePersistence } = await import('../src/runtime-storage/memory.ts');
   const { emptyRuntimeRecord } = await import('../src/runtime-storage/history.ts');
   const { copyRuntimePersistence } = await import('../src/runtime-storage/backup.ts');
-  const { createServerKnowledgeBaseHost } = await import('../src/knowledge-bases/index.ts');
   const { RemoteProjectFileStore } = await import('../src/files/remote.ts');
   const { BACKGROUND_CONTEXT } = await import('@earendil-works/chord/context');
 
@@ -77,33 +76,10 @@ export async function runPerformance({ measure, PROFILE }) {
       }, { budgetMs: 100, workload: { payloadBytes: 16_384 } }));
     } finally { await agent.release(); }
 
-    const identity = { projectId: 'project', entryId: 'main', alias: 'docs', knowledgeBaseId: 'knowledge' };
-    const binding = { id: 'binding', revision: 1, knowledgeBaseId: 'knowledge', mode: 'read', accessRevision: 1 };
-    const bytes = Buffer.alloc(1024 * 1024, 'x'), base64 = bytes.toString('base64');
-    const file = id => ({ id, name: 'fixture.png', mimeType: 'image/png', kind: 'image', storage: 'database', spaceId: 'knowledge', size: bytes.length, createdAt: '2026-01-01T00:00:00Z' });
-    let downloads = 0, checks = 0, fileNumber = 0;
-    globalThis.fetch = async (_url, init) => {
-      const { operation, input } = JSON.parse(init.body);
-      await delay(PROFILE.networkMs);
-      if (operation === 'files.stat') { checks++; return Response.json({ errCode: 0, data: file(input.fileId) }); }
-      assert.equal(operation, 'files.readFile'); downloads++; await delay(PROFILE.downloadMs);
-      return Response.json({ errCode: 0, data: { file: file(input.fileId), base64 } });
-    };
-    const knowledge = createServerKnowledgeBaseHost({ serverUrl: 'https://knowledge.performance.test', token: 'fixture-only' });
-    const readKnowledge = fileId => knowledge.operation(identity, binding, 'files.readFile', { fileId });
-    metrics.push(await measure('harness.knowledge-attachment.cold', async () => {
-      const before = downloads; const result = await readKnowledge(`file-${fileNumber++}`);
-      assert.equal(result.base64.length, base64.length); assert.equal(downloads - before, 1);
-      return { downloads: downloads - before };
-    }, { budgetMs: 300, workload: { bytes: bytes.length, expectedDownloads: 1 } }));
-    await readKnowledge('retained');
-    metrics.push(await measure('harness.knowledge-attachment.revalidate', async () => {
-      const beforeDownloads = downloads, beforeChecks = checks;
-      await readKnowledge('retained'); assert.equal(downloads, beforeDownloads); assert.equal(checks - beforeChecks, 1);
-      return { downloads: downloads - beforeDownloads, permissionChecks: checks - beforeChecks };
-    }, { budgetMs: 150, workload: { bytes: bytes.length, expectedDownloads: 0, permissionChecks: 1 } }));
-
-    requests = 0; downloads = 0;
+    const bytes = Buffer.alloc(1024 * 1024, 'x');
+    const file = id => ({ id, name: 'fixture.png', mimeType: 'image/png', kind: 'image', storage: 'server', projectId: 'project', size: bytes.length, createdAt: '2026-01-01T00:00:00Z' });
+    let downloads = 0, fileNumber = 0;
+    requests = 0;
     globalThis.fetch = async (_url, init) => {
       requests++; await delay(PROFILE.networkMs);
       if (new Headers(init.headers).has('If-None-Match')) return new Response(null, { status: 304 });
@@ -111,7 +87,7 @@ export async function runPerformance({ measure, PROFILE }) {
       return new Response(bytes, { headers: { etag: '"performance-fixture"' } });
     };
     const managed = new RemoteProjectFileStore({ serverUrl: 'https://files.performance.test', token: 'fixture-only', projectName: 'project' });
-    const reference = id => ({ ...file(id), storage: 'server', projectId: 'project' });
+    const reference = id => file(id);
     metrics.push(await measure('harness.managed-attachment.cold', async () => {
       const before = downloads; const resolved = await managed.resolveFile(reference(`managed-${fileNumber++}`));
       assert.equal((await resolved.readBuffer()).length, bytes.length); assert.equal(downloads - before, 1);

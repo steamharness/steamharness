@@ -1,4 +1,3 @@
-import { DATABASE_DEFINITION_FILE, readDatabaseArtifactFiles } from "./database-artifacts";
 import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { PROJECT_RELEASE_FILE } from "@steamharness/project-manifest/release";
 import { isProjectToolArtifactPath, projectEntryFilePath, projectManifestForDistribution } from "@steamharness/project-manifest";
@@ -56,23 +55,7 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   const availableRegularPaths = new Set<string>();
   const portablePaths = new Map<string, string>();
   const ignoredPaths: string[] = [];
-  const databaseRequiredPaths = new Set<string>();
-
   const declaration = await readProjectDeclarationFromDirectory(projectRoot);
-  const sourceRoots = new Set([".", ...declaration.entries.map(entry => entry.root)]);
-  for (const sourceRoot of sourceRoots) {
-    const definition = await lstat(path.join(projectRoot, sourceRoot, DATABASE_DEFINITION_FILE)).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
-    if (!definition) continue;
-    const artifacts = await readDatabaseArtifactFiles(projectRoot, sourceRoot);
-    if (!artifacts) throw new Error(`Missing database artifacts for ${sourceRoot}. Run steamharness database generate ${projectRoot}.`);
-    for (const source of Object.keys(artifacts.manifest.sources)) databaseRequiredPaths.add(path.posix.join(sourceRoot, source));
-    for (const filename of artifacts.files) {
-      const absolutePath = path.join(projectRoot, filename);
-      availableRegularPaths.add(filename);
-      files.push({ path: filename, absolutePath, size: (await lstat(absolutePath)).size });
-      databaseRequiredPaths.add(filename);
-    }
-  }
   const artifactDirectories = declaration.entries.map(entry => projectEntryFilePath(entry))
     .filter(filename => filename.startsWith("dist/")).map(filename => path.posix.dirname(filename));
   const inArtifacts = (relative: string, directory: boolean): boolean => artifactDirectories.some(artifact =>
@@ -132,12 +115,8 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
     availableRegularPaths,
     declaration,
   );
-  requiredPaths.push(...databaseRequiredPaths);
-  for (const file of files) {
-    if (file.path.endsWith("steamharness.schema") || file.path.endsWith(DATABASE_DEFINITION_FILE)) requiredPaths.push(file.path);
-  }
   // Validate authored configuration; never export the machine's environment overrides.
-  await readProjectManifestFromDirectory(projectRoot, {});
+  await readProjectManifestFromDirectory(projectRoot);
   matcher.assertRequiredPaths(requiredPaths);
   for (const requiredPath of requiredPaths) {
     if (!availableRegularPaths.has(requiredPath)) {

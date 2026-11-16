@@ -98,13 +98,13 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const manifest = {
     name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', release: 'steamharness release .', inspect: 'steamharness structure .',
-      ...(template.files.includes('build.mjs') ? { build: 'steamharness database generate && node build.mjs' } : {}),
+      ...(template.files.includes('build.mjs') ? { build: 'node build.mjs' } : {}),
       ...(template.projectType === 'kanban' ? {} : { 'run:json': 'steamharness json .' }) },
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli, ...(template.files.includes('build.mjs') ? { esbuild: '0.28.2' } : {}) },
   };
   const projectManifest = {
     id: "", name, version: "0.1.0",
-      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json', databases: template.files.includes('steamharness.database.ts') ? ['data'] : [] }],
+      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json' }],
       defaultEntry: 'main',
       projectCard,
       projectInfo,

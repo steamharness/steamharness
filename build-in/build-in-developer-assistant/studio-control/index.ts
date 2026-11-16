@@ -60,7 +60,7 @@ export const executor = steamharness.defineExecutor<StudioControlInput, StudioCo
     steamharness.defineEntrypoint({
       id: "get_entries",
       title: "Read aggregate entries",
-      description: "List the aggregate project's registered entries, their types and code roots. projectDir follows the selected permission policy and defaults to the assistant working directory. The result does not grant database access.",
+      description: "List the aggregate project's registered entries, their types and code roots. projectDir follows the selected permission policy and defaults to the assistant working directory.",
       workflow: studioControlProject,
       params: [{ name: "projectDir", flag: "--project-dir", type: "string", required: false, label: "Project directory" }],
       createInput: ({ paramValues }) => createInput("studio.entries.get", optionalString(paramValues, "projectDir")),
@@ -83,7 +83,7 @@ export const executor = steamharness.defineExecutor<StudioControlInput, StudioCo
     steamharness.defineEntrypoint({
       id: "get_kanban_diagnostics",
       title: "Read Kanban runtime diagnostics",
-      description: "Inspect an already open local Kanban entry by projectDir and entryId. Returns its exact configuration, live instances and registered methods, plus the last 50 bridge requests with file/database routing, HTTP status and safe error categories. Does not open or reload previews. Query without call first; optionally pass call:{instanceId,configurationId,method,args} from that result to invoke a method explicitly declared readOnly (for example map.getInfo to verify imageReady). Empty instances or a successful file download do not prove page rendering. No screenshots, scripts or mutations.",
+      description: "Inspect an already open local Kanban entry by projectDir and entryId. Returns its exact configuration, live instances and registered methods, plus the last 50 bridge requests with HTTP status and safe error categories. Does not open or reload previews. Query without call first; optionally pass call:{instanceId,configurationId,method,args} from that result to invoke a method explicitly declared readOnly (for example map.getInfo to verify imageReady). Empty instances or a successful file download do not prove page rendering. No screenshots, scripts or mutations.",
       workflow: studioControlProject,
       params: [{ name: "input", flag: "--input", type: "string", required: true, label: "Kanban diagnostic request (JSON)" }],
       createInput: ({ paramValues }) => createInput("studio.kanban.diagnostics", JSON.parse(readRequiredString(paramValues, "input"))),

@@ -14,7 +14,6 @@ import type { AccountController } from './workflow-auth';
 import { prepareAssistantApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
 import { assistantWorkspaceAvailable, createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 import type { Project } from './workflow-types';
-import { requestProjectResource } from './workflow-resources-node';
 import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorkspaceAvailable } from './studio-control';
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
 import { createStudioAnalysisHandler, studioAnalysisProjects, studioAnalysisSummary } from './studio-analysis';
@@ -318,16 +317,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       } catch (error) { await bridge?.close(); throw error; }
     }, signal); },
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
-    database: async (input, signal) => {
-      assertAvailable();
-      const folderPath = await assistantDirectory();
-      const runtime = await selectedRuntime();
-      signal.throwIfAborted();
-      return requestProjectResource({ project: { id: DEVELOPER_ASSISTANT_PROJECT_ID, entryId: 'main', folderPath } as Project, input,
-        worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,
-        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: runtime.nodePath, runtime, connection: account.getConnection(),
-        signal: AbortSignal.any([signal, controller.signal]) });
-    },
     dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
   };
 }

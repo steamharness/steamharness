@@ -31,8 +31,7 @@
       "name": "Project Assistant",
       "root": ".",
       "entry": "index.ts",
-      "configuration": "configuration.json",
-      "databases": []
+      "configuration": "configuration.json"
     },
     {
       "entryId": "studio-control",

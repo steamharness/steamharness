@@ -6,19 +6,12 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { writeProjectFixture } from "../../scripts/test-project-fixture.mjs";
 import {
-  bindProjectKnowledgeBase,
-  executeKnowledgeBaseOperation,
-  inspectAggregateProjectStructure,
   inspectLocalProjectStructure,
   readEntrypointOutput,
   runLocalProjectWithReport,
-  type KnowledgeBaseHost,
-  type KnowledgeBaseIdentity,
-  type KnowledgeBaseBinding,
   type RuntimeEvent,
   type UserInputContext,
 } from "../index";
-import { createTestKnowledgeBases } from "./entry-test-resources";
 import { testExecutionStorage } from "./runtime-test-storage";
 
 test("entry pauses after streaming output and resumes the same request into either branch", async (t) => {
@@ -129,76 +122,18 @@ test("cancelling a streaming entry interrupts in-flight work and emits a termina
   assert.equal(events.some(event => event.type === "project_succeeded"), false);
 });
 
-test("entries and projects share only explicitly bound knowledge resources and reject revoked access", async (t) => {
-  const directory = await temporaryDirectory(t), firstId = randomUUID(), secondId = randomUUID(), baseId = randomUUID();
-  const source = `
-    const flow = steamharness.defineProject({ name: "shared-knowledge", async run(input, context) {
-      if (input.action === "call") return context.entries.get("reader").runEntrypoint("main");
-      const knowledge = context.knowledgeBases.get("data");
-      if (input.action === "write") await knowledge.createDocument({ id: "shared", title: "Shared", markdown: "shared value" });
-      return { errCode: 0, errMessage: "", document: await knowledge.getDocument("shared") };
-    }});
-    export const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main",
-      entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main", workflow: flow,
-        createInput({ args }) { return { action: args[0] ?? "read" }; } })] });
-  `;
-  const projectDir = await writeEntryFixture(path.join(directory, "first"), firstId, source, true);
-  const otherDir = await writeEntryFixture(path.join(directory, "second"), secondId, source, true);
-  const approved = new Map<string, string>();
-  const repository = createTestKnowledgeBases(baseId, "test").get("data");
-  const host: KnowledgeBaseHost = {
-    async resolve(identity) {
-      const id = approved.get(`${identity.projectId}:${identity.entryId}`);
-      if (!id || identity.knowledgeBaseId !== baseId) throw new Error("Knowledge access is not approved");
-      return { id, knowledgeBaseId: baseId, revision: 1, accessRevision: 1, mode: "write" };
-    },
-    async operation<T>(identity: KnowledgeBaseIdentity, _binding: KnowledgeBaseBinding, operation: string, input: unknown): Promise<T> {
-      await host.resolve(identity);
-      return executeKnowledgeBaseOperation(repository, operation, input as Record<string, unknown>) as Promise<T>;
-    },
-  };
-  const run = (target: string, entryId: string, action = "read") => runLocalProjectWithReport({
-    projectDir: target, entryId, args: [action], env: {}, knowledgeBaseHost: host, storage: testExecutionStorage(),
-  });
-  const grant = async (target: string, projectId: string, entryId: string) => {
-    approved.set(`${projectId}:${entryId}`, randomUUID());
-    await bindProjectKnowledgeBase(target, entryId, "data", baseId);
-  };
-  assert.deepEqual(inspectAggregateProjectStructure(projectDir).entries.map(entry => entry.projectType), ["workflow", "workflow"]);
-  assert.equal((await run(projectDir, "writer", "write")).status, "failed");
-  await grant(projectDir, firstId, "writer");
-  assert.equal((await run(projectDir, "writer", "write")).status, "success");
-  assert.equal((await run(projectDir, "reader")).status, "failed", "writer access must not grant reader access");
-  await grant(projectDir, firstId, "reader");
-  await bindProjectKnowledgeBase(otherDir, "reader", "data", baseId);
-  assert.equal((await run(otherDir, "reader")).status, "failed", "a binding alone must not grant project access");
-  await grant(otherDir, secondId, "reader");
-  for (const [target, entryId, action] of [[projectDir, "reader", "read"], [projectDir, "writer", "call"], [otherDir, "reader", "read"]]) {
-    const report = await run(target, entryId, action);
-    assert.equal(report.status, "success", JSON.stringify(report.result));
-    assert.match(JSON.stringify(report.result), /shared value/);
-  }
-  approved.delete(`${secondId}:reader`);
-  assert.equal((await run(otherDir, "reader")).status, "failed");
-  assert.equal((await run(projectDir, "reader")).status, "success", "revocation is isolated to the authorized identity");
-});
-
 async function temporaryDirectory(t: TestContext) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "steamharness-entry-contract-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }
 
-async function writeEntryFixture(directory: string, projectId: string, source: string, knowledge = false) {
+async function writeEntryFixture(directory: string, projectId: string, source: string) {
   await mkdir(directory, { recursive: true });
   await writeProjectFixture(path.join(directory, "package.json"), JSON.stringify({
-    id: projectId, name: "runtime-contract", version: "0.1.0", type: "module", defaultEntry: knowledge ? "writer" : "main",
-    entries: (knowledge ? ["writer", "reader"] : ["main"]).map(entryId => ({
-      entryId, name: entryId, type: "workflow", root: ".", entry: "index.ts", databases: [],
-      ...(knowledge ? { knowledgeBases: ["data"] } : {}),
-    })),
+    id: projectId, name: "runtime-contract", version: "0.1.0", type: "module", defaultEntry: "main",
+    entries: [{ entryId: "main", name: "main", type: "workflow", root: ".", entry: "index.ts" }],
   }));
   await writeFile(path.join(directory, "index.ts"), source);
-  if (knowledge) await writeFile(path.join(directory, "config.json"), JSON.stringify({ version: 1, knowledgeBases: { data: randomUUID() } }));
   return directory;
 }

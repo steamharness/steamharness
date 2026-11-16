@@ -27,22 +27,6 @@ export type ServerT = (
 let serverI18nStarted = false;
 
 const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freeze({
-  "Database binding is unavailable or revoked.": "server:databaseBindingUnavailable",
-  "Database authorization changed. Restore this binding.": "server:databaseAuthorizationChanged",
-  "Database request has already been reviewed.": "server:databaseRequestReviewed",
-  "Only the host administrator or existing space owner can review this request.": "server:databaseReviewAuthority",
-  "Approval cannot widen requested database permissions.": "server:databaseApprovalCannotWiden",
-  "This database alias already has a pending request.": "server:databasePendingRequest",
-  "Revoke the current binding before requesting a replacement.": "server:databaseReplacementNeedsRevocation",
-  "Database space does not exist on this host.": "server:databaseSpaceMissing",
-  "The consumer entry is not registered.": "server:databaseConsumerEntryMissing",
-  "The request exceeds the declared database requirement.": "server:databaseRequirementExceeded",
-  "Explicit approval or rejection is required.": "server:databaseExplicitDecisionRequired",
-  "Database alias is not declared.": "server:databaseAliasUndeclared",
-  "A database binding and consumer identity are required.": "server:databaseBindingRequired",
-  "Database revisions require read access.": "server:databaseRevisionReadRequired",
-  "Use the knowledge API.": "server:databaseUseKnowledgeApi",
-  "A revoked grant cannot be rotated.": "server:databaseGrantRevoked",
   "Project IDs are assigned by the Server. Create a new application to obtain a new ID.": "server:projectIdServerAssigned",
   "Publish the project configuration template before using role-controlled configurations.": "server:configurationPublicationRequired",
   "Account login is required to create a project.": "server:accessCreateLoginRequired",

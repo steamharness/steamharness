@@ -1,14 +1,9 @@
 import { validateWorkflowCall } from './workflow';
 export * from './workflow';
-import { connectBrowserDatabase } from "./database";
-export * from "./database";
 import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
 import { installProjectKeyboardBridge } from "./keyboard";
 import { installProjectCopyBridge } from "./copy";
-const DATABASE_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
-
-export * from "./revision-stream";
 export * from "./methods";
 export * from "./keyboard";
 export * from "./copy";
@@ -24,11 +19,9 @@ export const KANBAN_PRESENTATION_MESSAGE = "steamharness:kanban-presentation";
 export const KANBAN_PREVIEW_READY_MESSAGE = "steamharness:kanban-ready";
 export const KANBAN_BRIDGE_REQUEST_MESSAGE = "steamharness:kanban-bridge-request";
 export const KANBAN_BRIDGE_RESPONSE_MESSAGE = "steamharness:kanban-bridge-response";
-export const KANBAN_DATABASE_REVISION_MESSAGE = "steamharness:kanban-database-revision";
 export const KANBAN_BRIDGE_REQUEST_TIMEOUT_MS = 15_000;
 export const KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
 export const KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
-export const KANBAN_FILE_MAX_BYTES = 50 * 1024 * 1024;
 export const KANBAN_BRIDGE_MAX_PENDING_REQUESTS = 16;
 export const KANBAN_PREVIEW_CAPABILITY_REFRESH_LEAD_MS = 60_000;
 export const KANBAN_PREVIEW_CAPABILITY_RETRY_MS = 15_000;
@@ -66,25 +59,6 @@ export interface KanbanPresentation {
   mode: KanbanPresentationMode;
 }
 
-export interface KanbanDatabaseRevision {
-  kind?: "knowledgeBases";
-  alias: string;
-  revision: string;
-}
-
-export interface KanbanFileReference {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  kind: "image" | "file";
-  storage: "database";
-  spaceId: string;
-  projectId?: string;
-  createdAt: string;
-  url?: string;
-}
-
 import { assertConversationUi } from "./conversation";
 import type { KanbanConversationUi, KanbanConversationMountOptions, KanbanConversationMount } from "./conversation";
 export * from "./conversation";
@@ -107,19 +81,6 @@ export interface KanbanBrowserApi {
   getRuntimeLocale(): Promise<KanbanRuntimeLocale>;
   studio: { getLocalAnalysis(): Promise<unknown> };
   methods: KanbanBrowserMethodsApi;
-  databases: { connect(descriptor: import("./database").BrowserDatabaseDescriptor): Promise<Record<string, unknown>> };
-  knowledgeBases: { get(alias: string): {
-    subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void;
-    listDocuments(options?: Record<string, unknown>): Promise<unknown>;
-    getDocument(documentId: string): Promise<unknown>;
-    createDocument(input: Record<string, unknown>): Promise<unknown>;
-    editDocument(documentId: string, input: Record<string, unknown>): Promise<unknown>;
-    deleteDocument(documentId: string, expectedRevision?: number): Promise<unknown>;
-    searchDocuments(options: Record<string, unknown>): Promise<unknown>;
-    readDocumentLines(documentId: string, options: Record<string, unknown>): Promise<unknown>;
-    files: { createFile(input: { name: string; mimeType?: string; buffer: Blob | ArrayBuffer | Uint8Array }): Promise<KanbanFileReference>; readFile(fileId: string): Promise<{ file: KanbanFileReference; buffer: ArrayBuffer }>; deleteFile(fileId: string): Promise<boolean> };
-  } };
-
 }
 
 export type KanbanRuntimeLocale = "zh-CN" | "en";
@@ -144,19 +105,7 @@ export type KanbanBridgeOperation =
   | "conversations.unsubscribe"
   | "runtime.getLocale"
   | "studio.getLocalAnalysis"
-  | "files.createFile"
-  | "files.readFile"
-  | "files.deleteFile"
-  | "database.resolve"
-  | "database.query"
-  | "knowledge.revision"
-  | "knowledge.listDocuments"
-  | "knowledge.getDocument"
-  | "knowledge.createDocument"
-  | "knowledge.editDocument"
-  | "knowledge.deleteDocument"
-  | "knowledge.searchDocuments"
-  | "knowledge.readDocumentLines";
+  | "files.readFile";
 
 export interface KanbanBridgeCall {
   requestId: string;
@@ -178,28 +127,11 @@ const KANBAN_BRIDGE_SAFE_ERRORS = {
   KANBAN_BRIDGE_SESSION_INVALID: "The Kanban preview session is invalid or expired.",
   KANBAN_BRIDGE_SERVER_ERROR: "Kanban project data operation failed.",
   KANBAN_DATA_OPERATION_FAILED: "Kanban project data operation failed.",
-  DATABASE_UNBOUND: "Apply for and bind an relational database.",
-  DATABASE_ACCESS_DENIED: "Database access is not granted.",
-  DATABASE_ACCESS_FAILED: "Database authorization is unavailable. Check the binding.",
-  DATABASE_BUSY: "The database is busy. Read the latest state before retrying an operation.",
-  DATABASE_UNAVAILABLE: "The database host is unavailable. Check the Server connection.",
-  DATABASE_NOT_READY: "The database is not ready. Complete its provisioning and migration.",
-  DATABASE_NOT_FOUND: "The bound database is unavailable to this account.",
-  DATABASE_SCHEMA_MISMATCH: "The database schema does not match this project. Deploy the required migrations.",
-  DATABASE_BINDING_CHANGED: "The database binding changed. Reconnect explicitly.",
-  DATABASE_CONNECTION_EXPIRED: "The database connection expired or was revoked. Reconnect explicitly.",
-  DATABASE_CLOSED: "The database connection closed. Reconnect explicitly.",
-  DATABASE_QUERY_FAILED: "The database operation failed. Read the latest state before retrying.",
   KANBAN_FILE_UNAVAILABLE: "Kanban file is unavailable in this project.",
   KANBAN_FILE_TOO_LARGE: "Kanban files cannot exceed 50 MiB.",
 } as const;
 
 const KANBAN_BRIDGE_CALL_FIELDS = new Set(["requestId", "operation", "input"]);
-const MAX_KNOWLEDGE_DOCUMENT_PAGE_SIZE = 100;
-const MAX_KNOWLEDGE_SEARCH_PAGE_SIZE = 1_000;
-const MAX_KNOWLEDGE_CONTEXT_LINES = 50;
-const MAX_KNOWLEDGE_LINE_RANGE = 1_000;
-
 const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[]> = {
   "entries.list": [],
   "entries.workflow": ["entryId", "action", "entrypointId", "params", "requestId", "title", "runId", "page", "fileId", "offset", "limit", "from", "to", "at", "position", "direction"],
@@ -212,30 +144,8 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   "conversations.unsubscribe": ["subscriptionId"],
   "runtime.getLocale": [],
   "studio.getLocalAnalysis": [],
-  "files.createFile": ["name", "mimeType", "base64"],
   "files.readFile": ["fileId"],
-  "files.deleteFile": ["fileId"],
-  "database.resolve": ["schemaHash"],
-  "database.query": ["schemaHash", "binding", "request"],
-  "knowledge.revision": [],
-  "knowledge.listDocuments": ["pageSize", "cursor"],
-  "knowledge.getDocument": ["documentId"],
-  "knowledge.createDocument": ["id", "title", "markdown"],
-  "knowledge.editDocument": ["documentId", "title", "markdown", "expectedRevision"],
-  "knowledge.deleteDocument": ["documentId", "expectedRevision"],
-  "knowledge.searchDocuments": [
-    "query",
-    "documentId",
-    "beforeLines",
-    "afterLines",
-    "maxMatches",
-    "pageSize",
-    "cursor",
-  ],
-  "knowledge.readDocumentLines": ["documentId", "startLine", "endLine"],
 };
-
-for (const [operation, fields] of Object.entries(KANBAN_BRIDGE_INPUT_FIELDS)) { if (!operation.startsWith("runtime.") && !operation.startsWith("studio.")) (KANBAN_BRIDGE_INPUT_FIELDS as Record<string, readonly string[]>)[operation] = [...fields, operation.startsWith("knowledge.") || operation.startsWith("files.") ? "knowledgeBase" : "database"]; }
 
 export interface KanbanProjectStructure {
   projectType: "kanban";
@@ -443,7 +353,6 @@ export function createKanbanBridgeScript(
   const readyMessage = JSON.stringify(KANBAN_PREVIEW_READY_MESSAGE);
   const requestMessage = JSON.stringify(KANBAN_BRIDGE_REQUEST_MESSAGE);
   const responseMessage = JSON.stringify(KANBAN_BRIDGE_RESPONSE_MESSAGE);
-  const revisionMessage = JSON.stringify(KANBAN_DATABASE_REVISION_MESSAGE);
   const presentationMessage = JSON.stringify(KANBAN_PRESENTATION_MESSAGE);
   const presentationEvent = JSON.stringify(KANBAN_PRESENTATION_CHANGE_EVENT);
   const safeErrorMessages = JSON.stringify(KANBAN_BRIDGE_SAFE_ERRORS);
@@ -458,8 +367,6 @@ window.addEventListener("message",event=>{
 let sequence=0;
 const safeErrorMessages=${safeErrorMessages};
 const pending=new Map();
-const databaseRevisions=new Map();
-const databaseRevisionListeners=new Map();
 const conversationListeners=new Map();
 const conversationViews=new Map();
 const copyRequests=new Map();
@@ -518,32 +425,6 @@ const request=(operation,input)=>{
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
   });
 };
-const createFiles=(knowledgeBase)=>Object.freeze({
-  createFile:async(input)=>{
-    if(!input||typeof input.name!=="string")throw invalidRequest();
-    const source=input.buffer;
-    if(!(source instanceof Blob)&&!(source instanceof ArrayBuffer)&&!(source instanceof Uint8Array))throw invalidRequest();
-    if((source instanceof Blob?source.size:source.byteLength)>${KANBAN_FILE_MAX_BYTES})throw createError(safeErrorMessages.KANBAN_FILE_TOO_LARGE,"KANBAN_FILE_TOO_LARGE");
-    const bytes=source instanceof Blob?new Uint8Array(await source.arrayBuffer()):source instanceof ArrayBuffer?new Uint8Array(source):source;
-    let binary="";
-    for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
-    return request("files.createFile",{knowledgeBase,name:input.name,mimeType:input.mimeType||(source instanceof Blob?source.type:undefined)||undefined,base64:btoa(binary)});
-  },
-  readFile:(fileId)=>request("files.readFile",{knowledgeBase,fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
-  deleteFile:(fileId)=>request("files.deleteFile",{knowledgeBase,fileId})
-});
-const databases=Object.freeze({connect:(descriptor)=>(${connectBrowserDatabase.toString()})(descriptor,{
-  resolve:({alias,schemaHash})=>request("database.resolve",{database:alias,schemaHash}),
-  query:(binding,schemaHash,query)=>request("database.query",{database:binding.alias,binding,schemaHash,request:query})
-})});
-const knowledgeContexts=new Map();
-const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
-  if(typeof knowledgeBase!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(knowledgeBase))throw invalidRequest();
-  if(knowledgeContexts.has(knowledgeBase))return knowledgeContexts.get(knowledgeBase);
-  const call=(operation,input={})=>request(operation,{...input,knowledgeBase});
-  const context=Object.freeze({subscribe:(listener)=>{if(typeof listener!=="function")throw invalidRequest();const key="knowledgeBases:"+knowledgeBase;let listeners=databaseRevisionListeners.get(key);if(!listeners){listeners=new Set();databaseRevisionListeners.set(key,listeners);}listeners.add(listener);const revision=databaseRevisions.get(key);if(revision)Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias:knowledgeBase,revision,kind:"knowledgeBases"});}).catch(()=>{});return ()=>{listeners.delete(listener);if(!listeners.size)databaseRevisionListeners.delete(key);};},files:createFiles(knowledgeBase),listDocuments:(options={})=>call("knowledge.listDocuments",options),getDocument:(documentId)=>call("knowledge.getDocument",{documentId}),createDocument:(input)=>call("knowledge.createDocument",input),editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId}),deleteDocument:(documentId,expectedRevision)=>call("knowledge.deleteDocument",{documentId,expectedRevision}),searchDocuments:(options)=>call("knowledge.searchDocuments",options),readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})});
-  knowledgeContexts.set(knowledgeBase,context);return context;
-}});
 ${createKanbanMethodsBridgeScript(nonce)}
 const entries=Object.freeze({list:()=>request("entries.list",{}),get:(entryId)=>Object.freeze({runEntrypoint:(entrypointId,args=[],options={})=>request("entries.runEntrypoint",{entryId,entrypointId,args,requestId:options.requestId||Date.now().toString(36)+"-operation-"+(++sequence)})})});
 const workflows=Object.freeze({get:(entryId)=>Object.freeze({
@@ -636,7 +517,7 @@ const conversations=Object.freeze({mount:async(container,target,options={})=>{
 }});
 window.addEventListener("pagehide",clearConversations);
 window.addEventListener("pagehide",()=>{copyBridge.dispose();for(const item of copyRequests.values()){window.clearTimeout(item.timer);item.resolve(false);}copyRequests.clear();});
-Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,workflows,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({entries,workflows,conversations,getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(event.data.type==="steamharness:kanban-edit-host"&&event.data.version===1){editHost=event.data.enabled===true;for(const view of conversationViews.values())view.deliver({type:"conversation-edit-host",enabled:editHost});return;}
@@ -670,17 +551,6 @@ window.addEventListener("message",function(event){
     current=event.data.configuration;
     window.dispatchEvent(new CustomEvent(${eventName},{detail:clone()}));
     ready();
-    return;
-  }
-  if(event.data.type===${revisionMessage}){
-    const alias=event.data.alias;
-    const revision=event.data.revision;
-    if(typeof alias!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
-    const key=event.data.kind==="knowledgeBases"?"knowledgeBases:"+alias:alias;
-    if(databaseRevisions.get(key)===revision)return;
-    databaseRevisions.set(key,revision);
-    const listeners=databaseRevisionListeners.get(key);
-    if(listeners)for(const listener of [...listeners])Promise.resolve().then(()=>listener({alias,revision,...(event.data.kind==="knowledgeBases"?{kind:"knowledgeBases"}:{})})).catch(()=>{});
     return;
   }
   if(event.data.type!==${responseMessage}||typeof event.data.requestId!=="string")return;
@@ -866,9 +736,6 @@ function validateKanbanBridgeInput(
   input: Record<string, unknown>,
 ): void {
   const allowedFields = new Set(KANBAN_BRIDGE_INPUT_FIELDS[operation]);
-  const aliasField = operation.startsWith("knowledge.") || operation.startsWith("files.") ? "knowledgeBase" : "database";
-  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && !operation.startsWith("entries.") && !operation.startsWith("conversations.") && (typeof input[aliasField] !== "string" || !DATABASE_ALIAS_PATTERN.test(input[aliasField] as string))) throw new Error("A declared resource alias is required.");
-  if (input.expectedRevision !== undefined) readPositiveInteger(input.expectedRevision, "bridge.input.expectedRevision");
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
@@ -910,156 +777,18 @@ function validateKanbanBridgeInput(
     case "runtime.getLocale":
     case "studio.getLocalAnalysis":
       return;
-    case "files.createFile": {
-      const name = readNonEmptyString(input["name"], "bridge.input.name");
-      if (name.length > 255 || /[\\/\\\\\0]/.test(name)) {
-        throw new Error("Kanban file name must be a plain file name.");
-      }
-      const mimeType = readOptionalNonEmptyString(input["mimeType"], "bridge.input.mimeType");
-      if (mimeType !== undefined && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(mimeType)) {
-        throw new Error("Kanban file MIME type is invalid.");
-      }
-      const base64 = readRequiredString(input["base64"], "bridge.input.base64");
-      if (base64.length > Math.ceil(KANBAN_FILE_MAX_BYTES / 3) * 4) {
-        throw Object.assign(new Error(KANBAN_BRIDGE_SAFE_ERRORS.KANBAN_FILE_TOO_LARGE), { code: "KANBAN_FILE_TOO_LARGE" });
-      }
-      if (base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
-        throw new Error("Kanban file content must be base64 encoded.");
-      }
-      const size = base64.length / 4 * 3 - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
-      if (size > KANBAN_FILE_MAX_BYTES) {
-        throw Object.assign(new Error(KANBAN_BRIDGE_SAFE_ERRORS.KANBAN_FILE_TOO_LARGE), { code: "KANBAN_FILE_TOO_LARGE" });
-      }
-      return;
-    }
     case "files.readFile":
-    case "files.deleteFile":
       if (!/^(?:wf_[a-f0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(readNonEmptyString(input["fileId"], "bridge.input.fileId"))) {
         throw new Error("Kanban file id is invalid.");
       }
       return;
-    case "database.resolve":
-    case "database.query":
-      if (typeof input.schemaHash !== 'string' || !/^[a-f0-9]{64}$/.test(input.schemaHash)) throw new Error('A generated model fingerprint is required.');
-      if (operation === 'database.query' && (!isRecord(input.binding) || !isRecord(input.request) || !isKanbanJsonValue(input.binding) || !isKanbanJsonValue(input.request))) throw new Error('A structured database query is required.');
-      return;
-    case "knowledge.revision": return;
-    case "knowledge.listDocuments":
-      readOptionalIntegerInRange(
-        input["pageSize"],
-        "bridge.input.pageSize",
-        1,
-        MAX_KNOWLEDGE_DOCUMENT_PAGE_SIZE,
-      );
-      readOptionalNonEmptyString(input["cursor"], "bridge.input.cursor");
-      return;
-    case "knowledge.getDocument":
-    case "knowledge.deleteDocument":
-      readNonEmptyString(input["documentId"], "bridge.input.documentId");
-      return;
-    case "knowledge.createDocument":
-      readOptionalNonEmptyString(input["id"], "bridge.input.id");
-      readNonEmptyString(input["title"], "bridge.input.title");
-      readRequiredString(input["markdown"], "bridge.input.markdown");
-      return;
-    case "knowledge.editDocument":
-      readNonEmptyString(input["documentId"], "bridge.input.documentId");
-      if (input["title"] === undefined && input["markdown"] === undefined) {
-        throw new Error("Kanban bridge knowledge edit requires title or markdown.");
-      }
-      readOptionalStringValue(input["title"], "bridge.input.title");
-      readOptionalStringValue(input["markdown"], "bridge.input.markdown");
-      return;
-    case "knowledge.searchDocuments":
-      readNonEmptyString(input["query"], "bridge.input.query");
-      readOptionalNonEmptyString(input["documentId"], "bridge.input.documentId");
-      readOptionalIntegerInRange(
-        input["beforeLines"],
-        "bridge.input.beforeLines",
-        0,
-        MAX_KNOWLEDGE_CONTEXT_LINES,
-      );
-      readOptionalIntegerInRange(
-        input["afterLines"],
-        "bridge.input.afterLines",
-        0,
-        MAX_KNOWLEDGE_CONTEXT_LINES,
-      );
-      readOptionalIntegerInRange(
-        input["maxMatches"],
-        "bridge.input.maxMatches",
-        1,
-        MAX_KNOWLEDGE_SEARCH_PAGE_SIZE,
-      );
-      readOptionalIntegerInRange(
-        input["pageSize"],
-        "bridge.input.pageSize",
-        1,
-        MAX_KNOWLEDGE_SEARCH_PAGE_SIZE,
-      );
-      readOptionalNonEmptyString(input["cursor"], "bridge.input.cursor");
-      return;
-    case "knowledge.readDocumentLines":
-      readNonEmptyString(input["documentId"], "bridge.input.documentId");
-      const startLine = readPositiveInteger(input["startLine"], "bridge.input.startLine");
-      const endLine = readPositiveInteger(input["endLine"], "bridge.input.endLine");
-      if (endLine < startLine || endLine - startLine + 1 > MAX_KNOWLEDGE_LINE_RANGE) {
-        throw new Error("Kanban bridge knowledge line range is invalid or too large.");
-      }
   }
 }
 
 function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation {
   return value === 'entries.workflow' || value === 'entries.list' || value === 'conversations.openView' || value === 'conversations.viewMessage' || value === 'conversations.closeView' || value === 'entries.runEntrypoint' || value === 'conversations.snapshot' || value === 'conversations.subscribe' || value === 'conversations.unsubscribe' || value === "runtime.getLocale" ||
     value === "studio.getLocalAnalysis" ||
-    value === "files.createFile" ||
-    value === "files.readFile" ||
-    value === "files.deleteFile" ||
-    value === "database.resolve" ||
-    value === "database.query" ||
-    value === "knowledge.revision" ||
-    value === "knowledge.listDocuments" ||
-    value === "knowledge.getDocument" ||
-    value === "knowledge.createDocument" ||
-    value === "knowledge.editDocument" ||
-    value === "knowledge.deleteDocument" ||
-    value === "knowledge.searchDocuments" ||
-    value === "knowledge.readDocumentLines";
-}
-
-function readRequiredString(value: unknown, field: string): string {
-  if (typeof value !== "string") throw new Error(`Kanban ${field} must be a string.`);
-  return value;
-}
-
-function readOptionalStringValue(value: unknown, field: string): string | undefined {
-  if (value === undefined) return undefined;
-  return readRequiredString(value, field);
-}
-
-function readOptionalNonEmptyString(value: unknown, field: string): string | undefined {
-  if (value === undefined) return undefined;
-  return readNonEmptyString(value, field);
-}
-
-function readOptionalIntegerInRange(
-  value: unknown,
-  field: string,
-  minimum: number,
-  maximum: number,
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
-    throw new Error(`Kanban ${field} must be an integer from ${minimum} to ${maximum}.`);
-  }
-  return value as number;
-}
-
-function readPositiveInteger(value: unknown, field: string): number {
-  if (!Number.isInteger(value) || (value as number) <= 0) {
-    throw new Error(`Kanban ${field} must be a positive integer.`);
-  }
-  return value as number;
+    value === "files.readFile";
 }
 
 function parseOption(value: unknown, paramIndex: number, optionIndex: number) {

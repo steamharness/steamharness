@@ -10,7 +10,6 @@ import { redactProjectData, type Runtime, type Report, type Project } from './wo
 
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 import { createSecretStreamRedactor } from './runtime-log';
-import { PROJECT_CONFIG_ENV, readProjectConfig } from '@steamharness/project-manifest';
 import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
 import type { AggregateEntryCall } from './entry-conversations';
 
@@ -191,7 +190,6 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     },
     forkAgentConversation: (project, conversationId, command) => invoke({ method: 'fork-conversation', project, conversationId, command }),
     isolateAgentConversation: (project, sourceConversationId, conversationId, targetId, retireSource, fileIds) => invoke({ method: 'isolate-conversation', project, sourceConversationId, conversationId, targetId, retireSource, fileIds }),
-    kanbanBridge: (project, call) => invoke({ method: 'kanban-bridge', project, call }),
     inspect: (paths, entryId) => invoke({ method: 'inspect', paths, entryId }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
     run: async (request, onEvent) => {
@@ -215,7 +213,6 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     uploadFiles: (project, conversationId, files) => invoke({ method: 'upload', project, conversationId, files }),
     readFile: (project, id) => invoke({ method: 'file', project, id }),
     deleteFiles: async (project, conversationId, ids) => { await invoke({ method: 'delete-files', project, conversationId, ids }); },
-    readResource: (project, conversationId, kind, target) => invoke({ method: 'resource', project, conversationId, kind, target }),
     deleteConversation: async (project, conversationId) => { await invoke({ method: 'delete-conversation', project, conversationId }); },
     cancelConversation: async (project, conversationId) => { await invoke({ method: 'cancel-conversation', project, conversationId }); },
     cancel: (runId) => {
@@ -252,10 +249,6 @@ function agentOwnerConflict(value: unknown, depth = 0): boolean {
  */
 export function sanitizeWebWorkerEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const environment = Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
-  // Project resource IDs are configuration, validated separately from host credentials.
-  if (base[PROJECT_CONFIG_ENV] !== undefined) {
-    environment[PROJECT_CONFIG_ENV] = JSON.stringify(readProjectConfig(undefined, { [PROJECT_CONFIG_ENV]: base[PROJECT_CONFIG_ENV] }));
-  }
   return environment;
 }
 

@@ -9,7 +9,7 @@
     "esbuild": "0.25.12"
   },
   "scripts": {
-    "build": "steamharness database generate && node build.mjs",
+    "build": "node build.mjs",
     "inspect": "steamharness structure ."
   }
 }

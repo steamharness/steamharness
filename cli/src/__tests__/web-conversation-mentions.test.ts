@@ -24,9 +24,9 @@ function fixture() {
   document.body.innerHTML = '<div class="composer"><textarea id="message"></textarea></div><div id="slash"></div><div id="footer"></div>';
   const textarea = document.querySelector('textarea')!;
   const project: Project = { id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', projectType: 'bot',
-    entryId: 'chat', aggregateName: 'Project', defaultEntry: 'chat', entryRoot: '/project', databases: [], fields: [], entrypoints: [], entries: [
-      { entryId: 'chat', name: '对话', type: 'bot', root: '.', entry: 'index.ts', databases: [] },
-      { entryId: 'collect', name: 'Collect data', type: 'workflow', root: 'collector', entry: 'main.ts', databases: [] },
+    entryId: 'chat', aggregateName: 'Project', defaultEntry: 'chat', entryRoot: '/project', fields: [], entrypoints: [], entries: [
+      { entryId: 'chat', name: '对话', type: 'bot', root: '.', entry: 'index.ts' },
+      { entryId: 'collect', name: 'Collect data', type: 'workflow', root: 'collector', entry: 'main.ts' },
     ] };
   const state = { scope: 'first', project, enabled: true, disabled: false, groups: [] as KanbanConversationMentionGroup[] };
   const load = vi.fn(); const input = vi.fn(); textarea.addEventListener('input', input);

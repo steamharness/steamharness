@@ -7,7 +7,6 @@ import { updateProjectHistory } from './project-history';
 export async function readProjectDocument(uri: vscode.Uri): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(uri, 'steamharness.json'))));
 }
-/** Resource discovery conveys locations, never database permissions. */
 export async function resourceProjectDirectories(context: Pick<vscode.ExtensionContext, 'globalState'>): Promise<string[]> {
   const directories = await Promise.all(readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)).map(async project => {
     try {

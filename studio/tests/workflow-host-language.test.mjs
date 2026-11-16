@@ -30,7 +30,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
       const locale = index < 0 ? process.env.STEAMHARNESS_LOCALE : args[index + 1];
       const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
       const project = { id: manifest.id, name: manifest.projectInfo.localizedNames[locale] ?? manifest.name,
-        folderPath: process.cwd(), projectType: 'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
+        folderPath: process.cwd(), projectType: 'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}], fields: [], entrypoints: [] };
       if (args.includes('--inspect')) { console.log(JSON.stringify({ projects: [project], errors: [] })); }
       else {
         const input = createInterface({ input: process.stdin });
@@ -38,7 +38,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
         input.on('line', line => {
           if (JSON.parse(line).type === 'configure') {
             server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
-              hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,
+              hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
               url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64), project,
               runtime: { harnessVersion: 'fixture', harnessPath: process.cwd() } })));
           }

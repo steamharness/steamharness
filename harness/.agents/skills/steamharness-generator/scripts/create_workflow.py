@@ -7,20 +7,6 @@ import re
 from uuid import uuid4
 from pathlib import Path
 
-KANBAN_TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "assets" / "kanban"
-KANBAN_TEMPLATE_FILES = (
-    ".steamharnessignore",
-    "index.html",
-    "board-state.js",
-    "board-storage.js",
-    "task-repository.js",
-    "build.mjs",
-    "steamharness.database.ts",
-    "database/steamharness.schema",
-    "README.md",
-    "tests/board-state.test.mjs",
-    "tests/board-storage.test.mjs",
-)
 SEMVER_PATTERN = re.compile(
     r"(?:0|[1-9]\d*)\."
     r"(?:0|[1-9]\d*)\."
@@ -32,7 +18,6 @@ SEMVER_PATTERN = re.compile(
 PROJECT_CARD_DEFAULTS = {
     "workflow": ("workflow", "#2563eb"),
     "bot": ("bot", "#0f766e"),
-    "kanban": ("boxes", "#b45309"),
 }
 
 STEAMHARNESS_IGNORE = """.git/
@@ -66,14 +51,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--project-type",
-        choices=("workflow", "bot", "kanban"),
+        choices=("workflow", "bot"),
         default="workflow",
         help="显式项目类型，默认 workflow。",
-    )
-    parser.add_argument(
-        "--with-kanban-params",
-        action="store_true",
-        help="Kanban 项目额外生成示例 configuration.json 参数清单。",
     )
     parser.add_argument(
         "--dir",
@@ -85,22 +65,15 @@ def main() -> None:
     workflow_name = normalize_name(args.name)
     workflow_dir = Path(args.dir).resolve()
 
-    if args.with_kanban_params and args.project_type != "kanban":
-        raise SystemExit("--with-kanban-params 只能与 --project-type kanban 一起使用。")
-
     if workflow_dir.exists() and any(workflow_dir.iterdir()):
         existing_files = [workflow_dir / name for name in (
             "package.json", "steamharness.json", "configuration.json", ".steamharnessignore", ".gitignore",
         )]
-        existing_files += (
-            [workflow_dir / path for path in kanban_template_files(args.with_kanban_params)]
-            if args.project_type == "kanban"
-            else [
-                workflow_dir / "interface.ts",
-                workflow_dir / "index.ts",
-                workflow_dir / "README.md",
-            ]
-        )
+        existing_files += [
+            workflow_dir / "interface.ts",
+            workflow_dir / "index.ts",
+            workflow_dir / "README.md",
+        ]
         conflicts = sorted({str(path) for path in existing_files if path.exists() or path.is_symlink()})
         if conflicts:
             raise SystemExit(
@@ -112,18 +85,6 @@ def main() -> None:
     write_file(workflow_dir / ".gitignore", "node_modules/\n/dist/\n.env\n.env.*\n")
     write_file(workflow_dir / "package.json", package_json(workflow_name, args.project_type))
     write_file(workflow_dir / "steamharness.json", project_json(workflow_name, args.project_type, args.description))
-    if args.project_type == "kanban":
-        for relative_path in kanban_template_files(args.with_kanban_params):
-            write_file(
-                workflow_dir / relative_path,
-                render_kanban_template(relative_path, workflow_name, args.with_kanban_params),
-            )
-        if not args.with_kanban_params:
-            write_file(workflow_dir / "configuration.json", json.dumps({"version": 1, "fields": []}, indent=2) + "\n")
-        print(f"已创建 Kanban：{workflow_dir}")
-        print(f"可检查：steamharness structure {workflow_dir}")
-        return
-
     type_name = to_pascal_case(workflow_name)
     write_file(workflow_dir / ".steamharnessignore", STEAMHARNESS_IGNORE)
     write_file(workflow_dir / "configuration.json", json.dumps({"version": 1, "fields": []}, indent=2) + "\n")
@@ -158,24 +119,14 @@ def write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def kanban_template_files(with_params: bool) -> tuple[str, ...]:
-    return KANBAN_TEMPLATE_FILES + (("configuration.json",) if with_params else ())
-
-
-def render_kanban_template(relative_path: str, name: str, with_params: bool) -> str:
-    variant = "parameters" if with_params else "default"
-    template_path = KANBAN_TEMPLATE_ROOT / variant / relative_path
-    return template_path.read_text(encoding="utf-8").replace("{{name}}", name)
-
-
 def package_json(name: str, project_type: str) -> str:
     core_version, cli_version = resolve_dependency_versions()
     package_suffix = project_type
     return json.dumps({
         "name": f"@steamharness/{name}-{package_suffix}",
         "version": "0.1.0", "private": True, "type": "module",
-        "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version, **({"esbuild": "0.28.2"} if project_type == "kanban" else {})},
-        "scripts": {"dev": "steamharness web .", "release": "steamharness release .", **({"build": "steamharness database generate && node build.mjs"} if project_type == "kanban" else {})},
+        "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version},
+        "scripts": {"dev": "steamharness web .", "release": "steamharness release ."},
     }, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -185,8 +136,8 @@ def project_json(name: str, project_type: str, description: str) -> str:
         "id": str(uuid4()), "name": name, "version": "0.1.0", "description": description,
         "defaultEntry": "main", "entries": [{
             "entryId": "main", "type": project_type, "name": name, "root": ".",
-            "entry": "dist/steamharness/build/main/index.html" if project_type == "kanban" else "index.ts",
-            "configuration": "configuration.json", "databases": ["data"] if project_type == "kanban" else [],
+            "entry": "index.ts",
+            "configuration": "configuration.json",
         }],
         "projectCard": {"icon": icon, "iconBackgroundColor": icon_background},
     }, ensure_ascii=False, indent=2) + "\n"

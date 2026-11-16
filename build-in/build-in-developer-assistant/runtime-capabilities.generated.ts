@@ -2,10 +2,5 @@
 export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):
 - EntriesContext: caller, conversations, list(), get(entryId).
 - EntryContext: registration, listEntrypoints(), runEntrypoint(entrypointId, args, options).
-- RelationalDatabasesContext: connect(descriptor).
-- KnowledgeBasesContext: list(), get(alias).
-- KnowledgeBaseContext: listDocuments(input), getDocument(id), createDocument(input), editDocument(input), deleteDocument(id, expectedRevision), searchDocuments(input), readDocumentLines(input), getRevision(), files.
 - context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.
-- context.databases.connect(descriptor) connects a generated Node model client. Browser descriptors connect through window.steamHarnessKanban.databases.connect(descriptor) and expose structured rows/insert/update/delete. Server owns account, project, entry and alias bindings; there is no local business storage fallback.
-- context.knowledgeBases.get(alias) uses independent knowledgeBases declarations and config mappings. Documents and attachments use the Server repository, with account grants and entry bindings checked on every access. There is no local knowledge fallback.
 `;

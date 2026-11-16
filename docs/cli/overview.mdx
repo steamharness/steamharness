@@ -43,8 +43,8 @@ pnpm exec steamharness workspace upload <project-id> --path .
 pnpm exec steamharness workspace publish <project-id> --release-log "初始发布"
 ```
 
-## 数据库与入口
+## 聚合入口
 
-本地命令从聚合根读取 `entries`；`--entry` 选择入口，`check` 默认检查全部入口。关系库先创建资源、授权、迁移并绑定，知识库使用独立声明与绑定。
+本地命令从聚合根读取 `entries`；`--entry` 选择入口，`check` 默认检查全部入口。
 
 CLI Web 与 Studio 共用用户级项目登记。各类数据的存放与权限见[数据存储](/concepts/data-storage)。

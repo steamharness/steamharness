@@ -17,7 +17,6 @@ import { projectEntryFilePath, PROJECT_RELEASE_BASE_DIRECTORY, PROJECT_RELEASE_D
 import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRelease } from "@steamharness/project-manifest/release-node";
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
 import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { generateDatabases } from "../database-generation";
 
 export interface ProjectReleaseResult { directory: string; archive: string; buildId: string; entries: string[]; cached: boolean }
 export interface ReleaseOptions { signal?: AbortSignal; progress?: (message: string) => void }
@@ -171,8 +170,6 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     if (previous?.inputHash === inputHash && await exists(archive)) return { directory: output, archive, buildId: previous.buildId, entries: previous.entries.map(entry => entry.entryId), cached: true };
     const commandArgs = config.build ?? (pkg.scripts?.build ? ["corepack", "pnpm", "run", "build"] : undefined);
     if (selected.some(entry => entry.type === "kanban") && !commandArgs) throw new Error("A release containing Kanban requires release.build or a package build script.");
-    options.progress?.(i18n.language.startsWith("zh") ? "正在生成发行所需的数据库代码" : "Generating release database dependencies");
-    for (const source of new Set([".", ...selected.map(entry => entry.root)])) if (await exists(path.join(root, source, "steamharness.database.ts"))) await generateDatabases(root, source);
     if (commandArgs) await command(commandArgs, root, options);
     await mkdir(stage);
     const sourceManifest = await readProjectDocument(root);
@@ -181,11 +178,6 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     const externals = config.externals ?? [];
     const dependencies = Object.fromEntries(externals.map(name => [name, packageVersion(root, name)]));
     await writeJson(stage, "package.json", { name: pkg.name ?? "steamharness-project", version: declaration.version, type: "module", private: true, ...(pkg.engines ? { engines: pkg.engines } : {}), devDependencies: { steamharness: packageVersion(root, "steamharness"), "@steamharness/cli": packageVersion(root, "@steamharness/cli") }, ...(externals.length ? { dependencies } : {}) });
-    if (await exists(path.join(root, "config.json"))) {
-      const source = JSON.parse(await readFile(path.join(root, "config.json"), "utf8"));
-      const aliases = new Set(selected.flatMap(entry => entry.knowledgeBases ?? []));
-      await writeJson(stage, "config.json", { version: 1, knowledgeBases: Object.fromEntries(Object.entries(source.knowledgeBases ?? {}).filter(([alias]) => aliases.has(alias))) });
-    }
     const entries: ProjectReleaseManifest["entries"] = [];
     for (const entry of selected) {
       options.signal?.throwIfAborted(); options.progress?.(i18n.language.startsWith("zh") ? `正在编译发行入口：${entry.entryId}` : `Compiling release entry: ${entry.entryId}`);

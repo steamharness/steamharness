@@ -15,15 +15,14 @@ async function fixture() {
   await mkdir(path.join(root,"agent")); await mkdir(path.join(root,"unregistered"));
   await writeFile(path.join(root,"package.json"), JSON.stringify({name:"npm-package",version:"9.8.7",private:true,type:"module"}));
   await writeFile(path.join(root,"steamharness.json"), JSON.stringify(rootDocument()));
-  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({type:"bot",name:"Agent",entry:"index.ts",projectCard:{icon:"bot",iconColor:"#ffffff",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}));
+  await writeFile(path.join(root,"agent/steamharness.json"), JSON.stringify({type:"bot",name:"Agent",entry:"index.ts",projectCard:{icon:"bot",iconColor:"#ffffff",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}}}));
   await writeFile(path.join(root,"agent/index.ts"), "export {};");
   await writeFile(path.join(root,"unregistered/steamharness.json"), "invalid JSON is never loaded");
-  await writeFile(path.join(root,"config.json"), JSON.stringify({version:1,knowledgeBases:{data:id}}));
   return root;
 }
 it("uses only registered child declarations and keeps identity independent from npm metadata", async () => {
-  const root = await fixture(), manifest = await readProjectManifestFromDirectory(root, {});
-  expect(manifest).toMatchObject({projectId:id,name:"Product name",version:"1.2.3",entries:[{entryId:"agent",name:"Agent",root:"agent",type:"bot",projectCard:{icon:"bot",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}},databases:["data"]}]});
+  const root = await fixture(), manifest = await readProjectManifestFromDirectory(root);
+  expect(manifest).toMatchObject({projectId:id,name:"Product name",version:"1.2.3",entries:[{entryId:"agent",name:"Agent",root:"agent",type:"bot",projectCard:{icon:"bot",iconBackgroundColor:"#123456"},projectInfo:{localizedNames:{en:"Child name"}}}]});
   expect(readProjectDeclarationFromDirectorySync(root)).toEqual(await readProjectDeclarationFromDirectory(root));
   expect(projectEntryDeclarationPath(rootDocument(), "agent")).toBe("agent/steamharness.json");
 });
@@ -41,12 +40,12 @@ it("keeps parent presentation separate from a child's optional metadata", async 
     projectInfo: { localizedNames: { en: "Parent title" }, declarations: ["multilingual"] },
   }));
   await writeFile(path.join(root, "agent/steamharness.json"), JSON.stringify({
-    type: "bot", name: "Child title", entry: "index.ts", databases: [],
+    type: "bot", name: "Child title", entry: "index.ts",
   }));
   const declaration = await readProjectDeclarationFromDirectory(root);
   expect(declaration.projectInfo?.localizedNames.en).toBe("Parent title");
   expect(declaration.projectCard?.icon).toBe("workflow");
-  expect(declaration.entries[0]).toMatchObject({ name: "Child title", databases: [] });
+  expect(declaration.entries[0]).toMatchObject({ name: "Child title" });
   expect(declaration.entries[0]?.projectInfo).toBeUndefined();
   expect(declaration.entries[0]?.projectCard).toBeUndefined();
 });
@@ -69,8 +68,6 @@ it("rejects symlinks in child roots and child configuration files that escape th
 it("requires referenced declarations in source uploads and preserves references through a round trip", async () => {
   const root = await fixture();
   const child = JSON.parse(await readFile(path.join(root, "agent/steamharness.json"), "utf8"));
-  await writeFile(path.join(root, "agent/steamharness.json"), JSON.stringify({ ...child, knowledgeBases: ["docs"] }));
-  await writeFile(path.join(root, "config.json"), JSON.stringify({ version: 1, knowledgeBases: { docs: id } }));
   await writeFile(path.join(root,".steamharnessignore"),"agent/steamharness.json\n");
   await expect(createProjectUploadPlan(root)).rejects.toThrow(/Required upload path/);
   await writeFile(path.join(root,".steamharnessignore"),"unregistered/\n");
@@ -79,7 +76,6 @@ it("requires referenced declarations in source uploads and preserves references 
   await copyProjectUploadFiles(root,target);
   expect(await readFile(path.join(target,"package.json"),"utf8")).toBe(npm);
   expect(JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"))).toEqual(rootDocument());
-  expect(await readProjectManifestFromDirectory(target,{})).toEqual(await readProjectManifestFromDirectory(root,{}));
-  expect((await readProjectManifestFromDirectory(target, {})).entries[0]?.knowledgeBases).toEqual([{ alias: "docs", knowledgeBaseId: id }]);
-  expect(JSON.parse(await readFile(path.join(target, "agent/steamharness.json"), "utf8")).knowledgeBases).toEqual(["docs"]);
+  expect(await readProjectManifestFromDirectory(target)).toEqual(await readProjectManifestFromDirectory(root));
+  expect(JSON.parse(await readFile(path.join(target, "agent/steamharness.json"), "utf8"))).toEqual(child);
 });

@@ -4147,7 +4147,7 @@ function analyzeSourceFile(
 }
 
 function findProjectScriptPaths(projectDir: string, entryFile?: string, aggregateDir = projectDir): string[] {
-  if (entryFile) return projectEntrySources(projectDir, entryFile, aggregateDir);
+  if (entryFile) return projectEntrySources(projectDir, entryFile);
 
   if (!existsSync(projectDir)) {
     return [];

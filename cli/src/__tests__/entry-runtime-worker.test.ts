@@ -29,8 +29,8 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     await mkdir(path.join(directory,'node_modules'));
     await symlink(await resolveHarnessRoot(),path.join(directory,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
     await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({name:'entry-runtime-worker',type:'module',id,version:'1.0.0',defaultEntry:'api',entries:[
-      {entryId:'api',name:'API',type:'workflow',root:'.',entry:'api.ts',databases:[]},
-      {entryId:'bot',name:'Bot',type:'bot',root:'.',entry:'bot.ts',databases:[]},
+      {entryId:'api',name:'API',type:'workflow',root:'.',entry:'api.ts'},
+      {entryId:'bot',name:'Bot',type:'bot',root:'.',entry:'bot.ts'},
     ]}));
     await writeFile(path.join(directory,'api.ts'),`
       const ipcProject=steamharness.defineProject({name:'ipc',async run(input,context){

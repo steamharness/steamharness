@@ -31,8 +31,6 @@
   "dependencies": {
     "esbuild": "0.28.2",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@prisma/client-generator-ts": "7.10.1",
-    "@prisma/internals": "7.10.1",
     "import-meta-resolve": "4.2.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

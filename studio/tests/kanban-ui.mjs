@@ -16,7 +16,6 @@ const data = await mkdtemp(path.join(os.tmpdir(), 'studio-kanban-ui-')), proofDi
 const cliVersion = JSON.parse(await readFile(path.join(path.dirname(cliEntry), '../package.json'), 'utf8')).version;
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
 const server = await createKanbanTestServer(), proof = { cliVersion, checks: [], screenshots: [], errors: [] };
-await server.registerProject(projectDir);
 let child, browser, context, page, launch;
 async function start(directory = projectDir, embedded = true) {
   child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', directory, '--no-open', '--json', '--data-dir', data, ...(embedded ? ['--host-stdio'] : [])], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: server.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: server.connection.accessToken } });
@@ -107,7 +106,7 @@ try {
   assert.equal(exported.suggestedFilename(), 'kanban.json'); const exportedTasks = JSON.parse(await readFile(await exported.path(), 'utf8'));
   assert.equal(exportedTasks.length, 5); assert.ok(exportedTasks.some(task => task.title === 'Browser task')); assert.ok(exportedTasks.some(task => task.title === 'RPC task'));
   proof.checks.push('project artifact exports its persisted task list through the sandbox');
-  proof.checks.push('bound relational-table persistence, refresh, registered page methods and authenticated instance RPC');
+  proof.checks.push('local board persistence, refresh, registered page methods and authenticated instance RPC');
   const content = await preview.locator('#board').innerText(); await context.setOffline(true); await page.locator('#app[data-connection=disconnected]').waitFor(); assert.equal(await preview.locator('#board').innerText(), content); assert.equal(await page.locator('#create').isDisabled(), true); await screenshot('kanban-disconnected.png'); await context.setOffline(false); await ready();
   for (const width of [1280, 760, 390]) { await page.setViewportSize({ width, height: 900 }); await assertLayout(); await screenshot(`kanban-light-${width}.png`); if (await page.locator('#hide-menu').isVisible()) await page.locator('#hide-menu').click(); await assertLayout(); assert.equal(await page.locator('#menu-toggle').isVisible(), true); await screenshot(`kanban-hidden-${width}.png`); await page.locator('#menu-toggle').click(); }
   await page.emulateMedia({ colorScheme: 'dark' }); await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark'); await screenshot('kanban-dark-390.png');
@@ -118,11 +117,6 @@ try {
   proof.checks.push('disconnection content retention, automatic dark theme in parent and artifact, responsive sidebar and preview dimensions');
   await stop(); launch = await start(projectDir, false); await page.goto(launch.url); await ready(); await preview.locator('.task h3').filter({ hasText: 'RPC task' }).waitFor(); assert.equal(await page.locator('#workflow-param-title').inputValue(), 'Browser roadmap');
   proof.checks.push('standalone browser and CLI restart retain configurations and project data');
-  await stop(); const serverProject=path.join(data,'server-board');
-  await cp(projectDir,serverProject,{recursive:true,filter:file=>!file.split(path.sep).includes('node_modules')});
-  await symlink(await realpath(path.join(projectDir,'node_modules')),path.join(serverProject,'node_modules'),process.platform==='win32'?'junction':'dir');
-  const serverDatabase=await server.registerProject(serverProject);
-  launch = await start(serverProject); await page.goto(launch.url); await ready(); await preview.locator('.task').first().waitFor(); await preview.locator('#new-task').click(); await preview.locator('#task-title').fill('Server task'); await preview.locator('#save-task').click(); await preview.locator('#task-dialog[open]').waitFor({ state: 'hidden' }); await preview.locator('.task h3').filter({ hasText: 'Server task' }).waitFor(); assert.ok([...serverDatabase.rows.values()].some(row => row.values.title === 'Server task')); proof.checks.push('server-declared storage uses verified CLI login and Server data');
   assert.deepEqual(proof.errors, []); await writeFile(path.join(proofDir, 'browser-proof.json'), `${JSON.stringify(proof, null, 2)}\n`); console.log(JSON.stringify(proof));
 } catch (error) { if (page) { await screenshot('kanban-failed.png'); console.error(JSON.stringify({ stage: proof.checks.at(-1), artifact: await page.frameLocator('#kanban-preview').locator('body').innerText().catch(() => ''), error: await page.locator('#error').innerText().catch(() => '') })); } throw error;
 } finally { await context?.close(); await browser?.close(); await stop(); await server.close(); }

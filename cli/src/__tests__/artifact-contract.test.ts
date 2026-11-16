@@ -12,7 +12,7 @@ beforeEach(() => { vi.stubEnv("STEAMHARNESS_WORKSPACE_PACKS_DIR", ""); initI18n(
 afterEach(async () => { vi.unstubAllEnvs(); for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true }); });
 const projectId = "00000000-0000-4000-8000-000000000001";
 const declaration = { id: projectId, name: "Artifacts", version: "1.0.0", defaultEntry: "main",
-  entries: [{ entryId: "main", root: ".", type: "workflow", name: "Main", entry: "index.ts", databases: [] }] };
+  entries: [{ entryId: "main", root: ".", type: "workflow", name: "Main", entry: "index.ts" }] };
 const sourceFiles = () => [
   { path: "package.json", content: '{"name":"artifacts","type":"module"}' },
   { path: "steamharness.json", content: JSON.stringify(declaration) },

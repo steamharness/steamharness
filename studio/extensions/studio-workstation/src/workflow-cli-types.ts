@@ -1,7 +1,6 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { StudioUserSettings } from './user-settings';
 import type { Connection } from './workflow-auth-client';
-import type { HostDatabaseRequest } from './workflow-databases-types';
 import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
@@ -12,7 +11,6 @@ export interface WebReady {
   accountProtocolVersion?: number;
   systemAiConnectionProtocolVersion?: number;
   entriesProtocolVersion: number;
-  databaseSpacesProtocolVersion: number;
   traceProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
@@ -56,6 +54,5 @@ export interface Launcher {
   updateAnalysisProjects?(projects: Project[]): void;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, resourceProjects?: string[]): Promise<WebSession>;
   cliEntry(projectDir: string): Promise<string>;
-  database?(input: HostDatabaseRequest, signal: AbortSignal): Promise<any>;
   dispose(): void;
 }

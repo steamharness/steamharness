@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import * as core from 'steamharness';
 import { startEntryWebServer as startWebServer } from './web-test-storage';
 import { configurationTemplatePath } from '@steamharness/project-configuration';
-import { runKanbanDataCall, webProjectDataDirectory } from '../web/kanban-data';
+import { webProjectDataDirectory } from '../web/project-data-directory';
 import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
@@ -88,18 +88,18 @@ it.each(['background refresh', 'account change'] as const)('handles %s during a 
 });
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
-  vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(root,'registry'));
+  vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));
   const directory = path.join(root, 'board'); await mkdir(directory);
-  const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html",databases:[]}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/steamharness/build/main/pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[]};
+  const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html"}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
+  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/steamharness/build/main/pages/index.html':'index.html',configuration:'configuration.json'};
 
-  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases}]  };
-  Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration],databases:registration.databases});
+  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[registration]  };
+  Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration]});
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/steamharness/build/main/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   { await writeFile(path.join(directory, registration.root, 'configuration.json'), JSON.stringify({ version: 1, fields:options.noParams?[]: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
-  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(testDataDirectory(root));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {
@@ -112,21 +112,21 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
   const action = async (action: string, extra: object = {}) => { const current = (await state()).kanban; return post({ type: 'project-configuration', call: {action, id: current.activeConfigurationId, revision: current.revision, ...extra} }); };
-  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input: operation.startsWith('studio.')||operation.startsWith('runtime.')?input:{[operation.startsWith('knowledge.')||operation.startsWith('files.')?'knowledgeBase':'database']:'data',...input} } }).then(response => response.json()).then(value => value.messages[0]); };
+  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input } }).then(response => response.json()).then(value => value.messages[0]); };
   return { app, root, directory, dataDir, pkg, post, state, action, bridge, runtime };
 }
 
 describe('Kanban CLI Web workspace', () => {
   it('exposes safe runtime failures, clears stale evidence, and queries the exact live page without writing', async () => {
     const { app, post, bridge, state, runtime } = await fixture();
-    vi.mocked(runtime.kanbanBridge!).mockRejectedValue(new Error('private-server-token', { cause: new DOMException('private-timeout', 'TimeoutError') }));
     await bridge('files.readFile', { fileId: 'wf_ab12' });
     const inspect = async (call?: object) => (await post({ type: 'kanban-diagnostics', ...(call ? { call } : {}) }).then(response => response.json())).messages[0].value;
     const failed = await inspect();
     expect(failed).toMatchObject({ available: true, projectId: id, entryId: 'main', instances: [], requests: [
-      { operation: 'files.readFile', fileId: 'wf_ab12', ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'database' }], error: { category: 'timeout' } },
+      { operation: 'files.readFile', fileId: 'wf_ab12', ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'local' }], error: { category: 'other' } },
     ] });
     expect(JSON.stringify(failed)).not.toContain('private-');
+    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
     const hub = app.kanbanController!.methods, disconnect = hub.connect('diagnostic-client');
     const configurationId = (await state()).kanban.configuration.id;
     hub.publish({ clientId: 'diagnostic-client', instanceId: 'page', configurationId, ready: true, presentation: { mode: 'fullscreen' }, methods: [
@@ -175,15 +175,15 @@ describe('Kanban CLI Web workspace', () => {
     await vi.waitFor(() => expect(signal).toBeDefined());
     await controller.close(); await failed; expect(signal!.aborted).toBe(true);
   });
-  it('preserves custom parameter and bridge data keys that resemble credential names', async () => {
+  it('preserves custom parameter keys that resemble credential names', async () => {
     const { directory, post, state, action, bridge, runtime } = await fixture();
     await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'apiKey', type: 'string', defaultValue: 'project-key' }] }));
     await post({ type: 'kanban-refresh' });
     expect((await state()).kanban.configuration.params.apiKey).toBe('project-key');
     await action('save', { values: { apiKey: 'updated-key' } });
     expect((await state()).kanban.configurations[0].values.apiKey).toBe('updated-key');
-    vi.mocked(runtime.kanbanBridge!).mockResolvedValue({ apiKey: 'stored-project-key', secretLabel: 'business data' });
-    expect((await bridge('database.query', { database: 'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Settings' } })).value).toEqual({ apiKey: 'stored-project-key', secretLabel: 'business data' });
+    expect((await bridge('entries.list')).value).toEqual([]);
+    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
   });
   it('exports complete configuration values even when they match a host credential or attachment shape', async () => {
     const {app,directory,post,state,action}=await fixture();
@@ -287,7 +287,7 @@ describe('Kanban CLI Web workspace', () => {
     expect((await post({ type: 'send', text: 'invalid' })).status).toBe(400);
     expect(await post({ type: 'kanban-bridge', nonce: old, call: { requestId: 'x', operation: 'exec', input: {} } }).then(response => response.json())).toMatchObject({ messages: [{ ok: false }] });
     await action('create');
-    expect(await post({ type: 'kanban-bridge', nonce: old, call: { requestId: 'x', operation: 'kv.setValue', input: { database:'data',key: 'value', value: 1 } } }).then(response => response.json())).toMatchObject({ messages: [{ ok: false, error: { code: 'KANBAN_BRIDGE_SESSION_INVALID' } }] });
+    expect(await post({ type: 'kanban-bridge', nonce: old, call: { requestId: 'x', operation: 'files.readFile', input: { fileId: 'wf_ab12' } } }).then(response => response.json())).toMatchObject({ messages: [{ ok: false, error: { code: 'KANBAN_BRIDGE_SESSION_INVALID' } }] });
     expect(runtime.kanbanBridge).not.toHaveBeenCalled();
   });
   it('loads projects without a parameter manifest and refreshes build outputs and parameter definitions', async () => {
@@ -301,15 +301,7 @@ describe('Kanban CLI Web workspace', () => {
     const afterBuild = (await state()).kanban;
     expect(afterBuild.activeConfigurationId).toBe(beforeBuild.activeConfigurationId); expect(afterBuild.revision).toBe(beforeBuild.revision);
   });
-  it('rejects removed KV calls and requires Server resources without local fallback', async () => {
-    const { app, bridge } = await fixture({ real: true });
-    expect(app.project.kanban).toEqual({ artifactDir: '.', entry: 'index.html' });
-    expect((await bridge('kv.setValue', { key: 'board', value: { tasks: [1, 2] } })).ok).toBe(false);
-    expect((await bridge('database.resolve', { database: 'data', schemaHash: 'a'.repeat(64) })).ok).toBe(false);
-    const document = await bridge('knowledge.createDocument', { title: 'Notes', markdown: 'First' });
-    expect(document.ok).toBe(false);
-  }, 20_000);
-  it('reads a configured basemap larger than 2 MiB through the project bridge when attachments return 404', async () => {
+  it('reports a missing configuration attachment without using project data access', async () => {
     const { app, directory, post, action, bridge, runtime } = await fixture({ server: true, noParams: true });
     await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file' }] }));
     await post({ type: 'kanban-refresh' });
@@ -329,16 +321,13 @@ describe('Kanban CLI Web workspace', () => {
       throw new Error('Unexpected configuration file route');
     });
     await app.setHostConnection({ serverUrl: 'https://basemap.test', accessToken: 'basemap-token' });
-    vi.mocked(runtime.kanbanBridge!).mockResolvedValue({file,base64:bytes.toString('base64')});
     const reply = await bridge('files.readFile', { fileId: file.id });
-    expect(reply.ok).toBe(true);
-    expect(reply.value.file).toEqual(file);
-    expect(Buffer.from(reply.value.base64, 'base64').equals(bytes)).toBe(true);
+    expect(reply).toMatchObject({ ok: false, error: { code: 'KANBAN_FILE_UNAVAILABLE' } });
     expect(routes).toEqual([`/api/projects/${id}/configurations/files/${file.id}`]);
     const diagnostics = await post({ type: 'kanban-diagnostics' }).then(response => response.json());
-    expect(diagnostics.messages[0].value.requests.at(-1)).toMatchObject({ operation: 'files.readFile', fileId: file.id, ok: true,
-      attempts: [{ source: 'configuration-cache' }, { source: 'configuration-attachment', status: 404 }, { source: 'database' }] });
-    expect(runtime.kanbanBridge).toHaveBeenCalledOnce();
+    expect(diagnostics.messages[0].value.requests.at(-1)).toMatchObject({ operation: 'files.readFile', fileId: file.id, ok: false,
+      attempts: [{ source: 'configuration-cache' }, { source: 'configuration-attachment', status: 404 }] });
+    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
   });
 
   it.each([403, 500])('does not retry configuration attachment HTTP %s errors through another file route', async status => {
@@ -381,7 +370,7 @@ describe('Kanban CLI Web workspace', () => {
     });
     await app.setHostConnection({ serverUrl: 'https://basemap.test', accessToken: 'basemap-token' });
     const controller = app.kanbanController!;
-    const reading = controller.bridge({ requestId: 'image', operation: 'files.readFile', input: { database:'data',fileId: file.id } });
+    const reading = controller.bridge({ requestId: 'image', operation: 'files.readFile', input: { fileId: file.id } });
     const rejected = expect(reading).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_SESSION_INVALID' });
     await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
     await controller[operation]();

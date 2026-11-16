@@ -45,9 +45,6 @@ export async function readConfigurationFile(projectId: string, state: ProjectCon
       signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
     });
     options.onResponse?.(response.status);
-    // A project-managed file can predate the attachment API. Let the caller try
-    // its authenticated project bridge; permission and server failures must stop here.
-    if (response.status === 404) return;
     if (!response.ok) throw unavailable();
     const data = Buffer.from(await response.arrayBuffer());
     if (data.length !== reference.size) throw unavailable();

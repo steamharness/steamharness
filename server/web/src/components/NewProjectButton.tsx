@@ -68,7 +68,7 @@ export function NewProjectButton({
               void apiClient
                 .createProject({
                   name: name.trim(),
-                  entries:[{entryId:"main",name:name.trim(),type:kind,root:".",entry:kind==="kanban"?"index.html":"index.ts",databases:[]}],
+                  entries:[{entryId:"main",name:name.trim(),type:kind,root:".",entry:kind==="kanban"?"index.html":"index.ts"}],
                   defaultEntry:"main",
                   groupId: group,
                   projectInfo: createDefaultProjectInfo(),

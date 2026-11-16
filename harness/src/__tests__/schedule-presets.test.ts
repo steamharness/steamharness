@@ -104,7 +104,7 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
       name: "Schedule Kanban",
       version: "0.1.0",
 
-        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/index.html",databases:[],schedulePresets:[]}],
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/steamharness/build/main/index.html",schedulePresets:[]}],
     })),
     mkdir(path.join(kanbanDir, "dist/steamharness/build/main"), { recursive: true }).then(() =>
       writeFile(path.join(kanbanDir, "dist/steamharness/build/main/index.html"), "<!doctype html>")),
@@ -131,7 +131,7 @@ async function createScriptProject(
       name: "schedule-project",
       version: "0.1.0",
       type: "module",
-      defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[],...options}],
+      defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",...options}],
     })),
     writeFile(path.join(projectDir, "index.ts"), projectType === "workflow" ? `
       const main = steamharness.defineProject({

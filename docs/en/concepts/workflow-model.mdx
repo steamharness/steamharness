@@ -9,7 +9,7 @@ A root `steamharness.json` identifies a project that can register several entrie
 
 The root `steamharness.json` is the only project configuration source. `package.json.id` and `package.json.steamHarness` are not read or supported. npm names and versions may differ from project names and versions. Root fields are `id`, `name`, `version`, `defaultEntry`, `entries`, and optional `description`, `projectCard`, `projectInfo`, `builtinRelease`.
 
-The parent registers a child with only `{ "entryId": "agent", "root": "agent" }`. The child’s `steamharness.json` provides `type`, `name`, `entry`, `configuration`, `projectCard`, `projectInfo`, `databases`, and `schedulePresets`. Children cannot declare identity, version, or nested entries; paths are relative to the child directory. Unregistered children are never scanned or loaded. Root entries use `root: "."` and inline settings. Child references cannot override fields or inherit root settings. All referenced configuration files are required during upload, download, and built-in distribution.
+The parent registers a child with only `{ "entryId": "agent", "root": "agent" }`. The child’s `steamharness.json` provides `type`, `name`, `entry`, `configuration`, `projectCard`, `projectInfo`, and `schedulePresets`. Children cannot declare identity, version, or nested entries; paths are relative to the child directory. Unregistered children are never scanned or loaded. Root entries use `root: "."` and inline settings. Child references cannot override fields or inherit root settings. All referenced configuration files are required during upload, download, and built-in distribution.
 
 ## Runtime API
 
@@ -43,13 +43,6 @@ steamharness.runIf
 steamharness.runFor
 steamharness.runWhile
 steamharness.runProject
-workflow.listKnowledgeDocuments
-steamharness.getKnowledgeDocument
-steamharness.createKnowledgeDocument
-workflow.editKnowledgeDocument
-workflow.deleteKnowledgeDocument
-workflow.searchKnowledgeDocuments
-steamharness.readKnowledgeDocumentLines
 steamharness.getConfig
 steamharness.getRuntimePlatform
 steamharness.getRuntimeLocale
@@ -376,10 +369,6 @@ Local CLI `debug-node` uses the selected entrypoint registry to debug one node. 
       "root": "agent"
     },
     {
-      "entryId": "database",
-      "root": "database"
-    },
-    {
       "entryId": "map",
       "root": "map"
     }
@@ -398,24 +387,7 @@ Local CLI `debug-node` uses the selected entrypoint registry to debug one node. 
     "iconColor": "#ffffff",
     "iconBackgroundColor": "#0f766e"
   },
-  "databases": [
-    "data"
-  ],
   "entry": "index.ts"
-}
-```
-
-`database/steamharness.json`
-
-```json
-{
-  "type": "workflow",
-  "name": "Database operations",
-  "databases": [
-    "data"
-  ],
-  "entry": "index.ts",
-  "configuration": "configuration.json"
 }
 ```
 
@@ -425,21 +397,7 @@ Local CLI `debug-node` uses the selected entrypoint registry to debug one node. 
 {
   "type": "kanban",
   "name": "Map",
-  "databases": [
-    "data"
-  ],
   "entry": "dist/steamharness/entries/map/build/map/index.html"
-}
-```
-
-Root `config.json`:
-
-```json
-{
-  "version": 1,
-  "databases": {
-    "data": "00000000-0000-4000-8000-000000000001"
-  }
 }
 ```
 
@@ -447,4 +405,4 @@ Each entry can configure `projectCard.icon`, `iconColor` and `iconBackgroundColo
 
 Paths must stay inside the aggregate directory and cannot contain `..`, absolute paths or host data directories. Static analysis scans each registered entry independently, allowing different executors in one aggregate. Each Workflow or Bot executor must match its registered type; Kanban points to built HTML. Only the root owns the SteamHarness identity. Child directories retain ordinary npm packages and dependencies.
 
-Legacy root type, storage-location and project-relationship declarations are rejected. Use fresh declarations and data, [independent spaces](/en/concepts/data-storage), and `context.entries.get(entryId)` for calls within the aggregate.
+Use `context.entries.get(entryId)` for calls within the aggregate.

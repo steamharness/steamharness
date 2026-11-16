@@ -18,16 +18,16 @@ Kanban 用静态 HTML 展示项目界面，不导出执行器。入门示例见[
 在 `map/steamharness.json` 声明入口：
 
 ```json
-{ "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json", "databases": [] }
+{ "type": "kanban", "name": "Map", "entry": "dist/steamharness/entries/map/build/map/index.html", "configuration": "configuration.json" }
 ```
 
 ### 入口路径
 
-`root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/steamharness/build/<entryId>/index.html`（根入口）或 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`（子入口）。Workflow/Bot 的源码入口仍相对各自 `root`。前端只清理当前源码根下的 `build/<entryId>/`，保留数据库生成目录。
+`root` 指向源码目录；Kanban 的 `entry` 相对聚合项目根解析，省略时默认 `dist/steamharness/build/<entryId>/index.html`（根入口）或 `dist/steamharness/entries/<encodeURIComponent(entry.root)>/build/<entryId>/index.html`（子入口）。Workflow/Bot 的源码入口仍相对各自 `root`。前端只清理当前源码根下的 `build/<entryId>/`。
 
 构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
-Studio 提供最小看板与两种任务看板。任务看板先生成数据库描述符并构建 `dist/steamharness/build/main/index.html`，再进行检查；以 data 别名读写 Task 行，按 configurationId 筛选。未绑定或加载失败时禁用编辑并显示错误。
+构建后运行 `steamharness structure .`，确认入口 HTML 和它引用的静态资源都包含在项目中。
 
 ## 配置与展示
 
@@ -36,22 +36,6 @@ Studio 提供最小看板与两种任务看板。任务看板先生成数据库�
 相同配置快照不会重复触发配置事件或就绪通知；配置变化在现有页面内生效。CLI Web 与 Studio 在连接中断时保留预览，持续断线才显示重连浮层，恢复连接不会挤动地图画布。
 
 文件 Bridge 允许最多 120 秒读取大附件，后台任务使用相同的文件时限。超时后保留错误与重试入口。
-
-## 数据 Bridge
-
-```js
-import { data } from "./dist/steamharness/generated/database/browser/index.js";
-const api = window.steamHarnessKanban;
-const database = await api.databases.connect(data);
-const configurationId = api.getConfiguration().id || "default";
-const page = await database.task.rows({ where: { configurationId } });
-const row = await database.task.insert({ id: crypto.randomUUID(), configurationId, title: "Review", status: "todo" });
-await database.task.update({ key: { id: row.values.id }, rowVersion: row.rowVersion, data: { status: "done" } });
-```
-
-必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `window.steamHarnessKanban.knowledgeBases.get("docs")` 访问，附件通过 `window.steamHarnessKanban.knowledgeBases.get("docs").files.createFile/readFile/deleteFile` 访问。
-
-Server 将知识附件保存在私有文件存储，PostgreSQL 保存元数据与摘要。关系表更新和删除通过 rowVersion 检查并发版本。读写失败明确显示，写入失败保留已保存记录与用户草稿。
 
 ## 页面方法
 
@@ -70,15 +54,13 @@ Studio 中的快捷键以页面处理为先：在 `keydown` 处理函数中调�
 
 CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；Server Web 提供经过鉴权的静态预览。预览使用沙箱、受约束的相对资源路径和短期能力凭据；`studio.getLocalAnalysis()` 仅由支持的本地 Studio 宿主提供。
 
-发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库资源](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。
-
-知识库必须独立声明 `knowledgeBases: ["docs"]`，根配置映射 `knowledgeBases.docs`，并建立 Server 绑定。可在 `knowledgeBases.get("docs").subscribe(...)` 订阅不透明修订号；同名业务库 alias 的更新不会触发此订阅。
+发布以整个聚合项目为单位。详见[打包](/cli/workspace/pack)。
 
 ## 调用聚合内 Workflow 与订阅会话
 
 在本地 CLI Web 或 Studio 中，页面通过 `window.steamHarnessKanban.entries.get("api").runEntrypoint("state", ["--payload", "{}"])` 调用已登记 Workflow 的操作。页面不能指定用户或项目身份；数据写入与消息路由可以统一放在该 Workflow 中。
 
-`await window.steamHarnessKanban.entries.list()` 直接读取本地聚合入口目录，返回 `entryId`、`name`、`type` 和 `status`，不等待业务数据库。可以先显示本地 Bot，再后台读取已保存的 Bot 档案。入口存在不代表档案、绑定或执行权限已经就绪；加载失败时保留本地列表及重试指引，禁止伪装成已保存。
+`await window.steamHarnessKanban.entries.list()` 直接读取本地聚合入口目录，返回 `entryId`、`name`、`type` 和 `status`。可以先显示本地 Bot，再后台读取已保存的 Bot 档案。入口存在不代表档案或执行权限已经就绪；加载失败时保留本地列表及重试指引。
 
 ### 挂载原生 Bot
 
@@ -170,9 +152,9 @@ const view = await window.steamHarnessKanban.conversations.mount(container,
 
 ### 超时与错误
 
-Workflow 调用独立使用 120 秒 Bridge 时限，供数据库授权及持久回执完成；Bot 的提交、恢复队列、确认输入和停止 IPC 同样允许最多 120 秒，普通只读 IPC 保持 15 秒。回执不等待模型完成，耗时模型工作由持久队列异步执行。超时可能已有副作用，页面应保留请求 ID 并查询回执，不自动重放写入。
+Workflow 调用独立使用 120 秒 Bridge 时限；Bot 的提交、恢复队列、确认输入和停止 IPC 同样允许最多 120 秒，普通只读 IPC 保持 15 秒。回执不等待模型完成，耗时模型工作由持久队列异步执行。超时可能已有副作用，页面应保留请求 ID 并查询回执，不自动重放写入。
 
-数据库错误的已知公开 `code` 会跨节点报告及 Workflow 调用保留。Bridge 仅将白名单代码映射为固定提示（如 `DATABASE_UNBOUND`、`DATABASE_BUSY`、`DATABASE_SCHEMA_MISMATCH`），不向页面暴露底层连接串、SQL、文件路径或任意异常文本。
+Bridge 仅将白名单错误码映射为固定提示，不向页面暴露文件路径或任意异常文本。
 
 ### 订阅快照
 
@@ -182,7 +164,7 @@ Server 静态预览对这些执行操作返回 `409` 和安全代码 `ENTRY_RUNT
 
 ## 在看板中持续运行 Workflow
 
-本地 CLI Web 和 Studio 提供 `window.steamHarnessKanban.workflows.get(entryId)`。它控制同一聚合中已登记的 Workflow，使用原生运行历史和附件，不需要另建数据库或读取宿主的 SQLite。
+本地 CLI Web 和 Studio 提供 `window.steamHarnessKanban.workflows.get(entryId)`。它控制同一聚合中已登记的 Workflow，使用原生运行历史和附件，不读取宿主的 SQLite 文件。
 
 ```js
 const capture = window.steamHarnessKanban.workflows.get("capture");

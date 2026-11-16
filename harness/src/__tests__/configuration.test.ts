@@ -111,7 +111,7 @@ for (const explicit of [false,true]) test(`an automatically assigned run ID keep
   const runKey = key;
   const root = path.join(os.homedir(), ".steamharness", "configurations");
   try {
-    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}));
+    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts", configuration:"configuration.json"}], projectInfo:{}}));
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1, fields:[{name:"label", type:"string", defaultValue:"before"}]}));
     await writeFile(path.join(project, "index.ts"), `
       const approvalNode = steamharness.createUserInputNode({name:"confirm", params:[{name:"approved", type:"boolean", flag:"--approved"}]});
@@ -147,7 +147,7 @@ test("executor, parameter resolver, nodes and provider factory share one immutab
   const runKey=key;
   const root=path.join(os.homedir(),".steamharness","configurations");
   try {
-    await writeProjectFixture(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}));
+    await writeProjectFixture(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts", configuration:"configuration.json"}], projectInfo:{}}));
     await writeFile(path.join(project,"index.ts"), `
 const task=steamharness.defineProject({name:"configuration",async run(_input,context){return {errCode:0,errMessage:"",value:steamharness.getConfig("label"),nested:context.config.nested};}});
 export const executor=steamharness.defineExecutor({projectType:"workflow",defaultEntrypoint:"main",entrypoints:[steamharness.defineEntrypoint({id:"main",title:"Main",workflow:task,params:[{name:"label",type:"string",flag:"--label"}],createInput({paramValues}){return paramValues;},resolveParams(context){return {params:{label:{value:context.config.label}}};}})]});

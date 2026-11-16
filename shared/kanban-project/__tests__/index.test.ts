@@ -15,7 +15,6 @@ import {
   getKanbanPreviewCapabilityRefreshDelay,
   KANBAN_PREVIEW_CAPABILITY_RETRY_MS,
   scheduleKanbanPreviewCapabilityRefresh,
-  KANBAN_FILE_MAX_BYTES,
   KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_PRESENTATION_CHANGE_EVENT,
   KANBAN_PRESENTATION_MESSAGE,
@@ -105,56 +104,6 @@ describe("kanban project contract", () => {
     }
     expect(pageWindow.steamHarnessKanban.getConfiguration()).toEqual({ id: "profile", name: "Map", params: {} });
   });
-  it("restricts file calls to bytes and managed ids without caller-selected project or paths", () => {
-    expect(parseKanbanBridgeCall({ requestId: "upload", operation: "files.createFile", input: { knowledgeBase:"data", name: "map.png", mimeType: "image/png", base64: "AP8=" } })).toMatchObject({ operation: "files.createFile" });
-    for (const input of [
-      { name: "../map.png", base64: "AA==" },
-      { name: "map.png", base64: "not base64" },
-      { name: "map.png", mimeType: "image/png\r\nsecret", base64: "AA==" },
-      { name: "map.png", base64: "AA==", projectId: "other" },
-    ]) {
-      expect(() => parseKanbanBridgeCall({ requestId: "bad", operation: "files.createFile", input })).toThrow();
-    }
-    for (const fileId of ["../private", "https://example.com/file", "wf_abc/../secret"]) {
-      expect(() => parseKanbanBridgeCall({ requestId: "read", operation: "files.readFile", input: { knowledgeBase:"data", fileId } })).toThrow();
-    }
-    expect(() => parseKanbanBridgeCall({ requestId: "large", operation: "files.createFile", input: { knowledgeBase:"data",
-      name: "map.png", base64: "A".repeat(Math.ceil(KANBAN_FILE_MAX_BYTES / 3) * 4),
-    } })).toThrow(/50 MiB/);
-  });
-
-  it("round trips binary images through the nonce-bound browser file API", async () => {
-    const listeners: Array<(event: MessageEvent) => void> = [];
-    const messages: Array<Record<string, unknown>> = [];
-    const parent = { postMessage: (message: Record<string, unknown>) => messages.push(message) };
-    const pageWindow = {
-      parent, setTimeout: () => 1, clearTimeout: () => {},
-      addEventListener: (type: string, listener: (event: MessageEvent) => void) => { if (type === "message") listeners.push(listener); },
-    } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
-    const script = createKanbanBridgeScript({ id: "profile", name: "Map", params: {} }, "nonce")
-      .replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
-    new Function("window", "document", script)(pageWindow, { readyState: "complete" });
-    const reply = (value: unknown) => {
-      const request = messages.at(-1)!;
-      for (const listener of listeners) listener({ source: parent, data: {
-        type: "steamharness:kanban-bridge-response", nonce: "nonce", requestId: request["requestId"], ok: true, value,
-      } } as unknown as MessageEvent);
-    };
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255]);
-    const reference = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: 6, kind: "image", storage: "server", createdAt: "2026-10-08T00:00:00Z" };
-    const uploaded = pageWindow.steamHarnessKanban.knowledgeBases.get("data").files.createFile({ name: "map.png", mimeType: "image/png", buffer: bytes });
-    const base64 = Buffer.from(bytes).toString("base64");
-    expect(messages.at(-1)).toMatchObject({ operation: "files.createFile", input: { knowledgeBase:"data", name: "map.png", mimeType: "image/png", base64 } });
-    reply(reference);
-    await expect(uploaded).resolves.toEqual(reference);
-    const downloaded = pageWindow.steamHarnessKanban.knowledgeBases.get("data").files.readFile(reference.id);
-    reply({ file: reference, base64 });
-    const result = await downloaded;
-    expect(new Uint8Array(result.buffer)).toEqual(bytes);
-    const deleted = pageWindow.steamHarnessKanban.knowledgeBases.get("data").files.deleteFile(reference.id);
-    reply(true);
-    await expect(deleted).resolves.toBe(true);
-  });
   it("derives artifact paths from a registered entry", () => {
     expect(readKanbanEntryConfig({type:"kanban",entry:"index.html"})).toEqual({artifactDir:".",entry:"index.html"});
     const custom=readKanbanEntryConfig({type:"kanban",entry:"dist/pages/board.html"});
@@ -214,9 +163,6 @@ describe("kanban project contract", () => {
     expect(html).not.toContain('nonce="stale"');
     expect(html).toContain("steamharness:kanban-ready");
     expect(html).toContain("steamHarnessKanban\",{configurable:false");
-    expect(html).toContain('createDocument:(input)=>call("knowledge.createDocument",input)');
-    expect(html).toContain('editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId})');
-    expect(html).toContain('readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})');
     expect(html).toContain("Kanban bridge request timed out.");
     expect(html).toContain("pending.size>=16");
     expect(html).toContain('window.addEventListener("DOMContentLoaded",ready,{once:true})');
@@ -240,47 +186,11 @@ describe("kanban project contract", () => {
       operation: "runtime.getLocale",
       input: {},
     });
-    const resolve = { requestId: 'resolve', operation: 'database.resolve', input: { database: 'data', schemaHash: 'a'.repeat(64) } };
-    expect(parseKanbanBridgeCall(resolve)).toEqual(resolve);
-    expect(() => parseKanbanBridgeCall({ ...resolve, input: { ...resolve.input, projectId: 'forged' } })).toThrow(/unsupported fields/);
-    for (const operation of ['kv.getValue', 'kv.setValue', 'kv.deleteValue', 'database.revision'])
-      expect(() => parseKanbanBridgeCall({ requestId: 'removed', operation, input: { database: 'data', key: 'board' } })).toThrow(/Unsupported/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-5",
-      operation: "knowledge.listDocuments",
-      input: { knowledgeBase:"data", cursor: 12 },
-    })).toThrow(/cursor.*non-empty string/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-6",
-      operation: "knowledge.createDocument",
-      input: { knowledgeBase:"data", id: "", title: "Guide", markdown: "# Guide" },
-    })).toThrow(/id.*non-empty string/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-7",
-      operation: "knowledge.listDocuments",
-      input: { knowledgeBase:"data" },
-      projectName: "another-project",
-    })).toThrow(/request contains unsupported fields/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-8",
-      operation: "knowledge.listDocuments",
-      input: { knowledgeBase:"data", pageSize: 101 },
-    })).toThrow(/pageSize.*1 to 100/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-9",
-      operation: "knowledge.searchDocuments",
-      input: { knowledgeBase:"data", query: "roadmap", beforeLines: 51 },
-    })).toThrow(/beforeLines.*0 to 50/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-10",
-      operation: "knowledge.readDocumentLines",
-      input: { knowledgeBase:"data", documentId: "guide", startLine: 10, endLine: 9 },
-    })).toThrow(/line range/);
-    expect(() => parseKanbanBridgeCall({
-      requestId: "request-11",
-      operation: "knowledge.readDocumentLines",
-      input: { knowledgeBase:"data", documentId: "guide", startLine: 1, endLine: 1001 },
-    })).toThrow(/line range/);
+    const read = { requestId: 'read', operation: 'files.readFile', input: { fileId: 'wf_ab12' } };
+    expect(parseKanbanBridgeCall(read)).toEqual(read);
+    expect(() => parseKanbanBridgeCall({ ...read, input: { ...read.input, projectId: 'forged' } })).toThrow(/unsupported fields/);
+    expect(() => parseKanbanBridgeCall({ ...read, projectName: 'another-project' })).toThrow(/unsupported fields/);
+    expect(() => parseKanbanBridgeCall({ requestId: 'unknown', operation: 'unknown.operation', input: {} })).toThrow(/Unsupported/);
     expect(isKanbanJsonValue({ nested: [null, true, 3, "value"] })).toBe(true);
     expect(isKanbanJsonValue(Number.NaN)).toBe(false);
     const circular: Record<string, unknown> = {};
@@ -293,13 +203,13 @@ describe("kanban project contract", () => {
       code: "KANBAN_BRIDGE_ERROR",
       message: "Kanban bridge request failed.",
     });
-    expect(createKanbanBridgeError(Object.assign(new Error("failed at /private/database"), {
+    expect(createKanbanBridgeError(Object.assign(new Error("failed at /private/source"), {
       code: "KANBAN_DATA_OPERATION_FAILED",
     }))).toEqual({
       code: "KANBAN_DATA_OPERATION_FAILED",
       message: "Kanban project data operation failed.",
     });
-    expect(createKanbanBridgeError(Object.assign(new Error("failed at /private/database"), {
+    expect(createKanbanBridgeError(Object.assign(new Error("failed at /private/source"), {
       code: "KANBAN_ARBITRARY_PRIVATE_ERROR",
     }))).toEqual({
       code: "KANBAN_BRIDGE_ERROR",
@@ -313,45 +223,26 @@ describe("kanban project contract", () => {
     });
   });
 
-  it("preserves allowlisted failures in Workflow causes without exposing raw reports", () => {
-    const cause = { name: "DatabaseResourceError", code: "DATABASE_SCHEMA_MISMATCH", message: "postgres://private/secret" };
-    expect(createKanbanBridgeError(new Error("Workflow failed at /private", { cause: { cause } }))).toEqual({
-      code: "DATABASE_SCHEMA_MISMATCH", message: "The database schema does not match this project. Deploy the required migrations.",
-    });
-    const circular: Record<string, unknown> = { code: "DATABASE_PRIVATE_DETAIL", message: "private" };
-    circular.cause = circular;
-    expect(createKanbanBridgeError({ safeCause: circular })).toEqual({ code: "KANBAN_BRIDGE_ERROR", message: "Kanban bridge request failed." });
-    expect(createKanbanBridgeError({ safeCause: { cause: { code: "DATABASE_UNBOUND" } } }).code).toBe("DATABASE_UNBOUND");
-  });
-
-  it("accepts only nonce-bound parent replies and preserves knowledge revision subscriptions", async () => {
+  it("accepts only nonce-bound parent replies", async () => {
     const listeners: Array<(event: MessageEvent) => void> = [];
     const posted: Array<Record<string, unknown>> = [];
     const parent = { postMessage: vi.fn((message: Record<string, unknown>) => posted.push(message)) };
     const pageWindow = { parent, setTimeout: () => 1, clearTimeout() {}, addEventListener(type: string, listener: (event: MessageEvent) => void) { if (type === 'message') listeners.push(listener); } } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
     new Function('window', 'document', createKanbanBridgeScript({ id: 'default', name: 'Default', params: {} }, 'nonce').replace(/^<script[^>]*>/, '').replace(/<\/script>$/, ''))(pageWindow, { readyState: 'complete' });
-    const data = pageWindow.steamHarnessKanban.knowledgeBases.get('data');
+    const data = pageWindow.steamHarnessKanban.studio;
     const dispatch = (source: unknown, nonce: string, body: Record<string, unknown>) => listeners.forEach(listener => listener({ source, data: { nonce, ...body } } as unknown as MessageEvent));
-    const pending = data.getDocument('guide');
+    const pending = data.getLocalAnalysis();
     const requestId = posted.at(-1)!.requestId;
     const reply = { type: 'steamharness:kanban-bridge-response', requestId, ok: true, value: { id: 'guide' } };
     dispatch({}, 'nonce', { ...reply, value: 'forged' }); dispatch(parent, 'wrong', { ...reply, value: 'forged' }); dispatch(parent, 'nonce', reply);
     await expect(pending).resolves.toEqual({ id: 'guide' });
-    const listener = vi.fn(); const stop = data.subscribe(listener);
-    const revision = { type: 'steamharness:kanban-database-revision', kind: 'knowledgeBases', alias: 'data', revision: 'v1' };
-    dispatch({}, 'nonce', revision); dispatch(parent, 'wrong', revision); dispatch(parent, 'nonce', revision); dispatch(parent, 'nonce', revision);
-    await Promise.resolve(); expect(listener).toHaveBeenCalledExactlyOnceWith({ alias: 'data', revision: 'v1', kind: 'knowledgeBases' });
-    const snapshot = vi.fn(); data.subscribe(snapshot); await Promise.resolve(); expect(snapshot).toHaveBeenCalledWith({ alias: 'data', revision: 'v1', kind: 'knowledgeBases' });
-    stop(); dispatch(parent, 'nonce', { ...revision, revision: 'v2' }); await Promise.resolve(); expect(listener).toHaveBeenCalledTimes(1);
     for (const code of ['KANBAN_DATA_OPERATION_FAILED', '__proto__']) {
-      const failure = data.getDocument('guide');
+      const failure = data.getLocalAnalysis();
       dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false, error: { code, message: '/private/secret' } });
       await expect(failure).rejects.toMatchObject({ code: code === '__proto__' ? 'KANBAN_BRIDGE_ERROR' : code });
     }
-    const circular: Record<string, unknown> = {}; circular.self = circular;
-    for (const input of [circular, { invalid: () => undefined }]) await expect(data.listDocuments(input)).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
     parent.postMessage.mockImplementationOnce(() => { throw new DOMException('private clone failure', 'DataCloneError'); });
-    await expect(data.listDocuments()).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
+    await expect(data.getLocalAnalysis()).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
   });
 
   it("injects only opaque platform file references without requiring a format hint", () => {

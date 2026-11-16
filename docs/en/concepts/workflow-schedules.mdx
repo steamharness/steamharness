@@ -39,9 +39,8 @@ A Workflow can provide recommendations through `steamharness.json.entries[].sche
 ```json
 {
   "type": "workflow",
-  "name": "Database",
+  "name": "Scheduled workflow",
   "entry": "index.ts",
-  "databases": [],
   "schedulePresets": [
     {
       "id": "hourly",
@@ -87,4 +86,4 @@ You cannot edit or delete a schedule while it has a `pending`, `running`, or `wa
 
 ## Kanban integration
 
-Knowledge-base changes can be observed through `window.steamHarnessKanban.knowledgeBases.get(alias).subscribe(...)`; every subsequent read rechecks authorization. Relational models use the generated table API and explicit reloads. Schedules and fire history remain scoped by `projectId + entryId`, with `entrypointId` identifying internal operations.
+Schedules and fire history remain scoped by `projectId + entryId`, with `entrypointId` identifying internal operations.

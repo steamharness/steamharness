@@ -13,10 +13,10 @@ Run the project's default entry or select a registered Workflow or Bot with `--e
 
 ```sh
 pnpm exec steamharness run .
-pnpm exec steamharness run . --entry database --entrypoint search -- --query example
+pnpm exec steamharness run . --entry workflow --entrypoint summarize -- --text example
 ```
 
-The second command requires a `database` entry with a `search` operation. Arguments after `--` belong to the business workflow rather than the CLI.
+The second command requires a `workflow` entry with a `summarize` operation. Arguments after `--` belong to the business workflow rather than the CLI.
 
 ## Entry selection
 
@@ -25,7 +25,7 @@ The second command requires a `database` entry with a `search` operation. Argume
 | `--entry` | Aggregate `entryId`; defaults to `defaultEntry` |
 | `--entrypoint` | Operation within the selected Workflow; not accepted by Bot |
 
-Unknown IDs fail. Each entry has separate configuration, database requirements, and conversation state. A run keeps its startup configuration snapshot; edits apply to the next run.
+Unknown IDs fail. Each entry has separate configuration and conversation state. A run keeps its startup configuration snapshot; edits apply to the next run.
 
 ## Results and next steps
 

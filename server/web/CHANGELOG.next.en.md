@@ -2,9 +2,7 @@
 
 - Project type labels now use Bot.
 
-- Removed: project KV pages and legacy management calls. Relational databases and independent knowledge bases remain available through the Server resource catalog.
 
-- Replaced visible KV management with relational and knowledge resource catalogs, account grants, entry bindings, models, row CRUD, revision-aware documents and attachments, retaining draft protection.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
@@ -14,15 +12,12 @@
 
 - [Changed] Project model creation offers only System AI and Third-party AI; removed references to Settings models.
 
-- Fixed draft navigation and page-close protection within project database details, discarded KV drafts returning, duplicate attachment preparation and uploads starting after their tab closes. The database root route now returns to the directory.
 
-- Improvement: Database workspace adds a paginated directory, project/server filtering and independent data tabs, with KV list/detail panes and a dedicated requests and permissions page.
 
 - Improvement: Aggregate entry lists display each entry’s declared icon and foreground/background colors. Entries do not own independent versions.
 
-- Changed: database pages show entry aliases and database IDs, accept requests independently of manifests, and display approved IDs. Hosts continue to review and maintain permissions.
 
-- Breaking: project management displays registered entries, the default entry and separate configurations. Database pages manage requests, approval, sharing, bindings, grant recovery and space data. Related-project and project-owned database pages are removed.
+- Breaking: project management displays registered entries, the default entry and separate configurations.
 
 - Improved avatar previews in user management and profile dialogs: click to view a larger image that fits the viewport, then return keyboard focus to the avatar on close. Existing upload, profile, menu and project navigation actions are preserved.
 
@@ -77,12 +72,11 @@
 - Changed the console to shadcn Blocks and New York components, unifying navigation, tables, forms, dialogs and themes while removing private styling and notifications.
 - Removed the invitations block from the project members page; invitations are created, listed and revoked from the dedicated Invitations section.
 - Changed the console to remove execution statistics, logs, schedules, environment variables, Webhook and Runner pages while retaining project and data management.
-- Changed role descriptions to project and data permissions, removed obsolete execution types and copy, and added bilingual data write and KV descriptions.
+- Changed role descriptions to project and data permissions, removed obsolete execution types and copy, and added bilingual data write descriptions.
 - Changed the project information card on the project overview and Settings pages to label the project creator instead of the uploader.
 - Removed the Back to project workbench entry from the top of the sidebar; the brand entry returns to the project list instead.
 
 ### Fixed
 
 - Fixed Admin Center navigation for accounts limited to role or audit viewing permissions.
-- Fixed theme inheritance in knowledge dialogs and dark styles in Markdown previews.
-- Fixed version, member, and KV summaries loading when opening project details or switching tabs, while ignoring stale responses after navigation.
+- Fixed version and member summaries loading when opening project details or switching tabs, while ignoring stale responses after navigation.

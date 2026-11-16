@@ -53,22 +53,18 @@ One root directory starts one aggregate host and initially displays only `defaul
 
 Each entry has an `/entries/<entryId>/` URL and independent controller. Its optional `projectCard` configures `icon`, `iconColor` and `iconBackgroundColor`, with `#RRGGBB` colors. Omitted properties use defaults for that entry type. The root `steamharness.json.projectCard` identifies the aggregate card; entry icons are independent. Declare the sole version in root `steamharness.json.version`; entries do not accept their own version.
 
-Use the **Project information** icon in the upper-right corner to access Overview, Project configurations, Tools, Skills and Databases in one panel. Its width and height stay fixed, with sidebar navigation on wide screens and horizontally scrolling tabs on narrow screens. Content scrolls independently, and switching sections preserves configuration drafts and tool searches. Tool registrations and permissions update with the project state. Tools and skills are available for supported entries.
+Use the **Project information** icon in the upper-right corner to access Overview, Project configurations, Tools and Skills in one panel. Its width and height stay fixed, with sidebar navigation on wide screens and horizontally scrolling tabs on narrow screens. Content scrolls independently, and switching sections preserves configuration drafts and tool searches. Tool registrations and permissions update with the project state. Tools and skills are available for supported entries.
 
 The Skills page lists and counts actual guides for the selected entry, distinguishes project guides from Core built-in guides, and supports search. Select a guide to preview its complete `SKILL.md` or Markdown source inside the fixed panel. The return toolbar stays fixed while the document scrolls in its own area; returning preserves search and scroll position. Skills are read-only, without Enable or Auto-approve switches, and previewing does not execute instructions.
 
 Existing model setup shortcuts open Project configurations inside this panel.
 
-Select **Project information → Databases** to view relational and knowledge resource references, status and sharing entries. Binding follows each resource type's rules; browsing opens the Server Web resource page without account tokens in the URL. Create resources, manage grants and edit data in Server Web or CLI management commands.
-
-Entries declare `databases` and `knowledgeBases` aliases separately in `steamharness.json`. Server stores relational bindings by account, project, entry and alias. Root `config.json.knowledgeBases` stores knowledge alias-to-UUID mappings with `STEAMHARNESS_PROJECT_CONFIG` overrides. Entries may use multiple resources; binding grants no access. See [Project storage](/en/concepts/data-storage).
-
 ## When the Server connection fails
 
-Guidance shows actions for the reported failure. Project registration and database results appear in a separate Connection checks panel. Knowledge resources are labelled Knowledge database; table resources are labelled Relational database.
+Guidance shows actions for the reported failure. Project registration appears in the Connection checks panel.
 
 - **Project not found or inaccessible:** check whether the project should already exist. To start a new one, select the highlighted Create cloud project button. It creates a private project under your current account and opens it automatically, using a new Server-assigned ID. Existing data and permissions are not transferred, and this action does not upload source files.
-- **Sign-in or database authorization required:** choose Sign in or Configure database, then Check again after resolving the issue.
+- **Sign-in required:** choose Sign in, then Check again after resolving the issue.
 - **HTTP 500 or another Server error:** choose Open Server project to inspect its registration. If the management page also fails, give the administrator the Server, project ID, and entry shown in Connection details. Checks retry automatically; a Server error does not create a new project.
 
 Blocking failures temporarily hide the Bot composer, Workflow execution form, and Kanban controls. History and drafts stay available, and running tasks can still be stopped. Controls return when the connection recovers. Rechecks retain the existing guidance and layout.
@@ -77,11 +73,7 @@ Studio opens cloud projects through its host using the current sign-in. Standalo
 
 ## Local resource previews
 
-A knowledge card can supply `reader: { entrypointId, args? }` to invoke a read operation on its target Workflow entry in the same local aggregate. The operation must declare `readOnly: true` and return `{ errCode: 0, errMessage: "", format: "markdown" | "json", content }`. Markdown content is a string; JSON content is the data to display. Readers cannot target Server resources or another project.
-
-A knowledge card with a reader does not require a knowledgeBase alias. Existing Server cards continue to use that alias. Kanban cards can call declared read operations in the same aggregate through `entries.get(id).runEntrypoint(...)`. The host rejects preview writes and cancels reads when the preview closes or its access identity changes.
-
-A custom tool can store a local knowledge card’s search term in `details.resourceCard.target.query`. The host appends the current selection as `--document-id <id>` and `--query <query>` when invoking its reader. Readers should let these trailing values override saved initial arguments; an empty documentId returns to the result list. A reader may return `title` to name the preview. Documents use their titles, while searches and directories have descriptive labels; identifiers remain in card details.
+Project, Kanban, and file cards can be previewed within the current aggregate. Kanban uses a restricted page, and file cards use paths relative to the project. The host cancels unfinished reads when a card closes or its access identity changes.
 
 In Studio, a card’s **Open beside** button uses an existing editor group beside the conversation, creating a split when needed. Later cards update the same preview tab without opening a separate native window.
 

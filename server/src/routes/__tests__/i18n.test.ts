@@ -114,13 +114,6 @@ test("localizeServerMessage maps dynamic server errors with captured parameters"
   );
 });
 
-test("database binding and explicit approval errors are localized", () => {
-  const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
-  assert.equal(localizeServerMessage("Database binding is unavailable or revoked.", zh), "数据库绑定不可用或已撤销。");
-  assert.equal(localizeServerMessage("Explicit approval or rejection is required.", zh), "请明确批准或拒绝申请。");
-  assert.equal(localizeServerMessage("Approval cannot widen requested database permissions.", zh), "审批不能扩大申请的数据库权限。");
-});
-
 test("toHttpError maps 413 body-too-large to a translatable messageKey", () => {
   const raw = new Error("too large");
   (raw as { status?: number }).status = 413;

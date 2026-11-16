@@ -9,7 +9,7 @@ import { createProjectActions } from '../web/workflow-actions';
 import type { Project, Runtime } from '../web/workflow-types';
 
 const project: Project = { id: 'bdfbd2d2-08f9-4c0d-b9d6-6d0c00027bd4', entryId: 'main', name: 'Monitor', aggregateName: 'Monitor', defaultEntry: 'main',
-  uri: 'file:///test', folderPath: '/test', entryRoot: '/test', databases: [], entries: [], projectType: 'workflow', fields: [], defaultEntrypoint: 'main', entrypoints: [{ id: 'main', title: 'Listen', fields: [] }] };
+  uri: 'file:///test', folderPath: '/test', entryRoot: '/test', entries: [], projectType: 'workflow', fields: [], defaultEntrypoint: 'main', entrypoints: [{ id: 'main', title: 'Listen', fields: [] }] };
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
 const item = (index: number) => ({ id: String(index), title: 'Output', contentType: 'text', content: `Frame ${index}` });

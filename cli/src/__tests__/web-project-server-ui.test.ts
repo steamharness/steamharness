@@ -35,7 +35,7 @@ async function fixture(kind: 'workflow' | 'bot', language: 'en' | 'zh-CN') {
   (await import('@steamharness/i18n')).initI18n({ preference: language });
   await (kind === 'workflow' ? import('../web/ui/workflow-main') : import('../web/ui/main'));
   const emit = (data: object) => window.dispatchEvent(new MessageEvent('message', { data }));
-  const project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',databases:[],entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts",databases:[]}], id: 'server-project', uri: 'file:///server-project', folderPath: '/project', name: 'Server project', projectType: kind,
+  const project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts"}], id: 'server-project', uri: 'file:///server-project', folderPath: '/project', name: 'Server project', projectType: kind,
     fields: [{ name: 'subject', type: 'string', flag: '--subject' }], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
   const messages = [{ id: 'saved-answer', role: 'assistant', content: 'Previous result', status: 'success' }];
   let revision = 0;
@@ -63,7 +63,6 @@ it.each([
   const guidance = document.getElementById('server-guidance')!;
   const checks: NonNullable<ProjectServerState['checks']> = [
     { id: 'project', projectId: f.project.id, stage: 'registration', status: 'checking' },
-    { id: 'database:data', projectId: f.project.id, stage: 'database', database: 'data', status: 'waiting' },
   ];
   await f.render();
   expect(guidance.hidden).toBe(true);
@@ -134,52 +133,10 @@ it.each(['workflow', 'bot'] as const)('keeps %s guidance when a child frame post
   expect(document.getElementById('server-guidance')!.hidden).toBe(true);
 });
 
-it.each([
-  ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
- ] as const)('opens database references from %s guidance and links an approved host ID (%s)', async (kind, language) => {
-  const f = await fixture(kind, language);
-  await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
-  document.querySelector<HTMLButtonElement>('#server-guidance-databases')!.click();
-  const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
-  const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
-  const databaseId = '00000000-0000-4000-8000-000000000001';
-  const respond = async () => {
-    f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, entries: f.project.entries, requirements: [{ alias: 'memory', databaseId, status: 'invalid', error: 'Host approval required' }], environmentOverrides: [] } });
-    await vi.advanceTimersByTimeAsync(0);
-  };
-  await respond();
-  expect(document.querySelector('.aggregate-databases')).toBeNull();
-  expect(dialog.textContent).toContain('Host approval required');
-  const change = dialog.querySelector<HTMLButtonElement>(`[aria-label="${language === 'en' ? 'Change database' : '更改数据库'}"]`)!; change.click();
-  dialog.querySelector<HTMLButtonElement>(`[aria-label="${language === 'en' ? 'Save database reference' : '保存数据库引用'}"]`)!.click();
-  expect(requests().at(-1)).toMatchObject({ action: 'bind', alias: 'memory', databaseId }); await respond();
-  await f.render({ checking: false, blocking: false, checks: [] });
-  expect(document.getElementById('server-guidance')!.hidden).toBe(true);
-  expect(requests().map(message => message.action)).toEqual(['get', 'bind']);
-});
-
-it('keeps the database recovery action disabled while disconnected and retries failed management requests in Project information', async () => {
-  const f = await fixture('bot', 'en');
-  await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
-  const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
-  f.emit({ type: 'connection', status: 'disconnected' }); expect(action.disabled).toBe(true); action.click();
-  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'databases')).toBe(false);
-  f.emit({ type: 'connection', status: 'connected' }); action.click();
-  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'databases')!;
-  f.emit({ type: 'error', requestId: request.requestId, message: 'Database host unavailable' });
-  await vi.advanceTimersByTimeAsync(0);
-  expect(document.querySelector('.database-error')!.textContent).toBe('Database host unavailable');
-  expect(document.querySelector('.project-databases')!.getAttribute('aria-busy')).toBe('false');
-  document.querySelector<HTMLButtonElement>('[aria-label="Refresh"].database-icon-button')!.click();
-  const requests = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
-  expect(requests).toHaveLength(2); expect(requests[1].action).toBe('get'); expect(requests[1].requestId).not.toBe(request.requestId);
-});
-
 it.each(['workflow', 'bot'] as const)('keeps Stop and recovery settings available in %s for access or Server compatibility problems', async kind => {
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, blocking:true, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-databases')!.hidden).toBe(true);
   const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, blocking:true, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
@@ -235,13 +192,11 @@ it.each(['bot', 'workflow'] as const)('separates typed checks from instructions 
   const f = await fixture(kind, 'zh-CN');
   const failed: ProjectServerState = { checking: false, blocking: true, issue: { kind: 'project-unavailable' }, checks: [
     { id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required' },
-    { id: 'knowledge-bases:docs', projectId: f.project.id, stage: 'database', database: 'docs', status: 'passed' },
   ] };
   await f.render(failed);
   const checks = document.querySelector('.project-server-checks')!;
   expect(checks.querySelector('h3')!.textContent).toBe('连接检查');
-  expect(checks.textContent).toContain('知识库（数据库）');
-  expect(checks.textContent).toContain('docs');
+  expect(checks.textContent).toContain('项目登记');
   expect(document.querySelector('#server-guidance-create')!.classList.contains('primary')).toBe(true);
   document.querySelector<HTMLButtonElement>('#server-guidance-create')!.click();
   expect(host.postMessage).toHaveBeenCalledWith({ type: 'create-cloud-project' });

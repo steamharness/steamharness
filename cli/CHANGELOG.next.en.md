@@ -63,12 +63,10 @@
 
 - Fixed compiled Kanban previews reloading during local data writes. Only artifact and entry declaration changes trigger preview reloads, preserving active edits when images or JSON are saved elsewhere in the project.
 
-- Knowledge cards now use descriptive titles and retain search and document selections when opening, refreshing, and returning to results.
 - Match embedded project header heights and icon sizes to the native window controls in Studio Steam mode.
 
-- Added declared read-only Workflow operations for local knowledge cards and Kanban previews, with per-request host checks that reject preview writes.
 
-- Server connection guidance now shows actions for the reported failure, supports one-click cloud project creation, and groups typed project/database checks. Blocking failures hide Bot input, Workflow forms, and Kanban controls while preserving drafts; cloud project navigation uses the host or an authenticated browser handoff.
+- Server connection guidance now shows actions for the reported failure and supports one-click cloud project creation. Blocking failures hide Bot input, Workflow forms, and Kanban controls while preserving drafts; cloud project navigation uses the host or an authenticated browser handoff.
 - Fixed CLI Web briefly showing the open-in-another-window warning while checking ownership after switching Bot conversations. Confirmed conflicts still show the read-only warning.
 
 - Fixed Bot Stop preserving queued inputs and showing Resume queue; stopping an exited owner cancels persisted work without restarting its old model.
@@ -88,17 +86,17 @@
 - Embedded Kanban Conversations support project-defined @ choices, dynamic UI updates, and header/transcript/footer slots; projects can reuse the native composer for multi-participant topics and acknowledge deliveries to other conversations.
 - Conversation composers support @ references to the current entry's skills, project files and project entries, with inline highlighting, compact file names and full paths on hover, keyboard selection and preservation in drafts and queued messages.
 - Kanban can discover local aggregate entries and embed native Conversation chats with streaming, drafts, parameters, queues, approvals, and cancellation. Business Workflows can adapt submissions and durable receipts; each view is bound to one conversation without receiving login credentials. Cancelled requests retain their connection error type without leaving ordinary operation errors after recovery.
-- Exclude AppleDouble filesystem metadata from macOS project packages so database artifact inventories and downloaded sources stay intact.
+- Exclude AppleDouble filesystem metadata from macOS project packages so downloaded sources stay intact.
 
 - Templates, default Kanban entries, uploads, and downloads use build/<entryId>/ under each source root's artifact namespace; frontend builds clean only their own output.
 
-- Reject package names containing path traversal and clean staging after failures. Downloads validate required entries and database inventories and reject runtime data or unregistered artifacts. Entry names and paths cannot collide with managed directories or Windows device names.
+- Reject package names containing path traversal and clean staging after failures. Downloads validate required entries and reject runtime data or unregistered artifacts. Entry names and paths cannot collide with managed directories or Windows device names.
 
 - [Fix] Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.
 
-- Database generation accepts an aggregate root and --entry, deduplicates source roots, and returns outputs. Generated code, entry artifacts, caches, reports, and archives use root dist. Kanban entry paths resolve from the aggregate root; upload/download verify the new inventory and runtime data stays outside projects.
+- Entry artifacts, caches, reports, and archives use root dist. Kanban entry paths resolve from the aggregate root; upload/download verify the artifact inventory and runtime data stays outside projects.
 
-- [Fix] Allow 120 seconds for cross-entry Conversation submission, resume, input resolution, and cancellation receipts while retaining cancellation; map nested database failures to safe Kanban guidance.
+- [Fix] Allow 120 seconds for cross-entry Conversation submission, resume, input resolution, and cancellation receipts while retaining cancellation.
 
 - Fixed Kanban aggregate Workflow calls preserving the full 120-second receipt window through the Bridge and HTTP transport without automatically replaying writes.
 
@@ -106,13 +104,12 @@
 
 - [Fixed] Configuration attachment uploads remain valid during background account checks. The host still rejects stale results after the account changes or authentication is lost.
 
-- [Fixed] Database and knowledge startup checks preserve Server transport and authorization errors. Temporary outages trigger automatic checks, and login or permission failures no longer incorrectly request rebinding.
 
-- [Fixed] AI model catalogues are cached for 30 seconds and resource display data for 5 seconds. Each resource kind loads its bindings once, concurrent reads are merged, and manual refreshes and edits invalidate display data. Execution checks stay online, independent startup checks run concurrently, and management UI requests time out after 15 seconds.
+- [Fixed] System AI model catalogues are cached for 30 seconds; manual refresh and account changes clear the cache.
 
-- [Fixed] Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default without login or remote database waits for history. Streaming is preserved, login changes retain local history, and analysis reads the same local records.
+- [Fixed] Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default. Streaming is preserved, login changes retain local history, and analysis reads the same local records.
 
-- Fixed worker crash recovery with relational storage by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.
+- Fixed worker crash recovery by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.
 
 - [Fixed] Worker output now waits for transport completion, preventing full snapshots from accumulating behind a slow host. Unexpected worker crashes under a live host resume the same child tasks and checkpoints up to three times while preserving settled replies. Stop or reopening after a forced host exit still pauses managed work and user queues; background completion cannot release queued input.
 
@@ -120,21 +117,14 @@
 
 - Fixed subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress. Child conversations show the same task receipt as the parent so a finished reply is not mistaken for completed work. Cancellation, independent forks and other conversations retain their own state.
 
-- Fixed database validation accepting conflicting or reserved model client names that could not be connected after generation.
-
-- Changed: task-board templates use generated Browser descriptors and Task rows scoped by configuration, with optimistic row versions. Unbound boards block edits, failed writes retain drafts, and stale pages cannot write to rebound resources.
 
 - Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.
 
-- Added knowledge resource/grant/binding and document/attachment commands, plus database data for applied model rows. Catalogs support pagination and search; Web panels open Server resource pages without KV editing or local/remote switches.
 
-- Conversation, Workflow and assistant history default to local SQLite isolated by project and entry. Local file locks coordinate windows and crash recovery. Server storage remains explicit; existing cloud and legacy local records are not automatically migrated or overwritten.
+- Conversation, Workflow and assistant history default to local SQLite isolated by project and entry. Local file locks coordinate windows and crash recovery. Server storage remains explicit.
 
-- Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.
 
-- Added database provisioning, inspection, retry and read/write grant commands, plus versioned migrations with SQL, model snapshots and checksums. Applied-history changes, schema drift and unaccepted destructive migrations are rejected.
 
-- Add database (db) init/validate/generate for steamharness.database.ts and steamharness.schema, including typed dual-target artifacts. Packaging generates assets automatically; upload/download verify static inventories while excluding other local runtime data.
 
 - Run project startup checks silently in the background. Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.
 
@@ -151,7 +141,7 @@
 
 - Fixed conversation forks to copy history through the selected response without rerunning the project or checking System AI. A progress dialog opens after confirmation, opens the branch on success and displays failure reasons. Branch creation works when AI is unavailable; model validation happens when sending new input.
 
-- Fixed project templates: Kanban no longer includes a Workflow execution script. Task boards use the database alias API, clearly mark temporary mode without a binding, isolate named configurations, and protect existing data when reads or writes fail.
+- Fixed project templates: Kanban no longer includes a Workflow execution script.
 
 - Fixed independent fork effort changes and reopening without incorrectly requiring the main conversation. Fork and child navigation now follows only the current view's matching request, ignores late, duplicate or unrelated receipts, and exposes the source conversation. Stop All retains run and task identity checks across worker replacement.
 
@@ -205,31 +195,26 @@
 
 - Improvement: Conversation, message and workflow exports in Studio use the native save dialog and show the saved path in a notification after writing succeeds. Cancellation stays quiet and write failures show an error.
 
-- Improvement: CLI Web consolidates AI usage, project configurations, tools, skills and databases under Project information. The redesigned panel uses fixed dimensions, sidebar navigation and independently scrolling sections while preserving configuration drafts, tool searches and model setup shortcuts. Skills remain read-only without permission switches.
+- Improvement: CLI Web consolidates AI usage, project configurations, tools and skills under Project information. The panel uses fixed dimensions, sidebar navigation and independently scrolling sections while preserving configuration drafts, tool searches and model setup shortcuts. Skills remain read-only without permission switches.
 
-- Fix: Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries. Local history uses project declarations without deployment database configuration; actual read failures remain unavailable.
+- Fix: Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries. Local history uses project declarations; actual read failures remain unavailable.
 
 - Improvement: CLI Web separates tools and skills into tabs. Tools retain permission controls; skills appear as read-only guide cards without Enable or Auto-approve switches, shared by Conversation and Workflow.
 
-- Fix: CLI Web passes validated `STEAMHARNESS_PROJECT_CONFIG` database mappings to project workers so inspection and Workflow execution use the same IDs for root and child configurations.
 
-- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
-- Improvement: CLI Web databases show references and icon actions with host navigation; requests, reviews and grants live in Studio, Server Web or CLI commands. Standalone Web sessions explain the preview limitation.
 
 - Local Conversations consume inherited Core Agent parameters consistently across structure reports, dynamic model options and execution input, including hidden and fixed fields.
 
 - Improvement: Web run failures summarize upstream HTML error pages with an HTTP status and actionable guidance. Original diagnostics are collapsed under Technical details in Conversation and Workflow.
 
-- Improvement: Moved database management into Project information and removed its toolbar button. Database cards show shared entries and connection status; reference settings stay in Project information, while host interfaces maintain requests and permissions.
 
 - Improvement: Use a clear plus icon for the New conversation toolbar button to make the create action easier to recognize.
 
 - Improvement: Aggregates open their default entry and use an icon-only Project windows button. Compact entry cards show types, default/current markers and runtime states, with an icon to open a new browser page or Studio tab. Removed split views; every entry, including the current one, can open repeatedly with independent view state on the shared host. Entry icons and colors are independent; only the root owns a version.
 
-- Changed: database management saves aliases and approved database IDs, while hosts manage requests and permissions. Entries support multiple references, approved requests display IDs, and archives preserve references.
 
-- Fixed database binding guidance to open the linked databases in Project information. Requests and permissions are managed by the host; the assistant and Conversation share the linking interface, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
 
 - User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
 
@@ -238,12 +223,9 @@
 - Fixed grouped model menus to keep user model management available during loading and active work, preserved `inherit` as a model ID, and kept unrelated project output named `userSettings` intact during credential redaction. Kanban refreshes recheck current related imports so valid setup guidance survives a preview refresh and resolved errors stay hidden.
 
 - Added host user models, available-model choices and a Manage models action while retaining project configuration APIs. Updates apply at idle boundaries; keys stay out of page state, ordinary history and exports and are rehydrated only for matching model endpoints.
-- Fixed concurrent entry database bindings overwriting each other and database requests accepting another consumer's binding metadata. Corrected Kanban database API examples.
 
-- Breaking: check, run, Web and MCP select registered entries. Web windows retain independent drafts and background tasks. Database access requires host requests, approval and binding. Removed related projects, dependency locks and combined publishing commands.
+- Breaking: check, run, Web and MCP select registered entries. Web windows retain independent drafts and background tasks. Removed related projects, dependency locks and combined publishing commands.
 
 - Parameter `userSetting` bindings support fixed user policies or user defaults with project overrides. Fixed controls show the actual policy and open user settings; editable controls retain the three original choices. Reset restores inheritance without persisting the displayed value as an override; active work keeps its snapshot.
 
 - Added initial host user permission snapshots and capability-negotiated updates to CLI Web. Durable sessions keep startup settings for active and background work, adopting updates at a safe idle boundary while preserving inheritance parameters, history, pending input, and request identities across remounts and recovery. Standalone CLI does not persist this setting yet.
-
-- Keep project deployment configuration in root config.json, centralizing database aliases and IDs; package entries declare only the aliases they use. STEAMHARNESS_PROJECT_CONFIG can override deployment values; migration updates one ID, permissions remain host-managed, and distributions retain authored values.

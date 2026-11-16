@@ -19,8 +19,8 @@ it('shows one live entry on the latest response and routes child navigation thro
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
   vi.stubGlobal('cancelAnimationFrame', clearTimeout); document.documentElement.lang = 'en'; document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/project', databases: [],
-    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }],
+  const project: Project = { entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/project',
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }],
     id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Project', projectType: 'bot', fields: [], entrypoints: [] };
   const session = { id: 'parent', title: 'Parent', messages: [
     { id: 'old', role: 'assistant', content: 'Earlier answer', status: 'success' },

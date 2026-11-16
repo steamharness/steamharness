@@ -18,10 +18,7 @@
       "name": "Studio Kanban",
       "root": ".",
       "entry": "dist/steamharness/build/main/index.html",
-      "configuration": "configuration.json",
-      "databases": [
-        "data"
-      ]
+      "configuration": "configuration.json"
     }
   ],
   "defaultEntry": "main"

@@ -21,7 +21,7 @@ import { resolveHarnessRoot } from './harness-source';
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => { for (const service of services.splice(0)) { await service.close(); } for (const directory of folders.splice(0)) { await rm(directory, { force: true, recursive: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const request: InputRequest = { requestId: 'approval', nodeName: 'approval', title: 'Review', params: [{ name: 'approved', type: 'boolean', required: true }] };
-const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}],
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts"}],
   id: '14ab25f6-5a51-4b9b-9a09-df612356fd01', uri: 'file:///test', folderPath: '/test', name: 'Test workflow', projectType: 'workflow', fields: [], defaultEntrypoint: 'main',
   entrypoints: [{ id: 'main', title: 'Main', fields: [{ name: 'subject', flag: '--subject', type: 'string', required: true, defaultValue: 'Default' }], paramResolver: { enabled: true }, tools: [{ name: 'read', enabled: true }] },
     { id: 'other', title: 'Other', fields: [{ name: 'subject', flag: '--subject', type: 'string', defaultValue: 'Other' }] }],
@@ -31,7 +31,7 @@ function runtime(): Runtime {
     available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })), resolveParams: vi.fn(async () => ({ params: {} })),
     run: vi.fn(async () => ({ status: 'success', output: { items: [] }, nodes: [] })), cancel: vi.fn(), dispose: vi.fn(),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(async () => { throw new Error('Unknown file'); }),
-    deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}), readResource: vi.fn(async () => null),
+    deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
   };
 }
 function controller(saved: Partial<WorkspaceContract> = {}, legacy?: ConversationSession[]) {
@@ -405,7 +405,7 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
   await mkdir(path.join(directory, 'node_modules'));
   const harnessRoot = await resolveHarnessRoot();
   await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] }));
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}] }));
   await writeFile(path.join(directory, 'index.ts'), `
     const preview = steamharness.createOutputNode({ name: 'preview-node', async *stream() {
       yield steamharness.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });
@@ -449,7 +449,7 @@ it('persists nested conversation state on the Server while preserving authored f
   await mkdir(path.join(directory, 'child'));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'npm-name', version: '9.9.9', type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id, name: 'Manifest name', version: '1.2.3', defaultEntry: 'child', entries: [{ entryId: 'child', root: 'child' }] }));
-  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'bot', name: 'Child', entry: 'index.ts', databases: [] }));
+  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'bot', name: 'Child', entry: 'index.ts' }));
   const config = JSON.stringify({ version: 1 });
   await writeFile(path.join(directory, 'config.json'), config);
   await writeFile(path.join(directory, 'child/index.ts'), `
@@ -466,7 +466,7 @@ it('persists nested conversation state on the Server while preserving authored f
     const inspected = await executor.inspect([directory]);
     expect(inspected.errors).toEqual([]);
     const descriptor = { ...inspected.projects[0]!, conversation: undefined, uri: pathToFileURL(directory).href };
-    expect(descriptor).toMatchObject({ id, aggregateName: 'Manifest name', manifest: { version: '1.2.3' }, entryId: 'child', databases: [] });
+    expect(descriptor).toMatchObject({ id, aggregateName: 'Manifest name', manifest: { version: '1.2.3' }, entryId: 'child' });
     const report = await executor.run({ project: descriptor, conversationId: 'scope', runId: randomUUID(), args: [] }, () => {});
     expect(report.status, JSON.stringify(report.error)).toBe('success');
     expect(report.output?.items?.find(item => item.id === 'agent-answer')?.content).toBe('manifest-workflow');

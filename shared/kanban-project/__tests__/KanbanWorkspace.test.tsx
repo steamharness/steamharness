@@ -90,32 +90,6 @@ describe("KanbanWorkspace", () => {
     }, "*");
   });
 
-  it("posts opaque database revision snapshots with the preview nonce", () => {
-    const { rerender } = render(<KanbanWorkspace {...createProps()} />);
-    const iframe = screen.getByTitle("Demo Kanban") as HTMLIFrameElement;
-    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
-
-    rerender(<KanbanWorkspace {...createProps({
-      databaseRevisions: [{ alias: "stocks", revision: "opaque-2" }],
-    })} />);
-
-    expect(postMessage).toHaveBeenCalledWith({
-      type: "steamharness:kanban-database-revision",
-      nonce: "preview-nonce",
-      alias: "stocks",
-      revision: "opaque-2",
-    }, "*");
-
-    postMessage.mockClear();
-    fireEvent.load(iframe);
-    expect(postMessage).toHaveBeenCalledWith({
-      type: "steamharness:kanban-database-revision",
-      nonce: "preview-nonce",
-      alias: "stocks",
-      revision: "opaque-2",
-    }, "*");
-  });
-
   it("accepts only a nonce-bound ready message from the current preview", async () => {
     render(<KanbanWorkspace {...createProps()} />);
     const iframe = screen.getByTitle("Demo Kanban") as HTMLIFrameElement;
@@ -135,14 +109,14 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-1",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     });
 
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledWith({
       requestId: "request-1",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     }));
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
       type: "steamharness:kanban-bridge-response",
@@ -161,8 +135,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-forged-project",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
       projectName: "another-project",
     });
 
@@ -183,8 +157,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-stable",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     });
     await waitFor(() => expect(firstHandler).toHaveBeenCalledOnce());
 
@@ -210,8 +184,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-sync-error",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     });
 
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -232,18 +206,18 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-nonce",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     }, { nonce: "wrong" });
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-source",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "files.readFile",
+      input: { fileId: "wf_ab12" },
     }, { source: window });
     dispatchBridgeRequest(iframe, {
       requestId: "invalid-operation",
-      operation: "kv.deleteValue",
-      input: { knowledgeBase:"data", documentId: "board" },
+      operation: "unknown.operation",
+      input: { fileId: "wf_ab12" },
     });
 
     expect(onBridgeRequest).not.toHaveBeenCalled();
@@ -268,8 +242,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-old",
-      operation: "knowledge.listDocuments",
-      input: { knowledgeBase:"data",},
+      operation: "files.readFile",
+      input: { fileId:"wf_ab12",},
     });
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledOnce());
     rerender(<KanbanWorkspace {...createProps({
@@ -292,8 +266,8 @@ describe("KanbanWorkspace", () => {
     for (let index = 0; index < 17; index += 1) {
       dispatchBridgeRequest(iframe, {
         requestId: `request-${index}`,
-        operation: "knowledge.getDocument",
-        input: { knowledgeBase:"data", documentId: `key-${index}` },
+        operation: "files.readFile",
+        input: { fileId: `wf_${index.toString(16)}` },
       });
     }
 
@@ -315,8 +289,8 @@ describe("KanbanWorkspace", () => {
     for (let index = 0; index < 16; index += 1) {
       dispatchBridgeRequest(iframe, {
         requestId: `timeout-${index}`,
-        operation: "knowledge.getDocument",
-        input: { knowledgeBase:"data", documentId: `key-${index}` },
+        operation: "files.readFile",
+        input: { fileId: `wf_${index.toString(16)}` },
       });
     }
     await act(async () => { await Promise.resolve(); });
@@ -328,8 +302,8 @@ describe("KanbanWorkspace", () => {
     });
     dispatchBridgeRequest(iframe, {
       requestId: "after-timeout",
-      operation: "knowledge.getDocument",
-      input: { knowledgeBase:"data", documentId: "after-timeout" },
+      operation: "files.readFile",
+      input: { fileId: "wf_abcd" },
     });
     await act(async () => { await Promise.resolve(); });
 

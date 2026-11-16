@@ -80,7 +80,7 @@ test("runtime HTTP isolates private histories, validates project membership and 
       assert.equal(response.status, 400);
     }
     const projectId = randomUUID();
-    const entries = [{ entryId: "main", name: "Main", type: "workflow" as const, root: ".", entry: "index.ts", databases: [] }];
+    const entries = [{ entryId: "main", name: "Main", type: "workflow" as const, root: ".", entry: "index.ts" }];
     await f.storage.createProject({ projectId, projectName: "Runtime project", entries, defaultEntry: "main", projectInfo: createDefaultProjectInfo(), ownerUserId: f.ownerId });
     assert.equal((await f.request("/workspaces", f.otherToken, { kind: "project", projectId, entryId: "main" })).status, 403);
     assert.equal((await f.request("/workspaces", f.ownerToken, { kind: "project", projectId, entryId: "missing" })).status, 404);

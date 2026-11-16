@@ -25,7 +25,7 @@ export async function createAssistantDependencyFixture() {
       if(message.type==='configure'){
         const projectDirectory=message.assistantProjectDir??process.argv[process.argv.indexOf('web')+1];
         const manifest=JSON.parse(readFileSync(path.join(projectDirectory,'steamharness.json'),'utf8'));
-        const baseProject={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'bot',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]};
+        const baseProject={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'bot',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}],fields:[],entrypoints:[],tools:[{name:'skill'}]};
         const entries=(manifest?.entries??baseProject.entries).map(entry=>entry.root==='.'?entry:{...JSON.parse(readFileSync(path.join(projectDirectory,entry.root,'steamharness.json'),'utf8')),...entry});
         const projects=entries.map(entry=>({...baseProject,folderPath:projectDirectory,entries,entryId:entry.entryId,entryName:entry.name,projectType:entry.type,entrypoints:entry.type==='workflow'?[{id:'studio_state',title:'Studio state',fields:[]}]:[]}));
         const selected=process.argv.includes('--entry')?process.argv[process.argv.indexOf('--entry')+1]:manifest?.defaultEntry??'main';
@@ -49,7 +49,7 @@ export async function createAssistantDependencyFixture() {
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
           writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

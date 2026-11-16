@@ -27,16 +27,13 @@ test("current documentation rejects old project and storage contracts while pres
   }
 });
 
-test("OpenAPI languages expose the same aggregate and database endpoints", async () => {
+test("OpenAPI languages expose the same current endpoints", async () => {
   const specs = await Promise.all(["", "en/"].map(prefix => readFile(path.join(root, prefix, "openapi/steamharness.openapi.yaml"), "utf8")));
   const paths = source => [...source.matchAll(/^  (\/[^\n]+):$/gmu)].map(match => match[1]).sort();
   assert.deepEqual(paths(specs[0]), paths(specs[1]));
   for (const source of specs) {
-    assert.match(source, /\/api\/databases\/bindings\/resolve/u);
-    assert.match(source, /\/api\/databases\/\{databaseId\}\/query/u);
-    assert.doesNotMatch(source, /database-spaces|KVEntry|ProjectDataSummary|kv\.getValue|kv\.setValue/u);
-    assert.match(source, /accessRevision/u);
-    assert.match(source, /\/api\/projects\/\{projectId\}\/entries\/\{entryId\}\/resources\/read/u);
+    assert.doesNotMatch(source, /\/api\/(?:databases|knowledge-bases)\b|database-spaces|KVEntry|ProjectDataSummary|kv\.getValue|kv\.setValue/u);
+    assert.doesNotMatch(source, /\/api\/projects\/\{projectId\}\/entries\/\{entryId\}\/resources\/read/u);
     assert.doesNotMatch(source, /related-projects|ProjectDependencyLock|ProjectStorageRequest|dataStorage/u);
   }
 });

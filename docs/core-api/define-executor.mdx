@@ -149,7 +149,7 @@ workflow 代码可以使用 [`steamharness.createToolApprovalGate()`](/core-api/
 | `paramValues` 是正式结构化值 | `createInput` 可直接读取参数值；`args` 继续用于需要完整 CLI 参数或未知参数的场景。 |
 | Workflow 运行配置属于 entrypoint | 顶层旧字段会给出迁移错误，不再保留兼容别名。 |
 | `tools` 必须静态声明 | CLI Web 只能展示所选入口或 Bot executor 静态分析到的工具；工具名必须稳定。 |
-| `tokenUsage.enabled` 默认关闭 | 未配置时不会写数据库，也不会展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
+| `tokenUsage.enabled` 默认关闭 | 未配置时不会记录或展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
 | `registry` 用于单节点调试 | Workflow 只搜索所选入口的 registry；没有注册的节点不能通过 debug API 单独运行。 |
 
 ## Core Agent 内置参数

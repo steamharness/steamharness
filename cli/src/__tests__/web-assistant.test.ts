@@ -30,13 +30,13 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const assistantProjectDir = path.join(directory, 'assistant');
   await mkdir(workdir);
   await mkdir(assistantProjectDir);
-  await writeProjectFixture(path.join(assistantProjectDir,'package.json'),JSON.stringify({id:'364764e9-ef0e-4e86-9e56-77d0410e1723',name:'Assistant',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}]}));
+  await writeProjectFixture(path.join(assistantProjectDir,'package.json'),JSON.stringify({id:'364764e9-ef0e-4e86-9e56-77d0410e1723',name:'Assistant',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]}));
   await writeFile(path.join(assistantProjectDir,'index.ts'),'export {};');
   await writeFile(path.join(workdir, 'result.txt'), 'Independent workspace result');
   await writeFile(path.join(assistantProjectDir, 'result.txt'), 'Assistant installation file');
   const assistant = { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] };
   const host = parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant, assistantProjectDir });
-  const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:assistantProjectDir,databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'bot',
+  const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:assistantProjectDir,entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'bot',
     fields: [{ name: 'permissionPolicy', type: 'string', defaultValue: 'auto' }], entrypoints: [],
     tools: [{ name: 'skill' }, { name: 'read' }, { name: 'workflow-desktop_open_project' },
       { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_get_kanban_diagnostics' }, { name: 'workflow-studio_open_file' },
@@ -98,7 +98,7 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
   const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
   await symlink(harnessRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   vi.spyOn(os,'homedir').mockReturnValue(directory);
-  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] };
+  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] };
   await writeProjectFixture(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeProjectFixture(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');
@@ -115,21 +115,18 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
       const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
       const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
       const text = await readFile(path.join(workdir, 'user.txt'), 'utf8');
-      let serverStorageAllowed = false, serverStorageError;
-      try { await context.databases.connect({ kind: "steamharness.database", version: 1, alias: "data", provider: "postgresql", schemaHash: "0".repeat(64), target: "node", metadata: { models: [], enums: [] }, loadEngine: () => { throw new Error("must not create a client"); } }); serverStorageAllowed = true; } catch (error) { serverStorageError = error.code; }
       return { errCode: 0, errMessage: '', host: process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST,
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
-        text, workspace, serverStorageAllowed, serverStorageError,
+        text, workspace,
         projectAccount: process.env.STEAMHARNESS_SERVER_ADMIN_KEY === 'assistant-project-fixture',
         aiAccount: process.env.STEAMHARNESS_AI_API_KEY === 'assistant-ai-fixture' };
     } });
     export const executor = steamharness.defineBot({ agent: { tools: [] }, tools: [{ name: 'skill', enabled: true, autoApprove: true }], async prepareInput(input, context) { return { ...input, prompt: JSON.stringify(await flow.run(input, context)) }; } });
   `);
-  const remoteRequests: string[] = [];
   const storageService = runtimeStorageService();
   const server = createServer(async (request, response) => {
     if (await storageService.handle(request, response)) return;
-    remoteRequests.push(request.url!); request.resume(); response.writeHead(403, { 'content-type': 'application/json' }); response.end(JSON.stringify({ errCode: 403, errMessage: 'Bind this entry first.', data: { code: 'DATABASE_UNBOUND' } }));
+    request.resume(); response.writeHead(404); response.end();
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'assistant-project-fixture',
@@ -144,7 +141,7 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
     expect(report.status, JSON.stringify(report)).toBe('success');
     expect(JSON.parse(String(report.output?.items?.find(item => item.id === 'agent-answer')?.content))).toMatchObject({ host: 'vscode', text: 'Independent workspace contents',
-      serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND', projectAccount: true, aiAccount: true,
+      projectAccount: true, aiAccount: true,
       listed: { skills: [expect.objectContaining({ name: 'fixture-skill' })] },
       read: { skill: 'fixture-skill', content: expect.stringContaining('Read the independent workspace.') },
       workspace: { primaryTarget: { kind: 'folder', folderId: 'file:///workspace' }, roots: [expect.objectContaining({ rootPath: workdir, role: 'primary' })] },
@@ -154,11 +151,10 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
     const second: Project = { ...project, assistant: { workdir: secondWorkdir, roots: [{ uri: 'file:///second-workspace', folderPath: secondWorkdir, name: 'Second workspace' }] } };
     const secondReport = await runtime.run({ project: second, conversationId: 'assistant-test', runId: 'second-workspace', args: [] }, () => {});
     expect(secondReport.status).toBe('success');
-    expect(JSON.parse(String(secondReport.output?.items?.find(item => item.id === 'agent-answer')?.content))).toMatchObject({ text: 'Second workspace preference', serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND' });
+    expect(JSON.parse(String(secondReport.output?.items?.find(item => item.id === 'agent-answer')?.content))).toMatchObject({ text: 'Second workspace preference' });
     const resumed = await runtime.run({ project, conversationId: 'assistant-test', runId: 'first-workspace-again', args: [] }, () => {});
     expect(resumed.status).toBe('success');
-    expect(JSON.parse(String(resumed.output?.items?.find(item => item.id === 'agent-answer')?.content))).toMatchObject({ serverStorageAllowed: false, serverStorageError: 'DATABASE_UNBOUND' });
-    expect(remoteRequests).toEqual(Array(3).fill('/api/databases/connections'));
+    expect(JSON.parse(String(resumed.output?.items?.find(item => item.id === 'agent-answer')?.content))).toMatchObject({ text: 'Independent workspace contents' });
   } finally {
     runtime.dispose(); await model.close();
     await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });

@@ -7,10 +7,10 @@ import { messageSettled, sessionRunning, type Project, type Report, type Runtime
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
 function fixture(configurationRevision?: () => number, userSettings?: () => import('steamharness').UserSettings) {
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',databases:[],entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts",databases:[]}], id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'bot', entrypoints: [],
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'bot', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void; fail(error: Error): void }[] = [];
-  const runtime: Runtime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(),
+  const runtime: Runtime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(),
     cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}), dispose: vi.fn(), agentControl: vi.fn(),
     run: vi.fn((_request, emit) => new Promise<Report>((resolve, reject) => runs.push({ emit, finish: resolve, fail: reject }))),
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),

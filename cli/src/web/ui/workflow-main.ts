@@ -61,7 +61,7 @@ const configurationPanel = mountProjectConfigurations(host, {
   open: () => { if (state) { fields.close(); dialogs.projectInfo(state.project, 'configurations'); } },
   isOpen: () => dialogs.activeSection === 'configurations',
 });
-const aggregateToolbar = mountAggregateToolbar(host);
+mountAggregateToolbar();
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace', runId: state?.run?.id }));
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
@@ -72,7 +72,6 @@ const stateRevisions = new StateRevisions();
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => host.postMessage({ type: 'create-cloud-project' }),
-  databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
   account: () => { host.postMessage({ type: 'open-account' }); },
   information: () => { if (state) dialogs.projectInfo(state.project); },
   open: () => host.postMessage({ type: 'open-server-project' }),
@@ -84,7 +83,7 @@ const saved = (host.getState() ?? {}) as { menuOpen?: boolean; entrypointId?: st
 let menuOpen = saved.menuOpen ?? true, tab = 'result', scale = 1, graphWidth = 400, graphHeight = 160, graphSignature = '';
 let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnType<typeof setTimeout> | undefined;
 let prompt: InputPrompt | undefined, promptKey = '';
-const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
+const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools({
   path: target => post({ type: 'open-path', ...target }),
   browser: url => post({ type: 'open-url', url }),
   account: () => post({ type: 'open-account' }),

@@ -14,7 +14,7 @@ afterEach(async () => {
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
 });
 
-async function fixture(database = false) {
+async function fixture() {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
@@ -22,9 +22,8 @@ async function fixture(database = false) {
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json',
-    databases: database && entryId === 'agent' ? ['data'] : [],
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases})), defaultEntry: 'agent'  };
+  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0", entries, defaultEntry: 'agent' };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
   await writeFile(path.join(directory, 'config.json'), JSON.stringify({ version: 1 }));
   for (const entry of entries) {
@@ -38,13 +37,13 @@ async function fixture(database = false) {
     }
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
-  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), databases: entry.databases, folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html' } } : {}) }));
+  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html' } } : {}) }));
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
     run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
     cancel: vi.fn(runId => { for (const operation of active.values()) if (operation.runId === runId) operation.finish({ status: 'aborted' }); }),
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
-    uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), readResource: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
+    uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
   const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime }); apps.push(app); return app; };
   let app = await open();
@@ -92,22 +91,6 @@ it('keeps parallel entries running while navigating and cancels only the request
   f.active.get('assistant')!.finish({ status: 'success', output: { items: [] } });
 });
 
-it('returns safe database setup failures from cross-entry Workflow reports', async () => {
-  const f = await fixture(), board = await f.state('board');
-  for (const code of ['DATABASE_UNBOUND', 'DATABASE_BUSY', 'DATABASE_SCHEMA_MISMATCH', 'PRIVATE_INTERNAL_ERROR']) {
-    vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: {
-      type: 'node_execution', message: 'Failed at /private/project',
-      cause: { name: 'DatabaseResourceError', code, message: 'postgres://private/secret' },
-    } } as unknown as Report);
-    const reply = await f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce, requestId: randomUUID(),
-      call: { requestId: randomUUID(), operation: 'entries.runEntrypoint', input: { entryId: 'workflow', entrypointId: 'operation', args: [], requestId: randomUUID() } } });
-    expect(reply).toMatchObject({ ok: false, error: { code: code === 'PRIVATE_INTERNAL_ERROR' ? 'KANBAN_BRIDGE_ERROR' : code } });
-    expect(JSON.stringify(reply)).not.toContain('/private');
-    expect(vi.mocked(f.runtime.run).mock.calls.filter(([request]) => request.project.entryId === 'workflow')).toHaveLength(
-      ['DATABASE_UNBOUND', 'DATABASE_BUSY', 'DATABASE_SCHEMA_MISMATCH', 'PRIVATE_INTERNAL_ERROR'].indexOf(code) + 1);
-  }
-});
-
 it('keeps a newly admitted Conversation stable while native history refreshes during parameter resolution', async () => {
   const f = await fixture();
   f.app.project.paramResolver = { enabled: true };
@@ -125,17 +108,6 @@ it('keeps a newly admitted Conversation stable while native history refreshes du
   await receipt;
   await vi.waitFor(() => expect(f.runtime.run).toHaveBeenCalledTimes(1));
   f.active.get('agent')!.finish({ status: 'success', output: { items: [] } });
-});
-
-it('requires Server resource management and rejects local and legacy bindings without changing project config', async () => {
-  const f = await fixture(true), config = await readFile(path.join(f.directory, 'config.json'), 'utf8');
-  await f.call('agent', { type: 'draft', text: 'Keep this draft', attachments: [] });
-  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data', 'bind']) {
-    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local', databaseId: randomUUID() })).ok).toBe(false);
-  }
-  expect((await f.post('agent', { type: 'databases', action: 'get' })).ok).toBe(false);
-  expect(await readFile(path.join(f.directory, 'config.json'), 'utf8')).toBe(config);
-  expect(JSON.stringify(await f.state('agent'))).toContain('Keep this draft');
 });
 
 it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {

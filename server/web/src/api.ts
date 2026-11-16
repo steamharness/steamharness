@@ -2,7 +2,7 @@ import { isApiSuccess } from "./types";
 import type { AccessPage, ProjectGroup, ProjectRole } from "./types";
 import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport, ProjectConfigurationFile } from "@steamharness/project-configuration";
 
-import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
+import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, MeResult, ProjectInvitation, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
 import type { SourceShare } from "./types";
@@ -22,17 +22,6 @@ export class ServerApiClient {
       : this.request(`/api/projects/${encodeURIComponent(id)}/configurations`, {method:"POST",body:JSON.stringify({target,entryId,call})});
   }
 
-  resourceRequest<T = any>(kind: 'databases' | 'knowledge-bases', endpoint = '', body?: unknown, method = body === undefined ? 'GET' : 'POST', signal?: AbortSignal): Promise<ApiResponse<T>> {
-    return this.request(`/api/${kind}${endpoint}`, { method, signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-  }
-  knowledgeOperation<T = unknown>(baseId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> {
-    return this.resourceRequest('knowledge-bases', `/${encodeURIComponent(baseId)}/manage`, { operation, input }, 'POST', signal);
-  }
-  async fetchDatabaseFile(spaceId: string, fileId: string, signal?: AbortSignal): Promise<Blob> {
-    const result=await this.knowledgeOperation<{file:{mimeType:string};base64:string}>(spaceId,"files.readFile",{fileId},signal);
-    if(!isApiSuccess(result)) throw new Error(result.errMessage);
-    const bytes=Uint8Array.from(atob(result.data.base64),char=>char.charCodeAt(0)); return new Blob([bytes],{type:result.data.file.mimeType});
-  }
   getSourceShare(id: string, version: string, signal?: AbortSignal): Promise<ApiResponse<SourceShare>> {
     return this.request(`/api/projects/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, { signal });
   }

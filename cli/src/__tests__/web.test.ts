@@ -69,8 +69,8 @@ async function initialState(events: Response) {
 async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'bot') {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
-  project.entries[0] = { entryId: 'main', name: project.name, type: projectType, root: '.', entry: projectType === 'kanban' ? 'index.html' : 'index.ts', databases: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
+  project.entries[0] = { entryId: 'main', name: project.name, type: projectType, root: '.', entry: projectType === 'kanban' ? 'index.html' : 'index.ts' };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-web', version: "0.1.0",  entries: project.entries, defaultEntry: 'main'  }));
   await writeFile(path.join(directory, project.entries[0].entry), projectType === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
   let count = 0;
@@ -84,7 +84,7 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
       return { status: 'success', output: { items: [{ id: 'answer', title: 'Output', content: `Turn ${count}`, contentType: 'markdown' }] }, runId: request.runId } as Report;
     }),
     cancel: vi.fn(), dispose: vi.fn(), uploadFiles: vi.fn(async () => []), readFile: vi.fn(async () => { throw new Error('Unknown file.'); }),
-    deleteFiles: vi.fn(async () => {}), readResource: vi.fn(async () => null), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
+    deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
   };
   await beforeStart?.();
   const app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime, host }); services.push(app);
@@ -339,15 +339,6 @@ describe('steamharness web', () => {
       STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: '{"id":"workflow-studio"}',
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: 'http://127.0.0.1:9999/studio-control',
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token' });
-  });
-
-  it('validates knowledge base overrides and rejects removed database mappings before passing them to workers', () => {
-    const databaseId = randomUUID();
-    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: databaseId } }) }))
-      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, knowledgeBases: { data: databaseId } }) });
-    for (const value of ['invalid JSON', JSON.stringify({ databases: { data: 'not-a-uuid' } }), JSON.stringify({ apiKey: 'not-project-configuration' })]) {
-      expect(() => sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: value })).toThrow();
-    }
   });
 
   it('routes Trace controls to an explicitly selected historical session and rejects a replaced owner', async () => {
@@ -1350,7 +1341,7 @@ describe('steamharness web', () => {
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts'}] }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',

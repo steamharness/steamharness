@@ -46,7 +46,7 @@ it('recovers a killed worker inside managed child execution without replaying it
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'managed-crash', version: '1.0.0', defaultEntry: 'main',
-      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+      entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import { appendFileSync, writeFileSync } from 'node:fs';
 

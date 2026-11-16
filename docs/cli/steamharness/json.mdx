@@ -13,10 +13,10 @@ description: "运行入口并输出机器可读的 JSON 报告。"
 
 ```sh
 pnpm exec steamharness json .
-pnpm exec steamharness json . --entry database --entrypoint search -- --query example
+pnpm exec steamharness json . --entry workflow --entrypoint summarize -- --text example
 ```
 
-第二条示例选择已声明的 `database` 入口和 `search` 操作。省略 `--entry` 使用 `defaultEntry`，未知 ID 报错；业务参数放在 `--` 后。
+第二条示例选择已声明的 `workflow` 入口和 `summarize` 操作。省略 `--entry` 使用 `defaultEntry`，未知 ID 报错；业务参数放在 `--` 后。
 
 ## 阅读报告
 

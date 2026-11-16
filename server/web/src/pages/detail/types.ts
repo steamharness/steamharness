@@ -1,7 +1,6 @@
 
 import { translateDynamicKey } from "@steamharness/i18n";
 import type { AsyncState, DetailState, DetailTab } from "../../state";
-import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
 import type { InvitationRole, ProjectInvitation, Summary, ApiResponse } from "../../types";
 
 export interface DetailPageProps {
@@ -20,9 +19,6 @@ export interface DetailPageProps {
     shareUrl: string;
   } | null>;
   onRevokeProjectInvitation: (invitationId: string) => void;
-  refreshToken?: number;
-  onContentBusyChange?: (busy: boolean) => void;
-  onDirtyChange?: (dirty: boolean) => void;
   onNavigateTab: (tab: DetailTab) => void;
   onNavigateProjectTab: (projectId: string, tab: DetailTab) => void;
   sidebarCollapsed: boolean;
@@ -37,7 +33,6 @@ export function getTabLabel(tab: DetailTab): string {
     members: "detailNavMembers",
     invitations: "storageInvitations",
     entries: "aggregateEntries",
-    databases: "databaseSpaces",
     versions: "detailNavVersions",
   };
   return translateDynamicKey(map[tab], "serverWeb");

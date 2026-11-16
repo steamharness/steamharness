@@ -8,10 +8,6 @@ import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplate
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { createRequire } from 'node:module';
-import { generateDatabases } from '../database-generation';
 import { runtimeStorageService } from './runtime-storage-service';
 
 const folders: string[] = [];
@@ -28,11 +24,11 @@ async function linkCore(directory: string) {
 }
 
 describe('project templates', () => {
-  it('ships three minimal starters and four independent bilingual examples', async () => {
+  it('ships three minimal starters and two independent bilingual examples', async () => {
     const templates = await listProjectTemplates();
     expect(templates.filter(template => template.kind === 'starter').map(template => template.projectType)).toEqual(['workflow', 'bot', 'kanban']);
     expect(templates.filter(template => template.kind === 'example').map(template => template.id)).toEqual([
-      'workflow-hello', 'bot-tools', 'kanban-default', 'kanban-parameters',
+      'workflow-hello', 'bot-tools',
     ]);
     expect(templates.every(template => template.name.en && template.name['zh-CN'] && template.description.en && template.description['zh-CN'])).toBe(true);
   });
@@ -53,7 +49,7 @@ describe('project templates', () => {
       if (template.projectType === 'kanban') expect(npm.scripts).not.toHaveProperty('run:json');
       else expect(npm.scripts['run:json']).toBe('steamharness json .');
       expect(manifest).toMatchObject({ id: created.id,
-        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:template.id.startsWith('kanban-') && template.id !== 'kanban-starter' ? ['data'] : []}] });
+        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType}] });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       const card = manifest.projectCard;
       expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
@@ -61,13 +57,6 @@ describe('project templates', () => {
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
       await prepareProjectTemplateRuntime(created.directory);
-      if (manifest.entries[0].databases.length) {
-        await generateDatabases(created.directory);
-        const esbuildRoot = path.dirname(createRequire(import.meta.url).resolve('esbuild/package.json'));
-        await symlink(esbuildRoot, path.join(created.directory, 'node_modules/esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
-        await promisify(execFile)(process.execPath, ['build.mjs'], { cwd: created.directory });
-        expect(await readFile(path.join(created.directory, 'dist/steamharness/build/main/board.js'), 'utf8')).toContain('database');
-      }
       const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection, { userSettings: () => model.settings });
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
@@ -88,7 +77,7 @@ describe('project templates', () => {
         }
       } finally { runtime.dispose(); }
     }
-    expect(ids.size).toBe(7);
+    expect(ids.size).toBe(5);
     } finally { await connection.close(); await model.close(); }
   }, 60_000);
 
@@ -118,7 +107,7 @@ describe('project templates', () => {
 
   it('preserves Unicode, spaces, quotes and shell punctuation as data', async () => {
     const name = "\u6211\u7684 project ' $() ` &", parentDirectory = await parent();
-    const created = await createProjectFromTemplate({ templateId: 'kanban-default', name, parentDirectory, versions });
+    const created = await createProjectFromTemplate({ templateId: 'kanban-starter', name, parentDirectory, versions });
     expect(created.directory).toBe(path.join(parentDirectory, name));
     const html = await readFile(path.join(created.directory, 'index.html'), 'utf8');
     expect(html).toContain('&#39;'); expect(html).toContain('&amp;');
@@ -151,7 +140,7 @@ it.each(['workflow', 'bot', 'kanban'] as const)('creates a complete %s project e
   const parentDirectory = await parent(), name = `allocated-${projectType}`, allocatedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
   const input = { templateId: `${projectType}-starter`, name, parentDirectory, versions };
   const created = await createProjectFromTemplate({ ...input, allocateProjectId: async project => {
-    expect(project).not.toHaveProperty('projectId'); expect(project).toMatchObject({ name, defaultEntry:'main', entries:[{entryId:'main',type:projectType,databases:[]}]});
+    expect(project).not.toHaveProperty('projectId'); expect(project).toMatchObject({ name, defaultEntry:'main', entries:[{entryId:'main',type:projectType}]});
     expect(await readdir(path.join(parentDirectory, name))).toEqual([]);
     return allocatedId;
   } });

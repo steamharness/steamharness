@@ -13,10 +13,10 @@ description: "执行本地 Workflow 或 Bot 入口。"
 
 ```sh
 pnpm exec steamharness run .
-pnpm exec steamharness run . --entry database --entrypoint search -- --query example
+pnpm exec steamharness run . --entry workflow --entrypoint summarize -- --text example
 ```
 
-第二条命令要求项目声明 `database` 入口和 `search` 操作。`--` 之后是业务参数，不再作为 CLI 选项处理。
+第二条命令要求项目声明 `workflow` 入口和 `summarize` 操作。`--` 之后是业务参数，不再作为 CLI 选项处理。
 
 ## 选择入口
 
@@ -25,7 +25,7 @@ pnpm exec steamharness run . --entry database --entrypoint search -- --query exa
 | `--entry` | 聚合清单中的 `entryId`；省略时使用 `defaultEntry` |
 | `--entrypoint` | 所选 Workflow 内部的操作 ID；Bot 不接受此项 |
 
-未知入口直接报错。各入口分别持有配置、数据库需求和会话状态；本轮开始后配置快照固定，修改从下一轮生效。
+未知入口直接报错。各入口分别持有配置和会话状态；本轮开始后配置快照固定，修改从下一轮生效。
 
 ## 结果与后续操作
 

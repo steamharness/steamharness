@@ -19,12 +19,12 @@ test('browser handoff sends credentials in headers and opens only the configured
     requests.push({ url, ...options });
     return Response.json({ errCode: 0, data: { code, url: 'https://attacker.test' } });
   });
-  assert.equal(await client.browserSession({ serverUrl, accessToken: token }, '/databases/main'), `${serverUrl}/api/auth/browser-session?code=${code}`);
+  assert.equal(await client.browserSession({ serverUrl, accessToken: token }, '/projects/main'), `${serverUrl}/api/auth/browser-session?code=${code}`);
   assert.equal(requests[0].headers.Authorization, `Bearer ${token}`);
   assert.equal(requests[0].redirect, 'error');
-  assert.deepEqual(JSON.parse(requests[0].body), { returnTo: '/databases/main' });
+  assert.deepEqual(JSON.parse(requests[0].body), { returnTo: '/projects/main' });
   assert.equal(requests[0].url.includes(token), false);
-  await assert.rejects(client.browserSession({ serverUrl: 'https://attacker.test', accessToken: token }, '/databases'), /credentials do not match/);
+  await assert.rejects(client.browserSession({ serverUrl: 'https://attacker.test', accessToken: token }, '/projects'), /credentials do not match/);
   assert.equal(requests.length, 1);
 });
 
@@ -366,7 +366,7 @@ test('an old secret read cannot restore credentials after logout', async () => {
   assert.equal(f.stored, undefined);
 });
 
-test('system AI usage and server resource cards use the active account and dev API contracts', async () => {
+test('system AI usage and file resource cards use the active account and dev API contracts', async () => {
   const calls = [];
   const client = new ServerClient(serverUrl, async (url, options) => {
     calls.push({ url, options });
@@ -381,15 +381,14 @@ test('system AI usage and server resource cards use the active account and dev A
   const connection = { serverUrl, accessToken: token, aiServerUrl, aiAccessToken: 'ai-token' };
   await client.systemAiUsage(connection);
   await assert.rejects(client.resource(connection, 'kv', { projectId: 'project' }), /Unsupported resource/);
-  await client.resource(connection, 'knowledge', { projectId: 'project', entryId: 'main', knowledgeBase: 'docs', documentId: 'document' });
   const file = await client.resource(connection, 'file', { projectId: 'project', filePath: 'notes.md' });
   assert.equal(file.content, 'Notes');
   assert.deepEqual(calls.map((call) => call.url), [
-    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/projects/project/entries/main/resources/read`, `${serverUrl}/api/projects/project/files?target=latest&includeBinary=true`,
+    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/projects/project/files?target=latest&includeBinary=true`,
   ]);
   assert.equal(calls[0].options.headers.Authorization, 'Bearer ai-token');
   assert.ok(calls.slice(1).every((call) => call.options.headers.Authorization === `Bearer ${token}` && call.options.redirect === 'error'));
-  await assert.rejects(client.resource({ serverUrl: 'https://wrong.test', accessToken: token }, 'knowledge', { projectId: 'project' }), /Invalid resource server/);
+  await assert.rejects(client.resource({ serverUrl: 'https://wrong.test', accessToken: token }, 'file', { projectId: 'project' }), /Invalid resource server/);
 });
 
 test('an old worker failure cannot invalidate a newer login', async () => {

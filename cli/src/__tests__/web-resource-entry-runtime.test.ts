@@ -29,8 +29,8 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   }
   await writeProjectFixture(path.join(workspace, 'package.json'), JSON.stringify({ id, name: 'Workspace', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'agent', entries: [
-      { entryId: 'agent', name: 'Agent', type: 'bot', root: 'agent', entry: 'index.ts', databases: [] },
-      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/steamharness/entries/map-2d/build/map-2d/index.html', configuration: 'configuration.json', databases: [] },
+      { entryId: 'agent', name: 'Agent', type: 'bot', root: 'agent', entry: 'index.ts' },
+      { entryId: 'map-2d', name: 'Map', type: 'kanban', root: 'map-2d', entry: 'dist/steamharness/entries/map-2d/build/map-2d/index.html', configuration: 'configuration.json' },
     ] }));
   await writeFile(path.join(workspace, 'agent/index.ts'), conversationSource);
   await mkdir(path.join(workspace, 'dist/steamharness/entries/map-2d/build/map-2d'), { recursive: true });
@@ -40,7 +40,7 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   await writeFile(path.join(workspace, 'map-2d/configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'mapName', type: 'string' }] }));
   await writeProjectFixture(path.join(assistant, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'Assistant', type: 'module', version: '1.0.0',
     devDependencies: { steamharness: await resolveHarnessVersion() }, defaultEntry: 'main',
-    entries: [{ entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts', databases: [] }] }));
+    entries: [{ entryId: 'main', name: 'Assistant', type: 'bot', root: '.', entry: 'index.ts' }] }));
   await writeFile(path.join(assistant, 'index.ts'), conversationSource);
   const store = await createLocalProjectConfigurationStore(workspace, { entryId: 'map-2d' });
   let state = await store.read();
@@ -95,39 +95,3 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
       body: { message: 'The resource project is unavailable.' } });
   } finally { await app.close(); }
 }, 30_000);
-
-it('historical reader cards retain search context when opening, refreshing and returning from a document',async()=>{
-  const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'knowledge-reader-navigation-')));folders.push(root);
-  vi.spyOn(os,'homedir').mockReturnValue(path.join(root,'host'));
-  vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR',path.join(root,'auth'));vi.stubEnv('STEAMHARNESS_SERVER_URL','');vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY','');
-  const id=randomUUID();await mkdir(path.join(root,'node_modules'),{recursive:true});
-  await symlink(await resolveHarnessRoot(),path.join(root,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
-  await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id,name:'Knowledge',type:'module',version:'1.0.0',devDependencies:{steamharness:await resolveHarnessVersion()},defaultEntry:'agent',entries:[
-    {entryId:'agent',name:'Agent',type:'bot',root:'agent',entry:'index.ts',databases:[]},
-    {entryId:'database',name:'Database',type:'workflow',root:'database',entry:'index.ts',databases:[]},
-  ]}));
-  await writeFile(path.join(root,'agent/index.ts'),'export const executor=steamharness.defineBot({});');
-  await writeFile(path.join(root,'database/index.ts'),`
-    const preview=steamharness.defineProject({name:'preview',async run(input){
-      return input.documentId?{errCode:0,errMessage:'',format:'markdown',title:'Alpha Guide',content:'# Alpha body'}:
-        {errCode:0,errMessage:'',format:'json',title:'Search: '+input.query,content:{query:input.query,items:[{id:'alpha',title:'Alpha Guide',markdownPreview:'Relevant excerpt'}]}};
-    }});
-    export const executor=steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'preview',entrypoints:[steamharness.defineEntrypoint({id:'preview',title:'Preview',readOnly:true,workflow:preview,params:[{name:'payload',flag:'--payload',type:'string'}],createInput({args}){
-      const selected=args.lastIndexOf('--document-id'),query=args.lastIndexOf('--query');return {errCode:0,errMessage:'',documentId:selected<0?'':args[selected+1],query:query<0?'':args[query+1]};
-    }})]});
-  `);
-  const runtime=createWebRuntime(root,path.join(testDataDirectory(root,'history')),()=>undefined,{entryId:'agent'});
-  const app=await startEntryWebServer({projectDir:root,entryId:'agent',dataDir:testDataDirectory(root,'history'),runtime,host:{surface:'editor'}});
-  try{
-    const target={source:'current',projectId:id,entryId:'database'},reader={entrypointId:'preview',args:['--payload','{}']};
-    const cardId=`knowledge:${JSON.stringify({...target,source:'local'})}:${JSON.stringify(reader)}`;
-    app.controller!.current.messages.push({id:'answer',role:'assistant',content:'',items:[{metadata:{kind:'agent-part',partType:'tool'},content:{tool:'kb_search_documents',input:{query:'alpha'},status:'success',output:{content:[{type:'text',text:'{"query":"alpha","matches":[]}'}],details:{resourceCard:{kind:'knowledge',target,reader}}}}}]});
-    const request=async(message:object)=>{const response=await fetch(new URL('/api/message',app.url),{method:'POST',headers:{Authorization:`Bearer ${new URL(app.url).hash.slice('#session='.length)}`,'Content-Type':'application/json'},body:JSON.stringify(message)});const body=await response.json();expect(response.ok,JSON.stringify(body)).toBe(true);return body.messages[0];};
-    const opened=await request({type:'resource',messageId:'answer',cardId,action:'inline'});
-    const reference=JSON.parse(new URL(opened.url,app.url).searchParams.get('resourceRef')!);
-    const search=await request({type:'resource-data',id:opened.id});expect(search.data.content.query).toBe('alpha');
-    const selected=await request({type:'resource-select',reference,selection:{documentId:'alpha'}});expect(selected.data).toMatchObject({format:'markdown',card:{title:'Alpha Guide'},content:'# Alpha body'});
-    const refreshed=await request({type:'resource-refresh',reference,selection:{documentId:'alpha'}});expect(refreshed.data.format).toBe('markdown');
-    const back=await request({type:'resource-select',reference,selection:{documentId:''}});expect(back.data).toMatchObject({format:'json',content:{query:'alpha'}});
-  }finally{await app.close();}
-},30_000);

@@ -12,7 +12,7 @@ const { downloadServerProject, uploadServerProject, runWorkspaceTransfer, alloca
 const { configureLocalization } = await import('../extensions/studio-workstation/src/localization.ts');
 const id = '784af2d9-240a-45d1-a659-452a21867934';
 const dependencyId = '4c8bed84-e667-446e-860d-663caa5c3587';
-const entriesFor = (type='workflow') => [{entryId:'main',name:'Main',type,root:'.',entry:type==='kanban'?'index.html':'index.ts',databases:[]}];
+const entriesFor = (type='workflow') => [{entryId:'main',name:'Main',type,root:'.',entry:type==='kanban'?'index.html':'index.ts'}];
 const signal = () => new AbortController().signal;
 
 async function fixture(t, configuration = {}) {
@@ -133,7 +133,7 @@ test('ID allocation accepts normalized Server entries with reordered object keys
   const entries = [{ ...entriesFor()[0], configuration: 'configuration.json' }];
   let different = false;
   const http = await server(t, () => ({ data: { projectId: id, defaultEntry: 'main', entries: entries.map(entry => ({
-    configuration: different ? 'other.json' : entry.configuration, databases: [], entry: entry.entry, root: entry.root,
+    configuration: different ? 'other.json' : entry.configuration, entry: entry.entry, root: entry.root,
     name: entry.name, type: entry.type, entryId: entry.entryId,
   })) } }));
   const options = { project: { name: 'Created', entries, defaultEntry: 'main', projectInfo: { platformSupport: { mode: 'agnostic' } } },
@@ -195,7 +195,7 @@ test('version downloads reserve directories atomically and do not reuse another 
 });
 
 test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
- const entries=[...entriesFor(),{entryId:'chat',type:'bot',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/steamharness/entries/board/build/board/index.html',databases:[]}];
+ const entries=[...entriesFor(),{entryId:'chat',type:'bot',name:'Chat',root:'chat',entry:'index.ts'},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/steamharness/entries/board/build/board/index.html'}];
  const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
  assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'steamharness.json'),'utf8'));
  assert.deepEqual(pkg.entries,entries.map(entry=>entry.root==='.'?entry:{entryId:entry.entryId,root:entry.root}));

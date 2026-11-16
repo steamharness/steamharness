@@ -2,10 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ProjectServerConnection, checkProjectServer, projectServerAccessFailure } from '../web/project-server-state';
+import { ProjectServerConnection, checkProjectServer } from '../web/project-server-state';
 import { ProjectServerCreation } from '../web/project-server-create';
 import { startEntryWebServer as startWebServer } from '../web/server';
-import { readProjectInfo } from '../web/kanban-data';
+import { readProjectInfo } from '@steamharness/project-info';
 import type { Project, Runtime } from '../web/workflow-types';
 import type { ProjectServerCheck, ProjectServerInspector } from '../web/project-server-state';
 
@@ -136,8 +136,8 @@ it('keeps a verified page ready during a same-account read check but awaits the 
 
 it('clears the old identity and ignores its late inspector result after switching accounts', async () => {
   let active: typeof connection | undefined = connection, finish!: (checks: ProjectServerCheck[]) => void;
-  const issue = { kind: 'setup-required' as const, database: 'old-private-alias' };
-  const failed: ProjectServerCheck[] = [{ id: 'old', projectId: id, stage: 'database', status: 'action-required', issue }];
+  const issue = { kind: 'setup-required' as const, serverUrl: 'https://old-private-alias.test' };
+  const failed: ProjectServerCheck[] = [{ id: 'old', projectId: id, stage: 'registration', status: 'action-required', issue }];
   const inspect = vi.fn<ProjectServerInspector>().mockResolvedValueOnce(failed).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue([]);
   const monitor = new ProjectServerConnection(id, () => active, vi.fn(), { inspect });
   try {

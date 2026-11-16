@@ -13,7 +13,6 @@
     "@fontsource-variable/geist": "^5.2.9",
     "@steamharness/avatar-fallback": "workspace:*",
     "@steamharness/i18n": "workspace:*",
-    "@steamharness/knowledge-base": "workspace:*",
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-types": "workspace:*",

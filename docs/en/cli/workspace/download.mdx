@@ -23,10 +23,10 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 
 ## Validation and installation
 
-The target project directory is created only after entry files, database inventories, and hashes pass validation. Missing files, damaged inventories, runtime data, or unregistered `dist/` files fail the download and trigger temporary-file cleanup.
+The target project directory is created only after entry files and hashes pass validation. Missing files, damaged inventories, runtime data, or unregistered `dist/` files fail the download and trigger temporary-file cleanup.
 
 Install dependencies in the downloaded directory. Rebuild modified static entries, then run `steamharness check .`.
 
 ## Resource access
 
-Archives contain neither credentials nor host runtime data. Server keeps account-specific relational bindings. Resource declarations and knowledge references grant no access. Check grants and bindings again after changing accounts or Servers before running data operations.
+Archives contain neither credentials nor host runtime data. Check project access again after changing accounts or Servers.

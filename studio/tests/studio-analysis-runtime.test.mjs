@@ -48,7 +48,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     import path from 'node:path';
     const args = process.argv.slice(2), folderPath = args[args.indexOf('web') + 1];
     const manifest = JSON.parse(readFileSync(path.join(folderPath, 'steamharness.json'), 'utf8'));
-    const project = { id: manifest.id, name: manifest.name, folderPath, projectType: 'kanban',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
+    const project = { id: manifest.id, name: manifest.name, folderPath, projectType: 'kanban',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}], fields: [], entrypoints: [] };
     if (args.includes('--inspect')) console.log(JSON.stringify({ projects: [project], errors: [] }));
     else {
       const input = createInterface({ input: process.stdin }); let server;
@@ -62,7 +62,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
               body: JSON.stringify({ operation: request.url === '/mutate' ? 'studio.theme.set' : 'studio.analysis.get', input: {}, permissionPolicy: 'read-only' }) });
             response.writeHead(reply.status, { 'Content-Type': 'application/json' }); response.end(await reply.text());
           });
-          server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,
+          server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
             url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64), project, runtime: { harnessVersion: '2.3.4', harnessPath: 'fixture' } })));
         } else if (message.type === 'close') { input.close(); process.stdin.pause(); server?.close(); }
       });

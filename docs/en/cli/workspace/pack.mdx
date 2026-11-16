@@ -7,7 +7,7 @@ description: "Archive every registered entry for upload."
 
 # workspace pack
 
-Use `workspace pack` to package the entire aggregate locally. It creates neither a remote project nor a database.
+Use `workspace pack` to package the entire aggregate locally. It does not create a remote project.
 
 ## Command
 
@@ -23,14 +23,7 @@ Install dependencies, build static entries, and run `steamharness check .` first
 | --- | --- |
 | Registered entries, dependency manifests, configuration definitions | Included |
 | Kanban artifacts | Included when required by registered entries |
-| Database definitions and generated inventory | Validated and included completely |
 | Credentials, host runtime data, Git, `node_modules` | Excluded |
 | Caches, reports, temporary files, and archive output directories | Excluded |
 
-Server maintains account-specific relational bindings. Connection credentials and environment overrides are not exported. Knowledge references and resource declarations grant no access; the recipient still needs authorization.
-
-## Database generation and output
-
-When the aggregate root or a registered source root contains `steamharness.database.ts`, packing generates Node/Browser descriptors, types, and runtime assets first. The validated database inventory must be complete and cannot be excluded with `.steamharnessignore`.
-
-The default output is a `.tgz` under the project root's `dist/steamharness/release/`. Packing cleans only its own temporary directory and preserves other entry artifacts. See [database distribution](/en/core-api/database).
+The default output is a `.tgz` under the project root's `dist/steamharness/release/`. Packing cleans only its own temporary directory and preserves other entry artifacts. See [runtime and file storage](/en/concepts/data-storage).

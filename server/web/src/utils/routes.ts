@@ -9,7 +9,7 @@ export function projectSourceArchivePath(id: string, version: string): string {
 }
 
 // /detail 的设置与成员现在使用稳定子路由，避免只靠概览页内局部状态切换。
-const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "entries", "databases", "versions"]);
+const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "entries", "versions"]);
 const ADMIN_TABS = new Set<AdminTab>(["users", "audit"]);
 const SETTINGS_TABS = new Set<SettingsTab>(["profile", "appearance", "api-keys"]);
 
@@ -59,8 +59,6 @@ export function parseRoute(pathname: string): AppRoute {
     return { page: "admin", tab: "users" };
   }
 
-  if (segments[0] === "databases") return {page:"databases",id:segments[1]};
-
   if (segments[0] === "groups") return {page:"groups",id:segments[1]};
 
   if (segments[0] === "admin") {
@@ -95,7 +93,6 @@ export function routeToPath(route: AppRoute): string {
     const query = route.userCode ? `?user_code=${encodeURIComponent(route.userCode)}` : "";
     return `/login/device${query}`;
   }
-  if (route.page === "databases") return `/databases${route.id?`/${encodeURIComponent(route.id)}`:""}`;
   if (route.page === "groups") return `/groups${route.id?`/${encodeURIComponent(route.id)}`:""}`;
   if (route.page === "settings") return `/settings/${route.tab}`;
   if (route.page === "admin") return `/admin/${route.tab}`;

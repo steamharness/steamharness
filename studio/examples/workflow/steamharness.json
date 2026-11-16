@@ -17,10 +17,7 @@
       "type": "workflow",
       "name": "Studio Workflow",
       "root": ".",
-      "entry": "index.ts",
-      "databases": [
-        "data"
-      ]
+      "entry": "index.ts"
     }
   ],
   "defaultEntry": "main"

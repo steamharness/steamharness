@@ -42,7 +42,7 @@ it('carries host settings into real workers and IPC tools until a durable sessio
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-settings', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-settings', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
       import { writeFileSync } from 'node:fs';
@@ -133,7 +133,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'owner-disconnect', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'owner-disconnect', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineBot({
@@ -205,7 +205,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineBot({
 agent: {provider: 'openai',
@@ -285,7 +285,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     const harnessRoot = await resolveHarnessRoot();
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'agent-ipc', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}] }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'agent-ipc', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',configuration:'configuration.json'}] }));
     const declareConfiguration = (label: string) => writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string',defaultValue:label}]}));
     await declareConfiguration('first');
     model.listen(0, '127.0.0.1'); await once(model, 'listening');

@@ -9,8 +9,8 @@ const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
 
 function fixture(options: { fork?: boolean; legacy?: boolean; reordered?: boolean } = {}) {
-  const project: Project = { id: 'steering', entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/fixture', folderPath: '/fixture', uri: 'project', name: 'Test', databases: [], fields: [], entrypoints: [],
-    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts', databases: [] }], projectType: 'bot',
+  const project: Project = { id: 'steering', entryId: 'main', aggregateName: 'Test', defaultEntry: 'main', entryRoot: '/fixture', folderPath: '/fixture', uri: 'project', name: 'Test', fields: [], entrypoints: [],
+    entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }], projectType: 'bot',
     conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const root: AgentSessionTurn = { requestId: 'worker:agent:build', conversationId: 1, prompt: 'Original task', mode: 'followUp', status: 'done', epoch: 0, entryId: 1,
     answerId: 6, startedAt: 10, endedAt: 60, items: [{ id: 'output', title: 'Output', content: 'Answer', contentType: 'markdown' }] };
