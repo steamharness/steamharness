@@ -1044,7 +1044,7 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/ProjectRole"
-      description: "Authorization precedes pagination. Public projects grant signed-in users implicit guest access."
+      description: "Authorization precedes pagination. Stored entries ignore retired databases and knowledgeBases fields; records with missing, invalid or unsupported entries are excluded before counting and pagination while their projects, versions and data remain stored. Public projects grant signed-in users implicit guest access."
     post:
       tags:
         - Admin Projects

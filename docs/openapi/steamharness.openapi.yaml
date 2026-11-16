@@ -1030,7 +1030,7 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/ProjectRole"
-      description: "先按登录账号权限筛选，再执行搜索与分页。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。"
+      description: "先按登录账号权限筛选，再执行搜索与分页。读取历史入口时忽略已移除的 databases、knowledgeBases 字段；仍缺失、无效或不受支持的入口记录在计数与分页前排除，原项目、版本和数据保留。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。"
     post:
       tags:
         - Admin Projects

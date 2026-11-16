@@ -1,6 +1,6 @@
 import type { File } from "./storage";
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
-import { normalizeProjectManifest, type ProjectEntry } from '@steamharness/project-manifest';
+import type { ProjectEntry } from '@steamharness/project-manifest';
 import { HttpError } from "./protocol";
 import { ProjectAccessRepository } from "./project-access";
 import type { AccessActor, ProjectRole } from "@steamharness/project-access";
@@ -13,16 +13,11 @@ import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamha
 import { normalizeProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
 import { isProjectKind, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
 import type { ObjectStorage } from "./object-storage";
+import { isSupportedStoredProject, readStoredProjectManifest } from "./stored-project";
+export { InvalidStoredProjectError } from "./stored-project";
 const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 function createPostgresTextList(values: readonly string[]): string {
   return values.map((value) => `'${value.replaceAll("'", "''")}'`).join(", ");
-}
-
-export class InvalidStoredProjectError extends Error {
-  constructor(readonly projectId: string, cause: unknown) {
-    super("Stored project entries are invalid.", { cause });
-    this.name = "InvalidStoredProjectError";
-  }
 }
 
 export interface DbRecord {
@@ -286,7 +281,7 @@ export class DatabaseRepository {
       order by name asc, id asc
     `);
 
-    return result.rows.map(toProjectRecord);
+    return result.rows.filter(isSupportedStoredProject).map(toProjectRecord);
   }
 
   async getProject(projectId: string): Promise<DbRecord | undefined> {
@@ -1010,12 +1005,7 @@ interface ProjectAccessRequestRow {
 
 
 function toProjectRecord(row: Row): DbRecord {
-  let manifest: ReturnType<typeof normalizeProjectManifest>;
-  try {
-    manifest = normalizeProjectManifest({ projectId: row.id, name: row.name, entries: row.entries, defaultEntry: row.default_entry });
-  } catch (error) {
-    throw new InvalidStoredProjectError(row.id, error);
-  }
+  const manifest = readStoredProjectManifest(row);
   return {
     id: row.id,
     name: row.name,

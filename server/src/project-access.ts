@@ -14,6 +14,7 @@ import {
   type ResourceType,
 } from "@steamharness/project-access";
 import { HttpError } from "./protocol";
+import { isSupportedStoredProject, type StoredProjectManifestRow } from "./stored-project";
 
 type Queryable = Pick<pg.Pool, "query"> | Pick<pg.PoolClient, "query">;
 export interface GroupRecord {
@@ -464,16 +465,16 @@ export class ProjectAccessRepository {
       query.status ?? "all",
       query.minRole ? ROLE_RANK[query.minRole] : 0,
     ];
-    const [count, rows] = await Promise.all([
-      this.pool.query(`${this.visibilitySql} select count(*) ${filter}`, args),
-      this.pool.query(
-        `${this.visibilitySql} select p.id ${filter} order by p.updated_at desc,p.id limit $8 offset $9`,
-        [...args, pageSize, offset],
-      ),
-    ]);
+    const rows = await this.pool.query<StoredProjectManifestRow>(
+      `${this.visibilitySql} select p.id,p.name,p.entries,p.default_entry ${filter} order by p.updated_at desc,p.id`,
+      args,
+    );
+    // Validate with the same reader as project details before counting or
+    // slicing, so unsupported retained rows cannot break or leave gaps in pages.
+    const supported = rows.rows.filter(isSupportedStoredProject);
     return {
-      items: rows.rows.map((row) => row.id),
-      total: Number(count.rows[0].count),
+      items: supported.slice(offset, offset + pageSize).map((row) => row.id),
+      total: supported.length,
       page,
       pageSize,
     };

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed the project workbench failing on retired entry fields. Stored reads ignore removed database and knowledge-base declarations and exclude other invalid records before counting and pagination, preserving projects, versions and stored data.
+
 - Static previews of Web application Kanban entries require a local host with a registered service provider.
 
 - Static Kanban preview errors show the operation and error code, with specific guidance for missing sign-in.

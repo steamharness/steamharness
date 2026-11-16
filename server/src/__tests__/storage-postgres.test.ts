@@ -11,7 +11,7 @@ import { create as createTar } from "tar";
 import type { DeclaredProjectInfo } from "@steamharness/project-info";
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from "@steamharness/project-card-metadata";
 import { LocalStorage } from "../local-storage";
-import { ArtifactStorage, DatabaseRepository } from "../persistence";
+import { ArtifactStorage, DatabaseRepository, InvalidStoredProjectError } from "../persistence";
 import { Storage } from "../storage";
 import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationSnapshot, type ProjectConfigurationState } from "@steamharness/project-configuration";
 
@@ -186,6 +186,40 @@ test('Server startup preserves unsupported project rows, snapshots and storage',
     });
     assert.equal((await db.access.listProjectIds(actor, { q: 'Retained' })).total, 0);
     assert.equal((await raw.query('select count(*)::int as total from projects')).rows[0].total, 4);
+
+    const legacyId = randomUUID();
+    const currentEntries = JSON.parse(entries);
+    const legacyEntries = [{ ...currentEntries[0], databases: [], knowledgeBases: [{ id: 'retained' }] }];
+    await raw.query(`insert into projects(id,name,entries,default_entry,visibility,latest_version,updated_at)
+      values($1,'Existing project',$2,'main','public','1.0.0','2000-01-01')`, [legacyId, JSON.stringify(legacyEntries)]);
+    const unsupported = [
+      { entries: [{ ...currentEntries[0], type: 'conversation', databases: [] }], defaultEntry: 'main' },
+      { entries: [{ ...currentEntries[0], unknown: [] }], defaultEntry: 'main' },
+      { entries: [{ ...currentEntries[0], root: '../outside' }], defaultEntry: 'main' },
+      { entries: [], defaultEntry: 'main' },
+      { entries: currentEntries, defaultEntry: 'missing' },
+      { entries: [currentEntries[0], currentEntries[0]], defaultEntry: 'main' },
+    ].map(value => ({ ...value, id: randomUUID() }));
+    for (const project of unsupported) {
+      await raw.query(`insert into projects(id,name,entries,default_entry,updated_at)
+        values($1,'Invalid project',$2,$3,'2100-01-01')`, [project.id, JSON.stringify(project.entries), project.defaultEntry]);
+    }
+    await db.init();
+    assert.deepEqual((await db.listProjects()).map(project => project.id), [legacyId, currentId]);
+    assert.deepEqual((await db.getProject(legacyId))!.entries, currentEntries);
+    for (const project of unsupported) await assert.rejects(db.getProject(project.id), InvalidStoredProjectError);
+    for (const [index, items] of [[currentId], [legacyId], []].entries()) {
+      const result = await db.access.listProjectIds(actor, { page: index + 1, pageSize: 1 });
+      assert.deepEqual(result, { items, total: 2, page: index + 1, pageSize: 1 });
+      await Promise.all(result.items.map(projectId => db.getProject(projectId)));
+    }
+    assert.equal((await db.access.listProjectIds(actor, { q: 'Invalid' })).total, 0);
+    assert.deepEqual((await db.access.listProjectIds(actor, { status: 'published' })).items, [legacyId]);
+    assert.deepEqual((await db.access.listProjectIds(actor, { status: 'draft' })).items, [currentId]);
+    assert.deepEqual((await db.access.listProjectIds(actor, { q: 'Existing', groupId: null })).items, [legacyId]);
+    assert.deepEqual((await raw.query('select entries from projects where id=$1', [legacyId])).rows[0].entries, legacyEntries);
+    assert.equal((await raw.query('select count(*)::int as total from projects')).rows[0].total, 5 + unsupported.length);
+    assert.equal((await raw.query('select count(*)::int as total from project_versions where project_id=$1', [id])).rows[0].total, 1);
   } finally {
     await db.close(); await raw.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end();
   }

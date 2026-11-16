@@ -9,6 +9,10 @@ Open project details in Server Web, then choose members, versions, or configurat
 
 The aggregate entry list displays each entry’s `projectCard` icon, foreground and background. These properties live in entry declarations and travel with source uploads and version snapshots. Entries have no independent versions; the aggregate owns the root version.
 
+When reading existing projects, Server ignores retired `databases` and `knowledgeBases` fields in stored entries. Creating projects and uploading source still require the current declaration format.
+
+Records with missing, invalid or unsupported entries are excluded from the project list, count and pagination without blocking other projects. Their stored projects, versions and data remain intact.
+
 ## Project avatars
 
 Project lists, details, and settings display avatars from `projectCard.icon`, `iconColor`, and `iconBackgroundColor`. New projects without an avatar use their project type's icon with randomly generated, saved foreground and background colors. Their contrast ratio is at least 4.5:1. Refreshing the page or reconnecting an existing project does not generate new colors.
