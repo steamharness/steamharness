@@ -3,7 +3,7 @@ title: "defineBot"
 description: "声明固定使用 Core Agent 的 Bot 项目。"
 ---
 
-Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 `conversation` 项目类型与工厂已删除。
+Bot 使用 `steamharness.defineBot({ name?, memory?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 `conversation` 项目类型与工厂已删除。
 
 `agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 
@@ -25,6 +25,38 @@ export default executor;
 `agent` 默认使用宿主用户模型设置；独立 CLI Web 使用项目模型配置。显式 `modelSource: "project"` 只使用项目模型。工具声明继续经过宿主权限与审批。项目 UUID 和入口 ID 仍由 `steamharness.json` 注册，入口 `type` 必须为 `bot`。
 
 工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
+
+## 项目记忆
+
+每个 Bot 默认开启项目记忆，同一项目、同一 Bot 入口的会话共享记忆。不同项目和不同入口分别保存；每条记忆再用 `category` 和 `key` 定位，适合把项目事实、决策和操作流程分开存储。
+
+在项目的“项目配置”中打开当前使用的配置，切换“Bot 记忆”并保存，后续新执行使用该设置。已保存的运行快照继续使用原配置。关闭记忆会移除该次执行的记忆工具与操作提示词，保留已有条目；重新开启后可以继续读取。
+
+`memory.enabled` 定义开关的初始默认值，省略时为 `true`。已保存的项目配置优先于源码默认值。以下声明让新配置默认关闭记忆，用户仍可在界面开启：
+
+```ts
+export const executor = steamharness.defineBot({
+  memory: { enabled: false },
+  agent: { systemPrompt: "你是项目助手。" },
+});
+```
+
+开关对应配置键 `STEAMHARNESS_BOT_MEMORY_ENABLED`，值为布尔值。Core 自动提供以下工具，项目不应声明同名工具：
+
+| 工具 | 参数与结果 |
+| --- | --- |
+| `memory_save`（存记忆） | `category`、`key`、`content`。新建一条记忆并返回版本号；同分类、同键已存在时拒绝覆盖。 |
+| `memory_get`（取记忆） | 无筛选时列出分类；传 `category` 或 `query` 返回条目摘要；传 `category` 和 `key` 读取全文，不存在时返回 `memory: null`。 |
+| `memory_update`（改记忆） | `category`、`key`、`content`、`expectedRevision`。替换指定条目正文并返回新版本号。 |
+| `memory_delete`（删记忆） | `category`、`key`、`expectedRevision`。只删除指定条目。 |
+
+检索按需进行，不会把全部记忆加入提示词。分类和摘要列表支持 `limit`（默认 10，最多 20）与 `offset` 分页；有后续页时返回 `nextOffset`。`query` 按空白分词，最多 12 个词且全部匹配，支持中文子串。摘要最多包含正文前 240 个字符，单条正文最多 8,000 个字符。
+
+修改或删除前先读取条目的 `revision`，作为 `expectedRevision` 传入；版本冲突时重新读取后再决定操作。工具继续遵守宿主权限与审批，Plan 和只读模式只提供 `memory_get`。
+
+Core 内置提示词会指导 Bot 按分类检索、独立事实分条保存、先查重，并在用户要求记住或忘记时调用相应工具。记忆只作为参考数据，不得覆盖当前指令；凭据、完整聊天记录、临时进度和猜测不应存入记忆。
+
+记忆保存在执行宿主的本地 SQLite 中，跨该宿主的会话和重启保留，不提供账号级记忆或跨机器同步。不同运行数据目录、开发模式与发行模式分别保存。会话导出、复制或删除不复制或删除项目记忆，项目发行包也不包含记忆正文。
 
 ## 技能目录与宿主预览
 

@@ -70,13 +70,13 @@ it('serves mixed and repeated entry types through one host and isolates drafts, 
   await f.call('agent', { type: 'draft', text: 'Agent draft', attachments: [] });
   await f.call('assistant', { type: 'draft', text: 'Assistant draft', attachments: [] });
   await f.call('agent', { type: 'project-configuration', call: { action: 'save', revision: a.configurations.revision, id: a.configurations.activeConfigurationId, values: { label: 'Only agent' } } });
-  expect((await f.state('assistant')).configurations.configurations[0].values).toEqual({});
+  expect((await f.state('assistant')).configurations.configurations[0].values).toEqual({ STEAMHARNESS_BOT_MEMORY_ENABLED: true });
   expect((await f.post('assistant', { type: 'draft', applicationId: `${a.project.id}:agent`, text: 'Wrong entry', attachments: [] })).ok).toBe(false);
   await f.reopen();
   const restoredA = await f.state('agent'), restoredB = await f.state('assistant');
   expect(JSON.stringify(restoredA)).toContain('Agent draft'); expect(JSON.stringify(restoredA)).not.toContain('Assistant draft');
   expect(JSON.stringify(restoredB)).toContain('Assistant draft'); expect(JSON.stringify(restoredB)).not.toContain('Agent draft');
-  expect(restoredA.configurations.configurations[0].values).toEqual({ label: 'Only agent' });
+  expect(restoredA.configurations.configurations[0].values).toEqual({ label: 'Only agent', STEAMHARNESS_BOT_MEMORY_ENABLED: true });
   expect((await f.state('board')).project.projectType).toBe('kanban');
 });
 

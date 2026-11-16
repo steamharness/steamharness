@@ -213,4 +213,6 @@ export { createAgentRuntime as createAgent } from "./runtime";
 export { exportAgentSession, importAgentSession, forkStoredAgentConversation, isolateStoredAgentConversation, cancelStoredAgentConversation, deleteStoredAgentConversation } from "./stored-session";
 
 export { defineBot } from "./bot";
+export { BOT_MEMORY_CONFIGURATION_KEY } from "./memory-configuration";
+export type { BotMemoryOptions } from "./memory-configuration";
 export type { BotDefinition, BotAgentOptions, BotInputContext, BotCompletion, BotConversationOptions } from "./bot";

@@ -87,7 +87,7 @@ for (const kind of ['bot','workflow','kanban'] as const) it(`${kind} windows sha
   await change(b,{action:'rename',id:first,name:'Renamed'});
   await change(a,{action:'delete',id:state.configurations!.find(item => item.id !== first)!.id});
   const other = await open('different-app',kind,randomUUID());
-  expect((await other.next()).configurations!.configurations[0]!.values).toEqual({});
+  expect((await other.next()).configurations!.configurations[0]!.values).toEqual(kind === 'bot' ? { STEAMHARNESS_BOT_MEMORY_ENABLED: true } : {});
 }, 15_000);
 
 it('assistant windows keep workspace histories separate while synchronizing one application configuration', async () => {

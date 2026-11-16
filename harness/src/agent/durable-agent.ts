@@ -1,6 +1,6 @@
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { AGENT_PLAN_SYSTEM_PROMPT } from "./plan";
-import { currentBotRequestScope, withBotRequest } from "./bot-lifecycle";
+import { currentBotRequestScope, withBotRequest, withBotToolCall } from "./bot-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assertCurrentProjectConfigurationAccess, ProjectConfigurationError } from "../configuration";
@@ -67,6 +67,7 @@ export interface DurableAgentState {
 }
 
 export interface DurableAgentOptions {
+  botMemoryPrompt?: string;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
@@ -396,9 +397,9 @@ export class DurableAgent {
       if (typeof role?.definition?.systemPrompt !== "string") {
         const prepared = await this.session?.botSystemPromptFor(input.conversationId);
         if (prepared === undefined) return this.state.systemPrompt;
-        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT].filter(Boolean).join("\n\n");
+        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botMemoryPrompt].filter(Boolean).join("\n\n");
       }
-      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].join("\n\n");
+      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botMemoryPrompt].filter(Boolean).join("\n\n");
     }, { tag: false });
     this.registry.install(defineExtension({
       name: "workflow",
@@ -711,11 +712,11 @@ export class DurableAgent {
         let result;
         try {
           const logicalRequestId = this.session ? await this.session.requestIdFor(api.conversationId) : this.activeRequest;
-          result = await withBotRequest(logicalRequestId, () => tool.execute(api.callId, args, callContext.abortSignal, update => {
+          result = await withBotRequest(logicalRequestId, () => withBotToolCall(JSON.stringify([api.conversationId, api.taskId, api.callId]), () => tool.execute(api.callId, args, callContext.abortSignal, update => {
             const snapshot = json(update);
             progress = progress.then(() => api.details(snapshot, callContext));
             void progress.catch(error => this.fail(error));
-          }), this.botEntry);
+          })), this.botEntry);
         } finally { await progress; }
         return {
           output: result.content, isError: result.isError,

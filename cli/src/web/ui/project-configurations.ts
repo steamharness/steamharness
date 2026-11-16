@@ -6,8 +6,9 @@ import { AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapabil
 import './project-configurations.css';
 import { createAgentModelsControl } from './agent-models';
 
-const fieldLabel = (field: ProjectConfigurationField) => field.control === 'ai-models' ? t('AI models') : field.label || field.name;
-const fieldDescription = (field: ProjectConfigurationField) => field.description ?? field.name;
+const fieldLabel = (field: ProjectConfigurationField) => field.control === 'ai-models' ? t('AI models') : field.name === 'STEAMHARNESS_BOT_MEMORY_ENABLED' ? t('Bot memory') : field.label || field.name;
+const fieldDescription = (field: ProjectConfigurationField) => field.name === 'STEAMHARNESS_BOT_MEMORY_ENABLED'
+  ? t('Share categorized memories across conversations in this Bot. Turning memory off preserves saved entries. Changes apply on the next execution.') : field.description ?? field.name;
 
 type Host = { postMessage(message: Record<string, unknown>): void };
 export interface ProjectConfigurationsPanel {

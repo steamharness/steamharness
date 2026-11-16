@@ -4,12 +4,16 @@ import type { AgentInput } from "./types";
 import type { AgentSessionSnapshot } from "./session-types";
 
 export interface BotNodeLifecycle {
+  memoryDefaultEnabled: boolean;
   prepare(input: AgentInput, context: NodeContext): Promise<AgentInput>;
   completed(snapshot: AgentSessionSnapshot, input: AgentInput, context: NodeContext): Promise<void>;
 }
 const nodes = new WeakMap<object, BotNodeLifecycle>();
 interface BotRequestScope { requestId: string; projectId?: string; entryId?: string }
 const requests = new AsyncLocalStorage<BotRequestScope>();
+const toolCalls = new AsyncLocalStorage<string>();
+export function currentBotToolCallId(): string | undefined { return toolCalls.getStore(); }
+export function withBotToolCall<T>(id: string, run: () => T): T { return toolCalls.run(id, run); }
 export function registerBotNode(node: object, lifecycle?: BotNodeLifecycle): void { if (lifecycle) nodes.set(node, lifecycle); }
 export function botNodeLifecycle(node: object): BotNodeLifecycle | undefined { return nodes.get(node); }
 export function currentBotRequestScope(): BotRequestScope | undefined { return requests.getStore(); }

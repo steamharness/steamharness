@@ -2,6 +2,7 @@ import { MemoryStorage } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import { RuntimeStorageError, type AgentSessionSnapshot, type AgentStorageWrite, type Id, type RuntimeHistoryRecord, type Seq } from "./contract";
 import { agentRuntimeSessionKey, type RuntimeHistoryLease, type RuntimePersistence } from "./history";
+import { createSqliteBotMemoryStore, type BotMemoryStore } from "./bot-memory";
 
 /** Explicit temporary storage for tests and disposable runs. Never a connection fallback. */
 export function createMemoryRuntimePersistence(): RuntimePersistence {
@@ -11,7 +12,14 @@ export function createMemoryRuntimePersistence(): RuntimePersistence {
   const deletedAgents = new Set<string>();
   const usage = new Map<string, import("../token-usage").TokenUsageEntry>();
   const deleted = new Set<string>();
+  const memories = new Map<string, BotMemoryStore>();
   return {
+    botMemory(scope) {
+      const key = JSON.stringify([scope.projectId.toLowerCase(), scope.entryId]);
+      let memory = memories.get(key);
+      if (!memory) { memory = createSqliteBotMemoryStore({ ...scope, file: ":memory:" }); memories.set(key, memory); }
+      return memory;
+    },
     async list(kind) { return structuredClone([...records.values()].filter(record => record.kind === kind && !deleted.has(`${record.kind}:${record.key}`))); },
     async acquire(scope) {
       if (owned.has(scope)) throw new RuntimeStorageError("RUNTIME_STORAGE_OWNER_CONFLICT", "This session already has an execution owner.");
@@ -62,7 +70,7 @@ export function createMemoryRuntimePersistence(): RuntimePersistence {
       agents.set(key, new SnapshotMemoryStorage(snapshot));
     },
     async deleteSession(key) { if (activeAgents.has(key)) throw new RuntimeStorageError("RUNTIME_STORAGE_OWNER_CONFLICT", "Agent session has an execution owner."); agents.delete(key); deletedAgents.add(key); },
-    async close() { owned.clear(); activeAgents.clear(); },
+    async close() { owned.clear(); activeAgents.clear(); for (const memory of memories.values()) memory.close(); memories.clear(); },
   };
 }
 

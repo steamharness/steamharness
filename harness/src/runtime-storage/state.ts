@@ -15,18 +15,28 @@ export function createRuntimeStateStorage(options: {
 }): { persistence: RuntimePersistence; failure: AbortSignal; conversation: ConversationStateStorage; usage(entry: TokenUsageEntry): Promise<void>; close(): Promise<void> } {
   const failed = new AbortController();
   let backend = options.persistence;
-  const resolve = () => {
-    if (backend) return backend;
+  let localMemory: RuntimePersistence | undefined;
+  const localDirectory = () => {
     projectEntryKey(options.projectId, options.entryId);
     const directory = path.join(os.homedir(), ".steamharness", "runtime", ...(readProjectReleaseSync(options.aggregateDir ?? options.rootDir) ? ["release"] : []), options.projectId.toLowerCase(), options.entryId);
     assertProjectDataDirectory(options.rootDir, directory);
-    return backend = createLocalRuntimePersistence({ directory });
+    return directory;
+  };
+  const resolve = () => {
+    if (backend) return backend;
+    return backend = createLocalRuntimePersistence({ directory: localDirectory() });
   };
   const persistence: RuntimePersistence = {
+    botMemory(scope) {
+      const source = resolve();
+      if (source.botMemory) return source.botMemory(scope);
+      // An explicitly remote history backend still uses memory on the executing host.
+      return (localMemory ??= createLocalRuntimePersistence({ directory: localDirectory() })).botMemory!(scope);
+    },
     list: kind => resolve().list(kind), acquire: (scope, onLost) => resolve().acquire(scope, onLost),
     agentStorage: (conversationId, sessionKey) => resolve().agentStorage(conversationId, sessionKey),
     agentSessions: id => resolve().agentSessions(id), exportSession: key => resolve().exportSession(key),
-    importSession: (key, snapshot) => resolve().importSession(key, snapshot), close: async () => { if (!options.persistence) await backend?.close(); },
+    importSession: (key, snapshot) => resolve().importSession(key, snapshot), close: async () => { try { if (!options.persistence) await backend?.close(); } finally { await localMemory?.close(); } },
     deleteSession: key => resolve().deleteSession(key),
   };
   const scope = `core:${options.conversationId ?? options.runId}`;

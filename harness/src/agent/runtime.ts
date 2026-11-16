@@ -75,6 +75,8 @@ type PiAgent = DurableAgent;
 type PiAgentTool = PiAgent["state"]["tools"][number];
 
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
+  /** Core-owned guidance for Bot project memory, including custom and prepared personas. */
+  botMemoryPrompt?: string;
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
@@ -417,6 +419,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         interruptSession: this.options.interruptSession,
         workdir: this.options.workdir,
         storage: this.options.storage,
+        botMemoryPrompt: this.options.botMemoryPrompt,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
         contextUsage: () => this.getContextUsage(),
@@ -857,7 +860,7 @@ function applyRunConfiguration(
   const systemPrompt = parsed.agent === "plan"
     ? [AGENT_PLAN_SYSTEM_PROMPT, parsed.systemPrompt].filter(isNonEmpty).join("\n\n")
     : parsed.systemPrompt ?? options.systemPrompt ?? defaultAgentSystemPrompt();
-  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].filter(isNonEmpty).join("\n\n");
+  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, options.botMemoryPrompt].filter(isNonEmpty).join("\n\n");
 
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.

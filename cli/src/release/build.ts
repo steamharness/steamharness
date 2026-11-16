@@ -10,7 +10,7 @@ import { cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } 
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { build, transform } from "esbuild";
-import { inspectLocalProjectStructure, inspectProjectAgentModelUsage } from "steamharness";
+import { BOT_MEMORY_CONFIGURATION_KEY, inspectLocalProjectStructure, inspectProjectAgentModelUsage } from "steamharness";
 import { inspectProjectScripts } from "steamharness/executor/rules";
 import { readProjectDeclarationFromDirectory, readProjectDocument } from "@steamharness/project-manifest/node";
 import { projectEntryFilePath, PROJECT_RELEASE_BASE_DIRECTORY, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
@@ -192,14 +192,19 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
       const override = config.entryOverrides?.[entry.entryId] ?? {}, sourceRoot = path.join(root, entry.root), targetRoot = `entries/${entry.entryId}`;
       const targetEntry = entry.type === "kanban" ? `${targetRoot}/index.html` : "index.mjs";
       await mkdir(path.join(stage, targetRoot), { recursive: true });
+      const report = inspectLocalProjectStructure({ projectDir: root, entryId: entry.entryId, ...(override.entry ? { sourceEntry: override.entry } : {}) });
       let configuration: ProjectConfigurationDefinition | undefined;
       const configurationFile = override.configuration ?? entry.configuration;
       if (configurationFile) configuration = selectProfiles(parseConfigurationDefinition(JSON.parse(await readFile(releaseRegularFile(sourceRoot, configurationFile), "utf8"))), override.profiles);
       else if (override.profiles) throw new Error(`Entry ${entry.entryId} has no configuration profiles.`);
+      if (entry.type === "bot" && !configuration?.fields.some(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)) {
+        const memory = report.configuration?.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY);
+        if (!memory) throw new Error(`Entry ${entry.entryId} is missing its Bot memory configuration.`);
+        configuration = { ...configuration, version: 1, fields: [...configuration?.fields ?? [], memory] };
+      }
       const { entryId, root: _sourceRoot, entry: _sourceEntry, configuration: _configuration, ...metadata } = entry;
       await writeJson(stage, `${targetRoot}/steamharness.json`, { ...metadata, entry: targetEntry, ...(configuration ? { configuration: "configuration.json" } : {}) });
       if (configuration) await writeJson(stage, `${targetRoot}/configuration.json`, configuration);
-      const report = inspectLocalProjectStructure({ projectDir: root, entryId, ...(override.entry ? { sourceEntry: override.entry } : {}) });
       const sourceEntry = override.entry ?? entry.entry;
       const module = override.entry ? releaseRegularFile(sourceRoot, override.entry) : entry.type === "kanban" ? path.join(root, projectEntryFilePath(entry)) : releaseRegularFile(sourceRoot, sourceEntry);
       const scripts = entry.type === "kanban" ? { definedNodes: [], violations: [] } : inspectProjectScripts({ cwd: sourceRoot, projectName: entry.name, projectDir: sourceRoot, aggregateDir: root, entryFile: module });
