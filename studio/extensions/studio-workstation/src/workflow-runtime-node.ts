@@ -298,11 +298,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
           assistantProjectDir: project.assistant ? project.folderPath : undefined,
           expectedProjectId: project.id,
+          webAppEntries: project.entries.filter(entry => !!entry.webApp),
           entryId: project.entryId,
           resourceProjects,
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
           surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
+        const webAppErrors = session.onWebAppError?.(() => {
+          const retry = t('Retry');
+          void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'), retry).then(action => {
+            if (action === retry && !runSignal.aborted) void session.retryWebApps?.();
+          });
+        });
+        void session.closed.then(() => webAppErrors?.dispose());
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }

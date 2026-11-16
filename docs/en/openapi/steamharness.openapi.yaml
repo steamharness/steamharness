@@ -2235,7 +2235,7 @@ paths:
       tags:
         - Admin Projects
       summary: "Read a Kanban workspace"
-      description: "Returns a fixed version’s artifact directory, HTML entry, declarations, account-scoped configurations, and short-lived preview capability. Parameterized projects create a default configuration atomically on first read; projects without parameters return an empty list."
+      description: "Returns a fixed version’s artifact directory, HTML entry, declarations, account-scoped configurations, and short-lived preview capability. Parameterized projects create a default configuration atomically on first read; projects without parameters return an empty list. Explicit webApp entries return 409 and must open in a local host with a registered service provider."
       operationId: getKanbanWorkspace
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -7893,6 +7893,22 @@ components:
         - total
         - page
         - pageSize
+    ProjectWebApp:
+      type: object
+      description: "Kanban only. The host matches the service identifier to a trusted provider; declarations contain no service URL or credentials."
+      properties:
+        service:
+          type: string
+          pattern: '^[a-z][a-z0-9.-]{0,99}$'
+        permissions:
+          type: array
+          uniqueItems: true
+          maxItems: 1
+          items:
+            type: string
+            enum: [microphone]
+      required: [service]
+      additionalProperties: false
     ProjectEntry:
       type: object
       properties:
@@ -7912,6 +7928,8 @@ components:
           type: string
           description: "Workflow and Conversation modules resolve from their entry source root. Kanban HTML resolves from the aggregate root."
         configuration: {type: string}
+        webApp:
+          $ref: "#/components/schemas/ProjectWebApp"
         databases:
           type: array
           items:

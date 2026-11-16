@@ -2217,7 +2217,7 @@ paths:
       tags:
         - Admin Projects
       summary: 读取 Kanban 工作区
-      description: "返回固定版本的静态目录、HTML 入口、清单、当前账号命名配置及短期预览凭据。有参数的项目首次读取时原子创建默认配置；无参数项目返回空列表。"
+      description: "返回固定版本的静态目录、HTML 入口、清单、当前账号命名配置及短期预览凭据。有参数的项目首次读取时原子创建默认配置；无参数项目返回空列表。 显式 webApp 入口返回 409，必须在注册了服务提供器的本地宿主中打开。"
       operationId: getKanbanWorkspace
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -7841,6 +7841,22 @@ components:
         - total
         - page
         - pageSize
+    ProjectWebApp:
+      type: object
+      description: "仅适用于 Kanban。服务标识由宿主匹配可信提供器；清单不包含服务地址或凭据。"
+      properties:
+        service:
+          type: string
+          pattern: '^[a-z][a-z0-9.-]{0,99}$'
+        permissions:
+          type: array
+          uniqueItems: true
+          maxItems: 1
+          items:
+            type: string
+            enum: [microphone]
+      required: [service]
+      additionalProperties: false
     ProjectEntry:
       type: object
       properties:
@@ -7860,6 +7876,8 @@ components:
           type: string
           description: "Workflow/Conversation 模块相对入口源码根解析；Kanban HTML 相对聚合根解析。"
         configuration: {type: string}
+        webApp:
+          $ref: "#/components/schemas/ProjectWebApp"
         databases:
           type: array
           items:

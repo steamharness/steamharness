@@ -216,3 +216,19 @@ await capture.stop(run.id);
 页面按需读页和图片，并丢弃切换运行、翻页或身份变化前的旧响应。图片可转为 Blob URL，切换后调用 `URL.revokeObjectURL` 释放。停止、取消和重开后仍可读历史；业务页面不复制完整运行日志。
 
 同一聚合的本地只读资源预览仅可列出运行、读页、查询时间轴和读取图片，不能启动或停止。Server 静态预览不提供本地执行和历史，需要在本地工作区打开。
+
+## 接入有账号的 Web 应用
+
+需要 IndexedDB、同源 API、WebSocket 或语音录制的完整 H5，可以显式声明 `webApp`：
+
+```json
+{ "type": "kanban", "name": "Chat", "webApp": { "service": "example.chat", "permissions": ["microphone"] } }
+```
+
+仍须把完整 H5 构建到当前入口的 `dist/steamharness/build/<entryId>/`，使用相对资源路径。`service` 是宿主服务标识；项目不能在清单中填写 API 地址、长期 token 或任意网络权限。可选权限目前只有 `microphone`。
+
+支持此协议的本地宿主为每个页面建立独立 loopback origin，并通过固定目标代理提供 API、上传、签名文件与 WebSocket。宿主注入 `window.steamHarnessWebApp`，其中 `apiBase` 指向当前 nonce 下的 `/api`，`session` 只包含提供器签发的项目专用会话，`managed: true` 表示账号由宿主管理。不要把此会话写入持久存储；账号或 Server 切换后，旧 origin 与连接会关闭。
+
+需要宿主扩展按项目 ID、入口 ID 和 `service` 注册唯一提供器。普通 `steamharness web` 没有账号提供器；页面应显示宿主登录指引。Studio 遇到旧 CLI 会提示升级，授权失败时可重试。声明麦克风后仍需用户同意宿主和系统授权，摄像头不受支持。
+
+普通 Kanban 保留原有沙箱。Server Web 的静态预览不提供此账号协议，访问此类应用会提示需要本地宿主。直接浏览器访问应用自己的服务时，登录流程由应用负责。

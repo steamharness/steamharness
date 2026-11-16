@@ -597,6 +597,9 @@ importers:
       '@steamharness/project-info':
         specifier: workspace:*
         version: link:../project-info
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:../project-manifest
       lucide-react:
         specifier: ^0.487.0
         version: 0.487.0(react@19.3.1)

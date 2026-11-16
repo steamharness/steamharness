@@ -1147,7 +1147,7 @@ export function inspectLocalProjectStructure(options: {
     readSchedulePresetValue({schedulePresets:registration.schedulePresets},"kanban",[]);
     const entry = path.basename(registration.entry);
     const artifactDir = path.posix.dirname(registration.entry);
-    return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: declaration.projectDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry } };
+    return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: declaration.projectDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry, ...(registration.webApp ? { webApp: registration.webApp } : {}) } };
   }
   const inspection = inspectProjectStructure({ cwd: rootDir, projectName, projectDir: rootDir, aggregateDir: declaration.projectDir, entryFile: modulePath });
   if (inspection.diagnostics.violations.length) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" script validation failed.`, metadata: { projectId: manifest.projectId, entryId: registration.entryId, violations: inspection.diagnostics.violations } });

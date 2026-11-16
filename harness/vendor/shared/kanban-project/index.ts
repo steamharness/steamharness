@@ -261,6 +261,7 @@ export interface KanbanProjectStructure {
 }
 
 export interface KanbanArtifactConfig {
+  webApp?: import("@steamharness/project-manifest").ProjectWebApp;
   artifactDir: string;
   entry: string;
 }
@@ -320,11 +321,11 @@ export function scheduleKanbanPreviewCapabilityRefresh(
 }
 
 /** Derive static artifact paths from a registered Kanban entry. */
-export function readKanbanEntryConfig(entry: { type: string; entry: string }): KanbanArtifactConfig {
+export function readKanbanEntryConfig(entry: { type: string; entry: string; webApp?: import("@steamharness/project-manifest").ProjectWebApp }): KanbanArtifactConfig {
   if (entry.type !== "kanban" || !/\.html$/i.test(entry.entry) || entry.entry.includes("\\") || entry.entry.startsWith("/") || entry.entry.split("/").some(segment => !segment || segment === "." || segment === ".." || [".git","node_modules"].includes(segment.toLowerCase()))) throw new Error("A safe registered Kanban HTML entry is required.");
   const segments = entry.entry.split("/");
   const filename = segments.pop()!;
-  return { artifactDir: segments.join("/") || ".", entry: filename };
+  return { artifactDir: segments.join("/") || ".", entry: filename, ...(entry.webApp ? { webApp: entry.webApp } : {}) };
 }
 
 export function createKanbanArtifactEntryPath(config: KanbanArtifactConfig): string {

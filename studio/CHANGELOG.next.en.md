@@ -1,5 +1,7 @@
 # Unreleased
 
+- Host providers can issue scoped sessions for bundled Kanban Web applications without exposing host credentials. Account and Server changes clear old sessions; microphone recording requires consent.
+
 - Added optional host-provided start-page recommendations for windows without folders, including refresh, offline feedback, validated actions, and stale-response protection.
 
 - Fix release windows stopping at Start by initializing the Steam workspace once the workbench containers exist, then opening the project entry automatically. Tools remain collapsed on startup.

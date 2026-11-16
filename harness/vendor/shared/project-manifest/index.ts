@@ -14,6 +14,12 @@ export * from "./config";
 export const PROJECT_MANIFEST_FILE = "steamharness.json";
 export interface KnowledgeBaseRequirement { alias: string; knowledgeBaseId: string }
 
+export interface ProjectWebApp {
+  /** Trusted host provider ID; never a project-supplied service URL. */
+  service: string;
+  permissions?: ("microphone")[];
+}
+
 export interface ProjectEntry {
   entryId: string;
   type: ProjectKind;
@@ -31,6 +37,7 @@ export interface ProjectEntry {
   databases: string[];
   knowledgeBases?: KnowledgeBaseRequirement[];
   schedulePresets?: unknown[];
+  webApp?: ProjectWebApp;
 }
 export interface ProjectManifest {
   projectId: string;
@@ -117,7 +124,7 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
     let entry = registration;
     if (registration.root !== ".") {
       const child = record(children[registration.root as string], `${registration.root}/${PROJECT_MANIFEST_FILE}`);
-      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
+      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "databases", "knowledgeBases", "schedulePresets", "webApp"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
       entry = { ...child, entryId: registration.entryId, root: registration.root };
     }
     const aliases = entry.databases ?? [];
@@ -151,7 +158,7 @@ export function resolveProjectDatabases(declaration: ProjectDeclaration, configV
 
 export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectEntry {
   const item = record(value, field);
-  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
+  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "knowledgeBases", "schedulePresets", "webApp"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
   if (!isProjectEntryId(item.entryId)) throw new Error(`${field}.entryId must be an identifier and cannot use a reserved artifact or filesystem name.`);
   if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, bot, or kanban.`);
   if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 256) throw new Error(`${field}.name is required.`);
@@ -171,7 +178,9 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   if (new Set(databases).size !== databases.length) throw new Error(`${field}.databases contains duplicate aliases.`);
   const knowledgeBases = item.knowledgeBases === undefined ? undefined : normalizeKnowledgeRequirements(item.knowledgeBases);
   if (item.schedulePresets !== undefined && !Array.isArray(item.schedulePresets)) throw new Error(`${field}.schedulePresets must be an array.`);
-  return { entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, databases, ...(knowledgeBases === undefined ? {} : { knowledgeBases }), ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
+  const webApp = item.webApp === undefined ? undefined : normalizeProjectWebApp(item.webApp);
+  if (webApp && item.type !== "kanban") throw new Error("webApp requires a Kanban entry.");
+  return { ...(webApp ? { webApp } : {}), entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, databases, ...(knowledgeBases === undefined ? {} : { knowledgeBases }), ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
 }
 
 function normalizeKnowledgeRequirements(value: unknown): KnowledgeBaseRequirement[] {
@@ -205,4 +214,12 @@ export function projectManifestForDistribution<T extends Record<string, unknown>
 function record(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${field} must be an object.`);
   return value as Record<string, unknown>;
+}
+
+export function normalizeProjectWebApp(value: unknown): ProjectWebApp {
+  const item = record(value, "webApp");
+  if (Object.keys(item).some(key => !["service", "permissions"].includes(key)) ||
+      typeof item.service !== "string" || !/^[a-z][a-z0-9.-]{0,99}$/.test(item.service)) throw new Error("Invalid Web application service.");
+  if (item.permissions !== undefined && (!Array.isArray(item.permissions) || item.permissions.some(value => value !== "microphone") || new Set(item.permissions).size !== item.permissions.length)) throw new Error("Invalid Web application permissions.");
+  return { service: item.service, ...(item.permissions === undefined ? {} : { permissions: item.permissions as ("microphone")[] }) };
 }

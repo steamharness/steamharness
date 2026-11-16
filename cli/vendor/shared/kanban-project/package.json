@@ -24,7 +24,8 @@
     "@steamharness/project-info": "workspace:*",
     "lucide-react": "^0.487.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@steamharness/project-manifest": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

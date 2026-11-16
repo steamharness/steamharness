@@ -86,12 +86,12 @@ it.each(['background refresh', 'account change'] as const)('handles %s during a 
   if (change === 'background refresh') expect(result.messages[0].type).toBe('project-configuration-upload-result');
   else expect(result.message).toContain('Account changed');
 });
-async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
+async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean; webApp?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(root,'registry'));
   const directory = path.join(root, 'board'); await mkdir(directory);
   const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html",databases:[]}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/steamharness/build/main/pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[]};
+  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:'.',entry:options.artifact?'dist/steamharness/build/main/pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[], ...(options.webApp ? { webApp: {service:'sample.chat'} } : {})};
 
   const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases}]  };
   Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration],databases:registration.databases});
@@ -117,6 +117,30 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 }
 
 describe('Kanban CLI Web workspace', () => {
+  it('retires application origins and scoped sessions when the host account or server changes', async () => {
+    const { app, state } = await fixture({ noParams: true, webApp: true });
+    const original = fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => String(url).startsWith('https://account.test')
+      ? Promise.resolve(Response.json({errCode:0,data:{profile:{userId:'account',email:'account@example.invalid',displayName:'Account'}}}))
+      : original(url, options));
+    await app.setHostConnection({serverUrl:'https://account.test',accessToken:'private-host-token'});
+    await app.setHostWebApps({main:{service:'sample.chat',apiBaseUrl:'https://chat.test/api',bootstrap:{token:'first-scoped-token'}}});
+    const first = (await state()).kanban.preview.url;
+    const html = await (await fetch(first)).text();
+    expect(html).toContain('first-scoped-token'); expect(html).not.toContain('private-host-token');
+    await app.setHostConnection({serverUrl:'https://account.test/second',accessToken:'second-host-token'});
+    await expect(fetch(first)).rejects.toThrow();
+    await app.setHostWebApps({main:{service:'sample.chat',apiBaseUrl:'https://chat.test/api',bootstrap:{token:'second-scoped-token'}}});
+    const second = (await state()).kanban.preview.url;
+    expect(new URL(second).origin).not.toBe(new URL(first).origin);
+    expect(await (await fetch(second)).text()).toContain('second-scoped-token');
+    await app.setHostConnection(undefined);
+    await expect(fetch(second)).rejects.toThrow();
+    await expect.poll(async () => {
+      const url = (await state()).kanban.preview.url;
+      return url !== 'about:blank' && (await (await fetch(url)).text()).includes('"session":null');
+    }).toBe(true);
+  });
   it('exposes safe runtime failures, clears stale evidence, and queries the exact live page without writing', async () => {
     const { app, post, bridge, state, runtime } = await fixture();
     const hostLog = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);

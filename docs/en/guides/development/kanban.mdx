@@ -56,6 +56,8 @@ A three-column static board with no business-database operations.
 
 When bundling JavaScript or styles, build locally and point the entry at the resulting HTML. Use relative asset paths and distribute the assets in the project archive. Server does not run project build scripts.
 
+For a project with only Kanban entries, use `.steamharnessignore` to upload the project declaration, dependency manifests, configuration, and complete static output while excluding build sources and backend code. Upload validation requires every resource in the declared output directory.
+
 ## Persist business data
 
 The basic-board template uses relational `Task` rows scoped by configuration ID. Prepare it before use:
@@ -70,3 +72,5 @@ Read failures disable editing. Concurrent writes check row versions, and multi-r
 ## Integrate with the host
 
 See [Kanban HTML projects](/en/concepts/kanban) for configuration, data Bridge calls, page methods, conversation subscriptions, and Workflow calls. Browser pages receive no long-lived host credentials. Resource authorization and entry bindings apply to every data operation.
+
+For a complete H5 application with storage, APIs, WebSocket, or microphone access, declare `webApp` and register a host provider as described in [Web applications](/en/concepts/kanban#connect-an-account-based-web-application). Ordinary HTML templates do not receive these capabilities automatically.

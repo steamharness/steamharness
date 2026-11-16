@@ -132,7 +132,8 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     entryUrl:(entryId:string) => { selectProjectEntry(manifest,entryId); return `${origin}/entries/${entryId}/#session=${credentials.capability}`; },
     setHostUserSettings:async (value:Parameters<EntryHost['setHostUserSettings']>[0]) => { host={...host,surface:host?.surface??'editor',userSettings:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostUserSettings(value))); },
     setHostResourceProjects:(value:string[]) => { host={...host,surface:host?.surface??'editor',resourceProjects:value}; for (const entry of entries.values()) entry.setHostResourceProjects(value); },
-    setHostConnection:async (value:Parameters<EntryHost['setHostConnection']>[0]) => { host={...host,surface:host?.surface??'editor',connection:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostConnection(value))); },
+    setHostWebApps:async (value:Parameters<EntryHost['setHostWebApps']>[0]) => { host={...host,surface:host?.surface??'editor',webApps:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostWebApps(value))); },
+    setHostConnection:async (value:Parameters<EntryHost['setHostConnection']>[0]) => { host={...host,surface:host?.surface??'editor',connection:value,webApps:{}}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostConnection(value))); },
     close:async () => { closing=true; await resetting; await Promise.all([...starting.values()]); await Promise.all([...entries.values()].map(entry => entry.close())); await new Promise<void>(resolve => server.close(() => resolve())); },
   };
 }

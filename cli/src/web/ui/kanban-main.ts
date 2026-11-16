@@ -21,7 +21,7 @@ import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
 let frameContextMenu = false;
-interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; databaseRevisions: { alias: string; revision: string }[]; databaseWarning: string; serverDataIssue?: ProjectServerIssue }
+interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string; webApp?: boolean; permissions?: string[]; accountUrl?: string }; databaseRevisions: { alias: string; revision: string }[]; databaseWarning: string; serverDataIssue?: ProjectServerIssue }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
@@ -150,7 +150,9 @@ function mountPreview(): void {
   methodSession = createKanbanMethodSession({ nonce: state.preview.nonce, getConfiguration: () => state?.configuration, getPresentation: () => ({ mode }), postMessage: message => frame.contentWindow?.postMessage(message, '*') });
   element('preview-status').hidden = false; element('preview-status').dataset.error = 'false'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Loading Kanban"); element('retry-preview').hidden = true;
   readyTimer = setTimeout(() => { element('preview-status').dataset.error = 'true'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Failed to load Kanban"); element('retry-preview').hidden = false; }, 10_000);
-  frame.sandbox.add('allow-forms', 'allow-downloads'); frame.src = state.preview.url; frame.title = project?.name ?? 'Kanban'; layoutPreview();
+  frame.setAttribute('sandbox', `allow-scripts allow-forms allow-downloads${state.preview.webApp ? ' allow-same-origin' : ''}`);
+  frame.allow = state.preview.webApp && state.preview.permissions?.includes('microphone') ? 'microphone' : '';
+  frame.src = state.preview.url; frame.title = project?.name ?? 'Kanban'; layoutPreview();
 }
 frame.addEventListener('load', () => { configurationKey = ''; inject(); });
 addEventListener('workflow-keyboard-host-change', inject);
@@ -230,6 +232,7 @@ window.addEventListener('message', event => {
         y: rect.top + message.y * rect.height / (frame.clientHeight || rect.height || 1), editable: message.editable, selection: message.selection });
       return;
     }
+    if (message.type === 'steamharness:web-app-account' && state.preview.webApp && event.origin === new URL(state.preview.url).origin) { if (state.preview.accountUrl) void host.postMessage({ type: 'open-url', url: state.preview.accountUrl }); return; }
     if (previewBlocked) return;
     if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
       if (document.activeElement === frame) host.keyboard?.forward(message.event);

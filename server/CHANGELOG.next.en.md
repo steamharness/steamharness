@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static previews of Web application Kanban entries require a local host with a registered service provider.
+
 - Static Kanban preview errors show the operation and error code, with specific guidance for undeclared database or knowledge base aliases and missing sign-in.
 
 - Validate v2 encoded release structures statically. Compact JSON and renew the integrity inventory after publishing configuration and attachments, preserving encoded internals and readable project and entry summaries in downloads.

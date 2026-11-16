@@ -1,3 +1,4 @@
+import type { WebAppBinding } from "./web-app-preview";
 import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
@@ -101,8 +102,12 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
       host = { ...host, surface: host?.surface ?? 'editor', resourceProjects: value };
       current.setHostResourceProjects(value);
     },
+    setHostWebApps: async (value: Record<string, WebAppBinding>) => {
+      host = { ...host, surface: host?.surface ?? 'editor', webApps: value };
+      await restarting; await current.setHostWebApps(value);
+    },
     setHostConnection: async (value: WebConnection | undefined) => {
-      host = { ...host, surface: host?.surface ?? 'editor', connection: value };
+      host = { ...host, surface: host?.surface ?? 'editor', connection: value, webApps: {} };
       await restarting; await current.setHostConnection(value);
     },
     close: async () => { closing = true; try { await restarting; } finally { await current.close(); } },
@@ -123,6 +128,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let login: ChildProcess | undefined;
   let passwordLogin = false;
   let hostConnection = options.host?.connection;
+  let webApps = options.host?.webApps ?? {};
   let userSettings = options.host?.userSettings ? parseUserSettings(options.host.userSettings) : getUserSettings();
   let hostManaged = options.host !== undefined;
   // Host-managed surfaces (editor and assistant) may carry the private system-AI
@@ -415,6 +421,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
+    webAppBinding: () => webApps[project.entryId],
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${redactProjectData(message, [...sensitiveTokens], false)}\n`),
     serverIssue: issue => issue,
@@ -498,6 +505,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       ...(aiServerUrl && aiToken ? { aiServerUrl: aiServerUrl.replace(/\/+$/, ''), aiAccessToken: aiToken } : {}),
     } : undefined;
     if (changed) {
+      webApps = {};
       resources.clear();
       connection = undefined;
       projectServer?.authenticationChanged({ ...account, status: 'checking', serverUrl: serverUrl || defaultServerUrl() });
@@ -532,7 +540,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           projectActions?.invalidate();
         }
         connection = candidate;
-        if (!background) { kanbanController?.authenticationChanged(); }
+        if (!background) { kanbanController?.authenticationChanged(false); }
         const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
         const expiresAt = result.data.principal?.expiresAt ?? (savedConnection ? config.expiresAt : undefined);
         if (background && (['userId', 'email', 'displayName', 'avatarUrl'] as const).every(key => profile[key] === account.user?.[key]) && expiresAt === account.expiresAt) { await initializeRuntimeStorage(); return; }
@@ -541,6 +549,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (epoch !== authEpoch) { return; }
         if (background && !unauthorized) { return; }
         connection = undefined;
+        webApps = {};
         projectServer?.authenticationChanged({ ...account, status: unauthorized ? 'expired' : 'error' });
         resources.clear();
         kanbanController?.authenticationChanged();
@@ -1228,8 +1237,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       broadcast();
     },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
+    setHostWebApps: async (value: Record<string, WebAppBinding>) => {
+      webApps = value;
+      await kanbanController?.setWebAppBinding(value[project.entryId]);
+    },
     setHostConnection: async (value: WebConnection | undefined) => {
       if (hostManaged && JSON.stringify(value) === JSON.stringify(hostConnection)) { return; }
+      webApps = {};
+      void kanbanController?.setWebAppBinding(undefined);
       authEpoch++; authCheck?.abort();
       resources.clear();
       hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken } : value;
