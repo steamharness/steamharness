@@ -22,6 +22,7 @@ import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
 import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
+import { retryTransientPostgres } from "./postgres";
 import { createProjectLocalStorageFromEnv, LocalStorage } from "./local-storage";
 import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
 import { resolveProjectStorageDriver } from "./storage-driver";
@@ -385,8 +386,8 @@ export class Storage {
     await mkdir(this.dataRoot, { recursive: true });
     this.buildInfo ??= await readServerBuildInfo({ repoRoot: this.repoRoot, serverRoot: this.serverRoot,
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
-    await this.db?.init();
-    await this.runtimeStorage?.init();
+    await retryTransientPostgres(async () => { await this.db?.init(); }, { label: "project storage" });
+    await retryTransientPostgres(async () => { await this.runtimeStorage?.init(); }, { label: "runtime storage" });
     await this.resumePendingPreparationJobs();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");

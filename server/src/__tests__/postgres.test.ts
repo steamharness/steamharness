@@ -2,7 +2,51 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import test, { type TestContext } from "node:test";
-import { createPostgresClient, createPostgresPool, formatPostgresPoolError } from "../postgres";
+import { createPostgresClient, createPostgresPool, formatPostgresPoolError, isTransientPostgresError, retryTransientPostgres } from "../postgres";
+
+test("startup initialization retries transient connection failures and stops on schema errors", async () => {
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(String(args[0])); };
+  try {
+    let attempts = 0;
+    const result = await retryTransientPostgres(async () => {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+      return "initialized";
+    }, { label: "test storage" });
+    assert.equal(result, "initialized");
+    assert.equal(attempts, 3);
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0]!, /test storage PostgreSQL connection was interrupted during initialization/);
+
+    // A dropped handshake that only surfaces as a timeout, or as a pg-pool
+    // wrapper error with the socket error as its cause, is still transient.
+    assert.equal(isTransientPostgresError(new Error("timeout expired")), true);
+    assert.equal(isTransientPostgresError(new Error("Connection terminated due to connection timeout")), true);
+    assert.equal(isTransientPostgresError(Object.assign(new Error("terminated"), { code: "57P01" })), true);
+    assert.equal(isTransientPostgresError(Object.assign(new Error("boom"), { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) })), true);
+
+    // Schema and data errors are real failures and must not be retried.
+    assert.equal(isTransientPostgresError(Object.assign(new Error("duplicate key"), { code: "23505" })), false);
+    assert.equal(isTransientPostgresError(Object.assign(new Error("syntax error"), { code: "42601" })), false);
+    assert.equal(isTransientPostgresError(new Error("Knowledge migration checksum does not match.")), false);
+    let schemaAttempts = 0;
+    await assert.rejects(
+      retryTransientPostgres(async () => { schemaAttempts += 1; throw Object.assign(new Error("duplicate key"), { code: "23505" }); }, { label: "test storage" }),
+      /duplicate key/,
+    );
+    assert.equal(schemaAttempts, 1);
+
+    // Exhausting the bounded attempts rethrows the last transient error.
+    let bounded = 0;
+    await assert.rejects(
+      retryTransientPostgres(async () => { bounded += 1; throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }); }, { label: "test storage", attempts: 2 }),
+      /ECONNRESET/,
+    );
+    assert.equal(bounded, 2);
+  } finally { console.warn = originalWarn; }
+});
 
 test("pool limits apply to each runtime pool and preserve explicit limits", async () => {
   const env = { STEAMHARNESS_SERVER_DATABASE_POOL_MAX: "2" };

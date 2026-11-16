@@ -12,6 +12,7 @@ import { loadServerEnv } from "./env";
 import { createProjectServerHealthData } from "./health";
 import { ensureServerI18n, getRequestT, localizeHttpErrorMessage, resolveRequestLocale } from "./i18n";
 import { resolveServerPathRoots } from "./paths";
+import { retryTransientPostgres } from "./postgres";
 import { fail, toHttpError } from "./protocol";
 import { createApiRouter } from "./routes/api";
 import { createAdminAliasRouter, createAuthRouter, createMeAliasRouter } from "./routes/auth";
@@ -33,7 +34,7 @@ const databaseUrl = process.env.STEAMHARNESS_DATABASE_URL?.trim();
 const accountDb = databaseUrl
   ? new AccountRepository(databaseUrl)
   : undefined;
-await accountDb?.init();
+await retryTransientPostgres(async () => { await accountDb?.init(); }, { label: "account" });
 const storage = await createStorageFromEnv();
 const authService = ensureProjectAuthService(accountDb);
 configureProjectAuthContext({
