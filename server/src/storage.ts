@@ -3870,5 +3870,3 @@ function readNumberEnv(name: string, fallback: number): number {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-/** Apply host deployment overrides to the normalized metadata for this source target. */
