@@ -14,7 +14,7 @@ Studio and CLI Web use the Server website for sign-in. The Server owns account c
 3. Check the application name, channel, and device code, then approve the request.
 4. Click **Open app and return**. Studio opens the matching application channel; CLI Web returns to the local page that started sign-in. The application also checks approval in the background.
 
-If the browser does not open, follow the sign-in link shown in the app. Start again after a request expires, is cancelled, or is denied. Closing the Studio sign-in page or clicking cancel revokes that request.
+If the browser does not open, follow the sign-in link shown in the app. You can also open `/login/device` on the Server and enter the code shown in the app. Start again after a request expires, is cancelled, or is denied. Closing the Studio sign-in page or clicking cancel revokes that request.
 
 | App channel | Studio return protocol |
 | --- | --- |
@@ -39,6 +39,8 @@ The Server creates a regular account with a generated nickname and geometric ava
 
 Without a mail service, registration supports usernames and passwords. Administrators can configure SMTP using [Deployment and releases](/en/guides/server/deployment).
 
+When you enter a registration password, enter it again to confirm it. Validation and submission errors keep the form available so you can correct it and retry.
+
 ## Bind or change email
 
 1. Open **Settings → Account security** to view your username, email verification, and password status.
@@ -48,16 +50,22 @@ Without a mail service, registration supports usernames and passwords. Administr
 
 An address on an existing account is not automatically verified. Email code sign-in and password recovery require verification. Changing an address requires proof of both the new email and your current identity.
 
+If you have both a password and a verified email, choose either method to confirm your identity. Send a code before using email proof. Your current verified email does not need to be bound again.
+
 Set a username and password before unbinding email so that a sign-in method remains available. An unbound address stops working for sign-in and recovery. Bind and verify an address again to restore those features.
 
 ## Set or recover a password
 
 Email registration does not require a password. Verify your current email in **Settings → Account security** to set one. You can also set a username once.
 
-To recover a password, choose **Forgot password?** on the sign-in page, enter your verified bound email, request a code, and set a new password of at least 8 characters. Accounts without a verified bound email need administrator help.
+To recover a password, choose **Forgot password?** on the sign-in page, enter your verified bound email, request a code, and enter a new password of at least 8 characters twice. After the reset, choose **Back to sign in** and use your new password. Links preserve the authorization destination when you started from an app. Accounts without a verified bound email need administrator help.
 
 Email and password changes revoke existing website sessions, Studio and CLI sign-in credentials, and approved device requests. Manually created API keys remain active; revoke them separately on the API key page when needed.
+
+Signing out of Studio or CLI Web clears the local account and attempts to revoke that app’s Server credential. Local sign-out still works offline. Website sign-out revokes the current browser session; other apps keep their own credentials.
 
 ## Missing verification email
 
 Check spam folders, the address spelling, and the resend countdown. The same send confirmation is used for all addresses to avoid exposing account existence. A successful response does not establish that the address has an eligible account. Ask the administrator to check SMTP settings and delivery records if mail still does not arrive.
+
+If sign-in configuration, your profile, API keys, or device details fail to load, choose **Retry**. Wait for a code request or submission to finish before trying again. Errors restore the controls and show the reason. When account security asks for a new verification code, send a fresh code before submitting again.

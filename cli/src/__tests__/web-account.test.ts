@@ -2,8 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { WebAccountLogin, sharedWebLogin } from '../web/account-auth';
-import { readCliAuthConfig } from '../auth-config';
+import { WebAccountLogin, sharedWebLogin, signOutCliAccount } from '../web/account-auth';
+import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 const directories: string[] = [];
 afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); for (const directory of directories.splice(0)) await rm(directory,{recursive:true,force:true}); });
 const envelope = (data: object) => new Response(JSON.stringify({errCode:0,data}));
@@ -41,4 +41,13 @@ it('can retry browser sign-in after rejecting an invalid server address', async 
   expect(login.info?.userCode).toBe('ABCD-1234');
  } finally { login.cancel(); }
  await vi.waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url).endsWith('/device/cancel'))).toBe(true));
+});
+
+it.each([false,true])('clears local credentials and revokes the client token even when the Server is unavailable (%s)', async offline => {
+ const dir=await mkdtemp(path.join(os.tmpdir(),'sh-auth-logout-'));directories.push(dir);vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR',dir);
+ await writeCliAuthConfig({serverUrl:'https://server.test',apiKey:'client-credential',source:'device_flow',user:{userId:'user',email:null,displayName:'User'}});
+ const fetcher=vi.fn().mockImplementation(async () => {if(offline)throw new Error('Offline');return envelope({loggedOut:true});});vi.stubGlobal('fetch',fetcher);
+ await signOutCliAccount();
+ expect((await readCliAuthConfig()).apiKey).toBe('');
+ expect(fetcher).toHaveBeenCalledWith('https://server.test/api/auth/logout',expect.objectContaining({method:'POST',headers:{Authorization:'Bearer client-credential'}}));
 });

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed localhost fallback links and old account updates overwriting the chosen Server. Sign-in can be cancelled as soon as it starts.
+
 - Studio now uses browser sign-in and an application return link, replacing its password form. Dev, alpha and main have separate protocols, installation identities and local credentials. Accounts without uploads use generated geometric avatars.
 
 - Distinguish missing Server setup, unsupported endpoints, expired sign-in and unreachable application services when Web application account connections fail. Keep retry available without exposing raw provider errors.

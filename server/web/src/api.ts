@@ -39,6 +39,7 @@ export class ServerApiClient {
       const res = await fetch(path, {
         ...init,
         credentials: "include",
+        signal: init?.signal ?? (path.startsWith("/api/auth/") ? AbortSignal.timeout(30_000) : undefined),
         headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
       });
       const text = await res.text();

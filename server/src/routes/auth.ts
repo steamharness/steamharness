@@ -454,6 +454,9 @@ export function createAuthRouter(): Router {
       if (principal && "refreshToken" in principal && principal.refreshToken) {
         await getProjectAuthContext().authService?.revokeSession(principal.refreshToken);
       }
+      if (principal?.kind === "api_key" && ["desktop", "cli"].includes(principal.apiKey.source)) {
+        await getProjectAuthContext().accountDb?.revokeApiKey(principal.apiKey.id);
+      }
       clearAuthSessionCookie(res);
       await recordAuthAudit(req, {
         principalKind: principal?.kind ?? "unknown",

@@ -20,7 +20,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
-import { readCliAuthConfig, clearCliAuthConfig } from '../auth-config';
+import { readCliAuthConfig } from '../auth-config';
 import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
 import { readProjectInfo } from '@steamharness/project-info';
 import { ConversationController, sessionRunning } from './conversation-controller';
@@ -32,7 +32,7 @@ import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
 import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
-import { sharedWebLogin } from './account-auth';
+import { sharedWebLogin, signOutCliAccount } from './account-auth';
 import type { WebHostConfiguration } from './host-config';
 import { inspectWebProject, isLocalBuiltinAssistant } from './assistant-project';
 import { ResourcePreviews } from './resource-preview';
@@ -947,7 +947,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'verify': await refreshAuth(true); break;
       case 'logout': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        signedOut = true; browserLogin.cancel(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await clearCliAuthConfig(); } authIdentity = 'signed-out'; await refreshAuth(); break;
+        signedOut = true; browserLogin.cancel(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await signOutCliAccount(); } authIdentity = 'signed-out'; await refreshAuth(); break;
       }
       default: throw new Error(`Unsupported action: ${message.type}`);
     }

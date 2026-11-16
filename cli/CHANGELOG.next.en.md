@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed localhost fallback links, the selected Server being overwritten by an old account, and late errors after cancellation. Sign-out clears the local account and attempts to revoke its Server credential.
+
 - CLI Web now signs in on the Server website without a local password form. Authorization supports return links, cancellation and shared entry state, with credentials isolated by channel and Server.
 
 - Explicit Kanban Web applications use separate local origins, fixed HTTP/WebSocket proxies, scoped sessions, and declared microphone permissions; account changes close old connections. Kanban-only uploads can contain the complete static output without including build sources.

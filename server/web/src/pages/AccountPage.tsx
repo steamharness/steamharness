@@ -1,3 +1,4 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Copy, ImagePlus, KeyRound, Languages, MonitorCog, Moon, RefreshCw, ShieldCheck, Sun, Upload, UserRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
@@ -26,6 +27,7 @@ interface AccountPageProps {
   apiKeys: ApiKeyRecord[] | null;
   busy?: string;
   apiKeysBusy?: string;
+  error?: string;
   saveBusy?: string;
   createKeyBusy?: string;
   revokeKeyId?: string;
@@ -47,6 +49,7 @@ export function AccountPage({
   apiKeys,
   busy,
   apiKeysBusy,
+  error,
   saveBusy,
   createKeyBusy,
   revokeKeyId,
@@ -94,8 +97,13 @@ export function AccountPage({
     displayName.trim() !== (profile?.displayName ?? "").trim() ||
     (avatarUrl ?? null) !== (profile?.avatarUrl ?? null);
 
+  const failure = error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription>
+    <Button variant="outline" disabled={!!busy || !!apiKeysBusy} onClick={onRefresh}>{t("commonRetry")}</Button></Alert> : null;
+  if (tab === "profile" && !me && failure) return <div className="p-6">{failure}</div>;
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 p-4 lg:p-6">
+      {failure}
       <div className="flex min-h-0 flex-1 flex-col gap-6">
         {tab === "profile" ? (
           <Card>
@@ -107,7 +115,7 @@ export function AccountPage({
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
                   <Button type="button" variant="ghost" className="size-[72px] shrink-0 rounded-md p-0"
-                    title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} disabled={!!saveBusy} onClick={() => fileInputRef.current?.click()}>
+                    title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} disabled={!!busy || !!saveBusy} onClick={() => fileInputRef.current?.click()}>
                   <Avatar className="size-[72px]">
                     <AvatarImage src={avatarUrl || generatedAvatarUrl(profile?.userId)} alt={t("accountAvatarAlt")} />
                     <AvatarFallback>
@@ -140,11 +148,11 @@ export function AccountPage({
                       if (file) setAvatarFile(file);
                     }}
                   />
-                  <Button type="button" variant="outline" disabled={!!saveBusy} onClick={() => fileInputRef.current?.click()}>
+                  <Button type="button" variant="outline" disabled={!!busy || !!saveBusy} onClick={() => fileInputRef.current?.click()}>
                     <Upload data-icon="inline-start" />
                     {t("accountAvatarUpload")}
                   </Button>
-                  <Button type="button" variant="outline" disabled={!avatarUrl || !!saveBusy} onClick={() => setAvatarUrl(null)}>
+                  <Button type="button" variant="outline" disabled={!avatarUrl || !!busy || !!saveBusy} onClick={() => setAvatarUrl(null)}>
                     <ImagePlus data-icon="inline-start" />
                     {t("accountAvatarClear")}
                   </Button>
@@ -152,7 +160,7 @@ export function AccountPage({
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <SummaryPill icon={<UserRound className="size-4" />} label={t("accountEmail")} value={profile?.email ?? me?.principal?.email ?? t("accountEmailNotLoaded")} />
+                <SummaryPill icon={<UserRound className="size-4" />} label={t("accountEmail")} value={profile ? profile.email || t("authNotBound") : me?.principal?.email || t("accountEmailNotLoaded")} />
                 <SummaryPill icon={<ShieldCheck className="size-4" />} label={t("accountRole")} value={roleSummary} />
                 <SummaryPill icon={<CheckCircle2 className="size-4" />} label={t("accountStatus")} value={profile?.status ?? "unknown"} tone={profile?.status === "active" ? "success" : profile?.status === "disabled" ? "error" : "warning"} />
                 <SummaryPill icon={<KeyRound className="size-4" />} label={t("accountCurrentIdentity")} value={me?.principal?.kind ?? "unknown"} />
@@ -168,6 +176,7 @@ export function AccountPage({
                   <FieldLabel htmlFor="account-display-name">{t("accountDisplayNameLabel")}</FieldLabel>
                   <Input
                     id="account-display-name"
+                    disabled={!!busy || !!saveBusy}
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                     placeholder={t("accountDisplayNamePlaceholder")}
@@ -184,7 +193,7 @@ export function AccountPage({
             <CardFooter className="justify-end">
               <Button
                 onClick={() => onSaveProfile({ displayName: displayName.trim(), avatarUrl })}
-                disabled={!!saveBusy || !!avatarFile || !profileDirty}
+                disabled={!!busy || !!saveBusy || !!avatarFile || !profileDirty}
               >
                 {saveBusy ? <RefreshCw data-icon="inline-start" className="animate-spin" /> : null}
                 {t("accountProfileSave")}
@@ -279,7 +288,7 @@ export function AccountPage({
                   <TableBody>
                     {apiKeysBusy ? (
                       <TableLoadingRows colSpan={5} />
-                    ) : !apiKeys || apiKeys.length === 0 ? (
+                    ) : error && !apiKeys ? null : !apiKeys || apiKeys.length === 0 ? (
                       <TableEmptyRow colSpan={5} icon={<KeyRound />} title={t("accountApiKeyEmptyTitle")} description={t("accountApiKeyEmptyDescription")} />
                     ) : (
                       apiKeys.map((apiKey) => (

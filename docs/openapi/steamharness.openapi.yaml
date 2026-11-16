@@ -893,12 +893,12 @@ paths:
     post:
       tags:
         - Auth & Accounts
-      summary: "退出当前浏览器会话"
+      summary: "退出当前浏览器会话或应用登录"
       operationId: logoutAuthSession
       security: []
       responses:
         "200":
-          description: "无论当前是否有会话，都尝试清理 Cookie。"
+          description: "清理 Cookie 并撤销当前网页会话；使用 desktop 或 cli 专用凭据时撤销该凭据，手工创建的 API Key 保持有效。"
           content:
             application/json:
               schema:

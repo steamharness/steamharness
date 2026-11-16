@@ -80,6 +80,17 @@ try {
         await send({ type: 'account', state: { ...signedOut, status: 'expired' } });
         assert.equal(await page.locator('#login-error').textContent(), language === 'en' ? 'Sign-in expired. Sign in again.' : '登录已失效，请重新登录。');
         await fits();
+        await server.fill('http://localhost:7126');
+        await page.locator('#login-submit').click();
+        assert.equal(await page.locator('#login-cancel').isVisible(), true, 'Cancellation is available before the host responds');
+        assert.equal(await server.isDisabled(), true);
+        await send({ type: 'account', busy: true, loginUrl: 'http://127.0.0.1:7126/login/device?user_code=ABCD-1234', state: { ...signedOut, serverUrl: 'https://previous.example.test', status: 'checking' } });
+        assert.equal(await server.inputValue(), 'http://localhost:7126', 'A previous host identity must not replace the chosen server');
+        assert.equal(await page.locator('#login-link').isVisible(), true);
+        await send({ type: 'account', busy: true, loginUrl: 'http://user:secret@127.0.0.1:7126/login/device', state: signedOut });
+        assert.equal(await page.locator('#login-link').isVisible(), false, 'Fallback links must not contain credentials');
+        await page.locator('#login-cancel').click();
+        await send({ type: 'login-result', state: signedOut });
         await send({ type: 'account', state: { ...signedOut, status: 'authenticated', user: { userId: 'user', email: null, displayName: 'User' } } });
         assert.equal(await page.locator('#login-form').isVisible(), false);
         assert.equal(await page.locator('#login-success').isVisible(), true);

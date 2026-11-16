@@ -6,7 +6,8 @@ export function readLoginReturnTo(search: string): string | undefined {
   try {
     const url=new URL(value,"https://login-return.invalid");
     if (url.origin !== "https://login-return.invalid" || url.hash || url.pathname !== "/login/device") return;
-    const code=url.searchParams.get("user_code");
+    if (!url.search) return "/login/device";
+    const code=url.searchParams.get("user_code")?.trim().toUpperCase();
     if (!code || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return;
     return `/login/device?${new URLSearchParams({user_code:code})}`;
   } catch {return;}

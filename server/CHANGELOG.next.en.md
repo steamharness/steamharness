@@ -1,5 +1,7 @@
 # Unreleased
 
+- Signing out revokes Studio and CLI credentials while preserving manually created API keys.
+
 - Added opt-in registration, verified email sign-in, binding, password recovery and account security APIs. Identity changes revoke existing application sign-ins.
 
 - Fixed the project workbench failing on retired entry fields. Stored reads ignore removed database and knowledge-base declarations and exclude other invalid records before counting and pagination, preserving projects, versions and stored data.

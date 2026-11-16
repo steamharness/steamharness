@@ -2,6 +2,7 @@ import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
 import { iconHtml } from './ui';
 import { updateUserAvatar } from './avatar';
+import { normalizeAuthServer } from '@steamharness/server-auth';
 import './account.css';
 
 type AccountAction = { type: 'login'; serverUrl: string } | { type: 'verify' | 'logout' | 'cancel-login' };
@@ -11,7 +12,9 @@ export class AccountPanel {
   private readonly dialog = document.createElement('dialog');
   private state?: AccountState;
   private pending = false;
+  private actionEpoch = 0;
   private browserWindow?: Window | null;
+  private loginServerUrl?: string;
   private returnFocus?: HTMLElement;
 
   constructor(menu: HTMLElement, private readonly request: (action: AccountAction) => Promise<void>, private readonly openHostAccount?: () => void) {
@@ -50,6 +53,7 @@ export class AccountPanel {
     this.element<HTMLFormElement>('#login-form').addEventListener('submit', event => {
       event.preventDefault();
       if (this.pending || !this.element<HTMLFormElement>('#login-form').reportValidity()) { return; }
+      this.loginServerUrl = this.element<HTMLInputElement>('#server-url').value;
       this.browserWindow = window.open('about:blank', '_blank');
       if (this.browserWindow) this.browserWindow.opener = null;
       void this.perform({ type: 'login', serverUrl: this.element<HTMLInputElement>('#server-url').value });
@@ -72,7 +76,7 @@ export class AccountPanel {
     this.state = state;
     this.button.hidden = false;
     this.pending = state.status === 'checking';
-    if (!this.pending && !state.signIn) { this.browserWindow?.close(); this.browserWindow = undefined; }
+    if (!this.pending && !state.signIn) { this.browserWindow?.close(); this.browserWindow = undefined; this.loginServerUrl = undefined; }
     this.render();
   }
 
@@ -84,17 +88,19 @@ export class AccountPanel {
     this.button.querySelector('.web-account-name')!.textContent = name;
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
     for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) { updateUserAvatar(avatar, state); }
-    this.element<HTMLFormElement>('#login-form').hidden = signedIn && !state.signIn;
+    const signingIn = !!state.signIn || !!this.loginServerUrl;
+    this.element<HTMLFormElement>('#login-form').hidden = signedIn && !signingIn;
     this.element<HTMLElement>('#account-profile').hidden = !signedIn;
     const server = this.element<HTMLInputElement>('#server-url');
-    if (!server.value || signedIn && document.activeElement !== server) { server.value = state.serverUrl; }
+    if (!server.value || signedIn && !signingIn && document.activeElement !== server) { server.value = state.serverUrl; }
     this.dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, #login-submit, #browser-login, #verify-login, #account-logout').forEach(element => { element.disabled = this.pending; });
     this.element('#login-submit > span:last-child').textContent = this.pending ? t("Waiting for browser sign-in...") : t("Browser sign-in");
-    this.element<HTMLButtonElement>('#login-cancel').hidden = !state.signIn;
+    this.element<HTMLButtonElement>('#login-cancel').hidden = !signingIn;
     const link = this.element<HTMLAnchorElement>('#browser-login-link'); link.hidden = true;
     if (state.signIn) { try {
       const url = new URL(state.signIn.url);
-      if (url.origin === new URL(server.value).origin && url.pathname === new URL(server.value).pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) {
+      const target = new URL(normalizeAuthServer(this.loginServerUrl || server.value));
+      if (url.origin === target.origin && url.pathname === target.pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) {
         link.href = url.href; link.hidden = false;
         if (this.browserWindow && !this.browserWindow.closed) { this.browserWindow.location.replace(url.href); this.browserWindow = undefined; }
       }
@@ -117,9 +123,10 @@ export class AccountPanel {
   }
 
   private async perform(action: AccountAction): Promise<void> {
-    if (action.type === 'cancel-login') { this.browserWindow?.close(); this.browserWindow = undefined; }
+    const epoch = ++this.actionEpoch;
+    if (action.type === 'cancel-login') { this.browserWindow?.close(); this.browserWindow = undefined; this.loginServerUrl = undefined; }
     this.pending = true; this.render(); this.showError();
-    try { await this.request(action); if (action.type === 'login' || action.type === 'cancel-login') { this.pending = this.state?.status === 'checking'; this.render(); } }
-    catch (error) { this.browserWindow?.close(); this.browserWindow = undefined; this.pending = false; this.render(); this.showError((error as Error).message); }
+    try { await this.request(action); if (epoch !== this.actionEpoch) return; if (action.type === 'login' || action.type === 'cancel-login') { this.pending = this.state?.status === 'checking'; this.render(); } }
+    catch (error) { if (epoch !== this.actionEpoch) return; this.browserWindow?.close(); this.browserWindow = undefined; this.loginServerUrl = undefined; this.pending = false; this.render(); this.showError((error as Error).message); }
   }
 }

@@ -2,6 +2,7 @@ import { t } from './localization';
 import type { AccountState } from '../src/workflow-auth-client';
 import { installContextMenu } from './context-menu';
 import './login.css';
+import { normalizeAuthServer } from '../../../../shared/server-auth/index';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void; setState(state: Record<string, never>): void };
 const host = acquireVsCodeApi(); host.setState({});
 const app = document.querySelector<HTMLElement>('#login-app')!;
@@ -16,14 +17,14 @@ const submit = document.querySelector<HTMLButtonElement>('#login-submit')!;
 const cancel = document.querySelector<HTMLButtonElement>('#login-cancel')!;
 let pending = false;
 let hostServer: string | undefined;
-form.addEventListener('submit', event => { event.preventDefault(); if (!pending && form.reportValidity()) { pending = true; submit.disabled = true; host.postMessage({ type: 'login', serverUrl: server.value }); } });
+form.addEventListener('submit', event => { event.preventDefault(); if (!pending && form.reportValidity()) { pending = true; server.disabled = submit.disabled = true; cancel.hidden = false; host.postMessage({ type: 'login', serverUrl: server.value }); } });
 cancel.addEventListener('click', () => host.postMessage({ type: 'cancel-login' }));
 document.querySelector('#open-account')!.addEventListener('click', () => host.postMessage({ type: 'open-account' }));
 window.addEventListener('message', event => {
   if (!['account','login-result'].includes(event.data.type)) return;
   const state = event.data.state as AccountState;
   const signedIn = state.status === 'authenticated';
-  if (hostServer !== state.serverUrl) { server.value = state.serverUrl; hostServer = state.serverUrl; }
+  if (hostServer === undefined || !pending && event.data.busy !== true && hostServer !== state.serverUrl) { server.value = state.serverUrl; hostServer = state.serverUrl; }
   pending = event.data.busy === true;
   server.disabled = submit.disabled = pending;
   cancel.hidden = !pending;
@@ -36,7 +37,10 @@ window.addEventListener('message', event => {
   const link = document.querySelector<HTMLAnchorElement>('#login-link')!;
   link.hidden = true;
   if (typeof event.data.loginUrl === 'string') {
-    try { const url = new URL(event.data.loginUrl); if (url.origin === new URL(server.value).origin && url.pathname === new URL(server.value).pathname.replace(/\/$/, '') + '/login/device') { link.href = url.href; link.hidden = false; } } catch {}
+    try {
+      const url = new URL(event.data.loginUrl), target = new URL(normalizeAuthServer(server.value));
+      if (url.origin === target.origin && url.pathname === target.pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) { link.href = url.href; link.hidden = false; }
+    } catch {}
   }
 });
 installContextMenu(host, () => []);

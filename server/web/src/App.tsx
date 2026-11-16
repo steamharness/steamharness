@@ -25,7 +25,7 @@ import { GroupsPage } from "./pages/GroupsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
 import { isApiSuccess, type AdminUserSummary, type Summary, type UserInvitationResult } from "./types";
-import { parseRoute, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
+import { parseRoute, readLoginReturnTo, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
 import { normalizeDateTimeFilter } from "./utils/date-filters";
 import { consumeUnseenServerRelease } from "./lib/server-release-notes";
 import { getProjectDisplayName } from "./utils/project-presentation";
@@ -59,8 +59,6 @@ function AppContent() {
   const theme: ThemeMode = themePreference === "light" || themePreference === "dark" ? themePreference : "system";
   const [session, setSession] = useState<SessionState>({ status: "checking" });
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
-  const [deviceUserCode, setDeviceUserCode] = useState(() => route.page === "device" ? route.userCode ?? "" : "");
-  const [deviceStatusMessage, setDeviceStatusMessage] = useState<string | null>(null);
   const [projectPage,setProjectPage]=useState(1);
   const [projectTotal,setProjectTotal]=useState(0);
   const [projectQuery,setProjectQuery]=useState("");
@@ -90,6 +88,10 @@ function AppContent() {
   const auditCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditRequestRef = useRef(0);
   const validateSessionRequestRef = useRef(0);
+  const [accountErrors, setAccountErrors] = useState<{ profile?: string; apiKeys?: string }>({});
+  const accountRequestRef = useRef(0);
+  const accountEpochRef = useRef(0);
+  const logoutPending = useRef(false);
   const projectsRequestRef = useRef(0);
   const [auditPageIndex, setAuditPageIndex] = useState(0);
   const page = route.page;
@@ -129,18 +131,20 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (route.page === "device") {
-      setDeviceUserCode(route.userCode ?? "");
-    }
-  }, [route]);
-
-  useEffect(() => {
     if (session.status === "anonymous" && !["login", "register", "forgot-password"].includes(route.page)) {
       if (route.page !== "device" && route.page !== "invite" && route.page !== "account-invite" && route.page !== "access-request" && route.page !== "source-share") {
         navigateTo({ page: "login" }, { replace: true });
       }
     }
     if (session.status === "ready" && ["login", "register", "forgot-password"].includes(route.page)) {
+      const returnTo = readLoginReturnTo(window.location.search);
+      if (returnTo) {
+        const url = new URL(returnTo, window.location.origin);
+        if (url.pathname === "/login/device") {
+          navigateTo({ page: "device", userCode: url.searchParams.get("user_code") || undefined }, { replace: true });
+        } else window.location.replace(returnTo);
+        return;
+      }
       if (canViewProjects) {
         navigateTo({ page: "projects" }, { replace: true });
       } else {
@@ -159,11 +163,8 @@ function AppContent() {
         navigateTo({ page: "settings", tab: "profile" }, { replace: true });
       }
     }
-    if (session.status === "ready" && route.page === "device" && !deviceUserCode.trim()) {
-      navigateTo({ page: "settings", tab: "profile" }, { replace: true });
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, route.page, route.page === "admin" ? route.tab : "", canViewProjects, canViewAudit, canViewUsers, isSystemAdmin, deviceUserCode]);
+  }, [session.status, route.page, route.page === "admin" ? route.tab : "", canViewProjects, canViewAudit, canViewUsers, isSystemAdmin]);
 
   useEffect(() => {
     void validateSession();
@@ -272,28 +273,28 @@ function AppContent() {
   }
 
   async function loadAccountView() {
+    const requestId = ++accountRequestRef.current;
+    setAccountErrors({});
     setBusy((state) => ({ ...state, account: t("busyLoadAccount"), apiKeys: state.apiKeys ?? t("busyApiKeys") }));
     const [meResult, apiKeyResult] = await Promise.all([
       apiClient.getMe(),
       apiClient.listApiKeys(),
     ]);
+    if (requestId !== accountRequestRef.current) return;
     setBusy((state) => ({ ...state, account: undefined, apiKeys: undefined }));
-    if (!isApiSuccess(meResult)) {
-      pushToast("error", meResult.errMessage);
-      return;
-    }
-    if (!isApiSuccess(apiKeyResult)) {
-      pushToast("error", apiKeyResult.errMessage);
-      return;
-    }
+    setAccountErrors({
+      profile: isApiSuccess(meResult) ? undefined : meResult.errMessage,
+      apiKeys: isApiSuccess(apiKeyResult) ? undefined : apiKeyResult.errMessage,
+    });
     setAccountView((current) => ({
       ...current,
-      me: meResult.data,
-      apiKeys: apiKeyResult.data.items,
+      me: isApiSuccess(meResult) ? meResult.data : current.me,
+      apiKeys: isApiSuccess(apiKeyResult) ? apiKeyResult.data.items : current.apiKeys,
     }));
   }
 
   async function loadAdminUsers(params?: { search?: string; status?: string; page?: number; pageSize?: number }) {
+    const epoch = accountEpochRef.current;
     const search = params?.search ?? adminUsers.search;
     const status = params?.status ?? adminUsers.status;
     setBusy((state) => ({ ...state, users: t("busyLoadUsers") }));
@@ -302,6 +303,7 @@ function AppContent() {
       search: search || undefined,
       status: status || undefined,
     });
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, users: undefined }));
     if (!isApiSuccess(res)) {
       pushToast("error", res.errMessage);
@@ -498,8 +500,10 @@ function AppContent() {
   }
 
   async function saveAccountProfile(payload: { displayName: string; avatarUrl: string | null }) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, saveProfile: t("busySaveAccountProfile") }));
     const result = await apiClient.updateMe(payload);
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, saveProfile: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -520,12 +524,14 @@ function AppContent() {
   }
 
   async function createAccountApiKey(payload: { name: string; expiresAt?: string }) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, createKeyBusy: t("busyCreateApiKey") }));
     const result = await apiClient.createApiKey({
       name: payload.name,
       expiresAt: payload.expiresAt,
       source: "web-account",
     });
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, createKeyBusy: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -537,8 +543,10 @@ function AppContent() {
   }
 
   async function revokeAccountApiKey(id: string) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, revokeKeyId: id }));
     const result = await apiClient.revokeApiKey(id);
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, revokeKeyId: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -549,8 +557,10 @@ function AppContent() {
   }
 
   async function inviteUser(payload: { email: string; displayName?: string }) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, inviteUser: t("busyInviteUser") }));
     const result = await apiClient.inviteAdminUser(payload);
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, inviteUser: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -565,8 +575,10 @@ function AppContent() {
     user: AdminUserSummary,
     patch: { email?: string; displayName?: string; disabled?: boolean; avatarUrl?: string | null },
   ) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, updateBusyUserId: user.userId }));
     const result = await apiClient.updateAdminUser(user.userId, patch);
+    if (epoch !== accountEpochRef.current) return;
     setBusy((state) => ({ ...state, updateBusyUserId: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -582,8 +594,10 @@ function AppContent() {
   }
 
   async function fetchInviteLink(userId: string) {
+    const epoch = accountEpochRef.current;
     setBusy((state) => ({ ...state, updateBusyUserId: userId }));
     const result = await apiClient.fetchInvitationLink(userId);
+    if (epoch !== accountEpochRef.current) return null;
     setBusy((state) => ({ ...state, updateBusyUserId: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -617,15 +631,35 @@ function AppContent() {
   }
 
   async function completeLogout() {
-    await apiClient.logout();
-    setSession({ status: "anonymous" });
+    if (logoutPending.current) return;
+    logoutPending.current = true;
+    setBusy(state => ({ ...state, global: t("busyLoggingOut") }));
+    const result = await apiClient.logout();
+    logoutPending.current = false;
+    setBusy(state => ({ ...state, global: undefined }));
+    if (!isApiSuccess(result)) { pushToast("error", result.errMessage); return; }
+    clearAccountSession();
+  }
+
+  function clearAccountSession(message?: string, userCode?: string) {
+    ++validateSessionRequestRef.current;
+    ++accountRequestRef.current;
+    ++accountEpochRef.current;
+    ++projectDetailRequestRef.current;
+    ++auditRequestRef.current;
+    setBusy({});
+    setAccountErrors({});
+    setCreatedApiKeyToken(null);
+    setLatestInvitation(null);
+    setAuditView({ page: null, selectedEventId: null });
+    setSession({ status: "anonymous", message });
     projectsRequestRef.current += 1;
     setProjects([]);
     setProjectListError(undefined);
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
     setSelectedId("");
-    navigateTo({ page: "login" }, { replace: true });
+    navigateTo(userCode === undefined ? { page: "login" } : { page: "device", ...(userCode ? { userCode } : {}) }, { replace: true });
     detailProjectIdRef.current = null;
     setDetail(DEFAULT_DETAIL);
   }
@@ -687,9 +721,9 @@ function AppContent() {
 
   if (route.page === "device" && session.status === "ready") {
     return (
-      <DeviceApprovalPage userCode={deviceUserCode}
+      <DeviceApprovalPage userCode={route.userCode ?? ""}
         identity={session.principal.displayName || session.principal.email || session.principal.userId || ""}
-        onSwitchAccount={() => { void apiClient.logout().then(() => validateSession()); }}
+        onSwitchAccount={code => clearAccountSession(undefined, code)}
       />
     );
   }
@@ -960,12 +994,16 @@ function AppContent() {
       onBrandClick={() => navigateTo({ page: "projects" })}
       onLogout={logout}
     >
-      {page === "settings" && settingsTab === "security" ? <AccountSecurityPage onChanged={() => void validateSession()} /> : page === "settings" ? (
+      {page === "settings" && settingsTab === "security" ? <AccountSecurityPage onSignIn={() => void completeLogout()} onChanged={async signInRequired => {
+        if (signInRequired) clearAccountSession(t("authSecuritySignInAgain"));
+        else await loadAccountView();
+      }} /> : page === "settings" ? (
         <AccountPage
           key={session.principal.userId}
           tab={settingsTab}
           me={accountView.me}
           apiKeys={accountView.apiKeys}
+          error={settingsTab === "profile" ? accountErrors.profile : settingsTab === "api-keys" ? accountErrors.apiKeys : undefined}
           busy={busy.account}
           apiKeysBusy={busy.apiKeys}
           saveBusy={busy.saveProfile}

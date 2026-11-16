@@ -1532,3 +1532,25 @@ test("account security resolves the browser session and rejects API key cookies"
     assert.equal(crossSite.status,403);
   } finally { await server.close(); }
 });
+
+
+for (const source of ["desktop", "cli", "web-account", "manual"]) {
+  test(`logout revokes only app-issued API keys (${source})`, async () => {
+    let revoked: string | undefined;
+    const profile = {userId:"app-user",email:null,displayName:"App user",isSystemAdmin:false};
+    configureProjectAuthContext({
+      authService: {
+        async resolvePrincipal() { return {kind:"api_key",tokenSource:"bearer",userId:profile.userId,profile,isSystemAdmin:false,apiKey:{id:"app-key",source}}; },
+        clearAuthCookie(res: any) { res.append("Set-Cookie","steamharness_auth_session=; Path=/; Max-Age=0"); },
+      } as any,
+      accountDb: { async revokeApiKey(id: string) {revoked=id;}, async createAuditEvent() {} } as any,
+    });
+    const server = await listen();
+    try {
+      const response = await fetch(server.url("/api/auth/logout"),{method:"POST",headers:{Authorization:"Bearer app-credential"}});
+      assert.equal(response.status,200);
+      assert.equal(revoked,["desktop","cli"].includes(source)?"app-key":undefined);
+      assert.match(response.headers.get("set-cookie")??"",/Max-Age=0/u);
+    } finally { await server.close(); }
+  });
+}

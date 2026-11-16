@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient } from "../../api";
 import { AccountInvitePage } from "../AccountInvitePage";
@@ -108,4 +108,43 @@ describe("AccountInvitePage", () => {
     expect(await screen.findByText(/该邀请已被接受/u)).toBeInTheDocument();
     expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
   });
+});
+
+
+it.each([400,503,-1])("keeps invitation edits after a recoverable acceptance error (%s)", async errCode => {
+  lookupAccountInvitation.mockResolvedValue({errCode:0,errMessage:"",data:{invitation:{email:"new@example.test",displayName:"New user",expiresAt:"2099-01-01"}}});
+  acceptAccountInvitation.mockResolvedValueOnce({errCode,errMessage:"Please retry"}).mockResolvedValue({errCode:0,errMessage:"",data:{authenticated:true}});
+  render(<AccountInvitePage token="token" onContinue={vi.fn()} />);
+  fireEvent.change(await screen.findByLabelText("显示名称"),{target:{value:"Edited name"}});
+  fireEvent.change(screen.getByLabelText("密码"),{target:{value:"test-password"}});
+  fireEvent.change(screen.getByLabelText("确认密码"),{target:{value:"test-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"设置密码并登录"}));
+  expect(await screen.findByText("Please retry")).toBeVisible();
+  expect(screen.getByLabelText("显示名称")).toHaveValue("Edited name");
+  expect(screen.getByLabelText("密码")).toHaveValue("test-password");
+  fireEvent.click(screen.getByRole("button",{name:"设置密码并登录"}));
+  expect(await screen.findByText("账号已激活")).toBeVisible();
+});
+
+it("lets users correct a mismatched confirmation without refreshing", async () => {
+  lookupAccountInvitation.mockResolvedValue({errCode:0,errMessage:"",data:{invitation:{email:"new@example.test",displayName:"New user",expiresAt:"2099-01-01"}}});
+  acceptAccountInvitation.mockResolvedValue({errCode:0,errMessage:"",data:{authenticated:true}});
+  render(<AccountInvitePage token="token" onContinue={vi.fn()} />);
+  fireEvent.change(await screen.findByLabelText("密码"),{target:{value:"test-password"}});
+  fireEvent.change(screen.getByLabelText("确认密码"),{target:{value:"other-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"设置密码并登录"}));
+  expect(await screen.findByText("两次输入的密码不一致。")).toBeVisible();
+  fireEvent.change(screen.getByLabelText("确认密码"),{target:{value:"test-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"设置密码并登录"}));
+  expect(await screen.findByText("账号已激活")).toBeVisible();
+});
+
+it("ignores a late lookup for a different invitation token", async () => {
+  let finish!: (value: any) => void;
+  lookupAccountInvitation.mockReturnValueOnce(new Promise(done => { finish = done; })).mockResolvedValue({errCode:0,errMessage:"",data:{invitation:{email:"second@example.test",displayName:"Second user",expiresAt:"2099-01-01"}}});
+  const view = render(<AccountInvitePage token="first" onContinue={vi.fn()} />);
+  view.rerender(<AccountInvitePage token="second" onContinue={vi.fn()} />);
+  expect(await screen.findByDisplayValue("Second user")).toBeVisible();
+  await act(async () => finish({errCode:0,errMessage:"",data:{invitation:{email:"first@example.test",displayName:"First user",expiresAt:"2099-01-01"}}}));
+  expect(screen.queryByDisplayValue("First user")).toBeNull();
 });

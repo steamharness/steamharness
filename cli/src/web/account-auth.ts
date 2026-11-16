@@ -65,3 +65,15 @@ function loginError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   return message === 'expired_token' ? t('Sign-in request expired. Start again.') : message === 'access_denied' ? t('Sign-in request was denied.') : message || t('Sign-in failed.');
 }
+
+
+export async function signOutCliAccount(): Promise<void> {
+  const auth = await readCliAuthConfig();
+  await clearCliAuthConfig(process.env, auth.apiKey);
+  if (auth.apiKey) {
+    // Clearing the local identity must work even when its Server is unavailable.
+    void fetch(`${auth.serverUrl}/api/auth/logout`, {
+      method: 'POST', headers: { Authorization: `Bearer ${auth.apiKey}` }, signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined);
+  }
+}

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { CheckCircle2, KeyRound, Loader2 } from "lucide-react";
 import { formatDateTime, useTranslation } from "@steamharness/i18n/react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,9 +27,15 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const generation = useRef(0);
+  const requestPending = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    ++generation.current;
+    setState({ phase: "loading" }); setFormError(""); setSubmitting(requestPending.current);
+    setPassword(""); setPasswordConfirmation("");
     void apiClient.lookupAccountInvitation(token).then((response) => {
       if (cancelled) return;
       if (!isApiSuccess(response)) {
@@ -53,23 +59,33 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
     });
     return () => {
       cancelled = true;
+      ++generation.current;
     };
   }, [t, token]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (state.phase !== "ready" || submitting) return;
+    if (state.phase !== "ready" || requestPending.current || !event.currentTarget.reportValidity()) return;
     if (password !== passwordConfirmation) {
-      setState({ phase: "error", message: t("accountInvitePasswordMismatch"), retryable: true });
+      setFormError(t("accountInvitePasswordMismatch"));
       return;
     }
+    requestPending.current = true;
+    const request = generation.current;
     setSubmitting(true);
+    setFormError("");
     const response = await apiClient.acceptAccountInvitation(token, {
       password,
       displayName: displayName.trim() || undefined,
     });
+    requestPending.current = false;
     setSubmitting(false);
+    if (request !== generation.current) return;
     if (!isApiSuccess(response)) {
+      if (response.errCode === 400 || response.errCode >= 500 || response.errCode < 0) {
+        setFormError(response.errMessage || t("inviteAcceptFailed"));
+        return;
+      }
       setState({
         phase: "error",
         message: response.errMessage || t("inviteAcceptFailed"),
@@ -77,6 +93,7 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
       });
       return;
     }
+    setPassword(""); setPasswordConfirmation("");
     setState({ phase: "success" });
   }
 
@@ -139,6 +156,7 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
             <AlertTitle>{state.invitation.email}</AlertTitle>
             <AlertDescription>{t("accountInviteExpiresAt", { expiresAt: formatDateTime(state.invitation.expiresAt) })}</AlertDescription>
           </Alert>
+          {formError ? <Alert variant="destructive"><AlertDescription>{formError}</AlertDescription></Alert> : null}
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="account-invite-display-name">{t("usersEditDisplayNameLabel")}</FieldLabel>
@@ -147,6 +165,7 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
                 autoComplete="name"
+                disabled={submitting}
               />
             </Field>
             <Field>
@@ -157,8 +176,10 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 minLength={8}
+                maxLength={4096}
                 required
                 autoComplete="new-password"
+                disabled={submitting}
               />
               <FieldDescription>{t("accountInvitePasswordDescription")}</FieldDescription>
             </Field>
@@ -170,8 +191,10 @@ export function AccountInvitePage({ token, onContinue }: AccountInvitePageProps)
                 value={passwordConfirmation}
                 onChange={(event) => setPasswordConfirmation(event.target.value)}
                 minLength={8}
+                maxLength={4096}
                 required
                 autoComplete="new-password"
+                disabled={submitting}
               />
             </Field>
           </FieldGroup>
