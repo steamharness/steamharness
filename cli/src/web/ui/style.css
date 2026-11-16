@@ -596,7 +596,9 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .activity-record-fields dd { margin:0; overflow-wrap:anywhere; }
 .activity-record-summary { font-size:13px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
 .activity-record-image { display:block; width:auto; max-width:100%; max-height:540px; object-fit:contain; margin:0 auto; cursor:zoom-in; }
-.activity-record-preview { max-height:110px; margin:10px 0 6px; overflow:hidden; white-space:pre-wrap; font-size:13px; line-height:1.5; }
+.activity-record-preview { margin:10px 0 6px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; }
+/* The payload already caps the preview at five logical lines. A pixel cap here cut
+   wrapped code mid-line, so the preview is allowed to grow instead. */
 .activity-record-text { border-top:1px solid var(--border); padding-top:8px; }
 .activity-record-text summary { cursor:pointer; font-size:12px; min-height:32px; }
 .activity-record-text > pre { max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; }
