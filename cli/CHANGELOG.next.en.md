@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban bridge failures show the operation, error code, and diagnostic ID. Embedded conversation failures can be found by that ID in diagnostics, and the CLI host log records the underlying exception under the same ID; cross-window ownership, expired views, and Workflow message receipt failures show specific guidance, while business rejections retain their user-facing reason.
+
 - Fixed Bot release memory defaults to use the selected release entry and configuration file, fill omitted defaults, and preserve v2 configuration profiles.
 
 - Fix New conversation reusing a blank Bot conversation already open in another window. Each click now creates an independent conversation that can send messages.

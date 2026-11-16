@@ -112,19 +112,23 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
   const action = async (action: string, extra: object = {}) => { const current = (await state()).kanban; return post({ type: 'project-configuration', call: {action, id: current.activeConfigurationId, revision: current.revision, ...extra} }); };
-  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input: operation.startsWith('studio.')||operation.startsWith('runtime.')?input:{[operation.startsWith('knowledge.')||operation.startsWith('files.')?'knowledgeBase':'database']:'data',...input} } }).then(response => response.json()).then(value => value.messages[0]); };
+  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input: /^(studio|runtime|conversations|entries)\./.test(operation)?input:{[operation.startsWith('knowledge.')||operation.startsWith('files.')?'knowledgeBase':'database']:'data',...input} } }).then(response => response.json()).then(value => value.messages[0]); };
   return { app, root, directory, dataDir, pkg, post, state, action, bridge, runtime };
 }
 
 describe('Kanban CLI Web workspace', () => {
   it('exposes safe runtime failures, clears stale evidence, and queries the exact live page without writing', async () => {
     const { app, post, bridge, state, runtime } = await fixture();
+    const hostLog = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     vi.mocked(runtime.kanbanBridge!).mockRejectedValue(new Error('private-server-token', { cause: new DOMException('private-timeout', 'TimeoutError') }));
-    await bridge('files.readFile', { fileId: 'wf_ab12' });
+    const response = await bridge('files.readFile', { fileId: 'wf_ab12' });
+    expect(response).toMatchObject({ ok: false, error: { code: 'KANBAN_BRIDGE_ERROR', category: 'timeout', diagnosticId: expect.any(String) } });
+    expect(JSON.stringify(response)).not.toContain('private-');
+    expect(hostLog.mock.calls.map(([chunk]) => String(chunk)).find(line => line.includes(response.error.diagnosticId))).toContain('TimeoutError');
     const inspect = async (call?: object) => (await post({ type: 'kanban-diagnostics', ...(call ? { call } : {}) }).then(response => response.json())).messages[0].value;
     const failed = await inspect();
     expect(failed).toMatchObject({ available: true, projectId: id, entryId: 'main', instances: [], requests: [
-      { operation: 'files.readFile', fileId: 'wf_ab12', ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'database' }], error: { category: 'timeout' } },
+      { operation: 'files.readFile', fileId: 'wf_ab12', diagnosticId: response.error.diagnosticId, ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'database' }], error: { category: 'timeout' } },
     ] });
     expect(JSON.stringify(failed)).not.toContain('private-');
     const hub = app.kanbanController!.methods, disconnect = hub.connect('diagnostic-client');
@@ -144,6 +148,19 @@ describe('Kanban CLI Web workspace', () => {
     expect(await inspect()).toMatchObject({ instances: [], requests: [] });
     expect((await post({ type: 'kanban-diagnostics', call })).status).toBe(400);
     disconnect();
+  });
+  it('records embedded conversation failures under the displayed diagnostic id', async () => {
+    const { bridge, post } = await fixture();
+    const invalid = await bridge('conversations.openView', { entryId: 'bot', conversationId: 'new-chat', viewId: 'view', forbidden: 'private' });
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'KANBAN_BRIDGE_INVALID_REQUEST' } });
+    expect(invalid.error).not.toHaveProperty('diagnosticId');
+    const response = await bridge('conversations.openView', { entryId: 'bot', conversationId: 'new-chat', viewId: 'view' });
+    expect(response).toMatchObject({ ok: false, error: { code: 'ENTRY_RUNTIME_UNAVAILABLE', diagnosticId: expect.any(String) } });
+    const diagnostics = await post({ type: 'kanban-diagnostics' }).then(value => value.json());
+    expect(diagnostics.messages[0].value.requests).toContainEqual(expect.objectContaining({
+      operation: 'conversations.openView', diagnosticId: response.error.diagnosticId, ok: false,
+      error: expect.objectContaining({ code: 'ENTRY_RUNTIME_UNAVAILABLE' }),
+    }));
   });
   it('routes local Studio analysis through its read-only host capability without Server login', async () => {
     const { bridge, runtime } = await fixture();
@@ -305,9 +322,9 @@ describe('Kanban CLI Web workspace', () => {
     const { app, bridge } = await fixture({ real: true });
     expect(app.project.kanban).toEqual({ artifactDir: '.', entry: 'index.html' });
     expect((await bridge('kv.setValue', { key: 'board', value: { tasks: [1, 2] } })).ok).toBe(false);
-    expect((await bridge('database.resolve', { database: 'data', schemaHash: 'a'.repeat(64) })).ok).toBe(false);
+    expect(await bridge('database.resolve', { database: 'data', schemaHash: 'a'.repeat(64) })).toMatchObject({ ok: false, error: { code: 'DATABASE_ALIAS_UNDECLARED' } });
     const document = await bridge('knowledge.createDocument', { title: 'Notes', markdown: 'First' });
-    expect(document.ok).toBe(false);
+    expect(document).toMatchObject({ ok: false, error: { code: 'KNOWLEDGE_UNBOUND' } });
   }, 20_000);
   it('reads a configured basemap larger than 2 MiB through the project bridge when attachments return 404', async () => {
     const { app, directory, post, action, bridge, runtime } = await fixture({ server: true, noParams: true });

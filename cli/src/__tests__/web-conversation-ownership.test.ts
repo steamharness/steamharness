@@ -13,7 +13,7 @@ it('admits one process and one page per conversation while allowing independent 
   await one.assertWritable('same', 'page-a');
   expect(one.select('page-a', 'same').readOnly).toBe(false);
   expect(one.select('page-b', 'same').readOnly).toBe(true);
-  await expect(two.assertWritable('same', 'page-c')).rejects.toThrow('another window');
+  await expect(two.assertWritable('same', 'page-c')).rejects.toMatchObject({ code: 'CONVERSATION_OWNED_ELSEWHERE', message: expect.stringContaining('another window') });
   await two.assertWritable('different', 'page-c');
   expect(two.select('page-c', 'different').readOnly).toBe(false);
   await one.close(); await two.assertWritable('same', 'page-c');

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static Kanban preview errors show the operation and error code, with specific guidance for undeclared database or knowledge base aliases and missing sign-in.
+
 - Validate v2 encoded release structures statically. Compact JSON and renew the integrity inventory after publishing configuration and attachments, preserving encoded internals and readable project and entry summaries in downloads.
 
 - Fixed release uploads failing integrity checks after Server applies project metadata, while continuing to reject tampered archives.

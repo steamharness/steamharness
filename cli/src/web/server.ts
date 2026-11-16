@@ -416,7 +416,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
-    connection: () => connection, log: message => process.stderr.write(`${message}\n`),
+    connection: () => connection, log: message => process.stderr.write(`${redactProjectData(message, [...sensitiveTokens], false)}\n`),
     serverIssue: issue => issue,
     serverState: () => projectServer!.state, projectChanged: () => {
       projectServer!.state.blocking = false;
@@ -1139,7 +1139,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const lifetime = new AbortController();
       let closed = false;
       // Background profile checks advance authEpoch even when identity is unchanged.
-      const check = () => { if (closed || epoch !== authRevision || configuration !== parameterRevision) throw new Error('The conversation view expired. Reopen it.'); };
+      const check = () => { if (closed || epoch !== authRevision || configuration !== parameterRevision) throw Object.assign(new Error('The conversation view expired. Reopen it.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); };
       await refreshHistory();
       check();
       if (!controller.sessions.some(session => session.id === id)) {
@@ -1187,12 +1187,15 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
                 input: { entrypointId: adapter.entrypointId, args: ['--payload', JSON.stringify({ ...adapter.payload,
                   conversationId: id, text: message.text, params: message.params, requestId: message.requestId })] } }) as { data?: { errCode?: number; errMessage?: string; data?: { id: string; conversationId: string }[] } };
               check();
-              if (!result?.data || result.data.errCode !== 0) throw new Error(result?.data?.errMessage || 'The Workflow did not acknowledge the submission.');
+              if (!result?.data || !Number.isSafeInteger(result.data.errCode)) throw Object.assign(new Error('The Workflow did not acknowledge the submission.'), { code: 'KANBAN_SUBMISSION_INVALID_RECEIPT' });
+              if (result.data.errCode !== 0) throw Object.assign(new Error('The Workflow rejected the message.'), {
+                code: 'KANBAN_SUBMISSION_REJECTED', publicMessage: result.data.errMessage,
+              });
               const receipts = Array.isArray(result.data.data) ? result.data.data : [];
-              if (receipts.some(receipt => typeof receipt?.id !== 'string' || !receipt.id || typeof receipt.conversationId !== 'string' || !receipt.conversationId)) throw new Error('The Workflow returned an invalid durable receipt.');
+              if (receipts.some(receipt => typeof receipt?.id !== 'string' || !receipt.id || typeof receipt.conversationId !== 'string' || !receipt.conversationId)) throw Object.assign(new Error('The Workflow returned an invalid durable receipt.'), { code: 'KANBAN_SUBMISSION_INVALID_RECEIPT' });
               const own = receipts?.find(receipt => receipt.conversationId === id);
               const receiptId = own?.id ?? receipts?.[0]?.id;
-              if (typeof receiptId !== 'string' || !receiptId) throw new Error('The Workflow did not return a durable receipt.');
+              if (typeof receiptId !== 'string' || !receiptId) throw Object.assign(new Error('The Workflow did not return a durable receipt.'), { code: 'KANBAN_SUBMISSION_INVALID_RECEIPT' });
               return [snapshot(), { type: 'sent', projectUri: project.uri, sessionId: id, requestId: message.requestId, receiptId,
                 external: !own || target.ui?.presentation === 'composer', submissionResult: receipts }];
             }

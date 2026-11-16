@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KanbanDiagnostics } from '../web/kanban-diagnostics';
+import { KanbanDiagnostics, failureCategory, failureLogReason } from '../web/kanban-diagnostics';
 
 describe('Kanban runtime diagnostic evidence', () => {
   it('reports stalled reads immediately and discards their late completion after a preview change', () => {
@@ -39,5 +39,16 @@ describe('Kanban runtime diagnostic evidence', () => {
       expect(diagnostics.snapshot().at(-1)?.error?.category).toBe('timeout');
     }
     expect(JSON.stringify(diagnostics.snapshot())).not.toMatch(/private file|operation was aborted/);
+  });
+  it('classifies common host failures without copying their messages', () => {
+    expect(failureCategory(Object.assign(new Error('/private/connection'), { code: 'ECONNREFUSED' }))).toBe('connection');
+    expect(failureCategory(Object.assign(new Error('/private/permission'), { code: 'EACCES' }))).toBe('permission');
+    expect(failureCategory(Object.assign(new Error('/private/missing'), { code: 'ENOENT' }))).toBe('missing');
+  });
+  it('keeps diagnostic cause types and codes while redacting credential-like messages', () => {
+    const failure = new Error('Bearer private-token', { cause: { name: 'DatabaseResourceError', code: 'PRIVATE_INTERNAL_ERROR', message: 'postgres://private/secret' } });
+    expect(failureLogReason(failure)).toBe('Error: [redacted] <- DatabaseResourceError (PRIVATE_INTERNAL_ERROR)');
+    expect(failureLogReason(new Error('Database alias is missing', { cause: new DOMException('private detail', 'TimeoutError') })))
+      .toBe('Error: Database alias is missing <- TimeoutError');
   });
 });

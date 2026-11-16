@@ -268,6 +268,29 @@ it('returns all authorized Workflow receipts to an embedded composer without wai
   await bridge('conversations.closeView', { viewId });
 });
 
+it('shows a Workflow business rejection and links embedded send failures to Kanban diagnostics', async () => {
+  const f = await fixture(), board = await f.state('board');
+  const bridge = (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,
+    call: { requestId: randomUUID(), operation, input } });
+  const viewId = 'rejected-composer';
+  expect((await bridge('conversations.openView', { viewId, entryId: 'agent', conversationId: 'composer-session',
+    submit: { entryId: 'workflow', entrypointId: 'operation', payload: { threadId: 'topic' } } })).ok).toBe(true);
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'success', result: { data: { output: { data: {
+    errCode: 409, errMessage: '请先恢复对话，再继续运行。',
+  } } } } } as Report);
+  const rejected = await bridge('conversations.viewMessage', { viewId, message: { type: 'send', text: 'Continue', params: {}, requestId: 'rejected' } });
+  expect(rejected).toMatchObject({ ok: false, error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: '请先恢复对话，再继续运行。', diagnosticId: expect.any(String) } });
+  const diagnostics = await f.call('board', { type: 'kanban-diagnostics' });
+  expect(diagnostics.value.requests).toContainEqual(expect.objectContaining({
+    operation: 'conversations.viewMessage', diagnosticId: rejected.error.diagnosticId, ok: false,
+    error: expect.objectContaining({ code: 'KANBAN_SUBMISSION_REJECTED' }),
+  }));
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'success', result: { data: { output: { data: { errCode: 0, errMessage: '', data: [] } } } } } as Report);
+  const invalid = await bridge('conversations.viewMessage', { viewId, message: { type: 'send', text: 'Continue', params: {}, requestId: 'invalid' } });
+  expect(invalid).toMatchObject({ ok: false, error: { code: 'KANBAN_SUBMISSION_INVALID_RECEIPT' } });
+  await bridge('conversations.closeView', { viewId });
+});
+
 it('lets same-page views share a session writer and retains it until the final view closes', async () => {
   const f = await fixture(), board = await f.state('board');
   const bridge = (operation: string, input: object) => f.call('board', { type: 'kanban-bridge', nonce: board.kanban.preview.nonce,

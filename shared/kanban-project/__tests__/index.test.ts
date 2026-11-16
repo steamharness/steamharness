@@ -313,6 +313,28 @@ describe("kanban project contract", () => {
     });
   });
 
+  it("passes only an explicit short Workflow rejection detail", () => {
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "请先恢复会话。",
+    }))).toEqual({
+      code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message.", detail: "请先恢复会话。",
+    });
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "Bearer private-token\n/private/path",
+    }))).toEqual({ code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message." });
+    expect(createKanbanBridgeError(Object.assign(new Error("private internal failure"), {
+      code: "KANBAN_SUBMISSION_REJECTED", publicMessage: "x".repeat(501),
+    }))).toEqual({ code: "KANBAN_SUBMISSION_REJECTED", message: "The Workflow rejected the message." });
+  });
+
+  it("names resource setup failures without exposing host exception text", () => {
+    for (const code of ["DATABASE_ALIAS_UNDECLARED", "DATABASE_SIGN_IN_REQUIRED", "KNOWLEDGE_UNBOUND", "KNOWLEDGE_ACCESS_DENIED", "KNOWLEDGE_NOT_FOUND", "KNOWLEDGE_CONFLICT", "KNOWLEDGE_INVALID_REQUEST", "KNOWLEDGE_UNAVAILABLE"]) {
+      const result = createKanbanBridgeError(Object.assign(new Error("private host details"), { code }));
+      expect(result.code).toBe(code);
+      expect(result.message).not.toContain("private");
+    }
+  });
+
   it("preserves allowlisted failures in Workflow causes without exposing raw reports", () => {
     const cause = { name: "DatabaseResourceError", code: "DATABASE_SCHEMA_MISMATCH", message: "postgres://private/secret" };
     expect(createKanbanBridgeError(new Error("Workflow failed at /private", { cause: { cause } }))).toEqual({
@@ -345,9 +367,19 @@ describe("kanban project contract", () => {
     stop(); dispatch(parent, 'nonce', { ...revision, revision: 'v2' }); await Promise.resolve(); expect(listener).toHaveBeenCalledTimes(1);
     for (const code of ['KANBAN_DATA_OPERATION_FAILED', '__proto__']) {
       const failure = data.getDocument('guide');
-      dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false, error: { code, message: '/private/secret' } });
-      await expect(failure).rejects.toMatchObject({ code: code === '__proto__' ? 'KANBAN_BRIDGE_ERROR' : code });
+      dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false, error: { code, message: '/private/secret', detail: '/private/secret', diagnosticId: '/private/secret' } });
+      await expect(failure).rejects.toMatchObject({ code: code === '__proto__' ? 'KANBAN_BRIDGE_ERROR' : code, message: expect.not.stringContaining('/private/secret') });
     }
+    const rejection = data.getDocument('guide');
+    const diagnosticId = '12345678-1234-1234-1234-123456789abc';
+    dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false,
+      error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: '请先恢复会话。', diagnosticId, category: 'other' } });
+    await expect(rejection).rejects.toMatchObject({ code: 'KANBAN_SUBMISSION_REJECTED', operation: 'knowledge.getDocument', diagnosticId,
+      message: expect.stringContaining(`请先恢复会话。 [operation: knowledge.getDocument; code: KANBAN_SUBMISSION_REJECTED; diagnostic: ${diagnosticId}]`) });
+    const malformed = data.getDocument('guide');
+    dispatch(parent, 'nonce', { type: 'steamharness:kanban-bridge-response', requestId: posted.at(-1)!.requestId, ok: false,
+      error: { code: 'KANBAN_SUBMISSION_REJECTED', detail: 'private-token\n/private/path', diagnosticId: '/private/path', category: 'private' } });
+    await expect(malformed).rejects.toMatchObject({ code: 'KANBAN_SUBMISSION_REJECTED', message: expect.not.stringContaining('private') });
     const circular: Record<string, unknown> = {}; circular.self = circular;
     for (const input of [circular, { invalid: () => undefined }]) await expect(data.listDocuments(input)).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_INVALID_REQUEST' });
     parent.postMessage.mockImplementationOnce(() => { throw new DOMException('private clone failure', 'DataCloneError'); });

@@ -1,5 +1,9 @@
 # Unreleased
 
+- Kanban bridge errors include the operation and error code. Known resource setup and sign-in failures show specific guidance, while unknown host exceptions retain a safe generic message.
+
+- Bot memory is maintained silently: the model judges and saves lasting facts automatically, and each turn starts with a keyword lookup. Added `memory_search` with multiple keywords, relevance ranking and bounded excerpts, defaulting to at most 5 entries.
+
 - Fixed default memory tools replacing `agent.extraTools`. Configured tools now coexist with per-run `createTools`, and both reject reserved Core memory tool names.
 
 - Fixed inconsistent Bot memory defaults by following the exported Bot, filling omitted switch defaults, and inspecting the selected release entry.

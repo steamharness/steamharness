@@ -1,11 +1,12 @@
 import { createLocalProjectConfigurationStore, resolveProjectEntrySync, readCachedConfigurationFile } from 'steamharness';
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { watch, type FSWatcher } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanDatabaseRevision } from '@steamharness/kanban-project';
+import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanDatabaseRevision } from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
-import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
+import { KanbanDiagnostics, failureCategory, failureLogReason, type KanbanReadAttempt } from './kanban-diagnostics';
 import { getCurrentLocale } from '@steamharness/i18n';
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
@@ -93,13 +94,25 @@ export class KanbanController {
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
     if (message.type === 'kanban-methods') return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
     if (message.type === 'kanban-bridge') {
-      try { if (message.nonce !== this.preview.nonce) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: await this.bridge(parseKanbanBridgeCall(message.call), message.clientId) }]; }
-      catch (error) { return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: createKanbanBridgeError(error) }]; }
+      const diagnosticId = randomUUID(), started = Date.now();
+      let call: KanbanBridgeCall | undefined;
+      try {
+        if (message.nonce !== this.preview.nonce) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
+        try { call = parseKanbanBridgeCall(message.call); }
+        catch (cause) { throw Object.assign(new Error('Invalid Kanban bridge request.', { cause }), { code: 'KANBAN_BRIDGE_INVALID_REQUEST' }); }
+        return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: await this.bridge(call, message.clientId, diagnosticId) }];
+      }
+      catch (error) {
+        const category = failureCategory(error), safe = createKanbanBridgeError(error);
+        if (call && !this.diagnostics.has(diagnosticId)) this.diagnostics.record(call, this.configuration().id, started, [], error, false, diagnosticId);
+        this.hooks.log(`Kanban bridge ${diagnosticId}: ${call?.operation ?? 'invalid request'} ${safe.code} (${category}): ${failureLogReason(error)}`);
+        return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: { ...safe, category, ...(call ? { diagnosticId } : {}) } }];
+      }
     }
     if (message.type === 'kanban-refresh') { await this.refresh(true); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
     throw new Error(`Unsupported Kanban action: ${message.type}`);
   }
-  async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1], clientId = 'local'): Promise<unknown> {
+  async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1], clientId = 'local', diagnosticId?: string): Promise<unknown> {
     if (this.disposed) throw new Error('Kanban has closed.');
     if (['conversations.closeView', 'conversations.viewMessage'].includes(call.operation) && this.viewOwners.get(String(call.input.viewId))?.clientId !== clientId) throw Object.assign(new Error('The conversation view expired.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
     if (call.operation === 'conversations.closeView') {
@@ -115,7 +128,7 @@ export class KanbanController {
       const id = String(call.input.viewId), nonce = this.preview.nonce, generation = this.generation;
       const documentId = String(call.input.documentId ?? clientId);
       for (const [key, owner] of this.viewOwners) if (owner.clientId === clientId && owner.documentId !== documentId) { this.conversationViews.get(key)?.close(); this.conversationViews.delete(key); this.viewOwners.delete(key); }
-      if (this.viewOwners.has(id) || this.viewOwners.size >= 8) throw new Error('Too many conversation views.');
+      if (this.viewOwners.has(id) || this.viewOwners.size >= 8) throw Object.assign(new Error('Too many conversation views.'), { code: 'KANBAN_CONVERSATION_VIEW_LIMIT' });
       const owner = { clientId, documentId }; this.viewOwners.set(id, owner);
       try {
       const view = await this.runtime.openConversationView({ projectId: this.project.id, entryId: this.project.entryId, clientId },
@@ -145,7 +158,7 @@ export class KanbanController {
     if (call.operation === 'runtime.getLocale') return getCurrentLocale();
     const generation = this.generation;
     const configurationId = this.configuration().id, started = Date.now(), attempts: KanbanReadAttempt[] = [];
-    const diagnostic = this.diagnostics.start(call, configurationId, started, attempts);
+    const diagnostic = this.diagnostics.start(call, configurationId, started, attempts, diagnosticId);
     const abort = new AbortController(); this.requests.add(abort);
     try {
       let result:unknown;
