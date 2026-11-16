@@ -37,6 +37,7 @@ const accountDb = databaseUrl
 await retryTransientPostgres(async () => { await accountDb?.init(); }, { label: "account" });
 const storage = await createStorageFromEnv();
 const authService = ensureProjectAuthService(accountDb);
+await authService?.initialize();
 configureProjectAuthContext({
   accountDb,
   authService,

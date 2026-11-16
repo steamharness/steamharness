@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAvatarFallbackText, resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
+import { generatedAvatarUrl, getAvatarFallbackText, resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 
 describe("avatar-fallback package", () => {
   it("prefers display name initials", () => {
@@ -46,5 +46,26 @@ describe("resolvePrincipalAvatarUrl", () => {
 
   it("trims surrounding whitespace before returning", () => {
     expect(resolvePrincipalAvatarUrl({ avatarUrl: "  https://cdn/x.png  " })).toBe("https://cdn/x.png");
+  });
+});
+
+
+describe("generated account avatars", () => {
+  it("keeps an account's geometric SVG stable without exposing its identity", () => {
+    const userId = "account-<private>&identifier";
+    const avatar = generatedAvatarUrl(userId)!;
+    expect(avatar).toBe(generatedAvatarUrl(userId));
+    expect(avatar).toMatch(/^data:image\/svg\+xml,/);
+    const svg = decodeURIComponent(avatar.slice(avatar.indexOf(",") + 1));
+    expect(svg).toContain("<svg");
+    expect(svg).not.toContain(userId);
+    expect(svg).not.toMatch(/<script|href=|<image/i);
+    expect(avatar).not.toBe(generatedAvatarUrl("another-account"));
+  });
+
+  it("uses a generated avatar only when the account has no uploaded image", () => {
+    expect(resolvePrincipalAvatarUrl({userId:"account"})).toBe(generatedAvatarUrl("account"));
+    expect(resolvePrincipalAvatarUrl({profile:{userId:"account"}})).toBe(generatedAvatarUrl("account"));
+    expect(resolvePrincipalAvatarUrl({userId:"account",avatarUrl:"/storage/avatar.png"})).toBe("/storage/avatar.png");
   });
 });

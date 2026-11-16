@@ -153,7 +153,7 @@ export function writeAuthSessionCookie(
     expiresAt?: string;
     user: {
       userId: string;
-      email: string;
+      email: string | null;
       displayName: string;
     };
   },

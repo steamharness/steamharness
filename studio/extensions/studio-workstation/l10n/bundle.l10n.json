@@ -893,5 +893,13 @@
   "The account Server could not be reached. Check its address and connection, then retry.": "The account Server could not be reached. Check its address and connection, then retry.",
   "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.": "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.",
   "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.": "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.",
-  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "This Studio installation has no account provider for the Web application. Check the Studio extension configuration."
+  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.",
+  "Continue in your browser to sign in, register or recover your account.": "Continue in your browser to sign in, register or recover your account.",
+  "Open sign-in page": "Open sign-in page",
+  "Browser sign-in": "Browser sign-in",
+  "Cancel sign-in": "Cancel sign-in",
+  "Waiting for browser sign-in...": "Waiting for browser sign-in...",
+  "Use browser sign-in.": "Use browser sign-in.",
+  "Sign-in request expired. Start again.": "Sign-in request expired. Start again.",
+  "Sign-in request was denied.": "Sign-in request was denied."
 }

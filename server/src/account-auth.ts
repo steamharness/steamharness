@@ -1,3 +1,5 @@
+import { AccountIdentityService } from "./auth-identity";
+import type { DeviceContext } from "@steamharness/server-auth";
 import type { Request } from "express";
 import { createHash, createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
@@ -20,7 +22,7 @@ export interface AuthSession {
   expiresAt?: string;
   user: {
     userId: string;
-    email: string;
+    email: string | null;
     displayName: string;
   };
 }
@@ -73,7 +75,7 @@ export type AuthenticatedPrincipal =
 
 interface NativeAuthUserRow {
   id: string;
-  email: string;
+  email: string | null;
   password_hash: string | null;
   display_name: string;
   disabled: boolean;
@@ -111,6 +113,7 @@ export class AuthService {
   private readonly pool: pg.Pool;
   private readonly accountDb: AccountRepository;
   private readonly ready: Promise<void>;
+  readonly accounts: AccountIdentityService;
 
   constructor(options: { databaseUrl?: string; accountDb: AccountRepository; pool?: pg.Pool }) {
     if (!options.pool && !options.databaseUrl?.trim()) {
@@ -122,6 +125,7 @@ export class AuthService {
     });
     this.accountDb = options.accountDb;
     this.ready = this.init();
+    this.accounts = new AccountIdentityService({ pool: this.pool, baseReady: Promise.all([this.ready,this.accountDb.init?.()]).then(() => undefined), revokeSessions: (userId,client) => this.revokeUserSessions(userId,client) });
   }
 
   private async init(): Promise<void> {
@@ -171,9 +175,14 @@ export class AuthService {
     `);
   }
 
+  async initialize(): Promise<void> { await this.accounts.ready; }
+
   async signInWithPassword(input: { email: string; password: string }): Promise<AuthSession> {
-    await this.ready;
-    const user = await this.findUserByEmail(input.email);
+    await this.accounts.ready;
+    const identifier = input.email.trim().toLowerCase();
+    const user = identifier.includes("@") ? await this.findUserByEmail(identifier) : (await this.pool.query<NativeAuthUserRow>(
+      "select id,email,password_hash,display_name,disabled,created_at,last_sign_in_at from steamharness_auth_users where lower(username)=$1", [identifier],
+    )).rows[0];
     if (!user || !user.password_hash || user.disabled || !(await verifyPassword(input.password, user.password_hash))) {
       throw new HttpError(401, 401, "Email or password is invalid.");
     }
@@ -192,6 +201,16 @@ export class AuthService {
       preserveExistingIdentity: true,
     });
     return this.createSession({ ...user, display_name: profile.displayName, last_sign_in_at: new Date() });
+  }
+
+  async signInUser(userId: string, expectedIdentityVersion?:number): Promise<AuthSession> {
+    await this.accounts.ready;
+    const user = await this.getUserById(userId);
+    const profile = await this.accountDb.getUserProfileOrThrow(userId);
+    if (user.disabled || profile.status === "disabled") throw new HttpError(403,403,"Account is disabled.");
+    await this.pool.query("update steamharness_auth_users set last_sign_in_at=now(),updated_at=now() where id=$1",[userId]);
+    await this.accountDb.upsertUserProfile({userId,email:user.email,displayName:user.display_name,status:"active",lastLoginAt:new Date().toISOString(),preserveExistingIdentity:true});
+    return this.createSession({...user,display_name:profile.displayName}, expectedIdentityVersion);
   }
 
   async signInBootstrapAdmin(input: {
@@ -246,7 +265,7 @@ export class AuthService {
     } finally {
       client.release();
     }
-    const profile = await this.ensureAdminProfile(user.id, { email: user.email, displayName: user.display_name });
+    const profile = await this.ensureAdminProfile(user.id, { email: user.email ?? input.email, displayName: user.display_name });
     return this.createSession({ ...user, display_name: profile.displayName });
   }
 
@@ -431,7 +450,7 @@ export class AuthService {
     displayName?: string;
     disabled?: boolean;
   }): Promise<NativeAuthUserRow> {
-    await this.ready;
+    await this.accounts.ready;
     const passwordChanged = Boolean(input.password?.trim());
     const changedPasswordHash = passwordChanged ? await hashPassword(input.password!) : undefined;
     const client = await this.pool.connect();
@@ -445,7 +464,7 @@ export class AuthService {
       )).rows[0];
       if (!current) throw new HttpError(404, 404, "User not found.");
       const email = input.email === undefined ? current.email : normalizeEmail(input.email);
-      let displayName = input.displayName === undefined ? current.display_name : input.displayName.trim() || email;
+      let displayName = input.displayName === undefined ? current.display_name : input.displayName.trim() || email || current.id;
       const passwordHash = changedPasswordHash ?? current.password_hash;
       const disabled = input.disabled ?? current.disabled;
       if (input.displayName === undefined) {
@@ -457,14 +476,16 @@ export class AuthService {
       if (input.disabled === true) await this.accountDb.assertCanDisableAccount(input.userId,client);
       await client.query(
         `update steamharness_auth_users
-         set email = $2, password_hash = $3, display_name = $4, disabled = $5, updated_at = now()
+         set email_verified_at = case when email is distinct from $2 then null else email_verified_at end,
+         identity_version = identity_version + case when email is distinct from $2 or password_hash is distinct from $3 then 1 else 0 end,
+         email = $2, password_hash = $3, display_name = $4, disabled = $5, updated_at = now()
          where id = $1`,
         [input.userId, email, passwordHash, displayName, disabled],
       );
       await client.query(`update user_profiles set email=$2,display_name=$3,
         status=case when $4::boolean is null then status when $4 then 'disabled' when status='invited' then 'invited' else 'active' end,
         updated_at=now() where user_id=$1`,[input.userId,email,displayName,input.disabled??null]);
-      if (passwordChanged || input.disabled === true) await this.revokeUserSessions(input.userId, client);
+      if (passwordChanged || email !== current.email || input.disabled === true) await this.accounts.revokeLogins(client, input.userId);
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");
@@ -542,6 +563,7 @@ export class AuthService {
     requestedScopes?: string[];
     requestedByIp?: string;
     userAgent?: string;
+    context?: DeviceContext;
   }): Promise<{ record: DeviceCodeRecord; deviceCode: string }> {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     return this.accountDb.createDeviceCode({
@@ -552,6 +574,7 @@ export class AuthService {
       intervalSeconds: 5,
       requestedByIp: input.requestedByIp,
       userAgent: input.userAgent,
+      context: input.context,
     });
   }
 
@@ -587,12 +610,18 @@ export class AuthService {
     res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   }
 
-  private async createSession(user: NativeAuthUserRow): Promise<AuthSession> {
+  private async createSession(user: NativeAuthUserRow, expectedIdentityVersion?:number): Promise<AuthSession> {
+    await this.accounts.ready;
     const accessToken = createOpaqueToken("wf_access");
     const refreshToken = createOpaqueToken("wf_refresh");
     const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-    await this.pool.query(
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = (await client.query<{password_hash:string|null;email:string|null;disabled:boolean;identity_version:number}>("select password_hash,email,disabled,identity_version from steamharness_auth_users where id=$1 for update",[user.id])).rows[0];
+      if (!current || current.disabled || current.password_hash !== user.password_hash || current.email !== user.email || expectedIdentityVersion !== undefined && current.identity_version !== expectedIdentityVersion) throw new HttpError(401,401,"Unauthorized.");
+    await client.query(
       `insert into steamharness_auth_sessions (
          id, user_id, access_token_hash, refresh_token_hash, access_expires_at, expires_at,
          created_at, last_used_at
@@ -606,6 +635,9 @@ export class AuthService {
         expiresAt.toISOString(),
       ],
     );
+      await client.query("commit");
+    } catch(error) {await client.query("rollback");throw error;}
+    finally {client.release();}
     return toAuthSession(user, accessToken, refreshToken, accessExpiresAt);
   }
 
@@ -764,6 +796,7 @@ export function parseCookieHeader(value: string | undefined): Record<string, str
 }
 
 export async function hashPassword(password: string): Promise<string> {
+  if (password.length > 4096) throw new HttpError(400,400,"Password must contain at most 4096 characters.");
   if (password.length < 8) throw new HttpError(400, 400, "Password must contain at least 8 characters.");
   const salt = randomBytes(16);
   const derived = await derivePassword(password, salt, PASSWORD_SCRYPT_N, PASSWORD_SCRYPT_R, PASSWORD_SCRYPT_P);
@@ -820,7 +853,7 @@ function toAuthSession(
     accessToken,
     refreshToken,
     expiresAt: accessExpiresAt.toISOString(),
-    user: { userId: user.id, email: user.email, displayName: user.display_name || user.email },
+    user: { userId: user.id, email: user.email, displayName: user.display_name || user.email || user.id },
   };
 }
 
@@ -828,7 +861,7 @@ function toAuthUserRecord(user: NativeAuthUserRow): AuthUserRecord {
   return {
     userId: user.id,
     email: user.email,
-    displayName: user.display_name || user.email,
+    displayName: user.display_name || user.email || user.id,
     createdAt: user.created_at.toISOString(),
     lastSignInAt: user.last_sign_in_at?.toISOString(),
   };

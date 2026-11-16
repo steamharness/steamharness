@@ -85,7 +85,9 @@
     "zod": "4.4.3",
     "@steamharness/project-access": "workspace:*",
     "@steamharness/service-urls": "workspace:*",
-    "@prisma/schema-engine-wasm": "8.1.0-1.d1b3f377ca835d73fd50954a5e22128b9ebdd6b8"
+    "@prisma/schema-engine-wasm": "8.1.0-1.d1b3f377ca835d73fd50954a5e22128b9ebdd6b8",
+    "@steamharness/server-auth": "workspace:*",
+    "nodemailer": "^7.0.12"
   },
   "devDependencies": {
     "@steamharness/cli": "0.1.1",
@@ -105,6 +107,7 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "@steamharness/project-manifest": "workspace:*"
+    "@steamharness/project-manifest": "workspace:*",
+    "@types/nodemailer": "^7.0.11"
   }
 }

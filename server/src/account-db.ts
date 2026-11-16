@@ -1,3 +1,4 @@
+import { parseDeviceContext, type DeviceContext } from "@steamharness/server-auth";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type pg from "pg";
 import { createPostgresPool } from "./postgres";
@@ -9,7 +10,7 @@ export type UserProfileStatus = "invited" | "active" | "disabled";
 export type DeviceCodeState = "pending" | "approved" | "denied" | "expired" | "consumed";
 export interface UserProfileRecord {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   avatarUrl?: string;
   status: UserProfileStatus;
@@ -47,6 +48,7 @@ export interface DeviceCodeRecord {
   clientName: string;
   source: string;
   requestedScopes: string[];
+  context?: DeviceContext;
   state: DeviceCodeState;
   requestedByIp?: string;
   userAgent?: string;
@@ -60,7 +62,7 @@ export interface DeviceCodeRecord {
     apiKeyId?: string;
     user?: {
       userId: string;
-      email: string;
+      email: string | null;
       displayName: string;
     };
     expiresAt?: string;
@@ -107,7 +109,7 @@ export interface AuditEventPage {
 
 export interface AuthUserRecord {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   createdAt: string;
   lastSignInAt?: string;
@@ -128,7 +130,7 @@ export interface AuditEventListOptions {
 
 interface UserProfileRow {
   user_id: string;
-  email: string;
+  email: string | null;
   display_name: string;
   avatar_url: string | null;
   status: string;
@@ -157,6 +159,7 @@ interface ApiKeyRow {
 }
 
 interface DeviceCodeRow {
+  client_context?: unknown;
   id: string;
   device_code_hash: string;
   user_code: string;
@@ -195,7 +198,7 @@ interface AuditEventRow {
 
 interface AuthUserRow {
   id: string;
-  email: string;
+  email: string | null;
   display_name: string;
   created_at: Date;
   last_sign_in_at: Date | null;
@@ -216,7 +219,10 @@ export class AccountRepository {
     await this.pool.end();
   }
 
-  async init(): Promise<void> {
+  private initialization?: Promise<void>;
+  init(): Promise<void> { return this.initialization ??= this.initialize().finally(() => { this.initialization = undefined; }); }
+
+  private async initialize(): Promise<void> {
     await this.pool.query(`
       create table if not exists user_profiles (
         user_id text primary key,
@@ -283,6 +289,8 @@ export class AccountRepository {
         updated_at timestamptz not null default now()
       );
 
+      alter table steamharness_auth_device_codes add column if not exists client_context jsonb;
+
       create index if not exists steamharness_auth_device_codes_state_idx
         on steamharness_auth_device_codes(state, expires_at desc);
 
@@ -310,7 +318,7 @@ export class AccountRepository {
 
   async upsertUserProfile(input: {
     userId: string;
-    email: string;
+    email: string | null;
     displayName?: string;
     status?: UserProfileStatus;
     createdByUserId?: string;
@@ -335,7 +343,7 @@ export class AccountRepository {
          last_login_at = coalesce(excluded.last_login_at, user_profiles.last_login_at)`,
       [
         input.userId,
-        input.email.trim().toLowerCase(),
+        input.email?.trim().toLowerCase() ?? null,
         displayName,
         input.status ?? "active",
         input.createdByUserId ?? null,
@@ -639,6 +647,7 @@ export class AccountRepository {
     requestedScopes?: string[];
     expiresAt: string;
     intervalSeconds: number;
+    context?: DeviceContext;
     requestedByIp?: string;
     userAgent?: string;
   }): Promise<{ record: DeviceCodeRecord; deviceCode: string }> {
@@ -648,9 +657,9 @@ export class AccountRepository {
     await this.pool.query(
       `insert into steamharness_auth_device_codes (
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
-         requested_by_ip, user_agent, expires_at, interval_seconds, created_at, updated_at
+         requested_by_ip, user_agent, expires_at, interval_seconds, client_context, created_at, updated_at
        )
-       values ($1, $2, $3, $4, $5, $6::jsonb, 'pending', $7, $8, $9, $10, now(), now())`,
+       values ($1, $2, $3, $4, $5, $6::jsonb, 'pending', $7, $8, $9, $10, $11::jsonb, now(), now())`,
       [
         id,
         sha256Text(deviceCode),
@@ -662,6 +671,7 @@ export class AccountRepository {
         input.userAgent ?? null,
         input.expiresAt,
         input.intervalSeconds,
+        JSON.stringify(input.context ?? null),
       ],
     );
     return {
@@ -670,12 +680,39 @@ export class AccountRepository {
     };
   }
 
+  async cancelDeviceCode(deviceCode: string): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      // Approvals acquire the account before the device row. Retry if an
+      // approval committed between reading its owner and acquiring the row.
+      for (;;) {
+        await client.query("begin");
+        const hint = (await client.query<{ approved_by_user_id: string | null }>(
+          "select approved_by_user_id from steamharness_auth_device_codes where device_code_hash=$1", [sha256Text(deviceCode)],
+        )).rows[0];
+        if (hint?.approved_by_user_id) await client.query("select id from steamharness_auth_users where id=$1 for update", [hint.approved_by_user_id]);
+        const row = (await client.query<{ id: string; approved_by_user_id: string | null; result: { apiKeyId?: string } }>(
+          "select id,approved_by_user_id,result from steamharness_auth_device_codes where device_code_hash=$1 for update", [sha256Text(deviceCode)],
+        )).rows[0];
+        if (row?.approved_by_user_id && row.approved_by_user_id !== hint?.approved_by_user_id) {
+          await client.query("rollback"); continue;
+        }
+        if (row) {
+          if (row.result?.apiKeyId) await client.query("update api_keys set revoked_at=coalesce(revoked_at,now()) where id=$1", [row.result.apiKeyId]);
+          await client.query("update steamharness_auth_device_codes set state='denied',denied_at=now(),updated_at=now() where id=$1", [row.id]);
+        }
+        await client.query("commit"); return;
+      }
+    } catch (error) { await client.query("rollback"); throw error; }
+    finally { client.release(); }
+  }
+
   async getDeviceCodeById(deviceCodeId: string): Promise<DeviceCodeRecord | undefined> {
     const result = await this.pool.query<DeviceCodeRow>(
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
-         approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
+         approved_by_user_id, denied_at, consumed_at, result, client_context, created_at, updated_at
        from steamharness_auth_device_codes
        where id = $1`,
       [deviceCodeId],
@@ -689,7 +726,7 @@ export class AccountRepository {
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
-         approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
+         approved_by_user_id, denied_at, consumed_at, result, client_context, created_at, updated_at
        from steamharness_auth_device_codes
        where user_code = $1`,
       [userCode.trim().toUpperCase()],
@@ -703,7 +740,7 @@ export class AccountRepository {
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
-         approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
+         approved_by_user_id, denied_at, consumed_at, result, client_context, created_at, updated_at
        from steamharness_auth_device_codes
        where device_code_hash = $1`,
       [sha256Text(deviceCode)],
@@ -718,12 +755,23 @@ export class AccountRepository {
       state: DeviceCodeState;
       approvedAt?: string | null;
       approvedByUserId?: string | null;
+      approvalRefreshToken?: string;
       deniedAt?: string | null;
       consumedAt?: string | null;
       result?: DeviceCodeRecord["result"] | null;
     },
   ): Promise<DeviceCodeRecord> {
-    await this.pool.query(
+    const client = await this.pool.connect();
+    try {
+    await client.query("begin");
+    if (input.approvedByUserId) {
+      await client.query("select id from steamharness_auth_users where id=$1 for update",[input.approvedByUserId]);
+      if (input.approvalRefreshToken) {
+        const active = await client.query("select id from steamharness_auth_sessions where user_id=$1 and refresh_token_hash=$2 and revoked_at is null and expires_at>now()",[input.approvedByUserId,sha256Text(input.approvalRefreshToken)]);
+        if (!active.rowCount) throw new HttpError(401,401,"Unauthorized.");
+      }
+    }
+    const updated = await client.query(
       `update steamharness_auth_device_codes
        set state = $2,
          approved_at = coalesce($3, approved_at),
@@ -732,7 +780,7 @@ export class AccountRepository {
          consumed_at = coalesce($6, consumed_at),
          result = coalesce($7::jsonb, result),
          updated_at = now()
-       where id = $1`,
+       where id = $1 and ((state='pending' and (expires_at>now() or $2='expired')) or (state='approved' and $2='expired'))`,
       [
         deviceCodeId,
         input.state,
@@ -743,6 +791,10 @@ export class AccountRepository {
         input.result === undefined ? null : JSON.stringify(input.result),
       ],
     );
+    if (!updated.rowCount) throw new HttpError(409,409,"Device code is not pending.");
+    await client.query("commit");
+    } catch(error) { await client.query("rollback"); throw error; }
+    finally {client.release();}
     return (await this.getDeviceCodeById(deviceCodeId))!;
   }
 
@@ -761,6 +813,9 @@ export class AccountRepository {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
+      // Password changes and token exchanges serialize on the account before touching device rows.
+      const user = (await client.query<{disabled:boolean;status:string}>("select u.disabled,p.status from steamharness_auth_users u join user_profiles p on p.user_id=u.id where u.id=$1 for update of u",[input.userId])).rows[0];
+      if (!user || user.disabled || user.status !== 'active') { await client.query("rollback"); return undefined; }
       // exchanges approved device codes exactly once and creates the
       // API key in the same transaction so concurrent polls cannot mint extras.
       const consumed = await client.query<DeviceCodeRow>(
@@ -770,11 +825,11 @@ export class AccountRepository {
            result = $3::jsonb,
            updated_at = now()
          where id = $1
-           and state = 'approved'
+           and state = 'approved' and expires_at>now()
          returning
            id, device_code_hash, user_code, client_name, source, requested_scopes, state,
            requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
-           approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at`,
+           approved_by_user_id, denied_at, consumed_at, result, client_context, created_at, updated_at`,
         [
           deviceCodeId,
           input.consumedAt,
@@ -818,7 +873,7 @@ export class AccountRepository {
          returning
            id, device_code_hash, user_code, client_name, source, requested_scopes, state,
            requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
-           approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at`,
+           approved_by_user_id, denied_at, consumed_at, result, client_context, created_at, updated_at`,
         [
           deviceCodeId,
           JSON.stringify({
@@ -1057,6 +1112,7 @@ function toDeviceCodeRecord(row: DeviceCodeRow): DeviceCodeRecord {
     clientName: row.client_name,
     source: row.source,
     requestedScopes: normalizeStringArray(row.requested_scopes),
+    context: parseDeviceContext(row.client_context),
     state: isDeviceCodeState(row.state) ? row.state : "pending",
     requestedByIp: row.requested_by_ip ?? undefined,
     userAgent: row.user_agent ?? undefined,
@@ -1085,7 +1141,7 @@ function normalizeDeviceCodeResult(value: unknown): DeviceCodeRecord["result"] {
   }
   const user = isRecord(value.user) &&
     typeof value.user.userId === "string" &&
-    typeof value.user.email === "string" &&
+    (typeof value.user.email === "string" || value.user.email === null) &&
     typeof value.user.displayName === "string"
     ? {
         userId: value.user.userId,
@@ -1104,9 +1160,9 @@ function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
-function normalizeDisplayName(value: string | undefined, fallback: string): string {
+function normalizeDisplayName(value: string | undefined, fallback: string | null): string {
   const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : fallback.trim();
+  return normalized && normalized.length > 0 ? normalized : fallback?.trim() || "SteamUser";
 }
 
 export function normalizeAvatarUrl(
@@ -1185,7 +1241,7 @@ function toAuditEventRecord(row: AuditEventRow): AuditEventRecord {
 }
 
 function toAuthUserRecord(row: AuthUserRow): AuthUserRecord {
-  const email = row.email.trim().toLowerCase();
+  const email = row.email?.trim().toLowerCase() ?? null;
   return {
     userId: row.id,
     email,

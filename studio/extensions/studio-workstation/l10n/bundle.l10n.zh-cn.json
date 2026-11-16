@@ -893,5 +893,13 @@
   "The account Server could not be reached. Check its address and connection, then retry.": "无法连接账号 Server。请检查地址和网络连接后重试。",
   "The Web application service could not be reached. Start the service and check its address in the Server configuration, then retry.": "无法连接 Web 应用服务。请启动该服务，并检查 Server 中配置的服务地址后重试。",
   "Account integration returned an invalid response. Check the Server and Web application service versions and configuration.": "账号集成返回了无效响应。请检查 Server 和 Web 应用服务的版本及配置。",
-  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "当前 Studio 未注册此 Web 应用的账号提供器。请检查 Studio 扩展配置。"
+  "This Studio installation has no account provider for the Web application. Check the Studio extension configuration.": "当前 Studio 未注册此 Web 应用的账号提供器。请检查 Studio 扩展配置。",
+  "Continue in your browser to sign in, register or recover your account.": "在浏览器中登录、注册或找回账号。",
+  "Open sign-in page": "打开登录网页",
+  "Browser sign-in": "浏览器登录",
+  "Cancel sign-in": "取消登录",
+  "Waiting for browser sign-in...": "等待浏览器登录…",
+  "Use browser sign-in.": "请使用浏览器登录。",
+  "Sign-in request expired. Start again.": "登录请求已过期，请重新发起。",
+  "Sign-in request was denied.": "登录请求已被拒绝。"
 }

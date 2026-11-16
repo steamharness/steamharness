@@ -117,6 +117,10 @@ export class ServerApiClient {
     return this.request<ServerHealthData>("/health");
   }
 
+  authAction<T>(path: string, body?: object): Promise<ApiResponse<T>> {
+    return this.request(`/api/auth${path}`, body ? {method:"POST",body:JSON.stringify(body)} : undefined);
+  }
+
   getSession(): Promise<ApiResponse<AuthSessionState>> {
     return this.request<AuthSessionState>("/api/auth/session");
   }

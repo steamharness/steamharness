@@ -1,3 +1,4 @@
+import { generatedAvatarUrl } from '@steamharness/avatar-fallback';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import type { AccountState } from '../workflow-auth-client';
 import type { Project } from '../workflow-types';
@@ -7,13 +8,13 @@ const rendered = new WeakMap<HTMLElement, { src?: string }>();
 let projectKey = '', projectSource = '';
 
 export function accountAvatarUrl(account?: AccountState): string | undefined {
-  if (!account?.user?.avatarUrl) { return; }
+  if (!account?.user?.avatarUrl) { return generatedAvatarUrl(account?.user?.userId); }
   try {
     const url = new URL(account.user.avatarUrl, account.serverUrl ? `${account.serverUrl}/` : undefined);
     const imageData = /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(url.href) && url.href.length <= 1024 * 1024;
     if ((['http:', 'https:'].includes(url.protocol) || imageData) && !url.username && !url.password) { return url.href; }
   } catch { /* Missing or invalid account images use the account glyph. */ }
-  return undefined;
+  return generatedAvatarUrl(account?.user?.userId);
 }
 
 function updateAvatar(root: HTMLElement, src?: string, fallbackIcon = 'account'): void {

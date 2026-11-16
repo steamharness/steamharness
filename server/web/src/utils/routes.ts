@@ -1,5 +1,17 @@
 import type { AdminTab, AppRoute, DetailTab, SettingsTab } from "../state";
 
+export function readLoginReturnTo(search: string): string | undefined {
+  const value=new URLSearchParams(search).get("returnTo");
+  if (!value || value.length>4096 || /[\\\x00-\x20\x7f]/.test(value)) return;
+  try {
+    const url=new URL(value,"https://login-return.invalid");
+    if (url.origin !== "https://login-return.invalid" || url.hash || url.pathname !== "/login/device") return;
+    const code=url.searchParams.get("user_code");
+    if (!code || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return;
+    return `/login/device?${new URLSearchParams({user_code:code})}`;
+  } catch {return;}
+}
+
 export function projectSourceSharePath(id: string, version: string): string {
   return `/share/projects/${encodeURIComponent(id)}/${encodeURIComponent(version)}`;
 }
@@ -11,7 +23,7 @@ export function projectSourceArchivePath(id: string, version: string): string {
 // /detail 的设置与成员现在使用稳定子路由，避免只靠概览页内局部状态切换。
 const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "entries", "versions"]);
 const ADMIN_TABS = new Set<AdminTab>(["users", "audit"]);
-const SETTINGS_TABS = new Set<SettingsTab>(["profile", "appearance", "api-keys"]);
+const SETTINGS_TABS = new Set<SettingsTab>(["security", "profile", "appearance", "api-keys"]);
 
 export function parseRoute(pathname: string): AppRoute {
   let segments: string[];
@@ -45,6 +57,7 @@ export function parseRoute(pathname: string): AppRoute {
   }
 
   // keep the login mockup mapped to a stable route instead of normalizing it to projects.
+  if (segments[0] === "register" || segments[0] === "forgot-password") return {page:segments[0]};
   if (segments[0] === "login") {
     if (segments[1] === "device") {
       const userCode = search.get("user_code")?.trim() || undefined;
@@ -88,7 +101,7 @@ export function parseRoute(pathname: string): AppRoute {
 }
 
 export function routeToPath(route: AppRoute): string {
-  if (route.page === "login") return "/login";
+  if (route.page === "login" || route.page === "register" || route.page === "forgot-password") return `/${route.page}`;
   if (route.page === "device") {
     const query = route.userCode ? `?user_code=${encodeURIComponent(route.userCode)}` : "";
     return `/login/device${query}`;
@@ -113,7 +126,8 @@ export function readRouteProjectId(route: AppRoute): string {
 
 export function replaceCurrentRouteIfNeeded(): void {
   const parsed = parseRoute(window.location.pathname);
-  const normalizedPath = routeToPath(parsed);
+  const returnTo = ["login","register","forgot-password"].includes(parsed.page) ? readLoginReturnTo(window.location.search) : undefined;
+  const normalizedPath = routeToPath(parsed) + (returnTo ? `?${new URLSearchParams({returnTo})}` : "");
   if (`${window.location.pathname}${window.location.search}` !== normalizedPath) {
     window.history.replaceState(null, "", normalizedPath);
   }

@@ -120,7 +120,7 @@ function toUserProfileSummary(profile: UserProfileRecord): UserProfileSummary {
   return {
     userId: profile.userId,
     displayName: profile.displayName,
-    email: profile.email,
+    email: profile.email ?? undefined,
     avatarUrl: profile.avatarUrl,
   };
 }

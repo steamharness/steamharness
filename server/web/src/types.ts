@@ -66,7 +66,7 @@ export interface AuthPrincipal {
   sessionId?: string;
   userId?: string;
   displayName?: string;
-  email?: string;
+  email?: string | null;
   // surface avatarUrl on the session so the header avatar renders on
   // every page without waiting for the settings-page profile fetch.
   avatarUrl?: string;
@@ -81,7 +81,7 @@ export interface AuthSessionState {
 
 export interface UserProfileRecord {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   avatarUrl?: string;
   status: UserProfileStatus;
@@ -137,7 +137,7 @@ export interface DeviceCodeResult {
     apiKeyId?: string;
     user?: {
       userId: string;
-      email: string;
+      email: string | null;
       displayName: string;
     };
     expiresAt?: string;
@@ -148,7 +148,7 @@ export interface DeviceCodeResult {
 
 export interface AdminUserSummary {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   status: UserProfileStatus;
   lastSignInAt?: string;
@@ -164,7 +164,7 @@ export interface UserInvitationResult {
 }
 
 export interface AccountInvitation {
-  email: string;
+  email: string | null;
   displayName: string;
   expiresAt: string;
   acceptedAt?: string;
@@ -198,7 +198,7 @@ export interface ProjectCardMetadata {
 export interface UserProfileSummary {
   userId: string;
   displayName: string;
-  email?: string;
+  email?: string | null;
   avatarUrl?: string;
 }
 

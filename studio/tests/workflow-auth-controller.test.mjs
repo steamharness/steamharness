@@ -57,7 +57,7 @@ async function fixture(t, { signedIn = true, sessionCookie, deferInitialization 
         configuration.fire({ affectsConfiguration: affected => affected === key });
       },
     }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
-    window: { state: { focused: true }, onDidChangeWindowState: focus.event,
+    window: { registerUriHandler: handler => { f.uriHandler = handler; return disposable; }, state: { focused: true }, onDidChangeWindowState: focus.event,
       registerWebviewPanelSerializer: (type, serializer) => { f.serializers.set(type, serializer); if (type === 'studio.settings') { f.serializer = serializer; } return disposable; },
       createStatusBarItem: () => ({ show() {}, dispose() {} }),
       createWebviewPanel: (type, title, _column, options) => {
@@ -74,14 +74,15 @@ async function fixture(t, { signedIn = true, sessionCookie, deferInitialization 
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, Error, AbortSignal, AbortController, structuredClone, crypto: globalThis.crypto, setTimeout, clearTimeout,
+    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, URLSearchParams, btoa, Error, AbortSignal, AbortController, structuredClone, crypto: globalThis.crypto, setTimeout, clearTimeout,
     fetch: async (url, options) => {
       f.requests++;
       const response = await f.fetch?.(url, options);
       if (response) { return response; }
-      return Response.json({ errCode: 0, data: url.endsWith('/api/auth/login')
-        ? { authenticated: true, accessToken: 'test-token', apiKey: { id: 'test-key' } }
-        : { profile: f.profile, principal: { apiKeyId: 'test-key' } } });
+      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-device-secret',userCode:'ABCD-1234',verificationUriComplete:`${new URL(url).origin}/login/device?user_code=ABCD-1234`,intervalSeconds:1,expiresAt:new Date(Date.now()+60000).toISOString()}});
+      if (url.endsWith('/device/token')) return Response.json({errCode:0,data:{accessToken:'test-token',apiKey:{id:'test-key'},user:f.profile}});
+      if (url.endsWith('/device/cancel')) return Response.json({errCode:0,data:{cancelled:true}});
+      return Response.json({errCode:0,data:{profile:f.profile,principal:{apiKeyId:'test-key'}}});
     },
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
@@ -207,7 +208,7 @@ test('successful login updates the shared session and returns to the existing ac
   f.commands.get('studio.openSettings')({ section: 'editor' }); const settings = f.panel;
   f.commands.get('studio.openLogin')(); const login = f.panel;
   await login.message({ type: 'ready' });
-  await login.message({ type: 'login', serverUrl: 'https://server.example.test', email: 'user@example.test', password: 'fixture-password' });
+  await login.message({ type: 'login', serverUrl: 'https://server.example.test' });
   assert.equal(login.disposed, true); assert.equal(f.panel, settings);
   assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'account');
   assert.equal(f.controller.getState().status, 'authenticated');
@@ -224,7 +225,7 @@ test('failed login enables another attempt and the login panel cannot write sett
   await login.message({ type: 'settings-update', key: 'editor.fontSize', value: 30, target: 'user' });
   assert.equal(f.writes.length, 0);
   f.fetch = async () => { throw new Error('Fixture login unavailable'); };
-  const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' };
+  const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126' };
   await login.message(credentials);
   assert.equal(login.disposed, undefined);
   assert.equal(login.webview.messages.at(-1).type, 'login-result');
@@ -238,22 +239,22 @@ test('closing or recreating login during a request cannot submit twice or redire
   for (const recreate of [false, true]) {
     const f = await fixture(t, { signedIn: false });
     let release;
-    f.fetch = url => url.endsWith('/api/auth/login') ? new Promise(resolve => { release = () => resolve(Response.json({ errCode: 0, data: { authenticated: true, accessToken: 'test-token', apiKey: { id: 'test-key' } } })); }) : undefined;
+    f.fetch = url => url.endsWith('/api/auth/device/token') ? new Promise(resolve => { release = () => resolve(Response.json({ errCode: 0, data: { accessToken: 'test-token', apiKey: { id: 'test-key' }, user:f.profile } })); }) : undefined;
     f.commands.get('studio.openLogin')(); const original = f.panel;
     await original.message({ type: 'ready' });
-    const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' };
+    const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126' };
     const request = original.message(credentials); await until(() => release);
     if (!recreate) { original.dispose(); f.commands.get('studio.openLogin')(); }
     const current = f.panel; await current.message({ type: 'ready' });
     assert.equal(current.webview.messages.at(-1).busy, true);
-    await current.message(credentials); assert.equal(f.requests, 1);
+    const requests = f.requests; await current.message(credentials); assert.equal(f.requests, requests);
     release(); await request;
     assert.equal(current.disposed, undefined);
     assert.equal(f.panels.some(panel => panel.type === 'studio.settings'), false);
-    assert.equal(current.webview.messages.at(-1).state.status, 'authenticated');
+    assert.equal(current.webview.messages.at(-1).state.status, recreate ? 'authenticated' : 'error');
     assert.equal(current.webview.messages.some(message => message.type === 'login-result'), false);
-    await current.message({ type: 'open-account' });
-    assert.equal(current.disposed, true); assert.equal(f.panel.type, 'studio.settings');
+    if (recreate) { await current.message({ type: 'open-account' }); assert.equal(current.disposed, true); assert.equal(f.panel.type, 'studio.settings'); }
+    else assert.equal(f.controller.getConnection(),undefined);
   }
 });
 
@@ -268,7 +269,7 @@ test('authentication requests wait on the login tab and closing settings does no
   const cancelled = assert.rejects(session, /Sign-in cancelled/);
   login.dispose(); await cancelled;
   const retry = f.provider.createSession(['workflow']); const next = f.panel;
-  await next.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' });
+  await next.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126' });
   assert.equal((await retry).account.id, 'user');
 });
 

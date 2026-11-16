@@ -1,3 +1,4 @@
+import { generatedAvatarUrl } from '../../../../shared/avatar-fallback/index';
 import { t } from './localization';
 import type { AccountState } from './workflow-auth-client';
 
@@ -9,7 +10,7 @@ export function accountMenuState(state: AccountState) {
   return {
     status: state.status, statusLabel: statusLabels[state.status], serverUrl: state.serverUrl,
     name: state.user?.displayName || state.user?.email || t('Signed Out'),
-    email: state.user?.email, avatarUrl: state.user?.avatarUrl, hasAccount: !!state.user, error: state.error,
+    email: state.user?.email, avatarUrl: state.user?.avatarUrl || generatedAvatarUrl(state.user?.userId), hasAccount: !!state.user, error: state.error,
     labels: {
       title: t('SteamHarness Account'), profile: t('Personal Information'), signIn: t('Sign In'),
       refresh: t('Refresh Account'), refreshing: t('Refreshing Account...'), signOut: t('Sign out'),

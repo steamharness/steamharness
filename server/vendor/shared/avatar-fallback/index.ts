@@ -1,3 +1,5 @@
+import { toSvg } from "jdenticon/browser";
+const avatarCache = new Map<string, string>();
 export interface AvatarFallbackIdentity {
   displayName?: string | null;
   email?: string | null;
@@ -11,8 +13,9 @@ export interface AvatarFallbackIdentity {
 // helper resolves the URL in the same order so the header avatar renders
 // without waiting for a per-page profile request.
 export interface PrincipalAvatarSource {
+  userId?: string | null;
   avatarUrl?: string | null;
-  profile?: { avatarUrl?: string | null } | null;
+  profile?: { avatarUrl?: string | null; userId?: string | null } | null;
 }
 
 export function resolvePrincipalAvatarUrl(source?: PrincipalAvatarSource | null): string | undefined {
@@ -20,7 +23,18 @@ export function resolvePrincipalAvatarUrl(source?: PrincipalAvatarSource | null)
   const direct = source.avatarUrl?.trim();
   if (direct) return direct;
   const fromProfile = source.profile?.avatarUrl?.trim();
-  return fromProfile || undefined;
+  return fromProfile || generatedAvatarUrl(source.userId || source.profile?.userId);
+}
+
+/** UUIDs give each account a stable, varied image without sending identity to an avatar service. */
+export function generatedAvatarUrl(userId?: string | null): string | undefined {
+  if (!userId) return undefined;
+  const cached = avatarCache.get(userId);
+  if (cached) return cached;
+  const value = `data:image/svg+xml,${encodeURIComponent(toSvg(userId, 96, { padding: 0.08 }))}`;
+  if (avatarCache.size >= 256) avatarCache.delete(avatarCache.keys().next().value!);
+  avatarCache.set(userId, value);
+  return value;
 }
 
 function takeGraphemes(value: string, count: number): string {

@@ -73,3 +73,26 @@ Alpha and stable use separate runtime directories, processes, logs, and ports. U
 Release jobs read production variables only from protected refs and verify build versions and static assets. Recovery does not remove data volumes, commit runtime configuration, or place secrets in artifacts.
 
 The `deployment.server` and `deployment.serverWeb` health records may include a separate `deploymentId`. Use it with `commitSha` to distinguish deployments of the same product version. `currentRelease.docsUrl` links to localized deployment notes; older metadata keeps version-based links.
+
+## Registration and email service
+
+Registration is closed by default. Enable it explicitly in the target Server environment. Email features require SMTP; username and password registration still works when registration is enabled without SMTP.
+
+| Variable | Default and purpose |
+| --- | --- |
+| `STEAMHARNESS_SERVER_REGISTRATION_ENABLED` | `false`; use `true` or `1` to allow registration. |
+| `STEAMHARNESS_SERVER_SMTP_HOST` | SMTP host. Leaving it empty disables email codes. |
+| `STEAMHARNESS_SERVER_SMTP_PORT` | `587` without implicit TLS, or `465` with implicit TLS. |
+| `STEAMHARNESS_SERVER_SMTP_SECURE` | `false`; `true` or `1` enables implicit TLS. Non-loopback connections require STARTTLS. |
+| `STEAMHARNESS_SERVER_SMTP_USER` / `STEAMHARNESS_SERVER_SMTP_PASSWORD` | SMTP authentication; leave empty if the service does not require it. |
+| `STEAMHARNESS_SERVER_SMTP_FROM` | Required sender, for example `SteamHarness <accounts@example.com>`. |
+
+For local testing, start Mailpit from the open-source repository root:
+
+```sh
+docker compose -f server/docker/mailpit/compose.yaml up -d
+```
+
+Set the local Server SMTP host to `127.0.0.1`, port to `1025`, and `SECURE=false`, with no authentication. Enable registration in the local `.env`. View messages at `http://127.0.0.1:8025`; Mailpit does not deliver them externally. Configure production separately.
+
+Restart the Server and inspect `GET /api/auth/config` for registration and email availability. Closing registration prevents new accounts while preserving existing sign-in, email binding, and recovery.

@@ -20,6 +20,7 @@ import {
   resolveProjectMcpWorkerEntrypoint,
   McpCliRunner,
 } from "../mcp";
+import { writeCliAuthConfig } from "../auth-config";
 import { main as cliMain } from "../index";
 import { resolveHarnessVersion } from "./harness-source";
 
@@ -41,10 +42,10 @@ describe("steamharness mcp", () => {
     await writeFile(path.join(desktopConfigDir, "workflow-desktop.json"), JSON.stringify({
       auth: { serverUrl: "", apiKey: "" },
     }), "utf8");
-    await writeFile(path.join(cliAuthDir, "workflow-auth.json"), JSON.stringify({
+    await writeCliAuthConfig({
       serverUrl: "https://steamharness.example.com",
       apiKey: "cli-saved-key",
-    }), "utf8");
+    }, {STEAMHARNESS_CLI_AUTH_DIR:cliAuthDir});
     const options = parseProjectMcpCliOptions([
       process.cwd(),
       "--desktop-config-dir", desktopConfigDir,

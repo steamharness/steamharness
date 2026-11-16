@@ -5,7 +5,7 @@ description: "Log on to SteamHarness Server by browser device flow, and save the
 
 # workspace login
 
-Use `workspace login` to authorize the CLI in a browser. After you approve the device request, the CLI saves its dedicated API key, Server address, and account details in local `workflow-auth.json`. You do not need to copy a token.
+Use `workspace login` to authorize the CLI in a browser. After you approve the device request, the CLI saves its dedicated API key, Server address, and account details in local `workflow-auth-{channel}.json`. You do not need to copy a token.
 
 ## Command Format
 
@@ -26,13 +26,13 @@ pnpm exec steamharness workspace login --server <url>
 |Create Device Code|CLI calls `POST /api/auth/device/start`.|
 |Open the browser|Automatically open `verificationUriComplete`; output URL and user code without browser.|
 |Polling Results|CLI polls `POST /api/auth/device/token` until successful, denied, expired, or throttled.|
-|Write Configuration|After success, write to `workflow-auth.json`, and save the server, API key, expiration time, and user information.|
+|Write Configuration|After success, write to `workflow-auth-{channel}.json`, and save the server, API key, expiration time, and user information.|
 
 ## Configuration file
 
 |Configuration|Description|
 | --- | --- |
-|File name| `workflow-auth.json` |
+|File name| `workflow-auth-{channel}.json` |
 |macOS Default Directory| `~/Library/Application Support/steamharness` |
 |Windows Default Directory| `%APPDATA%/steamharness` |
 |Linux Default Directory|`$XDG_CONFIG_HOME/steamharness` or `~/.config/steamharness`|
@@ -59,3 +59,9 @@ pnpm exec steamharness workspace login --server http://localhost:7126
 |View login status| [`status`](/en/cli/workspace/status) |
 |Clear Logon Status| [`logout`](/en/cli/workspace/logout) |
 |Check Service Health| [`health`](/en/cli/workspace/health) |
+
+## Channels and application returns
+
+`{channel}` is `dev`, `alpha`, or `main`, selected by the installed CLI channel. `STEAMHARNESS_SERVICE_CHANNEL` explicitly overrides it. Credentials are also saved separately per Server; selecting another `--server` does not reuse the current Server's key. A legacy `workflow-auth.json` migrates only when its Server matches the channel, and signing out prevents its restoration.
+
+CLI Web uses the same authorization flow and offers a link to its originating page. The browser receives only the public code and return state; the local process keeps the device secret and API key. See [Accounts, sign-in, and recovery](/en/guides/server/accounts).

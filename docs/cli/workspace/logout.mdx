@@ -24,7 +24,7 @@ pnpm exec steamharness workspace logout
 | 步骤 | 说明 |
 | --- | --- |
 | 定位配置目录 | 使用 `STEAMHARNESS_CLI_AUTH_DIR` 或系统默认目录。 |
-| 清理配置 | 删除 `workflow-auth.json`。 |
+| 清理配置 | 清空当前通道的 `workflow-auth-{channel}.json`，删除当前 Server 的凭据副本，保留注销标记以防旧文件恢复。 |
 | 输出状态 | 输出 `{ loggedIn: false }`。 |
 
 ## 输出

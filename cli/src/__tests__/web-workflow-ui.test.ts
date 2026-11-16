@@ -80,7 +80,7 @@ async function fixture() {
   const elements = new Map<string, Element>();
   const element = (id: string) => { if (!elements.has(id)) { elements.set(id, new Element()); } return elements.get(id)!; };
   let receive!: (event: { data: unknown; source: null }) => void;
-  vi.stubGlobal('document', { querySelector: element, getElementById: element, createElement: () => new Element() });
+  vi.stubGlobal('document', { querySelectorAll: () => [], querySelector: element, getElementById: element, createElement: () => new Element() });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {} }));
   vi.stubGlobal('addEventListener', (_type: string, callback: typeof receive) => { receive = callback; });
   await import('../web/ui/workflow-main');

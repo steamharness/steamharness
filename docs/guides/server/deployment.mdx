@@ -73,3 +73,26 @@ Alpha 和正式版使用独立的运行目录、进程、日志和端口。两�
 发布流水线只从受保护 ref 读取生产变量，并校验构建版本和静态资源。恢复操作不删除数据卷、不提交运行时配置，也不把密钥写入 artifact。
 
 健康信息中的 `deployment.server` 与 `deployment.serverWeb` 可携带独立的 `deploymentId`。相同产品版本多次部署时，用该标识和 `commitSha` 区分实际来源；`currentRelease.docsUrl` 指向本次部署的同语言日志，旧发布元数据继续使用版本日志地址。
+
+## 注册与邮件服务
+
+注册默认关闭。需要开放注册时，在目标 Server 环境中显式设置以下变量。邮件功能需要 SMTP；只开启注册而未配置 SMTP 时，仍可用用户名和密码注册。
+
+| 变量 | 默认值与用途 |
+| --- | --- |
+| `STEAMHARNESS_SERVER_REGISTRATION_ENABLED` | `false`；`true` 或 `1` 开放注册。 |
+| `STEAMHARNESS_SERVER_SMTP_HOST` | SMTP 主机；未设置时关闭邮箱验证码功能。 |
+| `STEAMHARNESS_SERVER_SMTP_PORT` | 未使用隐式 TLS 时默认 `587`，使用隐式 TLS 时默认 `465`。 |
+| `STEAMHARNESS_SERVER_SMTP_SECURE` | `false`；`true` 或 `1` 使用隐式 TLS。非本机连接会要求 STARTTLS。 |
+| `STEAMHARNESS_SERVER_SMTP_USER` / `STEAMHARNESS_SERVER_SMTP_PASSWORD` | SMTP 认证，服务不要求认证时留空。 |
+| `STEAMHARNESS_SERVER_SMTP_FROM` | 必填发件人，例如 `SteamHarness <accounts@example.com>`。 |
+
+本地可使用 Mailpit 收取测试邮件。从开源仓根目录执行：
+
+```sh
+docker compose -f server/docker/mailpit/compose.yaml up -d
+```
+
+将本机 Server 的 SMTP 主机设为 `127.0.0.1`、端口设为 `1025`、`SECURE=false`，认证留空，并在本机 `.env` 中开启注册。打开 `http://127.0.0.1:8025` 查看邮件；Mailpit 不会向外部邮箱投递。本地开关不要直接用于生产配置。
+
+重启 Server 后，`GET /api/auth/config` 会返回注册与邮件能力。关闭注册只禁止新账号创建，不影响现有账号登录、邮箱绑定或密码恢复。

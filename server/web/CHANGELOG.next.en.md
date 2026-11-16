@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added registration, recovery and account security pages. Device approval shows the current account and app channel, with a return link for Studio or CLI Web. Profiles have generated geometric avatars.
+
 - Project type labels now use Bot.
 
 

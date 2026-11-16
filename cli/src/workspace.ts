@@ -5,11 +5,12 @@ import { isProjectUploadExcludedPath } from "@steamharness/project-upload";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
-import { defaultServerUrl } from "./service-url";
+import { defaultServerUrl, serviceChannel } from "./service-url";
+import { ServerAuthClient, ServerAuthError } from "@steamharness/server-auth";
 
 import type {ProjectConfigurationState} from '@steamharness/project-configuration';
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { writeProjectIdentity } from './project-identity';
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -110,7 +111,7 @@ interface DeviceTokenResult {
   };
   user: {
     userId: string;
-    email: string;
+    email: string | null;
     displayName: string;
   };
   expiresAt?: string;
@@ -187,65 +188,34 @@ async function commandLogin(parsed: ParsedArgs): Promise<void> {
     throw new Error(i18n.t("loginRequiresServer", { ns: "cli" }));
   }
 
-  const started = await fetchApi<DeviceStartResult>({
-    server,
-    token: "",
-    path: "/api/auth/device/start",
-    method: "POST",
-    body: {
-      // phase 1 moves workspace login to device flow and stores a
-      // dedicated CLI auth file instead of sharing the App config.
-      clientName: DEFAULT_DEVICE_FLOW_CLIENT_NAME,
-      source: "cli",
-    },
-    auth: false,
-  });
-  if (started.errCode !== 0 || started.data === undefined) {
-    printApiResponse(started);
-    assertApiOk(started);
-    return;
+  const client = new ServerAuthClient(server, fetch, getCurrentLocale());
+  const abort = new AbortController();
+  const cancel = () => abort.abort();
+  process.once("SIGINT", cancel); process.once("SIGTERM", cancel);
+  let deviceCode: string | undefined, saved = false;
+  try {
+    const started = await client.start({ clientName: DEFAULT_DEVICE_FLOW_CLIENT_NAME, source: "cli",
+      context: { clientKind: "cli", channel: serviceChannel(), state: randomBytes(32).toString("base64url") } }, abort.signal);
+    deviceCode = started.deviceCode;
+    void openExternalBrowser(started.verificationUriComplete);
+    console.error(i18n.t("deviceLoginPrompt", { ns: "cli", url: started.verificationUriComplete, code: started.userCode }));
+    const completed = await client.poll(started, abort.signal);
+    abort.signal.throwIfAborted();
+    const previous = await readCliAuthConfig();
+    await writeCliAuthConfig({ serverUrl: client.serverUrl, apiKey: completed.accessToken,
+      expiresAt: completed.expiresAt ?? completed.apiKey.expiresAt, user: completed.user, source: "device_flow" });
+    if (abort.signal.aborted) { await clearCliAuthConfig(process.env, completed.accessToken); abort.signal.throwIfAborted(); }
+    saved = true;
+    if (previous.apiKey && previous.apiKey !== completed.accessToken) {
+      await fetch(`${previous.serverUrl}/api/auth/logout`, { method: "POST", redirect: "error",
+        headers: { Authorization: `Bearer ${previous.apiKey}` }, signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+    }
+    printApiResponse({ errCode: 0, errMessage: "", data: { loggedIn: true, serverUrl: client.serverUrl,
+      user: completed.user, expiresAt: completed.expiresAt ?? completed.apiKey.expiresAt, apiKeyPrefix: completed.apiKey.prefix } });
+  } finally {
+    process.removeListener("SIGINT", cancel); process.removeListener("SIGTERM", cancel);
+    if (deviceCode && !saved) await client.cancel(deviceCode).catch(() => undefined);
   }
-
-  const verificationUrl = started.data.verificationUriComplete || started.data.verificationUri;
-  void openExternalBrowser(verificationUrl);
-
-  console.error(i18n.t("deviceLoginPrompt", {
-    ns: "cli",
-    url: verificationUrl,
-    code: started.data.userCode,
-  }));
-
-  const completed = await waitForDeviceToken({
-    server,
-    deviceCode: started.data.deviceCode,
-    intervalSeconds: started.data.intervalSeconds,
-    expiresAt: started.data.expiresAt,
-  });
-  if (completed.errCode !== 0 || completed.data === undefined) {
-    printApiResponse(completed);
-    assertApiOk(completed);
-    return;
-  }
-
-  await writeCliAuthConfig({
-    serverUrl: server,
-    apiKey: completed.data.accessToken,
-    expiresAt: completed.data.expiresAt ?? completed.data.apiKey.expiresAt,
-    user: completed.data.user,
-    source: "device_flow",
-  });
-
-  printApiResponse({
-    errCode: 0,
-    errMessage: "",
-    data: {
-      loggedIn: true,
-      serverUrl: server,
-      user: completed.data.user,
-      expiresAt: completed.data.expiresAt ?? completed.data.apiKey.expiresAt,
-      apiKeyPrefix: completed.data.apiKey.prefix,
-    },
-  });
 }
 
 async function commandLogout(): Promise<void> {
@@ -965,6 +935,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
+  if (effective.tokenSource === "file" || effective.tokenSource === "none") {
+    const matching = readCliAuthConfigSync(process.env, options.server);
+    options.token = matching.apiKey;
+    effective.tokenSource = matching.apiKey ? "file" : "none";
+  }
+
   if (command === "upload" && options.noWait === true && options.releaseLog !== undefined) {
     throw new Error(i18n.t("noWaitReleaseLogConflict", { ns: "cli" }));
   }
@@ -1133,37 +1109,13 @@ export async function waitForDeviceToken(options: {
   intervalSeconds: number;
   expiresAt: string;
 }): Promise<ApiResponse<DeviceTokenResult>> {
-  const expiresAtMs = new Date(options.expiresAt).getTime();
-  const pollMs = Math.max(1000, options.intervalSeconds * 1000);
-
-  while (!Number.isFinite(expiresAtMs) || Date.now() < expiresAtMs) {
-    const response = await fetchApi<DeviceTokenResult>({
-      server: options.server,
-      token: "",
-      path: "/api/auth/device/token",
-      method: "POST",
-      body: { deviceCode: options.deviceCode },
-      auth: false,
-    });
-    if (response.errCode === 0) {
-      return response;
-    }
-    if (response.errMessage === "slow_down") {
-      const retryAfterSeconds =
-        readRetryAfterSeconds(response.data) ?? Math.max(options.intervalSeconds * 2, 5);
-      await delay(retryAfterSeconds * 1000);
-      continue;
-    }
-    if (response.errMessage !== "authorization_pending") {
-      return response;
-    }
-    await delay(pollMs);
+  try {
+    const data = await new ServerAuthClient(options.server).poll({ ...options, userCode: "", verificationUri: "", verificationUriComplete: "" }, new AbortController().signal);
+    return { errCode: 0, errMessage: "", data };
+  } catch (error) {
+    if (error instanceof ServerAuthError) return { errCode: error.status ?? 400, errMessage: error.message };
+    throw error;
   }
-
-  return {
-    errCode: 409,
-    errMessage: "expired_token",
-  };
 }
 
 async function openExternalBrowser(url: string): Promise<void> {

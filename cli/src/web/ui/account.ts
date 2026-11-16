@@ -4,13 +4,14 @@ import { iconHtml } from './ui';
 import { updateUserAvatar } from './avatar';
 import './account.css';
 
-type AccountAction = { type: 'login'; serverUrl: string; email?: string; password?: string } | { type: 'verify' | 'logout' };
+type AccountAction = { type: 'login'; serverUrl: string } | { type: 'verify' | 'logout' | 'cancel-login' };
 
 export class AccountPanel {
   private readonly button = document.createElement('button');
   private readonly dialog = document.createElement('dialog');
   private state?: AccountState;
   private pending = false;
+  private browserWindow?: Window | null;
   private returnFocus?: HTMLElement;
 
   constructor(menu: HTMLElement, private readonly request: (action: AccountAction) => Promise<void>, private readonly openHostAccount?: () => void) {
@@ -32,9 +33,9 @@ export class AccountPanel {
         <div id="account-status" role="status"></div>
         <form id="login-form">
           <label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
-          <label for="login-email">${t("Email")}</label><input id="login-email" type="email" required autocomplete="username">
-          <label for="login-password">${t("Password")}</label><div class="account-password"><input id="login-password" type="password" required autocomplete="current-password"><button id="show-password" type="button" class="icon-button" title="${t("Show password")}" aria-label="${t("Show password")}">${iconHtml('eye')}</button></div>
-          <div class="account-actions"><button id="login-submit" type="submit" class="account-primary">${iconHtml('sign-in')}<span>${t("Sign in")}</span></button><button id="browser-login" type="button" class="account-secondary">${iconHtml('link-external')}<span>${t("Browser sign-in")}</span></button></div>
+          <p>${t("Continue in your browser to sign in, register or recover your account.")}</p>
+          <a id="browser-login-link" target="_blank" rel="noopener noreferrer" hidden>${t("Open sign-in page")}</a>
+          <div class="account-actions"><button id="login-submit" type="submit" class="account-primary">${iconHtml('link-external')}<span>${t("Browser sign-in")}</span></button><button id="login-cancel" type="button" hidden>${t("Cancel sign-in")}</button></div>
         </form>
         <section id="account-profile" hidden>
           <div class="account-identity"><span class="account-avatar"></span><div><h3 id="account-display-name"></h3><div id="account-email" class="account-muted"></div></div></div>
@@ -45,27 +46,15 @@ export class AccountPanel {
       </div>`;
     document.body.append(this.dialog);
     this.element<HTMLButtonElement>('#close-account').addEventListener('click', () => this.dialog.close());
-    this.dialog.addEventListener('close', () => { this.element<HTMLInputElement>('#login-password').value = ''; (this.returnFocus?.isConnected ? this.returnFocus : this.button).focus({ preventScroll: true }); });
+    this.dialog.addEventListener('close', () => { (this.returnFocus?.isConnected ? this.returnFocus : this.button).focus({ preventScroll: true }); });
     this.element<HTMLFormElement>('#login-form').addEventListener('submit', event => {
       event.preventDefault();
       if (this.pending || !this.element<HTMLFormElement>('#login-form').reportValidity()) { return; }
-      const password = this.element<HTMLInputElement>('#login-password');
-      const action: AccountAction = { type: 'login', serverUrl: this.element<HTMLInputElement>('#server-url').value, email: this.element<HTMLInputElement>('#login-email').value, password: password.value };
-      password.value = '';
-      void this.perform(action);
+      this.browserWindow = window.open('about:blank', '_blank');
+      if (this.browserWindow) this.browserWindow.opener = null;
+      void this.perform({ type: 'login', serverUrl: this.element<HTMLInputElement>('#server-url').value });
     });
-    this.element<HTMLButtonElement>('#browser-login').addEventListener('click', () => {
-      const server = this.element<HTMLInputElement>('#server-url');
-      if (!this.pending && server.reportValidity()) { void this.perform({ type: 'login', serverUrl: server.value }); }
-    });
-    this.element<HTMLButtonElement>('#show-password').addEventListener('click', event => {
-      const password = this.element<HTMLInputElement>('#login-password');
-      const visible = password.type === 'password';
-      password.type = visible ? 'text' : 'password';
-      const button = event.currentTarget as HTMLButtonElement;
-      button.innerHTML = iconHtml(visible ? 'eye-closed' : 'eye');
-      button.title = button.ariaLabel = visible ? t("Hide password") : t("Show password");
-    });
+    this.element<HTMLButtonElement>('#login-cancel').addEventListener('click', () => void this.perform({type:'cancel-login'}));
     this.element<HTMLButtonElement>('#verify-login').addEventListener('click', () => { if (!this.pending) { void this.perform({ type: 'verify' }); } });
     this.element<HTMLButtonElement>('#account-logout').addEventListener('click', () => { if (!this.pending) { void this.perform({ type: 'logout' }); } });
   }
@@ -83,6 +72,7 @@ export class AccountPanel {
     this.state = state;
     this.button.hidden = false;
     this.pending = state.status === 'checking';
+    if (!this.pending && !state.signIn) { this.browserWindow?.close(); this.browserWindow = undefined; }
     this.render();
   }
 
@@ -94,19 +84,28 @@ export class AccountPanel {
     this.button.querySelector('.web-account-name')!.textContent = name;
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
     for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) { updateUserAvatar(avatar, state); }
-    this.element<HTMLFormElement>('#login-form').hidden = signedIn;
+    this.element<HTMLFormElement>('#login-form').hidden = signedIn && !state.signIn;
     this.element<HTMLElement>('#account-profile').hidden = !signedIn;
     const server = this.element<HTMLInputElement>('#server-url');
     if (!server.value || signedIn && document.activeElement !== server) { server.value = state.serverUrl; }
     this.dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, #login-submit, #browser-login, #verify-login, #account-logout').forEach(element => { element.disabled = this.pending; });
-    this.element('#login-submit > span:last-child').textContent = this.pending ? t("Signing in...") : t("Sign in");
+    this.element('#login-submit > span:last-child').textContent = this.pending ? t("Waiting for browser sign-in...") : t("Browser sign-in");
+    this.element<HTMLButtonElement>('#login-cancel').hidden = !state.signIn;
+    const link = this.element<HTMLAnchorElement>('#browser-login-link'); link.hidden = true;
+    if (state.signIn) { try {
+      const url = new URL(state.signIn.url);
+      if (url.origin === new URL(server.value).origin && url.pathname === new URL(server.value).pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) {
+        link.href = url.href; link.hidden = false;
+        if (this.browserWindow && !this.browserWindow.closed) { this.browserWindow.location.replace(url.href); this.browserWindow = undefined; }
+      }
+    } catch {} }
     const status = this.element('#account-status');
     status.textContent = state.status === 'authenticated' ? t("Signed in; account verified") : this.pending ? t("Verifying account...") : state.status === 'expired' ? t("Sign-in expired") : state.status === 'error' && state.user ? t("Connection not verified") : t("Signed out");
     status.classList.toggle('connected', state.status === 'authenticated');
     this.showError(state.error);
     if (state.user) {
-      this.element('#account-display-name').textContent = state.user.displayName || state.user.email;
-      this.element('#account-email').textContent = state.user.email;
+      this.element('#account-display-name').textContent = state.user.displayName || state.user.email || '';
+      this.element('#account-email').textContent = state.user.email || '';
       this.element('#account-server').textContent = state.serverUrl;
       this.element('#account-expiry').textContent = state.expiresAt ? new Date(state.expiresAt).toLocaleString(locale()) : t("Managed by server");
     }
@@ -118,8 +117,9 @@ export class AccountPanel {
   }
 
   private async perform(action: AccountAction): Promise<void> {
+    if (action.type === 'cancel-login') { this.browserWindow?.close(); this.browserWindow = undefined; }
     this.pending = true; this.render(); this.showError();
-    try { await this.request(action); if (action.type === 'login') { this.pending = false; this.render(); } }
-    catch (error) { this.pending = false; this.render(); this.showError((error as Error).message); }
+    try { await this.request(action); if (action.type === 'login' || action.type === 'cancel-login') { this.pending = this.state?.status === 'checking'; this.render(); } }
+    catch (error) { this.browserWindow?.close(); this.browserWindow = undefined; this.pending = false; this.render(); this.showError((error as Error).message); }
   }
 }

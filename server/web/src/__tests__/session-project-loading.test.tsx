@@ -28,10 +28,10 @@ describe("account session and project loading", () => {
     vi.spyOn(apiClient, "getSession")
       .mockResolvedValueOnce({ errCode: 0, errMessage: "", data: { authenticated: false } })
       .mockResolvedValue(authenticatedSession);
-    vi.spyOn(apiClient, "loginWithPassword").mockResolvedValue(authenticatedSession);
+    vi.spyOn(apiClient, "authAction").mockImplementation(async path => path === "/config" ? {errCode:0,errMessage:"",data:{registrationEnabled:true,mailAvailable:true}} as any : authenticatedSession);
     const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode, errMessage: "Project listing unavailable." });
     render(<App />);
-    fireEvent.change(await screen.findByLabelText("邮箱"), { target: { value: "admin@example.com" } });
+    fireEvent.change(await screen.findByLabelText("用户名或邮箱"), { target: { value: "admin@example.com" } });
     const password = screen.getByLabelText("密码");
     fireEvent.change(password, { target: { value: "test-password" } });
     fireEvent.submit(password.closest("form")!);

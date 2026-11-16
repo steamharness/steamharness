@@ -17,7 +17,7 @@ import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { cn } from "@/lib/utils";
-import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
+import { getAvatarFallbackText, generatedAvatarUrl } from "@steamharness/avatar-fallback";
 import { AvatarCropDialog } from "@/components/AvatarCropDialog";
 
 interface AccountPageProps {
@@ -109,7 +109,7 @@ export function AccountPage({
                   <Button type="button" variant="ghost" className="size-[72px] shrink-0 rounded-md p-0"
                     title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} disabled={!!saveBusy} onClick={() => fileInputRef.current?.click()}>
                   <Avatar className="size-[72px]">
-                    {avatarUrl ? <AvatarImage src={avatarUrl} alt={t("accountAvatarAlt")} /> : null}
+                    <AvatarImage src={avatarUrl || generatedAvatarUrl(profile?.userId)} alt={t("accountAvatarAlt")} />
                     <AvatarFallback>
                       <span className="text-base font-semibold ">
                         {getAvatarFallbackText({
@@ -159,6 +159,11 @@ export function AccountPage({
               </div>
 
               <FieldGroup>
+                <Field>
+                  <FieldLabel>{t("loginEmailLabel")}</FieldLabel>
+                  <p className="break-words text-sm">{profile?.email || me?.principal?.email || t("authNotBound")}</p>
+                  <FieldDescription><a className="underline underline-offset-4" href="/settings/security">{t("authSecurityTitle")}</a> · {t("authRecoveryHelp")}</FieldDescription>
+                </Field>
                 <Field>
                   <FieldLabel htmlFor="account-display-name">{t("accountDisplayNameLabel")}</FieldLabel>
                   <Input

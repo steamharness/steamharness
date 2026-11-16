@@ -32,7 +32,7 @@ import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
 import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
-import { loginWebAccount } from './account-auth';
+import { sharedWebLogin } from './account-auth';
 import type { WebHostConfiguration } from './host-config';
 import { inspectWebProject, isLocalBuiltinAssistant } from './assistant-project';
 import { ResourcePreviews } from './resource-preview';
@@ -123,8 +123,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let account: AccountState = { status: 'signed-out', serverUrl: defaultServerUrl(), revision: 0 };
   let signedOut = false;
   let authIdentity = '';
-  let login: ChildProcess | undefined;
-  let passwordLogin = false;
+  const browserLogin = sharedWebLogin(credentials ?? options);
+  const unsubscribeLogin = browserLogin.subscribe(error => {
+    if (browserLogin.busy) { account = { ...account, status: "checking", signIn: browserLogin.info }; broadcast(); }
+    else { account = { ...account, signIn: undefined, ...(error ? {status: "error" as const, error} : {}) }; authIdentity = ""; void refreshAuth(true).then(() => { if(error) { account = {...account,status:"error",error}; broadcast(); } }); }
+  });
   let hostConnection = options.host?.connection;
   let webApps = options.host?.webApps ?? {};
   let userSettings = options.host?.userSettings ? parseUserSettings(options.host.userSettings) : getUserSettings();
@@ -454,9 +457,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     storageInitialization = { epoch, promise: initializing }; return initializing;
   };
   const refreshAuth = async (force = false) => {
-    if ((passwordLogin || login) && !force) { return; }
+    if ((browserLogin.busy) && !force) { return; }
     const readingEpoch = authEpoch;
-    const config = hostManaged ? createEmptyProjectAuthConfig() : await readCliAuthConfig();
+    const config = hostManaged ? createEmptyProjectAuthConfig() : await readCliAuthConfig(process.env, process.env.STEAMHARNESS_SERVER_URL);
     if (readingEpoch !== authEpoch) { return; }
     const serverUrl = hostManaged ? hostConnection?.serverUrl : process.env.STEAMHARNESS_SERVER_URL ?? config.serverUrl;
     const token = hostManaged ? hostConnection?.accessToken : process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? config.apiKey;
@@ -514,7 +517,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const result = await response.json();
         if (epoch !== authEpoch) { return; }
         const profile = result.data?.profile;
-        if (!response.ok || result.errCode !== 0 || typeof profile?.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string') { throw new Error('Workflow login is invalid or expired.'); }
+        if (!response.ok || result.errCode !== 0 || typeof profile?.userId !== 'string' || !profile.userId || (profile.email !== null && typeof profile.email !== 'string') || typeof profile.displayName !== 'string') { throw new Error('Workflow login is invalid or expired.'); }
         if (!connection) {
           authRevision++;
           parameterStates.clear();
@@ -930,31 +933,21 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'login': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
         if (!options.host && process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
-        if (login || passwordLogin) { break; }
-        const url = new URL(String(message.serverUrl)); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) { throw new Error('Invalid SteamHarness Server URL.'); }
-        signedOut = false; account = { ...account, status: 'checking' }; broadcast();
-        if (message.email !== undefined || message.password !== undefined) {
-          const epoch = ++authEpoch;
-          passwordLogin = true;
-          try {
-            if (typeof message.email !== 'string' || typeof message.password !== 'string') { throw new Error('Invalid login credentials.'); }
-            await loginWebAccount(url.toString().replace(/\/+$/, ''), message.email, message.password);
-            if (epoch !== authEpoch) { break; }
-            hostManaged = false; hostConnection = undefined;
-          } catch (error) { if (epoch === authEpoch) { account = { ...account, status: 'error', error: String((error as Error).message) }; broadcast(); } throw error; }
-          finally { passwordLogin = false; }
-          await refreshAuth(true);
-          break;
-        }
-        login = spawn(process.execPath, [path.join(cliRoot(), 'dist/index.js'), 'workspace', 'login', '--server', url.toString().replace(/\/$/, '')], { shell: false, stdio: ['ignore', 'ignore', 'pipe'] });
-        login.stderr?.on('data', chunk => process.stderr.write(chunk));
-        login.once('error', error => { login = undefined; account = { ...account, status: 'error', error: error.message }; broadcast(); });
-        login.once('close', () => { login = undefined; authIdentity = ''; void refreshAuth(); }); break;
+        if (browserLogin.busy) break;
+        if (message.email !== undefined || message.password !== undefined) throw new Error(t('Use browser sign-in.'));
+        const serverUrl = String(message.serverUrl);
+        signedOut = false;
+        const returnUrl = new URL(`${options.mount?.basePath ?? ''}/`, origin);
+        if (['localhost','127.0.0.1','[::1]'].includes(returnUrl.hostname)) await browserLogin.start(serverUrl, returnUrl.href);
+        else await browserLogin.start(serverUrl);
+        account = { ...account, status: 'checking', signIn: browserLogin.info }; broadcast();
+        break;
       }
+      case 'cancel-login': browserLogin.cancel(); break;
       case 'verify': await refreshAuth(true); break;
       case 'logout': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        signedOut = true; login?.kill(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await clearCliAuthConfig(); } authIdentity = 'signed-out'; await refreshAuth(); break;
+        signedOut = true; browserLogin.cancel(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await clearCliAuthConfig(); } authIdentity = 'signed-out'; await refreshAuth(); break;
       }
       default: throw new Error(`Unsupported action: ${message.type}`);
     }
@@ -969,6 +962,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       // SSH forwards TCP without rewriting the browser's loopback Host header.
       const forwarded = !!options.host && ['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname) && !host.username && !host.password && host.pathname === '/' && !host.search && !host.hash;
       const url = new URL(request.url ?? '/', origin);
+      if (request.method === 'GET' && url.searchParams.has('auth_state')) {
+        if (!browserLogin.matchesState(url.searchParams.get('auth_state') || '')) { json(response,400,{message:'Invalid sign-in return.'}); return; }
+        response.writeHead(303,{Location:url.pathname}); response.end(); return;
+      }
       const resourceAsset = url.pathname.startsWith('/kanban/') || url.pathname.startsWith('/resource-assets/');
       const sandboxAsset = resourceAsset && ['GET', 'HEAD'].includes(request.method ?? '') && request.headers.origin === 'null';
       if (request.headers.host !== new URL(origin).host && !forwarded || request.headers.origin && request.headers.origin !== (forwarded ? host.origin : origin) && !sandboxAsset) { json(response, 403, { message: 'Invalid request origin.' }); return; }
@@ -1220,7 +1217,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       projectCreation.close(); projectServer?.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
-      configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
+      configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } unsubscribeLogin(); if (!options.mount) browserLogin.cancel(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
       if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));

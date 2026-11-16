@@ -11,7 +11,7 @@ export type SessionState =
         sessionId?: string;
         userId?: string;
         displayName?: string;
-        email?: string;
+        email?: string | null;
         // surface avatarUrl on the session so the header avatar
         // renders on every page without waiting for the settings-page fetch.
         avatarUrl?: string;
@@ -23,12 +23,12 @@ export type SessionState =
 export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "entries" | "versions";
 
 export type AdminTab = "users" | "audit";
-export type SettingsTab = "profile" | "appearance" | "api-keys";
-export type Page = "login" | "device" | "projects" | "groups" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
+export type SettingsTab = "security" | "profile" | "appearance" | "api-keys";
+export type Page = "register" | "forgot-password" | "login" | "device" | "projects" | "groups" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
 export type ThemeMode = "light" | "dark" | "system";
 
 export type AppRoute =
-  | { page: "login" }
+  | { page: "login" | "register" | "forgot-password" }
   | { page: "device"; userCode?: string }
   | { page: "projects" }
   | { page: "groups"; id?: string }

@@ -1,6 +1,6 @@
 export interface AuthUserInfo {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   avatarUrl?: string;
 }
@@ -61,7 +61,7 @@ export function normalizeProjectAuthConfig(
     user: isRecord(value.user)
       ? {
           userId: readString(value.user.userId) ?? "",
-          email: readString(value.user.email) ?? "",
+          email: readString(value.user.email) ?? null,
           displayName: readString(value.user.displayName) ?? "",
           avatarUrl: readString(value.user.avatarUrl),
         }

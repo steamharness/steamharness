@@ -1,5 +1,7 @@
 # Unreleased
 
+- CLI Web now signs in on the Server website without a local password form. Authorization supports return links, cancellation and shared entry state, with credentials isolated by channel and Server.
+
 - Explicit Kanban Web applications use separate local origins, fixed HTTP/WebSocket proxies, scoped sessions, and declared microphone permissions; account changes close old connections. Kanban-only uploads can contain the complete static output without including build sources.
 
 - Added “Search memory” to the Bot memory tool permission group alongside save, get, update and delete.

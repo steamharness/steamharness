@@ -1,3 +1,5 @@
+import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
+import { studioProtocols } from '../../shared/server-auth/index.ts';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
@@ -138,6 +140,32 @@ export function mergeProduct(base, overrides) {
   return product;
 }
 
+/** Each installed channel owns its protocol, data directory and operating-system identity. */
+export function channelProductIdentity(channel, branding = {}) {
+  if (!["dev", "alpha", "main"].includes(channel)) throw new Error("Invalid Studio channel.");
+  const suffix = channel === "main" ? "" : `-${channel}`;
+  const baseLabel = branding.nameShort || "SteamHarness";
+  const label = channel === "main" ? baseLabel : `${baseLabel} ${channel === "dev" ? "Dev" : "Alpha"}`;
+  const identity = {
+    nameShort: label, nameLong: label, urlProtocol: studioProtocols[channel],
+    dataFolderName: `.steamharness-studio${suffix}`, sharedDataFolderName: `.steamharness-studio${suffix}-shared`,
+    darwinBundleIdentifier: `space.yuhe.studio${suffix}`, linuxDesktopName: `space.yuhe.SteamHarness${suffix}`,
+    linuxIconName: `steamharness-studio${suffix}`, applicationName: `steamharness-studio${suffix}`,
+    serverApplicationName: `steamharness-studio-server${suffix}`, serverDataFolderName: `.steamharness-studio-server${suffix}`,
+    tunnelApplicationName: `steamharness-studio-tunnel${suffix}`,
+    win32MutexName: `steamharness-studio${suffix}`, win32AppUserModelId: `Yuhe.Studio${suffix}`,
+    win32DirName: label, win32NameVersion: label, win32RegValueName: label, win32ShellNameShort: label,
+    win32TunnelServiceMutex: `steamharness-studio-tunnelservice${suffix}`, win32TunnelMutex: `steamharness-studio-tunnel${suffix}`,
+  };
+  if (channel !== "main") {
+    for (const field of ["win32x64AppId", "win32arm64AppId", "win32x64UserAppId", "win32arm64UserAppId"]) {
+      const hash = createHash("sha256").update(`steamharness-studio:${channel}:${field}`).digest("hex").slice(0, 32);
+      identity[field] = `{{${hash.slice(0,8)}-${hash.slice(8,12)}-${hash.slice(12,16)}-${hash.slice(16,20)}-${hash.slice(20)}}`;
+    }
+  }
+  return identity;
+}
+
 export async function prepareDistribution(root = ROOT) {
   const upstream = await assertUpstream(root);
   const productFile = path.join(upstream.directory, 'product.json');
@@ -145,7 +173,9 @@ export async function prepareDistribution(root = ROOT) {
   const base = git(['show', `${upstream.commit}:product.json`], upstream.directory);
   const current = (await fs.readFile(productFile, 'utf8')).trim();
   const overrides = await readJSON(path.join(root, 'config/product.json'));
-  const product = mergeProduct(JSON.parse(base), overrides);
+  const channel = checkoutServiceChannel({root});
+  const identity = channelProductIdentity(channel, overrides);
+  const product = mergeProduct(JSON.parse(base), {...overrides,...identity});
   const defaultsFile = path.join(root, 'config/default-extensions.json');
   const bundled = await exists(defaultsFile) ? (await readJSON(defaultsFile)).filter(extension => extension.builtin) : [];
   if (bundled.length) {

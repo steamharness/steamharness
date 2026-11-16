@@ -1,3 +1,5 @@
+import { createIdentityRouter } from "./auth-identity";
+import { deviceReturnUrl, parseDeviceContext } from "@steamharness/server-auth";
 
 import { Router } from "express";
 import express from "express";
@@ -17,7 +19,7 @@ interface AuthSessionResponse {
     kind: AuthenticatedPrincipal["kind"];
     userId?: string;
     displayName?: string;
-    email?: string;
+    email?: string | null;
     // surface avatarUrl on the session so the header avatar loads on
     // every page instead of waiting for the settings-page profile fetch.
     avatarUrl?: string;
@@ -42,7 +44,7 @@ interface AuthSessionResponse {
   };
   user?: {
     userId: string;
-    email: string;
+    email: string | null;
     displayName: string;
   };
   expiresAt?: string;
@@ -73,6 +75,16 @@ function jsonBody() {
 export function createAuthRouter(): Router {
   const router = Router();
   const json = jsonBody();
+  router.use((req,res,next) => {
+    if (!["GET","HEAD","OPTIONS"].includes(req.method)) {
+      const origin = req.get("origin");
+      if (req.get("sec-fetch-site") === "cross-site" || origin && origin !== readRequestOrigin(req)) {
+        next(new HttpError(403,403,"Invalid request origin.")); return;
+      }
+    }
+    next();
+  });
+  router.use(createIdentityRouter());
   const rawBody = express.raw({ type: "image/*", limit: 5 * 1024 * 1024 });
   const browserSessions = new Map<string, { accessToken: string; returnTo: string; expiresAt: number }>();
 
@@ -235,7 +247,7 @@ export function createAuthRouter(): Router {
     try {
       const authAttempt = consumeAuthRateLimit({
         scope: "login",
-        key: `${readRequestIp(req) ?? "unknown"}:${String(req.body?.email ?? "").trim().toLowerCase()}`,
+        key: `${readRequestIp(req) ?? "unknown"}:${String(req.body?.identifier ?? req.body?.email ?? "").trim().toLowerCase()}`,
         maxAttempts: AUTH_RATE_LIMITS.login.maxAttempts,
         retryAfterSeconds: AUTH_RATE_LIMITS.login.retryAfterSeconds,
       });
@@ -243,7 +255,7 @@ export function createAuthRouter(): Router {
         writeRateLimitResponse(res, authAttempt.retryAfterSeconds);
         return;
       }
-      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      const email = typeof req.body?.identifier === "string" ? req.body.identifier.trim() : typeof req.body?.email === "string" ? req.body.email.trim() : "";
       const password = typeof req.body?.password === "string" ? req.body.password : "";
       const source = readNonWebClientSource(req.body?.source);
       if (!email || !password) {
@@ -523,7 +535,10 @@ export function createAuthRouter(): Router {
       }
       const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim() : "SteamHarness CLI";
       const source = readNonWebClientSource(req.body?.source, "cli");
+      let context;
+      try { context = parseDeviceContext(req.body?.context); } catch { throw new HttpError(400,400,"Invalid sign-in context."); }
       const started = await authService.createDeviceCode({
+        context,
         clientName,
         source,
         requestedScopes: Array.isArray(req.body?.requestedScopes)
@@ -554,6 +569,22 @@ export function createAuthRouter(): Router {
     } catch (error) {
       next(error);
     }
+  });
+
+  router.get("/device/:userCode", async (req,res,next) => {
+    try {
+      const record = await getProjectAuthContext().accountDb?.getDeviceCodeByUserCode(req.params.userCode);
+      if (!record) throw new HttpError(404,404,"Device code not found.");
+      res.set("Cache-Control","no-store");
+      res.json(ok({userCode:record.userCode,clientName:record.clientName,source:record.source,context:record.context,state:record.state,expiresAt:record.expiresAt,
+        ...(["approved","consumed"].includes(record.state) ? {returnUrl:deviceReturnUrl(record.context)} : {})}));
+    } catch(error) {next(error);}
+  });
+  router.post("/device/cancel", json, async (req,res,next) => {
+    try {
+      const code = requireString(req.body?.deviceCode,"deviceCode");
+      await getProjectAuthContext().accountDb?.cancelDeviceCode(code);res.json(ok({cancelled:true}));
+    } catch(error) {next(error);}
   });
 
   router.post("/device/token", json, async (req, res, next) => {
@@ -591,7 +622,7 @@ export function createAuthRouter(): Router {
         throw new HttpError(401, 401, "Invalid device code.");
       }
       if (new Date(record.expiresAt).getTime() <= Date.now() && record.state !== "consumed") {
-        const expired = await accountDb.updateDeviceCodeState(record.id, { state: "expired" });
+        if (record.state === "pending" || record.state === "approved") await accountDb.updateDeviceCodeState(record.id, { state: "expired" });
         await recordAuthAudit(req, {
           principalKind: "anonymous",
           eventType: "auth.device.token",
@@ -600,7 +631,7 @@ export function createAuthRouter(): Router {
           resourceId: record.id,
           context: { state: "expired" },
         });
-        res.status(409).json(fail(409, "expired_token", expired));
+        res.status(409).json(fail(409, "expired_token", { state: "expired" }));
         return;
       }
       if (record.state === "pending") {
@@ -628,7 +659,7 @@ export function createAuthRouter(): Router {
           resourceId: record.id,
           context: { state: "consumed" },
         });
-        res.status(409).json(fail(409, "expired_token"));
+        res.status(409).json(fail(409, "expired_token", { state: "expired" }));
         return;
       }
       if (record.state !== "approved" || !record.result?.user) {
@@ -652,7 +683,7 @@ export function createAuthRouter(): Router {
           resourceId: record.id,
           context: { state: "already_consumed" },
         });
-        res.status(409).json(fail(409, "expired_token"));
+        res.status(409).json(fail(409, "expired_token", { state: "expired" }));
         return;
       }
       const consumedRecord = consumed.deviceCode;
@@ -710,16 +741,15 @@ export function createAuthRouter(): Router {
         : req.body?.avatarUrl === null
           ? null
           : undefined;
-      const email = typeof req.body?.email === "string" ? req.body.email : undefined;
-      const temporaryPassword = typeof req.body?.temporaryPassword === "string" ? req.body.temporaryPassword : undefined;
-      if (email || temporaryPassword || (displayName !== undefined && authService)) {
+      if (req.body?.email !== undefined || req.body?.temporaryPassword !== undefined || req.body?.password !== undefined) {
+        throw new HttpError(400,400,"Use the account security verification flow to change email or password.");
+      }
+      if (displayName !== undefined && authService) {
         if (!authService) {
           throw new HttpError(503, 503, "Account auth is not configured.");
         }
         await authService.updateAuthUser({
           userId: principal.userId,
-          email,
-          password: temporaryPassword,
           displayName,
         });
       }
@@ -914,6 +944,7 @@ export function createAuthRouter(): Router {
       if (!record) {
         throw new HttpError(404, 404, "Device code not found.");
       }
+      if (Date.parse(record.expiresAt) <= Date.now()) throw new HttpError(409,409,"expired_token");
       if (record.state !== "pending") {
         throw new HttpError(409, 409, "Device code is not pending.");
       }
@@ -921,6 +952,7 @@ export function createAuthRouter(): Router {
         state: "approved",
         approvedAt: new Date().toISOString(),
         approvedByUserId: principal.userId,
+        approvalRefreshToken: principal.refreshToken,
         result: {
           user: {
             userId: principal.userId,
@@ -940,7 +972,7 @@ export function createAuthRouter(): Router {
         resourceType: "device_code",
         resourceId: record.id,
       });
-      res.json(ok({ deviceCode: updated }));
+      res.json(ok({ deviceCode: updated, returnUrl: deviceReturnUrl(updated.context) }));
     } catch (error) {
       next(error);
     }
@@ -1054,7 +1086,7 @@ export function createAuthRouter(): Router {
       if (!profile) {
         throw new HttpError(404, 404, "User not found.");
       }
-      const { invitationLink } = await authService.generateInviteLink(profile.email);
+      const { invitationLink } = await authService.generateInviteLink(profile.email ?? "");
       res.json(ok({ invitationLink }));
     } catch (error) {
       next(error);
@@ -1345,11 +1377,15 @@ function requireString(value: unknown, fieldName: string): string {
 }
 
 function readRequestOrigin(req: express.Request): string {
-  const origin = req.get("origin");
-  if (origin && /^https?:\/\//i.test(origin)) {
-    return origin.replace(/\/+$/, "");
-  }
   const host = req.get("host") ?? "localhost";
+  const configured = process.env.STEAMHARNESS_AUTH_PUBLIC_BASE_URL?.trim()
+    || process.env.STEAMHARNESS_API_PUBLIC_BASE_URL?.trim();
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (["http:", "https:"].includes(url.protocol) && url.host === host) return url.origin;
+    } catch { /* Use this request's origin when no valid public URL is configured. */ }
+  }
   const protocol = req.protocol || "http";
   return `${protocol}://${host}`;
 }
@@ -1375,7 +1411,7 @@ function readNonWebClientSource(
   throw new HttpError(400, 400, `Invalid non-web client source "${source}".`);
 }
 
-function readProfileDisplayName(profile: UserProfileRecord | undefined, email: string | undefined): string {
+function readProfileDisplayName(profile: UserProfileRecord | undefined, email: string | null | undefined): string {
   return profile?.displayName || email || "未命名用户";
 }
 

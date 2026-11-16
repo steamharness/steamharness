@@ -1,9 +1,10 @@
 export interface AccountState {
   status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
   serverUrl: string;
+  signIn?: { url: string; userCode: string; expiresAt: string; state: string };
   aiServerUrl?: string;
   aiConfigured?: boolean;
-  user?: { userId: string; email: string; displayName: string; avatarUrl?: string };
+  user?: { userId: string; email: string | null; displayName: string; avatarUrl?: string };
   expiresAt?: string;
   error?: string;
   revision: number;

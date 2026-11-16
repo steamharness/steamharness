@@ -5,7 +5,7 @@ export const DEFAULT_STEAMHARNESS_SERVER_URL = typeof __STEAMHARNESS_DEFAULT_SER
 
 export interface User {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   avatarUrl?: string;
 }
@@ -39,12 +39,6 @@ interface ApiEnvelope<T> { errCode: number; errMessage?: string; data?: T }
 interface MeResponse {
   profile: User | null;
   principal?: { apiKeyId?: string; expiresAt?: string };
-}
-interface LoginResponse {
-  authenticated: boolean;
-  accessToken?: string;
-  apiKey?: { id?: string };
-  expiresAt?: string;
 }
 
 export interface SystemAiUsage {
@@ -137,7 +131,7 @@ export class ServerClient {
     }
     const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken });
     const profile = me.profile;
-    if (!profile || typeof profile.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string' || !me.principal?.apiKeyId) {
+    if (!profile || typeof profile.userId !== 'string' || !profile.userId || (profile.email !== null && typeof profile.email !== 'string') || typeof profile.displayName !== 'string' || !me.principal?.apiKeyId) {
       throw new AuthError(t("The server did not return valid account information."));
     }
     let avatarUrl: string | undefined;
@@ -153,29 +147,6 @@ export class ServerClient {
       user: { userId: profile.userId, email: profile.email, displayName: profile.displayName, avatarUrl },
       apiKeyId: me.principal.apiKeyId, expiresAt: me.principal.expiresAt,
     };
-  }
-
-  async login(email: string, password: string): Promise<LoginSession> {
-    if (!email.trim() || !password) { throw new AuthError(t("Enter your email and password.")); }
-    let sessionCookie: string | undefined;
-    const result = await this.request<LoginResponse>('/api/auth/login', {
-      body: { email: email.trim(), password, source: 'desktop', clientName: 'SteamHarness Studio' },
-      headersReceived: (headers) => {
-        const cookies = headers.getSetCookie?.() ?? [];
-        sessionCookie = cookies.map((cookie) => cookie.split(';', 1)[0]).join('; ') || undefined;
-      },
-    });
-    if (!result.authenticated || !result.accessToken || !result.apiKey?.id) {
-      throw new AuthError(t("The server did not return desktop sign-in credentials."));
-    }
-    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken }), sessionCookie }; }
-    catch (error) {
-      if (sessionCookie) {
-        await this.request(`/api/auth/api-keys/${encodeURIComponent(result.apiKey.id)}`, { sessionCookie, method: 'DELETE' }).catch(() => undefined);
-        await this.request('/api/auth/logout', { sessionCookie, method: 'POST' }).catch(() => undefined);
-      }
-      throw error;
-    }
   }
 
   async browserSession(connection: Connection, returnTo: string): Promise<string> {
@@ -327,16 +298,20 @@ export class Account {
     }
   }
 
-  async login(serverUrl: string, email: string, password: string): Promise<void> {
+  async login(serverUrl: string, authorize: () => Promise<LoginSession>, signal?: AbortSignal): Promise<void> {
     const url = normalizeProjectServerUrl(serverUrl);
     const epoch = ++this.epoch;
     this.update('checking');
     try {
-      const session = await this.client(url).login(email, password);
-      if (epoch !== this.epoch) { await this.client(url).revoke(session).catch(() => undefined); return; }
+      const session = await authorize();
+      if (epoch !== this.epoch || signal?.aborted) { await this.client(url).revoke(session).catch(() => undefined); signal?.throwIfAborted(); return; }
       try { await this.save(session, epoch); }
       catch (error) { await this.client(url).revoke(session).catch(() => undefined); throw error; }
-      if (epoch !== this.epoch) { await this.client(url).revoke(session).catch(() => undefined); return; }
+      if (epoch !== this.epoch || signal?.aborted) {
+        await this.client(url).revoke(session).catch(() => undefined);
+        if (epoch === this.epoch) await this.save(undefined, epoch);
+        signal?.throwIfAborted(); return;
+      }
       const previous = this.session;
       this.session = session;
       this.verified = true;

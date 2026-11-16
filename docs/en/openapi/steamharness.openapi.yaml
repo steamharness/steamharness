@@ -526,6 +526,349 @@ paths:
                 $ref: "#/components/schemas/AuthSessionStateResponse"
         "401":
           $ref: "#/components/responses/HarnessError"
+  /api/auth/config:
+    get:
+      tags: [Auth & Accounts]
+      operationId: getAccountAuthConfig
+      summary: "Read sign-in and registration options"
+      description: "Registration is opt-in. Email methods require SMTP."
+      security: []
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountAuthConfigResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/email-code/send:
+    post:
+      tags: [Auth & Accounts]
+      operationId: sendAccountEmailCode
+      summary: "Request an email code"
+      description: "Codes expire in 10 minutes and allow 5 attempts; 60-second cooldown, 10/email/hour and 30/IP/hour. Replies do not reveal account existence. bind-email and reauth require a user session cookie."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailCodeSendRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailCodeChallengeResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/register:
+    post:
+      tags: [Auth & Accounts]
+      operationId: registerAccount
+      summary: "Register an account"
+      description: "Requires enabled registration. Username accounts require a password; email accounts require a registration code and accept an optional password. Creates a regular account and a website session cookie."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountRegistrationRequest"
+      responses:
+        "201":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionStateResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/email-code/login:
+    post:
+      tags: [Auth & Accounts]
+      operationId: loginAccountByEmailCode
+      summary: "Sign in with an email code"
+      description: "Requires a verified bound email and a login challenge. Sets a website session cookie."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailCodeLoginRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionStateResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/password/reset:
+    post:
+      tags: [Auth & Accounts]
+      operationId: recoverAccountPassword
+      summary: "Recover a password"
+      description: "Requires a password-reset code for a verified email. Revokes sessions, app sign-in keys and approved device grants; manual API keys remain active."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRecoveryRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMutationResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/me/security:
+    get:
+      tags: [Auth & Accounts]
+      operationId: getAccountSecurity
+      summary: "Read account security"
+      description: "Requires a user website session cookie; API keys are not accepted."
+      security:
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSecurityResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/me/username:
+    post:
+      tags: [Auth & Accounts]
+      operationId: setAccountUsername
+      summary: "Set a username once"
+      description: "Confirms the current password or verified-email reauth challenge. Usernames are case insensitive and immutable."
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAccountUsernameRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSecurityResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/me/email:
+    post:
+      tags: [Auth & Accounts]
+      operationId: setAccountEmail
+      summary: "Bind, verify or unbind email"
+      description: "Requires current identity proof. Binding also requires a bind-email code tied to this account. Unbinding requires a username and password. Revokes existing sign-ins after saving."
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAccountEmailRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSecurityResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/me/password:
+    post:
+      tags: [Auth & Accounts]
+      operationId: setAccountPassword
+      summary: "Set or change a password"
+      description: "Requires current password or verified-email proof and revokes existing sign-ins. Manual API keys remain active."
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAccountPasswordRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMutationResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/device/cancel:
+    post:
+      tags: [Auth & Accounts]
+      operationId: cancelDeviceFlow
+      summary: "Cancel application sign-in"
+      description: "The device secret cancels pending authorization, and revokes its key if token exchange raced with cancellation."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceFlowTokenRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMutationResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/device/{userCode}:
+    get:
+      tags: [Auth & Accounts]
+      operationId: getDeviceApprovalInfo
+      summary: "Read public device approval details"
+      description: "Returns client/channel metadata and a return link after approval; never returns a device secret or API key."
+      security: []
+      parameters:
+        - name: userCode
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceApprovalInfoResponse"
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+        "429":
+          $ref: "#/components/responses/HarnessError"
+        "503":
+          $ref: "#/components/responses/HarnessError"
   /api/auth/login:
     post:
       tags:
@@ -3985,7 +4328,7 @@ components:
         displayName:
           type: string
         email:
-          type: string
+          type: [string, "null"]
           format: email
         apiKeyId:
           type: string
@@ -4004,7 +4347,7 @@ components:
         userId:
           type: string
         email:
-          type: string
+          type: [string, "null"]
           format: email
         displayName:
           type: string
@@ -4079,6 +4422,8 @@ components:
     DeviceCodeResult:
       type: object
       properties:
+        context:
+          $ref: "#/components/schemas/DeviceClientContext"
         id:
           type: string
         userCode:
@@ -4152,7 +4497,7 @@ components:
         userId:
           type: string
         email:
-          type: string
+          type: [string, "null"]
           format: email
         displayName:
           type: string
@@ -4178,7 +4523,7 @@ components:
         userId:
           type: string
         email:
-          type: string
+          type: [string, "null"]
           format: email
         displayName:
           type: string
@@ -4472,6 +4817,7 @@ components:
             data:
               type: object
               properties:
+                returnUrl: { type: string, format: uri }
                 deviceCode:
                   $ref: "#/components/schemas/DeviceCodeResult"
               required:
@@ -4499,9 +4845,182 @@ components:
           type: string
       required:
         - adminKey
+    AccountAuthConfig:
+      type: object
+      properties:
+        registrationEnabled: { type: boolean, default: false }
+        mailAvailable: { type: boolean }
+        methods:
+          type: object
+          properties:
+            password: { type: boolean }
+            emailCode: { type: boolean }
+          required: [password, emailCode]
+      required: [registrationEnabled, mailAvailable, methods]
+    EmailCodeSendRequest:
+      type: object
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        purpose: { type: string, enum: [register, login, bind-email, reauth, password-reset] }
+      required: [email, purpose]
+    EmailCodeChallenge:
+      type: object
+      properties:
+        challengeId: { type: string }
+        expiresAt: { type: string, format: date-time }
+        retryAfterSeconds: { type: integer, minimum: 60 }
+      required: [challengeId, expiresAt, retryAfterSeconds]
+    AccountRegistrationRequest:
+      type: object
+      properties:
+        method: { type: string, enum: [username, email] }
+        username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$" }
+        password:
+          anyOf:
+            - { type: string, minLength: 8, maxLength: 4096 }
+            - { type: string, maxLength: 0 }
+        challengeId: { type: string }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+      required: [method]
+      oneOf:
+        - properties:
+            method: { enum: [username] }
+            password: { type: string, minLength: 8, maxLength: 4096 }
+          required: [username, password]
+        - properties:
+            method: { enum: [email] }
+          required: [challengeId, code]
+    EmailCodeLoginRequest:
+      type: object
+      properties:
+        challengeId: { type: string }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+      required: [challengeId, code]
+    PasswordRecoveryRequest:
+      allOf:
+        - $ref: "#/components/schemas/EmailCodeLoginRequest"
+        - type: object
+          properties:
+            password: { type: string, minLength: 8, maxLength: 4096 }
+          required: [password]
+    AccountSecurity:
+      type: object
+      properties:
+        username: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        emailVerifiedAt: { type: [string, "null"], format: date-time }
+        hasPassword: { type: boolean }
+      required: [username, email, emailVerifiedAt, hasPassword]
+    AccountIdentityProof:
+      type: object
+      properties:
+        currentPassword: { type: string, maxLength: 4096 }
+        reauthChallengeId: { type: string }
+        reauthCode: { type: string, pattern: "^[0-9]{6}$" }
+      anyOf:
+        - required: [currentPassword]
+        - required: [reauthChallengeId, reauthCode]
+    SetAccountUsernameRequest:
+      allOf:
+        - $ref: "#/components/schemas/AccountIdentityProof"
+        - type: object
+          properties:
+            username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$" }
+          required: [username]
+    SetAccountPasswordRequest:
+      allOf:
+        - $ref: "#/components/schemas/AccountIdentityProof"
+        - type: object
+          properties:
+            password: { type: string, minLength: 8, maxLength: 4096 }
+          required: [password]
+    SetAccountEmailRequest:
+      allOf:
+        - $ref: "#/components/schemas/AccountIdentityProof"
+        - type: object
+          properties:
+            action: { type: string, enum: [bind, unbind] }
+            challengeId: { type: string }
+            code: { type: string, pattern: "^[0-9]{6}$" }
+          required: [action]
+          oneOf:
+            - properties:
+                action: { enum: [bind] }
+              required: [challengeId, code]
+            - properties:
+                action: { enum: [unbind] }
+    AccountMutationResult:
+      type: object
+      properties:
+        updated: { type: boolean }
+        reset: { type: boolean }
+        cancelled: { type: boolean }
+    DeviceClientContext:
+      type: object
+      properties:
+        clientKind: { type: string, enum: [studio, cli-web, cli] }
+        channel: { type: string, enum: [dev, alpha, main] }
+        state: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
+        returnUrl: { type: string, format: uri, maxLength: 2048 }
+      required: [clientKind, channel, state]
+      additionalProperties: false
+    DeviceApprovalInfo:
+      type: object
+      properties:
+        userCode: { type: string }
+        clientName: { type: string }
+        source: { type: string }
+        context:
+          $ref: "#/components/schemas/DeviceClientContext"
+        state: { type: string, enum: [pending, approved, consumed, denied, expired] }
+        expiresAt: { type: string, format: date-time }
+        returnUrl: { type: string, format: uri }
+      required: [userCode, clientName, source, state, expiresAt]
+    AccountAuthConfigResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AccountAuthConfig"
+          required: [data]
+    EmailCodeChallengeResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/EmailCodeChallenge"
+          required: [data]
+    AccountSecurityResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AccountSecurity"
+          required: [data]
+    AccountMutationResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AccountMutationResult"
+          required: [data]
+    DeviceApprovalInfoResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/DeviceApprovalInfo"
+          required: [data]
     PasswordLoginRequest:
       type: object
       properties:
+        identifier:
+          type: string
         email:
           type: string
           format: email
@@ -4517,12 +5036,15 @@ components:
         clientName:
           type: string
           description: The issued API Key display name.
-      required:
-        - email
-        - password
+      required: [password]
+      anyOf:
+        - required: [identifier]
+        - required: [email]
     DeviceFlowStartRequest:
       type: object
       properties:
+        context:
+          $ref: "#/components/schemas/DeviceClientContext"
         clientName:
           type: string
         source:

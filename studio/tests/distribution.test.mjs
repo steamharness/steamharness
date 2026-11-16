@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { ROOT, assertUpstream, buildChildEnv, builtinProjectDirectory, git, mergeProduct, prepareDistribution, resolveMonorepoRoot, run } from '../scripts/distribution.mjs';
+import { ROOT, assertUpstream, buildChildEnv, builtinProjectDirectory, channelProductIdentity, git, mergeProduct, prepareDistribution, resolveMonorepoRoot, run } from '../scripts/distribution.mjs';
 
 const baseProduct = {
   nameShort: 'Code - OSS', nameLong: 'Code - OSS', applicationName: 'code-oss',
@@ -125,8 +125,8 @@ test('branding changes update previously generated data', async (t) => {
   await prepareDistribution(root);
   await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'My Studio' }));
   const { product } = await prepareDistribution(root);
-  assert.equal(product.nameShort, 'My Studio');
-  assert.equal(JSON.parse(await fs.readFile(path.join(upstream, 'product.json'), 'utf8')).nameShort, 'My Studio');
+  assert.equal(product.nameShort, 'My Studio Dev');
+  assert.equal(JSON.parse(await fs.readFile(path.join(upstream, 'product.json'), 'utf8')).nameShort, 'My Studio Dev');
 });
 
 test('Web development receives Studio branding, gallery and the correct API version', async (t) => {
@@ -135,7 +135,7 @@ test('Web development receives Studio branding, gallery and the correct API vers
   await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'Studio', extensionsGallery: gallery }));
   await prepareDistribution(root);
   const overrides = JSON.parse(await fs.readFile(path.join(upstream, 'product.overrides.json'), 'utf8'));
-  assert.equal(overrides.nameShort, 'Studio');
+  assert.equal(overrides.nameShort, 'Studio Dev');
   assert.equal(overrides.version, '1.141.0');
   assert.deepEqual(overrides.extensionsGallery, gallery);
   await fs.writeFile(path.join(upstream, 'product.overrides.json'), '{"nameShort":"Manual Web Change"}\n');
@@ -279,4 +279,14 @@ test('a spawned child never sees npm prefix configuration', async (t) => {
     ['-e', `require('fs').writeFileSync(${JSON.stringify(output)}, String(process.env.npm_config_prefix))`],
     directory);
   assert.equal(await fs.readFile(output, 'utf8'), 'undefined');
+});
+
+test('Studio channels have distinct protocols, installation identities and data directories', () => {
+  const identities = ['dev','alpha','main'].map(channel => channelProductIdentity(channel));
+  for (const field of ['urlProtocol','nameShort','darwinBundleIdentifier','applicationName','dataFolderName','win32DirName','win32AppUserModelId','win32MutexName']) {
+    assert.equal(new Set(identities.map(identity => identity[field])).size, 3, field);
+  }
+  assert.equal(identities[2].urlProtocol, 'steamharness-studio');
+  assert.notEqual(identities[0].win32x64AppId, identities[1].win32x64AppId);
+  assert.equal(channelProductIdentity('dev').win32x64AppId, identities[0].win32x64AppId);
 });

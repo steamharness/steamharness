@@ -1,0 +1,63 @@
+---
+title: "Accounts, sign-in, and recovery"
+description: "Register on the Server website, verify email, recover a password, and authorize Studio or CLI Web."
+---
+
+# Accounts, sign-in, and recovery
+
+Studio and CLI Web use the Server website for sign-in. The Server owns account credentials, email verification, and passwords. Each approved application receives its own sign-in credential.
+
+## Sign in from an app and return
+
+1. Choose a Server on the Studio sign-in page or in the CLI Web account menu, then click **Browser sign-in**.
+2. Sign in on the Server website. If the browser already has a session, check the displayed account. Choose **Use another account** to switch.
+3. Check the application name, channel, and device code, then approve the request.
+4. Click **Open app and return**. Studio opens the matching application channel; CLI Web returns to the local page that started sign-in. The application also checks approval in the background.
+
+If the browser does not open, follow the sign-in link shown in the app. Start again after a request expires, is cancelled, or is denied. Closing the Studio sign-in page or clicking cancel revokes that request.
+
+| App channel | Studio return protocol |
+| --- | --- |
+| `dev` | `steamharness-studio-dev://` |
+| `alpha` | `steamharness-studio-alpha://` |
+| `main` | `steamharness-studio://` |
+
+Channels have separate installation identities and local sign-in storage. Install or start the matching Studio channel to register its protocol. If the protocol is unavailable, return to the app manually to check the result. CLI Web only accepts HTTP loopback return addresses, and return links contain no API key.
+
+## Register an account
+
+Registration is closed by default. The sign-in page shows registration after an administrator sets `STEAMHARNESS_SERVER_REGISTRATION_ENABLED=true`. Direct requests to `/register` use the same setting.
+
+| Method | Required information | Available sign-in methods |
+| --- | --- | --- |
+| Username and password | A 3–32 character username and a password of at least 8 characters | Username and password; email sign-in after binding and verifying an address. |
+| Verified email | An email address and its verification code; a password is optional | Email codes; email and password after setting a password. |
+
+Usernames accept ASCII letters, digits, underscores, and hyphens, starting with a letter or digit. They are case insensitive and cannot be changed after setting. Codes contain 6 digits, expire after 10 minutes, and can be used once. Five wrong attempts invalidate a code; requests for the same email must be at least 60 seconds apart.
+
+The Server creates a regular account with a generated nickname and geometric avatar. Use **Settings → Profile** to change the nickname or upload an avatar. Application authorization keeps its original return destination. New accounts receive no system administrator role or access to existing projects.
+
+Without a mail service, registration supports usernames and passwords. Administrators can configure SMTP using [Deployment and releases](/en/guides/server/deployment).
+
+## Bind or change email
+
+1. Open **Settings → Account security** to view your username, email verification, and password status.
+2. Enter the target email, request a code, and enter its 6 digits.
+3. Confirm with your current password or a separate code sent to your current verified email, then save.
+4. Sign in again on the website and in your apps.
+
+An address on an existing account is not automatically verified. Email code sign-in and password recovery require verification. Changing an address requires proof of both the new email and your current identity.
+
+Set a username and password before unbinding email so that a sign-in method remains available. An unbound address stops working for sign-in and recovery. Bind and verify an address again to restore those features.
+
+## Set or recover a password
+
+Email registration does not require a password. Verify your current email in **Settings → Account security** to set one. You can also set a username once.
+
+To recover a password, choose **Forgot password?** on the sign-in page, enter your verified bound email, request a code, and set a new password of at least 8 characters. Accounts without a verified bound email need administrator help.
+
+Email and password changes revoke existing website sessions, Studio and CLI sign-in credentials, and approved device requests. Manually created API keys remain active; revoke them separately on the API key page when needed.
+
+## Missing verification email
+
+Check spam folders, the address spelling, and the resend countdown. The same send confirmation is used for all addresses to avoid exposing account existence. A successful response does not establish that the address has an eligible account. Ask the administrator to check SMTP settings and delivery records if mail still does not arrive.

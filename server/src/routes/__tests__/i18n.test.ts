@@ -246,3 +246,12 @@ async function fetchJson<T = unknown & { errCode?: number; errMessage?: string }
   }
   return await response.json() as T;
 }
+
+test("account registration and recovery errors follow the requested locale", () => {
+  const zh = getRequestT({headers:{"x-steamharness-locale":"zh-CN"}});
+  const en = getRequestT({headers:{"x-steamharness-locale":"en"}});
+  for (const [message, translated] of [["Registration is closed.","当前未开放注册。"],["Verification code is invalid or expired.","验证码错误或已过期。"],["Verify your current password or email to continue.","请验证当前密码或已绑定邮箱后继续。"]]) {
+    assert.equal(localizeServerMessage(message!, zh), translated);
+    assert.equal(localizeServerMessage(message!, en), message);
+  }
+});

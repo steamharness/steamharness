@@ -1,5 +1,7 @@
 # Unreleased
 
+- Studio now uses browser sign-in and an application return link, replacing its password form. Dev, alpha and main have separate protocols, installation identities and local credentials. Accounts without uploads use generated geometric avatars.
+
 - Distinguish missing Server setup, unsupported endpoints, expired sign-in and unreachable application services when Web application account connections fail. Keep retry available without exposing raw provider errors.
 
 - Host providers can issue scoped sessions for bundled Kanban Web applications without exposing host credentials. Account and Server changes clear old sessions; microphone recording requires consent.

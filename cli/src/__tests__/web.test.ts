@@ -973,25 +973,26 @@ describe('steamharness web', () => {
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Slow account' } });
   });
 
-  it('keeps a newer injected identity when an earlier password login finishes', async () => {
+  it('keeps a newer injected identity when an earlier browser authorization finishes', async () => {
     const { app, cookie, post } = await fixture();
     vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     let finishLogin!: (response: Response) => void;
-    const profile = (userId: string) => ({ userId, email: `${userId}@example.com`, displayName: userId });
+    const profile = (userId: string) => ({ userId, email: null, displayName: userId });
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
-      if (String(input).endsWith('/api/auth/login')) { return new Promise(resolve => { finishLogin = resolve; }); }
+      const url = String(input);
+      if (!url.startsWith('https://steamharness.test')) return realFetch(input, options);
+      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-secret',userCode:'ABCD-1234',verificationUriComplete:'https://steamharness.test/login/device?user_code=ABCD-1234',intervalSeconds:1,expiresAt:new Date(Date.now()+60_000).toISOString()}});
+      if (url.endsWith('/device/token')) return new Promise(resolve => { finishLogin = resolve; });
       const name = new Headers(options?.headers).get('Authorization') === 'Bearer host-token' ? 'Injected account' : 'CLI account';
-      return new Response(JSON.stringify({ errCode: 0, data: { profile: profile(name) } }));
+      return Response.json({ errCode: 0, data: { profile: profile(name) } });
     });
-    const passwordLogin = post({ type: 'login', serverUrl: 'https://steamharness.test', email: 'cli@example.com', password: 'test-password' });
+    expect((await post({ type: 'login', serverUrl: 'https://steamharness.test' })).status).toBe(200);
     await vi.waitFor(() => expect(finishLogin).toBeDefined());
     await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
-    finishLogin(new Response(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'cli-token', apiKey: { id: 'cli-key' } } })));
-    expect((await passwordLogin).status).toBe(200);
-    expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Injected account' } });
-    expect(await readCliAuthConfig()).toMatchObject({ apiKey: 'cli-token', user: { displayName: 'CLI account' } });
+    finishLogin(Response.json({ errCode: 0, data: { accessToken: 'cli-token', apiKey: { id: 'cli-key' }, user: profile('CLI account') } }));
+    await vi.waitFor(async () => expect(await readCliAuthConfig()).toMatchObject({apiKey:'cli-token'}));
+    await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Injected account' } }));
   });
 
   it('serves the real UI and protects APIs against missing sessions, foreign origins and path traversal', async () => {
@@ -1045,30 +1046,36 @@ describe('steamharness web', () => {
     expect(JSON.parse(exported.messages[0].content).messages[0].input.params.apiKey).toBe('project-key');
   });
 
-  it('shares web password login with the CLI, verifies it again and only publishes public account data', async () => {
+  it('shares browser sign-in with the CLI and only publishes public authorization data', async () => {
     const { app, cookie, post } = await fixture();
     vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
-    const profile = { userId: 'test-user', email: 'test@example.com', displayName: 'Test User' };
-    let checks = 0;
+    const profile = { userId: 'test-user', email: null, displayName: 'Test User' };
+    let finishLogin!: (response: Response) => void;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       const url = String(input);
-      if (!url.startsWith('https://steamharness.test')) { return realFetch(input, options); }
+      if (!url.startsWith('https://steamharness.test')) return realFetch(input, options);
       const registration = registeredProject(input); if (registration) return registration;
-      if (url.endsWith('/api/auth/login')) { return new Response(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'test-api-key', apiKey: { id: 'key-id' } } })); }
-      checks++;
-      return new Response(JSON.stringify({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } }));
+      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-secret',userCode:'ABCD-1234',verificationUriComplete:'https://steamharness.test/login/device?user_code=ABCD-1234',intervalSeconds:1,expiresAt:new Date(Date.now()+60_000).toISOString()}});
+      if (url.endsWith('/device/token')) return new Promise(resolve => { finishLogin = resolve; });
+      return Response.json({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } });
     });
-    const result = await post({ type: 'login', serverUrl: 'https://steamharness.test', email: profile.email, password: 'test-password' });
-    expect(result.status).toBe(200);
-    expect(await readCliAuthConfig()).toMatchObject({ apiKey: 'test-api-key', user: profile, source: 'password' });
+    expect((await post({ type: 'login', serverUrl: 'https://steamharness.test', password: 'obsolete' })).status).toBe(400);
+    expect((await post({ type: 'login', serverUrl: 'https://steamharness.test' })).status).toBe(200);
+    const pending = await accountState(app, cookie);
+    expect(pending.signIn?.url).toContain('/login/device'); expect(JSON.stringify(pending)).not.toContain('host-secret');
+    const callback = await fetch(`${app.origin}/?auth_state=${pending.signIn!.state}`,{redirect:'manual',headers:{Cookie:cookie}});
+    expect(callback.status).toBe(303); expect(callback.headers.get('location')).not.toContain('auth_state');
+    expect((await fetch(`${app.origin}/?auth_state=wrong`,{headers:{Cookie:cookie}})).status).toBe(400);
+    finishLogin(Response.json({errCode:0,data:{accessToken:'test-api-key',apiKey:{id:'key-id'},user:profile}}));
+    await vi.waitFor(async () => expect(await readCliAuthConfig()).toMatchObject({ apiKey:'test-api-key',user:profile,source:'device_flow' }));
+    await vi.waitFor(async () => expect(await accountState(app,cookie)).toMatchObject({status:'authenticated'}));
     expect((await post({ type: 'verify' })).status).toBe(200);
-    expect(checks).toBe(3);
     const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
     const reader = events.body!.getReader();
     const state = new TextDecoder().decode((await reader.read()).value); await reader.cancel();
-    expect(state).toContain('"status":"authenticated"'); expect(state).toContain(profile.email);
-    expect(state).not.toContain('test-api-key'); expect(state).not.toContain('test-password');
+    expect(state).toContain('"status":"authenticated"'); expect(state).toContain('Test User');
+    expect(state).not.toContain('test-api-key'); expect(state).not.toContain('host-secret');
     expect((await post({ type: 'logout' })).status).toBe(200);
     expect(await readCliAuthConfig()).toEqual({ serverUrl: '', apiKey: '' });
   });

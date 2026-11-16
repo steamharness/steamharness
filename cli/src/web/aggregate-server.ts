@@ -7,6 +7,7 @@ import { readProjectManifestFromDirectory } from '@steamharness/project-manifest
 import { startEntryWebServer, type WebOptions } from './server';
 import type { Project } from './workflow-types';
 import { t } from './localization';
+import { sharedWebLogin } from './account-auth';
 import type { AggregateEntryCall } from './entry-conversations';
 
 type EntryHost = Awaited<ReturnType<typeof startEntryWebServer>>;
@@ -134,6 +135,6 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     setHostResourceProjects:(value:string[]) => { host={...host,surface:host?.surface??'editor',resourceProjects:value}; for (const entry of entries.values()) entry.setHostResourceProjects(value); },
     setHostWebApps:async (value:Parameters<EntryHost['setHostWebApps']>[0]) => { host={...host,surface:host?.surface??'editor',webApps:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostWebApps(value))); },
     setHostConnection:async (value:Parameters<EntryHost['setHostConnection']>[0]) => { host={...host,surface:host?.surface??'editor',connection:value,webApps:{}}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostConnection(value))); },
-    close:async () => { closing=true; await resetting; await Promise.all([...starting.values()]); await Promise.all([...entries.values()].map(entry => entry.close())); await new Promise<void>(resolve => server.close(() => resolve())); },
+    close:async () => { closing=true; sharedWebLogin(credentials).cancel(); await resetting; await Promise.all([...starting.values()]); await Promise.all([...entries.values()].map(entry => entry.close())); await new Promise<void>(resolve => server.close(() => resolve())); },
   };
 }

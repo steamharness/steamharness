@@ -139,7 +139,7 @@ export function UsersPage({
     setSelectedUserId(user.userId);
     setManagementTab("profile");
     setSelectedAdmin(user.isSystemAdmin);
-    setEditEmail(user.email);
+    setEditEmail(user.email ?? "");
     setEditDisplayName(user.displayName);
     setSelectedAvatarFile(null);
     setAvatarFileToCrop(null);

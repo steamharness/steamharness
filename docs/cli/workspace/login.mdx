@@ -5,7 +5,7 @@ description: "通过 browser device flow 登录 SteamHarness Server，并保存 
 
 # workspace login
 
-用 `workspace login` 在浏览器中授权 CLI 连接 Server。批准设备登录后，CLI 把专用 API Key、服务器地址和账号信息写入本机 `workflow-auth.json`，无需复制 token。
+用 `workspace login` 在浏览器中授权 CLI 连接 Server。批准设备登录后，CLI 把专用 API Key、服务器地址和账号信息写入本机 `workflow-auth-{channel}.json`，无需复制 token。
 
 ## 命令格式
 
@@ -26,13 +26,13 @@ pnpm exec steamharness workspace login --server <url>
 | 创建设备码 | CLI 调用 `POST /api/auth/device/start`。 |
 | 打开浏览器 | 自动打开 `verificationUriComplete`；无浏览器时输出 URL 和 user code。 |
 | 轮询结果 | CLI 轮询 `POST /api/auth/device/token`，直到成功、拒绝、过期或被限流。 |
-| 写入配置 | 成功后写入 `workflow-auth.json`，保存 server、API Key、过期时间和用户信息。 |
+| 写入配置 | 成功后写入 `workflow-auth-{channel}.json`，保存 server、API Key、过期时间和用户信息。 |
 
 ## 配置文件
 
 | 配置 | 说明 |
 | --- | --- |
-| 文件名 | `workflow-auth.json` |
+| 文件名 | `workflow-auth-{channel}.json` |
 | macOS 默认目录 | `~/Library/Application Support/steamharness` |
 | Windows 默认目录 | `%APPDATA%/steamharness` |
 | Linux 默认目录 | `$XDG_CONFIG_HOME/steamharness` 或 `~/.config/steamharness` |
@@ -59,3 +59,9 @@ pnpm exec steamharness workspace login --server http://localhost:7126
 | 查看登录状态 | [`status`](/cli/workspace/status) |
 | 清空登录态 | [`logout`](/cli/workspace/logout) |
 | 检查服务健康 | [`health`](/cli/workspace/health) |
+
+## 通道与返回应用
+
+`{channel}` 为 `dev`、`alpha` 或 `main`，由安装的 CLI 通道决定；显式设置 `STEAMHARNESS_SERVICE_CHANNEL` 可覆盖。CLI 同时按 Server 保存独立凭据；指定其他 `--server` 不会复用当前 Server 的密钥。旧 `workflow-auth.json` 只在 Server 与当前通道匹配时迁移，注销后不会重新恢复。
+
+CLI Web 使用相同授权流程，并提供返回发起页面的链接。网页只接触公开设备码和返回状态，设备密钥与 API Key 由本机进程保管。详见[账号、登录与恢复](/guides/server/accounts)。

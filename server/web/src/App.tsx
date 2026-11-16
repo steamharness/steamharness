@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Loader2, RefreshCw, Settings2 } from "lucide-react";
 import { resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { apiClient } from "./api";
 import { ADMIN_TAB_META, AppLayout, CONSOLE_NAV_ICONS } from "./components/AppLayout";
 import { LoginPage } from "./components/LoginPage";
 import { Badge } from "@/components/ui/badge";
+import { AccountSecurityPage } from "./pages/AccountSecurityPage";
 import { AccountPage } from "./pages/AccountPage";
 import { AccountInvitePage } from "./pages/AccountInvitePage";
 import { AuditPage } from "./pages/AuditPage";
@@ -58,8 +59,6 @@ function AppContent() {
   const theme: ThemeMode = themePreference === "light" || themePreference === "dark" ? themePreference : "system";
   const [session, setSession] = useState<SessionState>({ status: "checking" });
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
-  const [emailInput, setEmailInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
   const [deviceUserCode, setDeviceUserCode] = useState(() => route.page === "device" ? route.userCode ?? "" : "");
   const [deviceStatusMessage, setDeviceStatusMessage] = useState<string | null>(null);
   const [projectPage,setProjectPage]=useState(1);
@@ -136,12 +135,12 @@ function AppContent() {
   }, [route]);
 
   useEffect(() => {
-    if (session.status === "anonymous" && route.page !== "login") {
+    if (session.status === "anonymous" && !["login", "register", "forgot-password"].includes(route.page)) {
       if (route.page !== "device" && route.page !== "invite" && route.page !== "account-invite" && route.page !== "access-request" && route.page !== "source-share") {
         navigateTo({ page: "login" }, { replace: true });
       }
     }
-    if (session.status === "ready" && route.page === "login") {
+    if (session.status === "ready" && ["login", "register", "forgot-password"].includes(route.page)) {
       if (canViewProjects) {
         navigateTo({ page: "projects" }, { replace: true });
       } else {
@@ -498,61 +497,6 @@ function AppContent() {
     await loadAuditEvents({ cursor: nextCursor, pageIndex: nextIndex });
   }
 
-  async function handlePasswordLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const email = emailInput.trim();
-    const password = passwordInput;
-    if (!email || !password) {
-      setSession({ status: "anonymous", message: t("loginPasswordRequired") });
-      return;
-    }
-    setBusy((state) => ({ ...state, global: t("busyPasswordLogin") }));
-    const result = await apiClient.loginWithPassword({ email, password });
-    setBusy((state) => ({ ...state, global: undefined }));
-    if (!isApiSuccess(result) || !result.data.authenticated) {
-      setSession({ status: "anonymous", message: result.errMessage || t("loginPasswordInvalid") });
-      return;
-    }
-    setPasswordInput("");
-    await validateSession();
-  }
-
-  async function approveDeviceLogin() {
-    const userCode = deviceUserCode.trim().toUpperCase();
-    if (!userCode) {
-      setDeviceStatusMessage(t("deviceUserCodeEmpty"));
-      return;
-    }
-    setBusy((state) => ({ ...state, device: t("busyApprovingDevice") }));
-    setDeviceStatusMessage(null);
-    const result = await apiClient.approveDevice(userCode);
-    setBusy((state) => ({ ...state, device: undefined }));
-    if (!isApiSuccess(result)) {
-      setDeviceStatusMessage(result.errMessage);
-      return;
-    }
-    setDeviceStatusMessage(t("deviceStatusApproved"));
-    pushToast("success", t("toastDeviceApproved"));
-  }
-
-  async function denyDeviceLogin() {
-    const userCode = deviceUserCode.trim().toUpperCase();
-    if (!userCode) {
-      setDeviceStatusMessage(t("deviceUserCodeEmpty"));
-      return;
-    }
-    setBusy((state) => ({ ...state, device: t("busyDenyingDevice") }));
-    setDeviceStatusMessage(null);
-    const result = await apiClient.denyDevice(userCode);
-    setBusy((state) => ({ ...state, device: undefined }));
-    if (!isApiSuccess(result)) {
-      setDeviceStatusMessage(result.errMessage);
-      return;
-    }
-    setDeviceStatusMessage(t("deviceStatusDenied"));
-    pushToast("success", t("toastDeviceDenied"));
-  }
-
   async function saveAccountProfile(payload: { displayName: string; avatarUrl: string | null }) {
     setBusy((state) => ({ ...state, saveProfile: t("busySaveAccountProfile") }));
     const result = await apiClient.updateMe(payload);
@@ -741,16 +685,11 @@ function AppContent() {
     );
   }
 
-  if (route.page === "device") {
+  if (route.page === "device" && session.status === "ready") {
     return (
-      <DeviceApprovalPage
-        userCode={deviceUserCode}
-        statusMessage={deviceStatusMessage ?? (session.status === "anonymous" ? session.message : undefined) ?? undefined}
-        busy={busy.device}
-        disabled={false}
-        onUserCodeChange={setDeviceUserCode}
-        onApprove={() => void approveDeviceLogin()}
-        onDeny={() => void denyDeviceLogin()}
+      <DeviceApprovalPage userCode={deviceUserCode}
+        identity={session.principal.displayName || session.principal.email || session.principal.userId || ""}
+        onSwitchAccount={() => { void apiClient.logout().then(() => validateSession()); }}
       />
     );
   }
@@ -766,14 +705,10 @@ function AppContent() {
 
   if (session.status === "anonymous") {
     return (
-      <LoginPage
-        emailInput={emailInput}
-        passwordInput={passwordInput}
+      <LoginPage key={route.page}
+        mode={route.page === "register" || route.page === "forgot-password" ? route.page : "login"}
         message={session.message}
-        loading={busy.global}
-        onEmailInputChange={setEmailInput}
-        onPasswordInputChange={setPasswordInput}
-        onPasswordSubmit={handlePasswordLogin}
+        onAuthenticated={() => void validateSession()}
       />
     );
   }
@@ -805,16 +740,18 @@ function AppContent() {
 
   const settingsTab: SettingsTab = route.page === "settings" ? route.tab : "profile";
   const principalLabel = session.principal.displayName ?? session.principal.email ?? session.principal.kind;
-  const principalEmail = accountView.me?.profile?.email ?? session.principal.email;
+  const principalEmail = accountView.me?.profile?.email ?? session.principal.email ?? undefined;
   // prefer the session-provided avatar (always available, including
   // on the workbench home page) and fall back to the settings-page profile
   // fetch so a freshly uploaded avatar shows up without a full re-login.
   const principalAvatarUrl =
     resolvePrincipalAvatarUrl({
+      userId: session.principal.userId,
       avatarUrl: session.principal.avatarUrl,
       profile: accountView.me?.profile,
     }) ?? undefined;
   const settingsNavItems = [
+    { id: "settings-security", label: t("authSecurityTitle"), icon: KeyRound, active: page === "settings" && settingsTab === "security", onClick: () => navigateTo({page:"settings",tab:"security"}) },
     {
       id: "settings-profile",
       label: t("accountProfileTitle"),
@@ -904,6 +841,7 @@ function AppContent() {
   const detailNavItems = detailNavGroups.flatMap(group => group.items);
 
   const settingsBusy = {
+    security: busy.account,
     profile: busy.account || busy.saveProfile,
     appearance: busy.account,
     "api-keys": busy.account || busy.apiKeys || busy.createKeyBusy || busy.revokeKeyId,
@@ -1022,7 +960,7 @@ function AppContent() {
       onBrandClick={() => navigateTo({ page: "projects" })}
       onLogout={logout}
     >
-      {page === "settings" ? (
+      {page === "settings" && settingsTab === "security" ? <AccountSecurityPage onChanged={() => void validateSession()} /> : page === "settings" ? (
         <AccountPage
           key={session.principal.userId}
           tab={settingsTab}

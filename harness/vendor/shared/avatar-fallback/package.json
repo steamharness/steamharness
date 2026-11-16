@@ -10,5 +10,8 @@
       "types": "./index.ts",
       "import": "./index.ts"
     }
+  },
+  "dependencies": {
+    "jdenticon": "3.3.0"
   }
 }

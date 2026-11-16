@@ -6,6 +6,7 @@ import type { Project } from '../web/workflow-types';
 import type { AccountState } from '../web/workflow-auth-client';
 import { accountAvatarUrl, updateProjectAvatar, updateUserAvatar } from '../web/ui/avatar';
 import { AccountPanel } from '../web/ui/account';
+import { generatedAvatarUrl } from '@steamharness/avatar-fallback';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 const projectInfo = vi.hoisted(() => vi.fn());
@@ -80,7 +81,7 @@ it('uses the type default on older projects and supports safe absolute avatars w
   const root = document.createElement('button'); updateProjectAvatar(root, { projectType: 'kanban' });
   expect(decodeURIComponent(root.querySelector('img')!.src)).toContain('<svg');
   expect(accountAvatarUrl({ ...account, serverUrl: '', user: { ...account.user!, avatarUrl: 'data:image/png;base64,YQ==' } })).toBe('data:image/png;base64,YQ==');
-  expect(accountAvatarUrl({ ...account, user: { ...account.user!, avatarUrl: 'javascript:alert(1)' } })).toBeUndefined();
+  expect(accountAvatarUrl({ ...account, user: { ...account.user!, avatarUrl: 'javascript:alert(1)' } })).toBe(generatedAvatarUrl('user'));
 });
 
 it('restores focus to the user message avatar after closing the standalone account panel', () => {

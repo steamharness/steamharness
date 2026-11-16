@@ -87,6 +87,7 @@ function fixture() {
   const account = new Account(serverUrl, secrets, (event) => events.push(event), (url) => new ServerClient(url, fetcher));
   return {
     account, secrets, events, requests, writes, fetcher,
+    authorize: async () => { if(gate) await gate; return {...await new ServerClient(serverUrl,fetcher).verify({serverUrl,accessToken:acceptedToken}),sessionCookie:'wf_session=test-cookie'}; },
     get stored() { return stored; },
     set stored(value) { stored = value; },
     set token(value) { acceptedToken = value; },
@@ -97,10 +98,10 @@ function fixture() {
   };
 }
 
-test('desktop password login verifies the issued token and keeps it out of public account state', async () => {
+test('desktop browser login verifies the issued token and keeps it out of public account state', async () => {
   const f = fixture();
   await f.account.restore();
-  await f.account.login(`${serverUrl}/`, user.email, 'correct-password');
+  await f.account.login(`${serverUrl}/`, f.authorize);
   assert.equal(f.account.getState().status, 'authenticated');
   assert.deepEqual(f.account.getState().user, { ...user, avatarUrl: `${serverUrl}/avatar/user.png` });
   assert.deepEqual(f.account.getConnection(), { serverUrl, accessToken: token });
@@ -108,11 +109,9 @@ test('desktop password login verifies the issued token and keeps it out of publi
   assert.equal(JSON.stringify(f.events).includes(token), false);
   assert.equal(JSON.parse(f.stored).sessionCookie, 'wf_session=test-cookie');
   assert.equal(JSON.stringify(f.events).includes('test-cookie'), false);
-  assert.deepEqual(JSON.parse(f.requests[0].body), {
-    email: user.email, password: 'correct-password', source: 'desktop', clientName: 'SteamHarness Studio',
-  });
-  assert.equal(f.requests[0].headers.Authorization, undefined);
-  assert.equal(f.requests[1].headers.Authorization, `Bearer ${token}`);
+  assert.equal(f.requests[0].headers.Authorization, `Bearer ${token}`);
+  assert.equal(f.requests.some(request=>new URL(request.url).pathname==='/api/auth/login'),false);
+
 });
 
 test('account avatars accept Server image data URLs and local storage URLs', async () => {
@@ -135,18 +134,18 @@ test('account avatars accept Server image data URLs and local storage URLs', asy
 test('a rejected password or missing profile never becomes a saved login', async () => {
   const f = fixture();
   await f.account.restore();
-  await assert.rejects(f.account.login(serverUrl, user.email, 'incorrect-password'), /Incorrect email or password/);
+  await assert.rejects(f.account.login(serverUrl, async () => { throw new Error('Incorrect email or password'); }), /Incorrect email or password/);
   assert.equal(f.stored, undefined);
   assert.equal(f.account.getConnection(), undefined);
   f.profile = null;
-  await assert.rejects(f.account.login(serverUrl, user.email, 'correct-password'), /account information/);
+  await assert.rejects(f.account.login(serverUrl, f.authorize), /account information/);
   assert.equal(f.stored, undefined);
   assert.equal(f.account.getState().status, 'error');
 });
 
 test('unchanged AI connection checks do not publish account revisions', async () => {
   const f = fixture();
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   const connection = { serverUrl: 'https://ai.workflow.test', accessToken: 'ai-session' };
   f.account.setAiConnection(connection);
   const state = f.account.getState(), count = f.events.length;
@@ -163,13 +162,13 @@ test('unchanged AI connection checks do not publish account revisions', async ()
 
 test('AI connection is cleared when the project account changes or signs out', async () => {
   const f = fixture();
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   f.account.setAiConnection({ serverUrl: 'https://ai.workflow.test', accessToken: 'ai-session' });
   assert.equal(f.account.getConnection().aiAccessToken, 'ai-session');
   const otherProfile = { ...user, userId: 'other-user', email: 'other@example.test' };
   f.profile = otherProfile;
   f.token = 'other-studio-session';
-  await f.account.login(serverUrl, otherProfile.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   assert.equal(f.account.getConnection().aiAccessToken, undefined);
   f.account.setAiConnection({ serverUrl: 'https://ai.workflow.test', accessToken: 'ai-session' });
   await f.account.logout(false);
@@ -178,7 +177,7 @@ test('AI connection is cleared when the project account changes or signs out', a
 
 test('restoring credentials requires server verification and survives a temporary connection failure', async () => {
   const f = fixture();
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   const saved = f.stored;
   f.unavailable = true;
   const restored = new Account(serverUrl, f.secrets, () => undefined, (url) => new ServerClient(url, f.fetcher));
@@ -194,7 +193,7 @@ test('restoring credentials requires server verification and survives a temporar
 test('expired or revoked credentials clear the stored session and cannot reach a worker', async () => {
   const f = fixture();
   await f.account.restore();
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   f.token = 'revoked-token';
   await f.account.verify();
   assert.equal(f.account.getState().status, 'expired');
@@ -214,7 +213,7 @@ test('a different server cannot receive saved credentials', async () => {
   assert.equal(f.account.getState().status, 'signed-out');
   assert.equal(f.requests.length, 0);
   assert.equal(f.stored, undefined);
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   await f.account.changeServer('https://next.workflow.test');
   assert.equal(f.account.getState().serverUrl, 'https://next.workflow.test');
   assert.equal(f.account.getConnection(), undefined);
@@ -226,7 +225,7 @@ test('logout wins over an unfinished login and revokes only this Studio session'
   await f.account.restore();
   let release;
   f.gate = new Promise((resolve) => { release = resolve; });
-  const pending = f.account.login(serverUrl, user.email, 'correct-password');
+  const pending = f.account.login(serverUrl, f.authorize);
   await f.account.logout();
   release();
   await pending;
@@ -234,7 +233,7 @@ test('logout wins over an unfinished login and revokes only this Studio session'
   assert.equal(f.stored, undefined);
   assert.ok(f.requests.some((request) => request.method === 'DELETE'));
   f.gate = undefined;
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   await f.account.logout();
   const revoke = f.requests.find((request) => request.method === 'DELETE');
   assert.equal(revoke.url, `${serverUrl}/api/auth/api-keys/key-${token}`);
@@ -244,7 +243,7 @@ test('logout wins over an unfinished login and revokes only this Studio session'
 });
 
 test('verification and restore preserve the cookie required to revoke the issued API key', async () => {
-  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password'); await f.account.verify();
+  const f = fixture(); await f.account.login(serverUrl, f.authorize); await f.account.verify();
   assert.equal(JSON.parse(f.stored).sessionCookie, 'wf_session=test-cookie');
   const restored = new Account(serverUrl, f.secrets, () => undefined, (url) => new ServerClient(url, f.fetcher));
   await restored.restore(); await restored.logout();
@@ -252,7 +251,7 @@ test('verification and restore preserve the cookie required to revoke the issued
 });
 
 test('concurrent verification keeps the verified account available and shares one server request', async () => {
-  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, f.authorize);
   const connection = f.account.getConnection();
   let release;
   f.verificationGate = new Promise(resolve => { release = resolve; });
@@ -268,7 +267,7 @@ test('concurrent verification keeps the verified account available and shares on
 });
 
 test('unchanged verification does not write secrets or disconnect an account on network failure', async () => {
-  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, f.authorize);
   const connection = f.account.getConnection(), writes = f.writes.length;
   await f.account.verify(); await f.account.restore();
   assert.equal(f.writes.length, writes);
@@ -281,7 +280,7 @@ test('unchanged verification does not write secrets or disconnect an account on 
 });
 
 test('background profile refresh updates and clears avatars without changing the connection or flashing account state', async () => {
-  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.login(serverUrl, f.authorize);
   const connection = f.account.getConnection(), eventCount = f.events.length, writes = f.writes.length;
   await f.account.refresh();
   assert.equal(f.events.length, eventCount);
@@ -309,7 +308,7 @@ test('background profile refresh updates and clears avatars without changing the
 });
 
 test('background profile refresh preserves login on network failure and expires revoked credentials', async () => {
-  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.login(serverUrl, f.authorize);
   const state = f.account.getState(), connection = f.account.getConnection(), writes = f.writes.length;
   f.unavailable = true; await f.account.refresh();
   assert.deepEqual(f.account.getState(), state);
@@ -325,10 +324,10 @@ test('background profile refresh preserves login on network failure and expires 
 test('background profile refresh cannot interrupt login or restore an account after logout', async () => {
   const f = fixture(); await f.account.refresh();
   assert.equal(f.requests.length, 0);
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   let release;
   f.gate = new Promise(resolve => { release = resolve; });
-  const signingIn = f.account.login(serverUrl, user.email, 'correct-password');
+  const signingIn = f.account.login(serverUrl, f.authorize);
   const requests = f.requests.length;
   await f.account.refresh();
   assert.equal(f.requests.length, requests);
@@ -343,7 +342,7 @@ test('background profile refresh cannot interrupt login or restore an account af
 });
 
 test('restoring another window\'s credentials verifies them without writing back refreshed metadata', async () => {
-  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.login(serverUrl, f.authorize);
   const saved = f.stored, writes = f.writes.length;
   f.profile = { ...user, displayName: 'Updated profile' };
   const restored = new Account(serverUrl, f.secrets, () => undefined, url => new ServerClient(url, f.fetcher));
@@ -354,7 +353,7 @@ test('restoring another window\'s credentials verifies them without writing back
 });
 
 test('an old secret read cannot restore credentials after logout', async () => {
-  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const f = fixture(); await f.account.restore(); await f.account.login(serverUrl, f.authorize);
   const saved = f.stored;
   let release;
   f.secrets.get = () => new Promise(resolve => { release = () => resolve(saved); });
@@ -394,10 +393,10 @@ test('system AI usage and file resource cards use the active account and dev API
 test('an old worker failure cannot invalidate a newer login', async () => {
   const f = fixture();
   await f.account.restore();
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   const oldConnection = f.account.getConnection();
   f.token = 'new-studio-session';
-  await f.account.login(serverUrl, user.email, 'correct-password');
+  await f.account.login(serverUrl, f.authorize);
   await f.account.invalidate(oldConnection);
   assert.equal(f.account.getState().status, 'authenticated');
   assert.equal(f.account.getConnection().accessToken, 'new-studio-session');

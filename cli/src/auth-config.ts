@@ -1,58 +1,84 @@
+import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
+import { serviceChannel, defaultServerUrl } from "./service-url";
+import { normalizeAuthServer } from "@steamharness/server-auth";
 import { readFileSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import {
-  createEmptyProjectAuthConfig,
-  normalizeProjectAuthConfig,
-  resolveProjectCliAuthDir,
-  resolveProjectCliAuthFilePath,
-  type AuthConfig,
+  createEmptyProjectAuthConfig, normalizeProjectAuthConfig, resolveProjectCliAuthDir,
+  resolveProjectCliAuthFilePath as legacyFilePath, type AuthConfig,
 } from "@steamharness/auth-config";
 
-export async function readCliAuthConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<AuthConfig> {
-  try {
-    const raw = await readFile(resolveProjectCliAuthFilePath(env), "utf8");
-    return normalizeProjectAuthConfig(JSON.parse(raw));
-  } catch {
-    return createEmptyProjectAuthConfig();
-  }
+function sameServer(left: string, right: string): boolean {
+  try { return normalizeAuthServer(left) === normalizeAuthServer(right); } catch { return false; }
+}
+function scopedFilePath(env: NodeJS.ProcessEnv, serverUrl?: string): string {
+  const server = serverUrl ? `-${createHash("sha256").update(normalizeAuthServer(serverUrl)).digest("hex").slice(0, 20)}` : "";
+  return path.join(resolveProjectCliAuthDir(env), `workflow-auth-${serviceChannel(env)}${server}.json`);
+}
+function canMigrate(config: AuthConfig, env: NodeJS.ProcessEnv): boolean {
+  return !!config.apiKey && sameServer(config.serverUrl, env.STEAMHARNESS_SERVER_URL || defaultServerUrl(env));
 }
 
-export function readCliAuthConfigSync(
-  env: NodeJS.ProcessEnv = process.env,
-): AuthConfig {
-  try {
-    const raw = readFileSync(resolveProjectCliAuthFilePath(env), "utf8");
-    return normalizeProjectAuthConfig(JSON.parse(raw));
-  } catch {
-    return createEmptyProjectAuthConfig();
+/** Read the active channel identity, or the identity saved for a particular Server. */
+export async function readCliAuthConfig(env: NodeJS.ProcessEnv = process.env, serverUrl?: string): Promise<AuthConfig> {
+  const read = async (file: string) => {
+    try { return normalizeProjectAuthConfig(JSON.parse(await readFile(file, "utf8"))); } catch { return undefined; }
+  };
+  let config = await read(scopedFilePath(env));
+  if (!config) {
+    const legacy = await read(legacyFilePath(env));
+    config = legacy && canMigrate(legacy, env) ? legacy : createEmptyProjectAuthConfig();
   }
+  if (!serverUrl || sameServer(config.serverUrl, serverUrl)) return config;
+  const saved = await read(scopedFilePath(env, serverUrl));
+  return saved && sameServer(saved.serverUrl, serverUrl) ? saved : createEmptyProjectAuthConfig();
+}
+export function readCliAuthConfigSync(env: NodeJS.ProcessEnv = process.env, serverUrl?: string): AuthConfig {
+  const read = (file: string) => {
+    try { return normalizeProjectAuthConfig(JSON.parse(readFileSync(file, "utf8"))); } catch { return undefined; }
+  };
+  let config = read(scopedFilePath(env));
+  if (!config) {
+    const legacy = read(legacyFilePath(env));
+    config = legacy && canMigrate(legacy, env) ? legacy : createEmptyProjectAuthConfig();
+  }
+  if (!serverUrl || sameServer(config.serverUrl, serverUrl)) return config;
+  const saved = read(scopedFilePath(env, serverUrl));
+  return saved && sameServer(saved.serverUrl, serverUrl) ? saved : createEmptyProjectAuthConfig();
 }
 
-export async function writeCliAuthConfig(
-  config: AuthConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
-  const directory = resolveProjectCliAuthDir(env);
-  const filePath = resolveProjectCliAuthFilePath(env);
+const writes = new Map<string, Promise<void>>();
+function serialize(file: string, run: () => Promise<void>): Promise<void> {
+  const next = (writes.get(file) ?? Promise.resolve()).catch(() => undefined).then(run);
+  writes.set(file, next);
+  void next.finally(() => { if (writes.get(file) === next) writes.delete(file); }).catch(() => undefined);
+  return next;
+}
+async function atomicWrite(file: string, config: AuthConfig): Promise<void> {
+  const directory = path.dirname(file);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  // `mode` is ignored when an existing directory is reused. The file now
-  // contains the separate AI service credential as well, so repair the
-  // directory before writing it.
   await chmod(directory, 0o700);
-  await writeFile(
-    filePath,
-    `${JSON.stringify(normalizeProjectAuthConfig(config), null, 2)}\n`,
-    { encoding: "utf8", mode: 0o600 },
-  );
-  // `mode` is ignored when an existing file is overwritten, so repair a file
-  // created by an older CLI before returning.
-  await chmod(filePath, 0o600);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, file);
+  } finally { await rm(temporary, { force: true }); }
 }
-
-export async function clearCliAuthConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
-  await rm(resolveProjectCliAuthFilePath(env), { force: true });
+export function writeCliAuthConfig(config: AuthConfig, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const snapshot = { ...env }, file = scopedFilePath(snapshot), value = normalizeProjectAuthConfig(config);
+  return serialize(file, async () => {
+    if (value.serverUrl && value.apiKey) await atomicWrite(scopedFilePath(snapshot, value.serverUrl), value);
+    await atomicWrite(file, value);
+  });
+}
+export function clearCliAuthConfig(env: NodeJS.ProcessEnv = process.env, expectedApiKey?: string): Promise<void> {
+  const snapshot = { ...env }, file = scopedFilePath(snapshot);
+  return serialize(file, async () => {
+    const current = await readCliAuthConfig(snapshot);
+    if (expectedApiKey !== undefined && current.apiKey !== expectedApiKey) return;
+    if (current.serverUrl) await rm(scopedFilePath(snapshot, current.serverUrl), { force: true });
+    // Keep a channel marker so signing out cannot restore an old legacy credential.
+    await atomicWrite(file, createEmptyProjectAuthConfig());
+  });
 }

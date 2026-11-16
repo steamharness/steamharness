@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { AccountPanel } from '../web/ui/account';
+import { generatedAvatarUrl } from '@steamharness/avatar-fallback';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -79,7 +80,8 @@ it.each(['data:text/html;base64,YXZhdGFy', 'data:image/svg+xml;base64,YXZhdGFy',
   const { panel, button } = fixture();
   panel.update({ status: 'authenticated', serverUrl: 'http://127.0.0.1:7126', revision: 1,
     user: { userId: 'user', email: 'user@example.com', displayName: 'User', avatarUrl } });
-  expect(button.querySelector('.web-avatar').children).toHaveLength(0);
+  expect(button.querySelector('.web-avatar').children).toHaveLength(1);
+  expect(button.querySelector('.web-avatar').children[0].src).toBe(generatedAvatarUrl('user'));
 });
 
 it('updates changed and cleared avatars while retaining relative storage URL support', () => {
@@ -93,6 +95,7 @@ it('updates changed and cleared avatars while retaining relative storage URL sup
   expect(avatar.children).toHaveLength(1);
   expect(avatar.children[0].src).toBe(user.avatarUrl);
   user.avatarUrl = undefined; update();
-  expect(avatar.children).toHaveLength(0);
+  expect(avatar.children).toHaveLength(1);
+  expect(avatar.children[0].src).toBe(generatedAvatarUrl('user'));
   expect(avatar.firstElementChild.hidden).toBe(false);
 });

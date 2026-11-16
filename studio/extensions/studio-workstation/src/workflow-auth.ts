@@ -1,4 +1,8 @@
-import { t } from './localization';
+import { ServerAuthClient, studioProtocols, type DeviceStart } from '../../../../shared/server-auth/index';
+import type { ServiceChannel } from '../../../../shared/service-urls/index';
+declare const __STEAMHARNESS_SERVICE_CHANNEL__: ServiceChannel;
+export const studioAuthChannel: ServiceChannel = typeof __STEAMHARNESS_SERVICE_CHANNEL__ === 'undefined' ? 'dev' : __STEAMHARNESS_SERVICE_CHANNEL__;
+import { t, locale } from './localization';
 import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
 import * as vscode from 'vscode';
@@ -16,7 +20,8 @@ import {
   type AccountState, type Connection,
 } from './workflow-auth-client';
 
-const SECRET_KEY = 'studio.project.account';
+const SECRET_KEY = `studio.project.account.${studioAuthChannel}`;
+const LEGACY_SECRET_KEY = 'studio.project.account';
 const PROVIDER_ID = 'studio-steamharness';
 
 export class AccountController implements vscode.Disposable {
@@ -30,6 +35,8 @@ export class AccountController implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private loginPanel?: vscode.WebviewPanel;
   private loginBusy = false;
+  private loginAbort?: AbortController;
+  private pendingLogin?: { state: string; client: ServerAuthClient; started: DeviceStart };
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private settingWrites: Promise<void> = Promise.resolve();
@@ -45,9 +52,15 @@ export class AccountController implements vscode.Disposable {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
-      get: () => context.secrets.get(SECRET_KEY),
+      get: async () => {
+        const current = await context.secrets.get(SECRET_KEY);
+        if (current !== undefined) return current || undefined;
+        const legacy = await context.secrets.get(LEGACY_SECRET_KEY);
+        try { if (legacy && new ServerClient(JSON.parse(legacy).serverUrl).serverUrl === new ServerClient(this.configuredServer()).serverUrl) return legacy; } catch {}
+        return undefined;
+      },
       store: (value) => context.secrets.store(SECRET_KEY, value),
-      delete: () => context.secrets.delete(SECRET_KEY),
+      delete: () => context.secrets.store(SECRET_KEY, ''),
     }, (state) => {
       this.userModels.setConnection(this.account.getConnection());
       this.sections.setConnection(this.account.getConnection());
@@ -69,6 +82,13 @@ export class AccountController implements vscode.Disposable {
     });
     this.disposables.push(
       this.change, this.sessionChange, this.modelChanges, this.userModels,
+      vscode.window.registerUriHandler({ handleUri: uri => {
+        const pending = this.pendingLogin;
+        if (uri.scheme !== studioProtocols[studioAuthChannel] || uri.authority !== 'studio.studio-workstation' || uri.path !== '/auth/callback' || uri.fragment || !pending) return;
+        const query = new URLSearchParams(uri.query);
+        if (query.size !== 1 || query.get('state') !== pending.state) return;
+        this.publishLogin();
+      } }),
       registerProjectConnectionStatus(this),
       vscode.authentication.registerAuthenticationProvider(PROVIDER_ID, 'SteamHarness', {
         onDidChangeSessions: this.sessionChange.event,
@@ -94,6 +114,7 @@ export class AccountController implements vscode.Disposable {
           });
         },
         removeSession: async (sessionId) => {
+          this.cancelLogin();
           if (this.authenticationSession()?.id === sessionId) { await this.account.logout(); }
         },
       }, { supportsMultipleAccounts: false }),
@@ -116,7 +137,7 @@ export class AccountController implements vscode.Disposable {
       vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState())),
       vscode.commands.registerCommand('studio.refreshAccount', () => this.account.verify()),
       vscode.commands.registerCommand('studio.validateLogin', () => this.account.verify()),
-      vscode.commands.registerCommand('studio.logout', () => this.account.logout()),
+      vscode.commands.registerCommand('studio.logout', () => { this.cancelLogin(); return this.account.logout(); }),
       context.secrets.onDidChange((event) => {
         if (event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
         if (event.key === USER_MODELS_SECRET) { void this.userModels.reload(); }
@@ -124,6 +145,7 @@ export class AccountController implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((event) => {
         this.scheduleSettings();
         if (event.affectsConfiguration('studio.project.serverUrl')) {
+          this.cancelLogin();
           void this.account.changeServer(this.configuredServer()).catch(() => undefined);
         }
       }),
@@ -141,7 +163,7 @@ export class AccountController implements vscode.Disposable {
     if (!session) { return; }
     const account: vscode.AuthenticationSessionAccountInformation & { icon?: vscode.Uri } = {
       id: session.user.userId,
-      label: session.user.displayName || session.user.email,
+      label: session.user.displayName || session.user.email || session.user.userId,
       icon: session.user.avatarUrl ? vscode.Uri.parse(session.user.avatarUrl) : undefined,
     };
     return { id: session.apiKeyId, accessToken: session.accessToken, account, scopes: ['workflow'] };
@@ -222,8 +244,14 @@ export class AccountController implements vscode.Disposable {
     }));
   }
 
+  private cancelLogin(): void {
+    this.loginAbort?.abort(); this.loginAbort = undefined;
+    const pending = this.pendingLogin; this.pendingLogin = undefined;
+    if (pending) void pending.client.cancel(pending.started.deviceCode).catch(() => undefined);
+  }
+
   private publishLogin(): void {
-    void this.loginPanel?.webview.postMessage({ type: 'account', state: this.getState(), busy: this.loginBusy });
+    void this.loginPanel?.webview.postMessage({ type: 'account', state: this.getState(), busy: this.loginBusy, loginUrl: this.pendingLogin?.started.verificationUriComplete });
   }
 
   private attachLoginPanel(panel: vscode.WebviewPanel): void {
@@ -235,30 +263,48 @@ export class AccountController implements vscode.Disposable {
     let pageGeneration = 0;
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
-      if (this.loginPanel === panel) { this.loginPanel = undefined; }
+      if (this.loginPanel === panel) { this.cancelLogin(); this.loginPanel = undefined; }
       for (const listener of listeners) { listener.dispose(); }
     }), panel.webview.onDidReceiveMessage(async message => {
       if (this.loginPanel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') { ++pageGeneration; this.publishLogin(); return; }
       if (message.type === 'open-account') { this.open({ section: 'account' }); panel.dispose(); return; }
-      if (message.type !== 'login' || this.loginBusy || typeof message.serverUrl !== 'string' ||
-        typeof message.email !== 'string' || typeof message.password !== 'string' ||
-        message.email.length >= 320 || message.password.length > 4096) { return; }
+      if (message.type === 'cancel-login') { this.cancelLogin(); return; }
+      if (message.type !== 'login' || this.loginBusy || typeof message.serverUrl !== 'string') return;
       const generation = pageGeneration;
       const current = (): boolean => this.loginPanel === panel && generation === pageGeneration;
       this.loginBusy = true;
       this.publishLogin();
       let failure: string | undefined;
+      const abort = new AbortController(); this.loginAbort = abort;
       try {
-        await this.account.login(message.serverUrl, message.email, message.password);
+        const client = new ServerAuthClient(message.serverUrl, fetch, locale());
+        const state = base64State();
+        await this.account.login(message.serverUrl, async () => {
+          const started = await client.start({ clientName: 'SteamHarness Studio', source: 'desktop', context: { clientKind: 'studio', channel: studioAuthChannel, state } }, abort.signal);
+          this.pendingLogin = { client, started, state };
+          this.publishLogin();
+          try {
+            if (abort.signal.aborted) throw new Error(t('Sign-in cancelled.'));
+            await vscode.env.openExternal(vscode.Uri.parse(started.verificationUriComplete));
+            const token = await client.poll(started, abort.signal);
+            const connection = { serverUrl: client.serverUrl, accessToken: token.accessToken };
+            try {
+              const session = await new ServerClient(client.serverUrl).verify(connection);
+              abort.signal.throwIfAborted();
+              return session;
+            } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
+          } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
+        }, abort.signal);
+        this.pendingLogin = undefined;
         if (this.getState().status === 'authenticated') {
           await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
           if (current()) { this.open({ section: 'account' }); panel.dispose(); }
         }
       } catch (error) {
-        failure = error instanceof Error ? error.message : t('Sign-in failed.');
+        failure = abort.signal.aborted ? t('Sign-in cancelled.') : error instanceof Error ? error.message === 'expired_token' ? t('Sign-in request expired. Start again.') : error.message === 'access_denied' ? t('Sign-in request was denied.') : error.message : t('Sign-in failed.');
       } finally {
-        this.loginBusy = false;
+        this.loginBusy = false; this.loginAbort = undefined; this.pendingLogin = undefined;
         if (current()) {
           await panel.webview.postMessage({ type: 'login-result', state: this.getState(), message: failure });
         } else { this.publishLogin(); }
@@ -453,6 +499,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.cancelLogin();
     clearTimeout(this.settingsTimer);
     void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     this.panel?.dispose();
@@ -467,4 +514,9 @@ export async function activateProjectAccount(context: vscode.ExtensionContext, m
   context.subscriptions.push(account);
   await account.initialize();
   return account;
+}
+
+function base64State(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
 }

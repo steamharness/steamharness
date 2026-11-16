@@ -4,7 +4,7 @@
   "applicationName": "studio",
   "dataFolderName": ".studio-workstation",
   "sharedDataFolderName": ".studio-workstation-shared",
-  "urlProtocol": "studio",
+  "urlProtocol": "steamharness-studio-dev",
   "serverApplicationName": "studio-server",
   "serverDataFolderName": ".studio-server",
   "tunnelApplicationName": "studio-tunnel",

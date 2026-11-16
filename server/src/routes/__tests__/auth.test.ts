@@ -340,7 +340,7 @@ test("password login can bootstrap the env-configured admin account into an admi
   process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
   process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
   const authService = {
-    async signInBootstrapAdmin(payload: { email: string; password: string; displayName?: string }) {
+    async signInBootstrapAdmin(payload: { email: string | null; password: string; displayName?: string }) {
       assert.equal(payload.email, "admin@example.com");
       assert.equal(payload.password, "bootstrap-secret");
       return {
@@ -650,7 +650,7 @@ test("password login records a failed audit event when signInWithPassword reject
   // audit fires; the test's listen() doesn't wire a JSON error handler so
   // the response itself comes back through Express's default error path.
   const authService = {
-    async signInWithPassword(payload: { email: string; password: string }) {
+    async signInWithPassword(payload: { email: string | null; password: string }) {
       assert.equal(payload.email, "user@example.com");
       assert.equal(payload.password, "wrong-password");
       throw new Error("Invalid login credentials");
@@ -689,7 +689,7 @@ test("password login mints an API key when called with source=desktop for non-we
   // Desktop needs a Bearer-style API key after password login so it
   // can keep using Authorization headers instead of switching to cookie auth.
   const authService = {
-    async signInWithPassword(payload: { email: string; password: string }) {
+    async signInWithPassword(payload: { email: string | null; password: string }) {
       assert.equal(payload.email, "user@example.com");
       assert.equal(payload.password, "super-secret");
       return {
@@ -937,8 +937,6 @@ test("me patch updates display name and avatar url for authenticated sessions", 
     assert.equal(payload.errCode, 0);
     assert.deepEqual(authUpdates, [{
       userId: "user-profile-1",
-      email: undefined,
-      password: undefined,
       displayName: "New Name",
     }]);
     assert.deepEqual(updatedPatch, {
@@ -1462,7 +1460,7 @@ function createDeviceCodeRecord(overrides: Partial<{
     apiKeyId?: string;
     user?: {
       userId: string;
-      email: string;
+      email: string | null;
       displayName: string;
     };
     expiresAt?: string;
@@ -1489,3 +1487,48 @@ function createDeviceCodeRecord(overrides: Partial<{
     updatedAt: "2026-06-18T00:00:00.000Z",
   };
 }
+
+test("account security refuses cross-site mutations and requires a browser account", async () => {
+  const server = await listen();
+  const previous = process.env.STEAMHARNESS_SERVER_REGISTRATION_ENABLED;
+  try {
+    delete process.env.STEAMHARNESS_SERVER_REGISTRATION_ENABLED;
+    const config = await fetchJson(server.url('/api/auth/config'));
+    assert.equal(config.data?.registrationEnabled,false);
+    const blocked = await fetch(server.url('/api/auth/register'),{method:'POST',headers:{Origin:'https://foreign.example.test','Content-Type':'application/json'},body:JSON.stringify({method:'username',username:'test',password:'test-password'})});
+    assert.equal(blocked.status,403);
+    const security = await fetch(server.url('/api/auth/me/security'));
+    assert.equal(security.status,401);
+  } finally {
+    if (previous === undefined) delete process.env.STEAMHARNESS_SERVER_REGISTRATION_ENABLED;
+    else process.env.STEAMHARNESS_SERVER_REGISTRATION_ENABLED = previous;
+    await server.close();
+  }
+});
+
+
+test("account security resolves the browser session and rejects API key cookies", async () => {
+  let kind = "user_session";
+  const security = {username:"browser_user",email:null,emailVerifiedAt:null,hasPassword:true};
+  const authService = {
+    async resolvePrincipal() {
+      return {kind,tokenSource:"cookie",userId:"browser-user",profile:{userId:"browser-user"}};
+    },
+    accounts: {
+      async security(userId: string) { assert.equal(userId,"browser-user");return security; },
+    },
+  };
+  configureProjectAuthContext({authService:authService as any});
+  const server = await listen();
+  try {
+    const allowed = await fetchJson(server.url("/api/auth/me/security"), {headers:{Cookie:"browser-session"}});
+    assert.deepEqual(allowed.data,security);
+    kind = "api_key";
+    const blocked = await fetch(server.url("/api/auth/me/security"),{headers:{Cookie:"api-key-session"}});
+    assert.equal(blocked.status,401);
+    const crossSite = await fetch(server.url("/api/auth/me/username"),{
+      method:"POST",headers:{"Content-Type":"application/json","Sec-Fetch-Site":"cross-site"},body:JSON.stringify({username:"other"}),
+    });
+    assert.equal(crossSite.status,403);
+  } finally { await server.close(); }
+});

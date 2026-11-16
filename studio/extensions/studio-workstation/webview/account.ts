@@ -1,3 +1,4 @@
+import { generatedAvatarUrl } from '../../../../shared/avatar-fallback/index';
 import { t, locale } from './localization';
 import './account.css';
 import { createSettingsView } from './settings';
@@ -58,7 +59,7 @@ installContextMenu(vscode, target => {
 function render(next: AccountState): void {
   state = next;
   settings.setAccount(next);
-  updateAvatar(next.user?.avatarUrl);
+  updateAvatar(next.user?.avatarUrl || generatedAvatarUrl(next.user?.userId));
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);
   signIn.hidden = signedIn;

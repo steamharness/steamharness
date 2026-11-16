@@ -6,6 +6,7 @@ import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { writeCliAuthConfig } from "../auth-config";
 import { initI18n } from "@steamharness/i18n";
 import {createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,createLocalProjectConfigurationStore,readCachedConfigurationFile} from "steamharness";
 import { ensureProjectCreated, decodeProjectFileContent, formatForbiddenMessage, normalizeProjectFilePath, packProject, getPreparation, main, parseArgs, readProjectPackageContext, resolveRepoRoot, stageProjectSource, waitForDeviceToken, waitForPreparation } from "../workspace";
@@ -260,9 +261,7 @@ describe("server workspace CLI helpers", () => {
 
   it("reads saved CLI auth config when no explicit token override is provided", async () => {
     const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-auth-"));
-    await writeFile(
-      path.join(authDir, "workflow-auth.json"),
-      JSON.stringify({
+    await writeCliAuthConfig({
         serverUrl: "http://localhost:7125",
         apiKey: "saved-api-key",
         expiresAt: "2026-07-01T00:00:00.000Z",
@@ -272,9 +271,7 @@ describe("server workspace CLI helpers", () => {
           displayName: "Normal User",
         },
         source: "device_flow",
-      }),
-      "utf8",
-    );
+      }, { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: authDir });
 
     const previousAuthDir = process.env.STEAMHARNESS_CLI_AUTH_DIR;
     const previousServer = process.env.STEAMHARNESS_SERVER_URL;
@@ -319,15 +316,11 @@ describe("server workspace CLI helpers", () => {
 
   it("reports the effective server and where it came from", async () => {
     const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-auth-"));
-    await writeFile(
-      path.join(authDir, "workflow-auth.json"),
-      JSON.stringify({
+    await writeCliAuthConfig({
         serverUrl: "http://localhost:7126",
         apiKey: "saved-api-key",
         source: "device_flow",
-      }),
-      "utf8",
-    );
+      }, { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: authDir });
 
     const previousAuthDir = process.env.STEAMHARNESS_CLI_AUTH_DIR;
     const previousServer = process.env.STEAMHARNESS_SERVER_URL;
@@ -494,6 +487,7 @@ describe("server workspace CLI helpers", () => {
         data: {
           accessToken: "wf_api_test",
           apiKey: {
+            id: "key-id",
             prefix: "wf_api",
             expiresAt: "2026-07-01T00:00:00.000Z",
           },
