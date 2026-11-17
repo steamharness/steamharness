@@ -1,39 +1,29 @@
 # Unreleased
 
-### New Features
-
-- **Bot memory**: Project configurations gain a default-on memory switch and a Search memory tool permission
-- **Kanban workflows**: Local Workflows start and stop in the background, with paged history and run images
-- **Web sign-in**: CLI Web signs in on the Server website instead of using a local password form
-
 ### Breaking Changes
 
 - Encode release internals in v2 `structure.json` while keeping project and entry summaries readable.
 - Minify declarations, configuration definitions, and JSON assets without changing string content or number literals.
 - Snapshots and uploads/downloads share the decoder and integrity checks. Rebuild older releases from source.
-  Migration: rebuild older releases from source; snapshots and uploads/downloads share the new decoder.
 - Project types, structure reports, templates and the Web host now use Bot.
 - Conversation protocols remain, with stable request identities across initial, resumed and subsequent turns.
-  Migration: declare the project type as Bot; conversation protocols are unchanged.
-- Project identity, name, version and declarations now use independent `steamharness.json` files, and reads and writes of `package.json.id` and `steamHarness` are removed.
-- Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules.
+- Project identity, name, version and declarations now use independent `steamharness.json` files.
+- Reads and writes of `package.json.id` and `steamHarness` are dropped. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules.
 - Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
-  Migration: move identity, name, version and declarations into `steamharness.json`; register aggregate child entries explicitly.
-- Check, run, Web and MCP select registered entries, and Web windows retain independent drafts and background tasks.
-- Related projects, dependency locks and combined publishing commands are removed.
-  Migration: use registered entries in check, run, Web and MCP; related-project, dependency-lock and combined-publish configuration is no longer read.
+- Check, run, Web and MCP select registered entries.
+- Web windows retain independent drafts and background tasks. Removed related projects, dependency locks and combined publishing commands.
 
 ### Added
 
-- Added Explicit Kanban Web applications use separate local origins, fixed HTTP/WebSocket proxies, scoped sessions, and declared microphone permissions.
-- Added account changes close old connections. Kanban-only uploads can contain the complete static output without including build sources.
+- Added Explicit Kanban Web applications use separate local origins, fixed HTTP/WebSocket proxies, scoped sessions, and declared microphone permissions;
+- Added Account changes close old connections. Kanban-only uploads can contain the complete static output without including build sources.
 - Added “Search memory” to the Bot memory tool permission group alongside save, get, update and delete.
 - Added Bot project configurations include a default-on memory switch and a Bot memory tool permission group.
 - Added Releases preserve the source default, older installed configurations gain the switch, and disabling memory preserves saved entries.
 - Added Kanban can query the complete Workflow timeline and navigate captured frames through local journals and attachments, including read-only previews.
 - Added Kanban can start and stop local Workflows, read output pages and load run images through native history. Optional Server guidance is collapsed by default.
-- Added Image parameters support Cropper.js cropping, proportional resizing, and padding before upload. Cropping can be disabled; cancellation preserves the existing value.
-- Added File selection and clipboard images share the same processing path.
+- Added Image parameters support Cropper.js cropping, proportional resizing, and padding before upload.
+- Added Cropping can be disabled; cancellation preserves the existing value. File selection and clipboard images share the same processing path.
 - Added Numeric parameters can use sliders with a current value and bounds in Workflow, Bot auxiliary fields, and input prompts. Ordinary numeric inputs remain available.
 - Added Workflow image parameters show thumbnails that open the image viewer, with a remove button in the top right corner.
 - Added A button beside the file picker imports clipboard images in browsers and Studio.
@@ -45,44 +35,45 @@
 - Added Embedded Kanban Bot conversations can display business cards below their matching replies, preserving drafts, history, and message positions during status updates.
 - Added CLI Web shows task-plan progress beside the response status, with an expandable task list.
 - Added The panel hides when the reply succeeds and preserves the last progress after failure or cancellation.
-- Added send now during a Bot reply places the message at the current conversation position, collapses the preceding response and continues output below the message.
-- Added the Send requested queue row is removed; streaming and reopened history preserve these sections, and failed sends can be retried.
-- Added project release builds, compiled execution, entry selection, validated inventories and automatic release uploads.
+- Added Send now during a Bot reply immediately places the message at the current conversation position, collapses the preceding response, and continues output below the message.
+- Added Remove the Send requested queue row. Streaming and reopened history preserve these sections; failed sends can be retried.
+- Added Project release builds, compiled execution, entry selection, validated inventories and automatic release uploads.
 - Added Release run snapshots keep the project identity and logo while selecting a separate default entry for each Studio window.
 - Added Conversation views within one Kanban page can share a session writer while retaining separate parameter and draft state.
 - Added Closing a view releases its claim immediately; reopened views remain editable and running tasks retain their execution owner.
-- Added Embedded Kanban Conversations support project-defined @ choices, dynamic UI updates, and header/transcript/footer slots.
-- Added projects can reuse the native composer for multi-participant topics and acknowledge deliveries to other conversations.
-- Added Conversation composers support @ references to the current entry's skills, project files and project entries, with inline highlighting.
-- Added compact file names and full paths on hover, keyboard selection and preservation in drafts and queued messages.
+- Added Embedded Kanban Conversations support project-defined @ choices, dynamic UI updates, and header/transcript/footer slots;
+- Added Projects can reuse the native composer for multi-participant topics and acknowledge deliveries to other conversations.
+- Added Conversation composers support @ references to the current entry's skills, project files and project entries.
+- Added References are highlighted inline, files show only their name with the full path on hover, and keyboard selection is preserved in drafts and queued messages.
 - Added Kanban can discover local aggregate entries and embed native Conversation chats with streaming, drafts, parameters, queues, approvals, and cancellation.
 - Added Business Workflows can adapt submissions and durable receipts; each view is bound to one conversation without receiving login credentials.
 - Added Cancelled requests retain their connection error type without leaving ordinary operation errors after recovery.
 - Added Kanban can invoke aggregate Workflows and subscribe to native Conversation streams.
-- Added reusing execution owners and persisted FIFO queues with optional manual recovery after restart.
+- Added It reuses execution owners and persisted FIFO queues, with optional manual recovery after a restart.
 - Added Project configuration reuses the AI model list for a single subagent selection with Follow main model.
-- Added selections stay unavailable, and Studio can configure child models while using Settings for the main model.
-- Added read-only Kanban runtime diagnostics with the latest 50 bridge requests, file routing, HTTP status, pending reads and safe failure categories.
-- Added plus queries of explicitly read-only page methods.
-- Added a subagent status entry beside “Responding…” with running, queued and completed counts. Expand roles, phases, progress, results and errors, and open child conversations.
+- Added Previously removed selections remain unavailable, and Studio can configure child models while Settings supplies the main model.
+- Added Kanban previews expose read-only runtime diagnostics.
+- Added They keep file routing, HTTP status, pending reads and safe failure categories for the latest 50 bridge requests, and query explicitly read-only page methods.
+- Added A subagent status entry beside “Responding…” with running, queued and completed counts.
+- Added Expand roles, phases, progress, results and errors, and open child conversations.
 - Added The entry remains after the parent response, preserves expansion across streaming and subsequent replies, and identifies offline snapshots.
 - Added Interrupt unfinished managed execution trees on reopening and require explicit batch recovery.
 - Added Keep pending user input separate from business queues; only successful user turns advance it, never background reports.
-- Added Open local file links, inline code paths and plain absolute paths from Agent replies and plans in the Studio editor, including relative paths.
-- Added file URIs and line/column locations. Fixed managed attachment link handling.
-- Added host user models, available-model choices and a Manage models action while retaining project configuration APIs.
+- Added Local file links, inline code paths and plain absolute paths in Agent replies and plans open in the Studio editor.
+- Added Relative paths, file URIs and line/column locations are supported, and managed attachment link handling is fixed.
+- Added Host user models, available-model choices and a Manage models action while retaining project configuration APIs.
 - Added Updates apply at idle boundaries; keys stay out of page state, ordinary history and exports and are rehydrated only for matching model endpoints.
-- Added initial host user permission snapshots and capability-negotiated updates to CLI Web. Durable sessions keep startup settings for active and background work.
-- Added adopting updates at a safe idle boundary while preserving inheritance parameters, history, pending input, and request identities across remounts and recovery.
-- Added Standalone CLI does not persist this setting yet.
+- Added CLI Web receives initial host user permission snapshots and capability-negotiated updates.
+- Added Durable sessions keep startup settings for active and background work, adopting updates at a safe idle boundary.
+- Added Inheritance parameters, history, pending input and request identities are preserved across remounts and recovery; standalone CLI does not persist this setting yet.
 
 ### Changed
 
 - Changed Default account avatars use colors suited to light and dark backgrounds, keeping the same pattern and colors when switching themes.
 - Changed CLI Web now signs in on the Server website without a local password form.
 - Changed Authorization supports return links, cancellation and shared entry state, with credentials isolated by channel and Server.
-- Changed CLI Web displays Workflow run history in a single row per entry, matching the Bot conversation list.
-- Changed Titles, status icons, and timestamps share one line, with long titles truncated.
+- Changed CLI Web displays Workflow run history in a single row per entry, matching the Bot conversation list, with titles, status icons and timestamps on one line.
+- Changed Long titles are truncated automatically.
 - Changed Activity records with screenshots place text on the left and the image on the right, stacking in narrow views. Images remain available in the full preview.
 - Changed CLI Web shows only the result area for existing Workflow runs, with entrypoints and parameter forms available when creating a new run.
 - Changed CLI Web groups Project Assistant with the workspace name and places the running count beside it.
@@ -93,155 +84,172 @@
 - Changed Internal completion does not independently advance a paused user queue.
 - Changed Sleep activity rows and details show expected and actual end times in the browser’s local timezone, retaining them after completion and history replay.
 - Changed Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window.
-- Changed Templates, default Kanban entries, uploads, and downloads use build/<entryId>/ under each source root's artifact namespace; frontend builds clean only their own output.
+- Changed Templates, default Kanban entries, uploads and downloads use build/<entryId>/ under each source root's artifact namespace.
+- Changed Frontend builds clean only their own output.
 - Changed Entry artifacts, caches, reports, and archives use root dist.
 - Changed Kanban entry paths resolve from the aggregate root; upload/download verify the artifact inventory and runtime data stays outside projects.
-- Changed Subagent rows show elapsed time and token usage on the right, with status in icons and details. The latest response shows conversation usage including owned subagents.
-- Changed updates during background work, freezes elapsed time on settlement or disconnection, and preserves totals on reopen.
-- Changed conversation, Workflow and assistant history default to local SQLite isolated by project and entry, with local file locks coordinating windows and crash recovery.
-- Changed explicit Server storage remains available; legacy cloud and local records are not migrated or overwritten automatically.
+- Changed Subagent rows show elapsed time and token usage on the right, with status in icons and details.
+- Changed The latest response shows conversation usage including owned subagents.
+- Changed Usage updates during background work, freezes elapsed time on settlement or disconnection, and preserves totals on reopen.
+- Changed Conversation, Workflow and assistant history default to local SQLite isolated by project and entry.
+- Changed Local file locks coordinate windows and crash recovery. Server storage remains explicit.
 - Changed Run project startup checks silently in the background.
 - Changed Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.
 - Changed Keep the final duration visible after a reply completes, fails or stops, including after refreshing or reopening history. Durable Agent follow-ups are timed separately.
-- Changed Studio model parameters use only Settings models and hide project AI; standalone CLI Web falls back to project configuration consistently for setup, defaults and requests.
-- Changed project references to Settings models are removed.
+- Changed Studio model parameters use only Settings models and hide project AI.
+- Changed Standalone CLI Web falls back to project configuration consistently for setup, defaults and requests. Removed project references to Settings models.
 - Changed Conversation, message and workflow exports in Studio use the native save dialog and show the saved path in a notification after writing succeeds.
 - Changed Cancellation stays quiet and write failures show an error.
-- Changed CLI Web consolidates AI usage, project configurations, tools and skills under Project information; skills stay read-only without permission switches.
-- Changed The panel uses fixed dimensions, sidebar navigation and independently scrolling sections, keeping configuration drafts, tool searches and model setup shortcuts.
-- Changed CLI Web separates tools and skills into tabs; tools retain permission controls, skills appear as read-only guide cards without Enable or Auto-approve switches.
-- Changed Conversation and Workflow share the panel.
-- Changed Local Conversations consume inherited Core Agent parameters consistently across structure reports, dynamic model options and execution input including.
-- Changed Hidden and fixed fields.
+- Changed CLI Web consolidates AI usage, project configurations, tools and skills under Project information.
+- Changed The panel uses fixed dimensions, sidebar navigation and independently scrolling sections while preserving configuration drafts, tool searches and model setup shortcuts.
+- Changed Skills remain read-only without permission switches.
+- Changed CLI Web separates tools and skills into tabs.
+- Changed Tools retain permission controls, while skills appear as read-only guide cards without Enable or Auto-approve switches.
+- Changed Conversation and Workflow share this panel.
+- Changed Local Conversations consume the inherited Core Agent parameter contract directly.
+- Changed Structure reports, dynamic model options and execution input stay consistent, including hidden and fixed fields.
 - Changed Web run failures summarize upstream HTML error pages with an HTTP status and actionable guidance.
 - Changed Original diagnostics are collapsed under Technical details in Conversation and Workflow.
 - Changed Use a clear plus icon for the New conversation toolbar button to make the create action easier to recognize.
 - Changed Aggregates open their default entry and use an icon-only Project windows button.
 - Changed Compact entry cards show types, default/current markers and runtime states, with an icon to open a new browser page or Studio tab.
-- Changed split views; every entry, including the current one, can open repeatedly with independent view state on the shared host.
+- Changed Split views are removed; every entry, including the current one, can open repeatedly with independent view state on the shared host.
 - Changed Entry icons and colors are independent; only the root owns a version.
 - Changed User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls.
 - Changed Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
-- Changed parameter `userSetting` bindings support fixed user policies or user defaults with project overrides.
-- Changed fixed controls show the actual policy and open user settings; editable controls retain the three original choices.
-- Changed reset restores inheritance without persisting the displayed value as an override, and active work keeps its snapshot.
+- Changed Parameter `userSetting` bindings accept `{ key: "agent.permissionPolicy", mode: "fixed" | "default" }`:
+- Changed Controls show the actual policy and open user settings; editable controls retain the three original choices.
+- Changed Default to the system value, following a reset. Inheritance state and project overrides are saved separately; active work keeps its permissions.
 
 ### Fixed
 
-- Fixed localhost fallback links, the selected Server being overwritten by an old account, and late errors after cancellation.
+- Fixed The built Web worker failing to read project metadata after npm install by bundling the private workspace modules at build time.
+- Fixed Localhost fallback links, the selected Server being overwritten by an old account, and late errors after cancellation.
 - Fixed Sign-out clears the local account and attempts to revoke its Server credential.
 - Fixed Kanban bridge failures show the operation, error code, and diagnostic ID.
 - Fixed Embedded conversation failures can be found by that ID in diagnostics, and the CLI host log records the underlying exception under the same ID.
-- Fixed cross-window ownership, expired views, and Workflow message receipt failures show specific guidance, while business rejections retain their user-facing reason.
+- Fixed Cross-window ownership, expired views, and Workflow message receipt failures also show specific guidance, while business rejections retain their user-facing reason.
 - Fixed Bot release memory defaults to use the selected release entry and configuration file, fill omitted defaults, and preserve v2 configuration profiles.
 - Fixed New conversation reusing a blank Bot conversation already open in another window. Each click now creates an independent conversation that can send messages.
-- Fixed large inline images leaving the result page on progress text with a running indicator. Completed records display their saved images after refreshing the page.
+- Fixed Large inline images leaving the result page on progress text with a running indicator. Completed records display their saved images after refreshing the page.
 - Fixed Terminal streaming immediately prints initial output-item content.
 - Fixed Bot Stop waiting on host recovery and durable command retries. Connected pages send cancellation directly and show stopping progress immediately.
 - Fixed Interrupt a stalled owned worker, ignore late output, and update the UI when execution ends without waiting for its history receipt.
 - Fixed Preserve drafts, pause queued input, and keep child cancellation scoped.
-- Fixed retrying, sending new messages, and continuing queues after initial model or tool setup fails in manual recovery mode.
+- Fixed Retrying, sending new messages, and continuing queues after initial model or tool setup fails in manual recovery mode.
 - Fixed Retry preserves the composer draft, and unfinished execution still requires explicit recovery.
-- Fixed selected-text, message, and code copying in Kanban and embedded conversations through confirmed host clipboard writes.
+- Fixed Selected-text, message, and code copying in Kanban and embedded conversations through confirmed host clipboard writes.
 - Fixed Route editing to the focused document and keep selection drags from navigating.
 - Fixed Native conversations display known project references by name and preserve unknown tokens.
 - Fixed Label updates refresh history display while retaining routing identities, code, and drafts.
-- Fixed scheme-less website addresses in conversations being treated as local files.
+- Fixed Scheme-less website addresses in conversations being treated as local files.
 - Fixed Website links follow the Studio host's browser preference while file positions, attachment handling and text selection are preserved.
-- Fixed contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.
-- Fixed CLI Web plan selections and scroll positions survive confirmation pauses and task reordering; narrow status labels no longer overflow and stopping states are translated.
-- Fixed progress updates are announced while the plan panel is collapsed, including for screen readers.
-- Fixed duplicate bubbles and lingering sending previews after Send now. Retain request identities for confirmation and replay, retry the original task after an independent fork.
-- Fixed start promoted persisted inputs while idle, and restore history in execution order.
-- Fixed queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn.
+- Fixed Contrast for selected @ menu choices with paired theme colors for names, descriptions and categories, plus a visible selection marker.
+- Fixed CLI Web plan selections and scroll positions being lost during confirmation pauses and task reordering in older browsers,
+- Fixed Overflowing status labels in narrow panes, and untranslated stopping states. Announce progress while the plan panel is collapsed.
+- Fixed Duplicate bubbles and lingering sending previews after Send now are fixed.
+- Fixed Request identities are retained for confirmation and replay, and an independent fork retries with the original task input.
+- Fixed Promoted persisted inputs run directly while idle, and restored history follows the actual execution order.
+- Fixed Queued background reports blocking new input, explicit queue sends, or idle configuration updates after a failed turn.
 - Fixed Older user queues stay paused, and active replies retain normal queueing.
-- Fixed compiled Kanban previews reloading during local data writes Only.
-- Fixed Artifact and entry declaration changes trigger preview reloads, preserving active edits when images or JSON are saved elsewhere in the project.
+- Fixed Compiled Kanban previews only reload for artifact and entry declaration changes.
+- Fixed Local data writes elsewhere in the project no longer reload the page or interrupt active edits.
 - Fixed Match embedded project header heights and icon sizes to the native window controls in Studio Steam mode.
-- Fixed Server connection guidance now shows actions for the reported failure and supports one-click cloud project creation.
-- Fixed Blocking failures hide Bot input, Workflow forms, and Kanban controls while preserving drafts; cloud project navigation uses the host or an authenticated browser handoff.
-- Fixed CLI Web briefly showing the open-in-another-window warning while checking ownership after switching Bot conversations. Confirmed conflicts still show the read-only warning.
-- Fixed Bot Stop preserving queued inputs and showing Resume queue; stopping an exited owner cancels persisted work without restarting its old model.
+- Fixed Server connection guidance shows actions for the reported failure and supports one-click cloud project creation.
+- Fixed Blocking failures hide Bot input, Workflow forms and Kanban controls while preserving drafts;
+- Fixed Cloud project navigation uses the host or an authenticated browser handoff.
+- Fixed CLI Web briefly showing the open-in-another-window warning while checking ownership after switching Bot conversations.
+- Fixed Confirmed conflicts still show the read-only warning.
+- Fixed Bot Stop preserves queued inputs and shows Resume queue.
+- Fixed Stopping an exited owner cancels persisted work without restarting its old model.
 - Fixed Bot approval recovery comparing saved model references with restored credentials, so omitted history secrets no longer interrupt plan confirmation as a settings change.
 - Fixed Durable Agent commands automatically retry confirmation timeouts, temporary connection failures, and readiness races with the original request ID.
 - Fixed Late receipts reconcile pending input, repaired project connections resume the original run, browser deadlines cover recovery, and Stop cancels retries.
 - Fixed The Conversation composer becomes editable after its first session state arrives, preventing newly typed drafts from being cleared by the initial snapshot.
-- Fixed project checks retain results across retries and same-account verification, preventing flickering guidance and ready Kanban reloads as identity changes clear old results.
-- Fixed failure guidance shows HTTP status, recovery steps, account/Server setup, project information and Server project actions.
-- Fixed embedded Kanban multi-Bot composers expose provisional submission states and durable Workflow results instead of waiting for a full read.
-- Fixed explicit retries preserve request identity and drafts.
+- Fixed Project checks retain completed results during automatic retries and same-account verification, preventing flickering guidance and ready Kanban reloads;
+- Fixed Identity changes still clear old results.
+- Fixed Failure guidance includes HTTP status, recovery steps, and direct account/Server, project information, and Server project actions.
+- Fixed Embedded Kanban multi-Bot composers no longer delay updates until a full read.
+- Fixed They expose provisional submission states and durable Workflow results, and explicit retries preserve request identity and drafts.
 - Fixed Exclude AppleDouble filesystem metadata from macOS project packages so downloaded sources stay intact.
-- Fixed Reject package names containing path traversal and clean staging after failures. Downloads validate required entries and reject runtime data or unregistered artifacts.
-- Fixed Entry names and paths cannot collide with managed directories or Windows device names.
+- Fixed Reject package names containing path traversal and clean staging after failures.
+- Fixed Downloads validate required entries and reject runtime data or unregistered artifacts. Entry names and paths cannot collide with managed directories or Windows device names.
 - Fixed Refresh acquired execution history before preparing a newly created cross-entry Bot session, preventing background history refreshes from replacing an in-flight session.
 - Fixed Allow 120 seconds for cross-entry Conversation submission, resume, input resolution, and cancellation receipts while retaining cancellation.
 - Fixed Kanban aggregate Workflow calls preserving the full 120-second receipt window through the Bridge and HTTP transport without automatically replaying writes.
 - Fixed Configuration attachment uploads remain valid during background account checks. The host still rejects stale results after the account changes or authentication is lost.
-- Fixed System AI model catalogues are cached for 30 seconds; manual refresh and account changes clear the cache.
+- Fixed System AI model catalogues are cached for 30 seconds.
+- Fixed Manual refresh and account changes clear the cache.
 - Fixed Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default.
 - Fixed Streaming is preserved, login changes retain local history, and analysis reads the same local records.
-- Fixed worker crash recovery by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.
+- Fixed Worker crash recovery by waiting for the previous execution lease to expire before resuming existing tasks,
+- Fixed Preserving committed writes and bounded, cancellable recovery.
 - Fixed Worker output now waits for transport completion, preventing full snapshots from accumulating behind a slow host.
 - Fixed Unexpected worker crashes under a live host resume the same child tasks and checkpoints up to three times while preserving settled replies.
 - Fixed Stop or reopening after a forced host exit still pauses managed work and user queues; background completion cannot release queued input.
-- Fixed subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress.
+- Fixed Subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress.
 - Fixed Child conversations show the same task receipt as the parent so a finished reply is not mistaken for completed work.
 - Fixed Cancellation, independent forks and other conversations retain their own state.
-- Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.
-- Fixed subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.
-- Fixed history recovery and cross-window synchronization to reconcile completed, failed and stopped Agent turns.
-- Fixed clearing stale responding and recovery states without replaying finished replies.
-- Fixed forks to run as independent new conversations with isolated models, modes, permissions, execution locks and recovery.
+- Fixed Background history recovery no longer starts an executor while an offline fork or receipt replay is pending.
+- Fixed This prevents Agent lease conflicts and false session-not-ready errors.
+- Fixed Subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.
+- Fixed History recovery and cross-window synchronization reconcile completed, failed and stopped Agent turns.
+- Fixed Stale responding and recovery states are cleared without replaying finished replies or leaving a finished answer timing forever.
+- Fixed Forks to run as independent new conversations with isolated models, modes, permissions, execution locks and recovery.
 - Fixed Source deletion preserves branches, historical attachments are copied, old execution controls are removed, and legacy shared-host forks migrate safely.
 - Fixed Worker startup now retains early control commands, preventing follow-up confirmation timeouts after reopening.
-- Fixed duplicate refresh icons in conversation Kanban preview headers during loading and repeated refreshes.
-- Fixed conversation forks to copy history through the selected response without rerunning the project or checking System AI.
+- Fixed Duplicate refresh icons in conversation Kanban preview headers during loading and repeated refreshes.
+- Fixed Conversation forks to copy history through the selected response without rerunning the project or checking System AI.
 - Fixed A progress dialog opens after confirmation, opens the branch on success and displays failure reasons.
 - Fixed Branch creation works when AI is unavailable; model validation happens when sending new input.
-- Fixed project templates: Kanban no longer includes a Workflow execution script.
-- Fixed independent fork effort changes and reopening without incorrectly requiring the main conversation.
+- Fixed Project templates: Kanban no longer includes a Workflow execution script.
+- Fixed Independent fork effort changes and reopening without incorrectly requiring the main conversation.
 - Fixed Fork and child navigation now follows only the current view's matching request, ignores late, duplicate or unrelated receipts, and exposes the source conversation.
 - Fixed Stop All retains run and task identity checks across worker replacement.
-- Fixed background draft saves keep file selection and response retry buttons enabled while typing, avoiding flicker; real conversation switches still wait for host confirmation.
-- Fixed template creation to preserve complete local projects with an empty ID when Server ID allocation fails. Registration can be retried separately while preserving source edits.
-- Fixed the context window usage tooltip to follow light, dark and host themes for its background, text, border and shadow.
+- Fixed File selection and response retry buttons flickering while typing by keeping background draft saves from disabling them.
+- Fixed Conversation switches still wait for host confirmation.
+- Fixed Template creation preserves complete local projects with an empty ID when Server ID allocation fails.
+- Fixed Registration can be retried separately later while source edits made in the meantime are preserved.
+- Fixed The context window usage tooltip to follow light, dark and host themes for its background, text, border and shadow.
 - Fixed Kanban attachment workers to use the full file deadline, preventing large map images from being stopped by the ordinary 30-second task limit.
 - Fixed Timeouts return a recognized bridge error.
 - Fixed Studio local analysis to ignore stale imports whose folders were deleted, preventing Start status refresh failures.
 - Fixed Missing projects in the current workspace and other read failures remain unavailable.
-- Fixed composer Stop to include the current conversation's background batches and subagents, keeping Stop available during background work.
+- Fixed Composer Stop to include the current conversation's background batches and subagents, keeping Stop available during background work.
 - Fixed Disconnected owners pause their remaining tree and user queue until explicit input reconciles it, preventing configuration updates from holding messages indefinitely.
 - Fixed Kanban and image cards losing their aggregate entry path and showing `Unknown project entry.`.
 - Fixed Card instances and reads now appear in read-only runtime diagnostics, and file reads retain their full timeout through the preview transport.
-- Fixed repeated Kanban configuration acknowledgements flooding the host and disrupting map loading; page method updates are coalesced.
-- Fixed Connection recovery uses a delayed compact overlay, preserving the map layout and avoiding flicker during brief interruptions.
-- Fixed sending new input after Stop and handling legacy queues and edited submission identities. Queue-enabled conversations accept consecutive sends.
+- Fixed Kanban ignores repeated configuration acknowledgements so a ready handshake cannot flood the host or disrupt map loading.
+- Fixed Page method updates are coalesced.
+- Fixed Connection recovery uses a delayed compact overlay that keeps the map layout and avoids flicker during brief interruptions.
+- Fixed Sending new input after Stop and handling legacy queues and edited submission identities. Queue-enabled conversations accept consecutive sends;
 - Fixed Send now and withdrawal respond immediately and restore failed actions, while Stop and failure keep older messages paused.
 - Fixed Workflow, Conversation and Kanban pages in Studio handle project shortcuts first and forward unhandled keys to Studio.
-- Fixed text editing, clipboard shortcuts and IME input keep working.
-- Fixed the subagent summary to use a neutral color. Red is limited to failed tasks and error details, so historical failures do not make the entire entry look like an error alert.
-- Fixed Route conversation execution diagnostics to Studio Trace by origin.
+- Fixed Text editing, clipboard shortcuts and IME input keep working.
+- Fixed The subagent summary entry uses a neutral color; red is limited to failed tasks and error details.
+- Fixed Historical failures therefore do not make the entire entry look like an error alert.
+- Fixed Fix: Route conversation execution diagnostics to Studio Trace by origin.
 - Fixed Keep parameter, attachment and resource-opening errors above the composer with a dismiss button; hiding an alert preserves validation.
-- Fixed resource cards to preserve explicit project and entry targets and inspect previews using the target entry.
-- Fixed preventing false project-unavailable errors when opening maps from the Assistant or another entry in the same project.
+- Fixed Resource cards preserve explicit project and entry targets.
+- Fixed Previews inspect the project through the target entry, preventing false project-unavailable errors when opening maps from the Assistant or another entry in the same project.
 - Fixed Bound worker shutdown and release conversation ownership after forced exit.
 - Fixed Queues advance automatically only after success; failures, cancellation and timeouts retain pending messages, and new explicit input can run before the paused queue.
-- Fixed embedded project configuration styles affecting nested dialogs, restoring content and footer spacing when adding or editing models in Project information.
-- Fixed Keep the skill preview return toolbar outside its independent document scroll area, preventing content from overlapping navigation while preserving loading.
-- Fixed retry and return states.
-- Fixed the Skills page to list and count actual project and Core built-in guides, with search and complete SKILL.md previews and Markdown source.
+- Fixed Embedded project configuration styles affecting nested dialogs, restoring content and footer spacing when adding or editing models in Project information.
+- Fixed The skill preview return toolbar sits outside its independent document scroll area.
+- Fixed This prevents content from overlapping navigation while keeping loading, retry and return-to-list states available.
+- Fixed The Skills page to list and count actual project and Core built-in guides, with search and complete SKILL.md previews and Markdown source.
 - Fixed The discovery tool is no longer shown as a skill, and navigation keeps the panel size fixed.
-- Fixed CLI Web Project information synchronizes tool registrations and permissions while preserving search and focus.
+- Fixed Fix: CLI Web Project information synchronizes tool registrations and permissions while preserving search and focus.
 - Fixed Configuration failures no longer remain stuck loading, and closing the panel dismisses its editors.
 - Fixed Refined cards, selection states and light/dark styling, with horizontal tabs on narrow screens and stable panel dimensions.
-- Fixed Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries.
+- Fixed Fix: Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries.
 - Fixed Local history uses project declarations; actual read failures remain unavailable.
-- Fixed empty user model controls to show Configure model with setup guidance and open model settings directly. Adding a model restores the selection list.
-- Fixed grouped model menus keep user model management available during loading and active work, and `inherit` is no longer treated as a permission marker.
-- Fixed credential redaction preserves unrelated project output named `userSettings`.
-- Fixed Kanban preview refreshes recheck current related imports so valid setup guidance survives and resolved errors stay hidden.
-- Fixed the built Web worker failing to read project metadata after npm install by bundling the private workspace modules at build time.
+- Fixed Empty user model controls to show Configure model with setup guidance and open model settings directly. Adding a model restores the selection list.
+- Fixed Grouped model menus keep user model management available during loading and active work.
+- Fixed `inherit` is no longer treated as a permission marker.
+- Fixed Credential redaction preserves unrelated project output named `userSettings`.
+- Fixed Kanban refreshes recheck current related imports so valid setup guidance survives a preview refresh and resolved errors stay hidden.
 
 ### Removed
 
-- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
+- Removed Global and account memory, including tools, skills, authorization, service integration and settings controls.
