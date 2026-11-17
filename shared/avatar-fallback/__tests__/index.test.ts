@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { toSvg } from "jdenticon/browser";
 import { generatedAvatarUrl, getAvatarFallbackText, resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 
 describe("avatar-fallback package", () => {
@@ -51,6 +52,19 @@ describe("resolvePrincipalAvatarUrl", () => {
 
 
 describe("generated account avatars", () => {
+  function svgFor(userId: string): string {
+    const avatar = generatedAvatarUrl(userId)!;
+    return decodeURIComponent(avatar.slice(avatar.indexOf(",") + 1));
+  }
+
+  function luminance(hex: string): number {
+    const rgb = [1, 3, 5].map((offset) => {
+      const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+  }
+
   it("keeps an account's geometric SVG stable without exposing its identity", () => {
     const userId = "account-<private>&identifier";
     const avatar = generatedAvatarUrl(userId)!;
@@ -67,5 +81,44 @@ describe("generated account avatars", () => {
     expect(resolvePrincipalAvatarUrl({userId:"account"})).toBe(generatedAvatarUrl("account"));
     expect(resolvePrincipalAvatarUrl({profile:{userId:"account"}})).toBe(generatedAvatarUrl("account"));
     expect(resolvePrincipalAvatarUrl({userId:"account",avatarUrl:"/storage/avatar.png"})).toBe("/storage/avatar.png");
+  });
+
+  it("keeps every solid fill readable on light and dark host surfaces", () => {
+    const surfaces = ["#ffffff", "#f7f8f7", "#f1f3f2", "#f4f6f5", "#121214", "#222222", "#333f3c"];
+    for (let index = 0; index < 512; index++) {
+      const userId = `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+      const fills = [...svgFor(userId).matchAll(/fill="(#[a-f\d]{6})"/gi)].map((match) => match[1]!);
+      expect(fills.length).toBeGreaterThan(0);
+      for (const fill of fills) {
+        for (const surface of surfaces) {
+          const values = [luminance(fill), luminance(surface)].sort((a, b) => a - b);
+          const contrast = (values[1]! + 0.05) / (values[0]! + 0.05);
+          expect(contrast, `${userId}: ${fill} on ${surface}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+  });
+
+  it("preserves geometric identity and transparency when balancing colors", () => {
+    const userId = "account-with-an-existing-geometric-avatar";
+    const original = toSvg(userId, 96, { padding: 0.08 });
+    const shapes = (svg: string) => svg.replace(/fill="#[a-f\d]{6}"/gi, 'fill="color"');
+    expect(shapes(svgFor(userId))).toBe(shapes(original));
+    expect(svgFor(userId)).not.toMatch(/<rect|<style|prefers-color-scheme|currentColor/i);
+  });
+
+  it("keeps the same SVG across theme changes and cache eviction", () => {
+    const userId = "account-theme-stability";
+    const avatar = generatedAvatarUrl(userId);
+    document.documentElement.dataset.theme = "dark";
+    try {
+      expect(generatedAvatarUrl(userId)).toBe(avatar);
+      for (let index = 0; index < 256; index++) generatedAvatarUrl(`other-account-${index}`);
+      expect(generatedAvatarUrl(userId)).toBe(avatar);
+      document.documentElement.dataset.theme = "light";
+      expect(generatedAvatarUrl(userId)).toBe(avatar);
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
   });
 });

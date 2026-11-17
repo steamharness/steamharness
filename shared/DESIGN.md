@@ -109,6 +109,7 @@ Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI
 - light/dark 必须成对设计；shared dark mode 选择器基于 `html[data-theme="dark"]`，宿主必须把主题写到同一个根节点契约。
 - 状态颜色只能作为辅助；success、warning、danger、running、waiting、failed 等状态必须同时用图标、文字或 badge 表达。
 - 项目身份图标读取 `projectCard.iconColor` 与 `iconBackgroundColor`，两者属于用户项目身份色而不是状态色；旧元数据缺少 `iconColor` 时统一回退白色，本地客户端、Server Web 与 conversation identity 不得各自硬编码不同前景色。
+- 账号默认几何头像由 `avatar-fallback` 统一生成。保留用户 ID 对应的图案和透明背景，将图形颜色限制在同时适配浅色表面与深色导航栏的亮度范围；同一 SVG 在切换主题后保持不变。自定义头像优先，宿主不另行调色或按主题生成副本。
 - 小字号正文、metadata 和状态前景在最终 surface 上至少达到 WCAG AA `4.5:1`；token 测试必须递归解析 CSS 变量后校验真实前景/背景组合，不能只比较源 hex。
 - 宿主发现 shared 深色模式 fallback 到浅色时，先修 theme bridge，不要在宿主覆盖 `.rwi-*`、`.run-output-*`、`.diagram-*` 或 `.workspace-diagnostic-*`。
 

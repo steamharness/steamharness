@@ -1,5 +1,24 @@
 import { toSvg } from "jdenticon/browser";
 const avatarCache = new Map<string, string>();
+
+// Keep every solid shape visible on both light panels and dark navigation rails.
+// A fixed SVG also survives theme changes when stored by another application.
+function balanceAvatarColor(hex: string): string {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  const target = Math.max(0.245, Math.min(0.26, luminance));
+  if (target === luminance) return hex;
+  const endpoint = luminance < target ? 1 : 0;
+  const amount = (target - luminance) / (endpoint - luminance);
+  return "#" + channels.map((channel) => {
+    const value = channel + (endpoint - channel) * amount;
+    const encoded = value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055;
+    return Math.round(encoded * 255).toString(16).padStart(2, "0");
+  }).join("");
+}
 export interface AvatarFallbackIdentity {
   displayName?: string | null;
   email?: string | null;
@@ -31,7 +50,11 @@ export function generatedAvatarUrl(userId?: string | null): string | undefined {
   if (!userId) return undefined;
   const cached = avatarCache.get(userId);
   if (cached) return cached;
-  const value = `data:image/svg+xml,${encodeURIComponent(toSvg(userId, 96, { padding: 0.08 }))}`;
+  const svg = toSvg(userId, 96, { padding: 0.08 }).replace(
+    /fill="(#[a-f\d]{6})"/gi,
+    (_attribute, color: string) => `fill="${balanceAvatarColor(color)}"`,
+  );
+  const value = `data:image/svg+xml,${encodeURIComponent(svg)}`;
   if (avatarCache.size >= 256) avatarCache.delete(avatarCache.keys().next().value!);
   avatarCache.set(userId, value);
   return value;
