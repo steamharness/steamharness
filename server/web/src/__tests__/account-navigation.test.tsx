@@ -24,7 +24,7 @@ it("renders the real account security page from the sidebar route", async () => 
   render(<App />);
   expect(await screen.findByRole("heading",{name:"Account security"})).toBeVisible();
   expect(screen.queryByLabelText("Current password")).toBeNull();
-  expect(screen.getByRole("button",{name:"Change password"})).toBeVisible();
+  expect(await screen.findByRole("button",{name:"Change password"})).toBeVisible();
   expect(window.location.pathname).toBe("/settings/security");
 });
 
@@ -54,7 +54,7 @@ it("retains a manually entered device code when signing in as another account", 
   expect(await screen.findByLabelText("Username or email")).toBeVisible();
   expect(logout).toHaveBeenCalledOnce();
   expect(window.location.pathname+window.location.search).toBe("/login/device?user_code=ABCD-1234");
-  const href = screen.getByRole("link",{name:"Create account"}).getAttribute("href")!;
+  const href = (await screen.findByRole("link",{name:"Create account"})).getAttribute("href")!;
   expect(new URL(href,window.location.origin).searchParams.get("returnTo")).toBe("/login/device?user_code=ABCD-1234");
 });
 
@@ -63,9 +63,8 @@ it("shows a clear sign-in message after changing the password", async () => {
   fireEvent.click(await screen.findByRole("button",{name:"Change password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
   expect(await screen.findByText("Account security updated. Sign in again on the website and in your apps.")).toBeVisible();
   expect(window.location.pathname).toBe("/login");
   expect(screen.getByLabelText("Username or email")).toBeVisible();
@@ -87,9 +86,8 @@ it("discards a profile response arriving after the account session is cleared", 
   fireEvent.click(await screen.findByRole("button",{name:"Change password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
   await screen.findByLabelText("Username or email");
   await act(async () => finish(ok({principal,profile:{...principal,displayName:"Stale private profile"}})));
   expect(screen.queryByDisplayValue("Stale private profile")).toBeNull();

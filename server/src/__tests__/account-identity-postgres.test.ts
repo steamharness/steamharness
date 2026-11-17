@@ -44,19 +44,22 @@ test('registration, verified email, recovery and device races use isolated Postg
   const result={user:{userId,email,displayName:profile.displayName}};
   const approvals=await Promise.allSettled([1,2].map(()=>db.updateDeviceCodeState(started.record.id,{state:'approved',approvedByUserId:userId,approvedAt:new Date().toISOString(),result})));
   assert.equal(approvals.filter(value=>value.status==='fulfilled').length,1);
-  await accounts.setPassword(userId,'updated-password',{password:'test-password'});
+  await accounts.setPassword(userId,'updated-password');
   await assert.rejects(accounts.resetPassword(oldReset.challengeId,oldReset.code,'stolen-password'),/invalid or expired/);
   assert.equal(await db.findApiKeyByToken(desktop.token),undefined);assert.ok(await db.findApiKeyByToken(manual.token));
   assert.equal(await db.consumeApprovedDeviceCodeWithApiKey(started.record.id,{userId,name:'Race',source:'cli',consumedAt:new Date().toISOString(),result}),undefined);
   const reset=await send('password-reset');await accounts.resetPassword(reset.challengeId,reset.code,'reset-password');
   await assert.rejects(auth.signInWithPassword({email,password:'updated-password'}));await auth.signInWithPassword({email,password:'reset-password'});
-  const unbindProof=await send('reauth',userId);
-  await accounts.updateEmail(userId,{action:'unbind',reauthChallengeId:unbindProof.challengeId,reauthCode:unbindProof.code});assert.equal((await accounts.security(userId)).email,null);
+  await accounts.updateEmail(userId,{action:'unbind'});assert.equal((await accounts.security(userId)).email,null);
   await auth.signInWithPassword({email:username,password:'reset-password'});
   const email2=`email-${suffix}@example.test`,reg=await send('register',undefined,email2);
   const emailUser=await accounts.register({method:'email',challengeId:reg.challengeId,code:reg.code});assert.equal((await accounts.security(emailUser)).hasPassword,false);
-  await assert.rejects(accounts.updateEmail(emailUser,{action:'unbind',password:'nothing'}),/Verify your current/);
-  const proof=await send('reauth',emailUser,email2);await accounts.setUsername(emailUser,`mail_${suffix}`,{reauthChallengeId:proof.challengeId,reauthCode:proof.code});
+  await assert.rejects(accounts.updateEmail(emailUser,{action:'unbind'}),/Set a username and password/);
+  await accounts.setUsername(emailUser,`mail_${suffix}`);
+  await assert.rejects(accounts.setUsername(emailUser,`changed_${suffix}`),/already been set/);
+  await assert.rejects(accounts.setPassword(emailUser,'short'),/at least 8/);
+  await accounts.setPassword(emailUser,'email-user-password');
+  await auth.signInWithPassword({email:email2,password:'email-user-password'});
   const retries=await send('login',undefined,email2);
   for(let i=0;i<5;i++) await assert.rejects(accounts.loginWithCode(retries.challengeId,retries.code==='000000'?'000001':'000000'));
   await assert.rejects(accounts.loginWithCode(retries.challengeId,retries.code));
@@ -79,7 +82,7 @@ test('registration, verified email, recovery and device races use isolated Postg
  }
 });
 
-test('email binding needs only the target code while replacement and removal retain identity proof',{skip:!databaseUrl},async t=>{
+test('account email changes need only target verification and preserve account protections',{skip:!databaseUrl},async t=>{
  assert.ok(databaseUrl);
  const previous=process.env.STEAMHARNESS_SERVER_REGISTRATION_ENABLED;
  const pool=new pg.Pool({connectionString:databaseUrl}),db=new AccountRepository(databaseUrl),auth=new AuthService({databaseUrl,accountDb:db});
@@ -106,26 +109,28 @@ test('email binding needs only the target code while replacement and removal ret
    assert.equal((await accounts.security(owner)).email,address);assert.ok((await accounts.security(owner)).emailVerifiedAt);
    await assert.rejects(accounts.updateEmail(owner,{action:'bind',challengeId:first.challengeId,code:first.code}),/invalid or expired/);
   });
-  await t.test('replacement and unbinding still require current identity proof',async()=>{
-   const replacement=`replacement-${suffix}@example.test`,target=await send(owner,replacement);
-   await assert.rejects(accounts.updateEmail(owner,{action:'bind',challengeId:target.challengeId,code:target.code}),/Verify your current/);
+  await t.test('replacement needs the target code and unbinding needs no identity proof',async()=>{
+   await assert.rejects(accounts.updateEmail(owner,{action:'bind'}),/invalid or expired/);
    assert.equal((await accounts.security(owner)).email,address);
-   await assert.rejects(accounts.updateEmail(owner,{action:'unbind'}),/Verify your current/);
-   const fresh=await send(owner,replacement);
-   await accounts.updateEmail(owner,{action:'bind',challengeId:fresh.challengeId,code:fresh.code,password:'test-password'});
+   const replacement=`replacement-${suffix}@example.test`,target=await send(owner,replacement);
+   await accounts.updateEmail(owner,{action:'bind',challengeId:target.challengeId,code:target.code});
    assert.equal((await accounts.security(owner)).email,replacement);
+   await accounts.updateEmail(owner,{action:'unbind'});
+   assert.equal((await accounts.security(owner)).email,null);
+   await auth.signInWithPassword({email:`bind_${suffix}`,password:'test-password'});
   });
-  await t.test('an unverified address can be verified without proof but cannot be replaced that way',async()=>{
+  await t.test('an unverified address can be verified and replaced without a password',async()=>{
    const legacy=`legacy-${suffix}@example.test`;
-   await pool.query('update steamharness_auth_users set email=$2,email_verified_at=null where id=$1',[other,legacy]);
+   await pool.query('update steamharness_auth_users set email=$2,email_verified_at=null,password_hash=null where id=$1',[other,legacy]);
    await pool.query('update user_profiles set email=$2 where user_id=$1',[other,legacy]);
-   const replacement=await send(other,`legacy-change-${suffix}@example.test`);
-   await assert.rejects(accounts.updateEmail(other,{action:'bind',challengeId:replacement.challengeId,code:replacement.code}),/Verify your current/);
-   assert.equal((await accounts.security(other)).email,legacy);
-   await pool.query('update steamharness_auth_users set password_hash=null where id=$1',[other]);
    const verify=await send(other,legacy);
    await accounts.updateEmail(other,{action:'bind',challengeId:verify.challengeId,code:verify.code});
    assert.ok((await accounts.security(other)).emailVerifiedAt);
+   const address=`legacy-change-${suffix}@example.test`,replacement=await send(other,address);
+   await accounts.updateEmail(other,{action:'bind',challengeId:replacement.challengeId,code:replacement.code});
+   assert.equal((await accounts.security(other)).email,address);
+   assert.equal((await accounts.security(other)).hasPassword,false);
+   await assert.rejects(accounts.updateEmail(other,{action:'unbind'}),/Set a username and password/);
   });
   await t.test('expired and revoked target codes cannot bypass verification',async()=>{
    const freshUser=await accounts.register({method:'username',username:`expiry_${suffix}`,password:'test-password'});
@@ -133,11 +138,11 @@ test('email binding needs only the target code while replacement and removal ret
    await pool.query("update steamharness_auth_email_challenges set expires_at=now()-interval '1 second' where id=$1",[target.challengeId]);
    await assert.rejects(accounts.updateEmail(freshUser,{action:'bind',challengeId:target.challengeId,code:target.code}),/invalid or expired/);
    const stale=await send(freshUser,`stale-${suffix}@example.test`);
-   await accounts.setPassword(freshUser,'updated-password',{password:'test-password'});
+   await accounts.setPassword(freshUser,'updated-password');
    await assert.rejects(accounts.updateEmail(freshUser,{action:'bind',challengeId:stale.challengeId,code:stale.code}),/invalid or expired/);
    assert.equal((await accounts.security(freshUser)).email,null);
   });
-  await t.test('concurrent first bindings cannot replace each other without proof',async()=>{
+  await t.test('concurrent email changes retain identity-version protection',async()=>{
    const freshUser=await accounts.register({method:'username',username:`race_${suffix}`,password:'test-password'});
    const targets=await Promise.all([`race-a-${suffix}@example.test`,`race-b-${suffix}@example.test`].map(async address=>({address,...await send(freshUser,address)})));
    const results=await Promise.allSettled(targets.map(target=>accounts.updateEmail(freshUser,{action:'bind',challengeId:target.challengeId,code:target.code})));

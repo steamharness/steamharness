@@ -94,14 +94,12 @@ export function AccountSecurityPage({ onChanged, onSignIn }: {
     </Card>}
   </div>;
 
-  const canProve = security.hasPassword || !!(security.emailVerifiedAt && mail);
-  const actionProps = { security, mail, cooldowns, onComplete: complete, disabled: loading || !canProve };
+  const actionProps = { security, mail, cooldowns, onComplete: complete, disabled: loading };
   return <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
     {header}
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription><Button variant="outline" disabled={loading} onClick={() => void load()}>{t("commonRefresh")}</Button></Alert> : null}
     {notice ? <Alert role="status"><AlertDescription>{notice}</AlertDescription></Alert> : null}
     {!mail ? <Alert><AlertDescription>{t("authMailUnavailable")}</AlertDescription></Alert> : null}
-    {!canProve && !mail ? <Alert><AlertDescription>{t("authSecurityProofUnavailable")}</AlertDescription></Alert> : null}
     <Card>
       <CardHeader><CardTitle>{t("loginEmailLabel")}</CardTitle><CardDescription>{t("authEmailSecurityHelp")}</CardDescription></CardHeader>
       <CardContent className="flex flex-col gap-2">

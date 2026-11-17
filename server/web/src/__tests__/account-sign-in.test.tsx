@@ -217,20 +217,18 @@ it("keeps the return link after an approved request has already been consumed", 
   expect(await screen.findByRole("link",{name:"Open app and return"})).toHaveAttribute("href",returnUrl);
 });
 
-it("sets a password using email proof and requests sign-in again", async () => {
+it("sets a password directly and requests sign-in again", async () => {
   const changed = vi.fn();
   const action = vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:null,email:"user@example.test",emailVerifiedAt:"2026-01-01",hasPassword:false}) : path === "/email-code/send" ? ok({challengeId:"proof",retryAfterSeconds:60}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
   fireEvent.click(await screen.findByRole("button",{name:"Set password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.click(screen.getByRole("button",{name:"Send code to current email"}));
-  await screen.findByText("A code to confirm your identity was sent to user@example.test.");
-  fireEvent.change(screen.getByLabelText("Code from current email"),{target:{value:"123456"}});
-  fireEvent.submit(screen.getByLabelText("Code from current email").closest("form")!);
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  expect(screen.queryByLabelText("Code from current email")).toBeNull();
+  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
-  expect(action).toHaveBeenCalledWith("/me/password",{password:"new-password",reauthChallengeId:"proof",reauthCode:"123456"});
+  expect(action).toHaveBeenCalledWith("/me/password",{password:"new-password"});
 });
 
 it("closes the username operation after setting it once", async () => {
@@ -244,26 +242,23 @@ it("closes the username operation after setting it once", async () => {
   render(<AccountSecurityPage onChanged={changed} />);
   fireEvent.click(await screen.findByRole("button",{name:"Set username"}));
   fireEvent.change(screen.getByLabelText("Username"),{target:{value:"new-user"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Username").closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(false));
   expect(screen.queryByRole("button",{name:"Set username"})).toBeNull();
   expect(screen.queryByLabelText("Username")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("button",{name:"Change email"})).toBeVisible();
-  expect(action).toHaveBeenCalledWith("/me/username",{username:"new-user",currentPassword:"old-password"});
+  expect(action).toHaveBeenCalledWith("/me/username",{username:"new-user"});
 });
 
-it("unbinds using current proof without requiring a target email code", async () => {
+it("unbinds without requiring a password or email code", async () => {
   const changed = vi.fn();
   const action = vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:"user",email:"user@example.test",emailVerifiedAt:"2026-01-01",hasPassword:true}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
   fireEvent.click(await screen.findByRole("button",{name:"Unbind email"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
   fireEvent.click(screen.getAllByRole("button",{name:"Unbind email"}).at(-1)!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
-  expect(action).toHaveBeenCalledWith("/me/email",{action:"unbind",currentPassword:"old-password"});
+  expect(action).toHaveBeenCalledWith("/me/email",{action:"unbind"});
 });
 
 it("requires a new challenge after a bind failure instead of reusing a consumed code", async () => {

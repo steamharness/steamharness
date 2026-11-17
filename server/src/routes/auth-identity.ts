@@ -1,6 +1,6 @@
 import express, { Router, type Request, type ErrorRequestHandler } from "express";
 import { getProjectAuthContext, getRequestPrincipal, readRequestPrincipal, writeAuthSessionCookie, clearAuthSessionCookie } from "../auth";
-import { registrationEnabled, type IdentityProof } from "../auth-identity";
+import { registrationEnabled } from "../auth-identity";
 import { mailConfigured, type EmailPurpose } from "../auth-mail";
 import { createAuditActor, readRequestIp, recordAuditEventForRequest } from "../audit";
 import { HttpError, ok } from "../protocol";
@@ -16,9 +16,6 @@ async function account(req: Request): Promise<string> {
   return principal.userId;
 }
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }
-function proof(req: Request): IdentityProof {
-  return {password:string(req.body?.currentPassword),reauthChallengeId:string(req.body?.reauthChallengeId),reauthCode:string(req.body?.reauthCode)};
-}
 async function audit(req: Request, eventType: string, userId?: string): Promise<void> {
   await recordAuditEventForRequest(req,{...createAuditActor(getRequestPrincipal(req)),...(userId ? {actorUserId:userId} : {}),eventType,outcome:"success",resourceType:"user",resourceId:userId});
 }
@@ -77,18 +74,18 @@ export function createIdentityRouter(): Router {
     try {const userId=await account(req);res.json(ok(await service().accounts.security(userId)));} catch(error){next(error);}
   });
   router.post("/me/username",json,async(req,res,next)=>{
-    try {limit(req);const userId=await account(req);await service().accounts.setUsername(userId,string(req.body?.username),proof(req));await audit(req,"auth.username.set",userId);res.json(ok(await service().accounts.security(userId)));}catch(error){next(error);}
+    try {limit(req);const userId=await account(req);await service().accounts.setUsername(userId,string(req.body?.username));await audit(req,"auth.username.set",userId);res.json(ok(await service().accounts.security(userId)));}catch(error){next(error);}
   });
   router.post("/me/email",json,async(req,res,next)=>{
     try {
       limit(req);const userId=await account(req);
       if (!["bind","unbind"].includes(req.body?.action)) throw new HttpError(400,400,"Invalid request.");
-      await service().accounts.updateEmail(userId,{...proof(req),action:req.body.action,challengeId:string(req.body?.challengeId),code:string(req.body?.code)});
+      await service().accounts.updateEmail(userId,{action:req.body.action,challengeId:string(req.body?.challengeId),code:string(req.body?.code)});
       clearAuthSessionCookie(res);await audit(req,"auth.email.update",userId);res.json(ok(await service().accounts.security(userId)));
     }catch(error){next(error);}
   });
   router.post("/me/password",json,async(req,res,next)=>{
-    try {limit(req);const userId=await account(req);await service().accounts.setPassword(userId,string(req.body?.password),proof(req));clearAuthSessionCookie(res);await audit(req,"auth.password.update",userId);res.json(ok({updated:true}));}catch(error){next(error);}
+    try {limit(req);const userId=await account(req);await service().accounts.setPassword(userId,string(req.body?.password));clearAuthSessionCookie(res);await audit(req,"auth.password.update",userId);res.json(ok({updated:true}));}catch(error){next(error);}
   });
   const failures: ErrorRequestHandler = (error,req,_res,next) => {
     void recordAuditEventForRequest(req,{...createAuditActor(getRequestPrincipal(req)),eventType:"auth.identity.failed",outcome:"failed",resourceType:"user",context:{operation:req.path,status:error instanceof HttpError ? error.statusCode : 500}}).catch(() => undefined);

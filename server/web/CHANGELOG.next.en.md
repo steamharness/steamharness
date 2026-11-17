@@ -2,11 +2,11 @@
 
 - Keep the account security title and card placeholders visible while loading. Show retry or sign-in actions after a load failure or an expired session.
 
-- Complete first email binding or verification of the current unverified address with its code, without a second identity confirmation step.
+- Submit account security changes directly without a current-password or current-email verification step. Email binding, verification, and changes still require the target email code. Password and username settings remain available when mail is unavailable.
 
 - Default account avatars use colors suited to light and dark backgrounds, keeping the same pattern and colors when switching themes.
 
-- Separate account security actions for binding, verifying, changing, and unbinding email, passwords, and usernames. Enter changes before confirming identity; cancellation clears sensitive forms, with explicit code purposes and unbinding requirements.
+- Separate account security actions for binding, verifying, changing, and unbinding email, passwords, and usernames. Submit changes directly; cancellation clears sensitive forms, with explicit code purposes and unbinding requirements.
 
 - Fixed account security navigation, manual device authorization, and account switching. Registration and recovery confirm passwords, failed requests can be retried, and security changes explain when to sign in again.
 
