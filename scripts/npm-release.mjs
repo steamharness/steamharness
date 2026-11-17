@@ -129,7 +129,7 @@ export function verifyPublishState({plan,registry}) {
  * 测试直接调用这个函数并注入 fetchImpl 与临时 env 文件，验证写出的内容。
  */
 export async function runNpmRelease({root,env=process.env,fetchImpl=globalThis.fetch,append=appendFile}={}) {
-  const resolvedRoot=path.resolve(root??path.dirname(fileURLToPath(import.meta.url)));
+  const resolvedRoot=path.resolve(root??path.join(path.dirname(fileURLToPath(import.meta.url)),'..'));
   const core=JSON.parse(await readFile(path.join(resolvedRoot,'harness/package.json'),'utf8'));
   const cli=JSON.parse(await readFile(path.join(resolvedRoot,'cli/package.json'),'utf8'));
   if(!env.GITHUB_EVENT_PATH)throw new Error('GITHUB_EVENT_PATH is required to select the release channel.');

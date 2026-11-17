@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createServer } from "node:http";
+import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -21,6 +24,41 @@ const release = (version, prerelease = false) => ({
   cliVersion: version,
   cliCoreVersion: version,
   cliPeerVersion: version,
+});
+
+test("the command resolves its repository root independently of the working directory", async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "npm-release-command-")));
+  const registry = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ versions: { "0.1.2": {} }, "dist-tags": { latest: "0.1.2" } }));
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      registry.once("error", reject);
+      registry.listen(0, "127.0.0.1", resolve);
+    });
+    for (const name of ["harness", "cli", "scripts", "unrelated-cwd"]) {
+      await mkdir(path.join(root, name));
+    }
+    await copyFile(new URL("../npm-release.mjs", import.meta.url), path.join(root, "scripts/npm-release.mjs"));
+    await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.0" }));
+    await writeFile(path.join(root, "cli/package.json"), JSON.stringify({ name: "@steamharness/cli", version: "0.2.0",
+      devDependencies: { steamharness: "0.2.0" }, peerDependencies: { steamharness: "0.2.0" } }));
+    const eventPath = path.join(root, "event.json");
+    const envPath = path.join(root, "github-env");
+    await writeFile(eventPath, JSON.stringify({ release: { tag_name: "steamharness/v0.2.0", prerelease: false } }));
+    await promisify(execFile)(process.execPath, [path.join(root, "scripts/npm-release.mjs")], {
+      cwd: path.join(root, "unrelated-cwd"),
+      env: { ...process.env, GITHUB_EVENT_NAME: "release", GITHUB_REF: "refs/tags/steamharness/v0.2.0",
+        GITHUB_EVENT_PATH: eventPath, GITHUB_ENV: envPath,
+        STEAMHARNESS_NPM_REGISTRY_URL: `http://127.0.0.1:${registry.address().port}` },
+      timeout: 10_000,
+    });
+    assert.equal(await readFile(envPath, "utf8"), "NPM_DIST_TAG=latest\nSTEAMHARNESS_SERVICE_CHANNEL=main\n");
+  } finally {
+    await new Promise((resolve) => registry.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("stable and alpha Releases select separate npm tags", () => {
