@@ -1,5 +1,7 @@
 # Unreleased
 
+- Redesigned account emails with the SteamHarness logo, large selectable codes, and clear expiry details. Registration, sign-in, email verification, identity checks, and password resets share bilingual HTML and plain-text versions.
+
 - First email binding and verification of the current unverified address require only the target email code. Replacement and removal still verify the current identity.
 
 - Signing out revokes Studio and CLI credentials while preserving manually created API keys.
