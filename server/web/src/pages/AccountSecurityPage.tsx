@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "@steamharness/i18n/react";
+import { CircleAlertIcon, KeyRoundIcon, RefreshCwIcon } from "lucide-react";
 import { apiClient } from "../api";
 import { isApiSuccess } from "../types";
 import { type AuthConfig } from "../components/LoginPage";
@@ -7,6 +8,29 @@ import { AccountSecurityAction, useEmailCodeCooldowns, type AccountSecurity } fr
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function AccountSecurityLoading() {
+  const { t } = useTranslation("serverWeb");
+  return <div role="status" aria-label={t("busyLoadAccount")} aria-busy="true">
+    <span className="sr-only">{t("busyLoadAccount")}</span>
+    <div aria-hidden="true" className="flex flex-col gap-6">
+      {([
+        ["loginEmailLabel", "authEmailSecurityHelp"],
+        ["loginPasswordLabel", "authPasswordSecurityHelp"],
+        ["authUsername", "authUsernameHelp"],
+      ] as const).map(([title, description], index) => <Card key={title}>
+        <CardHeader><CardTitle>{t(title)}</CardTitle><CardDescription>{t(description)}</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-48 max-w-full" />
+          {index === 0 ? <Skeleton className="h-4 w-24" /> : null}
+        </CardContent>
+        <CardFooter><Skeleton className="h-9 w-24" /></CardFooter>
+      </Card>)}
+    </div>
+  </div>;
+}
 
 export function AccountSecurityPage({ onChanged, onSignIn }: {
   onChanged: (signInRequired?: boolean) => void | Promise<void>;
@@ -49,16 +73,31 @@ export function AccountSecurityPage({ onChanged, onSignIn }: {
     await onChanged(signInRequired);
   }
 
-  if (!security) return <div className="p-6">
-    <Alert><AlertDescription>{error || t("appCheckingSession")}</AlertDescription></Alert>
-    {needsSignIn ? onSignIn ? <><p className="py-4 text-sm">{t("authSecurityBrowserLogin")}</p><Button onClick={onSignIn}>{t("authBackToLogin")}</Button></> : null
-      : <Button variant="outline" disabled={loading} onClick={() => void load()}>{t("commonRetry")}</Button>}
+  const header = <div className="flex flex-col gap-2"><h1 className="text-2xl font-semibold">{t("authSecurityTitle")}</h1><p className="text-sm text-muted-foreground">{t("authSecurityHelp")}</p></div>;
+
+  if (!security) return <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+    {header}
+    {loading ? <AccountSecurityLoading /> : <Card>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">{needsSignIn ? <KeyRoundIcon /> : <CircleAlertIcon />}</EmptyMedia>
+          <EmptyTitle>{t(needsSignIn ? "authBackToLogin" : "appLayoutToastError")}</EmptyTitle>
+          <EmptyDescription role={needsSignIn ? "status" : "alert"}>{error}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          {needsSignIn ? <>
+            <p>{t("authSecurityBrowserLogin")}</p>
+            {onSignIn ? <Button onClick={onSignIn}>{t("authBackToLogin")}</Button> : null}
+          </> : <Button variant="outline" onClick={() => void load()}><RefreshCwIcon data-icon="inline-start" />{t("commonRetry")}</Button>}
+        </EmptyContent>
+      </Empty>
+    </Card>}
   </div>;
 
   const canProve = security.hasPassword || !!(security.emailVerifiedAt && mail);
   const actionProps = { security, mail, cooldowns, onComplete: complete, disabled: loading || !canProve };
   return <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
-    <div className="flex flex-col gap-2"><h1 className="text-2xl font-semibold">{t("authSecurityTitle")}</h1><p className="text-sm text-muted-foreground">{t("authSecurityHelp")}</p></div>
+    {header}
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription><Button variant="outline" disabled={loading} onClick={() => void load()}>{t("commonRefresh")}</Button></Alert> : null}
     {notice ? <Alert role="status"><AlertDescription>{notice}</AlertDescription></Alert> : null}
     {!mail ? <Alert><AlertDescription>{t("authMailUnavailable")}</AlertDescription></Alert> : null}

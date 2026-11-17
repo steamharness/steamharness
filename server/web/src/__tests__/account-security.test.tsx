@@ -16,6 +16,11 @@ function mockAccount(security = bound, mailAvailable = true) {
     return ok({});
   });
 }
+function deferredResponse() {
+  let resolve!: (value: any) => void;
+  const promise = new Promise<any>(done => { resolve = done; });
+  return { promise, resolve };
+}
 async function open(title: string) {
   fireEvent.click(await screen.findByRole("button", { name: title }));
   return within(screen.getByRole("dialog", { name: title }));
@@ -35,6 +40,69 @@ beforeEach(async () => { await i18n.changeLanguage("en"); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 it.each([
+  ["en", "Account security", "Loading account info"],
+  ["zh", "账号安全", "加载账号信息"],
+])("keeps the page frame while loading without showing errors or retry actions (%s)", async (language, title, loadingLabel) => {
+  await i18n.changeLanguage(language);
+  const account = deferredResponse(), config = deferredResponse();
+  vi.spyOn(apiClient, "authAction").mockImplementation(path => path === "/me/security" ? account.promise : config.promise);
+  render(<AccountSecurityPage onChanged={vi.fn()} />);
+  const heading = screen.getByRole("heading", { name: title });
+  expect(heading).toBeVisible();
+  expect(screen.getByRole("status", { name: loadingLabel })).toHaveAttribute("aria-busy", "true");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
+  await act(async () => config.resolve(ok({ mailAvailable: true })));
+  expect(screen.getByRole("status", { name: loadingLabel })).toBeInTheDocument();
+  expect(screen.queryByRole("button")).toBeNull();
+  await act(async () => account.resolve(ok(bound)));
+  expect(screen.getByRole("heading", { name: title })).toBe(heading);
+  expect(screen.queryByRole("status", { name: loadingLabel })).toBeNull();
+  expect(screen.getByText(bound.email!)).toBeVisible();
+  expect(screen.getByRole("button", { name: language === "zh" ? "更换邮箱" : "Change email" })).toBeEnabled();
+});
+
+it("offers retry after a load failure and returns to the loading state during recovery", async () => {
+  const recovery = deferredResponse();
+  let attempts = 0;
+  vi.spyOn(apiClient, "authAction").mockImplementation(async path => path === "/config" ? ok({ mailAvailable: true })
+    : ++attempts === 1 ? { errCode: 503, errMessage: "Account unavailable" } : recovery.promise);
+  render(<AccountSecurityPage onChanged={vi.fn()} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Account unavailable");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(screen.getByRole("status", { name: "Loading account info" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  await act(async () => recovery.resolve(ok(bound)));
+  expect(screen.getByRole("button", { name: "Change email" })).toBeEnabled();
+  expect(screen.queryByText("Account unavailable")).toBeNull();
+  expect(attempts).toBe(2);
+});
+
+it("shows a sign-in action instead of retrying an expired session", async () => {
+  const signIn = vi.fn();
+  vi.spyOn(apiClient, "authAction").mockImplementation(async path => path === "/config" ? ok({ mailAvailable: true })
+    : { errCode: 401, errMessage: "Session expired" });
+  render(<AccountSecurityPage onChanged={vi.fn()} onSignIn={signIn} />);
+  expect(await screen.findByText("Session expired")).toHaveAttribute("role", "status");
+  expect(screen.getByText("Sign in on this website with your password or email code to manage account security.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Back to sign in" }));
+  expect(signIn).toHaveBeenCalledTimes(1);
+});
+
+it("keeps loaded account details available when only mail configuration fails", async () => {
+  vi.spyOn(apiClient, "authAction").mockImplementation(async path => path === "/me/security" ? ok(bound)
+    : { errCode: 503, errMessage: "Configuration unavailable" });
+  render(<AccountSecurityPage onChanged={vi.fn()} />);
+  expect(await screen.findByText(bound.email!)).toBeVisible();
+  expect(screen.queryByRole("status", { name: "Loading account info" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Change password" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Change email" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+});
+
+it.each([
   [unbound, ["Bind email", "Change password"]],
   [{ ...bound, emailVerifiedAt: null }, ["Verify email", "Change email", "Unbind email", "Change password"]],
   [bound, ["Change email", "Unbind email", "Change password"]],
@@ -43,7 +111,7 @@ it.each([
   mockAccount(security);
   render(<AccountSecurityPage onChanged={vi.fn()} />);
   await screen.findByRole("heading", { name: "Account security" });
-  for (const name of actions) expect(screen.getByRole("button", { name })).toBeVisible();
+  for (const name of actions) expect(await screen.findByRole("button", { name })).toBeVisible();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByLabelText("Current password")).toBeNull();
@@ -258,7 +326,7 @@ it.each([true, false])("offers only usable operations when mail is unavailable (
   mockAccount({ ...bound, username: null, hasPassword }, false);
   render(<AccountSecurityPage onChanged={vi.fn()} />);
   await screen.findByRole("heading", { name: "Account security" });
-  expect(screen.getByRole("button", { name: "Change email" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Change email" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Unbind email" })).toBeDisabled();
   const password = screen.getByRole("button", { name: hasPassword ? "Change password" : "Set password" });
   if (hasPassword) {

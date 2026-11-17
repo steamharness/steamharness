@@ -1,5 +1,7 @@
 # Unreleased
 
+- Keep the account security title and card placeholders visible while loading. Show retry or sign-in actions after a load failure or an expired session.
+
 - Complete first email binding or verification of the current unverified address with its code, without a second identity confirmation step.
 
 - Default account avatars use colors suited to light and dark backgrounds, keeping the same pattern and colors when switching themes.
