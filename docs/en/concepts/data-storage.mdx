@@ -7,6 +7,8 @@ description: "Where runtime history, build artifacts, and project files are stor
 
 CLI Web and Studio save conversations, runs, queues, usage, and Agent state locally by default. These records do not live in project source or `dist/`. Local runs do not require a Server login.
 
+When source has no valid UUID, the host derives a stable local storage key from its canonical project directory without changing the manifest. Different directories keep separate records, and reopening the same directory reuses its history. Release builds still validate the authored project UUID.
+
 | Content | Location |
 | --- | --- |
 | Standalone SDK history | `~/.steamharness/runtime/<projectId>/<entryId>/` by default |

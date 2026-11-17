@@ -1,5 +1,7 @@
 # Unreleased
 
+- Local project loading accepts missing or non-UUID project IDs, deriving a stable storage identity from the canonical directory without editing source. Releases and distribution still validate the authored UUID.
+
 - Kanban structure reports preserve explicit Web application declarations for complete local H5 applications.
 
 - Kanban bridge errors include the operation and error code. Known resource setup and sign-in failures show specific guidance, while unknown host exceptions retain a safe generic message.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Studio 与 CLI Web 的 Workflow、Bot、Kanban 本地运行移除项目 ID、云端登记及 Server 连接门禁和提示；无有效 ID 时使用目录隔离的本地存储身份，仅发行构建校验 UUID。
+
 - 默认账号头像采用兼顾深浅背景的配色，切换主题保持相同图案和颜色。
 
 - 修复 localhost 登录备用链接、登录时 Server 被旧账号覆盖及取消后的迟到错误；退出时清除本地账号并尝试撤销服务器凭据。

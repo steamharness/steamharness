@@ -4,7 +4,6 @@ import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
 import { EntryWorkflows } from './entry-workflows';
-import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
@@ -22,7 +21,6 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
 import { readCliAuthConfig } from '../auth-config';
 import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
-import { readProjectInfo } from '@steamharness/project-info';
 import { ConversationController, sessionRunning } from './conversation-controller';
 import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
@@ -44,7 +42,6 @@ import { pathReferences } from './conversation-paths';
 import { projectMentionFiles } from './mention-files';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
-import { ProjectServerConnection, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
 import { projectDataDirectory } from './project-data-directory';
@@ -144,10 +141,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const rememberModelKeys = (settings: UserSettings) => { for (const model of settings.agent.models ?? []) if (model.source === "third-party") sensitiveTokens.add(model.apiKey); };
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
-  let projectServer: ProjectServerConnection | undefined;
-  let projectCheckRevision = 0;
-  const waitingRuns = new Map<AbortController, string | undefined>();
-  const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
@@ -171,22 +164,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       }
       throw Object.assign(new Error('The requested Kanban file is unavailable.'), { code: 'KANBAN_FILE_UNAVAILABLE' });
     },
-    run: async (request, emit) => {
-      const abort = new AbortController(); waitingRuns.set(abort, request.runId);
-      try {
-        if (projectServer?.blocking) await Promise.race([projectServer.assertReady(), new Promise<never>((_resolve, reject) => {
-          abort.signal.addEventListener('abort', () => reject(new Error(t('Stopped'))), { once: true });
-        })]);
-        if (abort.signal.aborted) throw new Error(t('Stopped'));
-        return await executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit);
-      } finally { waitingRuns.delete(abort); }
-    },
-    resolveParams: async (...args) => {
-      if (projectServer?.blocking) projectServer.assertAvailable();
-      return executor.resolveParams(...args);
-    },
-    cancel: runId => { cancelWaitingRuns(runId); executor.cancel(runId); },
-    dispose: () => { cancelWaitingRuns(); executor.dispose(); },
+    run: (request, emit) => executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit),
+    resolveParams: (...args) => executor.resolveParams(...args),
+    cancel: runId => executor.cancel(runId),
+    dispose: () => executor.dispose(),
   };
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
@@ -261,10 +242,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(JSON.parse(JSON.stringify(value, userSettingsJsonReplacer)), [...sensitiveTokens], false));
   const sharedState = () => {
-    const serverData = projectServer?.state;
-    const issue = projectServer?.state.issue ?? kanbanController?.serverDataIssue;
     const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
-    serverData: serverData && projectServerStateWithIssue(serverData, issue, project.id),
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -315,12 +293,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
-  projectServer = new ProjectServerConnection(project.id, () => connection, () => {
-    kanbanController?.projectChecksChanged(); broadcast();
-  }, { blocking: false });
   const projectCreation = new ProjectServerCreation(project, () => connection,
     () => account.status === 'authenticated' && account.user ? `${authIdentity}\n${account.user.userId}` : '',
-    () => projectServer?.state.issue ?? kanbanController?.serverDataIssue, async () => {
+    () => ({ kind: 'project-unavailable', projectId: project.id }), async () => {
       await stopForAuthentication();
     });
   let configurationSignature = '';
@@ -346,8 +321,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   applyUserSettings();
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
-    canStart: () => storageReady && (!projectServer?.blocking || projectServer.ready),
-    canDrain: () => storageReady && (!projectServer?.blocking || projectServer.ready),
+    canStart: () => storageReady,
+    canDrain: () => storageReady,
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
     independent: session => ownership?.independent(session.id) ?? (() => undefined),
@@ -408,11 +383,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     webAppBinding: () => webApps[project.entryId],
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${redactProjectData(message, [...sensitiveTokens], false)}\n`),
-    serverIssue: issue => issue,
-    serverState: () => projectServer!.state, projectChanged: () => {
-      projectServer!.state.blocking = false;
-      return projectServer!.restart();
-    },
   }) : undefined;
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
@@ -492,12 +462,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       webApps = {};
       resources.clear();
       connection = undefined;
-      projectServer?.authenticationChanged({ ...account, status: 'checking', serverUrl: serverUrl || defaultServerUrl() });
       authRevision++;
       parameterStates.clear();
       projectActions?.invalidate();
-      kanbanController?.authenticationChanged();
-      if (authenticationInitialized) { await stopForAuthentication(); await resetRuntimeStorage(); }
+      if (authenticationInitialized) {
+        kanbanController?.authenticationChanged();
+        await stopForAuthentication(); await resetRuntimeStorage();
+      }
       if (epoch !== authEpoch) { return; }
     }
     authenticationInitialized = true;
@@ -505,7 +476,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || defaultServerUrl(),
         aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
         user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
-      projectServer?.authenticationChanged(account);
     }
     if (candidate) {
       authCheckPending = true;
@@ -532,12 +502,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       } catch (error) {
         if (epoch !== authEpoch) { return; }
         if (background && !unauthorized) { return; }
+        const wasAuthenticated = !!connection;
         connection = undefined;
         webApps = {};
-        projectServer?.authenticationChanged({ ...account, status: unauthorized ? 'expired' : 'error' });
         resources.clear();
-        kanbanController?.authenticationChanged();
-        if (!changed) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
+        if (wasAuthenticated) kanbanController?.authenticationChanged();
+        if (!changed && wasAuthenticated) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
         if (epoch !== authEpoch) { return; }
         account = { ...account, status: unauthorized ? 'expired' : 'error', error: String((error as Error).message) };
       } finally {
@@ -545,11 +515,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       }
     } else { connection = undefined; }
     await initializeRuntimeStorage();
-    if (!background || !connection) projectServer?.authenticationChanged(account);
     broadcast();
   };
   await initializeRuntimeStorage();
-  await refreshAuth();
+  void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`));
   const authPoll = setInterval(() => void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`)), 5_000); authPoll.unref();
   const { capability, cookie } = credentials;
   let replacementId: string | undefined;
@@ -590,21 +559,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
-    if (message.type === 'project-server-check') {
-      const revision = ++projectCheckRevision;
-      // Information edits affect the next check without reloading workflows or
-      // changing this process's identity, history or execution descriptors.
-      const pkg = project.assistant ? undefined : JSON.parse(await readFile(path.join(project.folderPath, 'steamharness.json'), 'utf8'));
-      if (!project.assistant && (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== project.id.toLowerCase()
-)) throw new Error(t('The local project changed. Reopen it before checking again.'));
-      const declaration = pkg ? await readProjectDeclarationFromDirectory(project.folderPath) : undefined;
-      const projectInfo = declaration ? readProjectInfo(declaration.entries.find(entry => entry.entryId === project.entryId)) : project.projectInfo;
-      if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
-      project.projectInfo = projectInfo;
-      await refreshAuth(true);
-      await projectServer?.settled();
-      return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
-    }
+    if (message.type === 'project-server-check') return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
     if (message.type === 'project-server-open') {
       if (!connection) throw new Error(t('Please sign in to the project Server.'));
       const selected = connection;
@@ -618,12 +573,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       replacementId = await projectCreation.confirm(message);
       return [{ type: 'project-server-created', projectId: replacementId }];
     }
-    // Check before controllers mutate drafts, histories, or queue state. Stop,
-    // navigation, export and local draft edits remain available during setup.
-    const needsServer = ['workflow-run', 'workflow-rerun', 'workflow-resume', 'send', 'retry', 'resume', 'queue-run', 'queue-promote'].includes(message.type)
-      || message.type === 'command' && project.conversation?.commands?.find(entry => entry.command === message.command)?.action.kind !== 'export'
-      || message.type === 'agent-command' && !['cancel', 'withdraw', 'fork'].includes(message.command?.type);
-    if (needsServer && projectServer?.blocking) projectServer.assertAvailable();
     if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
     if (message.type === 'kanban-refresh') {
       await configurations.refresh();
@@ -1034,7 +983,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { if (!options.mount) await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { projectCreation.close(); projectServer?.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { projectCreation.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = options.mount?.origin ?? `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(activityDirectory, project, () => ({
     identity: connection && account.user ? `${connection.serverUrl}\n${account.user.userId}` : '', runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
@@ -1065,7 +1014,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       call.abortSignal?.throwIfAborted();
       if (call.projectId !== project.id || call.actor.userId !== account.user?.userId) throw new Error('The entry caller identity changed.');
       if (!storageReady) throw new Error(storageError ?? 'Runtime storage is unavailable.');
-      if (projectServer?.blocking && (call.action !== 'workflow-control' || call.input.action === 'start')) await projectServer.assertReady();
       call.abortSignal?.throwIfAborted();
       if (call.action === 'workflow-control') {
         if (!entryWorkflows) throw new Error('The target is not a Workflow.');
@@ -1132,7 +1080,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const current = state(clientId);
         // Project/account configuration is managed by the enclosing host.
         return { ...current, aggregate: undefined, configurations: undefined,
-          serverData: target.submit ? undefined : current.serverData?.blocking === false ? { ...current.serverData, issue: undefined } : current.serverData,
           sessions: current.sessions.filter((session: ConversationSession) => session.id === id), activeId: id };
       };
       const notify = () => { if (!closed && epoch === authRevision && configuration === parameterRevision) emit([snapshot()]); };
@@ -1179,7 +1126,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       } catch (error) { closed = true; lifetime.abort(); entryObservers.delete(notify); releaseWriter(); throw error; }
     }) satisfies OpenConversationView,
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => {
-      if (!controller || !storageReady || projectServer?.blocking && !projectServer.ready) throw new Error('Conversation runtime is unavailable.');
+      if (!controller || !storageReady) throw new Error('Conversation runtime is unavailable.');
       const notify = () => { const session = controller.sessions.find(session => session.id === id); if (session) listener(projectConversation(session)); };
       entryObservers.add(notify); notify();
       return () => { entryObservers.delete(notify); };
@@ -1214,7 +1161,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     close: () => closing ??= (async () => {
       entryObservers.clear();
-      projectCreation.close(); projectServer?.close();
+      projectCreation.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
       configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } unsubscribeLogin(); if (!options.mount) browserLogin.cancel(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();

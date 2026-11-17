@@ -88,11 +88,11 @@ it('keeps local-only Kanban previews usable without unrelated Server guidance', 
   const {sources,sendState}=await fixture('en');sources[0].onopen!();
   const issue={kind:'connection-unavailable' as const,serverUrl:'https://unavailable.test'};
   sendState(1,'local',undefined,{checking:false,blocking:false,issue});
-  expect((document.getElementById('server-guidance-panel') as HTMLDetailsElement).open).toBe(false);
+  expect(document.getElementById('server-guidance-panel')).toBeNull();
   expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   sendState(2,'local',undefined,{checking:false,blocking:true,issue});
-  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
-  expect(document.getElementById('preview-stage')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance')).toBeNull();
+  expect(document.getElementById('preview-stage')!.hidden).toBe(false);
 });
 
 it('copies only current preview requests through the UI clipboard and delegates focused edits', async () => {
@@ -237,30 +237,6 @@ it('does not send unchanged configuration back on ready acknowledgements or stat
   expect(configurations()).toHaveLength(2);
 });
 
-it.each(['en', 'zh-CN'] as const)('checks startup silently before mounting Server previews and only shows failures (%s)', async language => {
-  const { sendState, sources } = await fixture(language);
-  const checks: NonNullable<ProjectServerState['checks']> = [{ id: 'project', projectId: 'map', stage: 'registration', status: 'checking' }];
-  sendState(1, 'first', undefined, { checking: true, checks });
-  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
-  expect(frame.getAttribute('src')).toBeNull(); expect(document.getElementById('preview-stage')!.hidden).toBe(true);
-  const overview = document.getElementById('server-checks-list')!;
-  const guidance = document.getElementById('server-guidance')!;
-  expect(overview.textContent).not.toBe('');
-  expect(guidance.hidden).toBe(true);
-  sendState(2, 'ready', undefined, { checking: false, checks: [{ ...checks[0], status: 'passed' }] });
-  expect(guidance.hidden).toBe(true); expect(frame.src).toContain('/kanban/ready/index.html');
-  expect(document.getElementById('preview-stage')!.hidden).toBe(false);
-  sendState(1, 'stale', undefined, { checking: false, checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }], issue: { kind: 'project-unavailable' } });
-  sources[0].onopen!();
-  expect(guidance.hidden).toBe(true);
-  expect(frame.src).toContain('/kanban/ready/index.html');
-  sendState(3, 'local', undefined, { checking: false, blocking: false, issue: { kind: 'project-unavailable' },
-    checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] });
-  expect(guidance.hidden).toBe(false); expect(overview.textContent).not.toBe(''); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
-  expect(frame.src).toContain('/kanban/local/index.html');
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-});
-
 it('rejects late Kanban states from a retired service after accepting its replacement', async () => {
   const { sendState } = await fixture('en');
   sendState(10, 'old');
@@ -273,111 +249,23 @@ it('rejects late Kanban states from a retired service after accepting its replac
   expect(frame.src).toContain('/kanban/replacement/index.html');
 });
 
-it('does not restore a blocked Server preview from the page cache or keep its previous document running', async () => {
-  const { sendState } = await fixture('en');
-  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
-  sendState(1, 'blocked', undefined, { checking: true });
-  window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
-  expect(frame.getAttribute('src')).toBeNull();
-  sendState(2, 'ready', undefined, { checking: false });
-  expect(frame.src).toContain('/kanban/ready/index.html');
-  sendState(3, 'ready', undefined, { checking: true });
-  expect(frame.getAttribute('src')).toBe('about:blank');
-  expect(document.querySelector<HTMLButtonElement>('#methods')!.disabled).toBe(true);
-  window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
-  expect(frame.getAttribute('src')).toBe('about:blank');
-  sendState(4, 'ready', undefined, { checking: false });
-  expect(frame.src).toContain('/kanban/ready/index.html');
-});
 
-it.each(['en', 'zh-CN'] as const)('offers recovery settings and explains project creation in Server guidance (%s)', async language => {
-  const { sources, sendState, fetcher } = await fixture(language);
-  const parent = { postMessage: vi.fn() };
-  vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
+it.each(['en', 'zh-CN'] as const)('mounts Kanban and keeps it running regardless of old project or service checks (%s)', async language => {
+  const { sendState, sources, fetcher } = await fixture(language);
   sources[0].onopen!();
-  window.dispatchEvent(new MessageEvent('message', { source: parent as unknown as Window, data: { type: 'workflow-host', projectSetupVersion: 1 } }));
-  sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
-  const guidance = document.getElementById('server-guidance')!;
-  expect(guidance.hidden).toBe(false);
-  expect(guidance.textContent).toContain(language === 'en' ? 'new project ID' : '新的项目 ID');
-  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
-  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create cloud project' : '创建云端项目');
-  expect(document.getElementById('preview-stage')!.hidden).toBe(true);
-  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
-  expect(frame.getAttribute('src')).toBeNull();
-  fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
-    const message = JSON.parse(options.body);
-    expect(message.type).toBe('project-server-check');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D' }] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
-      revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' },
-    } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
-  });
-  document.getElementById('server-guidance-retry')!.click();
-  expect((document.getElementById('server-guidance-retry') as HTMLButtonElement).disabled).toBe(true);
-  await vi.waitFor(() => expect(guidance.hidden).toBe(true));
-  expect(document.getElementById('preview-stage')!.hidden).toBe(false);
-  expect(frame.src).toContain('/kanban/ready/index.html');
-});
-
-it('offers project creation without host upload support and hides it when access is denied', async () => {
-  const { sendState } = await fixture('en');
-  sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-upload')).toBeNull();
-  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
-  sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-});
-
-it.each(['en', 'zh-CN'] as const)('keeps Kanban failure guidance stable while rechecking (%s)', async language => {
-  const { sendState } = await fixture(language);
-  const failed: ProjectServerState = { checking: false, issue: { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' },
-    checks: [{ id: 'project', projectId: 'map', stage: 'registration', status: 'action-required' }] };
-  sendState(1, 'blocked', undefined, failed);
-  const guidance = document.getElementById('server-guidance')!;
-  const row = guidance.querySelector('li');
-  const title = document.getElementById('server-guidance-title')!.textContent;
-  const information = document.getElementById('server-guidance-server')!; information.focus();
-  sendState(2, 'blocked', undefined, { ...failed, checking: true });
-  expect(guidance.hidden).toBe(false); expect(guidance.querySelector('li')).toBe(row);
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(title);
-  expect(document.activeElement).toBe(information);
-  expect(document.getElementById('server-guidance-server')!.hidden).toBe(false);
-  expect(document.getElementById('methods')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
-  sendState(3, 'ready', undefined, { checking: false });
-  expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
-});
-
-it('opens the cloud project through the Studio host and shows navigation errors next to its action', async () => {
-  const { sendState } = await fixture('en');
-  const parent = { postMessage: vi.fn() }; vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
-  const popup = vi.spyOn(window, 'open');
-  window.dispatchEvent(new MessageEvent('message', { source: parent as unknown as Window, data: { type: 'workflow-host', serverProjectVersion: 1 } }));
-  sendState(1, 'failed', { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' });
-  const button = document.querySelector<HTMLButtonElement>('#server-guidance-server')!; button.click();
-  const request = parent.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'workflow-server-project');
-  expect(request).toMatchObject({ version: 1, projectId: 'map' }); expect(button.disabled).toBe(true); expect(popup).not.toHaveBeenCalled();
-  window.dispatchEvent(new MessageEvent('message', { source: parent as unknown as Window,
-    data: { type: 'workflow-host', serverProjectOpened: { version: 1, requestId: request.requestId, error: 'Unable to open Server Web' } } }));
-  await vi.waitFor(() => expect(document.getElementById('server-guidance-action-error')!.textContent).toBe('Unable to open Server Web'));
-  expect(button.disabled).toBe(false);
-});
-
-it('opens a standalone Server project tab using the authenticated handoff returned by its host', async () => {
-  const { sendState, fetcher } = await fixture('en');
-  sendState(1, 'failed', { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' });
-  const popup = { opener: window, location: { href: '' }, close: vi.fn() };
-  vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
-  const url = `https://server.test/api/auth/browser-session?code=${'a'.repeat(43)}`;
-  fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
-    expect(JSON.parse(options.body).type).toBe('project-server-open');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'project-server-open-url', url }] }) };
-  });
-  document.querySelector<HTMLButtonElement>('#server-guidance-server')!.click();
-  await vi.waitFor(() => expect(popup.location.href).toBe(url));
-  expect(popup.opener).toBeNull(); expect(popup.close).not.toHaveBeenCalled();
+  let revision = 0;
+  for (const serverData of [{ checking: true },
+    ...(['project-unavailable', 'connection-unavailable', 'sign-in-required', 'access-denied'] as const)
+      .map(kind => ({ checking: false, blocking: true, issue: { kind } })),
+  ]) {
+    sendState(++revision, 'local', undefined, serverData);
+    const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+    expect(frame.src).toContain('/kanban/local/index.html');
+    expect(document.getElementById('server-guidance')).toBeNull();
+    expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    expect(frame.src).toContain('/kanban/local/index.html');
+    expect(document.querySelector<HTMLButtonElement>('#refresh')!.disabled).toBe(false);
+  }
+  expect(fetcher.mock.calls.some(([, options]) => JSON.parse(options?.body ?? '{}').type === 'project-server-check')).toBe(false);
 });

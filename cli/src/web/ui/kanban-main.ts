@@ -15,18 +15,16 @@ import {
   type KanbanInjectedConfiguration, type KanbanPresentationMode,
 } from '@steamharness/kanban-project';
 import { projectParamValue, type Project, type ParamValues } from '../workflow-types';
-import type { ProjectServerIssue, ProjectServerState } from '../project-server-state';
-import { ProjectServerGuidance } from './project-server-guidance';
 import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
 let frameContextMenu = false;
-interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string; webApp?: boolean; permissions?: string[]; accountUrl?: string }; serverDataIssue?: ProjectServerIssue }
+interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string; webApp?: boolean; permissions?: string[]; accountUrl?: string }; }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
 <header class="toolbar"><div class="project-title"><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button><button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
-<main><div id="error" class="error" hidden role="alert"></div><details id="server-guidance-panel" hidden><summary id="server-guidance-summary">${t("Optional Server connection")}</summary><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section></details><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status" data-error="false">${iconHtml('loading')}<span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
+<main><div id="error" class="error" hidden role="alert"></div><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status" data-error="false">${iconHtml('loading')}<span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
 <dialog id="dimensions-dialog" class="conversation-dialog"><header><h2>${t("Preview size")}</h2><button id="close-dimensions" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><form class="dialog-body"><label>${t("Width")}<input id="preview-width" type="number" min="160" max="4096" required></label><label>${t("Height")}<input id="preview-height" type="number" min="96" max="4096" required></label><div class="dimension-actions"><button id="reset-dimensions" type="button">${iconHtml('discard')}${t("Reset")}</button><button type="submit">${iconHtml('check')}${t("Apply")}</button></div></form></dialog>
 <dialog id="methods-dialog" class="conversation-dialog"><header><h2>${t("Page methods")}</h2><button id="close-methods" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body"><select id="method-name" aria-label="${t("Page methods")}"></select><p id="method-description"></p><pre id="method-schema"></pre><label class="method-input">${t("Parameters JSON")}<textarea id="method-args" rows="5">{}</textarea></label><button id="invoke-method" type="button">${iconHtml('play')}${t("Execute")}</button><pre id="method-result" role="status"></pre></div></dialog>`;
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
@@ -51,21 +49,12 @@ if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscr
 let menuOpen = false, state: KanbanState | undefined, project: Project | undefined;
 let usageAvailable = false;
 let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', configurationKey = '', authRevision = -1;
-let serverData: ProjectServerState | undefined, previewBlocked = false;
 const stateRevisions = new StateRevisions();
 let serverInstanceId: string | undefined;
-let serverUrl: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 let methodPublishTimer: ReturnType<typeof setTimeout> | undefined;
 const methodCalls = new Map<string, AbortController>();
-const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  create: () => host.postMessage({ type: 'create-cloud-project' }),
-  account: () => { void host.postMessage({ type: 'open-account' }); },
-  information: () => { if (project) dialogs.projectInfo(project); },
-  open: () => host.postMessage({ type: 'open-server-project' }),
-  retry: () => { void checkApplication(); },
-});
 function persist(): void { host.setState({ mode, sizes }); }
 function menu(_open: boolean): void { app.classList.remove('menu-open'); layoutPreview(); }
 function request(message: Message): Promise<Message> {
@@ -81,41 +70,16 @@ function request(message: Message): Promise<Message> {
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
-  const blocked = previewBlocked && !!(serverData?.issue || state?.serverDataIssue);
-  app.classList.toggle('project-server-blocked', blocked);
-  for (const id of ['preview-modes', 'dimensions', 'refresh', 'methods']) element(id).hidden = blocked || id === 'dimensions' && mode === 'fullscreen';
-  if (blocked) for (const id of ['methods-dialog', 'dimensions-dialog']) { const dialog = element<HTMLDialogElement>(id); if (dialog.open) dialog.close(); }
-  serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking, canCreate: !project?.assistant, serverUrl, entryId: project?.entryId });
-  const optional = serverData?.blocking === false && !state?.serverDataIssue;
-  const panel = element<HTMLDetailsElement>('server-guidance-panel');
-  panel.hidden = element('server-guidance').hidden;
-  element('server-guidance-summary').hidden = !optional;
-  if (panel.dataset.optional !== String(optional)) { panel.dataset.optional = String(optional); panel.open = !optional; }
   for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
-  element<HTMLButtonElement>('methods').disabled = !connected || previewBlocked || !methodSession?.getState().ready;
-  element<HTMLButtonElement>('invoke-method').disabled = !connected || previewBlocked || methodWorking || !methodSession?.getState().methods.length;
+  element<HTMLButtonElement>('methods').disabled = !connected || !methodSession?.getState().ready;
+  element<HTMLButtonElement>('invoke-method').disabled = !connected || methodWorking || !methodSession?.getState().methods.length;
   element('preview-offline').hidden = connected;
   app.dataset.connection = connected ? 'connected' : 'disconnected'; app.dataset.saving = String(working || dirty);
 }
 function update(next: KanbanState): void {
   if (state && next.revision < state.revision) { return; }
-  const wasBlocked = previewBlocked;
   state = next;
-  previewBlocked = serverData ? serverData.blocking !== false && (serverData.checking || !!serverData.issue || !!next.serverDataIssue) : !!next.serverDataIssue;
-  element('preview-stage').hidden = previewBlocked;
-  if (previewBlocked) {
-    clearTimeout(readyTimer); element('preview-status').hidden = true;
-    if (!wasBlocked) {
-      methodSession?.close();
-      for (const call of methodCalls.values()) call.abort();
-      if (frame.hasAttribute('src')) frame.src = 'about:blank';
-      publishMethods();
-    }
-  }
-  else {
-    if (wasBlocked) { previewKey = ''; }
-    if (previewKey !== next.preview.url) { mountPreview(); } else { inject(); }
-  }
+  if (previewKey !== next.preview.url) { mountPreview(); } else { inject(); }
   controls();
 }
 function inject(): void {
@@ -141,7 +105,7 @@ function publishMethods(): void {
 }
 function mountPreview(): void {
   frameContextMenu = false;
-  if (!state || previewBlocked) { return; }
+  if (!state) { return; }
   clearTimeout(readyTimer); methodSession?.close(); pendingBridge = 0; previewKey = state.preview.url; configurationKey = '';
   methodSession = createKanbanMethodSession({ nonce: state.preview.nonce, getConfiguration: () => state?.configuration, getPresentation: () => ({ mode }), postMessage: message => frame.contentWindow?.postMessage(message, '*') });
   element('preview-status').hidden = false; element('preview-status').dataset.error = 'false'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Loading Kanban"); element('retry-preview').hidden = true;
@@ -164,7 +128,7 @@ addEventListener('project-edit-command', event => {
 });
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
-  element('dimensions').hidden = previewBlocked || mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
+  element('dimensions').hidden = mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
   for (const button of Array.from(element('preview-modes').children)) { button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.mode === mode)); }
   if (mode === 'fullscreen') { viewport.style.cssText = ''; frame.style.width = '100%'; frame.style.height = '100%'; frame.style.transform = ''; }
   else {
@@ -180,13 +144,6 @@ async function refreshPreview(): Promise<void> {
   if (!connected || working) return;
   working = true; controls();
   try { const result = await request({ type: 'kanban-refresh' }); element('error').hidden = true; update(result.kanban); }
-  catch (error) { showError(error); }
-  finally { working = false; controls(); }
-}
-async function checkApplication(): Promise<void> {
-  if (!connected || working) return;
-  working = true; controls();
-  try { await request({ type: 'project-server-check' }); element('error').hidden = true; }
   catch (error) { showError(error); }
   finally { working = false; controls(); }
 }
@@ -229,7 +186,6 @@ window.addEventListener('message', event => {
       return;
     }
     if (message.type === 'steamharness:web-app-account' && state.preview.webApp && event.origin === new URL(state.preview.url).origin) { if (state.preview.accountUrl) void host.postMessage({ type: 'open-url', url: state.preview.accountUrl }); return; }
-    if (previewBlocked) return;
     if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
       if (document.activeElement === frame) host.keyboard?.forward(message.event);
       return;
@@ -272,8 +228,6 @@ window.addEventListener('message', event => {
     if (message.serverInstanceId !== serverInstanceId) { state = undefined; previewKey = ''; authRevision = -1; }
     serverInstanceId = message.serverInstanceId;
     project = message.project; element('kanban-title').textContent = project!.name;
-    serverData = message.serverData;
-    serverUrl = message.account.serverUrl;
     updateProjectAvatar(element('project-info'), project!);
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.close(); }
     usageAvailable = message.account.status === 'authenticated' && !!message.account.aiConfigured; update(message.kanban);

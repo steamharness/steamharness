@@ -11,7 +11,6 @@ vi.mock('../web/ui/output-follow', () => ({ OutputFollow: class { setScope() {} 
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} close() {} skillsResult() {} } }));
 vi.mock('../web/ui/project-configurations', () => ({ projectConfigurationsButton: () => '', mountProjectConfigurations: () => {} }));
-vi.mock('../web/ui/project-server-guidance', () => ({ ProjectServerGuidance: class { update() {} } }));
 vi.mock('../web/ui/toolbar', () => ({ aiUsageButton: () => '', toolPermissionsButton: () => '', projectInfoButton: () => '', narrowMenuDismiss: () => () => {} }));
 
 class Element {

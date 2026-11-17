@@ -75,7 +75,7 @@ The host implements `readAccountToken()` to return the current account's Server 
 | `local` | `projectId`, `entryId`, `localKey`. Supports unpublished local projects with account-private data. |
 | `assistant` | Same as `local`, for a host's Assistant workspace. |
 
-Project IDs must be UUIDs. Entry IDs start with a lowercase letter and contain lowercase letters, digits, `_` or `-`, up to 64 characters. `localKey` and `sessionKey` are stable identities of 1–512 characters without NUL. A host-managed folder ID is suitable for `localKey`; it does not grant project access.
+Runtime storage uses UUID project IDs. Source manifests may omit `id`; the local host derives an internal storage identity from the canonical project directory without writing it to the manifest. Entry IDs start with a lowercase letter and contain lowercase letters, digits, `_` or `-`, up to 64 characters. `localKey` and `sessionKey` are stable identities of 1–512 characters without NUL. A host-managed folder ID is suitable for `localKey`; it does not grant project access.
 
 The account, workspace kind, project, entry and local identity locate a workspace; the workspace plus `sessionKey` locate a session. Accounts, entries and sessions remain isolated. Local and assistant workspaces also use the local identity; after resolving a registered project, the same account shares history by project and entry. System administrators do not inherit access to other accounts' private histories. Reopening restores committed conversations, tasks, submission receipts, fork ancestry and document checkpoints without migrating SQLite or legacy KV.
 

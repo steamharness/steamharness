@@ -279,3 +279,14 @@ it('rejects source-local runtime storage before preparing a release run', async 
   const { directory } = await fixture();
   await expect(runWebCommand([directory, '--release', '--no-open', '--data-dir', path.join(directory, 'runtime')])).rejects.toThrow(/outside the project/);
 });
+
+it.each([undefined, '', 'local-draft'])('runs authored ID %s locally and rejects it only when building a release', async id => {
+  const { directory, declaration } = await fixture();
+  const source = JSON.stringify({ ...declaration, id });
+  await writeFile(path.join(directory, 'steamharness.json'), source);
+  expect(inspectLocalProjectStructure({ projectDir: directory }).entryId).toBe('main');
+  const report = await runLocalProjectWithReport({ projectDir: directory, storage: { host: 'local', local: { runtimePersistence: createMemoryRuntimePersistence() } } });
+  expect(report.status).toBe('success');
+  await expect(buildProjectRelease(directory)).rejects.toThrow(/id.*UUID/);
+  expect(await readFile(path.join(directory, 'steamharness.json'), 'utf8')).toBe(source);
+});

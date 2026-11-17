@@ -22,7 +22,7 @@ export const executor = steamharness.defineBot({
 export default executor;
 ```
 
-Models default to host settings, or project configuration in standalone CLI Web. Set `agent.modelSource: "project"` to require project models. Tool declarations retain host approval and permission checks. Register the project UUID and entry in `steamharness.json` with `type: "bot"`.
+Models default to host settings, or project configuration in standalone CLI Web. Set `agent.modelSource: "project"` to require project models. Tool declarations retain host approval and permission checks. Register the entry in `steamharness.json` with `type: "bot"`. Local runs may omit the project `id`; release builds validate the project UUID.
 
 Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
 

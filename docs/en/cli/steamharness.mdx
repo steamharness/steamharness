@@ -7,6 +7,8 @@ description: "CLI and aggregate entries"
 
 Run the installed CLI from the aggregate root using Node.js 24. Install project dependencies first, then validate the root manifest and every registered entry. Child directories have no separate project identity.
 
+Local runs may omit `steamharness.json.id` and do not require Server registration. Release builds require a valid project UUID in the authored manifest; local execution does not write an ID into source.
+
 ```sh
 pnpm exec steamharness check .
 pnpm exec steamharness check . --entry workflow
@@ -59,7 +61,7 @@ See [Use CLI Web](/en/cli/web).
 
 ## Validation and output
 
-`check` and `structure` statically inspect registered entries without executing user modules. Unsafe paths, duplicate IDs, invalid defaults, mismatched types and legacy declarations fail. `json` returns a run report with project and entry identity. Failed runs return a nonzero exit code. Cancellation propagates to the current execution and calls to other entries.
+`check` and `structure` statically inspect registered entries without executing user modules. Unsafe paths, duplicate entry IDs, invalid defaults, mismatched types and legacy declarations fail. `json` returns a run report with project and entry identity. Failed runs return a nonzero exit code. Cancellation propagates to the current execution and calls to other entries.
 
 CLI Web and Studio can display inline images in run results. Click an image to enlarge it, or reopen the record to view it later. If an older page stays on progress text after a successful run, update the CLI, refresh the project page, and reopen the record to see the saved image without running the workflow again.
 

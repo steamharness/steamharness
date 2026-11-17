@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readProjectDeclaration, projectEntryDeclarationPath } from "../index";
+import { readProjectDeclaration, projectEntryDeclarationPath, projectManifestForDistribution, PROJECT_UUID_PATTERN } from "../index";
 import { readProjectDeclarationFromDirectory, readProjectDeclarationFromDirectorySync, readProjectManifestFromDirectory } from "../node";
 import { createProjectUploadPlan, copyProjectUploadFiles } from "../../project-upload/node";
 const id = "00000000-0000-4000-8000-000000000001";
@@ -78,4 +78,17 @@ it("requires referenced declarations in source uploads and preserves references 
   expect(JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"))).toEqual(rootDocument());
   expect(await readProjectManifestFromDirectory(target)).toEqual(await readProjectManifestFromDirectory(root));
   expect(JSON.parse(await readFile(path.join(target, "agent/steamharness.json"), "utf8"))).toEqual(child);
+});
+
+it.each([undefined, null, '', '../unsafe-project', 'not-a-uuid'])('uses a stable local identity for authored ID %s without changing source', async id => {
+  const root = await fixture(), other = await fixture();
+  const document = { ...rootDocument(), id };
+  const source = JSON.stringify(document);
+  for (const directory of [root, other]) await writeFile(path.join(directory, 'steamharness.json'), source);
+  const first = await readProjectManifestFromDirectory(root);
+  expect(first.projectId).toMatch(PROJECT_UUID_PATTERN);
+  expect(readProjectDeclarationFromDirectorySync(root).projectId).toBe(first.projectId);
+  expect((await readProjectManifestFromDirectory(other)).projectId).not.toBe(first.projectId);
+  expect(await readFile(path.join(root, 'steamharness.json'), 'utf8')).toBe(source);
+  expect(() => projectManifestForDistribution(document)).toThrow(/id.*UUID/);
 });

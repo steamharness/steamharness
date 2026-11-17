@@ -54,7 +54,6 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     const runtimeAuth: WebConnection | undefined = options.allowSystemAi === false && auth
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
-    if ((request.method === 'run' || request.method === 'resolve') && (request.project as Project)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
     const userSettings = request.userSettings as UserSettings | undefined ?? options.userSettings?.();
     const secrets = [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '', ...(userSettings?.agent.models ?? []).flatMap(model => model.source === 'third-party' ? [model.apiKey] : [])];
     // Workers use the verified page identity, including after logout.

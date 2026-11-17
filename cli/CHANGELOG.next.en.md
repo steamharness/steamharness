@@ -1,5 +1,7 @@
 # Unreleased
 
+- Workflow, Bot, and Kanban run locally in Studio and CLI Web without project ID, cloud registration, or Server connection gates or guidance. Projects without a valid ID use a directory-scoped storage identity; release builds validate the authored UUID.
+
 - Default account avatars use colors suited to light and dark backgrounds, keeping the same pattern and colors when switching themes.
 
 - Fixed localhost fallback links, the selected Server being overwritten by an old account, and late errors after cancellation. Sign-out clears the local account and attempts to revoke its Server credential.

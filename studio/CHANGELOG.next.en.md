@@ -1,5 +1,7 @@
 # Unreleased
 
+- Local Workflow, Bot, and Kanban runs no longer show project registration, Server, or AI connection checks. Projects can start without an ID; release builds validate it.
+
 - Fixed localhost fallback links and old account updates overwriting the chosen Server. Sign-in can be cancelled as soon as it starts.
 
 - Studio now uses browser sign-in and an application return link, replacing its password form. Dev, alpha and main have separate protocols, installation identities and local credentials. Accounts without uploads use generated geometric avatars.

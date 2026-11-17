@@ -118,6 +118,6 @@ it('groups the assistant name and running count beside the workspace while prese
 it('orders conversation toolbar actions as new conversation, project windows, then remaining controls', async () => {
   await renderConversation();
   const actions = document.querySelector('.toolbar-actions')!;
-  expect([...actions.children].map(element => element.id || element.className)).toEqual(['new', 'aggregate-navigation', 'server-stop', 'project-info']);
+  expect([...actions.children].map(element => element.id || element.className)).toEqual(['new', 'aggregate-navigation', 'project-info']);
   expect(actions.querySelector('.aggregate-navigation > .entry-windows-button')).not.toBeNull();
 });
