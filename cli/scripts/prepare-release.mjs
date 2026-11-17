@@ -39,8 +39,9 @@ export async function prepareRelease(options) {
   if (parsedCoreVersion === null || parsedCoreVersion.prerelease.length > 0) {
     throw new Error("devDependencies.steamharness must be an exact stable SemVer version.");
   }
-  const corePeerRange = `>=${parsedCoreVersion.major}.${parsedCoreVersion.minor}.0 `
-    + `<${parsedCoreVersion.major}.${parsedCoreVersion.minor + 1}.0`;
+  if (coreVersion !== version) {
+    throw new Error("Core and CLI versions must match; update the exact Core dependency before preparing the release.");
+  }
 
   const zhHistory = originals.get(zhHistoryPath);
   const enHistory = originals.get(enHistoryPath);
@@ -58,7 +59,7 @@ export async function prepareRelease(options) {
       version,
       peerDependencies: {
         ...manifest.peerDependencies,
-        "steamharness": corePeerRange,
+        "steamharness": coreVersion,
       },
     }, null, 2)}\n`],
     [zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body)],
@@ -74,7 +75,7 @@ export async function prepareRelease(options) {
     throw error;
   }
 
-  return { unit: "steamharness-cli", version, tag: `steamharness-cli/v${version}` };
+  return { unit: "steamharness-cli", version, tag: `steamharness/v${version}` };
 }
 
 function parseArgs(argv) {
