@@ -1,5 +1,7 @@
 # Unreleased
 
+- Workflow、Bot 和 Kanban 本地运行不再显示项目登记、Server 或 AI 连接检查；没有项目 ID 也可启动，ID 仅在发行构建时校验。
+
 - 修复 localhost 登录备用链接与旧账号覆盖 Server 输入；发起登录后即可取消。
 
 - Studio 改为浏览器登录并提供返回应用链接，移除账号密码表单；dev、alpha、main 使用独立协议、安装身份和本机凭据，未上传头像时显示默认几何头像。

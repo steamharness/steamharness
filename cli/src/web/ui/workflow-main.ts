@@ -22,8 +22,6 @@ import { projectParameters, projectParamValue, type Project, type ParamState, ty
 import type { Draft, RunRecord } from '../workflow-workspace';
 import type { AccountState } from '../workflow-auth-client';
 import { layoutProjectGraph } from '../workflow-graph';
-import type { ProjectServerState } from '../project-server-state';
-import { ProjectServerGuidance } from './project-server-guidance';
 import { StateRevisions } from './state-revisions';
 
 interface State { parameterRevision?: number;
@@ -38,7 +36,6 @@ interface State { parameterRevision?: number;
   runningCount?: number;
   account: AccountState;
   authenticationRevision: number;
-  serverData?: ProjectServerState;
 }
 const app = document.querySelector<HTMLElement>('#app')!;
 const host = acquireProjectHost();
@@ -46,7 +43,7 @@ app.classList.add('workflow-app');
 app.innerHTML = `
   <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span>${projectInfoButton()}</div></header>
   <aside id="project-menu" class="project-menu" aria-label="${t("Runs")}"><div class="menu-heading"><span>${t("Runs")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" aria-label="${t("Search runs")}" title="${t("Search runs")}">${iconHtml('search')}</button><button id="new" class="icon-button" aria-label="${t("New run")}" title="${t("New run")}">${iconHtml('add')}</button><button id="hide-menu" class="icon-button" aria-label="${t("Hide runs")}" title="${t("Hide runs")}">${iconHtml('chevron-left')}</button></div></div><section id="run-history"><nav id="run-list"></nav><div id="empty-history" class="no-history">${t("No runs")}</div><button id="load-more-history" class="all-history" hidden>${iconHtml('chevron-down')}<span>${t("Load more")}</span></button></section></aside>
-  <main><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section><div id="error" class="error" role="alert" hidden></div><div id="active-run" class="workflow-active" hidden><button id="show-active" class="workflow-active-link"></button><button id="stop-active" class="icon-button" title="${t("Stop run")}" aria-label="${t("Stop run")}">${iconHtml('debug-stop')}</button></div>
+  <main><div id="error" class="error" role="alert" hidden></div><div id="active-run" class="workflow-active" hidden><button id="show-active" class="workflow-active-link"></button><button id="stop-active" class="icon-button" title="${t("Stop run")}" aria-label="${t("Stop run")}">${iconHtml('debug-stop')}</button></div>
     <div id="workspace-scroll" class="workspace-scroll"><section id="entrypoints" class="workflow-entrypoints" aria-label="${t("Workflow entrypoint")}"></section>
       <section id="run-detail" class="workflow-run" hidden><header class="run-heading"><div><h2 id="run-title"></h2><div id="run-meta"></div></div><div class="run-heading-actions"><button id="rerun" class="icon-button" title="${t("Rerun")}" aria-label="${t("Rerun")}">${iconHtml('debug-restart')}</button><button id="export-run" class="icon-button" title="${t("Export record")}" aria-label="${t("Export record")}">${iconHtml('export')}</button><button id="delete-run" class="icon-button" title="${t("Delete record")}" aria-label="${t("Delete record")}">${iconHtml('trash')}</button></div></header>
       <nav class="workflow-tabs" role="tablist"><button id="tab-result" role="tab" aria-controls="result-view" aria-selected="true">${t("Result")}</button><button id="tab-flow" role="tab" aria-controls="flow-view" aria-selected="false">${t("Graph")}</button><button id="tab-logs" role="tab" aria-controls="logs-view" aria-selected="false">${t("Logs")}</button></nav><div id="run-error" class="error" hidden></div>
@@ -67,16 +64,8 @@ const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace'
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
 let state: State | undefined, entrypointId: string | undefined, entrySignature = '', renderedRun = '';
 let connected = false, resolving = false, submitting = false, draftsLoaded = false, requestId = 0, revision = -1;
-let errorScope = 0, checkingServer = false;
+let errorScope = 0;
 const stateRevisions = new StateRevisions();
-const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
-const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  create: () => host.postMessage({ type: 'create-cloud-project' }),
-  account: () => { host.postMessage({ type: 'open-account' }); },
-  information: () => { if (state) dialogs.projectInfo(state.project); },
-  open: () => host.postMessage({ type: 'open-server-project' }),
-  retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
-});
 let paramStates: Record<string, ParamState> = {};
 const drafts: Record<string, Draft> = {};
 const saved = (host.getState() ?? {}) as { menuOpen?: boolean; entrypointId?: string; tab?: string };
@@ -109,7 +98,7 @@ const outputPager = new WorkflowOutputPager(element('output-pagination'), {
 });
 const parameters = () => state ? projectParameters(state.project, entrypointId) : { fields: [] };
 const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
-const disabled = () => !connected || !!state?.running || submitting || !!state?.project.requiresLogin && state.account.status !== 'authenticated';
+const disabled = () => !connected || !!state?.running || submitting;
 const fields = new Fields(element('main-fields'), element('parameter-actions'), {
   openUserSetting: key => host.postMessage({ type: 'open-user-setting', key }),
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
@@ -138,13 +127,10 @@ function menu(open: boolean): void {
 menu(menuOpen); narrow.addEventListener('change', () => menu(menuOpen));
 function scheduleResolve(trigger: Record<string, unknown>): void {
   ++requestId; resolving = !!parameters().paramResolver?.enabled; controls(); clearTimeout(editTimer);
-  editTimer = setTimeout(() => {
-    if (serverBlocked()) { resolving = false; post({ type: 'workflow-draft', params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode }); controls(); }
-    else resolve(trigger);
-  }, 200);
+  editTimer = setTimeout(() => resolve(trigger), 200);
 }
 function resolve(trigger: Record<string, unknown> = { kind: 'init' }): void {
-  if (!state || !connected || serverBlocked() || state.project.requiresLogin && state.account.status !== 'authenticated') { return; }
+  if (!state || !connected) { return; }
   resolving = true; controls();
   post({ type: 'resolve', requestId: ++requestId, params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode, trigger });
 }
@@ -192,25 +178,19 @@ function renderEntrypoints(): void {
 function controls(): void {
   dialogs.updatePermissions?.();
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
-  const blocked = serverBlocked() && !!state?.serverData?.issue;
-  element('workflow-form').hidden = blocked;
-  element('entrypoints').hidden = blocked || !!state?.run;
-  element('rerun').hidden = blocked;
-  element('run-prompt').hidden = blocked;
-  app.classList.toggle('project-server-blocked', blocked);
-  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant, serverUrl: state?.account.serverUrl, entryId: state?.project.entryId });
-  element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
-  element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();
+  element('entrypoints').hidden = !!state?.run;
+  element<HTMLButtonElement>('run').disabled = disabled() || resolving;
+  element<HTMLButtonElement>('rerun').disabled = disabled();
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;
   element<HTMLButtonElement>('stop-active').disabled = !connected;
-  element<HTMLButtonElement>('refresh-params').disabled = !connected || resolving || serverBlocked();
+  element<HTMLButtonElement>('refresh-params').disabled = !connected || resolving;
   element<HTMLTextAreaElement>('raw-args').disabled = disabled();
   element('raw-args').hidden = draft().inputMode !== 'raw'; element('main-fields').hidden = draft().inputMode !== 'form';
   element('parameter-actions').hidden = draft().inputMode !== 'form'; element('parameter-status').hidden = !resolving;
   element('workflow-form').setAttribute('aria-busy', String(resolving));
   for (const button of Array.from(element('input-mode').querySelectorAll<HTMLButtonElement>('button'))) { button.setAttribute('aria-pressed', String(button.dataset.mode === draft().inputMode)); button.disabled = disabled(); }
   if (draft().inputMode === 'form') { fields.update(); }
-  prompt?.setBusy(!connected || serverBlocked() || state?.run?.status === 'running' || submitting);
+  prompt?.setBusy(!connected || state?.run?.status === 'running' || submitting);
   app.dataset.connection = connected ? 'connected' : 'disconnected';
 }
 function historyRows(root: HTMLElement): void {
@@ -316,7 +296,6 @@ function renderRun(): void {
 function applyState(next: State): void {
   // State can arrive before the current request finishes, including a save failure.
   if (state?.project.uri !== next.project.uri || state?.run?.id !== next.run?.id) { clearError(false); }
-  const serverChanged = serverBlocked() !== (!!next.serverData && next.serverData.blocking !== false && (next.serverData.checking || !!next.serverData.issue));
   const authChanged = revision !== next.authenticationRevision; revision = next.authenticationRevision; state = next;
   if (authChanged) { dialogs.close(); }
   if (!draftsLoaded) {
@@ -333,7 +312,7 @@ function applyState(next: State): void {
   submitting = false;
   app.dataset.runState = next.running ? next.occupiedRun?.pendingInput ? 'waiting' : 'running' : 'idle';
   renderEntrypoints(); renderRun();
-  if (authChanged || serverChanged) { ++requestId; resolving = false; if (authChanged) paramStates = {}; resolve(); controls(); }
+  if (authChanged) { ++requestId; resolving = false; paramStates = {}; resolve(); controls(); }
 }
 element('menu-toggle').onclick = () => menu(true); element('hide-menu').onclick = () => menu(false);
 document.querySelector('main')!.addEventListener('click', narrowMenuDismiss(narrow, () => menuOpen, () => menu(false)));
@@ -349,7 +328,7 @@ element('refresh-params').onclick = () => resolve();
 for (const button of Array.from(element('input-mode').querySelectorAll<HTMLButtonElement>('button'))) { button.onclick = () => { draft().inputMode = button.dataset.mode as 'form' | 'raw'; controls(); scheduleResolve({ kind: 'init' }); }; }
 element('raw-args').addEventListener('input', () => { draft().rawArgs = element<HTMLTextAreaElement>('raw-args').value; scheduleResolve({ kind: 'input' }); });
 element('run').onclick = () => {
-  if (disabled() || resolving || serverBlocked()) { return; } clearTimeout(editTimer); ++requestId; submitting = true; controls();
+  if (disabled() || resolving) { return; } clearTimeout(editTimer); ++requestId; submitting = true; controls();
   post({ type: 'workflow-run', params: draft().values, inputMode: draft().inputMode, rawArgs: draft().rawArgs });
 };
 element('rerun').onclick = () => { submitting = true; controls(); post({ type: 'workflow-rerun', id: state?.run?.id }); };
@@ -369,14 +348,13 @@ addEventListener('message', event => {
   if (message?.type === 'project-skills-result' || message?.type === 'error' && message.requestType === 'project-skills') {
     dialogs.skillsResult(message.requestId, message.value, message.type === 'error' ? message.message : undefined); return;
   }
-  if (message?.type === 'project-server-checked') { checkingServer = false; controls(); return; }
   if (message?.type === 'state' && message.project?.projectType === 'workflow') {
     if (!stateRevisions.accept(message)) return;
     applyState(message);
   }
   else if (message?.type === 'connection') {
     const restored = !connected && message.status === 'connected'; connected = message.status === 'connected'; controls(); if (restored) { resolve(); }
-    if (!connected) { checkingServer = false; dialogs.close(); }
+    if (!connected) { dialogs.close(); }
   } else if (message?.type === 'params' && message.requestId === requestId && message.entrypointId === entrypointId) {
     resolving = false;
     if (message.error) { element('parameter-error').textContent = message.error; element('parameter-error').hidden = false; }
@@ -391,7 +369,6 @@ addEventListener('message', event => {
   } else if (message?.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   else if (message?.type === 'error') {
     if (message.requestType === 'workflow-output-page') { outputPager.fail(message.requestId, message.message); return; }
-    if (message.requestType === 'project-server-check') checkingServer = false;
     if (message.requestType === 'resource' && message.requestId) { return; }
     if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
     if (message.errorScope !== undefined && message.errorScope !== errorScope) { return; }

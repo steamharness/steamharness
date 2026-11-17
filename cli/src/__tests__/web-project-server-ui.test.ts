@@ -36,12 +36,12 @@ async function fixture(kind: 'workflow' | 'bot', language: 'en' | 'zh-CN') {
   await (kind === 'workflow' ? import('../web/ui/workflow-main') : import('../web/ui/main'));
   const emit = (data: object) => window.dispatchEvent(new MessageEvent('message', { data }));
   const project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/project',entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts"}], id: 'server-project', uri: 'file:///server-project', folderPath: '/project', name: 'Server project', projectType: kind,
-    fields: [{ name: 'subject', type: 'string', flag: '--subject' }], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
+    requiresLogin: true, fields: [{ name: 'subject', type: 'string', flag: '--subject' }], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
   const messages = [{ id: 'saved-answer', role: 'assistant', content: 'Previous result', status: 'success' }];
   let revision = 0;
   const render = async (serverData?: ProjectServerState, running = false) => {
     const next = { type: 'state', project, aggregate: { name: project.aggregateName, entries: project.entries.map(entry => ({ ...entry, status: 'idle', href: `/entries/${entry.entryId}/` })) }, serverData, stateRevision: ++revision, serverInstanceId: 'process', authenticationRevision: 1,
-      account: { status: 'authenticated', revision: 1, serverUrl: 'https://server.test' },
+      account: { status: 'error', revision: 1, serverUrl: 'https://server.test' },
       ...(kind === 'workflow' ? { runs: [], drafts: { '': { scopeId: 'draft', values: { subject: 'Original' }, rawArgs: '[]', inputMode: 'form', policies: {} } }, history: { total: 0 }, running }
         : { sessions: [{ id: 'session', title: 'History', ...(running ? { activeRunId: 'active-run' } : {}), messages: messages.map(message => ({ ...message, status: running ? 'running' : message.status })), draft: { text: 'Original draft', attachments: [] },
           queuedInputs: [{ id: 'queued', text: 'Keep queued', params: {}, attachments: [], createdAt: 1 }] }], activeId: 'session', running }),
@@ -58,150 +58,36 @@ async function fixture(kind: 'workflow' | 'bot', language: 'en' | 'zh-CN') {
 
 it.each([
   ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
-] as const)('checks %s silently and only shows failures, including after retry (%s)', async (kind, language) => {
+] as const)('runs %s without Server guidance or login gates (%s)', async (kind, language) => {
   const f = await fixture(kind, language);
-  const guidance = document.getElementById('server-guidance')!;
-  const checks: NonNullable<ProjectServerState['checks']> = [
-    { id: 'project', projectId: f.project.id, stage: 'registration', status: 'checking' },
-  ];
-  await f.render();
-  expect(guidance.hidden).toBe(true);
-  await f.render({ checking: true });
-  expect(guidance.hidden).toBe(true);
-  await f.render({ checking: true, issue: { kind: 'checking' } });
-  expect(guidance.hidden).toBe(true);
-  await f.render({ checking: true, checks });
-  expect(guidance.hidden).toBe(true);
-  await f.render({ checking: true, checks: checks.map(check => ({ ...check, status: 'passed' })) });
-  expect(guidance.hidden).toBe(true);
-  await f.render({ checking: false, checks: checks.map(check => ({ ...check, status: 'passed' })) });
-  expect(guidance.hidden).toBe(true);
-
-  const failed: ProjectServerState = { checking: false, blocking: true, issue: { kind: 'project-unavailable' },
-    checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] };
-  await f.render(failed);
-  expect(guidance.hidden).toBe(false);
-  const retry = document.querySelector<HTMLButtonElement>('#server-guidance-retry')!;
-  expect(retry.textContent).toBe(language === 'en' ? 'Check again' : '重新检查');
-  retry.click();
-  expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
-  expect(retry.disabled).toBe(true);
-  const row = guidance.querySelector('li');
-  const title = document.getElementById('server-guidance-title')!.textContent;
-  const information = document.getElementById('server-guidance-create')!;
-  information.focus();
-  await f.render({ ...failed, checking: true });
-  expect(guidance.hidden).toBe(false);
-  expect(guidance.querySelector('li')).toBe(row);
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(title);
-  expect(document.activeElement).toBe(information);
-  await f.render(failed);
-  f.emit({ type: 'project-server-checked' });
-  expect(guidance.hidden).toBe(false);
-  expect(retry.disabled).toBe(false);
-  await f.render({ checking: false });
-  expect(guidance.hidden).toBe(true);
-  if (kind === 'bot') {
-    expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe('Original draft');
-    expect(document.getElementById('transcript')!.textContent).toContain('Previous result');
+  for (const serverData of [undefined, { checking: true },
+    ...(['project-unavailable', 'connection-unavailable', 'sign-in-required', 'access-denied', 'setup-required'] as const)
+      .map(kind => ({ checking: false, blocking: true, issue: { kind } })),
+  ]) {
+    await f.render(serverData);
+    expect(document.getElementById('server-guidance')).toBeNull();
+    expect(document.querySelector('.project-server-blocked')).toBeNull();
+    expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
+    if (kind === 'bot') {
+      expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe('Original draft');
+      expect(document.getElementById('transcript')!.textContent).toContain('Previous result');
+    }
   }
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'project-server-check')).toBe(false);
+  document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.click();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === (kind === 'workflow' ? 'workflow-run' : 'send'))).toBe(true);
 });
 
-it.each(['workflow', 'bot'] as const)('keeps %s startup guidance after replacement and ignores states from the retired service', async kind => {
+it.each(['workflow', 'bot'] as const)('keeps %s usable when a replacement or a child sends old check state', async kind => {
   const f = await fixture(kind, 'en');
-  const old = await f.render({ checking: false });
+  const old = await f.render();
   f.emit({ ...old, serverInstanceId: 'replacement', stateRevision: 1,
-    serverData: { checking: false, blocking:true, issue: { kind: 'project-unavailable' } } });
+    serverData: { checking: false, blocking: true, issue: { kind: 'project-unavailable' } } });
+  f.emit({ ...old, serverData: { checking: true } });
+  const frame = document.createElement('iframe'); document.body.append(frame);
+  window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { ...old, serverData: { checking: true } } }));
   await vi.advanceTimersByTimeAsync(1);
-  const run = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!;
-  expect(run.disabled).toBe(true);
-  f.emit({ ...old, stateRevision: 100 });
-  await vi.advanceTimersByTimeAsync(1);
-  expect(run.disabled).toBe(true);
-  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
-});
-
-it.each(['workflow', 'bot'] as const)('keeps %s guidance when a child frame posts an application state', async kind => {
-  const f = await fixture(kind, 'en');
-  const current = await f.render({ checking: false, blocking:true, issue: { kind: 'project-unavailable' } });
-  const child = document.createElement('iframe'); document.body.append(child);
-  window.dispatchEvent(new MessageEvent('message', { source: child.contentWindow, data: { ...current, stateRevision: 100, serverData: { checking: false } } }));
-  await vi.advanceTimersByTimeAsync(1);
-  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
-  window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { ...current, stateRevision: 2, serverData: { checking: false } } }));
-  await vi.advanceTimersByTimeAsync(1);
-  expect(document.getElementById('server-guidance')!.hidden).toBe(true);
-});
-
-it.each(['workflow', 'bot'] as const)('keeps Stop and recovery settings available in %s for access or Server compatibility problems', async kind => {
-  const f = await fixture(kind, 'en');
-  await f.render({ checking: false, blocking:true, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
-  expect(stop.disabled).toBe(false);
-  await f.render({ checking: false, blocking:true, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
-  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('registration');
-  if (kind === 'bot') {
-    expect(document.querySelector<HTMLButtonElement>('.queue-heading button')!.disabled).toBe(true);
-    expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(3)')!.disabled).toBe(true);
-    expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(4)')!.disabled).toBe(false);
-  }
-});
-
-it.each([
-  ['bot', 'en'], ['bot', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
-] as const)('explains a Server failure and opens the correct %s recovery settings (%s)', async (kind, language) => {
-  const f = await fixture(kind, language);
-  const failed: ProjectServerState = { checking: false, issue: { kind: 'connection-unavailable', status: 500, serverUrl: 'https://server.test' },
-    checks: [{ id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required' }] };
-  await f.render(failed);
-  const guidance = document.getElementById('server-guidance')!;
-  expect(document.getElementById('server-guidance-description')!.textContent).toContain('HTTP 500');
-  expect(document.getElementById('server-guidance-steps')!.textContent).toContain(language === 'en' ? 'registration' : '项目登记');
-  expect(document.getElementById('server-guidance-project-id')!.textContent).toBe(f.project.id);
-  expect(document.getElementById('server-guidance-entry-id')!.textContent).toBe('main');
-  const link = document.querySelector<HTMLButtonElement>('#server-guidance-server')!;
-  link.click();
-  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-server-project' });
-  expect(document.getElementById('server-guidance-account')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-information')).toBeNull();
-  expect(document.querySelector<HTMLElement>(kind === 'bot' ? '.composer-area' : '#workflow-form')!.hidden).toBe(true);
-
-  const details = guidance.querySelector('details')!; details.open = true;
-  const row = guidance.querySelector('li');
-  const mutations: MutationRecord[] = [];
-  const observer = new MutationObserver(records => mutations.push(...records));
-  observer.observe(guidance, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
-  for (let i = 0; i < 3; i++) { await f.render({ ...failed, checking: true }); await f.render(failed); }
-  observer.disconnect();
-  expect(mutations).toEqual([]);
-  expect(guidance.querySelector('li')).toBe(row); expect(details.open).toBe(true);
-});
-
-it.each(['javascript:alert(1)', 'https://user:password@server.test', 'https://server.test/?token=private'])(
-  'does not offer a Server link for an unsafe address: %s', async serverUrl => {
-    const f = await fixture('bot', 'en');
-    await f.render({ checking: false, issue: { kind: 'setup-required', serverUrl } });
-    const link = document.querySelector<HTMLAnchorElement>('#server-guidance-server')!;
-    expect(link.hidden).toBe(true); expect(link.hasAttribute('href')).toBe(false);
-    expect(document.getElementById('server-guidance-server-url')!.textContent).not.toMatch(/password|token|alert/);
-  },
-);
-
-it.each(['bot', 'workflow'] as const)('separates typed checks from instructions and restores %s controls after recovery', async kind => {
-  const f = await fixture(kind, 'zh-CN');
-  const failed: ProjectServerState = { checking: false, blocking: true, issue: { kind: 'project-unavailable' }, checks: [
-    { id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required' },
-  ] };
-  await f.render(failed);
-  const checks = document.querySelector('.project-server-checks')!;
-  expect(checks.querySelector('h3')!.textContent).toBe('连接检查');
-  expect(checks.textContent).toContain('项目登记');
-  expect(document.querySelector('#server-guidance-create')!.classList.contains('primary')).toBe(true);
-  document.querySelector<HTMLButtonElement>('#server-guidance-create')!.click();
-  expect(host.postMessage).toHaveBeenCalledWith({ type: 'create-cloud-project' });
-  const controls = document.querySelector<HTMLElement>(kind === 'bot' ? '.composer-area' : '#workflow-form')!;
-  expect(controls.hidden).toBe(true);
-  await f.render({ ...failed, checking: true }); expect(controls.hidden).toBe(true);
-  await f.render({ checking: false }); expect(controls.hidden).toBe(false);
+  expect(document.getElementById('server-guidance')).toBeNull();
+  expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
 });

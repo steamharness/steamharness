@@ -74,7 +74,6 @@ function rootDocument(value: unknown): Record<string, unknown> {
     const distribution = record(input.distribution, "distribution");
     if (distribution.kind !== "release" || distribution.version !== 1 || Object.keys(distribution).some(key => !["kind", "version"].includes(key))) throw new Error("Unsupported project distribution format. Upgrade the host.");
   }
-  if (typeof input.id !== "string" || !PROJECT_UUID_PATTERN.test(input.id)) throw new Error(`${PROJECT_MANIFEST_FILE}.id must be the aggregate project's UUID.`);
   if (typeof input.name !== "string" || !input.name.trim()) throw new Error(`${PROJECT_MANIFEST_FILE}.name is required.`);
   if (typeof input.version !== "string" || !/^\d+\.\d+\.\d+$/.test(input.version)) throw new Error(`${PROJECT_MANIFEST_FILE}.version must use x.y.z format.`);
   if (input.description !== undefined && typeof input.description !== "string") throw new Error(`${PROJECT_MANIFEST_FILE}.description must be a string.`);
@@ -121,7 +120,7 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
     return normalizeProjectEntry(entry, `entries[${index}]`);
   });
   const defaultType = selectProjectEntry({entries, defaultEntry: input.defaultEntry as string}).type;
-  return { projectId: (input.id as string).toLowerCase(), name: input.name as string, version: input.version as string, entries, defaultEntry: input.defaultEntry as string,
+  return { projectId: typeof input.id === "string" ? input.id.toLowerCase() : "", name: input.name as string, version: input.version as string, entries, defaultEntry: input.defaultEntry as string,
     ...(input.release === undefined ? {} : { release: parseProjectReleaseConfiguration(input.release, entries.map(entry => entry.entryId)) }),
     ...(input.description === undefined ? {} : {description: input.description as string}),
     ...(input.projectCard === undefined ? {} : {projectCard: validateProjectCardMetadata({...normalizeProjectCardMetadata(undefined, defaultType), ...record(input.projectCard, "projectCard")})}),
@@ -169,6 +168,7 @@ export function projectManifestTypes(manifest: Pick<ProjectManifest, "entries">)
   return [...new Set(manifest.entries.map((entry) => entry.type))];
 }
 export function projectManifestForDistribution<T extends Record<string, unknown>>(document: T): T {
+  if (typeof document.id !== "string" || !PROJECT_UUID_PATTERN.test(document.id)) throw new Error(`${PROJECT_MANIFEST_FILE}.id must be the aggregate project's UUID.`);
   rootDocument(document);
   return structuredClone(document);
 }

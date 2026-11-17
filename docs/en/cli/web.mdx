@@ -61,15 +61,9 @@ Existing model setup shortcuts open Project configurations inside this panel.
 
 ## When the Server connection fails
 
-Guidance shows actions for the reported failure. Project registration appears in the Connection checks panel.
+Workflow, Bot, and Kanban entries run locally without Server sign-in, cloud registration, or project ID validation. Source manifests may omit `id`; a valid project UUID is required when building a release.
 
-- **Project not found or inaccessible:** check whether the project should already exist. To start a new one, select the highlighted Create cloud project button. It creates a private project under your current account and opens it automatically, using a new Server-assigned ID. Existing data and permissions are not transferred, and this action does not upload source files.
-- **Sign-in required:** choose Sign in, then Check again after resolving the issue.
-- **HTTP 500 or another Server error:** choose Open Server project to inspect its registration. If the management page also fails, give the administrator the Server, project ID, and entry shown in Connection details. Checks retry automatically; a Server error does not create a new project.
-
-Blocking failures temporarily hide the Bot composer, Workflow execution form, and Kanban controls. History and drafts stay available, and running tasks can still be stopped. Controls return when the connection recovers. Rechecks retain the existing guidance and layout.
-
-Studio opens cloud projects through its host using the current sign-in. Standalone CLI Web opens an authenticated browser tab; allow popups and retry if the browser blocks it. Navigation errors appear below the action buttons.
+Run pages do not show advance Server or AI connection checks, and offline services do not hide the composer, execution form, or board. If an entry actually calls a model or another online service and that call fails, the error belongs to that run and remains available in its result or logs.
 
 ## Local resource previews
 

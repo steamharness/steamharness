@@ -1,7 +1,7 @@
 import type { ProjectServerCreateContext } from '../project-server-create';
 import { t } from '../localization';
 import { iconButton } from './ui';
-import './project-server-guidance.css';
+import './project-server-create.css';
 
 type Message = Record<string, any>;
 

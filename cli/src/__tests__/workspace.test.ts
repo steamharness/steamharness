@@ -556,9 +556,15 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it('rejects invalid aggregate identity before any remote allocation',async()=>{
+  it('keeps a local draft identity unbound without allocating a remote project',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'invalid-aggregate-'));
-    try{await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'invalid',name:'Invalid',version: "0.1.0", ...(declaration())}));await expect(readProjectPackageContext('invalid',root)).rejects.toThrow();}finally{await rm(root,{recursive:true,force:true});}
+    const requests=vi.spyOn(globalThis,'fetch').mockRejectedValue(new Error('No Server request is expected.'));
+    try {
+      await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'invalid',name:'Invalid',version: "0.1.0", ...(declaration())}));
+      expect((await readProjectPackageContext('invalid',root)).projectId).toBeUndefined();
+      expect(requests).not.toHaveBeenCalled();
+      expect(JSON.parse(readFileSync(path.join(root,'steamharness.json'),'utf8')).id).toBe('invalid');
+    } finally { await rm(root,{recursive:true,force:true}); }
   });
 
   it.each([undefined, "team-group"])("applies for a new ID with selected ownership group %s", async groupId => {

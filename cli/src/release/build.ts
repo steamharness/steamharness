@@ -13,7 +13,7 @@ import { build, transform } from "esbuild";
 import { BOT_MEMORY_CONFIGURATION_KEY, inspectLocalProjectStructure, inspectProjectAgentModelUsage, readProjectConfigurationDefinition } from "steamharness";
 import { inspectProjectScripts } from "steamharness/executor/rules";
 import { readProjectDeclarationFromDirectory, readProjectDocument } from "@steamharness/project-manifest/node";
-import { projectEntryFilePath, PROJECT_RELEASE_BASE_DIRECTORY, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
+import { projectManifestForDistribution, projectEntryFilePath, PROJECT_RELEASE_BASE_DIRECTORY, PROJECT_RELEASE_DIRECTORY, PROJECT_RELEASE_FILE, releasePath, isForbiddenReleasePath, type ProjectDistributionMode, type ProjectEntryDeclaration, type ProjectReleaseManifest } from "@steamharness/project-manifest";
 import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRelease } from "@steamharness/project-manifest/release-node";
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
 import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
@@ -142,6 +142,7 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
   if (process.env.STEAMHARNESS_RELEASE_BUILD === "1") throw new Error("A release build command cannot recursively invoke steamharness release.");
   const root = await realpath(path.resolve(directory)), existing = readProjectReleaseSync(root);
   if (existing) return { directory: root, archive: "", buildId: existing.buildId, entries: existing.entries.map(entry => entry.entryId), cached: true };
+  projectManifestForDistribution(await readProjectDocument(root));
   await regularDirectories(root, PROJECT_RELEASE_BASE_DIRECTORY);
   const output = path.join(root, PROJECT_RELEASE_DIRECTORY);
   if (await exists(path.join(root, `${PROJECT_RELEASE_BASE_DIRECTORY}/build.lock.sqlite`))) releaseRegularFile(root, `${PROJECT_RELEASE_BASE_DIRECTORY}/build.lock.sqlite`);

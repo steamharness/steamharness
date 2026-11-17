@@ -1,3 +1,5 @@
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
+import type { WebConnection } from '../web/runtime';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -9,12 +11,15 @@ import type { Project, Report, Runtime } from '../web/workflow-types';
 
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
-  for (const app of apps.splice(0)) await app.close();
-  vi.restoreAllMocks(); vi.unstubAllEnvs();
-  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+  try {
+    for (const app of apps.splice(0)) await app.close();
+  } finally {
+    vi.restoreAllMocks(); vi.unstubAllEnvs();
+    for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+  }
 });
 
-async function fixture() {
+async function fixture(options: { id?: unknown; connection?: WebConnection } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
@@ -23,8 +28,14 @@ async function fixture() {
   const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json',
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0", entries, defaultEntry: 'agent' };
+  let id: string = randomUUID();
+  const pkg = { id, name: 'Aggregate test', version: "0.1.0", entries, defaultEntry: 'agent' };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  if (Object.hasOwn(options, 'id')) {
+    const file = path.join(directory, 'steamharness.json');
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), id: options.id }));
+    id = (await readProjectManifestFromDirectory(directory)).projectId;
+  }
   await writeFile(path.join(directory, 'config.json'), JSON.stringify({ version: 1 }));
   for (const entry of entries) {
     await mkdir(path.join(directory, entry.root), {recursive:true});
@@ -45,7 +56,7 @@ async function fixture() {
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime }); apps.push(app); return app; };
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, ...(options.connection ? { host: { surface: 'editor' as const, connection: options.connection } } : {}) }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const call = async (entryId: string, message: object) => {
@@ -281,4 +292,39 @@ it('lets same-page views share a session writer and retains it until the final v
   await bridge('conversations.closeView', { viewId: 'focused-bot' });
   expect((await open('restored-bot')).ok).toBe(true);
   expect(await state('restored-bot')).toMatchObject({ conversationAccess: { readOnly: false } });
+});
+
+it.each([
+  { id: undefined, server: 'offline' }, { id: 'local-draft', server: 'offline' },
+  { id: undefined, server: 'pending' }, { id: 'local-draft', server: 'pending' },
+])('runs all entry types with authored ID $id while the optional Server is $server', async ({ id, server }) => {
+  const nativeFetch = globalThis.fetch, remote: string[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (new URL(String(input)).hostname === '127.0.0.1') return nativeFetch(input, init);
+    remote.push(String(input));
+    if (server === 'pending') return new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal?.aborted) reject(signal.reason);
+      else signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+    throw new TypeError('Optional Server is offline');
+  });
+  const f = await fixture({ id, connection: { serverUrl: 'https://offline.example.test', accessToken: 'offline-token' } });
+  const bot = await f.state('agent'), workflow = await f.state('workflow'), board = await f.state('board');
+  for (const state of [bot, workflow, board]) {
+    expect(state.serverData).toBeUndefined();
+    expect(state.project.id).toBe(bot.project.id);
+  }
+  await f.call('agent', { type: 'send', text: 'Run offline', params: {}, attachments: [] });
+  await f.call('workflow', { type: 'workflow-run', entrypointId: 'operation', params: {} });
+  await vi.waitFor(() => expect(f.active.has('agent') && f.active.has('workflow')).toBe(true));
+  const preview = await fetch(new URL(board.kanban.preview.url, f.app.origin), { headers: { Authorization: `Bearer ${new URLSearchParams(new URL(f.app.url).hash.slice(1)).get('session')}` } });
+  expect(preview.status).toBe(200);
+  expect(remote.every(url => url.endsWith('/api/auth/me'))).toBe(true);
+  expect(JSON.parse(await readFile(path.join(f.directory, 'steamharness.json'), 'utf8')).id).toBe(id);
+  for (const operation of f.active.values()) operation.finish({ status: 'success', output: { items: [] } });
+  await vi.waitFor(async () => {
+    expect((await f.state('workflow')).running).toBe(false);
+    expect((await f.state('agent')).running).toBe(false);
+  });
 });

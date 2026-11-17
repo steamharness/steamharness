@@ -79,6 +79,9 @@
 
 ### Changed
 
+- Workflow, Bot and Kanban run locally without project ID, cloud registration, or Server connection gates and guidance.
+- Projects without a valid ID use a directory-scoped storage identity; release builds still validate the authored UUID.
+
 - Changed default account avatar colors for light and dark backgrounds while keeping the same pattern and colors across theme changes.
 - Changed CLI Web sign-in to use the Server website instead of a local password form.
 - Changed authorization to support return links, cancellation and shared entry sign-in state, with credentials isolated by channel and Server.

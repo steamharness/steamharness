@@ -84,6 +84,9 @@
 
 ### Changed
 
+- Local loading accepts missing or non-UUID project IDs and derives a stable identity from the canonical directory without changing source.
+- Releases and distribution still validate the authored UUID.
+
 - Changed project generation guidance to cover Kanban background Workflow controls, output pagination and run images.
 - Changed project generation and artifact validation to keep caches, reports and release outputs under dist/steamharness/.
 - Changed sleep progress to show the expected end time and results to retain the actual completion time.

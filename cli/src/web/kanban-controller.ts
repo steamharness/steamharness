@@ -13,10 +13,9 @@ import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { readConfigurationFile } from './configuration-files';
 import { requestStudioAnalysis } from './local-analysis';
-import type { ProjectServerIssue, ProjectServerState } from './project-server-state';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; serverState?(): ProjectServerState; projectChanged?(): Promise<void>; webAppBinding?(): WebAppBinding | undefined }
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; webAppBinding?(): WebAppBinding | undefined }
 export class KanbanController {
   workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
@@ -24,7 +23,6 @@ export class KanbanController {
   private webApp?: WebAppPreview;
   private webAppEpoch = 0;
   private binding?: WebAppBinding;
-  serverDataIssue?: ProjectServerIssue;
   private watcher?: FSWatcher;
   private previewDeclarations = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
@@ -47,7 +45,7 @@ export class KanbanController {
   }
   configuration(): KanbanInjectedConfiguration { const snapshot = configurationSnapshot(this.workspace, undefined, false); return { id: snapshot.id, name: snapshot.name, params: snapshot.values }; }
   configurationChanged(state: ProjectConfigurationState): void { this.workspace = state; if (this.preview) { this.newPreview(); this.hooks.changed(); } }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.project.kanban?.webApp ? this.webApp?.url ?? "about:blank" : this.preview.url, nonce: this.preview.nonce, webApp: !!this.project.kanban?.webApp, permissions: this.project.kanban?.webApp?.permissions ?? [], accountUrl: this.binding?.accountUrl }, serverDataIssue: this.serverDataIssue }; }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.project.kanban?.webApp ? this.webApp?.url ?? "about:blank" : this.preview.url, nonce: this.preview.nonce, webApp: !!this.project.kanban?.webApp, permissions: this.project.kanban?.webApp?.permissions ?? [], accountUrl: this.binding?.accountUrl } }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();
@@ -63,7 +61,7 @@ export class KanbanController {
       this.watcher.on('error', error => this.hooks.log(String(error)));
     } catch (error) { this.hooks.log(String(error)); }
   }
-  async refresh(checkConnections = false): Promise<void> {
+  async refresh(): Promise<void> {
     const declaration = resolveProjectEntrySync(this.project.folderPath, this.project.entryId);
     this.previewDeclarations = new Set([
       path.join(this.project.folderPath, 'steamharness.json'), path.join(this.project.folderPath, 'package.json'),
@@ -73,7 +71,6 @@ export class KanbanController {
     this.project.kanban = { artifactDir: path.posix.dirname(declaration.registration.entry), entry: path.posix.basename(declaration.registration.entry), webApp: declaration.registration.webApp };
     this.newPreview();
     if (this.webApp) await this.setWebAppBinding(this.binding);
-    if (checkConnections) await this.hooks.projectChanged?.();
     this.hooks.changed();
   }
   async setWebAppBinding(binding: WebAppBinding | undefined): Promise<void> {
@@ -122,7 +119,7 @@ export class KanbanController {
         return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: { ...safe, category, ...(call ? { diagnosticId } : {}) } }];
       }
     }
-    if (message.type === 'kanban-refresh') { await this.refresh(true); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
+    if (message.type === 'kanban-refresh') { await this.refresh(); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
     throw new Error(`Unsupported Kanban action: ${message.type}`);
   }
   async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1], clientId = 'local', diagnosticId?: string): Promise<unknown> {
@@ -196,7 +193,6 @@ export class KanbanController {
       throw error;
     } finally { this.requests.delete(abort); }
   }
-  authenticationChanged(clearWebApp = true) { if (clearWebApp && this.project.kanban?.webApp) void this.setWebAppBinding(undefined); this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); this.serverDataIssue = undefined; }
-  projectChecksChanged() { this.hooks.changed(); }
+  authenticationChanged(clearWebApp = true) { if (clearWebApp && this.project.kanban?.webApp) void this.setWebAppBinding(undefined); this.generation++; this.clearConversationSubscriptions(); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
   async close() { this.disposed = true; ++this.webAppEpoch; await this.webApp?.close(); this.clearConversationSubscriptions(); this.watcher?.close(); clearTimeout(this.timer); this.methods.clear(); this.diagnostics.clear(); for (const request of this.requests) request.abort(); }
 }

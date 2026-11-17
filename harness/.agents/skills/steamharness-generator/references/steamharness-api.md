@@ -59,7 +59,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 ## 聚合项目声明与交付
 
-根 steamharness.json.id 是整个聚合项目唯一 UUID。类型属于入口，可注册多个同类型入口；entryId 唯一且与 Workflow 内部 entrypointId 分别传递。注册路径必须位于聚合目录内，禁止绝对路径、上级路径、符号链接越界、node_modules 和 .git。Workflow/Conversation 各模块导出自己的 executor，类型必须与注册匹配；静态分析仅遍历该模块的相对导入图。
+根 `steamharness.json.id` 是聚合项目的发行 UUID，本地运行可省略或暂用非 UUID 值。Studio、CLI Web 和本地运行不会检查云端登记或因 Server/AI 服务离线而阻止启动；无有效 UUID 时按规范项目目录生成稳定的内部存储身份，不写回清单。发行构建必须校验源码中的 UUID。类型属于入口，可注册多个同类型入口；entryId 唯一且与 Workflow 内部 entrypointId 分别传递。注册路径必须位于聚合目录内，禁止绝对路径、上级路径、符号链接越界、node_modules 和 .git。Workflow/Conversation 各模块导出自己的 executor，类型必须与注册匹配；静态分析仅遍历该模块的相对导入图。
 
 `steamharness.json`
 

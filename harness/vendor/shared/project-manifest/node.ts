@@ -1,6 +1,8 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { PROJECT_UUID_PATTERN } from "./identity";
 import { projectEntryFilePath } from "./artifacts";
 import { PROJECT_MANIFEST_FILE, projectEntryConfigRoots, readProjectDeclaration, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
 
@@ -15,7 +17,7 @@ export async function readProjectDocument(projectDir: string): Promise<Record<st
   return JSON.parse(await readFile(file, "utf8"));
 }
 export function readProjectDeclarationFromDirectorySync(projectDir: string): ProjectDeclaration {
-  const root = realpathSync(projectDir), document = readProjectDocumentSync(root);
+  const root = realpathSync(projectDir), document = localProjectDocument(readProjectDocumentSync(root), root);
   const children = Object.fromEntries(projectEntryConfigRoots(document).map(relative => {
     const childRoot = realpathSync(path.join(root, relative)); assertWithin(root, childRoot);
     const file = realpathSync(path.join(childRoot, PROJECT_MANIFEST_FILE)); assertWithin(childRoot, file);
@@ -24,13 +26,23 @@ export function readProjectDeclarationFromDirectorySync(projectDir: string): Pro
   return readProjectDeclaration(document, children);
 }
 export async function readProjectDeclarationFromDirectory(projectDir: string): Promise<ProjectDeclaration> {
-  const root = await realpath(projectDir), document = await readProjectDocument(root);
+  const root = await realpath(projectDir), document = localProjectDocument(await readProjectDocument(root), root);
   const children = Object.fromEntries(await Promise.all(projectEntryConfigRoots(document).map(async relative => {
     const childRoot = await realpath(path.join(root, relative)); assertWithin(root, childRoot);
     const file = await realpath(path.join(childRoot, PROJECT_MANIFEST_FILE)); assertWithin(childRoot, file);
     return [relative, JSON.parse(await readFile(file, "utf8"))];
   })));
   return readProjectDeclaration(document, children);
+}
+/** Local storage needs a stable key even when the authored project has no release identity. Never write it to source. */
+function localProjectDocument(document: Record<string, unknown>, root: string): Record<string, unknown> {
+  if (typeof document.id === "string" && PROJECT_UUID_PATTERN.test(document.id)) return document;
+  const key = process.platform === "win32" ? root.toLowerCase() : root;
+  const bytes = createHash("sha256").update("steamharness:local-project:\0").update(key).digest().subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return { ...document, id: `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` };
 }
 export function readProjectManifestFromDirectorySync(projectDir: string): ProjectManifest {
   return readProjectDeclarationFromDirectorySync(projectDir);

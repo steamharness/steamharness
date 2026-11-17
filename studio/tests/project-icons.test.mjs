@@ -90,9 +90,21 @@ test('static manifest versions appear in recent-project metadata and refresh ind
   assert.equal((await f.icons.resolveMany(['file:///board']))[0].version, '1.1.0');
 });
 
+test('local entries retain their icons without a release UUID', async t => {
+  const f = fixture(t);
+  for (const type of ['workflow', 'bot', 'kanban']) {
+    for (const identity of [undefined, 'local-draft']) {
+      const root = `file:///${type}-${identity ?? 'no-id'}`, pkg = declaration(type);
+      pkg.id = identity;
+      f.files.set(`${root}/steamharness.json`, JSON.stringify(pkg));
+      assert.deepEqual(await f.types(root), { [root]: type });
+    }
+  }
+});
+
 test('ordinary folders, broken and old declarations, invalid entries and unsupported schemes keep default icons', async t => {
   const f = fixture(t);
-  f.files.set('file:///ordinary/steamharness.json', manifest(undefined, 'not-a-project'));
+  f.files.set('file:///ordinary/steamharness.json', JSON.stringify({ name: 'Ordinary folder' }));
   f.files.set('file:///ordinary/index.ts', executor('workflow'));
   f.files.set('file:///broken/steamharness.json', '{');
   f.files.set('file:///text/steamharness.json', JSON.stringify({ id, name: 'Old declaration', version: "0.1.0",  projectType: 'bot'  }));

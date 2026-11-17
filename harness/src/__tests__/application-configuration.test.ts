@@ -77,13 +77,25 @@ test("independent processes editing two installations enforce one application re
   assert.deepEqual(await store.read(), await (await createLocalProjectConfigurationStore(projects[1]!, {rootDir:f.rootDir})).read());
 });
 
-test("configuration rejects unregistered projects and invalid project identities", async t => {
+test("configuration keeps local drafts usable without a release identity", async t => {
   const f=await fixture();t.after(()=>rm(f.directory,{recursive:true,force:true}));
   for(const id of ["invalid",undefined]) {
-    const project=await f.application(`invalid-${id}`,id);
-    if(id===undefined)await writeFile(path.join(project,"steamharness.json"),JSON.stringify({name:"same-package-name"}));
-    await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/aggregate project's UUID/);
+    const project=await f.application(`draft-${id}`), other=await f.application(`other-${id}`);
+    const file=path.join(project,"steamharness.json"), document=JSON.parse(await readFile(file,"utf8"));
+    const source=JSON.stringify({...document,id});
+    await writeFile(file,source);await writeFile(path.join(other,"steamharness.json"),source);
+    const store=await createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}), state=await store.read();
+    await store.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"local draft"}});
+    assert.equal((await (await createLocalProjectConfigurationStore(project,{rootDir:f.rootDir})).snapshot()).values.label,"local draft");
+    assert.deepEqual((await (await createLocalProjectConfigurationStore(other,{rootDir:f.rootDir})).snapshot()).values,{});
+    assert.equal(await readFile(file,"utf8"),source);
   }
+});
+
+test("configuration rejects unregistered and malformed projects", async t => {
+  const f=await fixture();t.after(()=>rm(f.directory,{recursive:true,force:true}));
+  const undeclared=await f.application("undeclared");await rm(path.join(undeclared,"steamharness.json"));
+  await assert.rejects(createLocalProjectConfigurationStore(undeclared,{rootDir:f.rootDir}),/steamharness.json/);
   const project=await f.application("legacy");await writeFile(path.join(project,"steamharness.json"),JSON.stringify({id:f.applicationId,name:"legacy",version: "0.1.0", projectType:"workflow"}));
   await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/unsupported fields/);
   await writeFile(path.join(project,"steamharness.json"),"{");
