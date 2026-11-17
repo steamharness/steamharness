@@ -272,11 +272,11 @@ All notable public changes to this release unit are recorded here.
 
 - Agents enable native OpenAI / Anthropic web search when the model declares support, with per-run controls, search activities and source links, persisted citations and follow-up context, bounded pause continuations, interruption recovery, and isolated child conversations.
 
-### Context compaction
+### Changed
 
 - [Fixed] Check context before every model request in ordinary Agents and durable sessions, compacting at 90% by default across tool loops and custom windows. Recover from overflow with bounded retries and summarize oversized history in chunks while retaining tool call pairs, cancellation guarantees and complete usage.
 
-### Skill tools
+### Changed
 
 - Added the built-in `i-have-adhd` communication skill to Core Agent system prompts, including build mode, plan mode and custom personas. The complete guide and MIT license ship with the package; user language, formatting requests and requests to stop the style take precedence.
 
@@ -304,7 +304,7 @@ All notable public changes to this release unit are recorded here.
 - Serialize stale local KV lock recovery after a crash so concurrent reclaimers cannot delete a new owner's lock or break mutual exclusion.
 - Upgrade Agent to Pi / Pi Durable 1.2.0 with Harness and SQLite as the sole durable execution backend. Add request deduplication, tool and approval recovery across processes, idempotent usage projections and durable cancellation. Old KV transcripts are no longer read; interrupted writes and commands with unknown results are not automatically replayed.
 
-### Changes
+### Changed
 
 - Remove the Server execution platform and isWeb while retaining local execution and explicit Server data access.
 - Clarify in file storage errors and generator guidance that local hosts execute projects and Server stores projects and data.

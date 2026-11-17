@@ -288,24 +288,24 @@ All notable public changes of this release unit are recorded here.
 
 - [Added] Share project configurations across Workflow, Conversation and Kanban, including a headless configuration command, custom fields, named profiles, full import/export and preserved conflicting drafts. Durable sessions reload after active work, and Kanban pages and resource previews update together. Business configuration no longer loads `.env`.
 
-### Conversation scrolling
+### Changed
 
 - Keep the latest output visible when resource cards arrive together or previews resize asynchronously. Preserve the reading position when scrolling up, and resume following after clicking Go to latest message.
 
-### Resource Card Refresh
+### Changed
 
 - Fixed map and other resource cards failing to refresh after preview IDs expired. Refresh resolves the saved card in its original conversation or run, checks current access, loads the latest content, and shows a loading icon with retry available after a failure.
 
-### Studio Context Menus
+### Changed
 
 - Match project page context menus to their targets: keep editing actions in inputs, offer Copy for read-only text selections, and omit Cut/Paste on empty areas.
 
-### Tool permissions
+### Changed
 
 - Show tool descriptions directly in expanded permission sections, preserving multiline usage instructions.
 - Group CLI Web tool permissions by common tool types and namespaces, with counts and initially collapsed sections that retain their expanded state on the page. Search names and descriptions to expand matching results, then clear the search to restore the previous sections.
 
-### Project Avatars
+### Changed
 
 - Use square avatars with small corner radii throughout CLI Web messages and account views, removing the backing color once an image loads to avoid surrounding padding.
 - CLI Web displays clickable project avatars before response duration and account avatars beside user messages. Project toolbars use the current project avatar, with stable updates and image fallbacks.
@@ -353,7 +353,7 @@ All notable public changes of this release unit are recorded here.
 - Fix published Workflow and Conversation downloads being incorrectly restricted to Kanban projects.
 - Remove remote execution commands from root help and describe permissions and upload progress as project operations and static file processing.
 
-### Changes
+### Changed
 
 - [Improved] Use status icons in CLI Web conversation and workflow history, with continuously spinning indicators for running entries. Show the project's running count on the right of the page header, including when the sidebar is collapsed or hidden on narrow screens, independently of search and pagination and excluding idle durable workers.
 - Remove Workspace remote execution and release targets; uploads use static project types and downloads have no platform restriction.
