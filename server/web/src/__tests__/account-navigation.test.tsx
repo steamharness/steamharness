@@ -23,7 +23,8 @@ afterEach(() => vi.restoreAllMocks());
 it("renders the real account security page from the sidebar route", async () => {
   render(<App />);
   expect(await screen.findByRole("heading",{name:"Account security"})).toBeVisible();
-  expect(screen.getByLabelText("Current password")).toBeVisible();
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  expect(screen.getByRole("button",{name:"Change password"})).toBeVisible();
   expect(window.location.pathname).toBe("/settings/security");
 });
 
@@ -59,11 +60,12 @@ it("retains a manually entered device code when signing in as another account", 
 
 it("shows a clear sign-in message after changing the password", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("radio",{name:"Set password"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Change password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
   expect(await screen.findByText("Account security updated. Sign in again on the website and in your apps.")).toBeVisible();
   expect(window.location.pathname).toBe("/login");
   expect(screen.getByLabelText("Username or email")).toBeVisible();
@@ -82,11 +84,12 @@ it("discards a profile response arriving after the account session is cleared", 
   vi.mocked(apiClient.getMe).mockReturnValueOnce(new Promise(done => { finish = done; }));
   vi.spyOn(apiClient,"logout").mockResolvedValue(ok({loggedOut:true}));
   render(<App />);
-  fireEvent.click(await screen.findByRole("radio",{name:"Set password"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Change password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
   await screen.findByLabelText("Username or email");
   await act(async () => finish(ok({principal,profile:{...principal,displayName:"Stale private profile"}})));
   expect(screen.queryByDisplayValue("Stale private profile")).toBeNull();

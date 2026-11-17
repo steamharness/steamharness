@@ -91,14 +91,16 @@ it("shows an unbound account and sends its current password proof when binding a
   const action=vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:"test_user",email:null,emailVerifiedAt:null,hasPassword:true}) : path === "/email-code/send" ? ok({challengeId:"target",retryAfterSeconds:60}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
   expect(await screen.findByText(/Not bound/)).toBeVisible();
-  const email=screen.getByLabelText("Email");
+  fireEvent.click(screen.getByRole("button",{name:"Bind email"}));
+  const email=screen.getByLabelText("New email");
   fireEvent.change(email,{target:{value:"bound@example.test"}});
-  fireEvent.click(screen.getByRole("button",{name:"Send code"}));
+  fireEvent.click(screen.getByRole("button",{name:"Send code to new email"}));
   await waitFor(() => expect(action).toHaveBeenCalledWith("/email-code/send",{email:"bound@example.test",purpose:"bind-email"}));
-  await screen.findByText("If the address is eligible, a code has been sent. Check your inbox.");
-  fireEvent.change(screen.getByLabelText("Verification code"),{target:{value:"123456"}});
+  await screen.findByText("A verification code was sent to bound@example.test.");
+  fireEvent.change(screen.getByLabelText("Code from new email"),{target:{value:"123456"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"test-password"}});
-  fireEvent.submit(email.closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
   expect(action).toHaveBeenCalledWith("/me/email",expect.objectContaining({action:"bind",challengeId:"target",code:"123456",currentPassword:"test-password"}));
 });
@@ -219,18 +221,19 @@ it("sets a password using email proof and requests sign-in again", async () => {
   const changed = vi.fn();
   const action = vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:null,email:"user@example.test",emailVerifiedAt:"2026-01-01",hasPassword:false}) : path === "/email-code/send" ? ok({challengeId:"proof",retryAfterSeconds:60}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
-  fireEvent.click(await screen.findByRole("radio",{name:"Set password"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Set password"}));
   fireEvent.change(screen.getByLabelText("New password"),{target:{value:"new-password"}});
   fireEvent.change(screen.getByLabelText("Confirm password"),{target:{value:"new-password"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.click(screen.getByRole("button",{name:"Send code to current email"}));
-  await screen.findByText(/If the address is eligible/);
+  await screen.findByText("A code to confirm your identity was sent to user@example.test.");
   fireEvent.change(screen.getByLabelText("Code from current email"),{target:{value:"123456"}});
-  fireEvent.submit(screen.getByLabelText("New password").closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Code from current email").closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
   expect(action).toHaveBeenCalledWith("/me/password",{password:"new-password",reauthChallengeId:"proof",reauthCode:"123456"});
 });
 
-it("switches back to email after setting the one-time username", async () => {
+it("closes the username operation after setting it once", async () => {
   let username: string | null = null;
   const action = vi.spyOn(apiClient,"authAction").mockImplementation(async (path,body: any) => {
     if(path === "/config") return ok({mailAvailable:true});
@@ -239,14 +242,16 @@ it("switches back to email after setting the one-time username", async () => {
   });
   const changed = vi.fn();
   render(<AccountSecurityPage onChanged={changed} />);
-  fireEvent.click(await screen.findByRole("radio",{name:"Set username"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Set username"}));
   fireEvent.change(screen.getByLabelText("Username"),{target:{value:"new-user"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("Username").closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(false));
-  expect(screen.queryByRole("radio",{name:"Set username"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Set username"})).toBeNull();
   expect(screen.queryByLabelText("Username")).toBeNull();
-  expect(screen.getByLabelText("Email")).toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button",{name:"Change email"})).toBeVisible();
   expect(action).toHaveBeenCalledWith("/me/username",{username:"new-user",currentPassword:"old-password"});
 });
 
@@ -254,8 +259,8 @@ it("unbinds using current proof without requiring a target email code", async ()
   const changed = vi.fn();
   const action = vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:"user",email:"user@example.test",emailVerifiedAt:"2026-01-01",hasPassword:true}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
-  fireEvent.change(await screen.findByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.click(screen.getByRole("button",{name:"Unbind email"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Unbind email"}));
+  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
   fireEvent.click(screen.getAllByRole("button",{name:"Unbind email"}).at(-1)!);
   await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
   expect(action).toHaveBeenCalledWith("/me/email",{action:"unbind",currentPassword:"old-password"});
@@ -264,16 +269,18 @@ it("unbinds using current proof without requiring a target email code", async ()
 it("requires a new challenge after a bind failure instead of reusing a consumed code", async () => {
   vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:"user",email:null,emailVerifiedAt:null,hasPassword:true}) : path === "/email-code/send" ? ok({challengeId:"target",retryAfterSeconds:60}) : fail);
   render(<AccountSecurityPage onChanged={vi.fn()} />);
-  const email = await screen.findByLabelText("Email");
+  fireEvent.click(await screen.findByRole("button",{name:"Bind email"}));
+  const email = screen.getByLabelText("New email");
   fireEvent.change(email,{target:{value:"new@example.test"}});
-  fireEvent.click(screen.getByRole("button",{name:"Send code"}));
-  await screen.findByText(/If the address is eligible/);
-  fireEvent.change(screen.getByLabelText("Verification code"),{target:{value:"123456"}});
+  fireEvent.click(screen.getByRole("button",{name:"Send code to new email"}));
+  await screen.findByText("A verification code was sent to new@example.test.");
+  fireEvent.change(screen.getByLabelText("Code from new email"),{target:{value:"123456"}});
+  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
   fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(email.closest("form")!);
+  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
   await screen.findByText(fail.errMessage);
-  expect(screen.getByRole("button",{name:"Save changes"})).toBeDisabled();
-  expect(screen.getByLabelText("Verification code")).toHaveValue("");
+  expect(screen.getByRole("button",{name:"Continue to identity verification"})).toBeDisabled();
+  expect(screen.getByLabelText("Code from new email")).toHaveValue("");
 });
 
 it("offers browser sign-in when security requires a user session", async () => {

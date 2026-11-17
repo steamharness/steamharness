@@ -1,5 +1,7 @@
 # Unreleased
 
+- Separate account security actions for binding, verifying, changing, and unbinding email, passwords, and usernames. Enter changes before confirming identity; cancellation clears sensitive forms, with explicit code purposes and unbinding requirements.
+
 - Fixed account security navigation, manual device authorization, and account switching. Registration and recovery confirm passwords, failed requests can be retried, and security changes explain when to sign in again.
 
 - Added registration, recovery and account security pages. Device approval shows the current account and app channel, with a return link for Studio or CLI Web. Profiles have generated geometric avatars.
