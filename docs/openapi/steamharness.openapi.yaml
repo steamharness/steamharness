@@ -705,7 +705,7 @@ paths:
       tags: [Auth & Accounts]
       operationId: setAccountUsername
       summary: "设置一次性用户名"
-      description: "须验证当前密码或已验证邮箱的 reauth 验证码；用户名不区分大小写且设置后不可更改。"
+      description: "须有用户会话 Cookie。填写用户名后直接保存，无需当前密码或 reauth 验证码；用户名不区分大小写且设置后不可更改。"
       security:
         - SessionCookie: []
       requestBody:
@@ -738,7 +738,7 @@ paths:
       tags: [Auth & Accounts]
       operationId: setAccountEmail
       summary: "绑定、验证或解绑邮箱"
-      description: "须有用户会话 Cookie。首次绑定或验证当前未验证邮箱仅需属于当前账号的 bind-email 验证码，无需二次身份确认。更换已有邮箱还须验证当前密码或已验证邮箱的 reauth 验证码；此要求由服务端按账号现状判断。解绑须验证当前身份，且须有用户名和密码。保存后撤销旧登录态。"
+      description: "须有用户会话 Cookie。绑定、验证或更换邮箱仅需属于当前账号的目标邮箱 bind-email 验证码。解绑须已有用户名和密码。所有操作均无需当前密码或 reauth 验证码，保存后撤销旧登录态。"
       security:
         - SessionCookie: []
       requestBody:
@@ -771,7 +771,7 @@ paths:
       tags: [Auth & Accounts]
       operationId: setAccountPassword
       summary: "设置或修改密码"
-      description: "须验证当前密码或已验证邮箱；保存后撤销旧登录态，保留手工 API Key。"
+      description: "须有用户会话 Cookie。填写新密码后直接保存，无需当前密码或 reauth 验证码；保存后撤销旧登录态，保留手工 API Key。"
       security:
         - SessionCookie: []
       requestBody:
@@ -4878,47 +4878,29 @@ components:
         emailVerifiedAt: { type: [string, "null"], format: date-time }
         hasPassword: { type: boolean }
       required: [username, email, emailVerifiedAt, hasPassword]
-    AccountIdentityProof:
+    SetAccountUsernameRequest:
       type: object
       properties:
-        currentPassword: { type: string, maxLength: 4096 }
-        reauthChallengeId: { type: string }
-        reauthCode: { type: string, pattern: "^[0-9]{6}$" }
-      anyOf:
-        - required: [currentPassword]
-        - required: [reauthChallengeId, reauthCode]
-    SetAccountUsernameRequest:
-      allOf:
-        - $ref: "#/components/schemas/AccountIdentityProof"
-        - type: object
-          properties:
-            username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$" }
-          required: [username]
+        username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$" }
+      required: [username]
     SetAccountPasswordRequest:
-      allOf:
-        - $ref: "#/components/schemas/AccountIdentityProof"
-        - type: object
-          properties:
-            password: { type: string, minLength: 8, maxLength: 4096 }
-          required: [password]
+      type: object
+      properties:
+        password: { type: string, minLength: 8, maxLength: 4096 }
+      required: [password]
     SetAccountEmailRequest:
       type: object
       properties:
         action: { type: string, enum: [bind, unbind] }
         challengeId: { type: string }
         code: { type: string, pattern: "^[0-9]{6}$" }
-        currentPassword: { type: string, maxLength: 4096 }
-        reauthChallengeId: { type: string }
-        reauthCode: { type: string, pattern: "^[0-9]{6}$" }
       required: [action]
       oneOf:
         - properties:
             action: { enum: [bind] }
           required: [challengeId, code]
-        - allOf:
-            - $ref: "#/components/schemas/AccountIdentityProof"
-            - properties:
-                action: { enum: [unbind] }
+        - properties:
+            action: { enum: [unbind] }
     AccountMutationResult:
       type: object
       properties:

@@ -1,6 +1,6 @@
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
-import { getAuthCookieSecret, hashPassword, verifyPassword } from "./account-auth";
+import { getAuthCookieSecret, hashPassword } from "./account-auth";
 import { mailConfigured, sendAuthEmail, type EmailPurpose } from "./auth-mail";
 import { HttpError } from "./protocol";
 
@@ -10,7 +10,6 @@ export interface AccountSecurity {
   emailVerifiedAt: string | null;
   hasPassword: boolean;
 }
-export interface IdentityProof { password?: string; reauthChallengeId?: string; reauthCode?: string }
 interface IdentityRow {
   id: string; username: string | null; email: string | null; email_verified_at: Date | null;
   password_hash: string | null; disabled: boolean; identity_version: number;
@@ -167,18 +166,9 @@ export class AccountIdentityService {
     return {userId:user.id, identityVersion:user.identity_version};
   }
 
-  private async prove(user: IdentityRow, proof: IdentityProof): Promise<void> {
-    if (proof.password && user.password_hash && await verifyPassword(proof.password,user.password_hash)) return;
-    if (user.email_verified_at && proof.reauthChallengeId && proof.reauthCode) {
-      const challenge=await this.consumeCode(proof.reauthChallengeId,proof.reauthCode,"reauth",user.id);
-      if (challenge.email === user.email && challenge.identity_version === user.identity_version) return;
-    }
-    throw new HttpError(401,401,"Verify your current password or email to continue.");
-  }
-
-  async setUsername(userId: string, username: string, proof: IdentityProof): Promise<void> {
+  async setUsername(userId: string, username: string): Promise<void> {
     await this.ready;
-    const user=await this.user(userId); await this.prove(user,proof);
+    const user=await this.user(userId);
     await this.transaction(async client => {
       await this.lockUser(client,userId);
       const current=await this.user(userId,client);
@@ -188,13 +178,10 @@ export class AccountIdentityService {
     });
   }
 
-  async updateEmail(userId: string, input: IdentityProof & { action: "bind" | "unbind"; challengeId?: string; code?: string }): Promise<void> {
+  async updateEmail(userId: string, input: { action: "bind" | "unbind"; challengeId?: string; code?: string }): Promise<void> {
     await this.ready;
     const user=await this.user(userId);
     const target=input.action === "bind" ? await this.consumeCode(input.challengeId ?? "",input.code ?? "","bind-email",userId) : undefined;
-    // The signed-in account only needs the target code to add its first email
-    // or verify the same unverified address. Replacing or removing one needs proof.
-    if (!target || user.email && (user.email_verified_at || user.email !== target.email)) await this.prove(user,input);
     await this.transaction(async client => {
       await this.lockUser(client,userId);
       const current=await this.user(userId,client);
@@ -206,9 +193,9 @@ export class AccountIdentityService {
     });
   }
 
-  async setPassword(userId: string, password: string, proof: IdentityProof): Promise<void> {
+  async setPassword(userId: string, password: string): Promise<void> {
     await this.ready;
-    const user=await this.user(userId); await this.prove(user,proof);
+    const user=await this.user(userId);
     const passwordHash=await hashPassword(password);
     await this.transaction(async client => {
       await this.lockUser(client,userId);
