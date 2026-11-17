@@ -16,5 +16,7 @@ const require = createRequire(import.meta.url);
 const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
 await cp(path.join(codicons, 'dist'), path.join(output, 'codicons'), { recursive: true });
 await cp(path.join(root, 'src/web/theme.css'), path.join(output, 'theme.css'));
-await cp(path.join(root, 'src/web/worker.mjs'), path.join(output, 'worker.mjs'));
+// The worker imports private workspace metadata at runtime. Inline those
+// modules so installed CLI packages work outside a monorepo checkout.
+await build({ absWorkingDir: root, entryPoints: ['src/web/worker.mjs'], outfile: path.join(output, 'worker.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', external: ['tsx/esm/api', 'import-meta-resolve'], logLevel: 'info' });
 await cp(path.join(root, 'src/web/worker-transport.mjs'), path.join(output, 'worker-transport.mjs'));
