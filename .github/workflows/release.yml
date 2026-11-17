@@ -57,12 +57,17 @@ jobs:
 
       # pnpm pack 执行 prepack 构建并应用 publishConfig、workspace 版本替换。
       # CLI 的构建依赖 harness 的 dist，顺序不能反；两个包均成功打包后才发布。
+      # SDK 的声明构建在默认 Node heap（约 2 GiB）下 OOM；显式 4 GiB 实测通过。
       - name: 打包 steamharness（SDK）
         working-directory: harness
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm pack --out "$RUNNER_TEMP/steamharness-core.tgz"
 
       - name: 打包 @steamharness/cli
         working-directory: cli
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm pack --out "$RUNNER_TEMP/steamharness-cli.tgz"
 
       - name: 发布 steamharness（SDK）
