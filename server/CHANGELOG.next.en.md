@@ -1,5 +1,7 @@
 # Unreleased
 
+- First email binding and verification of the current unverified address require only the target email code. Replacement and removal still verify the current identity.
+
 - Signing out revokes Studio and CLI credentials while preserving manually created API keys.
 
 - Added opt-in registration, verified email sign-in, binding, password recovery and account security APIs. Identity changes revoke existing application sign-ins.

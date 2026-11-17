@@ -52,9 +52,9 @@ it.each([
 });
 
 it("keeps new-email inputs apart from current-password autofill and clears both on cancel", async () => {
-  const action = mockAccount(unbound);
+  const action = mockAccount();
   render(<AccountSecurityPage onChanged={vi.fn()} />);
-  await open("Bind email");
+  await open("Change email");
   expect(screen.getByLabelText("New email")).toHaveAttribute("name", "new-email");
   expect(screen.getByLabelText("New email")).toHaveAttribute("autocomplete", "section-security-target email");
   expect(screen.queryByLabelText("Current password")).toBeNull();
@@ -69,7 +69,7 @@ it("keeps new-email inputs apart from current-password autofill and clears both 
   passwordDetails(); next();
   expect(screen.getByLabelText("Current password")).toHaveValue("");
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  await open("Bind email");
+  await open("Change email");
   expect(screen.getByLabelText("New email")).toHaveValue("");
   expect(screen.getByLabelText("Code from new email")).toHaveValue("");
   expect(screen.getByLabelText("Code from new email")).toBeDisabled();
@@ -87,11 +87,50 @@ it("verifies an existing unverified address without turning it into a change-ema
   fireEvent.click(dialog.getByRole("button", { name: "Send code" }));
   await screen.findByText("A verification code was sent to current@example.test.");
   fireEvent.change(screen.getByLabelText("Email verification code"), { target: { value: "111111" } });
-  next();
-  fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "old-password" } });
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Continue to identity verification" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
   await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
-  expect(action).toHaveBeenCalledWith("/me/email", { action: "bind", challengeId: "bind-email", code: "111111", currentPassword: "old-password" });
+  expect(action).toHaveBeenCalledWith("/me/email", { action: "bind", challengeId: "bind-email", code: "111111" });
+});
+
+it.each([
+  [{ ...unbound, hasPassword: false }, "Bind email"],
+  [{ ...bound, emailVerifiedAt: null, hasPassword: false }, "Verify email"],
+] as const)("allows target-code-only binding without an existing identity proof method (%s)", async (security, title) => {
+  const action = mockAccount(security);
+  const changed = vi.fn();
+  render(<AccountSecurityPage onChanged={changed} />);
+  const dialog = await open(title);
+  expect(dialog.queryByLabelText("Current password")).toBeNull();
+  expect(dialog.queryByLabelText("Code from current email")).toBeNull();
+  expect(dialog.queryByRole("button", { name: "Continue to identity verification" })).toBeNull();
+  const emailLabel = title === "Bind email" ? "New email" : "Email";
+  const codeLabel = title === "Bind email" ? "Code from new email" : "Email verification code";
+  if (title === "Bind email") fireEvent.change(dialog.getByLabelText(emailLabel), { target: { value: "new@example.test" } });
+  fireEvent.submit(dialog.getByRole("form"));
+  expect(action).not.toHaveBeenCalledWith("/me/email", expect.anything());
+  fireEvent.click(dialog.getByRole("button", { name: title === "Bind email" ? "Send code to new email" : "Send code" }));
+  await screen.findByText(`A verification code was sent to ${title === "Bind email" ? "new@example.test" : bound.email}.`);
+  fireEvent.change(screen.getByLabelText(codeLabel), { target: { value: "111111" } });
+  fireEvent.click(screen.getByRole("button", { name: title }));
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(true));
+  expect(action).toHaveBeenCalledWith("/me/email", { action: "bind", challengeId: "bind-email", code: "111111" });
+});
+
+it("blocks duplicate direct-bind submissions while the target code is being saved", async () => {
+  const action = mockAccount(unbound);
+  render(<AccountSecurityPage onChanged={vi.fn()} />);
+  await open("Bind email"); await newEmail();
+  let finish!: (value: any) => void;
+  action.mockImplementation(() => new Promise(done => { finish = done; }));
+  const form = screen.getByLabelText("New email").closest("form")!;
+  fireEvent.submit(form); fireEvent.submit(form);
+  expect(action.mock.calls.filter(([path]) => path === "/me/email")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Bind email" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await act(async () => finish(ok({})));
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("keeps new-email proof and current-email identity proof separate during a change", async () => {
@@ -144,7 +183,7 @@ it("discards a cancelled request's challenge, preserves its delivery limit, and 
   expect(screen.getByLabelText("Code from new email")).toBeDisabled();
   expect(screen.queryByText("A verification code was sent to new@example.test.")).toBeNull();
   expect(screen.getByRole("button", { name: /Resend in/ })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Continue to identity verification" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Bind email" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await open("Change password");
   expect(screen.getByLabelText("New password")).toBeEnabled();

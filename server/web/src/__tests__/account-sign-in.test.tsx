@@ -86,7 +86,7 @@ it("prevents approval of expired requests", async () => {
   expect(screen.getByRole("button",{name:"Approve login"})).toBeDisabled();
 });
 
-it("shows an unbound account and sends its current password proof when binding an email", async () => {
+it("binds an email using only the target code and the signed-in account", async () => {
   const changed=vi.fn();
   const action=vi.spyOn(apiClient,"authAction").mockImplementation(async path => path === "/config" ? ok({mailAvailable:true}) : path === "/me/security" ? ok({username:"test_user",email:null,emailVerifiedAt:null,hasPassword:true}) : path === "/email-code/send" ? ok({challengeId:"target",retryAfterSeconds:60}) : ok({}));
   render(<AccountSecurityPage onChanged={changed} />);
@@ -98,11 +98,11 @@ it("shows an unbound account and sends its current password proof when binding a
   await waitFor(() => expect(action).toHaveBeenCalledWith("/email-code/send",{email:"bound@example.test",purpose:"bind-email"}));
   await screen.findByText("A verification code was sent to bound@example.test.");
   fireEvent.change(screen.getByLabelText("Code from new email"),{target:{value:"123456"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"test-password"}});
-  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
+  expect(screen.queryByLabelText("Current password")).toBeNull();
+  expect(screen.queryByRole("button",{name:"Continue to identity verification"})).toBeNull();
+  fireEvent.submit(email.closest("form")!);
   await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
-  expect(action).toHaveBeenCalledWith("/me/email",expect.objectContaining({action:"bind",challengeId:"target",code:"123456",currentPassword:"test-password"}));
+  expect(action).toHaveBeenCalledWith("/me/email",{action:"bind",challengeId:"target",code:"123456"});
 });
 
 
@@ -275,11 +275,9 @@ it("requires a new challenge after a bind failure instead of reusing a consumed 
   fireEvent.click(screen.getByRole("button",{name:"Send code to new email"}));
   await screen.findByText("A verification code was sent to new@example.test.");
   fireEvent.change(screen.getByLabelText("Code from new email"),{target:{value:"123456"}});
-  fireEvent.click(screen.getByRole("button",{name:"Continue to identity verification"}));
-  fireEvent.change(screen.getByLabelText("Current password"),{target:{value:"old-password"}});
-  fireEvent.submit(screen.getByLabelText("Current password").closest("form")!);
+  fireEvent.submit(email.closest("form")!);
   await screen.findByText(fail.errMessage);
-  expect(screen.getByRole("button",{name:"Continue to identity verification"})).toBeDisabled();
+  expect(screen.getByRole("button",{name:"Bind email"})).toBeDisabled();
   expect(screen.getByLabelText("Code from new email")).toHaveValue("");
 });
 

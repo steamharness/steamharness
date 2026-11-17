@@ -62,7 +62,7 @@ export function AccountSecurityPage({ onChanged, onSignIn }: {
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription><Button variant="outline" disabled={loading} onClick={() => void load()}>{t("commonRefresh")}</Button></Alert> : null}
     {notice ? <Alert role="status"><AlertDescription>{notice}</AlertDescription></Alert> : null}
     {!mail ? <Alert><AlertDescription>{t("authMailUnavailable")}</AlertDescription></Alert> : null}
-    {!canProve ? <Alert><AlertDescription>{t("authSecurityProofUnavailable")}</AlertDescription></Alert> : null}
+    {!canProve && !mail ? <Alert><AlertDescription>{t("authSecurityProofUnavailable")}</AlertDescription></Alert> : null}
     <Card>
       <CardHeader><CardTitle>{t("loginEmailLabel")}</CardTitle><CardDescription>{t("authEmailSecurityHelp")}</CardDescription></CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -72,8 +72,8 @@ export function AccountSecurityPage({ onChanged, onSignIn }: {
         {security.email && (!security.username || !security.hasPassword) ? <p className="text-sm text-muted-foreground">{t("authUnbindRequirements")}</p> : null}
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
-        {!security.email ? <AccountSecurityAction {...actionProps} action="bind-email" disabled={actionProps.disabled || !mail} /> : <>
-          {!security.emailVerifiedAt ? <AccountSecurityAction {...actionProps} action="verify-email" disabled={actionProps.disabled || !mail} /> : null}
+        {!security.email ? <AccountSecurityAction {...actionProps} action="bind-email" disabled={loading || !mail} /> : <>
+          {!security.emailVerifiedAt ? <AccountSecurityAction {...actionProps} action="verify-email" disabled={loading || !mail} /> : null}
           <AccountSecurityAction {...actionProps} action="change-email" disabled={actionProps.disabled || !mail} />
           <AccountSecurityAction {...actionProps} action="unbind-email" disabled={actionProps.disabled || !security.username || !security.hasPassword} />
         </>}

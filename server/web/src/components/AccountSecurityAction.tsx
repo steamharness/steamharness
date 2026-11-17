@@ -92,6 +92,7 @@ function SecurityActionForm({ action, security, mail, cooldowns, title, onCommit
 }) {
   const { t } = useTranslation("serverWeb");
   const binding = action === "bind-email" || action === "verify-email" || action === "change-email";
+  const directBinding = action === "bind-email" || action === "verify-email";
   const [step, setStep] = useState<"details" | "proof">(action === "unbind-email" ? "proof" : "details");
   const [email, setEmail] = useState(action === "verify-email" ? security.email || "" : "");
   const [username, setUsername] = useState("");
@@ -145,9 +146,9 @@ function SecurityActionForm({ action, security, mail, cooldowns, title, onCommit
   }
 
   async function save() {
-    if (requestPending.current || !hasProof) return;
+    if (requestPending.current || (!directBinding && !hasProof) || (binding && (!challenge || !/^\d{6}$/.test(code) || emailUnchanged))) return;
     requestPending.current = true; setPending("save"); onCommitting(true); clearFeedback();
-    const proof = proofMethod === "password" ? { currentPassword } : { reauthChallengeId: reauth, reauthCode };
+    const proof = directBinding ? {} : proofMethod === "password" ? { currentPassword } : { reauthChallengeId: reauth, reauthCode };
     let succeeded = false;
     try {
       const path = action === "username" ? "/me/username" : action === "password" ? "/me/password" : "/me/email";
@@ -179,6 +180,7 @@ function SecurityActionForm({ action, security, mail, cooldowns, title, onCommit
     if (requestPending.current || !event.currentTarget.reportValidity()) return;
     if (step === "proof") { void save(); return; }
     if (binding && (!challenge || !/^\d{6}$/.test(code) || emailUnchanged)) return;
+    if (directBinding) { void save(); return; }
     if (action === "password" && password !== confirmation) { setError(t("accountInvitePasswordMismatch")); return; }
     clearFeedback(); clearProof(); setStep("proof");
   }
@@ -244,7 +246,7 @@ function SecurityActionForm({ action, security, mail, cooldowns, title, onCommit
         {step === "proof" && action !== "unbind-email" ? <Button type="button" variant="outline" disabled={busy} onClick={() => { clearProof(); clearFeedback(); setStep("details"); }}>{t("authEditSecurityDetails")}</Button> : null}
         <Button type="submit" variant={action === "unbind-email" ? "destructive" : "default"} aria-busy={pending === "save"}
           disabled={busy || (step === "proof" ? !hasProof : binding && (!mail || !challenge || !/^\d{6}$/.test(code) || emailUnchanged))}>
-          {pending === "save" ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : null}{step === "details" ? t("authContinueToProof") : title}
+          {pending === "save" ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : null}{step === "details" && !directBinding ? t("authContinueToProof") : title}
         </Button>
       </DialogFooter>
     </form>

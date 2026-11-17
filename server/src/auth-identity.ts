@@ -190,8 +190,11 @@ export class AccountIdentityService {
 
   async updateEmail(userId: string, input: IdentityProof & { action: "bind" | "unbind"; challengeId?: string; code?: string }): Promise<void> {
     await this.ready;
-    const user=await this.user(userId); await this.prove(user,input);
+    const user=await this.user(userId);
     const target=input.action === "bind" ? await this.consumeCode(input.challengeId ?? "",input.code ?? "","bind-email",userId) : undefined;
+    // The signed-in account only needs the target code to add its first email
+    // or verify the same unverified address. Replacing or removing one needs proof.
+    if (!target || user.email && (user.email_verified_at || user.email !== target.email)) await this.prove(user,input);
     await this.transaction(async client => {
       await this.lockUser(client,userId);
       const current=await this.user(userId,client);

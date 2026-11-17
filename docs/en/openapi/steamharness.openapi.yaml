@@ -745,7 +745,7 @@ paths:
       tags: [Auth & Accounts]
       operationId: setAccountEmail
       summary: "Bind, verify or unbind email"
-      description: "Requires current identity proof. Binding also requires a bind-email code tied to this account. Unbinding requires a username and password. Revokes existing sign-ins after saving."
+      description: "Requires a user session cookie. A first binding or verification of the current unverified email only needs a bind-email code tied to this account, without a second identity check. Replacing an existing address also requires the current password or a verified-email reauth code; the Server decides from the stored account state. Unbinding requires current identity proof, a username, and a password. Revokes existing sign-ins after saving."
       security:
         - SessionCookie: []
       requestBody:
@@ -4935,18 +4935,21 @@ components:
             password: { type: string, minLength: 8, maxLength: 4096 }
           required: [password]
     SetAccountEmailRequest:
-      allOf:
-        - $ref: "#/components/schemas/AccountIdentityProof"
-        - type: object
-          properties:
-            action: { type: string, enum: [bind, unbind] }
-            challengeId: { type: string }
-            code: { type: string, pattern: "^[0-9]{6}$" }
-          required: [action]
-          oneOf:
-            - properties:
-                action: { enum: [bind] }
-              required: [challengeId, code]
+      type: object
+      properties:
+        action: { type: string, enum: [bind, unbind] }
+        challengeId: { type: string }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+        currentPassword: { type: string, maxLength: 4096 }
+        reauthChallengeId: { type: string }
+        reauthCode: { type: string, pattern: "^[0-9]{6}$" }
+      required: [action]
+      oneOf:
+        - properties:
+            action: { enum: [bind] }
+          required: [challengeId, code]
+        - allOf:
+            - $ref: "#/components/schemas/AccountIdentityProof"
             - properties:
                 action: { enum: [unbind] }
     AccountMutationResult:
