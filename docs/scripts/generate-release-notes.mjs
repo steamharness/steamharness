@@ -124,6 +124,7 @@ function unitHref(locale, slug, version) {
 
 async function versionPage(unit, release, locale, root) {
   const label = locale === "en" ? `${unit.label} ${release.version}` : `${unit.label} 发布日志`;
+  const tag = `${unit.slug === "cli" ? "steamharness" : unit.packageLabel}/v${release.version}`;
   const out = [
     frontmatter(locale === "en" ? `${unit.label} ${release.version}` : `${unit.label} v${release.version}`,
       locale === "en"
@@ -132,8 +133,8 @@ async function versionPage(unit, release, locale, root) {
     `# ${locale === "en" ? `${unit.label} ${release.version}` : `${unit.label} v${release.version}`}`,
     "",
     locale === "en"
-      ? `${release.date} · Tag \`${unit.packageLabel}/v${release.version}\` · ${unit.target}`
-      : `${release.date} · Tag \`${unit.packageLabel}/v${release.version}\` · ${unit.target}`,
+      ? `${release.date} · Tag \`${tag}\` · ${unit.target}`
+      : `${release.date} · Tag \`${tag}\` · ${unit.target}`,
     "",
     `<span id="${unit.packageLabel}-${release.version.replace(/\./g, "-")}" className="release-version-anchor"></span>`,
     `<span id="${unit.packageLabel}.${release.version}" className="release-version-anchor"></span>`,
@@ -177,12 +178,13 @@ function indexPage(unit, releases, locale, previous = "") {
   }
   for (const release of releases) {
     const link = `[v${release.version}](${unitHref(locale, unit.slug, `v${release.version}`)})`;
+    const tag = `${unit.slug === "cli" ? "steamharness" : unit.packageLabel}/v${release.version}`;
     const target = locale === "en"
       ? ({ "当前设备": "Deployment", "内置项目更新": "Built-in project" }[unit.target] ?? unit.target)
       : unit.target;
     rows.set(release.version, locale === "en"
       ? `| ${link} | ${release.date} | ${target} | [Open](${unit.endpoint}) |`
-      : `| ${link} | \`${unit.packageLabel}/v${release.version}\` | ${release.date} | ${unit.target} | — | — | [入口](${unit.endpoint}) |`);
+      : `| ${link} | \`${tag}\` | ${release.date} | ${unit.target} | — | — | [入口](${unit.endpoint}) |`);
   }
   out.push(...[...rows.entries()].sort(([left], [right]) => compareVersions(right, left)).map(([, row]) => row));
   out.push("");

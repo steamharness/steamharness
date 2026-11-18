@@ -98,6 +98,26 @@ test("generateReleaseNotes rewrites repository-relative Docs links to site paths
   }
 });
 
+test("Core and CLI reference their shared monorepo release tag", async () => {
+  const { docs, workspace } = await createFixture();
+  try {
+    for (const source of ["harness", "cli"]) {
+      await writeFile(path.join(workspace, source, "CHANGELOG.md"), CHANGELOG_ZH);
+      await writeFile(path.join(workspace, source, "CHANGELOG.en.md"), CHANGELOG_EN);
+    }
+    await generateReleaseNotes({ root: docs, workspace });
+    for (const prefix of ["", "en/"]) {
+      for (const slug of ["core", "cli"]) {
+        const page = await readFile(path.join(docs, prefix, `guides/releases/${slug}/v0.2.4.mdx`), "utf8");
+        assert.match(page, /Tag `steamharness\/v0\.2\.4`/u);
+      }
+    }
+    assert.match(await readFile(path.join(docs, "guides/releases/cli.mdx"), "utf8"), /`steamharness\/v0\.2\.4`/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("generateReleaseNotes leaves a link alone when its target page is missing", async () => {
   const { docs, workspace } = await createFixture();
   try {
