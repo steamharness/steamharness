@@ -1,6 +1,6 @@
 {
   "name": "@steamharness/cli",
-  "version": "0.2.0",
+  "version": "0.2.0-20261118001",
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
@@ -37,7 +37,7 @@
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "steamharness": "0.2.0"
+    "steamharness": "0.2.0-20261118001"
   },
   "devDependencies": {
     "@dagrejs/dagre": "1.1.8",
@@ -58,7 +58,7 @@
     "dompurify": "3.3.1",
     "marked": "17.0.1",
     "semver": "^7.7.4",
-    "steamharness": "0.2.0",
+    "steamharness": "0.2.0-20261118001",
     "tsup": "^8.5.1",
     "vitest": "^4.1.7",
     "@steamharness/project-configuration": "workspace:*",
