@@ -271,7 +271,7 @@ function initialize(): void {
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
       changed: policies => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies }) }),
-    usage: { available: () => !!state?.account?.aiConfigured && !!state.project.requiresLogin && state.account.status === 'authenticated',
+    usage: { available: () => !!state?.account?.aiConfigured && !!state.project.requiresLogin,
       load: requestId => post({ type: 'usage', requestId }) },
   });
   const contentSearch = new ContentSearch(transcript, () => { followingLatest = false; });
@@ -644,7 +644,7 @@ function initialize(): void {
     refresh.classList.toggle('refreshing', parametersLoading());
     document.querySelector<HTMLElement>('#parameter-status')!.hidden = !parametersLoading() || !dynamic;
     document.querySelector('#parameters')!.setAttribute('aria-busy', String(parametersLoading()));
-    document.querySelector<HTMLElement>('#parameter-login')!.hidden = !authenticationRequired || state.account?.status === 'authenticated';
+    document.querySelector<HTMLElement>('#parameter-login')!.hidden = document.body.dataset.platform !== 'true' || !authenticationRequired || state.account?.status === 'authenticated';
     parameterActions.update();
     conversationComposer.update();
     conversationMentions.update();
@@ -1079,7 +1079,7 @@ function initialize(): void {
     });
     avatar.classList.add('message-avatar', message.role === 'user' ? 'user-avatar' : 'project-avatar');
     avatar.setAttribute('aria-haspopup', 'dialog');
-    if (message.role === 'user') { root.append(avatar); }
+    if (message.role === 'user') { if (document.body.dataset.platform === 'true') root.append(avatar); }
     else { root.querySelector('.message-header')!.prepend(avatar); }
     const view: MessageView = { root, content: root.querySelector('.message-content')!, metadata: root.querySelector('.message-metadata')!, error: root.querySelector('.message-error')!, message,
       avatar, feedback: root.querySelector('.message-feedback')!,

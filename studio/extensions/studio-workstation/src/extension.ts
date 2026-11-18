@@ -168,9 +168,6 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   );
   await recent.reconcile();
   await rememberCurrentWorkspace();
-  // The private Studio layer restores its AI connection before any workflow
-  // runtime is created, so assistant workers see the current session on the
-  // first launch after a restart.
   await activateInternalLayer(context, output, account);
   const workflows = await activateProject(context, launcher, output, account, icons);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,

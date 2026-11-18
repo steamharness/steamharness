@@ -7,5 +7,7 @@ draft: true
 
 #### Changed
 
+- Local development no longer opens a platform session. Use `--online project` or `--online ai` to connect on demand. {/* note: explicit-platform-connection */}
+
 - CLI Web supports streaming, queues, stopping, and manual retries for LLM Bots. Changing the project engine starts a new conversation and preserves the old history. Bot templates explicitly declare the Agent engine. {/* note: draft-1 */}
 - CLI Web no longer asks for a server address. Click **Browser sign-in** to authorize access and return to the original link and Bot conversation in the same tab. {/* note: cli-web-one-click-sign-in */}

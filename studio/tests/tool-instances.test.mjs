@@ -42,7 +42,7 @@ function fixture(t, options = {}) {
       resolve(view) { instance.view = view; }, selectProject: async () => { instance.picked = true; },
     };
     subscriptions.push({ dispose() { instance.disposed = true; } }); instances.push(instance); return instance;
-  });
+  }, true);
   t.after(() => manager.dispose());
   return { manager, panels, panel, commands, serializers, instances };
 }

@@ -25,8 +25,8 @@ test('native export support forwards content only from the trusted project frame
   assert.deepEqual(JSON.parse(JSON.stringify(exports())), [data]);
 });
 
-test('cloud project navigation uses the trusted host bridge and reports its outcome to the frame', () => {
-  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Bot', 'file:///project', 'dark', 'nonce');
+for (const platform of [false, true]) test(`cloud project and account messages require the trusted platform bridge (platform=${platform})`, () => {
+  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Bot', 'file:///project', 'dark', 'nonce', 'en', undefined, undefined, false, platform);
   const listeners = {}, sent = [], frameMessages = [], child = { postMessage: value => frameMessages.push(value) };
   const frame = { contentWindow: child, addEventListener: (type, callback) => { listeners[type] = callback; }, set src(_value) { listeners.load(); } };
   runInNewContext(html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1], {
@@ -34,7 +34,7 @@ test('cloud project navigation uses the trusted host bridge and reports its outc
     document: { documentElement: { dataset: {} }, getElementById: () => frame },
     addEventListener: (type, callback) => { listeners[type] = callback; },
   });
-  assert.equal(frameMessages[0].serverProjectVersion, 1);
+  assert.equal(frameMessages[0].serverProjectVersion, platform ? 1 : undefined);
   const data = { type: 'workflow-server-project', version: 1, requestId: 'open', projectId: 'current' };
   const opened = () => sent.filter(message => message.type === 'workflow-server-project');
   listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data });
@@ -42,7 +42,11 @@ test('cloud project navigation uses the trusted host bridge and reports its outc
   listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: { ...data, version: 2 } });
   assert.equal(opened().length, 0);
   listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data });
-  assert.deepEqual(JSON.parse(JSON.stringify(opened())), [data]);
+  assert.deepEqual(JSON.parse(JSON.stringify(opened())), platform ? [data] : []);
+  const account = { type: 'workflow-account', version: 1 };
+  listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: account });
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.filter(message => message.type === 'workflow-account'))), platform ? [account] : []);
+  if (!platform) return;
   const result = { type: 'workflow-host', serverProjectOpened: { version: 1, requestId: 'open' } };
   listeners.message({ source: {}, data: result });
   assert.deepEqual(JSON.parse(JSON.stringify(frameMessages.at(-1))), result);

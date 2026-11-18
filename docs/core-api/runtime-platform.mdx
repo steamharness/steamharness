@@ -26,10 +26,10 @@ steamharness.isDesktop(): boolean
 
 ## 存储与平台分别配置
 
-本地开发可以在同一台机器运行 Server 与 Docker PostgreSQL。运行历史的位置由[运行存储](/core-api/runtime-storage)决定，不能仅根据平台名称推断。
+[运行存储](/core-api/runtime-storage)决定历史记录保存位置。默认使用本地存储，连接账号不会切换存储位置。
 
 ## 宿主资源管理
 
-Studio 和 CLI Web 通过经过鉴权的 Server Web 页面管理项目、附件与账号权限，链接不含账号 token。
+开源 Studio 只提供本地开发入口。增强版 Studio 可按需打开 Server 功能；独立 CLI 使用 `--online project` 或 `--online ai` 连接相应服务。浏览器链接不包含账号令牌。
 
 项目 RPC 与 Browser 页面只获得被允许的宿主操作。

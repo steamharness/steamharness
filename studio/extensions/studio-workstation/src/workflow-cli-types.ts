@@ -25,7 +25,9 @@ export interface WebSession {
   ready: WebReady;
   closed: Promise<void>;
   close(): Promise<void>;
-  updateAuth(connection?: Connection): void;
+  updateAuth(connection?: Connection, ai?: Connection): void;
+  connectPlatform?(purpose: 'project' | 'ai' | 'web-app', entryId: string): Promise<void>;
+  connectWebApp?(entryId?: string, connection?: Connection): Promise<void>;
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
   readModelRequest?(entryId: string, target: TraceModelRequestTarget): Promise<unknown>;
@@ -52,7 +54,7 @@ export interface Launcher {
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
     beforeReplace: () => Promise<void>, afterReplace: (projects: DownloadedServerProject[]) => Promise<void>): Promise<UpdatedServerProject>;
   environmentStatus?(): Promise<StartEnvironment>;
-  nodeRuntime?(): Promise<{ nodePath: string; env: Record<string, string | undefined>; electron: boolean }>;
+  nodeRuntime?(): Promise<{ nodePath: string; env: Record<string, string | null | undefined>; electron: boolean }>;
   analysisSummary?(): Promise<StartSummary>;
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
   inspect(paths: string[], options?: { validationDetails?: boolean }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
@@ -60,6 +62,7 @@ export interface Launcher {
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, resourceProjects?: string[]): Promise<WebSession>;
+  startLegacyLocalFrame?(origin: URL): Promise<{ port: number; dispose(): void }>;
   cliEntry(projectDir: string): Promise<string>;
   dispose(): void;
 }

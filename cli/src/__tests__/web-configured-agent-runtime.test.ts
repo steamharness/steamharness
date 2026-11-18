@@ -266,8 +266,8 @@ it.each(['agent', 'llm'] as const)('%s Bot runs saved system and third-party mod
       });
       export default executor;
     `);
-    app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: {
-      serverUrl: origin, accessToken: 'project-identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
+    app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', systemAiConnection: {
+      serverUrl: origin, accessToken: 'ai-identity',
     } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
@@ -326,7 +326,7 @@ it.each(['agent', 'llm'] as const)('%s Bot runs saved system and third-party mod
     expect(calls).toHaveLength(3);
 
     subscribed = true;
-    await app.setHostConnection({ serverUrl: origin, accessToken: 'next-project-identity', aiServerUrl: origin, aiAccessToken: 'next-ai-identity' });
+    await app.setHostConnection(undefined, { serverUrl: origin, accessToken: 'next-ai-identity' });
     const switchedAt = catalogRequests.length;
     await post({ type: 'send', text: 'Changed account', params: { model: 'responses' }, attachments: [] });
     await expect.poll(() => app!.controller!.current.messages.at(-1)?.content).toContain('Answer from system-responses');
@@ -335,7 +335,7 @@ it.each(['agent', 'llm'] as const)('%s Bot runs saved system and third-party mod
     expect(catalogRequests.slice(switchedAt)).toEqual(['Bearer next-ai-identity', 'Bearer next-ai-identity']);
     expect(calls.at(-1)?.token).toBe(`Bearer responses-${generation}`);
 
-    await app.setHostConnection({ serverUrl: origin, accessToken: 'next-project-identity' });
+    await app.setHostConnection(undefined);
     const offlineAt = catalogRequests.length;
     state = app.configurations!.state;
     const updated = [{ ...models[2], model: 'third-next-model', apiKey: 'third-next-identity' }, ...models.slice(0, 2)];

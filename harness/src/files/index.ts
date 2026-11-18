@@ -125,6 +125,15 @@ export function createProjectFileStore(options: {
 export function createServerProjectFileStore(
   options: ServerProjectFileStoreOptions,
 ): FileStore {
+  return createManagedFileStore(options, 'server');
+}
+
+/** Stores generated files on disk without a Server connection. */
+export function createLocalProjectFileCreator(options: ServerProjectFileStoreOptions): FileStore {
+  return createManagedFileStore(options, 'local');
+}
+
+function createManagedFileStore(options: ServerProjectFileStoreOptions, storage: 'local' | 'server'): FileStore {
   const resolveStore = createLocalProjectFileStore({
     rootDir: options.rootDir,
     allowAbsolutePaths: true,
@@ -132,7 +141,6 @@ export function createServerProjectFileStore(
 
   return createProjectFileStore({
     resolveStore,
-    // This explicit store writes generated files to the server-managed namespace.
     async createFile(input) {
       const buffer = normalizeCreateFileBuffer(input.buffer);
       const maxBytes = options.maxBytes ?? DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES;
@@ -156,14 +164,14 @@ export function createServerProjectFileStore(
         mimeType,
         size: buffer.byteLength,
         kind: input.kind ?? (mimeType.startsWith("image/") ? "image" : "file"),
-        storage: "server",
+        storage,
         projectId: options.projectName,
         conversationId: readNonEmptyString(input.conversationId) ?? readNonEmptyString(options.conversationId),
         createdAt: new Date().toISOString(),
-        url: `/api/projects/files/${encodeURIComponent(id)}`,
+        ...(storage === 'server' ? { url: `/api/projects/files/${encodeURIComponent(id)}` } : {}),
       };
       const dir = path.join(options.rootDir, id);
-      await mkdir(dir, { recursive: true });
+      await mkdir(dir, { recursive: true, mode: 0o700 });
       await writeFile(path.join(dir, "content"), buffer);
       await writeFile(path.join(dir, "metadata.json"), `${JSON.stringify(reference, null, 2)}\n`, "utf8");
 
@@ -381,7 +389,7 @@ function createInvalidFileReferenceError(): HarnessError {
 export function createProjectFileCreateUnavailableError(): HarnessError {
   return new HarnessError({
     type: "execution",
-    message: "Workflow file creation requires a configured file store. Connect the local host to server file storage or inject a workflow file creator.",
+    message: "Workflow file creation requires a file creator supplied by the runtime host.",
   });
 }
 

@@ -88,7 +88,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
   try {
     const client = new ProjectServerClient(options.connection);
     try { await client.versions(options.projectId, options.signal); }
-    catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } else { throw error; } }
+    catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Run steamharness workspace upload --create in a separate release copy. The server assigns a new ID to that copy.')); } else { throw error; } }
     const manifest = await readProjectManifestFromDirectory(options.directory);
     const expectedConfigurationRevisions = Object.fromEntries(await Promise.all(manifest.entries.map(async entry => {
       const state = await client.configurations<{publicationRevision?:number}>(options.projectId, entry.entryId, 'draft', options.signal);

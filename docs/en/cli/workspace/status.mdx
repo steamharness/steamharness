@@ -14,25 +14,27 @@ Connection settings resolve in this order:
 3. Saved CLI sign-in details.
 4. Channel defaults.
 
-Use `effective.serverUrl` for the current target; `serverUrl` is only the saved value. Studio injects its current session into project execution and built-in terminals, which can differ from an independent terminal's saved login.
+Check `effective.serverUrl` and `effective.tokenSource` for the connection settings this invocation would use. `serverUrl` is the saved address. Selecting a different address does not reuse credentials saved for the original one.
 
 ## Command Format
 
 ```bash
 pnpm exec steamharness workspace status
+pnpm exec steamharness workspace status --ai --server https://server.example.com
 ```
 
 ## Parameter
 
 |Parameter|Description|
 | --- | --- |
-|None|The command does not read positional parameters.|
+| `--ai` | Inspect System AI credentials. This selects `STEAMHARNESS_AI_SERVER_URL` and `STEAMHARNESS_AI_API_KEY` as the environment overrides. |
+| `--server <URL>` | Inspect sign-in and connection settings for this address only. |
 
 ## Output field
 
 |Field|Description|
 | --- | --- |
-| `loggedIn` |CLI When both a non-empty server URL and API Key are present in the login state, it is `true`.|
+| `loggedIn` | `true` when the CLI has a saved Server address and an unexpired API key. The key is not checked with the Server. |
 | `serverUrl` |CLI The server URL saved in the login state.|
 | `user` |The user summary obtained from the most recent device flow login.|
 | `expiresAt` |API Key expiration time.|

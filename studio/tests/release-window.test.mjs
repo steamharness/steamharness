@@ -99,7 +99,9 @@ test('release chrome displays project identity and filters authoring tools', asy
   assert.equal(document.querySelector('.studio-release-project-logo').getAttribute('src'), 'data:image/svg+xml;base64,PHN2Zy8+');
   assert.equal(document.querySelector('.studio-release-project').hidden, false);
   const after = [...tools.element.querySelectorAll('[data-tool]')].map(node => node.dataset.tool);
-  assert.ok(!after.includes('editor')); assert.ok(!after.includes('assistant')); assert.ok(after.includes('versions')); assert.ok(after.includes('trace'));
+  assert.ok(!after.includes('editor')); assert.ok(!after.includes('assistant')); assert.ok(!after.includes('versions')); assert.ok(after.includes('trace'));
+  native.studioModeState.state = { ...native.studioModeState.state, platform: true };
+  tools.render(); assert.ok(tools.element.querySelector('[data-tool="versions"]'));
   assert.equal(native.isStudioSteamToolAvailable('editor'), false);
   caption.dispose(); tools.dispose(); dom.window.close();
 });

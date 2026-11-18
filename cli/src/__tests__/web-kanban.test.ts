@@ -59,7 +59,7 @@ it('keeps uploads on the verified local template version and checks local author
   expect((await post({...message,revision:changed.revision})).ok).toBe(false);
   expect(uploaded).toHaveBeenCalledOnce();
 });
-it.each(['background refresh', 'account change'] as const)('handles %s during a configuration attachment upload', async change => {
+it.each(['explicit verification', 'account change'] as const)('handles %s during a configuration attachment upload', async change => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
   const { app, directory, post } = await fixture({ noParams: true });
   await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file', accept: ['image/png'] }] }));
@@ -75,15 +75,20 @@ it.each(['background refresh', 'account change'] as const)('handles %s during a 
   const current = (await post({ type: 'ready' }).then(response => response.json())).messages[0].configurations;
   const pending = post({ type: 'project-configuration-upload', key: 'image', id: current.activeConfigurationId, revision: current.revision,
     file: { name: 'map.png', mimeType: 'image/png', data: 'cG5n' } });
-  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
-  if (change === 'background refresh') {
-    await vi.advanceTimersByTimeAsync(30_000);
-    await vi.waitFor(() => expect(profiles).toHaveBeenCalledTimes(2));
-  } else await app.setHostConnection({ serverUrl: 'https://configuration-files.test', accessToken: 'another-account-token' });
-  finish(Response.json({ errCode: 0, data: [{ id: 'wf_ab12', name: 'map.png', mimeType: 'image/png', size: 3, storage: 'server', projectId: id }] }));
+  try {
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    if (change === 'explicit verification') {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(profiles).toHaveBeenCalledOnce();
+      expect((await post({ type: 'verify' })).ok).toBe(true);
+      expect(profiles).toHaveBeenCalledTimes(2);
+    } else await app.setHostConnection({ serverUrl: 'https://configuration-files.test', accessToken: 'another-account-token' });
+  } finally {
+    finish?.(Response.json({ errCode: 0, data: [{ id: 'wf_ab12', name: 'map.png', mimeType: 'image/png', size: 3, storage: 'server', projectId: id }] }));
+  }
   const response = await pending, result = await response.json();
-  expect(response.ok).toBe(change === 'background refresh');
-  if (change === 'background refresh') expect(result.messages[0].type).toBe('project-configuration-upload-result');
+  expect(response.ok).toBe(change === 'explicit verification');
+  if (change === 'explicit verification') expect(result.messages[0].type).toBe('project-configuration-upload-result');
   else expect(result.message).toContain('Account changed');
 });
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean; webApp?: boolean } = {}) {
@@ -107,7 +112,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   }
-  const app = await startWebServer({ projectDir: directory, dataDir, runtime: options.real ? undefined : runtime }); apps.push(app);
+  const app = await startWebServer({ projectDir: directory, dataDir, runtime: options.real ? undefined : runtime, host: { surface: 'editor', platform: true } }); apps.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];

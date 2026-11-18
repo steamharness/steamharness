@@ -6,7 +6,7 @@ const catalogCache = new ServerReadCache(30_000, 1);
 let catalogIdentity: string | undefined;
 
 /** Uses only the independent, host-managed AI identity. Never exposes its token. */
-export async function loadAgentModelCatalog(connection?: WebConnection) {
+export async function loadAgentModelCatalog(connection?: Pick<WebConnection, 'aiServerUrl' | 'aiAccessToken'>) {
   const identity = connection?.aiServerUrl && connection.aiAccessToken
     ? JSON.stringify([connection.aiServerUrl.replace(/\/+$/, ''), connection.aiAccessToken]) : undefined;
   if (identity !== catalogIdentity) { catalogCache.clear(); catalogIdentity = identity; }

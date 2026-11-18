@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
  * 同一仓库里有两类逐字节副本，任何一份漂移都会让某个消费方比别的弱，而那种差异在
  * review 里几乎看不出来：
  *
- *   shared/release-tools/*        -> harness|cli|server 的 vendor/shared/release-tools/*
+ *   shared/release-tools/*        -> harness|cli 的 vendor/shared/release-tools/*
  *                                 -> build-in 两个内置项目的 scripts/
  *   build-in-developer-assistant/scripts/*  -> 另一个内置项目的 scripts/
  *
@@ -17,12 +17,12 @@ import { pathToFileURL } from "node:url";
  * 多一段打包过滤（它要把 skill 的 `scripts/create_workflow.py` 一起打进制品），因此它
  * 不在守卫范围内。
  *
- * vendor 侧不只镜像 release-tools：harness/cli/server 的 `vendor/shared/` 是整个 shared
+ * vendor 侧不只镜像 release-tools：harness/cli 的 `vendor/shared/` 是整个 shared
  * 树的逐字节副本，任何一个包改了都要同步过去，否则消费方会跑在旧代码上。共享包里不放
  * `__tests__`、`node_modules` 与 `.agents`/`.codex` 这类仓库自有内容。
  */
 
-export const VENDOR_CONSUMERS = Object.freeze(["harness", "cli", "server"]);
+export const VENDOR_CONSUMERS = Object.freeze(["harness", "cli"]);
 
 export const BUILTIN_PROJECTS = Object.freeze([
   "build-in/build-in-developer-assistant",

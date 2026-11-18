@@ -550,10 +550,10 @@ test("server LLM connection sources keep URL and token pairs together in priorit
         expectedToken: "specific-token",
       },
       {
-        name: "saved CLI login",
+        name: "a saved CLI login is not an SDK connection",
         env: {},
-        expectedUrl: "https://saved-ai.example.test/api/ai/catalog",
-        expectedToken: "saved-ai-token",
+        expectedUrl: "",
+        expectedToken: "",
       },
     ] as const;
 
@@ -570,8 +570,8 @@ test("server LLM connection sources keep URL and token pairs together in priorit
           return createCatalogResponse();
         }) as typeof fetch;
 
-        const credentials = await getServerLLMCredentials();
-        assert.equal(credentials.length, 1);
+        if (item.expectedUrl) assert.equal((await getServerLLMCredentials()).length, 1);
+        else await assert.rejects(getServerLLMCredentials(), /workspace login --ai/);
         assert.equal(requestUrl, item.expectedUrl);
         assert.equal(requestToken, item.expectedToken);
       });
@@ -620,7 +620,7 @@ test("legacy LLM connection variables never become a system AI connection", asyn
   process.env.STEAMHARNESS_LLM_SERVER_TOKEN = "legacy-token";
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
-      assert.equal((error as Error).message, "System AI is unavailable. Configure the private AI service URL and API key.");
+      assert.match((error as Error).message, /System AI requires a Server connection.*--online ai/);
       assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "systemAiUnavailable",
@@ -646,10 +646,7 @@ test("server LLM missing login keeps a localizable error descriptor", async () =
   process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
-      assert.equal(
-        (error as Error).message,
-        "System AI is unavailable. Configure the private AI service URL and API key.",
-      );
+      assert.match((error as Error).message, /System AI requires a Server connection.*--online ai/);
       assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "systemAiUnavailable",

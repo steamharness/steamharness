@@ -7,7 +7,7 @@ import { registerStartRecommendationsProvider } from './start-page-recommendatio
 
 interface LayerAccount {
   getState?: () => { serverUrl: string };
-  setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
+  getAiConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   onDidChange?: (listener: () => unknown) => vscode.Disposable;
   registerSectionProvider?: (provider: AccountSectionProvider) => vscode.Disposable;
@@ -15,6 +15,7 @@ interface LayerAccount {
 }
 
 interface InternalLayer {
+  platform?: boolean;
   prepare?: () => Promise<void> | void;
   activate?: (options: {
     context: vscode.ExtensionContext;
@@ -43,9 +44,10 @@ async function loadInternalLayer(): Promise<InternalLayer | undefined> {
 }
 
 /** Prepare optional host defaults before any project runtime is resolved. */
-export async function prepareInternalLayer(): Promise<void> {
+export async function prepareInternalLayer(): Promise<boolean> {
   const layer = await loadInternalLayer();
   await layer?.prepare?.();
+  return layer?.platform === true;
 }
 
 /**

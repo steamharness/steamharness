@@ -19,12 +19,18 @@ afterEach(async () => {
   }
 });
 
-async function fixture(options: { id?: unknown; connection?: WebConnection } = {}) {
+async function fixture(options: { id?: unknown; connection?: WebConnection; platform?: boolean; savedServer?: string } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
+  if (options.savedServer) {
+    await mkdir(path.join(directory, 'auth'));
+    await writeFile(path.join(directory, 'auth/workflow-auth-dev.json'), JSON.stringify({ serverUrl: options.savedServer, apiKey: 'cached-token' }));
+    vi.stubEnv('STEAMHARNESS_SERVER_URL', options.savedServer); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'env-token');
+    vi.stubEnv('STEAMHARNESS_AI_SERVER_URL', options.savedServer); vi.stubEnv('STEAMHARNESS_AI_API_KEY', 'env-ai-token');
+  }
   const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json',
   }));
@@ -56,7 +62,7 @@ async function fixture(options: { id?: unknown; connection?: WebConnection } = {
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, ...(options.connection ? { host: { surface: 'editor' as const, connection: options.connection } } : {}) }); apps.push(app); return app; };
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, ...(options.connection || options.platform !== undefined ? { host: { surface: 'editor' as const, platform: options.platform, connection: options.connection } } : {}) }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const call = async (entryId: string, message: object) => {
@@ -295,21 +301,15 @@ it('lets same-page views share a session writer and retains it until the final v
 });
 
 it.each([
-  { id: undefined, server: 'offline' }, { id: 'local-draft', server: 'offline' },
-  { id: undefined, server: 'pending' }, { id: 'local-draft', server: 'pending' },
-])('runs all entry types with authored ID $id while the optional Server is $server', async ({ id, server }) => {
+  { id: undefined, platform: undefined }, { id: 'local-draft', platform: false }, { id: randomUUID(), platform: true },
+])('runs every local entry and restores history without contacting the platform (platform UI: $platform)', async ({ id, platform }) => {
   const nativeFetch = globalThis.fetch, remote: string[] = [];
+  const server = 'https://record-platform.test';
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (new URL(String(input)).hostname === '127.0.0.1') return nativeFetch(input, init);
-    remote.push(String(input));
-    if (server === 'pending') return new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (signal?.aborted) reject(signal.reason);
-      else signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
-    });
-    throw new TypeError('Optional Server is offline');
+    remote.push(String(input)); return Response.json({ errCode: 500 }, { status: 500 });
   });
-  const f = await fixture({ id, connection: { serverUrl: 'https://offline.example.test', accessToken: 'offline-token' } });
+  const f = await fixture({ id, platform, savedServer: server });
   const bot = await f.state('agent'), workflow = await f.state('workflow'), board = await f.state('board');
   for (const state of [bot, workflow, board]) {
     expect(state.serverData).toBeUndefined();
@@ -320,11 +320,14 @@ it.each([
   await vi.waitFor(() => expect(f.active.has('agent') && f.active.has('workflow')).toBe(true));
   const preview = await fetch(new URL(board.kanban.preview.url, f.app.origin), { headers: { Authorization: `Bearer ${new URLSearchParams(new URL(f.app.url).hash.slice(1)).get('session')}` } });
   expect(preview.status).toBe(200);
-  expect(remote.every(url => url.endsWith('/api/auth/me'))).toBe(true);
   expect(JSON.parse(await readFile(path.join(f.directory, 'steamharness.json'), 'utf8')).id).toBe(id);
   for (const operation of f.active.values()) operation.finish({ status: 'success', output: { items: [] } });
   await vi.waitFor(async () => {
     expect((await f.state('workflow')).running).toBe(false);
     expect((await f.state('agent')).running).toBe(false);
   });
+  await f.reopen();
+  expect((await f.state('agent')).sessions[0].messages.map((message: { content: string }) => message.content)).toContain('Run offline');
+  expect((await f.state('workflow')).runs.length).toBeGreaterThan(0);
+  expect(remote).toEqual([]);
 });

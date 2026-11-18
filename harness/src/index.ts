@@ -2,6 +2,7 @@ export * from "./agent/index";
 export * from "./executor/definition";
 export * from "./executor/default-input";
 export * from "./configuration";
+export { withPlatformConnections, type PlatformConnection, type PlatformConnections } from './platform-connections';
 export * from "./executor/format";
 export * from "./executor/params";
 export * from "./executor/param-definition";

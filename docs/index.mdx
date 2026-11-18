@@ -8,7 +8,7 @@ slug: /
 
 # 开始使用 SteamHarness
 
-用 SteamHarness 编写 Agent 项目，在 Studio 或 CLI 中运行，再通过 Server 管理源码、版本和协作权限。
+用 Studio 或 CLI 编写和运行 Workflow、Bot 与 Kanban 项目。本地开发不需要 SteamHarness 账号。
 
 第一次使用，先跟随[快速开始](/guides/quickstart)运行一个 Hello 工作流。已有项目可以直接[在 Studio 中打开](/guides/studio/create-import)。
 
@@ -40,11 +40,8 @@ slug: /
 | --- | --- |
 | Studio | 编辑源码、运行本地项目、查看结果和执行轨迹 |
 | 本地 CLI | 在终端运行、检查结构、输出 JSON 或提供 MCP 工具 |
-| Server | 保存源码、版本、成员和文件 |
-| Server Web 管理端 | 在浏览器中管理 Server 上的项目与资源 |
-| Store | 浏览、下载和发布项目版本 |
 
-项目代码在 Studio 或本地 CLI 所在的机器执行。Server 接收源码归档，不替项目安装依赖或运行代码。Kanban 的服务器预览是受权限约束的静态页面。
+项目代码在 Studio 或 CLI 所在的机器执行。你主动配置的模型和业务 API 仍可使用网络。
 
 ## 主要功能
 
@@ -53,9 +50,7 @@ slug: /
 | 熟悉工作台、运行项目 | [Studio 指南](/guides/studio/overview) |
 | 用命令操作项目 | [CLI 总览](/cli/overview) |
 | 编写节点和 Agent | [Core API](/core-api/overview) |
-| 管理项目、成员和数据 | [Server Web](/guides/server/overview) |
 | 打包、上传和发布版本 | [Workspace CLI](/cli/server-workspace) |
-| 部署自己的服务 | [部署 Server](/guides/server/deployment) |
 | 使用系统 AI 或 Store | [增强功能](https://docs.steamharness.yuhe.space/enhanced/) |
 
 ## 项目数据与配置
@@ -63,17 +58,6 @@ slug: /
 运行历史按项目和入口保存；项目文件遵循各自的访问权限。
 
 配置与会话按 `projectId + entryId` 隔离，修改配置从下一次运行生效。继续阅读[项目配置](/concepts/project-configuration)和[数据存储](/concepts/data-storage)。
-
-## 账号、权限与协作
-
-| 角色 | 主要能力 |
-| --- | --- |
-| `guest` | 查看和下载已发布项目，在本地运行 |
-| `developer` | 编辑草稿、上传、发布，以及修改获授权的数据 |
-| `maintainer` | 管理项目信息、官方配置及访客、开发者 |
-| `owner` | 管理所有角色、项目归属和删除操作 |
-
-组支持多级子组，有效角色取项目直接角色和组继承角色的最高值。项目访问权与数据资源授权分别检查，详见[项目管理](/guides/server/project-management)。
 
 ## AI 能力
 
@@ -86,8 +70,7 @@ slug: /
 1. [创建项目](/guides/studio/create-import)，选择模板并等待依赖安装完成。
 2. 编写入口，检查根 `steamharness.json` 中的 `entries` 和 `defaultEntry`。
 3. [本地运行](/guides/studio/run-debug)，核对结果与执行轨迹。
-4. [上传并发布版本](/guides/studio/versions)，再按需要设置成员权限。
-5. 需要公开分发时，[发布到 Store](https://docs.steamharness.yuhe.space/enhanced/store/publishing)。
+4. 需要分发归档时，[在本地打包项目](/guides/studio/versions)。
 
 ## 项目结构
 
@@ -101,8 +84,8 @@ slug: /
 
 ## 版本、测试与部署
 
-项目应固定兼容的 Core 与 CLI 依赖版本。升级前检查[版本兼容性](/guides/releases/compatibility)，开发过程中运行[项目测试与结构检查](/guides/testing)。服务部署步骤见[部署 Server](/guides/server/deployment)。
+项目应固定兼容的 Core 与 CLI 依赖版本。升级前检查[版本兼容性](/guides/releases/compatibility)，开发过程中运行[项目测试与结构检查](/guides/testing)。
 
 ## 选择你的下一步
 
-运行第一个项目，从[快速开始](/guides/quickstart)进入；编写业务逻辑，阅读[开发工作流](/guides/development/workflow)；管理已有项目，打开 [Server Web 指南](/guides/server/overview)。
+运行第一个项目，从[快速开始](/guides/quickstart)进入；编写业务逻辑，阅读[开发工作流](/guides/development/workflow)。

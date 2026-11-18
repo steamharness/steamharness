@@ -30,7 +30,7 @@ export function cliRoot(): string {
   throw new Error('Cannot locate the CLI installation.');
 }
 
-export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
+export function createWebRuntime(projectDir: string, storageDir: string, connection: () => Partial<WebConnection> | undefined,
   options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown> } = {}): Runtime {
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
@@ -44,7 +44,9 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const configurations = (entryId = options.entryId) => {
     const key = entryId ?? "default";
     let store = configurationStores.get(key);
-    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => connection() ?? null, userSettings: options.userSettings }); configurationStores.set(key, store); }
+    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => {
+      const auth = connection(); return auth?.serverUrl && auth.accessToken ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken } : null;
+    }, userSettings: options.userSettings }); configurationStores.set(key, store); }
     return store;
   };
   const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void,
@@ -52,7 +54,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if (disposed) { reject(new Error('Web runtime has stopped.')); return; }
     const auth = connection();
     const actor = options.actor?.() ?? { isSystemAdmin: false };
-    const runtimeAuth: WebConnection | undefined = options.allowSystemAi === false && auth
+    const runtimeAuth = options.allowSystemAi === false && auth
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
     const userSettings = request.userSettings as UserSettings | undefined ?? options.userSettings?.();
@@ -271,7 +273,7 @@ const STUDIO_CONTROL_CAPABILITY_KEYS = new Set([
 function isPrivateEnvironmentKey(key: string): boolean {
   if (STUDIO_CONTROL_CAPABILITY_KEYS.has(key)) { return false; }
   return key === 'NODE_OPTIONS' ||
-    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
+    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|FILE_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/iu.test(key) ||
     /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||
     /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
 }

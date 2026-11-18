@@ -10,8 +10,11 @@ import { createWebRuntime } from './web/runtime';
 import { parseHostConfiguration, parseHostAuthentication, parseHostResourceProjects } from './web/host-config';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 import { parseUserSettings } from 'steamharness';
+import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
 
 export function parseWebArgs(argv: string[]) {
+  const online = parseOnlineOptions(argv);
+  argv = online.argv;
   const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, entryId: undefined as string | undefined };
   let projectSet = false;
   for (let index = 0; index < argv.length; index++) {
@@ -31,7 +34,8 @@ export function parseWebArgs(argv: string[]) {
     } else if (arg.startsWith('-') || projectSet) { throw new Error(`Unknown web argument: ${arg}`); }
     else { options.projectDir = path.resolve(arg); projectSet = true; }
   }
-  return options;
+  if (options.hostStdio && online.online.length) throw new Error('Use the host protocol, not --online, when embedding CLI Web.');
+  return { ...options, online: online.online };
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -40,6 +44,7 @@ export async function main(argv: string[]): Promise<number> {
     console.log(i18n.language.startsWith('zh')
       ? 'steamharness web [项目目录]\n  --port <0-65535>   监听端口，0 自动分配\n  --no-open          不自动打开浏览器\n  --theme <auto|light|dark>\n  --data-dir <目录>   对话和文件存储位置\n  --json             输出结构化启动信息'
       : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
+    console.log(formatOnlineHelp());
     return 0;
   }
   if (options.release && options.dataDir) assertProjectDataDirectory(options.projectDir, options.dataDir);
@@ -60,10 +65,11 @@ export async function main(argv: string[]): Promise<number> {
     finally { runtime.dispose(); input?.close(); process.stdin.pause(); }
     return 0;
   }
-  const app = await startWebServer({ ...options, host }).catch(error => { input?.close(); throw error; });
+  const initialPlatform = await resolveOnlineConnections(options.online);
+  const app = await startWebServer({ ...options, initialPlatform, host }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -71,8 +77,11 @@ export async function main(argv: string[]): Promise<number> {
           if (line.length > 256_000) { throw new Error('Web host message is too large.'); }
           const message = JSON.parse(line);
           if (message.type === 'auth') {
-            await app.setHostWebApps({});
-            void app.setHostConnection(parseHostAuthentication(message)).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
+            const connections = parseHostAuthentication(message);
+            // A slow verification must not prevent a newer connection, logout, or close.
+            void app.setHostConnection(connections.project, connections.ai).catch(() => {
+              console.error('Workflow web host authentication failed.');
+            });
           }
           else if (message.type === 'web-apps') { await app.setHostWebApps(parseWebAppBindings(message.webApps)); }
           else if (message.type === 'resource-projects') { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); }

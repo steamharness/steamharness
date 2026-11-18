@@ -23,7 +23,7 @@ export interface ServerAgentStorageOptions {
   onLeaseLost?(error: Error): void;
 }
 
-/** PostgreSQL persistence with one fenced execution owner per session. */
+/** Requires a Server connection. PostgreSQL persistence with one fenced execution owner per session. */
 export function createServerAgentStorage(options: ServerAgentStorageOptions): AgentStorageFactory {
   return {
     label: "SteamHarness PostgreSQL",

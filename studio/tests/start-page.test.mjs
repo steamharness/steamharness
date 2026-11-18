@@ -274,8 +274,8 @@ test('ID allocation errors in the opened project window retain its files and can
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id);
 });
 
-test('ID allocation failure opens an empty-ID project, installs dependencies and retries registration in place', async t => {
-  const f = fixture(t, { projectId: '', manifestId: '', idAllocationError: 'Server offline' });
+test('an empty-ID project installs dependencies and generates a local ID in place', async t => {
+  const f = fixture(t, { projectId: '', manifestId: '', idAllocationError: 'Local Node runtime unavailable' });
   await f.execute('studio.createProject', 'workflow');
   const opened = f.calls.find(([name]) => name === 'vscode.openFolder');
   assert.ok(opened); assert.equal(f.remembered.id, ''); assert.deepEqual(f.errors, []);
@@ -283,30 +283,24 @@ test('ID allocation failure opens an empty-ID project, installs dependencies and
   assert.equal(pending.projectId, ''); assert.match(pending.id, /^[a-f0-9-]{36}$/i);
   const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
   await until(async () => !(await target.state()).busy, 'Unregistered setup did not settle');
-  assert.deepEqual(target.installs, [opened[1].fsPath]); assert.equal(target.registrations, undefined);
-  assert.equal((await target.state()).pending[0].stage, 'registration');
-  assert.match(target.warnings[0], /created without an ID/);
-  await target.execute('studio.showProjectSetupLog'); assert.match(target.logDocument.getText(), /Server offline/);
-  await target.execute('studio.openCreatedProject', pending.id);
-  assert.equal(target.calls.some(([name]) => name === 'vscode.openFolder'), true);
-  await target.execute('studio.retryProjectSetup', pending.id);
-  assert.equal(target.registrations, 1); assert.equal(target.created, undefined); assert.equal(target.installs.length, 1);
+  assert.deepEqual(target.installs, [opened[1].fsPath]); assert.equal(target.registrations, 1);
+  assert.equal(target.created, undefined);
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id);
   assert.equal(target.storage.get('studio.importedProjects')[0].id, id);
 });
 
 test('multiple projects without IDs keep separate setup records and logs across reloads', async t => {
-  const f = fixture(t, { projectId: '', manifestId: '', idAllocationError: 'Server offline' });
+  const f = fixture(t, { projectId: '', manifestId: '', idAllocationError: 'Local Node runtime unavailable' });
   await f.execute('studio.createProject'); f.name = 'Second project'; await f.execute('studio.createProject');
   const pending = (await f.state()).pending;
   assert.equal(pending.length, 2); assert.notEqual(pending[0].id, pending[1].id);
-  const targets = pending.map(project => fixture(t, { storage: f.storage, folders: [project.directory], manifestId: '' }));
+  const targets = pending.map(project => fixture(t, { storage: f.storage, folders: [project.directory], manifestId: '', register: async () => { throw new Error('Local Node runtime unavailable'); } }));
   for (const target of targets) await until(async () => !(await target.state()).busy, 'Setup did not settle');
   const logPaths = [];
   for (const target of targets) {
     await target.execute('studio.showProjectSetupLog');
     logPaths.push(target.logDocument.uri.fsPath);
-    assert.match(target.logDocument.getText(), /Server offline/);
+    assert.match(target.logDocument.getText(), /Local Node runtime unavailable/);
   }
   assert.notEqual(logPaths[0], logPaths[1]);
   const restored = fixture(t, { storage: f.storage });

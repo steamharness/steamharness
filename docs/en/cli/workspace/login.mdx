@@ -64,4 +64,6 @@ pnpm exec steamharness workspace login --server http://localhost:7126
 
 `{channel}` is `dev`, `alpha`, or `main`, selected by the installed CLI channel. `STEAMHARNESS_SERVICE_CHANNEL` explicitly overrides it. Credentials are also saved separately per Server; selecting another `--server` does not reuse the current Server's key. A legacy `workflow-auth.json` migrates only when its Server matches the channel, and signing out prevents its restoration.
 
-CLI Web uses the same authorization flow and offers a link to its originating page. The browser receives only the public code and return state; the local process keeps the device secret and API key. See [Accounts, sign-in, and recovery](/en/guides/server/accounts).
+## Sign in for System AI
+
+System AI requires a Server connection. Run `steamharness workspace login --ai --server <URL>` and approve the device request in the browser. Start `run`, `web`, or `mcp` with `--online ai`. The CLI stores AI credentials separately from project credentials and never sends either to a different Server. Use `--no-open` to print the sign-in link without opening a browser.

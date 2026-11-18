@@ -1,4 +1,3 @@
-import { readProjectCliAuthConfigSync } from "../auth-config";
 import {
   createProjectFileStore,
   createProjectFileCreateUnavailableError,
@@ -24,6 +23,7 @@ export interface RemoteProjectFileStoreOptions {
   conversationId?: string;
 }
 
+/** Requires a Server connection. Use this store explicitly for cloud files. */
 export class RemoteProjectFileStore implements FileStore {
   private readonly serverUrl: string;
   private readonly token: string;
@@ -113,7 +113,7 @@ export class RemoteProjectFileStore implements FileStore {
     } catch (error) {
       throw new HarnessError({
         type: "execution",
-        message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the App server connection or STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY.`,
+        message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the file store connection or STEAMHARNESS_FILE_SERVER_URL/STEAMHARNESS_FILE_SERVER_TOKEN.`,
         metadata: {
           serverUrl: this.serverUrl,
           cause: error instanceof Error ? error.message : String(error),
@@ -152,16 +152,15 @@ export class RemoteProjectFileStore implements FileStore {
   }
 }
 
+/** Requires a Server connection. Only the dedicated file-storage URL and token are read. */
 export function createRemoteProjectFileStoreFromEnv(options: {
   env?: NodeJS.ProcessEnv;
   projectName: string;
   conversationId?: string;
 }): FileStore | undefined {
   const env = options.env ?? process.env;
-  const explicitServerUrl = env.STEAMHARNESS_FILE_SERVER_URL ?? env.STEAMHARNESS_SERVER_URL;
-  const explicitToken =
-    env.STEAMHARNESS_FILE_SERVER_TOKEN ??
-    env.STEAMHARNESS_SERVER_ADMIN_KEY;
+  const explicitServerUrl = env.STEAMHARNESS_FILE_SERVER_URL;
+  const explicitToken = env.STEAMHARNESS_FILE_SERVER_TOKEN;
   const serverUrl = explicitServerUrl?.trim();
   const token = explicitToken?.trim();
 
@@ -174,17 +173,7 @@ export function createRemoteProjectFileStoreFromEnv(options: {
     });
   }
 
-  const authConfig = readProjectCliAuthConfigSync(env);
-  if (authConfig.serverUrl.trim() === "" || authConfig.apiKey.trim() === "") {
-    return undefined;
-  }
-
-  return new RemoteProjectFileStore({
-    serverUrl: authConfig.serverUrl,
-    token: authConfig.apiKey,
-    projectName: options.projectName,
-    conversationId: options.conversationId,
-  });
+  return undefined;
 }
 
 async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {

@@ -27,22 +27,10 @@ test("current documentation rejects old project and storage contracts while pres
   }
 });
 
-test("OpenAPI languages expose the same current endpoints", async () => {
-  const specs = await Promise.all(["", "en/"].map(prefix => readFile(path.join(root, prefix, "openapi/steamharness.openapi.yaml"), "utf8")));
-  const paths = source => [...source.matchAll(/^  (\/[^\n]+):$/gmu)].map(match => match[1]).sort();
-  assert.deepEqual(paths(specs[0]), paths(specs[1]));
-  for (const source of specs) {
-    assert.doesNotMatch(source, /\/api\/(?:databases|knowledge-bases)\b|database-spaces|KVEntry|ProjectDataSummary|kv\.getValue|kv\.setValue/u);
-    assert.doesNotMatch(source, /\/api\/projects\/\{projectId\}\/entries\/\{entryId\}\/resources\/read/u);
-    assert.doesNotMatch(source, /related-projects|ProjectDependencyLock|ProjectStorageRequest|dataStorage/u);
-  }
-});
-
-test("public docs validate paired navigation, pages, links, and OpenAPI files", async () => {
+test("public docs validate paired navigation, pages, and links", async () => {
   const result = await validateDocs({ root });
   assert.deepEqual(result.languages, ["zh-Hans", "en"]);
   assert.ok(result.pages > 0);
-  assert.equal(result.openapiFiles, 2);
 });
 
 test("public docs no longer ship a Docusaurus site", async () => {
@@ -52,6 +40,10 @@ test("public docs no longer ship a Docusaurus site", async () => {
     "sidebars.zh.mjs",
     "plugins",
     "src",
+    "openapi",
+    "guides/server",
+    "guides/releases/server",
+    "guides/releases/server-web",
   ]) {
     await assert.rejects(lstat(path.join(root, relativePath)), { code: "ENOENT" });
   }

@@ -20,7 +20,7 @@ export class ToolInstances implements vscode.Disposable {
   private readonly ordinals = new Map<InstanceTool, number>();
   private readonly panels = new Map<vscode.WebviewPanel, { tool: ToolInstance; preferred?: string; dispose(): void }>();
 
-  constructor(context: vscode.ExtensionContext, private readonly factory: (kind: InstanceTool, subscriptions: vscode.Disposable[], restored: boolean) => ToolInstance) {
+  constructor(context: vscode.ExtensionContext, private readonly factory: (kind: InstanceTool, subscriptions: vscode.Disposable[], restored: boolean) => ToolInstance, private readonly platform = false) {
     context.subscriptions.push(this,
       vscode.commands.registerCommand('studio.createToolInstance', (kind: string) => this.open(kind)),
       vscode.commands.registerCommand('studio.selectToolInstanceProject', async (kind?: string) => {
@@ -28,7 +28,7 @@ export class ToolInstances implements vscode.Disposable {
         if (active?.tool.selectProject) { await active.tool.selectProject(); }
         else { await vscode.commands.executeCommand(kind === 'versions' ? 'studio.selectVersionsProject' : 'studio.selectInfoProject'); }
       }),
-      ...Object.keys(toolTitles).map(kind => vscode.window.registerWebviewPanelSerializer(`studio.tool.${kind}`, {
+      ...Object.keys(toolTitles).filter(kind => kind !== 'versions' || platform).map(kind => vscode.window.registerWebviewPanelSerializer(`studio.tool.${kind}`, {
         deserializeWebviewPanel: (panel, state) => this.attach(kind as InstanceTool, panel,
           state && typeof state === 'object' && 'projectUri' in state && typeof state.projectUri === 'string' ? { projectUri: state.projectUri } : undefined, true),
       })),
@@ -43,7 +43,7 @@ export class ToolInstances implements vscode.Disposable {
   }
 
   async open(kind: string): Promise<void> {
-    if (!Object.hasOwn(toolTitles, kind)) { return; }
+    if (!Object.hasOwn(toolTitles, kind) || kind === 'versions' && !this.platform) { return; }
     const tool = kind as InstanceTool;
     const ordinal = (this.ordinals.get(tool) ?? 1) + 1;
     this.ordinals.set(tool, ordinal);

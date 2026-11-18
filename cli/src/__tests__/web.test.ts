@@ -14,6 +14,7 @@ import { parseWebArgs } from '../web';
 import { startEntryWebServer as startWebServer } from './web-test-storage';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
+import { resolveOnlineConnections } from '../online';
 import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
 import type { ConversationSession, Project, Runtime, Run, Report } from '../web/workflow-types';
@@ -25,7 +26,7 @@ import { ConversationState } from '../web/conversation-state';
 
 const folders: string[] = [];
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
-// Account polling and application registration are independent lifecycle reads.
+// Account verification and application registration are independent reads.
 function registeredProject(input: unknown): Promise<Response> | undefined {
   const match = String(input).match(/\/api\/projects\/([a-f\d-]{36})$/i);
   return match ? Promise.resolve(Response.json({ errCode: 0, data: { id: match[1] } })) : undefined;
@@ -66,7 +67,7 @@ async function initialState(events: Response) {
   } finally { await reader.cancel(); }
 }
 
-async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'bot') {
+async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'bot', online = false) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts"}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
@@ -87,7 +88,8 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
     deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
   };
   await beforeStart?.();
-  const app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime, host }); services.push(app);
+  const app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), runtime, host,
+    initialPlatform: online ? await resolveOnlineConnections(['project']) : undefined }); services.push(app);
   const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session');
   const auth = await fetch(`${app.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
   const cookie = auth.headers.get('set-cookie')!.split(';')[0];
@@ -638,20 +640,20 @@ describe('steamharness web', () => {
   });
 
   it('validates the private host configuration and assistant workspace', () => {
-    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: null })).toEqual({ surface: 'editor', connection: undefined, assistant: undefined, assistantProjectDir: undefined });
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: null })).toMatchObject({ surface: 'editor', connection: undefined, systemAiConnection: undefined, platform: false });
     expect(parseHostConnection({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' })).toEqual({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     for (const connection of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@steamharness.test', accessToken: 'token' }, { serverUrl: 'https://steamharness.test', accessToken: '' }]) { expect(() => parseHostConnection(connection)).toThrow(); }
     const aiConnection = { serverUrl: 'https://steamharness.test', accessToken: 'host-token', aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' };
     // Editor surfaces also receive the host's system-AI connection: a project
     // that asks for host LLM credentials must be able to run in the editor.
-    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection }).connection).toEqual(aiConnection);
     const connection = { serverUrl: aiConnection.serverUrl, accessToken: aiConnection.accessToken };
     const systemAiConnection = { serverUrl: aiConnection.aiServerUrl, accessToken: aiConnection.aiAccessToken };
-    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection, systemAiConnection }).connection).toEqual(aiConnection);
-    expect(parseHostAuthentication({ connection, systemAiConnection })).toEqual(aiConnection);
-    expect(parseHostAuthentication({ connection, systemAiConnection: null })).toEqual(connection);
-    expect(parseHostAuthentication({ connection: null, systemAiConnection: null })).toBeUndefined();
-    expect(() => parseHostAuthentication({ connection: null, systemAiConnection })).toThrow('host project account');
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection })).toMatchObject({ connection, systemAiConnection });
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection, systemAiConnection })).toMatchObject({ connection, systemAiConnection });
+    expect(parseHostAuthentication({ connection, systemAiConnection })).toEqual({ project: connection, ai: systemAiConnection });
+    expect(parseHostAuthentication({ connection, systemAiConnection: null })).toEqual({ project: connection, ai: undefined });
+    expect(parseHostAuthentication({ connection: null, systemAiConnection: null })).toEqual({ project: undefined, ai: undefined });
+    expect(parseHostAuthentication({ connection: null, systemAiConnection })).toEqual({ project: undefined, ai: systemAiConnection });
     expect(() => parseHostAuthentication({ connection: aiConnection, systemAiConnection })).toThrow('Duplicate');
     for (const ai of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@ai.test', accessToken: 'token' },
       { serverUrl: 'https://ai.test?secret', accessToken: 'token' }, { serverUrl: systemAiConnection.serverUrl }, { accessToken: 'token' },
@@ -660,7 +662,7 @@ describe('steamharness web', () => {
     }
     expect(parseHostConfiguration({ type: 'configure', surface: 'assistant', connection: aiConnection,
       assistant: { workdir: '/tmp/workflow-assistant', roots: [{ uri: 'file:///tmp/workflow-assistant', folderPath: '/tmp/workflow-assistant', name: 'Assistant' }] },
-      assistantProjectDir: '/tmp/workflow-assistant' }).connection).toEqual(aiConnection);
+      assistantProjectDir: '/tmp/workflow-assistant' })).toMatchObject({ connection, systemAiConnection });
     expect(() => parseHostConfiguration({ type: 'configure', surface: 'unknown' })).toThrow();
     expect(() => parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant: { workdir: 'relative', roots: [] } })).toThrow();
   });
@@ -730,7 +732,7 @@ describe('steamharness web', () => {
   });
 
   it('injects and clears host login without writing host credentials to CLI configuration', async () => {
-    const { app, cookie, post } = await fixture();
+    const { app, cookie, post } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
@@ -760,7 +762,7 @@ describe('steamharness web', () => {
     } })));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
     const saved = { serverUrl: 'https://steamharness.test', apiKey: 'cached-cli-token', user: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } };
-    const { app, cookie, post } = await fixture({ surface: 'editor' }, async () => {
+    const { app, cookie, post } = await fixture({ surface: 'editor', platform: true }, async () => {
       await writeCliAuthConfig(saved);
       vi.stubEnv('STEAMHARNESS_SERVER_URL', source === 'environment' ? saved.serverUrl : undefined);
       vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', source === 'environment' ? 'environment-token' : undefined);
@@ -783,7 +785,7 @@ describe('steamharness web', () => {
     expect(await readCliAuthConfig()).toEqual(saved);
   });
 
-  it('still restores cached CLI login for a standalone Web page', async () => {
+  it('restores cached CLI login only for standalone Web started with --online project', async () => {
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
@@ -793,12 +795,12 @@ describe('steamharness web', () => {
     const { app, cookie } = await fixture(undefined, async () => {
       vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
       await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'cached-cli-token' });
-    });
+    }, 'bot', true);
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Cached user' } });
   });
 
   it('routes embedded account management to the host and refuses independent login or logout', async () => {
-    const { app, cookie, post } = await fixture({ surface: 'editor' });
+    const { app, cookie, post } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     const verify = vi.fn(async () => new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user' } } })));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
@@ -816,7 +818,7 @@ describe('steamharness web', () => {
   });
 
   it('redacts failed host verification even after the active connection is cleared', async () => {
-    const { app, cookie } = await fixture();
+    const { app, cookie } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => String(input).startsWith('https://steamharness.test') ? new Response('secret-host-value') : realFetch(input, options));
     await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'secret-host-value' });
@@ -827,8 +829,7 @@ describe('steamharness web', () => {
 
   it.each(['host', 'environment'])('does not borrow a saved CLI expiry for an account supplied by %s', async source => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    const { app, cookie, post } = await fixture();
-    await writeCliAuthConfig({ serverUrl: 'https://old-account.test', apiKey: 'old-cli-token', expiresAt: '2000-01-01T00:00:00.000Z' });
+    const expired = { serverUrl: 'https://old-account.test', apiKey: 'old-cli-token', expiresAt: '2000-01-01T00:00:00.000Z' };
     const realFetch = globalThis.fetch;
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
@@ -838,11 +839,11 @@ describe('steamharness web', () => {
       expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer current-token');
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'current', email: 'current@example.com', displayName: 'Current account' } } }));
     });
+    const { app, cookie } = await fixture(source === 'host' ? { surface: 'editor', platform: true } : undefined, async () => {
+      await writeCliAuthConfig(expired);
+      if (source === 'environment') { vi.stubEnv('STEAMHARNESS_SERVER_URL', 'https://steamharness.test'); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'current-token'); }
+    }, 'bot', source === 'environment');
     if (source === 'host') { await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'current-token' }); }
-    else {
-      vi.stubEnv('STEAMHARNESS_SERVER_URL', 'https://steamharness.test'); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'current-token');
-      expect((await post({ type: 'verify' })).status).toBe(200);
-    }
     const account = await accountState(app, cookie);
     expect(account).toMatchObject({ status: 'authenticated', user: { displayName: 'Current account' } });
     expect(account).not.toHaveProperty('expiresAt');
@@ -852,7 +853,7 @@ describe('steamharness web', () => {
   });
 
   it('does not authenticate a token when the server returns a malformed account profile', async () => {
-    const { app, cookie } = await fixture();
+    const { app, cookie } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test')
       ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: {} } }))) : realFetch(input, options));
@@ -866,31 +867,31 @@ describe('steamharness web', () => {
     let profile = { userId: 'user', email: 'user@example.com', displayName: 'Original user', avatarUrl: 'data:image/png;base64,b2xk' as string | undefined };
     const verify = vi.fn(async () => Response.json({ errCode: 0, data: { profile } }));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
-    const { app, cookie } = await fixture(source === 'host' ? { surface: 'editor', connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } } : undefined, async () => {
+    const { app, cookie, post } = await fixture(source === 'host' ? { surface: 'editor', platform: true, connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } } : undefined, async () => {
       if (source === 'standalone') {
         vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
         await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'profile-token' });
       }
-    });
+    }, 'bot', source === 'standalone');
     const initial = await accountState(app, cookie);
     const stop = vi.spyOn(app.controller, 'stop');
     await vi.advanceTimersByTimeAsync(30_000);
-    await vi.waitFor(() => expect(verify).toHaveBeenCalledTimes(2));
+    expect(verify).toHaveBeenCalledOnce();
     expect(await accountState(app, cookie)).toEqual(initial);
 
     profile = { ...profile, displayName: 'Updated user', avatarUrl: 'data:image/webp;base64,bmV3' };
-    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await post({ type: 'verify' })).ok).toBe(true);
     await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: profile }));
     const refreshed = await accountState(app, cookie);
     expect(refreshed.revision).toBe(initial.revision + 1);
 
     profile = { ...profile, avatarUrl: undefined };
-    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await post({ type: 'verify' })).ok).toBe(true);
     await vi.waitFor(async () => expect((await accountState(app, cookie)).user).not.toHaveProperty('avatarUrl'));
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it('background profile checks preserve the active account on network failure and expire revoked credentials', async () => {
+  it('stays idle until explicit verification, then drops unavailable and revoked credentials', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     const realFetch = globalThis.fetch;
     let unavailable = false, revoked = false;
@@ -900,20 +901,23 @@ describe('steamharness web', () => {
       if (revoked) { return Response.json({ errCode: 401 }, { status: 401 }); }
       return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'Current user' } } });
     });
-    const { app, cookie } = await fixture({ surface: 'editor', connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } });
+    const { app, cookie, post } = await fixture({ surface: 'editor', platform: true, connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } });
     const initial = await accountState(app, cookie), stop = vi.spyOn(app.controller, 'stop');
     unavailable = true;
     await vi.advanceTimersByTimeAsync(30_000);
     expect(await accountState(app, cookie)).toEqual(initial);
     expect(stop).not.toHaveBeenCalled();
+    expect((await post({ type: 'verify' })).ok).toBe(true);
+    expect(await accountState(app, cookie)).toMatchObject({ status: 'error', error: 'Temporary network failure.' });
+    expect(await accountState(app, cookie)).not.toHaveProperty('user');
     unavailable = false; revoked = true;
-    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await post({ type: 'verify' })).ok).toBe(true);
     await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'expired' }));
     expect(stop).toHaveBeenCalledOnce();
   });
 
   it('an older host verification cannot replace a newer injected account', async () => {
-    const { app, cookie } = await fixture();
+    const { app, cookie } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     let finishOld!: (response: Response) => void;
     const profile = (name: string) => new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: name, email: `${name}@example.com`, displayName: name } } }));
@@ -930,9 +934,37 @@ describe('steamharness web', () => {
     expect(state).toContain('New account'); expect(state).not.toContain('Old account'); expect(state).not.toContain('host-token');
   });
 
-  it('automatically verifies the same account again after a transient authentication failure', async () => {
+  it('does not return an in-flight model catalog after switching only the AI account', async () => {
+    const { app, post } = await fixture({ surface: 'editor', platform: true });
+    const realFetch = globalThis.fetch;
+    const serverUrl = 'https://ai-switch.test';
+    let requested!: () => void, release!: () => void;
+    const started = new Promise<void>(resolve => { requested = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const identities: Array<string | null> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+      if (String(input) !== `${serverUrl}/api/ai/catalog`) return realFetch(input, options);
+      const token = new Headers(options?.headers).get('Authorization');
+      identities.push(token);
+      if (token === 'Bearer old-ai-token') { requested(); await held; }
+      return Response.json({ errCode: 0, data: { credentials: [] } });
+    });
+    await app.setHostConnection(undefined, { serverUrl, accessToken: 'old-ai-token' });
+    const old = post({ type: 'project-ai-catalog' });
+    try {
+      await started;
+      await app.setHostConnection(undefined, { serverUrl, accessToken: 'new-ai-token' });
+    } finally { release(); }
+    const stale = await old;
+    expect(stale.status).toBe(400);
+    expect((await stale.json()).message).toContain('Account changed');
+    expect((await post({ type: 'project-ai-catalog' })).status).toBe(200);
+    expect(identities).toEqual(['Bearer old-ai-token', 'Bearer new-ai-token']);
+  });
+
+  it('retries the same account only on explicit verification after a transient failure', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    const { app, cookie } = await fixture();
+    const { app, cookie, post } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
@@ -944,13 +976,15 @@ describe('steamharness web', () => {
     await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'error' });
     await vi.advanceTimersByTimeAsync(5_000);
+    expect(checks).toBe(1);
+    expect((await post({ type: 'verify' })).ok).toBe(true);
     await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Recovered account' } }));
     expect(checks).toBe(2);
   });
 
   it('does not supersede a slow authentication check with a polling request', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    const { app, cookie } = await fixture();
+    const { app, cookie } = await fixture({ surface: 'editor', platform: true });
     const realFetch = globalThis.fetch;
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>(resolve => { finish = resolve; });
@@ -974,8 +1008,6 @@ describe('steamharness web', () => {
   });
 
   it('keeps a newer injected identity when an earlier browser authorization finishes', async () => {
-    const { app, cookie, post } = await fixture();
-    vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     let finishLogin!: (response: Response) => void;
     const profile = (userId: string) => ({ userId, email: null, displayName: userId });
@@ -987,6 +1019,10 @@ describe('steamharness web', () => {
       const name = new Headers(options?.headers).get('Authorization') === 'Bearer host-token' ? 'Injected account' : 'CLI account';
       return Response.json({ errCode: 0, data: { profile: profile(name) } });
     });
+    const { app, cookie, post } = await fixture(undefined, async () => {
+      vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
+      await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'original-cli-token' });
+    }, 'bot', true);
     expect((await post({ type: 'login', serverUrl: 'https://steamharness.test' })).status).toBe(200);
     await vi.waitFor(() => expect(finishLogin).toBeDefined());
     await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
@@ -1047,15 +1083,6 @@ describe('steamharness web', () => {
   });
 
   it('returns browser sign-in to the originating Bot conversation without sharing its writer', async () => {
-    const { app, cookie, post } = await fixture();
-    const clientId = randomUUID(), resumeClientId = randomUUID(), otherClientId = randomUUID(), returnTicket = randomUUID();
-    const events = (id: string, ticket?: string) => fetch(`${app.origin}/api/events?${new URLSearchParams({ clientId: id, ...(ticket ? { returnTicket: ticket } : {}) })}`, { headers: { Cookie: cookie } });
-    const originalId = app.controller!.activeId;
-    await post({ type: 'navigate', id: originalId, clientId, requestId: 52, updates: [] });
-    const originalStream = await events(clientId);
-    expect((await post({ type: 'new', clientId: otherClientId })).status).toBe(200);
-    expect(app.controller!.activeId).not.toBe(originalId);
-    vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     const profile = { userId: 'test-user', email: null, displayName: 'Test User' };
     let finishLogin!: (response: Response) => void;
@@ -1073,6 +1100,17 @@ describe('steamharness web', () => {
       if (url.endsWith('/device/token')) return new Promise(resolve => { finishLogin = resolve; });
       return Response.json({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } });
     });
+    const { app, cookie, post } = await fixture(undefined, async () => {
+      vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
+      await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'original-cli-token' });
+    }, 'bot', true);
+    const clientId = randomUUID(), resumeClientId = randomUUID(), otherClientId = randomUUID(), returnTicket = randomUUID();
+    const events = (id: string, ticket?: string) => fetch(`${app.origin}/api/events?${new URLSearchParams({ clientId: id, ...(ticket ? { returnTicket: ticket } : {}) })}`, { headers: { Cookie: cookie } });
+    const originalId = app.controller!.activeId;
+    await post({ type: 'navigate', id: originalId, clientId, requestId: 52, updates: [] });
+    const originalStream = await events(clientId);
+    expect((await post({ type: 'new', clientId: otherClientId })).status).toBe(200);
+    expect(app.controller!.activeId).not.toBe(originalId);
     expect((await post({ type: 'login', serverUrl: 'https://steamharness.test', password: 'obsolete' })).status).toBe(400);
     const started = await post({ type: 'login', serverUrl: 'https://steamharness.test', clientId, returnTicket }).then(response => response.json());
     const signIn = started.messages[0].signIn;

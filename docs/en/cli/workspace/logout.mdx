@@ -11,20 +11,22 @@ Use `workspace logout` to clear the Server address, API key, and account details
 
 ```bash
 pnpm exec steamharness workspace logout
+pnpm exec steamharness workspace logout --ai --server https://server.example.com
 ```
 
 ## Parameter
 
 |Parameter|Description|
 | --- | --- |
-|None|The command does not read positional parameters.|
+| `--ai` | Clear the saved System AI sign-in without changing project sign-in. |
+| `--server <URL>` | Clear credentials for this address only. Omit to clear the current address. |
 
 ## Behavior
 
 |Steps|Description|
 | --- | --- |
 |Locate Configuration Directory|Use `STEAMHARNESS_CLI_AUTH_DIR` or the system default directory.|
-|Clean Configuration|Clear `workflow-auth-{channel}.json` for the current channel, remove the current Server credential copy, and keep a sign-out marker to prevent legacy restoration.|
+| Clear credentials | Remove credentials for the selected purpose and address. If they were the active sign-in, leave a marker to prevent legacy credentials from being restored. |
 |Output status|Output `{ loggedIn: false }`.|
 
 ## Output

@@ -166,6 +166,19 @@ export function channelProductIdentity(channel, branding = {}) {
   return identity;
 }
 
+// Edition manifests augment the extension without editing its source checkout.
+export function mergeExtensionManifest(base, overlay) {
+  const original = base.contributes;
+  const added = overlay.contributes ?? {};
+  const appendItems = (left, right = {}) => ({ ...left, ...Object.fromEntries(Object.entries(right).map(([key, items]) => [key, [...(left[key] ?? []), ...items]])) });
+  return { ...base, activationEvents: [...base.activationEvents, ...(overlay.activationEvents ?? [])], contributes: {
+    ...original, commands: [...original.commands, ...(added.commands ?? [])],
+    menus: appendItems(original.menus, added.menus), views: appendItems(original.views, added.views),
+    viewsContainers: appendItems(original.viewsContainers, added.viewsContainers),
+    configuration: { ...original.configuration, properties: { ...original.configuration.properties, ...added.configuration?.properties } },
+  } };
+}
+
 export async function prepareDistribution(root = ROOT) {
   const upstream = await assertUpstream(root);
   const productFile = path.join(upstream.directory, 'product.json');
@@ -202,6 +215,9 @@ export async function prepareDistribution(root = ROOT) {
   }
 
   const source = path.join(root, 'extensions/studio-workstation');
+  const privateStage = path.join(root, '.studio/extension-with-overlay');
+  const overlay = process.env.STEAMHARNESS_STUDIO_INTERNAL === '1' ? process.env.STEAMHARNESS_STUDIO_MANIFEST_OVERLAY : undefined;
+  const targetSource = overlay ? privateStage : source;
   const link = path.join(upstream.directory, 'extensions/studio-workstation');
   let linked = false;
   let linkExists = false;
@@ -220,10 +236,11 @@ export async function prepareDistribution(root = ROOT) {
     } catch {
       throw new Error('The upstream Studio extension link is broken and is not managed by this project.');
     }
-    if (target !== await fs.realpath(source)) {
+    const known = await Promise.all([source, privateStage].map(directory => fs.realpath(directory).catch(() => undefined)));
+    if (!known.includes(target)) {
       throw new Error('The upstream Studio extension directory already exists and is not managed by this project.');
     }
-    linked = true;
+    linked = target === await fs.realpath(targetSource).catch(() => undefined);
   }
 
   if (!await exists(path.join(source, 'dist/extension.js')) ||
@@ -232,6 +249,17 @@ export async function prepareDistribution(root = ROOT) {
   }
 
   await applyPatches(root, upstream.directory);
+  if (overlay) {
+    await fs.mkdir(privateStage, { recursive: true });
+    // Link the dist directory so watch mode continues updating the staged extension.
+    for (const entry of await fs.readdir(source, { withFileTypes: true })) {
+      if (entry.name === 'package.json') continue;
+      const staged = path.join(privateStage, entry.name);
+      if (!await exists(staged)) await fs.symlink(path.join(source, entry.name), staged, entry.isDirectory() ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file');
+    }
+    const manifest = mergeExtensionManifest(await readJSON(path.join(source, 'package.json')), await readJSON(overlay));
+    await fs.writeFile(path.join(privateStage, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  }
   await fs.mkdir(path.dirname(stateFile), { recursive: true });
   if (current !== generated) {
     await fs.writeFile(productFile, `${generated}\n`);
@@ -240,7 +268,8 @@ export async function prepareDistribution(root = ROOT) {
     await fs.writeFile(webOverridesFile, `${webGenerated}\n`);
   }
   if (!linked) {
-    await fs.symlink(process.platform === 'win32' ? source : path.relative(path.dirname(link), source), link,
+    if (linkExists) await fs.unlink(link);
+    await fs.symlink(process.platform === 'win32' ? targetSource : path.relative(path.dirname(link), targetSource), link,
       process.platform === 'win32' ? 'junction' : 'dir');
   }
   await fs.writeFile(stateFile, `${JSON.stringify({ commit: upstream.commit, sha256: digest(generated), webSha256: digest(webGenerated) }, null, 2)}\n`);

@@ -27,8 +27,6 @@ studio/extensions/*/dist/
 .ci-artifacts/
 coverage/
 test-results/
-server/public/
-server/.data/
 build-in/build-in-developer-assistant/.dev-userdata/
 build-in/build-in-developer-assistant/.workflow-dependencies-ready
 

@@ -13,9 +13,8 @@ import { createAssistantDependencyFixture } from './assistant-dependency-fixture
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 
-test('creation defers ID allocation to the project window and registration uses its current account', async t => {
+test('creation defers local ID allocation to the project window regardless of account', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-allocation-account-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const allocatedId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
   const allocationRuntime = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true,
     platform: 'node', format: 'cjs', external: ['vscode'], write: false,
     plugins: [{ name: 'template-allocation-fixture', setup(build) {
@@ -30,32 +29,19 @@ test('creation defers ID allocation to the project window and registration uses 
           signal.throwIfAborted(); return id;
         } });` }));
     } }] });
-  let connection = { serverUrl: 'https://server.example', accessToken: 'owner-token' }, userId = 'owner', requests = 0, changeDuringRequest = false;
-  const listeners = new Set();
-  const account = { getConnection: () => connection, getState: () => ({ user: { userId } }), onDidChange: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; } };
+  const account = { platform: true, getConnection: () => assert.fail('ID allocation does not read the account') };
   const module = { exports: {} };
   const vscode = { env: { language: 'en' }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
   runInNewContext(allocationRuntime.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
-    fetch: async (_url, options) => {
-      requests++; assert.equal(options.headers.Authorization, 'Bearer owner-token');
-      assert.equal(Object.hasOwn(JSON.parse(options.body), 'projectId'), false);
-      if (changeDuringRequest) { userId = 'other'; connection = { ...connection, accessToken: 'other-token' }; for (const listener of listeners) listener({ status: 'authenticated' }); }
-      const project = JSON.parse(options.body);
-      return Response.json({ errCode: 0, data: { ...project, projectId: allocatedId } });
-    },
+    fetch: () => assert.fail('ID allocation does not contact the platform'),
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());
   const input = { name: 'Created', templateId: 'workflow-starter', parentDirectory: directory };
-  assert.equal((await runtime.createProject(input)).id, ''); assert.equal(requests, 0);
-  assert.equal(await runtime.registerProject(directory, new AbortController().signal), allocatedId); assert.equal(requests, 1);
-  changeDuringRequest = true;
-  await assert.rejects(runtime.registerProject(directory, new AbortController().signal), /account used to create|abort/i);
-  assert.equal(requests, 2); assert.equal(listeners.size, 1);
-  connection = undefined;
-  const signedOut = await runtime.createProject(input);
-  assert.equal(signedOut.id, ''); assert.equal(requests, 2);
-  await assert.rejects(runtime.registerProject(directory, new AbortController().signal), /Sign in/);
+  assert.equal((await runtime.createProject(input)).id, '');
+  assert.match(await runtime.registerProject(directory, new AbortController().signal), /^[a-f0-9-]{36}$/);
+  const cancelled = new AbortController(); cancelled.abort();
+  await assert.rejects(runtime.registerProject(directory, cancelled.signal), /abort/i);
 });
 
 // The built-in projects live in the monorepo, so the extension resolves the

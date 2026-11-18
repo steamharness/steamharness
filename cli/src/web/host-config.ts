@@ -1,12 +1,14 @@
 import { parseWebAppBindings, type WebAppBinding } from "./web-app-preview";
 import path from 'node:path';
-import { parseUserSettings, type UserSettings } from 'steamharness';
+import { parseUserSettings, type UserSettings, type PlatformConnections } from 'steamharness';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
 
 export interface WebHostConfiguration {
   webApps?: Record<string, WebAppBinding>;
   connection?: WebConnection;
+  systemAiConnection?: PlatformConnections['ai'];
+  platform?: boolean;
   surface: 'editor' | 'assistant';
   assistant?: NonNullable<Project['assistant']>;
   assistantProjectDir?: string;
@@ -36,14 +38,14 @@ export function parseHostConnection(value: unknown, options: { allowAi?: boolean
 }
 
 /** Optional AI authentication is separate so older project CLIs can ignore it. */
-export function parseHostAuthentication(message: { connection?: unknown; systemAiConnection?: unknown }): WebConnection | undefined {
+export function parseHostAuthentication(message: { connection?: unknown; systemAiConnection?: unknown }): PlatformConnections {
   const connection = parseHostConnection(message.connection, { allowAi: true });
-  if (message.systemAiConnection === undefined) { return connection; }
-  if (connection?.aiServerUrl !== undefined || connection?.aiAccessToken !== undefined) { throw new Error('Duplicate host AI connection.'); }
+  if (message.systemAiConnection !== undefined && connection?.aiServerUrl) { throw new Error('Duplicate host AI connection.'); }
   const ai = parseHostConnection(message.systemAiConnection);
-  if (!ai) { return connection; }
-  if (!connection) { throw new Error('System AI requires a host project account.'); }
-  return { ...connection, aiServerUrl: ai.serverUrl, aiAccessToken: ai.accessToken };
+  return {
+    project: connection && { serverUrl: connection.serverUrl, accessToken: connection.accessToken },
+    ai: ai ?? (connection?.aiServerUrl && connection.aiAccessToken ? { serverUrl: connection.aiServerUrl, accessToken: connection.aiAccessToken } : undefined),
+  };
 }
 
 function normalizeHostUrl(value: unknown, label: string): string {
@@ -67,8 +69,9 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     throw new Error('A dedicated assistant project and its workspace are required.');
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
+  const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
-    connection: parseHostAuthentication(configuration),
+    connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true,
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

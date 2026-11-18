@@ -98,7 +98,7 @@ test("workflow file store requires a configured file creator", async () => {
 
   await assert.rejects(
     () => store.createFile!({ name: "frame.png", buffer: Buffer.from("png") }),
-    /requires a configured file store/,
+    /requires a file creator supplied by the runtime host/,
   );
 });
 
@@ -149,7 +149,7 @@ test("remote workflow file store uploads generated files through the server file
   }
 });
 
-test("remote workflow file store from env falls back to saved CLI auth file", async () => {
+test("remote workflow file storage never falls back to saved CLI authentication", async () => {
   const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-files-auth-"));
   try {
     await writeFile(
@@ -170,7 +170,7 @@ test("remote workflow file store from env falls back to saved CLI auth file", as
       conversationId: "thread-1",
     });
 
-    assert.ok(store instanceof RemoteProjectFileStore);
+    assert.equal(store, undefined);
   } finally {
     await rm(authDir, { recursive: true, force: true });
   }

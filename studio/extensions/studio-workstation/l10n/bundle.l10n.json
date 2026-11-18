@@ -904,5 +904,13 @@
   "Waiting for browser sign-in...": "Waiting for browser sign-in...",
   "Use browser sign-in.": "Use browser sign-in.",
   "Sign-in request expired. Start again.": "Sign-in request expired. Start again.",
-  "Sign-in request was denied.": "Sign-in request was denied."
+  "Sign-in request was denied.": "Sign-in request was denied.",
+  "Connect to System AI": "Connect to System AI",
+  "Manage Studio settings": "Manage Studio settings",
+  "Generating a local project ID": "Generating a local project ID",
+  "Project created without an ID. Retry Project Setup after selecting a local Node runtime.": "Project created without an ID. Retry Project Setup after selecting a local Node runtime.",
+  "This project ID is not registered. Run steamharness workspace upload --create in a separate release copy. The server assigns a new ID to that copy.": "This project ID is not registered. Run steamharness workspace upload --create in a separate release copy. The server assigns a new ID to that copy.",
+  "Update the project CLI to connect to System AI.": "Update the project CLI to connect to System AI.",
+  "Update the project CLI to open the hosted Web App.": "Update the project CLI to open the hosted Web App.",
+  "This entry does not declare a hosted Web App.": "This entry does not declare a hosted Web App."
 }

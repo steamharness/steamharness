@@ -36,8 +36,6 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   private serverProject?: ServerProject;
   private serverProjects = new Map<string, ServerProject>();
   private checked = false;
-  private lastChecked = 0;
-  private projectSignature = '';
   private published = '';
   private versions: ServerProjectVersion[] = [];
   private generation = 0;
@@ -46,13 +44,10 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   private choosing = false;
   private loading = false;
   private error?: string;
-  private timer?: ReturnType<typeof setTimeout>;
   private reading?: AbortController;
   private readonly lifetime = new AbortController();
   private connectionKey: string;
-  private pendingImportLink?: string;
   private uploadSession?: ProjectUploadSession;
-  private readonly interval: ReturnType<typeof setInterval>;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
     private readonly account: AccountController, private readonly output: vscode.OutputChannel,
@@ -69,7 +64,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     };
     command('studio.uploadProject', (target?: { uri?: string }) => this.upload(target));
     command('studio.upgradeProject', (target?: { uri?: string }) => this.upgrade(target));
-    command('studio.refreshVersions', () => this.reload());
+    command('studio.refreshVersions', () => this.reload(true));
     command('studio.selectVersionsProject', () => this.selectProject());
     command('studio.downloadProject', () => this.chooseDownload());
     command('studio.importProjectFromLink', (link?: string) => this.importFromLink(link));
@@ -78,38 +73,27 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       if (this.uploadSession?.id === id) { this.uploadSession.controller?.abort(); }
     });
     subscriptions.push(this, ...(register ? [vscode.window.registerWebviewViewProvider('studio.versions', this, { webviewOptions: { retainContextWhenHidden: true } })] : []),
-      ...(transferHost ? [transferHost.operations.event(() => this.publish()), transferHost.onDidChangeVersions(() => this.schedule())] : []),
+      ...(transferHost ? [transferHost.operations.event(() => this.publish())] : []),
       account.onDidChange(state => {
         if (state.status === 'checking') { return; }
         const key = JSON.stringify(account.getConnection());
         if (key === this.connectionKey) { return; }
         this.connectionKey = key;
-        this.serverProject = undefined; this.serverProjects.clear(); this.checked = false; this.lastChecked = 0; this.versions = []; this.error = undefined;
+        this.serverProject = undefined; this.serverProjects.clear(); this.checked = false; this.versions = []; this.error = undefined;
         this.reading?.abort(); ++this.generation; this.loading = false;
-        this.publish(); this.schedule();
-        if (this.pendingImportLink && account.getConnection()) {
-          const link = this.pendingImportLink;
-          this.pendingImportLink = undefined;
-          void this.importFromLink(link).catch(error => this.report(error));
-        }
-      }), vscode.window.onDidChangeWindowState(state => { if (state.focused && Date.now() - this.lastChecked > 60_000) { this.schedule(); } }));
-    this.interval = setInterval(() => { if (vscode.window.state.focused && !this.busy) { this.schedule(); } }, 5 * 60_000);
+        this.publish();
+      }));
   }
 
   update(projects: Project[], preferred?: Project): void {
     this.localProjects = [...new Map(projects.filter(project => !project.assistant && !project.builtin).map(project => [project.uri, project])).values()];
-    const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project), project.distribution, project.releasePreview]));
-    const projectsChanged = signature !== this.projectSignature;
-    this.projectSignature = signature;
     const changedPreferred = preferred?.uri !== this.preferredUri;
     this.preferredUri = preferred?.uri;
     const local = this.localProjects.find(project => project.uri === (changedPreferred ? preferred?.uri : this.preferred?.uri)) ?? this.localProjects[0];
     const changed = local?.uri !== this.preferred?.uri || local?.id !== this.preferred?.id;
-    const versionChanged = local && projectVersion(local) !== (this.preferred && projectVersion(this.preferred));
     this.preferred = local;
-    if (changed) { this.serverProject = local && this.serverProjects.get(local.id); this.versions = []; }
-    void vscode.commands.executeCommand('setContext', 'studio.projectUploadAvailable', !!local && !!this.launcher.uploadProject && vscode.workspace.isTrusted);
-    if (projectsChanged || changed || versionChanged) { this.schedule(); }
+    if (changed) { this.reading?.abort(); ++this.generation; this.loading = false; this.serverProject = local && this.serverProjects.get(local.id); this.versions = []; }
+    if (this.account.platform) void vscode.commands.executeCommand('setContext', 'studio.projectUploadAvailable', !!local && !!this.launcher.uploadProject && vscode.workspace.isTrusted);
     this.publish();
   }
 
@@ -120,22 +104,16 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const selected = this.localProjects.find(project => project.uri === picked?.project.uri);
     if (!selected || selected === this.preferred || this.disposed) { return; }
     this.preferred = selected; this.serverProject = this.serverProjects.get(selected.id); this.versions = [];
-    this.schedule(); this.publish();
+    await this.reload(true);
   }
 
-  private schedule(): void {
-    clearTimeout(this.timer);
-    this.reading?.abort(); ++this.generation;
-    this.timer = setTimeout(() => { void this.reload(); }, 350);
-  }
-
-  async reload(): Promise<void> {
-    clearTimeout(this.timer);
+  async reload(connect = false): Promise<void> {
+    if (!this.account.platform || this.disposed) return;
+    if (connect && !await this.account.connect()) { this.account.open(); return; }
     this.reading?.abort();
     const generation = ++this.generation, connection = this.account.getConnection(), project = this.preferred;
-    if (this.disposed || !connection || !this.localProjects.length || project?.distribution !== 'release' || project?.releasePreview) { this.loading = false; this.versions = []; this.serverProject = undefined; this.error = undefined; this.publish(); return; }
+    if (this.disposed || !connection || !project || project.releasePreview) { this.loading = false; this.versions = []; this.serverProject = undefined; this.error = undefined; this.publish(); return; }
     const controller = this.reading = new AbortController();
-    this.lastChecked = Date.now();
     this.loading = true; this.error = undefined; this.publish();
     try {
       const client = new ProjectServerClient(connection);
@@ -143,7 +121,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       if (generation !== this.generation || this.disposed) { return; }
       const remote = projects.find(entry => entry.id === project?.id);
       this.serverProjects = new Map(projects.map(entry => [entry.id, entry]));
-      this.checked = true; this.lastChecked = Date.now(); this.serverProject = remote;
+      this.checked = true; this.serverProject = remote;
       let versions = this.versions;
       if (remote && this.view?.visible) {
         const detail = await client.versions(remote.id, controller.signal);
@@ -197,13 +175,14 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
 
   private async upgrade(target?: { uri?: string }): Promise<void> {
     if (this.busy || this.choosing || this.disposed) { return; }
-    if (!this.account.getConnection()) { this.account.open(); return; }
+    const connection = await this.account.connect();
+    if (!connection) { this.account.open(); return; }
     if (!this.launcher.downloadProject) { throw new Error(t('Project transfers are unavailable in this extension host.')); }
     const project = this.localProjects.find(entry => entry.uri === target?.uri) ?? (!target?.uri ? this.preferred : undefined);
     if (!project || project.distribution !== 'release' || project.releasePreview) { return; }
     this.choosing = true; this.publish();
     try {
-      const connection = this.account.getConnection()!, key = JSON.stringify(connection);
+      const key = JSON.stringify(connection);
       const assertAvailable = (): void => {
         this.lifetime.signal.throwIfAborted();
         if (JSON.stringify(this.account.getConnection()) !== key) { throw new Error(t('Account changed. Try again.')); }
@@ -278,7 +257,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   private async prepareUpload(target?: { uri?: string }): Promise<void> {
-    const connection = this.account.getConnection();
+    const connection = await this.account.connect();
     if (!connection) { this.account.open(); return; }
     if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
     const project = this.localProjects.find(project => project.uri === target?.uri) ?? (!target?.uri ? this.preferred : undefined);
@@ -370,7 +349,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       if ((await new ProjectServerClient(session.connection).versions(project.id, signal)).versions.some(entry => entry.version === session.version)) {
         throw new Error(t('Version {0} already exists. Change steamharness.json version before uploading.', session.version));
       }
-    } catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } throw error; }
+    } catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Run steamharness workspace upload --create in a separate release copy. The server assigns a new ID to that copy.')); } throw error; }
     assertAvailable();
     await readManifest();
     const prepared = this.launcher.prepareDistribution ? await this.launcher.prepareDistribution(project, false, signal, message => {
@@ -395,9 +374,9 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   private async prepareDownload(): Promise<void> {
-    if (!this.account.getConnection()) { this.account.open(); return; }
+    const credentials = await this.account.connect();
+    if (!credentials) { this.account.open(); return; }
     if (!this.launcher.downloadProject) { throw new Error(t('Project transfers are unavailable in this extension host.')); }
-    const credentials = this.account.getConnection()!;
     const connection = JSON.stringify(credentials);
     const assertAccount = (): void => {
       if (JSON.stringify(this.account.getConnection()) !== connection) { throw new Error(t('Account changed. Try again.')); }
@@ -442,9 +421,8 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
         } });
       if (link === undefined || this.disposed) { return; }
       const share = parseServerProjectShareLink(link);
-      const connection = this.account.getConnection();
+      const connection = await this.account.connect();
       if (!connection) {
-        this.pendingImportLink = link;
         this.account.open();
         void vscode.window.showInformationMessage(t('Sign in to {0} to import this project.', share.serverUrl));
         return;
@@ -508,16 +486,15 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('versions-ui.css')}"></head>
       <body><main id="versions-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('versions-ui.js')}"></script></body></html>`;
     this.listeners.push(view.webview.onDidReceiveMessage(message => { void this.receive(message).catch(error => this.report(error)); }),
-      view.onDidChangeVisibility(() => { if (view.visible) { void this.reload(); } }),
       view.onDidDispose(() => { if (this.view === view) { this.view = undefined; for (const listener of this.listeners.splice(0)) { listener.dispose(); } } }));
-    this.publish(); void this.reload();
+    this.publish();
   }
 
   private async receive(message: { type?: string; generation?: number; projectId?: string; version?: string }): Promise<void> {
     if (message.type === 'ready') { this.publish(); return; }
     if (message.type === 'sign-in') { this.account.open(); return; }
     if (message.generation !== this.generation || this.busy || this.transferHost?.operationBusy) { return; }
-    if (message.type === 'refresh') { await this.reload(); return; }
+    if (message.type === 'refresh') { await this.reload(true); return; }
     if (message.projectId !== this.preferred?.id) { return; }
     if (message.type === 'upgrade') { await (this.transferHost ?? this).upgrade(this.preferred); return; }
     if (message.type === 'upload') {
@@ -535,7 +512,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   dispose(): void {
-    this.disposed = true; ++this.generation; clearTimeout(this.timer); clearInterval(this.interval); this.reading?.abort(); this.lifetime.abort(); this.changes.dispose(); this.operations.dispose();
+    this.disposed = true; ++this.generation; this.reading?.abort(); this.lifetime.abort(); this.changes.dispose(); this.operations.dispose();
     for (const listener of this.listeners.splice(0)) { listener.dispose(); }
   }
 }

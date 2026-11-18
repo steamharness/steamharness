@@ -8,8 +8,8 @@ import { activateNodeRuntime } from './node-runtime-host';
 import { prepareInternalLayer } from './internal-layer';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  await prepareInternalLayer();
+  const platform = await prepareInternalLayer();
   await activateNodeRuntime(context);
-  const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run));
+  const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run), platform);
   return activateWorkstation(context, createProjectRuntime(context, account), account);
 }

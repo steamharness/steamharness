@@ -6,7 +6,7 @@ import { validateReleaseCatalog, withReleaseNavigation } from "./release-notes.m
 
 /**
  * 公开文档的内容校验器。这里不依赖 Docusaurus 或任何 npm 包：
- * 站点由私有工作区构建，公开仓只保证 Markdown/MDX、导航与 OpenAPI 源文件
+ * 站点由私有工作区构建，公开仓只保证 Markdown/MDX 和导航
  * 本身是完整且双语的。
  */
 const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localhost:7133|127\.0\.0\.1:7133|运行到 Web|Web 入口|Web entry/iu;
@@ -67,11 +67,6 @@ export async function validateDocs(options = {}) {
       await assertFile(path.join(root, `${page}.mdx`), `${language.language} navigation page`);
       navigatedPages.push(page);
     }
-    for (const tab of language.tabs) {
-      if (tab.openapi?.source) {
-        await assertFile(path.join(root, tab.openapi.source), `${language.language} OpenAPI source`);
-      }
-    }
   }
 
   const zhPages = (await collectFiles(root, root))
@@ -118,19 +113,10 @@ export async function validateDocs(options = {}) {
 
   if (qualityIssues.length) throw new Error(`Documentation readability checks failed (${qualityIssues.length}):\n${qualityIssues.join("\n")}`);
 
-  const openapiFiles = ["openapi/steamharness.openapi.yaml", "en/openapi/steamharness.openapi.yaml"];
-  for (const relativeFile of openapiFiles) {
-    const source = await readFile(path.join(root, relativeFile), "utf8");
-    if (!/^openapi:\s*3\./mu.test(source) || !/^paths:\s*$/mu.test(source)) {
-      throw new Error(`${relativeFile} is not a complete OpenAPI 3 document.`);
-    }
-  }
-
   return {
     languages: languageNames,
     pages: allMdx.length,
     navigatedPages: navigatedPages.length,
-    openapiFiles: openapiFiles.length,
   };
 }
 

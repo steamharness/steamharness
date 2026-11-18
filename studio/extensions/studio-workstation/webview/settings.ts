@@ -28,6 +28,7 @@ function icon(name: string): HTMLElement {
 }
 
 export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { accountRoot: HTMLElement; setAccount(state: AccountState): void } {
+  const platform = document.body.dataset.platform === 'true';
   root.classList.add('settings-root');
   root.innerHTML = `
     <div class="settings-layout">
@@ -98,7 +99,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
 
   function categories(): { id: string; label: string; icon: string }[] {
     return [
-      { id: 'account', label: t('Account'), icon: 'account' },
+      ...(platform ? [{ id: 'account', label: t('Account'), icon: 'account' }] : []),
       { id: 'general', label: t('General'), icon: 'settings-gear' },
       { id: 'editor', label: t('Editor'), icon: 'code' },
       { id: 'models', label: t('Models'), icon: 'sparkle' },
@@ -375,12 +376,12 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     for (const node of [...sections.children] as HTMLElement[]) {
       node.hidden = searching ? !(snapshot?.providers.find(provider => provider.id === node.dataset.provider)?.title.toLocaleLowerCase().includes(query)) : `provider:${node.dataset.provider}` !== activeSection;
     }
-    const signedIn = !!account?.user && ['authenticated', 'checking', 'error'].includes(account.status);
-    const hasProvider = signedIn && [...sections.children].some(node => !(node as HTMLElement).hidden);
+    const signedIn = !!account?.aiConfigured;
+    const hasProvider = signedIn && [...sections.children].some(node => !(node as HTMLElement).hidden && (node as HTMLElement).dataset.provider);
     find('settings-sign-in').hidden = hasProvider || !snapshot?.providers.length;
     find('settings-sign-in').querySelector('p')!.textContent = account?.status === 'checking' || signedIn && account?.status !== 'error'
       ? t('Loading...') : signedIn ? t('Account verification failed.') : t('Sign in to view this information.');
-    find('settings-provider-sign-in').textContent = signedIn || account?.status === 'checking' ? t('Account') : t('Sign In');
+    find('settings-provider-sign-in').textContent = t('Connect to System AI');
     sections.hidden = !hasProvider;
     find('settings-title').textContent = searching ? t('Search results') : selected?.label ?? t('General');
     find('settings-no-results').hidden = !searching || matches > 0;
@@ -418,8 +419,9 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     if (account?.user && ['authenticated', 'checking', 'error'].includes(account.status)) { navigate('account'); }
     else { vscode.postMessage({ type: 'open-login' }); }
   };
+  find('settings-identity').hidden = !platform;
   find('settings-identity').addEventListener('click', openAccount);
-  find('settings-provider-sign-in').addEventListener('click', openAccount);
+  find('settings-provider-sign-in').addEventListener('click', () => vscode.postMessage({ type: 'connect-system-ai' }));
   window.addEventListener('message', event => {
     const message = event.data;
     if (models.handle(message)) { return; }

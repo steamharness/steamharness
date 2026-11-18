@@ -26,11 +26,10 @@ An absent host marker defaults to `cli`; an unknown nonempty marker throws. Serv
 
 ## Configure storage separately
 
-
-Local development can run Server and Docker PostgreSQL on one machine. [Runtime storage](/en/core-api/runtime-storage) determines where history persists; do not infer it from the platform name.
+[Runtime storage](/en/core-api/runtime-storage) determines where history is saved. Storage is local by default and does not change when you connect an account.
 
 ## Host resource management
 
-Studio and CLI Web open authenticated Server Web pages for models, data, attachments, and account grants. Links contain no account token.
+Open-source Studio provides local development tools. Enhanced Studio can open Server features on demand. In the standalone CLI, use `--online project` or `--online ai` to connect to the corresponding service. Browser links do not contain account tokens.
 
 Project RPC and Browser pages receive only authorized host operations.

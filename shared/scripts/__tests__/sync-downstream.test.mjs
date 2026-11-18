@@ -10,14 +10,14 @@ import {
   syncRemoteTargets,
 } from "../sync-downstream.mjs";
 
-test("default exports include the retained consumers without the removed host", async () => {
+test("default exports include only the public Core and CLI consumers", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-shared-default-export-"));
   try {
     const sourceRoot = path.join(root, "dist", "source");
     await mkdir(path.join(sourceRoot, "i18n"), { recursive: true });
     await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@steamharness/i18n"}\n', "utf8");
     const exported = await exportSharedSource({ root, sourceRoot, outputRoot: path.join(root, "consumers") });
-    assert.deepEqual(exported.map((entry) => entry.name), ["harness", "cli", "server"]);
+    assert.deepEqual(exported.map((entry) => entry.name), ["harness", "cli"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -85,7 +85,7 @@ test("remote synchronization keeps the GitLab port and credentials out of comman
     assert.equal(clone.args.join(" ").includes("secret-sync-token"), false);
     assert.equal(clone.env.GIT_CONFIG_KEY_0, "http.extraHeader");
     assert.equal(Buffer.from(clone.env.GIT_CONFIG_VALUE_0.slice("Authorization: Basic ".length), "base64").toString("utf8"), "oauth2:secret-sync-token");
-    assert.equal(resolveGitLabServerUrl({ protocol: "http", host: "yuhe.space", port: "7201" }), "https://git.yuhe.space");
+    assert.equal(resolveGitLabServerUrl({ serverUrl: "", protocol: "http", host: "git.example.test", port: "7201" }), "http://git.example.test:7201");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

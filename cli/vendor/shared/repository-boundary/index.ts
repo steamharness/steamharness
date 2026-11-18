@@ -7,6 +7,12 @@ const SOURCE_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts"
 const IGNORED_DIRECTORIES = new Set([
   ".git", ".pnpm-store", ".release", ".steamharness-local", "coverage", "dist", "node_modules", "out", "public", "release", "vendor",
 ]);
+const RELEASE_DOCS_IMPORTS = new Map([
+  ["scripts/prepare-release.mjs", "release-notes.mjs"],
+  ["scripts/deploy-stable.mjs", "release-notes.mjs"],
+  ["scripts/__tests__/prepare-release.test.mjs", "__tests__/release-fixture.mjs"],
+  ["scripts/__tests__/deploy-stable.test.mjs", "__tests__/release-fixture.mjs"],
+]);
 
 export interface RepositoryBoundaryViolation {
   file: string;
@@ -20,7 +26,10 @@ export interface RepositoryBoundaryViolation {
   detail: string;
 }
 
-export async function scanRepositoryBoundaries(root: string): Promise<RepositoryBoundaryViolation[]> {
+export async function scanRepositoryBoundaries(
+  root: string,
+  { allowReleaseNotesTools = false }: { allowReleaseNotesTools?: boolean } = {},
+): Promise<RepositoryBoundaryViolation[]> {
   const absoluteRoot = path.resolve(root);
   const files = await listFiles(absoluteRoot);
   const violations = (await Promise.all(files.map(async (relativePath) => {
@@ -32,7 +41,7 @@ export async function scanRepositoryBoundaries(root: string): Promise<Repository
       return scanTypeScriptConfig(absoluteRoot, relativePath, await readFile(absolutePath, "utf8"));
     }
     if (!SOURCE_EXTENSIONS.has(path.extname(relativePath))) return [];
-    return scanSourceImports(absoluteRoot, relativePath, await readFile(absolutePath, "utf8"));
+    return scanSourceImports(absoluteRoot, relativePath, await readFile(absolutePath, "utf8"), allowReleaseNotesTools);
   }))).flat();
   for (const trackedPath of listTrackedDevelopmentAdapters(absoluteRoot)) {
     violations.push({
@@ -69,7 +78,7 @@ export function assertRepositoryBoundaries(violations: readonly RepositoryBounda
   ].join("\n"));
 }
 
-function scanSourceImports(root: string, relativePath: string, source: string): RepositoryBoundaryViolation[] {
+function scanSourceImports(root: string, relativePath: string, source: string, allowReleaseNotesTools: boolean): RepositoryBoundaryViolation[] {
   const sourceFile = ts.createSourceFile(relativePath, source, ts.ScriptTarget.Latest, true, scriptKind(relativePath));
   const specifiers: string[] = [];
   const visit = (node: ts.Node): void => {
@@ -85,10 +94,12 @@ function scanSourceImports(root: string, relativePath: string, source: string): 
   };
   visit(sourceFile);
 
+  const relativeToolPath = allowReleaseNotesTools ? RELEASE_DOCS_IMPORTS.get(normalize(relativePath)) : undefined;
+  const allowedTarget = relativeToolPath && path.resolve(root, "..", "docs", "scripts", relativeToolPath);
   return specifiers.flatMap((specifier): RepositoryBoundaryViolation[] => {
     if (!specifier.startsWith(".")) return [];
     const resolved = path.resolve(root, path.dirname(relativePath), specifier);
-    return isInside(root, resolved) ? [] : [{
+    return isInside(root, resolved) || resolved === allowedTarget ? [] : [{
       file: normalize(relativePath),
       kind: "cross-repository-import",
       detail: specifier,

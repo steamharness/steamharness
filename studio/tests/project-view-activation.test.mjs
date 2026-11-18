@@ -23,7 +23,7 @@ visit(source);
 function load(name, bindings = {}) {
   assert.ok(initializers.has(name));
   const compiled = ts.transpileModule(`(${initializers.get(name)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return runInNewContext(compiled, { setTimeout, clearTimeout, t: (text, ...args) => text.replace(/\{(\d+)\}/g, (_match, index) => String(args[index])), Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, vscode: { ViewColumn: { One: 1 } }, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
+  return runInNewContext(compiled, { setTimeout, clearTimeout, t: (text, ...args) => text.replace(/\{(\d+)\}/g, (_match, index) => String(args[index])), Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, vscode: { ViewColumn: { One: 1 } }, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, account: { platform: false }, ...bindings });
 }
 const revealProject = load('revealProject');
 
@@ -172,7 +172,7 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
     launches.push(parseHostConfiguration({ type: 'configure', surface,
       ...(project.assistant ? { assistant: project.assistant, assistantProjectDir: project.folderPath } : {}) }));
     let finish;
-    const lease = { ready: { url: `http://127.0.0.1:4567/entries/${project.entryId}/#session=token`, traceProtocolVersion: 1 },
+    const lease = { ready: { url: `http://127.0.0.1:4567/entries/${project.entryId}/#session=token`, traceProtocolVersion: 1, systemAiConnectionProtocolVersion: 2 },
       closed: new Promise(resolve => { finish = resolve; }), closes: 0,
       close: async () => { lease.closes++; finish(); },
       onExit: callback => { lease.exit = callback; return disposable; } };

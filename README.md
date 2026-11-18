@@ -1,6 +1,6 @@
 # SteamHarness
 
-`SteamHarness` 是驾驭 Agent 动力的开源平台：从运行时 SDK 到工作站、服务器，再到把项目装进别人机器的 Store。品牌取 "harness the power of steam"——像蒸汽机被挽具驾驭一样，让 Agent 的工具、权限与运行时受控发力。
+SteamHarness 提供开发、调试和运行本地 Kanban、Bot 与 Workflow 的 SDK、CLI 和工作站。开源工作站无需平台账号；连接 SteamHarness Server 的能力由在线 CLI 或增强版提供，Server 不在本仓发布。
 
 本仓库是全部开源组件的**单一 monorepo**，由原先 GitLab 上 9 个独立仓库合并而来。
 
@@ -10,17 +10,16 @@
 | --- | --- | --- |
 | `harness/` | Agent 运行时 SDK 与离线测试 | `steamharness` |
 | `cli/` | 本地、工作区与服务器管理 CLI（命令 `steamharness`） | `@steamharness/cli` |
-| `server/` | Server 与 Server Web 管理端 | `@steamharness/server`、`@steamharness/server-web` |
 | `shared/` | 跨组件源码、发布工具与 i18n 资源（18 个子包） | `@steamharness/shared-workspace`、`@steamharness/*` |
 | `studio/` | 基于 VS Code OSS 的工作站 | `studio-workstation` |
-| `docs/` | 中英文公开文档（Markdown/MDX、导航与 OpenAPI 源；站点由独立工作区构建） | — |
+| `docs/` | 中英文公开文档（Markdown/MDX 与导航；站点由独立工作区构建） | — |
 | `build-in/build-in-developer-assistant/` | 内置小助手聚合项目（对话与 Studio Control 入口、skill 真相源） | 随 Studio 分发 |
 | `build-in/build-in-analysis/` | 内置本地与运行数据分析 | 随 Studio 分发 |
 
 ## 快速开始
 
 ```sh
-pnpm install                      # harness / cli / server / shared / build-in 的单一 lockfile
+pnpm install                      # harness / cli / shared / build-in 的单一 lockfile
 pnpm check                        # skill/vendor 副本守卫、脚本测试及 Core/CLI 性能回归
 pnpm typecheck && pnpm test       # 按依赖顺序跑各包自检
 ```
@@ -52,18 +51,17 @@ pnpm -C cli test
 | `pnpm check:skill-copies` | 保证 `build-in/build-in-developer-assistant/skills/` 与 `harness/.agents/skills/` 的共享载荷不漂移（`--fix` 同步） |
 | `pnpm check:vendor-copies` | 保证 `shared/release-tools` 在 vendor 目录与内置项目里的逐字节副本不漂移（`--fix` 同步） |
 | `pnpm test:performance` | 对照已提交基线检查 Core/CLI 的 P50/P95，明显变慢时失败；`-- --suite all` 包含 Studio，见[性能测试说明](scripts/performance/README.md) |
-| `pnpm server:dev` / `pnpm server:start` | 启动 Server（开发监听 / 仅开发源码） |
 | `pnpm studio:dev` / `pnpm studio:web` | 启动工作站 Electron / 浏览器端 |
 
 ## 发布
 
 公开包只有两个：运行时 SDK `steamharness` 与命令行 `@steamharness/cli`；其余包都是 `private: true`，发布流程不会带上它们。
 
-发布走 **GitHub Release + npm Trusted Publishing**：
+公开 npm 发布走 **npm Trusted Publishing**：
 
 1. 在普通提交里把 `harness/package.json` 与 `cli/package.json` 的版本号一起抬高（两个包同一条版本线）
 2. 打一个 Release，tag 以 `steamharness/v` 开头，例如 `steamharness/v0.1.0`
-3. `.github/workflows/release.yml` 被触发：用 OIDC 向 npm 换取短期发布凭证，带 provenance 依次发布 SDK 与 CLI（顺序不能反，CLI 的类型解析依赖 SDK 的 `dist`）
+3. 手动运行 `.github/workflows/release.yml` 并指定该 tag，用 OIDC 向 npm 换取短期发布凭证，带 provenance 依次发布 SDK 与 CLI
 
 仓库里不存放任何 npm token。前提是在 npm 后台把 `steamharness/steamharness` 与该 workflow 文件登记为 Trusted Publisher。
 

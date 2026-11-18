@@ -1,0 +1,180 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 79f4252b3ed3f7fe92375490f51fcf66d8339616..1b16947c078e77456be0723c61fc568f74ebf301 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -41,6 +41,7 @@
+ .studio-start-action:hover { background:var(--vscode-list-hoverBackground); color:var(--vscode-textLink-activeForeground); }
+ .studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
+ .studio-start-action:disabled { opacity:.5; cursor:default; }
++.studio-start :is(.studio-start-action, dt, dd)[hidden] { display:none; }
+ .studio-start-action > .codicon { display:flex; align-items:center; justify-content:center; width:16px; height:20px; font-size:16px; line-height:16px; }
+ .studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
+ .studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 2037858363afd3775d1191d1c401897c91c93536..3cf21da4a0fb3d87b51e70d93d98202bde84dff1 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -18,6 +18,7 @@ import './media/studioStart.css';
+ /** Versioned, credential-free state supplied by the Studio extension host. */
+ export interface StudioStartState {
+ 	version: 1;
++	platform?: boolean;
+ 	labels: Record<string, string>;
+ 	badge?: string;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+@@ -211,7 +212,8 @@ export class StudioStartView extends Disposable {
+ 		this.element.classList.toggle('loading', !state);
+ 		this.element.setAttribute('aria-busy', String(!state));
+ 		if (!state) {
+-			for (const action of this.actions) { action.button.disabled = true; }
++			for (const action of this.actions) { action.button.disabled = true; action.button.hidden = ['download', 'versions', 'account'].includes(action.label); }
++			for (const key of ['account', 'server']) { this.stats.get(key)!.hidden = true; this.labels.get(`stat.${key}`)!.hidden = true; }
+ 			return;
+ 		}
+ 		const badge = state.badge?.trim();
+@@ -220,12 +222,13 @@ export class StudioStartView extends Disposable {
+ 		const text = (key: string): string => key === 'current' && state.recommendations ? state.recommendations.title : state.labels[key] ?? key;
+ 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
+ 		for (const action of this.actions) {
++			action.button.hidden = !state.platform && ['download', 'versions', 'account'].includes(action.label);
+ 			action.button.title = text(action.label);
+ 			action.button.setAttribute('aria-label', text(action.label));
+ 			if (!action.iconOnly && action.button.lastElementChild!.textContent !== text(action.label)) { action.button.lastElementChild!.textContent = text(action.label); }
+ 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
+ 		}
+-		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
++		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate, platform: state.platform };
+ 		this.list('current', { recommendations: state.recommendations, projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
+ 			if (!state.recommendations && !state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
+ 			if (state.recommendations) {
+@@ -286,7 +289,7 @@ export class StudioStartView extends Disposable {
+ 				}
+ 				const run = this.button(actions, text('run'), 'play', 'studio.openProject', target, false, updateAvailable, store);
+ 				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
+-				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
++				if (state.platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store); }
+ 				this.button(actions, text('source'), 'code', 'studio.openProjectSource', target, false, true, store);
+ 			}
+ 			for (const project of state.pending) {
+@@ -326,6 +329,7 @@ export class StudioStartView extends Disposable {
+ 		});
+ 		const environment = state.environment;
+ 		for (const [key, element] of this.stats) {
++			if (key === 'account' || key === 'server') { element.hidden = !state.platform; this.labels.get(`stat.${key}`)!.hidden = !state.platform; }
+ 			const value = key === 'studio' ? environment.studio : key === 'vscode' ? environment.vscode
+ 				: ['projects', 'running', 'waiting'].includes(key) ? state.summary ? String(state.summary[key as 'projects']) : text('unavailable')
+ 					: environment[key as 'node'] || text('unavailable');
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 107bc870ca40fb6e53a3b5fedb4cca3ba4bc675f..568e3f3a5f9484e3b2b6d5608faf345c06c2a62d 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -29,9 +29,6 @@ export const studioSteamToolDefinitions = [
+ 	{ id: 'editor', icon: 'code', editor: true },
+ 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
+ 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
+-	{ id: 'databases', icon: 'database', view: 'studio.databases' },
+-	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+-	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+ 	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
+ 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
+@@ -54,6 +51,7 @@ export const studioSteamWorkspaceState = {
+ };
+ 
+ export interface StudioModeState {
++	platform?: boolean;
+ 	project?: { name: string; avatarUrl: string };
+ 	releaseOnly?: boolean;
+ 	available: boolean;
+@@ -63,6 +61,7 @@ export interface StudioModeState {
+ }
+ 
+ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
++	if ((id === 'login' || id === 'versions') && !studioModeState.state.platform) { return false; }
+ 	return !studioModeState.state.releaseOnly || id !== 'editor' && id !== 'assistant';
+ }
+ 
+@@ -281,7 +280,7 @@ export class StudioSteamTabs extends Disposable {
+ 		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+ 		this._register(addDisposableListener(this.add, 'click', () => this.contextMenu.showContextMenu({
+ 			getAnchor: () => this.add,
+-			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
++			getActions: () => studioSteamToolDefinitions.filter(tool => isStudioSteamToolAvailable(tool.id)).map(tool => toAction({
+ 				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
+ 				class: `codicon codicon-${tool.icon}`,
+ 				checked: !('command' in tool) ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+index fa6c5e916a499c0aee87a0382ccf8bada851d408..3b4516f0f76eef2caac3db23bf04b79f04989dec 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+@@ -52,7 +52,7 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+ 		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
+ 		icon: Codicon.cloudUpload
+ 	},
+-	when: ContextKeyExpr.equals('studio.projectUploadAvailable', true),
++	when: ContextKeyExpr.and(ContextKeyExpr.has('studio.platformAvailable'), ContextKeyExpr.has('studio.projectUploadAvailable')),
+ 	group: '0_studio',
+ 	order: 1
+ });
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+index 914dec9bf752b1706f5985a84fac7cfe12c83e21..5972919af376c23bce88991dce6641932281f62a 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -21,6 +21,7 @@ import './media/studioProjectCreateDialog.css';
+ 
+ type ProjectCreationInput = { templateId: string; name: string; parentDirectory: string } | { shareUrl: string };
+ export interface ProjectCreationDialogRequest {
++	platform?: boolean;
+ 	templates: StudioStartState['templates'];
+ 	labels: Record<string, string>;
+ 	parentDirectory: string;
+@@ -92,7 +93,7 @@ export class StudioProjectCreateDialog extends Disposable {
+ 		const templates = append(this.localFields, $('fieldset.studio-create-templates'));
+ 		append(templates, $('legend', undefined, this.text('template')));
+ 		const options = append(templates, $('.studio-create-options'));
+-		for (const type of ['workflow', 'bot', 'kanban', 'link']) {
++		for (const type of ['workflow', 'bot', 'kanban', ...(this.request.platform ? ['link'] : [])]) {
+ 			const label = append(types, $('label.studio-create-type'));
+ 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
+ 			radio.checked = this.projectType === type;
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts b/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
+index 927c62d51de39a7e8f3293657ce04a6fb1ccbf97..4227a9de664694ac5acf40c07f22337f9a9bdab7 100644
+--- a/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
++++ b/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
+@@ -107,7 +107,8 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	private _footerSignInBtn: HTMLButtonElement | undefined;
+ 
+ 	private currentStepIndex = 0;
+-	private readonly steps = ONBOARDING_STEPS;
++	private steps = ONBOARDING_STEPS;
++	private platform = false;
+ 	private readonly disposables = this._register(new DisposableStore());
+ 	private readonly stepDisposables = this._register(new DisposableStore());
+ 	private readonly footerDisposables = this._register(new DisposableStore());
+@@ -160,6 +161,8 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			return;
+ 		}
+ 
++		this.platform = this.contextKeyService.getContextKeyValue<boolean>('studio.platformAvailable') === true;
++		this.steps = this.platform ? ONBOARDING_STEPS : ONBOARDING_STEPS.filter(step => step !== OnboardingStepId.SignIn);
+ 		this._userSignedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
+ 		this._isShowing = true;
+ 		this.previouslyFocusedElement = getActiveWindow().document.activeElement as HTMLElement | undefined;
+@@ -440,7 +443,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			// Rebuild the nudge with each step so its listener never outlives its step.
+ 			this._footerSignInBtn?.remove();
+ 			this._footerSignInBtn = undefined;
+-			if (this._isLastStep() && !this._userSignedIn) {
++			if (this.platform && this._isLastStep() && !this._userSignedIn) {
+ 				const button = this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
+ 				button.type = 'button';
+ 				button.textContent = onboardingStrings.signIn;
+@@ -487,7 +490,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	}
+ 
+ 	private async _handleSignIn(): Promise<void> {
+-		if (this.openingAccount) {
++		if (!this.platform || this.openingAccount) {
+ 			return;
+ 		}
+ 		this.openingAccount = true;

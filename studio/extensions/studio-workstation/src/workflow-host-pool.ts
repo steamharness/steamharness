@@ -60,7 +60,8 @@ export class AggregateWebHostPool {
           return { ...ready, url: url.href };
         },
         closed, close: release, reconnect: () => current.reconnect(),
-        updateAuth: connection => current.updateAuth(connection),
+        updateAuth: (connection, ai) => current.updateAuth(connection, ai),
+        connectPlatform: (purpose, entryId) => current.connectPlatform?.(purpose, entryId) ?? Promise.resolve(),
         updateUserSettings: settings => current.updateUserSettings(settings),
         updateResourceProjects: projects => current.updateResourceProjects(projects),
         get readModelRequest(): WebSession['readModelRequest'] {

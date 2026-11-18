@@ -8,20 +8,16 @@
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
     "test:performance": "node scripts/check-performance.mjs",
     "check": "pnpm check:skill-copies && pnpm check:vendor-copies && pnpm test:scripts && pnpm test:performance",
-    "typecheck": "pnpm -r --filter \"./shared/*\" --filter \"./harness\" --filter \"./cli\" --filter \"./server\" run typecheck",
+    "typecheck": "pnpm -r --filter \"./shared/*\" --filter \"./harness\" --filter \"./cli\" run typecheck",
     "test": "pnpm -r --filter \"./shared/*\" --filter \"./harness\" --filter \"./cli\" --filter \"./build-in/*\" run test",
-    "build": "pnpm -r --filter \"./shared/*\" --filter \"./harness\" --filter \"./cli\" --filter \"./server\" run build",
-    "server:dev": "pnpm -C server dev",
-    "server:start": "pnpm -C server start:local",
+    "build": "pnpm -r --filter \"./shared/*\" --filter \"./harness\" --filter \"./cli\" run build",
     "studio:dev": "pnpm -C studio run dev",
     "studio:web": "pnpm -C studio run dev:web"
   },
   "pnpm": {
     "overrides": {
       "steamharness": "link:harness",
-      "@steamharness/cli": "link:cli",
-      "@steamharness/server": "link:server",
-      "@steamharness/server-web": "link:server/web"
+      "@steamharness/cli": "link:cli"
     },
     "patchedDependencies": {
       "@earendil-works/pi-durable@1.2.0": "patches/@earendil-works__pi-durable@1.2.0.patch"

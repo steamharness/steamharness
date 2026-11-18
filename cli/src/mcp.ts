@@ -13,13 +13,9 @@ import {
   type McpRunner,
   type McpStructureReport,
 } from "@steamharness/workflow-mcp";
-import {
-  isProjectAuthConfigLoggedIn,
-  normalizeProjectAuthConfig,
-  resolveProjectDesktopConfigFilePath,
-} from "@steamharness/auth-config";
 import { i18n } from "@steamharness/i18n";
-import { readCliAuthConfigSync } from "./auth-config";
+import { formatOnlineHelp, parseOnlinePurpose, withoutPlatformEnvironment } from './online';
+import type { AuthPurpose } from './auth-config';
 import { assertProjectUuid } from "@steamharness/workflow-ids";
 
 export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
@@ -33,6 +29,7 @@ export interface McpCliOptions {
   desktopConfigDir?: string;
   cliAuthDir?: string;
   entryId?: string;
+  online?: AuthPurpose[];
   /** Absolute entrypoint used when this process spawns a JSON/structure worker. */
   workerEntrypoint?: string;
 }
@@ -51,7 +48,7 @@ const STEAMHARNESS_MCP_WORKER_TERMINATION_GRACE_MS = 2_000;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (argv.length === 0 || argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(`${i18n.t("mcpHelp", { ns: "cli" })}\n`);
+    process.stdout.write(`${i18n.t("mcpHelp", { ns: "cli" })}\n${formatOnlineHelp()}\n`);
     return 0;
   }
 
@@ -101,6 +98,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
   let desktopConfigDir: string | undefined;
   let cliAuthDir: string | undefined;
   let entryId: string | undefined;
+  const online: AuthPurpose[] = [];
 
   for (let index = 1; index < argv.length; index += 1) {
     const option = argv[index];
@@ -116,6 +114,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
       case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
       case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
       case "--entry": entryId = value; break;
+      case '--online': online.push(parseOnlinePurpose(value)); break;
       default: throw new Error(`Unknown steamharness mcp option: ${option}`);
     }
   }
@@ -129,6 +128,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     desktopConfigDir,
     cliAuthDir,
     entryId,
+    ...(online.length ? { online } : {}),
   };
 }
 
@@ -432,16 +432,23 @@ export class McpCliRunner implements McpRunner {
   private runWorker(args: string[], signal?: AbortSignal): Promise<WorkerResult> {
     const mainScript = this.options.workerEntrypoint ?? resolveProjectMcpWorkerEntrypoint();
     const execArgs = workerExecArguments(process.execArgv, mainScript);
-    const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
+    const online = args[0] === 'json' ? this.options.online ?? [] : [];
+    const invocation = [args[0]!, ...online.flatMap(purpose => ['--online', purpose]), ...args.slice(1)];
+    const isolated = withoutPlatformEnvironment(process.env);
+    if (online.includes('project')) {
+      isolated.STEAMHARNESS_SERVER_URL = process.env.STEAMHARNESS_SERVER_URL;
+      isolated.STEAMHARNESS_SERVER_ADMIN_KEY = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    }
+    if (online.includes('ai')) {
+      isolated.STEAMHARNESS_AI_SERVER_URL = process.env.STEAMHARNESS_AI_SERVER_URL;
+      isolated.STEAMHARNESS_AI_API_KEY = process.env.STEAMHARNESS_AI_API_KEY;
+    }
+    const child = spawn(process.execPath, [...execArgs, mainScript, ...invocation], {
       cwd: this.options.projectDir,
       env: {
-        ...process.env,
-        ...readSavedProjectMcpAuthEnv(this.options),
+        ...isolated,
         ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE ?? "1",
-        ...(this.options.desktopConfigDir
-          ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
-          : {}),
-        ...(this.options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: this.options.cliAuthDir } : {}),
+        STEAMHARNESS_CLI_AUTH_DIR: online.length ? this.options.cliAuthDir ?? process.env.STEAMHARNESS_CLI_AUTH_DIR : path.join(this.options.dataDir, 'mcp-runtime-auth'),
         STEAMHARNESS_FILE_STORE_DIR: this.options.fileStoreDir,
         STEAMHARNESS_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
         STEAMHARNESS_DESKTOP_RUNTIME_EVENTS: "0",
@@ -780,49 +787,6 @@ function assertProjectDirectory(projectDir: string): void {
   }
 }
 
-export function readSavedProjectMcpAuthEnv(
-  options: McpCliOptions,
-  processEnv: NodeJS.ProcessEnv = process.env,
-): Record<string, string> {
-  const explicitServerUrl = processEnv.STEAMHARNESS_SERVER_URL?.trim() ?? "";
-  const explicitAdminKey = processEnv.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() ?? "";
-  if (explicitServerUrl !== "" || explicitAdminKey !== "") {
-    if (explicitServerUrl === "" || explicitAdminKey === "") {
-      throw new Error(
-        "STEAMHARNESS_SERVER_URL and STEAMHARNESS_SERVER_ADMIN_KEY must be provided together for MCP workers.",
-      );
-    }
-    // An explicit pair is authoritative. Never merge one explicit value with
-    // a saved credential from Desktop or the CLI auth directory.
-    return {};
-  }
-  const env = {
-    ...processEnv,
-    ...(options.desktopConfigDir ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: options.desktopConfigDir } : {}),
-    ...(options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: options.cliAuthDir } : {}),
-  };
-  const desktopAuth = readDesktopAuth(options.desktopConfigDir);
-  const auth = desktopAuth && isProjectAuthConfigLoggedIn(desktopAuth)
-    ? desktopAuth
-    : readCliAuthConfigSync(env);
-  if (!isProjectAuthConfigLoggedIn(auth)) return {};
-  return {
-    STEAMHARNESS_SERVER_URL: auth.serverUrl,
-    STEAMHARNESS_SERVER_ADMIN_KEY: auth.apiKey,
-  };
-}
-
-function readDesktopAuth(configDir: string | undefined) {
-  if (!configDir) return undefined;
-  try {
-    const raw = JSON.parse(readFileSync(resolveProjectDesktopConfigFilePath({
-      STEAMHARNESS_DESKTOP_CONFIG_DIR: configDir,
-    }), "utf8")) as unknown;
-    return normalizeProjectAuthConfig(isRecord(raw) && "auth" in raw ? raw["auth"] : raw);
-  } catch {
-    return undefined;
-  }
-}
 
 function resolveAbsoluteOption(value: string, option: string): string {
   if (!path.isAbsolute(value)) throw new Error(`${option} requires an absolute path.`);

@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_TARGET_NAMES = Object.freeze(["harness", "cli", "server"]);
+const DEFAULT_TARGET_NAMES = Object.freeze(["harness", "cli"]);
 
 export async function exportSharedSource(options = {}) {
   const root = path.resolve(options.root ?? path.resolve(import.meta.dirname, ".."));

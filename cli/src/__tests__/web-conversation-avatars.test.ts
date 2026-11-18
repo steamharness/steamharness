@@ -31,6 +31,7 @@ it('keeps message avatars in the requested positions, opens their identities, an
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   const style = document.createElement('style'); style.textContent = readFileSync(path.join(import.meta.dirname, '../web/ui/style.css'), 'utf8'); document.head.append(style);
   document.body.innerHTML = '<div id="app"></div>';
+  document.body.dataset.platform = 'true';
   await import('../web/ui/main');
   const messages = [{ id: 'user', role: 'user', content: 'Hello', createdAt: 1, contextEpoch: 1 }, { id: 'assistant', role: 'assistant', content: 'Answer', durationMs: 12000, status: 'success' }];
   const emit = (currentProject = project, currentAccount: AccountState | undefined = account) => { window.dispatchEvent(new MessageEvent('message', { data: {

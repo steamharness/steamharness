@@ -81,7 +81,7 @@ export class StudioStartController implements vscode.Disposable {
     private readonly account: AccountController, private readonly projects: ProjectSource,
     private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void>; reconcile?(): Promise<void> },
     private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
-    this.state = { version: 1, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,
+    this.state = { version: 1, platform: account.platform, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,
       badge: process.env.STEAMHARNESS_STUDIO_INTERNAL === '1'
         ? (vscode.env.language.toLowerCase().startsWith('zh') ? '增强版' : 'Enhanced')
         : undefined,
@@ -99,7 +99,7 @@ export class StudioStartController implements vscode.Disposable {
     };
     register('studio.internalStartPageVisibility', (visible: boolean) => { ++this.visibilityRevision; this.setVisible(visible === true); });
     register('studio.internalGetStartState', () => structuredClone(this.state));
-    register('studio.refreshStart', async () => { this.environmentNeeded = true; await Promise.all([this.refresh(), vscode.commands.executeCommand('studio.refreshVersions')]); });
+    register('studio.refreshStart', async () => { this.environmentNeeded = true; await this.refresh(); });
     register('studio.openStartRecommendation', (id?: string) => {
       const active = this.recommendationsContext();
       if (!active || active.key !== this.recommendationsKey) return;
@@ -115,7 +115,7 @@ export class StudioStartController implements vscode.Disposable {
     });
     register('studio.internalValidateProjectCreation', async (input: ProjectCreationDialogResult) => {
       try {
-        if ('shareUrl' in input) { parseServerProjectShareLink(input.shareUrl); }
+        if ('shareUrl' in input) { if (!account.platform) return t('Project transfers are unavailable in this extension host.'); parseServerProjectShareLink(input.shareUrl); }
         else { await this.launcher.validateProjectCreation?.(input); }
         return {};
       }
@@ -310,13 +310,13 @@ export class StudioStartController implements vscode.Disposable {
       let templates: ProjectCreationDialog['templates'] = [];
       try { templates = await this.launcher.templates!(); }
       catch (error) { this.output.appendLine(`Project templates: ${this.errorMessage(error)}`); }
-      const request: ProjectCreationDialog = { templates, labels: startPageLabels(),
+      const request: ProjectCreationDialog = { templates, labels: startPageLabels(), platform: this.account.platform,
         parentDirectory: this.launcher.projectCreationDirectory ?? '', projectType: kind === 'starter' ? selector : undefined,
         templateId: kind === 'example' ? selector : undefined };
       if (kind === 'example' && !selector) { request.templateId = request.templates.find(template => template.kind === 'example')?.id; }
       const input = await vscode.commands.executeCommand<ProjectCreationDialogResult | undefined>('studio.internalShowCreateProject', request);
       if (!input) { return; }
-      if ('shareUrl' in input) { await vscode.commands.executeCommand('studio.importProjectFromLink', input.shareUrl); return; }
+      if ('shareUrl' in input) { if (this.account.platform) await vscode.commands.executeCommand('studio.importProjectFromLink', input.shareUrl); return; }
       if (!request.templates.some(template => template.id === input.templateId)) { return; }
       const options = await chooseProjectWindow(t('Where would you like to open the new project?'));
       if (!options) { return; }
@@ -336,9 +336,7 @@ export class StudioStartController implements vscode.Disposable {
 
   private async install(input: PendingProjectSetup): Promise<void> {
     this.creation.signal.throwIfAborted();
-    const account = this.account.getState();
-    let project: PendingProjectSetup = { ...input, installOnOpen: false, registration: input.registration ?? { serverUrl: account.serverUrl,
-      ...(account.user ? { userId: account.user.userId } : {}) } };
+    let project: PendingProjectSetup = { ...input, installOnOpen: false };
     if (project.dependenciesInstalled && this.launcher.hasProjectDependencies && !await this.launcher.hasProjectDependencies(project.directory)) {
       project.dependenciesInstalled = false;
     }
@@ -366,9 +364,9 @@ export class StudioStartController implements vscode.Disposable {
             if (project.projectId === '') {
               stage = 'registration';
               await this.updatePending({ ...project, stage });
-              progress.report({ message: t('Applying for a new project ID') });
-              if (project.idAllocationError !== undefined || !this.launcher.registerProject) {
-                throw new Error(t('Project created without an ID. Retry Project Setup to apply for an ID later. {0}', project.idAllocationError ?? ''));
+              progress.report({ message: t('Generating a local project ID') });
+              if (!this.launcher.registerProject) {
+                throw new Error(t('Project created without an ID. Retry Project Setup after selecting a local Node runtime.'));
               }
               await this.validateCreated(project);
               const projectId = await this.launcher.registerProject(project.directory, signal);

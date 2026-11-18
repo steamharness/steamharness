@@ -22,3 +22,7 @@ The project must declare the `workflow` entry. Without `--entry`, it uses `defau
 Every request and resume handle is bound to a project and entry. User identity, tool permissions, configuration snapshots, and cancellation propagate through calls. Resuming into another entry is rejected.
 
 Entries retain their own configuration and conversation state. Unknown entries fail explicitly.
+
+## Opt into platform features
+
+Platform credentials are not read by default. Use `--online project` for protected project configuration, or `--online ai` for System AI. Each option requires a Server connection and its own login. Repeat the flag to enable both.

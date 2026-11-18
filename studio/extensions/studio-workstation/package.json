@@ -15,16 +15,13 @@
   "browser": "./dist/extension-web.js",
   "l10n": "./l10n",
   "activationEvents": [
-    "onUri",
     "onStartupFinished",
     "onDebugResolve:node",
     "onDebugResolve:pwa-node",
     "onCommand:studio.internalResolveNodeTask",
     "onWebviewPanel:studio.settings",
-    "onWebviewPanel:studio.login",
     "onWebviewPanel:studio.tool.info",
     "onWebviewPanel:studio.tool.assistant",
-    "onWebviewPanel:studio.tool.versions",
     "onWebviewPanel:studio.tool.trace",
     "onWebviewPanel:studio.project",
     "onWebviewPanel:studio.projectTool",
@@ -378,36 +375,6 @@
         "icon": "$(link-external)"
       },
       {
-        "command": "studio.uploadProject",
-        "title": "%command.uploadProject%",
-        "category": "Project",
-        "icon": "$(cloud-upload)"
-      },
-      {
-        "command": "studio.upgradeProject",
-        "title": "%command.upgradeProject%",
-        "category": "Project",
-        "icon": "$(arrow-circle-up)"
-      },
-      {
-        "command": "studio.downloadProject",
-        "title": "%command.downloadProject%",
-        "category": "Project",
-        "icon": "$(cloud-download)"
-      },
-      {
-        "command": "studio.importProjectFromLink",
-        "title": "%command.importProjectFromLink%",
-        "category": "Project",
-        "icon": "$(link)"
-      },
-      {
-        "command": "studio.refreshVersions",
-        "title": "%command.refreshVersions%",
-        "category": "Project",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "studio.openAnalysis",
         "title": "%command.openAnalysis%",
         "category": "Project",
@@ -478,36 +445,6 @@
         "title": "%command.openProjectCli%",
         "category": "Project",
         "icon": "$(terminal)"
-      },
-      {
-        "command": "studio.openAccount",
-        "title": "%command.openProjectAccount%",
-        "category": "SteamHarness",
-        "icon": "$(account)"
-      },
-      {
-        "command": "studio.openLogin",
-        "title": "%context.signIn%",
-        "category": "SteamHarness",
-        "icon": "$(sign-in)"
-      },
-      {
-        "command": "studio.refreshAccount",
-        "title": "%command.refreshAccount%",
-        "category": "SteamHarness",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "studio.validateLogin",
-        "title": "%command.validateProjectLogin%",
-        "category": "Project",
-        "icon": "$(verified)"
-      },
-      {
-        "command": "studio.logout",
-        "title": "%command.logoutProject%",
-        "category": "Project",
-        "icon": "$(sign-out)"
       }
     ],
     "viewsContainers": {
@@ -516,11 +453,6 @@
           "id": "studio-info",
           "title": "%container.studio-info%",
           "icon": "$(package)"
-        },
-        {
-          "id": "studio-versions",
-          "title": "%container.studio-versions%",
-          "icon": "$(versions)"
         }
       ],
       "secondarySidebar": [
@@ -552,13 +484,6 @@
           "name": "%container.studio-info%",
           "type": "webview",
           "when": "studio.projectInfoAvailable"
-        }
-      ],
-      "studio-versions": [
-        {
-          "id": "studio.versions",
-          "name": "%container.studio-versions%",
-          "type": "webview"
         }
       ],
       "studio-assistant": [
@@ -837,29 +762,11 @@
           "when": "activeCustomEditorId == studio.documentPreview || activeCustomEditorId == studio.formulaPreview"
         },
         {
-          "command": "studio.upgradeProject",
-          "when": "studio.projectReleaseInstalled"
-        },
-        {
-          "command": "studio.refreshVersions",
-          "when": "studio.projectReleaseInstalled"
-        },
-        {
           "command": "studio.openProjectRelease",
           "when": "studio.projectReleaseAvailable"
         }
       ],
       "view/title": [
-        {
-          "command": "studio.refreshVersions",
-          "when": "view == studio.versions && studio.projectReleaseInstalled",
-          "group": "navigation@1"
-        },
-        {
-          "command": "studio.downloadProject",
-          "when": "view == studio.versions",
-          "group": "navigation@2"
-        },
         {
           "command": "studio.selectInfoProject",
           "when": "view == studio.projectInfo && studio.projectInfoMultipleProjects",
@@ -928,12 +835,6 @@
           "type": "boolean",
           "default": true,
           "description": "%config.startPage.enabled%"
-        },
-        "studio.project.serverUrl": {
-          "type": "string",
-          "default": "",
-          "scope": "application",
-          "description": "%config.studio.project.serverUrl%"
         },
         "studio.project.nodePath": {
           "type": "string",

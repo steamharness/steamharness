@@ -158,8 +158,8 @@ test("vendored copies drift against shared like any other consumer", async () =>
 test("a vendored file without a shared source is reported as an extra", async () => {
   const root = await createFixture();
   try {
-    await writeFile(path.join(root, "server/vendor/shared/release-tools/stray.mjs"), "// stray\n");
-    assert.deepEqual(await checkVendorExtras(root), ["server/vendor/shared/release-tools/stray.mjs"]);
+    await writeFile(path.join(root, "cli/vendor/shared/release-tools/stray.mjs"), "// stray\n");
+    assert.deepEqual(await checkVendorExtras(root), ["cli/vendor/shared/release-tools/stray.mjs"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
