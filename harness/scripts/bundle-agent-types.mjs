@@ -5,18 +5,24 @@ import { builtinModules } from "node:module";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
+export function sharedSourcePath(shared, file, paths = path) {
+  // TypeScript returns forward-slash paths even on Windows.
+  const relative = paths.relative(shared, file);
+  if (!relative || relative === ".." || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative)) return null;
+  return /\.[cm]?tsx?$/u.test(relative) ? relative.split(paths.sep).join("/") : null;
+}
+
 /** Keep the public API typed without installing bundled build-time packages. */
 export async function bundleAgentTypes(directory) {
   const production = new Set(Object.keys(JSON.parse(await readFile(path.join(directory, "../package.json"), "utf8")).dependencies));
   const copied = new Map();
   const compilerOptions = { module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, target: ts.ScriptTarget.ES2022 };
   const shared = path.resolve(directory, '../../shared');
-  const isSharedSource = (file) => file.startsWith(`${shared}${path.sep}`) && /\.[cm]?tsx?$/u.test(file);
   const printer = ts.createPrinter();
   const packageName = specifier => specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
   const declarationText = async (file) => {
     if (/\.d\.[cm]?ts$/u.test(file)) return readFile(file, 'utf8');
-    if (!isSharedSource(file)) throw new Error(`Expected a declaration file: ${file}`);
+    if (!sharedSourcePath(shared, file)) throw new Error(`Expected a declaration file: ${file}`);
     const program = ts.createProgram([file], { ...compilerOptions, declaration: true, emitDeclarationOnly: true, skipLibCheck: true, types: [] });
     let text;
     const result = program.emit(program.getSourceFile(file), (name, content) => {
@@ -52,7 +58,8 @@ export async function bundleAgentTypes(directory) {
       let target = copied.get(resolved);
       if (!target) {
         const normalized = resolved.replaceAll("\\", "/");
-        const identity = isSharedSource(resolved) ? `shared/${path.relative(shared, resolved).replaceAll('\\', '/')}`
+        const workspaceSource = sharedSourcePath(shared, resolved);
+        const identity = workspaceSource ? `shared/${workspaceSource}`
           : normalized.slice(normalized.indexOf("/node_modules/") + 14);
         target = path.join(directory, "agent-types", `${createHash("sha256").update(identity).digest("hex").slice(0, 20)}.d.ts`);
         copied.set(resolved, target);
