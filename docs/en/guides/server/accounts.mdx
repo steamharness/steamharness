@@ -9,12 +9,14 @@ Studio and CLI Web use the Server website for sign-in. The Server owns account c
 
 ## Sign in from an app and return
 
-1. In CLI Web, click **Browser sign-in** in the account menu. You don't need to enter a server address. In Studio, choose a Server on the sign-in page before clicking **Browser sign-in**.
+1. In CLI Web, click **Browser sign-in** in the account menu. The sign-in page opens in the current tab, and you don't need to enter a server address. In Studio, choose a Server on the sign-in page before clicking **Browser sign-in**.
 2. Sign in on the Server website. If the browser already has a session, check the displayed account. Choose **Use another account** to switch.
 3. Check the application name, channel, and device code, then approve the request.
-4. Click **Open app and return**. Studio opens the matching application channel; CLI Web returns to the local page that started sign-in. The application also checks approval in the background.
+4. Click **Open app and return**. CLI Web returns to the original link in the same tab, including the Bot conversation you were viewing. Studio opens the matching application channel. Both apps also check for approval in the background.
 
-If the browser does not open, follow the sign-in link shown in the app. You can also open `/login/device` on the Server and enter the code shown in the app. Start again after a request expires, is cancelled, or is denied. Closing the Studio sign-in page or clicking cancel revokes that request.
+In CLI Web, if the request expires or is denied, use your browser's Back button to return and start again.
+
+In Studio, if the browser does not open, follow the link on the sign-in page, or open `/login/device` on the Server and enter the device code manually. Start again from Studio after a request expires, is cancelled, or is denied. Closing the Studio sign-in page or clicking cancel revokes the request.
 
 | App channel | Studio return protocol |
 | --- | --- |

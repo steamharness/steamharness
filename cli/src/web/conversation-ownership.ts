@@ -128,6 +128,16 @@ export class ConversationOwnership {
       changed();
     }, 1_000));
   }
+  /** Move a returning page's writer without releasing the lease to another window. */
+  handoff(previous: string, next: string): void {
+    const id = this.selections.get(previous);
+    const owner = id ? this.owners.get(this.scope(id)) : undefined;
+    if (id && owner?.clients.get(id) === previous) {
+      owner.clients.set(id, next);
+      this.selections.set(next, id);
+    }
+    this.detach(previous);
+  }
   /** A destroyed view cannot reconnect; release its writer without the SSE grace period. */
   detach(clientId: string): void {
     clearTimeout(this.disconnects.get(clientId)); this.disconnects.delete(clientId); this.selections.delete(clientId);

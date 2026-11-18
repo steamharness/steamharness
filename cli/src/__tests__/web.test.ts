@@ -1046,34 +1046,65 @@ describe('steamharness web', () => {
     expect(JSON.parse(exported.messages[0].content).messages[0].input.params.apiKey).toBe('project-key');
   });
 
-  it('shares browser sign-in with the CLI and only publishes public authorization data', async () => {
+  it('returns browser sign-in to the originating Bot conversation without sharing its writer', async () => {
     const { app, cookie, post } = await fixture();
+    const clientId = randomUUID(), resumeClientId = randomUUID(), otherClientId = randomUUID(), returnTicket = randomUUID();
+    const events = (id: string, ticket?: string) => fetch(`${app.origin}/api/events?${new URLSearchParams({ clientId: id, ...(ticket ? { returnTicket: ticket } : {}) })}`, { headers: { Cookie: cookie } });
+    const originalId = app.controller!.activeId;
+    await post({ type: 'navigate', id: originalId, clientId, requestId: 52, updates: [] });
+    const originalStream = await events(clientId);
+    expect((await post({ type: 'new', clientId: otherClientId })).status).toBe(200);
+    expect(app.controller!.activeId).not.toBe(originalId);
     vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     const profile = { userId: 'test-user', email: null, displayName: 'Test User' };
     let finishLogin!: (response: Response) => void;
+    let callbackUrl: string | undefined;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       const url = String(input);
       if (!url.startsWith('https://steamharness.test')) return realFetch(input, options);
       const registration = registeredProject(input); if (registration) return registration;
-      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-secret',userCode:'ABCD-1234',verificationUriComplete:'https://steamharness.test/login/device?user_code=ABCD-1234',intervalSeconds:1,expiresAt:new Date(Date.now()+60_000).toISOString()}});
+      if (url.endsWith('/device/start')) {
+        const { context } = JSON.parse(String(options?.body));
+        expect(context).toEqual({ clientKind: 'cli-web', channel: expect.any(String), state: expect.any(String), returnUrl: `${app.origin}/` });
+        callbackUrl = `${context.returnUrl}?auth_state=${context.state}`;
+        return Response.json({ errCode: 0, data: { deviceCode: 'host-secret', userCode: 'ABCD-1234', verificationUriComplete: 'https://steamharness.test/login/device?user_code=ABCD-1234', intervalSeconds: 1, expiresAt: new Date(Date.now() + 60_000).toISOString() } });
+      }
       if (url.endsWith('/device/token')) return new Promise(resolve => { finishLogin = resolve; });
       return Response.json({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } });
     });
     expect((await post({ type: 'login', serverUrl: 'https://steamharness.test', password: 'obsolete' })).status).toBe(400);
-    expect((await post({ type: 'login', serverUrl: 'https://steamharness.test' })).status).toBe(200);
-    const pending = await accountState(app, cookie);
-    expect(pending.signIn?.url).toContain('/login/device'); expect(JSON.stringify(pending)).not.toContain('host-secret');
-    const callback = await fetch(`${app.origin}/?auth_state=${pending.signIn!.state}`,{redirect:'manual',headers:{Cookie:cookie}});
-    expect(callback.status).toBe(303); expect(callback.headers.get('location')).not.toContain('auth_state');
-    expect((await fetch(`${app.origin}/?auth_state=wrong`,{headers:{Cookie:cookie}})).status).toBe(400);
+    const started = await post({ type: 'login', serverUrl: 'https://steamharness.test', clientId, returnTicket }).then(response => response.json());
+    const signIn = started.messages[0].signIn;
+    expect(signIn.url).toContain('/login/device'); expect(JSON.stringify(started)).not.toContain('host-secret');
+    const pending = await initialState(await events(otherClientId));
+    expect(pending.account).toMatchObject({ status: 'checking', signInPending: true });
+    expect(JSON.stringify(pending)).not.toContain(signIn.state);
+    expect(JSON.stringify(pending)).not.toContain(signIn.url);
+    const simultaneous = await post({ type: 'login', serverUrl: 'https://steamharness.test', clientId: otherClientId }).then(response => response.json());
+    expect(simultaneous.messages).toEqual([]);
+    const callback = await fetch(callbackUrl!, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    expect(callback.status).toBe(200);
+    expect(callback.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(await callback.text()).toContain('/assets/workflow-ui.js');
+    expect((await fetch(`${app.origin}/?auth_state=wrong`)).status).toBe(400);
+    expect((await fetch(`${app.origin}/api/session?auth_state=${signIn.state}`)).status).toBe(400);
+
+    const resumed = await initialState(await events(resumeClientId, returnTicket));
+    expect(resumed).toMatchObject({ activeId: originalId, conversationAccess: { readOnly: false } });
+    await originalStream.body!.cancel();
+    const duplicateId = randomUUID();
+    expect((await post({ type: 'select', id: originalId, clientId: duplicateId })).status).toBe(200);
+    expect((await initialState(await events(duplicateId, returnTicket))).conversationAccess).toEqual({ readOnly: true, reason: 'opened' });
+    const draft = { text: 'After return', attachments: [] };
+    expect((await post({ type: 'navigate', id: originalId, clientId: resumeClientId, requestId: 1, updates: [{ id: originalId, draft }] })).status).toBe(200);
+    expect(app.controller!.sessions.find(session => session.id === originalId)?.draft).toMatchObject(draft);
+
     finishLogin(Response.json({errCode:0,data:{accessToken:'test-api-key',apiKey:{id:'key-id'},user:profile}}));
     await vi.waitFor(async () => expect(await readCliAuthConfig()).toMatchObject({ apiKey:'test-api-key',user:profile,source:'device_flow' }));
     await vi.waitFor(async () => expect(await accountState(app,cookie)).toMatchObject({status:'authenticated'}));
     expect((await post({ type: 'verify' })).status).toBe(200);
-    const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
-    const reader = events.body!.getReader();
-    const state = new TextDecoder().decode((await reader.read()).value); await reader.cancel();
+    const state = JSON.stringify(await initialState(await events(resumeClientId)));
     expect(state).toContain('"status":"authenticated"'); expect(state).toContain('Test User');
     expect(state).not.toContain('test-api-key'); expect(state).not.toContain('host-secret');
     expect((await post({ type: 'logout' })).status).toBe(200);

@@ -1,7 +1,9 @@
+export interface BrowserSignIn { url: string; userCode: string; expiresAt: string; state: string }
+
 export interface AccountState {
   status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
   serverUrl: string;
-  signIn?: { url: string; userCode: string; expiresAt: string; state: string };
+  signInPending?: boolean;
   aiServerUrl?: string;
   aiConfigured?: boolean;
   user?: { userId: string; email: string | null; displayName: string; avatarUrl?: string };

@@ -1,5 +1,6 @@
 import { t } from '../localization';
 import { AccountPanel } from './account';
+import { restoreSignInReturn } from './account-return';
 import { BrowserConnection, ConnectionError } from './connection';
 import { HostConnectionRecovery } from './connection-recovery';
 import { requestAction } from './action-dialog';
@@ -31,6 +32,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   }, { capture: true });
   const embedded = (globalThis as unknown as { acquireVsCodeApi?: () => Host }).acquireVsCodeApi;
   if (embedded) { return embedded(); }
+  const returnTicket = restoreSignInReturn();
   const keyboard = acquireHostKeyboard();
   let windowChrome: ProjectWindowChrome | undefined;
   addEventListener('pagehide', () => windowChrome?.dispose());
@@ -167,7 +169,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     projectCreation.update(message);
     if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
     emit(message);
-  }, options.live, options.connectionBanner, () => recovery.recover());
+  }, options.live, options.connectionBanner, () => recovery.recover(), returnTicket);
   const request = async (message: Message) => {
     for (const entry of await connection.request(message)) { handleReply(entry); }
   };
@@ -345,7 +347,10 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       ? () => window.parent.postMessage({ type: 'workflow-account', version: 1 }, '*') : undefined;
     // Pages without a sidebar (Kanban) keep account access in the shared toolbar.
     const accountContainer = document.querySelector<HTMLElement>('#project-menu') ?? document.querySelector<HTMLElement>('.toolbar-actions')!;
-    accountPanel = new AccountPanel(accountContainer, request, openHostAccount);
+    accountPanel = new AccountPanel(accountContainer, async action => {
+      if (action.type !== 'login') return request(action);
+      return (await connection.request(action)).find(reply => reply.type === 'login-started')?.signIn;
+    }, openHostAccount);
   });
   return {
     keyboard,

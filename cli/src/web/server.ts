@@ -122,8 +122,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let authIdentity = '';
   const browserLogin = sharedWebLogin(credentials ?? options);
   const unsubscribeLogin = browserLogin.subscribe(error => {
-    if (browserLogin.busy) { account = { ...account, status: "checking", signIn: browserLogin.info }; broadcast(); }
-    else { account = { ...account, signIn: undefined, ...(error ? {status: "error" as const, error} : {}) }; authIdentity = ""; void refreshAuth(true).then(() => { if(error) { account = {...account,status:"error",error}; broadcast(); } }); }
+    if (browserLogin.busy) { account = { ...account, status: 'checking', error: undefined }; broadcast(); }
+    else { authIdentity = ""; void refreshAuth(true).then(() => { if(error) { account = {...account,status:"error",error}; broadcast(); } }); }
   });
   let hostConnection = options.host?.connection;
   let webApps = options.host?.webApps ?? {};
@@ -244,7 +244,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const sharedState = () => {
     const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
-    account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
+    account: { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
@@ -397,7 +397,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await conversationHistory?.reset(); await workflowHistory?.reset(); await ownership?.reset();
       conversationController?.replace(await conversationHistory?.read() ?? {});
       projectController?.replace(await workflowHistory?.read() ?? {});
-      selections.clear();
+      // CLI Web sign-in reloads the same local history; keep its per-page selection.
+      if (hostManaged || signedOut) selections.clear();
     });
     storageReset = resetting.catch(() => undefined); return resetting;
   };
@@ -523,6 +524,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const { capability, cookie } = credentials;
   let replacementId: string | undefined;
   let origin = '';
+  const signInReturnUrl = () => new URL(`${options.mount?.basePath ?? ''}/`, origin).href;
+  let signInHandoff: { state: string; previousClientId: string; ticket: string; selectedId?: string } | undefined;
   const json = (response: ServerResponse, status: number, value: unknown) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(value)); };
   const authMatches = (value: string) => { const a = Buffer.from(value), b = Buffer.from(capability); return a.length === b.length && timingSafeEqual(a, b); };
   const readBody = async (request: IncomingMessage): Promise<Message> => {
@@ -559,6 +562,21 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
+    if (message.type === 'login' || message.type === 'cancel-login') {
+      if (hostManaged) { throw new Error(t('Manage this account through Studio.')); }
+      if (message.type === 'cancel-login') { browserLogin.cancel(); return []; }
+      if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
+      if (message.email !== undefined || message.password !== undefined) throw new Error(t('Use browser sign-in.'));
+      signedOut = false;
+      const signIn = await browserLogin.start(String(message.serverUrl), signInReturnUrl());
+      if (!signIn) return [];
+      const { clientId, returnTicket } = message;
+      if (typeof clientId === 'string' && typeof returnTicket === 'string' && sessionIdPattern.test(clientId) && sessionIdPattern.test(returnTicket)) {
+        // The return ticket is local to the initiating tab and separate from its new connection ID.
+        signInHandoff = { state: signIn.state, previousClientId: clientId, ticket: returnTicket, selectedId: selections.get(clientId) };
+      }
+      return [{ type: 'login-started', signIn }];
+    }
     if (message.type === 'project-server-check') return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
     if (message.type === 'project-server-open') {
       if (!connection) throw new Error(t('Please sign in to the project Server.'));
@@ -634,8 +652,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return [{ type: 'resource-preview', requestId: message.requestId, cardId: card.id, action: message.action ?? 'open',
         id: preview.id, url: `${preview.url}&resourceRef=${encodeURIComponent(JSON.stringify(reference))}`, card, project: preview.data.project }];
     }
-    if (kanbanController && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
-    if (projectActions && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }
+    if (kanbanController && !['ready', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
+    if (projectActions && !['ready', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }
     if (message.type === 'navigate') {
       await refreshHistory();
       if (!conversationController || typeof message.id !== 'string' || !Array.isArray(message.updates) || message.updates.length > 1000
@@ -678,7 +696,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const replies: Message[] = [];
     let current = (message.sessionId ? conversationController?.sessions.find(entry => entry.id === message.sessionId) : conversationController?.current) as ConversationSession;
     if (!isKanban && !isProject && !current) { throw new Error(t("Conversation no longer exists.")); }
-    const readOnly = ['ready', 'select', 'new', 'agent-open', 'trace', 'logs', 'export-message', 'usage', 'login', 'verify', 'logout'];
+    const readOnly = ['ready', 'select', 'new', 'agent-open', 'trace', 'logs', 'export-message', 'usage', 'verify', 'logout'];
     if (ownership && !readOnly.includes(message.type) && !(message.type === 'session-action' && message.action === 'export')) {
       const target = message.type === 'session-action' ? controller.sessions.find(session => session.id === message.id) : current;
       if (target) {
@@ -879,20 +897,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (!response.ok || result.errCode !== 0) { throw new Error(result.errMessage || 'Cannot load usage.'); }
         replies.push({ type: 'usage', requestId: message.requestId, sessionId: current?.id, usage: result.data }); break;
       }
-      case 'login': {
-        if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        if (!options.host && process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
-        if (browserLogin.busy) break;
-        if (message.email !== undefined || message.password !== undefined) throw new Error(t('Use browser sign-in.'));
-        const serverUrl = String(message.serverUrl);
-        signedOut = false;
-        const returnUrl = new URL(`${options.mount?.basePath ?? ''}/`, origin);
-        if (['localhost','127.0.0.1','[::1]'].includes(returnUrl.hostname)) await browserLogin.start(serverUrl, returnUrl.href);
-        else await browserLogin.start(serverUrl);
-        account = { ...account, status: 'checking', signIn: browserLogin.info }; broadcast();
-        break;
-      }
-      case 'cancel-login': browserLogin.cancel(); break;
       case 'verify': await refreshAuth(true); break;
       case 'logout': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
@@ -911,13 +915,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       // SSH forwards TCP without rewriting the browser's loopback Host header.
       const forwarded = !!options.host && ['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname) && !host.username && !host.password && host.pathname === '/' && !host.search && !host.hash;
       const url = new URL(request.url ?? '/', origin);
-      if (request.method === 'GET' && url.searchParams.has('auth_state')) {
-        if (!browserLogin.matchesState(url.searchParams.get('auth_state') || '')) { json(response,400,{message:'Invalid sign-in return.'}); return; }
-        response.writeHead(303,{Location:url.pathname}); response.end(); return;
-      }
       const resourceAsset = url.pathname.startsWith('/kanban/') || url.pathname.startsWith('/resource-assets/');
       const sandboxAsset = resourceAsset && ['GET', 'HEAD'].includes(request.method ?? '') && request.headers.origin === 'null';
       if (request.headers.host !== new URL(origin).host && !forwarded || request.headers.origin && request.headers.origin !== (forwarded ? host.origin : origin) && !sandboxAsset) { json(response, 403, { message: 'Invalid request origin.' }); return; }
+      if (request.method === 'GET' && url.searchParams.has('auth_state')
+        && (url.pathname !== '/' || !browserLogin.matchesReturn(url.searchParams.get('auth_state')!, signInReturnUrl()))) {
+        json(response, 400, { message: 'Invalid sign-in return.' }); return;
+      }
       if (resourceAsset && ['GET', 'HEAD'].includes(request.method ?? '')) {
         const asset = await kanbanController?.preview.asset(url) ?? await resources.asset(url);
         if (!asset) { json(response, 404, { message: 'Kanban asset not found.' }); return; }
@@ -936,9 +940,21 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
-          await refreshHistory();
-          const disconnectKanban = kanbanController?.methods.connect(url.searchParams.get('clientId') ?? '');
           const clientId = url.searchParams.get('clientId') ?? '';
+          if (signInHandoff && signInHandoff.ticket === url.searchParams.get('returnTicket')
+            && clientId !== signInHandoff.previousClientId && sessionIdPattern.test(clientId)) {
+            const { state, previousClientId, selectedId } = signInHandoff;
+            signInHandoff = undefined;
+            if (browserLogin.matchesReturn(state, signInReturnUrl())) {
+              for (const client of clients) {
+                if (clientIds.get(client) === previousClientId) { clients.delete(client); client.end(); }
+              }
+              ownership?.handoff(previousClientId, clientId);
+              if (selectedId) rememberSelection(clientId, selectedId);
+            }
+          }
+          await refreshHistory();
+          const disconnectKanban = kanbanController?.methods.connect(clientId);
           clientIds.set(response, clientId);
           response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeState(response); clients.add(response);
           const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, 'event: heartbeat\ndata: {}\n\n'); }, 20_000);

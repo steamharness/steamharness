@@ -2,80 +2,106 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { AccountPanel } from '../web/ui/account';
-import type { AccountState } from '../web/workflow-auth-client';
-const signedOut: AccountState = {status:'signed-out',serverUrl:'http://localhost:7126',revision:1};
+import { rememberSignInReturn, restoreSignInReturn } from '../web/ui/account-return';
+import type { AccountState, BrowserSignIn } from '../web/workflow-auth-client';
+
+const signedOut: AccountState = { status: 'signed-out', serverUrl: 'http://localhost:7126', revision: 1 };
 const localSignInUrl = 'http://127.0.0.1:7126/login/device?user_code=ABCD-1234';
-const signIn = (url: string) => ({url,userCode:'ABCD-1234',state:'s'.repeat(43),expiresAt:'2099-01-01'});
+const signIn = (url: string): BrowserSignIn => ({ url, userCode: 'ABCD-1234', state: 's'.repeat(43), expiresAt: '2099-01-01' });
 beforeEach(() => {
-  initI18n({preference:'en'});
-  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value(this:HTMLDialogElement){ this.open=true; }});
-  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value(this:HTMLDialogElement){ this.open=false; this.dispatchEvent(new Event('close')); }});
+  initI18n({ preference: 'en' });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value(this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event('close')); } });
+  vi.spyOn(window, 'open').mockReturnValue(null);
 });
-afterEach(() => { vi.restoreAllMocks(); document.body.replaceChildren(); });
+afterEach(() => { vi.restoreAllMocks(); document.body.replaceChildren(); sessionStorage.clear(); history.replaceState(null, '', '/'); });
+
 function fixture(serverUrl = signedOut.serverUrl) {
-  const browser = {opener:{},closed:false,close:vi.fn(),location:{replace:vi.fn()}};
-  vi.spyOn(window,'open').mockReturnValue(browser as unknown as Window);
-  const request = vi.fn(async (_action: any) => {});
+  const request = vi.fn<ConstructorParameters<typeof AccountPanel>[1]>().mockResolvedValue(undefined);
+  const navigate = vi.fn();
   const menu = document.createElement('div'); document.body.append(menu);
-  const panel = new AccountPanel(menu,request); panel.update({...signedOut,serverUrl}); panel.open();
+  const panel = new AccountPanel(menu, request, undefined, navigate);
+  panel.update({ ...signedOut, serverUrl }); panel.open();
   const dialog = document.querySelector<HTMLDialogElement>('#account-dialog')!;
-  const button = dialog.querySelector<HTMLButtonElement>('#login-submit')!;
-  const link = dialog.querySelector<HTMLAnchorElement>('#browser-login-link')!;
-  return {panel,request,dialog,button,link,browser};
+  return { panel, request, navigate, dialog, button: dialog.querySelector<HTMLButtonElement>('#login-submit')!, cancel: dialog.querySelector<HTMLButtonElement>('#login-cancel')! };
 }
+
 it.each([
-  {language:'zh-CN',serverUrl:signedOut.serverUrl,url:localSignInUrl,label:'浏览器登录'},
-  {language:'en',serverUrl:'https://configured.example.test/steam/',url:'https://configured.example.test/steam/login/device?user_code=ABCD-1234',label:'Browser sign-in'},
-] as const)('opens browser sign-in on the active server with one click ($language)', ({language,serverUrl,url,label}) => {
-  initI18n({preference:language});
-  const f=fixture(serverUrl);
+  { language: 'zh-CN', serverUrl: signedOut.serverUrl, url: localSignInUrl, label: '浏览器登录' },
+  { language: 'en', serverUrl: 'https://configured.example.test/steam/', url: 'https://configured.example.test/steam/login/device?user_code=ABCD-1234', label: 'Browser sign-in' },
+] as const)('opens the current tab on the configured server with one click ($language)', async ({ language, serverUrl, url, label }) => {
+  initI18n({ preference: language });
+  const f = fixture(serverUrl);
+  const original = '/entries/bot/?projectView=bot&conversationId=other&filter=two%20words#transcript';
+  history.replaceState(null, '', original);
+  f.request.mockResolvedValueOnce(signIn(url));
   expect(f.dialog.querySelector('input')).toBeNull();
+  expect(f.dialog.querySelector('[target="_blank"]')).toBeNull();
   expect(f.button.textContent).toBe(label);
   f.button.click(); f.button.click();
-  expect(f.request).toHaveBeenCalledOnce();
-  expect(f.request).toHaveBeenCalledWith({type:'login',serverUrl});
-  expect(window.open).toHaveBeenCalledOnce();
-  expect(f.browser.opener).toBeNull();
-  expect(document.querySelector<HTMLElement>('#login-cancel')!.hidden).toBe(false);
-  f.panel.update({...signedOut,serverUrl:'https://previous.example.test',status:'checking',signIn:signIn(url)});
-  expect(f.browser.location.replace).toHaveBeenCalledWith(url);
+  expect(f.request).toHaveBeenCalledExactlyOnceWith({ type: 'login', serverUrl, returnTicket: expect.any(String) });
+  expect(f.cancel.hidden).toBe(false);
+  f.panel.update({ ...signedOut, serverUrl: 'https://previous.example.test', status: 'checking', signInPending: true });
+  await vi.waitFor(() => expect(f.navigate).toHaveBeenCalledExactlyOnceWith(url));
+  expect(window.open).not.toHaveBeenCalled();
+  expect(f.dialog.open).toBe(false);
+
+  const login = f.request.mock.calls[0][0];
+  if (login.type !== 'login') throw new Error('Expected login');
+  const callback = `/entries/bot/?auth_state=${signIn(url).state}`;
+  history.replaceState(null, '', callback);
+  expect(restoreSignInReturn()).toBe(login.returnTicket);
+  expect(location.href).toBe(location.origin + original);
+  history.replaceState(null, '', callback);
+  expect(restoreSignInReturn()).toBeUndefined();
+  expect(location.href).toBe(location.origin + '/entries/bot/');
 });
-it('shows the sign-in link if the browser blocks the new tab', () => {
-  const f=fixture();
-  vi.mocked(window.open).mockReturnValue(null);
+
+it('does not navigate in response to another tab starting sign-in', () => {
+  const f = fixture();
+  f.panel.update({ ...signedOut, status: 'checking', signInPending: true });
   f.button.click();
-  f.panel.update({...signedOut,status:'checking',signIn:signIn(localSignInUrl)});
-  expect(f.link.hidden).toBe(false);
-  expect(f.link.href).toBe(localSignInUrl);
+  expect(f.request).not.toHaveBeenCalled();
+  expect(f.navigate).not.toHaveBeenCalled();
+  expect(window.open).not.toHaveBeenCalled();
 });
-it.each(['https://evil.example.test/login/device','http://user:secret@127.0.0.1:7126/login/device','javascript:alert(1)','http://127.0.0.1:7126/other'])('rejects an unrelated or unsafe fallback link (%#)', url => {
-  const f=fixture(); f.button.click();
-  f.panel.update({...signedOut,status:'checking',signIn:signIn(url)});
-  expect(f.link.hidden).toBe(true);
-  expect(f.browser.location.replace).not.toHaveBeenCalled();
+
+it('only restores the initiating entry and matching callback', () => {
+  history.replaceState(null, '', '/entries/bot/?projectView=original');
+  rememberSignInReturn('expected', crypto.randomUUID());
+  history.replaceState(null, '', '/entries/bot/?auth_state=unrelated');
+  expect(restoreSignInReturn()).toBeUndefined();
+  expect(location.pathname).toBe('/entries/bot/');
+  history.replaceState(null, '', '/entries/workflow/?auth_state=expected');
+  expect(restoreSignInReturn()).toBeUndefined();
+  expect(location.pathname).toBe('/entries/workflow/');
 });
-it('closes the blank tab and re-enables the sign-in button after a failed start', async () => {
-  const f=fixture(); f.request.mockRejectedValueOnce(new Error('Start unavailable')); f.button.click();
+
+it.each(['https://evil.example.test/login/device', 'http://user:secret@127.0.0.1:7126/login/device', 'javascript:alert(1)', 'http://127.0.0.1:7126/other'])('rejects an unrelated or unsafe sign-in link (%#)', async url => {
+  const f = fixture(); f.request.mockResolvedValueOnce(signIn(url)); f.button.click();
+  await vi.waitFor(() => expect(document.querySelector('#account-error')!.textContent).toBe('Invalid sign-in link.'));
+  expect(f.navigate).not.toHaveBeenCalled();
+  expect(window.open).not.toHaveBeenCalled();
+});
+
+it('keeps the dialog open and re-enables sign-in after a failed start', async () => {
+  const f = fixture(); f.request.mockRejectedValueOnce(new Error('Start unavailable')); f.button.click();
   await vi.waitFor(() => expect(document.querySelector('#account-error')!.textContent).toBe('Start unavailable'));
-  expect(f.browser.close).toHaveBeenCalledOnce();
+  expect(f.navigate).not.toHaveBeenCalled();
+  expect(f.dialog.open).toBe(true);
   expect(f.button.disabled).toBe(false);
-  expect(document.querySelector<HTMLElement>('#login-cancel')!.hidden).toBe(true);
+  expect(f.cancel.hidden).toBe(true);
 });
-it('ignores a late login error after cancellation and starting another login', async () => {
-  const f=fixture(); let reject!: (error:Error) => void;
-  f.request.mockImplementationOnce(() => new Promise((_resolve,done) => {reject=done;}));
-  f.button.click(); document.querySelector<HTMLButtonElement>('#login-cancel')!.click();
-  await vi.waitFor(() => expect(f.request).toHaveBeenCalledWith({type:'cancel-login'}));
-  f.panel.update(signedOut);
-  const second={opener:{},closed:false,close:vi.fn(),location:{replace:vi.fn()}};
-  vi.mocked(window.open).mockReturnValue(second as unknown as Window);
+
+it('ignores a late sign-in reply after cancellation and starting again', async () => {
+  const f = fixture(); let resolve!: (value: BrowserSignIn) => void;
+  f.request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  f.button.click(); f.cancel.click();
+  await vi.waitFor(() => expect(f.button.disabled).toBe(false));
+  expect(f.request).toHaveBeenCalledWith({ type: 'cancel-login' });
   f.request.mockImplementationOnce(() => new Promise(() => {})); f.button.click();
-  reject(new Error('Stale login failed'));
+  resolve(signIn(localSignInUrl));
   await Promise.resolve(); await Promise.resolve();
-  expect(second.close).not.toHaveBeenCalled();
-  expect(document.querySelector('#account-error')!.textContent).toBe('');
+  expect(f.navigate).not.toHaveBeenCalled();
   expect(f.button.disabled).toBe(true);
-  f.panel.update({...signedOut,status:'error',error:'Current attempt failed'});
-  expect(second.close).toHaveBeenCalledOnce();
-  expect(f.button.disabled).toBe(false);
 });

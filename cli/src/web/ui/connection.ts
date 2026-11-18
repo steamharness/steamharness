@@ -29,11 +29,20 @@ export class BrowserConnection {
   private closed = false;
   private manual = false;
   private retryFailed = false;
-  private token = new URLSearchParams(location.hash.slice(1)).get('session') ?? new URLSearchParams(location.search).get('session') ?? sessionStorage.getItem('steamharness-web-session');
+  private token?: string | null;
 
   constructor(private readonly emit: (message: Message) => void, private readonly live = true, showBanner = true,
-    private readonly recoverHost?: () => Promise<string | undefined>) {
-    if (this.token) { const query = new URLSearchParams(location.search); query.delete('session'); sessionStorage.setItem('steamharness-web-session', this.token); history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`); }
+    private readonly recoverHost?: () => Promise<string | undefined>, private returnTicket?: string) {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const query = new URLSearchParams(location.search);
+    this.token = hash.get('session') ?? query.get('session') ?? sessionStorage.getItem('steamharness-web-session');
+    if (this.token) sessionStorage.setItem('steamharness-web-session', this.token);
+    if (hash.has('session') || query.has('session')) {
+      const url = new URL(location.href);
+      if (query.has('session')) url.searchParams.delete('session');
+      if (hash.has('session')) { hash.delete('session'); url.hash = hash.toString(); }
+      history.replaceState(history.state, '', url.href);
+    }
     queueMicrotask(() => {
       if (showBanner) {
         this.banner = document.createElement('div');
@@ -165,6 +174,7 @@ export class BrowserConnection {
         if (!this.live) { await this.snapshot(epoch, signal); return; }
         const eventsUrl = new URL(this.fileUrl(entryBase() + '/api/events'), location.href);
         eventsUrl.searchParams.set('clientId', this.clientId);
+        if (this.returnTicket) eventsUrl.searchParams.set('returnTicket', this.returnTicket);
         await new Promise<void>(resolve => {
           const source = this.source = new EventSource(eventsUrl.href);
           const finish = () => { signal.removeEventListener('abort', aborted); resolve(); };
@@ -183,7 +193,10 @@ export class BrowserConnection {
             try { message = this.publicFiles(JSON.parse(event.data)); }
             catch { this.interrupted(); finish(); return; }
             alive();
-            if (message.type === 'state' && typeof message.project?.id === 'string') this.applicationId ??= `${message.project.id}:${message.project.entryId}`;
+            if (message.type === 'state' && typeof message.project?.id === 'string') {
+              this.applicationId ??= `${message.project.id}:${message.project.entryId}`;
+              this.returnTicket = undefined;
+            }
             this.emit(message);
             if (active() && message?.type === 'state' && this.status !== 'connected') {
               clearTimeout(this.connectTimer);
