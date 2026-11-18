@@ -46,15 +46,17 @@ export type BotConversationOptions = Omit<ConversationDefinition, "engine" | "du
   recovery?: { startup?: "automatic" | "manual" };
 };
 export type BotEngine = "agent" | "llm";
-export interface BotLLMOptions {
+export interface BotLLMOptions<Input extends AgentInput = AgentInput> {
   systemPrompt?: string;
   modelSource?: "user-settings" | "project";
   model?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  createTools?(context: NodeContext, input: Readonly<Input>): AgentToolSet | AgentToolSet["tools"] | Promise<AgentToolSet | AgentToolSet["tools"]>;
 }
 interface BotHooks<Input extends AgentInput> {
   name?: string;
+  tools?: ToolPermissionDefinition[];
   params?: BotParamDeclaration[];
   resolveParams?(context: ParamResolverContext): ParamResolveResult | Promise<ParamResolveResult>;
   conversation?: BotConversationOptions;
@@ -62,8 +64,8 @@ interface BotHooks<Input extends AgentInput> {
   onCompleted?(result: BotCompletion, context: NodeContext): void | Promise<void>;
 }
 export type BotDefinition<Input extends AgentInput = AgentInput> = BotHooks<Input> & (
-  | { engine: "agent"; agent?: BotAgentOptions<Input>; llm?: never; tools?: ToolPermissionDefinition[]; memory?: BotMemoryOptions }
-  | { engine: "llm"; llm: BotLLMOptions; agent?: never; tools?: never; memory?: never }
+  | { engine: "agent"; agent?: BotAgentOptions<Input>; llm?: never; memory?: BotMemoryOptions }
+  | { engine: "llm"; llm: BotLLMOptions<Input>; agent?: never; memory?: never }
 );
 
 const definitions = new WeakSet<object>();
@@ -101,8 +103,9 @@ export function assertBotLLMOptions(value: unknown): asserts value is BotLLMOpti
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("Bot llm settings must be an object.");
   const llm = value as Record<string, unknown>;
   for (const key of Object.keys(llm)) {
-    if (!["systemPrompt", "modelSource", "model", "temperature", "maxOutputTokens"].includes(key)) invalid(`Unsupported Bot llm field "${key}".`);
+    if (!["systemPrompt", "modelSource", "model", "temperature", "maxOutputTokens", "createTools"].includes(key)) invalid(`Unsupported Bot llm field "${key}".`);
   }
+  if (llm.createTools !== undefined && typeof llm.createTools !== "function") invalid("Bot llm.createTools must be a function.");
   if (llm.modelSource !== undefined && llm.modelSource !== "user-settings" && llm.modelSource !== "project") invalid("Bot llm.modelSource must be user-settings or project.");
   if (llm.systemPrompt !== undefined && typeof llm.systemPrompt !== "string") invalid("Bot llm.systemPrompt must be a string.");
   if (llm.model !== undefined && (typeof llm.model !== "string" || !llm.model.trim())) invalid("Bot llm.model must be a non-empty string.");
@@ -126,7 +129,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
   for (const key of Object.keys(options)) if (!allowed.has(key)) invalid(`Unsupported Bot field "${key}". Use defineBot configuration and hooks.`);
   if (options.engine !== "agent" && options.engine !== "llm") invalid('defineBot requires engine: "agent" or "llm".');
   if (options.engine === "llm") {
-    for (const key of ["agent", "tools", "memory"]) if (Object.hasOwn(options, key)) invalid(`Bot ${key} requires engine: "agent".`);
+    for (const key of ["agent", "memory"]) if (Object.hasOwn(options, key)) invalid(`Bot ${key} requires engine: "agent".`);
     assertBotLLMOptions(options.llm);
     const conversation = botConversationDefaults("llm", options.conversation);
     const params = botParams("llm", options.llm, options.params);

@@ -1,4 +1,5 @@
 import { assertBotLLMOptions, botConversationDefaults, botParams, botTools, type BotEngine } from "../agent/bot";
+import { llmBotTools } from "../agent/llm-bot-tools";
 import { botMemoryDefault, type BotMemoryOptions } from "../agent/memory-configuration";
 import { projectEntrySources } from "../project-sources";
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
@@ -1775,7 +1776,12 @@ function analyzeSourceFile(
       const argument = reference === undefined ? undefined : resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
       if (engine === "llm") {
         if (!argument || !ts.isObjectLiteralExpression(argument)) throw new Error("Bot llm settings must be a static object.");
-        const options = readParamLiteral(argument);
+        const options = Object.fromEntries(argument.properties.flatMap(property => {
+          const name = property.name && readStructurePropertyName(property.name);
+          if (name === "createTools") return [];
+          if (!name || !(ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property))) throw new Error("Bot llm settings must be static except for createTools.");
+          return [[name, readParamLiteral(ts.isPropertyAssignment(property) ? property.initializer : property.name)]];
+        }));
         assertBotLLMOptions(options);
         const result = { engine, options } as const;
         coreOptions.set(executor, result);
@@ -1846,6 +1852,20 @@ function analyzeSourceFile(
       return;
     }
 
+    const core = readCoreAgentOptions(objectArg);
+    if (core?.engine === "llm") {
+      const property = objectArg.properties.find((prop): prop is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+        (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) && readStructurePropertyName(prop.name) === "tools");
+      try {
+        const overrides = property && readParamLiteral(ts.isPropertyAssignment(property) ? property.initializer : property.name);
+        analysis.executorTools = llmBotTools(overrides as ToolPermissionDefinition[] | undefined);
+      } catch (error) {
+        analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: "tools",
+          message: error instanceof Error ? error.message : String(error), locations: [createLocation(cwd, filePath, sourceFile, property ?? objectArg)] });
+      }
+      return;
+    }
+
     const toolsProperty = objectArg.properties.find(
       (prop): prop is ts.PropertyAssignment =>
         ts.isPropertyAssignment(prop) &&
@@ -1854,8 +1874,7 @@ function analyzeSourceFile(
     );
 
     if (toolsProperty === undefined || !ts.isArrayLiteralExpression(toolsProperty.initializer)) {
-      const core = readCoreAgentOptions(objectArg);
-      if (core) analysis.executorTools = core.engine === "agent" ? botTools(core.options) : [];
+      if (core) analysis.executorTools = botTools(core.options);
       return;
     }
 
@@ -1876,8 +1895,7 @@ function analyzeSourceFile(
     if (tools.length > 0) {
       // Expose registered tool permissions through the structure
       // report so local hosts can render their policy controls.
-      const core = readCoreAgentOptions(objectArg);
-      analysis.executorTools = core ? core.engine === "agent" ? botTools(core.options, tools) : [] : tools;
+      analysis.executorTools = core ? botTools(core.options, tools) : tools;
     }
   }
 
@@ -1957,7 +1975,7 @@ function analyzeSourceFile(
     if (bot) {
       const engine = readCoreAgentOptions(objectArg)?.engine;
       const allowed = new Set(["engine", "name", "params", "resolveParams", "conversation", "prepareInput", "onCompleted",
-        ...(engine === "llm" ? ["llm"] : engine === "agent" ? ["agent", "memory", "tools"] : ["llm", "agent", "memory", "tools"])]);
+        ...(engine === "llm" ? ["llm", "tools"] : engine === "agent" ? ["agent", "memory", "tools"] : ["llm", "agent", "memory", "tools"])]);
       for (const property of objectArg.properties) {
         const name = property.name ? readStructurePropertyName(property.name) : undefined;
         if (!name || !allowed.has(name)) analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: name ?? "spread", message: `Unsupported Bot field ${name ?? "spread"}.`, locations: [location] });

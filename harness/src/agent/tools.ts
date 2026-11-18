@@ -10,7 +10,7 @@ import {
 import type { AgentQuestion } from "./types";
 import { pageInteger } from "./result-pages";
 import { setTimeout as delay } from "node:timers/promises";
-import { readAgentRuntimeInfo, type ProjectRuntimeInfo } from "../runtime-info";
+import { readAgentRuntimeInfo, readRuntimeInfo, type ProjectRuntimeInfo } from "../runtime-info";
 
 /**
  * The subset of TypeBox this module needs. Passed in by the runtime so the SDK
@@ -148,6 +148,7 @@ export function createBuiltinAgentTools(input: {
   Type: TypeboxLike;
   scope: AgentToolScope;
   runtimeInfo?: ProjectRuntimeInfo;
+  engine?: "llm";
 }): AgentTool[] {
   return [
     createReadTool(input),
@@ -162,15 +163,17 @@ export function createBuiltinAgentTools(input: {
   ].map(tool => ({ ...tool, replay: READ_ONLY_AGENT_TOOL_NAMES.includes(tool.name) ? "safe" : "never" })) as unknown as AgentTool[];
 }
 
-function createRuntimeInfoTool({ Type, scope, runtimeInfo }: { Type: TypeboxLike; scope: AgentToolScope; runtimeInfo?: ProjectRuntimeInfo }) {
+function createRuntimeInfoTool({ Type, scope, runtimeInfo, engine }: { Type: TypeboxLike; scope: AgentToolScope; runtimeInfo?: ProjectRuntimeInfo; engine?: "llm" }) {
   return {
     name: "runtime_info",
     label: "Runtime info",
-    description: "Get the actual execution environment for this turn: project and entry, Core and CLI versions, launcher, Node.js version, OS, architecture and working directory. Use it to answer runtime or version questions instead of running shell commands. Unavailable information is omitted.",
+    description: engine === "llm"
+      ? "Use this to answer where this Bot is running or what versions it uses. Get the SteamHarness execution host, loaded Core and CLI versions, project and entry, Node.js, OS and architecture. This does not identify the upstream model server or its location. Unavailable information is omitted."
+      : "Get the actual execution environment for this turn: project and entry, Core and CLI versions, launcher, Node.js version, OS, architecture and working directory. Use it to answer runtime or version questions instead of running shell commands. Unavailable information is omitted.",
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute(_id: string, _args: unknown, signal?: AbortSignal) {
       signal?.throwIfAborted();
-      const details = readAgentRuntimeInfo(scope.workdir, runtimeInfo);
+      const details = engine === "llm" ? readRuntimeInfo(engine, runtimeInfo) : readAgentRuntimeInfo(scope.workdir, runtimeInfo);
       return { content: [{ type: "text" as const, text: JSON.stringify(details) }], details };
     },
   };

@@ -40,7 +40,7 @@ let tab: Tab = tabs.some(([id]) => id === saved.tab) ? saved.tab as Tab : 'trace
 let reveal = 0;
 let query = '', key = '', rows: TraceRow[] = [];
 interface SectionView { root: HTMLDetailsElement; content: HTMLPreElement }
-interface ModelRequestView extends SectionView { pending?: string; loaded?: boolean }
+interface ModelRequestView extends SectionView { pending?: string; loaded?: boolean; update(target: TraceModelRequestTarget): void }
 interface RowView {
   root: HTMLDetailsElement; signature: string; sections: Map<TraceNodeField, SectionView>; model?: ModelRequestView;
   badge: HTMLSpanElement; title: HTMLSpanElement; preview: HTMLSpanElement; meta: HTMLSpanElement;
@@ -159,15 +159,23 @@ function sectionView(label: string): SectionView {
   return { root, content };
 }
 function modelRequestView(target: TraceModelRequestTarget): ModelRequestView {
-  const view: ModelRequestView = sectionView(t('Model request'));
+  const view: ModelRequestView = { ...sectionView(t('Model request')), update(next) {
+    if (next.requestCount === target.requestCount) return;
+    target = next;
+    view.pending = undefined;
+    view.loaded = false;
+    root.removeAttribute('aria-busy');
+    load();
+  } };
   const { root, content } = view; root.classList.add('trace-model-request');
-  root.ontoggle = () => {
+  function load() {
     if (!root.open || !root.isConnected || view.pending || view.loaded) return;
     view.pending = globalThis.crypto.randomUUID();
     root.setAttribute('aria-busy', 'true');
-    content.textContent = t('Loading model request...');
+    if (!content.textContent) content.textContent = t('Loading model request...');
     post({ type: 'model-request', target, requestId: view.pending });
-  };
+  }
+  root.ontoggle = load;
   return view;
 }
 function createRowView(id: string): RowView {
@@ -230,6 +238,7 @@ function renderRow(row: TraceRow): HTMLDetailsElement {
   }
   if (row.modelRequest && state?.modelRequests) {
     view.model ??= modelRequestView(row.modelRequest);
+    view.model.update(row.modelRequest);
     sections.splice(row.sections[0]?.field === 'input' ? 1 : 0, 0, view.model.root);
   } else { view.model = undefined; }
   reconcileChildren(detail, [tools, ...sections]);

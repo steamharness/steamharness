@@ -8,8 +8,9 @@ draft: true
 #### 新增
 
 - Agent 可通过只读工具 `runtime_info` 查询当前项目、启动宿主、实际运行版本和工作目录。 {/* note: agent-runtime-info */}
+- LLM Bot 支持内置和项目工具，复用「项目信息 → 工具」的启用与审批设置，默认只启用 `runtime_info`。 {/* note: llm-bot-tools */}
 
 #### 变更
 
-- `defineBot` 必须显式声明 `engine: "agent"` 或 `engine: "llm"`。LLM Bot 每轮只调用一次模型，使用现有模型配置及凭据，不启动 Agent 或工具。 {/* note: draft-1 */}
+- `defineBot` 必须显式声明 `engine: "agent"` 或 `engine: "llm"`。LLM Bot 使用现有模型配置及凭据，不启动 Agent；仅在模型调用工具时追加模型请求。 {/* note: draft-1 */}
 - Workflow LLM Provider 改用 pi-ai，移除 AI SDK 专用选项。`createLLMNode` 仍一次返回完整结果，但内置 Provider 要求端点支持 SSE。 {/* note: draft-2 */}

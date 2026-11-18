@@ -10,7 +10,7 @@ import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
-  type ResolvedInput,
+  type InputRequest, type ResolvedInput,
   type TimerRecord,
 } from './workflow-types';
 
@@ -28,6 +28,7 @@ interface ControllerOptions {
 }
 interface RunTask { sessionId: string; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
+const isLiveToolApproval = (request?: InputRequest): boolean => request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
 function pendingAgentInput(turn: AgentSessionSnapshot['turns'][number]): boolean {
   // Reports can remain queued after the parent's run has failed. They are saved
@@ -87,6 +88,10 @@ export class ConversationController {
         entry.agentCommands = [];
       }
       for (const message of entry.messages) {
+        if (isLiveToolApproval(message.pendingInput)) {
+          delete message.pendingInput; delete message.submittingInput;
+          message.status = 'aborted'; message.error = t("Run interrupted");
+        }
         if (message.status === 'running') {
           if (interrupted) { message.status = 'aborted'; message.recovering = false; message.error = t('Run interrupted'); continue; }
           if (message.cancelRequested) { message.status = 'aborted'; message.pendingInput = undefined; }
@@ -436,6 +441,7 @@ export class ConversationController {
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
       const llmBot = this.project.conversation?.engine === 'llm';
       let modelExecutionId: string | undefined;
+      let modelRequests: NonNullable<ConversationMessage['modelRequest']> | undefined;
       const onEvent = (event: Record<string, unknown>) => {
         if (task.cancelled || this.disposed || this.tasks.get(answer.runId!) !== task) { return; }
         const metadata = event.metadata as { type?: unknown; title?: unknown } | undefined;
@@ -471,7 +477,10 @@ export class ConversationController {
         if (event.type === 'user_input_requested') { this.bindUserInput(entry, answer, event as unknown as NonNullable<ConversationMessage['pendingInput']>); }
         if (event.type === 'user_input_resolved') {
           this.confirmInput(entry, answer, event as unknown as ResolvedInput);
-          if (answer.pendingInput?.requestId === event.requestId) { answer.pendingInput = undefined; }
+          if (answer.pendingInput?.requestId === event.requestId) {
+            if (isLiveToolApproval(answer.pendingInput)) answer.status = 'running';
+            answer.pendingInput = undefined;
+          }
           void this.persist().catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
         }
         if (event.type === 'file_created') { (answer.files ??= []).push(event.file as unknown as Attachment); }
@@ -483,9 +492,10 @@ export class ConversationController {
       };
       const report = await (llmBot ? this.runtime.run(request, onEvent, snapshot => {
         if (this.disposed || this.tasks.get(answer.runId!) !== task || !modelExecutionId) return;
-        // Only a dispatch replaces the previous attempt. Replaying an already
-        // saved answer to finish onCompleted never emits a model request.
-        answer.modelRequest = { executionId: modelExecutionId, snapshot };
+        // Keep all calls in one tool turn, but replace the trace on retry only
+        // once a new dispatch actually happens.
+        const previous = modelRequests?.executionId === modelExecutionId ? [...(modelRequests.previous ?? []), modelRequests.snapshot] : undefined;
+        answer.modelRequest = modelRequests = { executionId: modelExecutionId, snapshot, ...(previous && { previous }) };
         this.changed();
       }) : this.runtime.run(request, onEvent));
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
@@ -569,6 +579,10 @@ export class ConversationController {
         this.options.log(`Workflow run: ${answer.error}`);
       }
     } finally {
+      if (isLiveToolApproval(answer.pendingInput)) {
+        delete answer.pendingInput;
+        if (answer.status === 'waiting_for_input') { answer.status = 'aborted'; answer.error = t("Run interrupted"); }
+      }
       if (!historical) {
         if (!this.project.conversation?.durable?.enabled) {
           if (!task.cancelled && !this.disposed && answer.status === 'success') delete entry.queuePaused;
@@ -1219,14 +1233,23 @@ export class ConversationController {
     this.assertCurrentEngine(entry);
     await this.ensureIndependentFork(entry);
     const answer = entry.messages.find((message) => message.id === messageId && message.pendingInput?.requestId === requestId);
-    if (!answer?.pendingInput || entry.activeRunId) { return; }
+    if (!answer?.pendingInput) { return; }
     const request = answer.pendingInput;
+    const live = isLiveToolApproval(request);
+    if (live ? !entry.activeRunId || entry.activeRunId !== answer.runId || !this.runtime.resolveLiveInput
+        || this.tasks.get(entry.activeRunId)?.cancelled || !!answer.submittingInput : !!entry.activeRunId) return;
     const allowed = Object.fromEntries(request.params.map((field) => [field.name, values[field.name] ?? request.defaultValues?.[field.name] ?? field.defaultValue ?? '']));
     const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, projectFormValue(field, allowed[field.name])]));
     const typedValues = resolvedProjectValues(request.params, form);
     const resolved = { requestId, nodeName: request.nodeName, values: typedValues, submittedAt: new Date().toISOString(), request,
       precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) };
     answer.submittingInput = resolved;
+    if (live) {
+      this.changed();
+      try { await this.runtime.resolveLiveInput!(entry.activeRunId!, resolved); }
+      catch (error) { if (answer.submittingInput === resolved) delete answer.submittingInput; this.changed(); throw error; }
+      return;
+    }
     this.start(entry, { id: messageId, text: '', params: {}, entrypointId: answer.entrypointId, attachments: [], createdAt: Date.now() }, answer);
     await this.persist();
   }

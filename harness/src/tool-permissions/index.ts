@@ -211,8 +211,9 @@ export function parseToolPermissionPoliciesJson(
 }
 
 export async function requireProjectToolApproval(
-  context: Pick<NodeContext, "toolPermissions" | "userInput" | "metadata">,
+  context: Pick<NodeContext, "toolPermissions" | "userInput" | "metadata" | "abortSignal">,
   input: ToolApprovalRequestInput,
+  mode: "pause" | "live" = "pause",
 ): Promise<ToolApprovalDecision> {
   const name = normalizeToolName(input.name);
   if (name === undefined) {
@@ -247,7 +248,7 @@ export async function requireProjectToolApproval(
   // A build turn has nothing left to confirm: the tools it reaches for are the
   // ones the plan it is running named, and that plan was already approved. The
   // tool still has to be enabled, which is checked above.
-  if (context.toolPermissions?.requiresUserApproval === false && tool.approvalMode !== "always") {
+  if (mode !== "live" && context.toolPermissions?.requiresUserApproval === false && tool.approvalMode !== "always") {
     return { approved: true };
   }
 
@@ -255,7 +256,17 @@ export async function requireProjectToolApproval(
     tool,
     input,
     metadata: context.metadata,
+    live: mode === "live",
   });
+  if (mode === "live") {
+    if (!context.userInput?.waitForInput) {
+      throw new HarnessError({ type: "tool_permission_denied", message: `Tool "${name}" requires approval on an interactive host.` });
+    }
+    const resolved = await context.userInput.waitForInput(request, context.abortSignal);
+    context.abortSignal?.throwIfAborted();
+    if (resolved.requestId !== request.requestId) throw new HarnessError({ type: "tool_permission_denied", message: `Tool "${name}" approval did not match the request.` });
+    return readApprovalDecision(resolved, name);
+  }
   const resolved = await context.userInput?.getResolvedInput(request.requestId, request);
 
   if (resolved !== undefined) {
@@ -317,6 +328,7 @@ function createToolApprovalRequest(options: {
   tool: ToolPermissionResolved;
   input: ToolApprovalRequestInput;
   metadata?: Record<string, unknown>;
+  live?: boolean;
 }): UserInputRequest {
   const requestScope = normalizeRequestIdPart(options.metadata?.["project"]) ?? "project";
   const runId = normalizeRequestIdPart(options.metadata?.["runId"]) ?? "run";
@@ -354,6 +366,7 @@ function createToolApprovalRequest(options: {
       version: "1.0.0",
       toolName: options.tool.name,
       toolArguments: options.input.arguments,
+      ...(options.live && { live: true }),
       ...(typeof options.metadata?.botRequestId === "string" ? { botRequestId: options.metadata.botRequestId } : {}),
     },
     createdAt: new Date(),

@@ -3,7 +3,7 @@ import type { TraceAgentSnapshot } from './workflow-agent-types';
 
 export interface TraceSession extends ConversationSession {
   agentOwnerId?: string; agentConversationId?: number; forkSource?: { sessionId: string; entryId: number };
-  messages: (ConversationMessage & { modelRequestExecutionId?: string })[];
+  messages: (ConversationMessage & { modelRequestExecutionId?: string; modelRequestCount?: number })[];
 }
 
 export interface TraceRunSummary { id: string; title: string; status: string; createdAt?: number; durationMs?: number; entrypointId?: string }
@@ -22,7 +22,7 @@ export interface TraceSnapshot {
   errors?: { id: string; sessionId?: string; messageId?: string; runId?: string; message: string; timestamp?: number | string }[];
 }
 export interface TraceTarget { sessionId?: string; messageId?: string; runId?: string }
-export interface TraceModelRequestTarget { sessionId: string; messageId: string; executionId: string }
+export interface TraceModelRequestTarget { sessionId: string; messageId: string; executionId: string; requestCount?: number }
 export interface TraceSelection extends TraceTarget { projectUri?: string }
 export interface TracePanelState {
   type: 'trace-state'; generation: number;

@@ -1040,7 +1040,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (options.host?.surface !== 'editor' || !storageReady) return;
       const request = conversationController?.sessions.find(session => session.id === sessionId)?.messages
         .find(message => message.role === 'assistant' && message.id === messageId)?.modelRequest;
-      if (request?.executionId === executionId) return redactProjectData(request.snapshot, [...sensitiveTokens], false);
+      if (request?.executionId === executionId) return redactProjectData(request.previous?.length
+        ? { requests: [...request.previous, request.snapshot] } : request.snapshot, [...sensitiveTokens], false);
     },
     invokeEntry: async (call: AggregateEntryCall): Promise<unknown> => {
       call.abortSignal?.throwIfAborted();

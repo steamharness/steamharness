@@ -4,6 +4,7 @@ import { readOpenAIConversationHostInput, type OpenAIConversationHostInput } fro
 import type { BotExecutorDefinition, BotParamDeclaration, ConversationDefinition, ExecutorContext } from "../executor/types";
 import { createOutputNode, createOutputPayload, type OutputItem } from "../node/output/index";
 import { createLLMProvider, type LLMImagePart, type LLMMessage, type LLMProvider, type LLMUsage } from "../provider/llm/index";
+import { PiAiLLMProvider, type LLMBotToolRound } from "../provider/llm/pi-ai";
 import { observeLLMBotModelRequest } from "../provider/llm/request-trace";
 import type { LLMChatInput } from "../provider/llm/types";
 import type { NodeContext } from "../types/index";
@@ -11,6 +12,7 @@ import { defineProject, runStreamNode } from "../workflow/index";
 import { HarnessError } from "../workflow/errors";
 import { deepFreezeBotOutput, replayBotOutput, type BotDefinition, type BotLLMOptions } from "./bot";
 import { withBotRequest } from "./bot-lifecycle";
+import { createLLMBotToolRunner, llmBotTools } from "./llm-bot-tools";
 import { selectConfiguredConversationModel } from "./model-resolution";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
 import { readRuntimeLocaleSafe } from "./plan";
@@ -22,6 +24,8 @@ import type { AgentInput, AgentOutputPayload } from "./types";
 
 const TURN = "steamharness.bot.llm:";
 const NODE = "bot-llm-answer";
+const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_CALLS = 16;
 
 export function createLLMBot<Input extends AgentInput>(
   options: Extract<BotDefinition<Input>, { engine: "llm" }>,
@@ -29,6 +33,7 @@ export function createLLMBot<Input extends AgentInput>(
   conversation: ConversationDefinition,
 ): BotExecutorDefinition<Input> {
   const llm = { ...options.llm };
+  const tools = llmBotTools(options.tools);
   const inputContexts = new WeakMap<AgentInput, ExecutorContext>();
   const pending = new Map<string, Promise<AgentOutputPayload>>();
   const workflow = defineProject<AgentInput, AgentOutputPayload>({
@@ -48,7 +53,7 @@ export function createLLMBot<Input extends AgentInput>(
     },
   });
   const definition: BotExecutorDefinition<Input> = {
-    projectType: "bot", workflow, params, conversation, tools: [],
+    projectType: "bot", workflow, params, conversation, tools,
     tokenUsage: { enabled: true, display: true },
     resolveParams: options.resolveParams,
     createInput(context) {
@@ -75,11 +80,13 @@ export function createLLMBot<Input extends AgentInput>(
     const state = await context.conversation.getValue();
     const saved = state.messages.find(message => message.id === `${turnId}:assistant`);
     let output: AgentOutputPayload;
-    let usage: LLMUsage | undefined;
+    let usages: LLMUsage[] = [];
     if (saved) {
-      usage = saved.metadata?.usage as LLMUsage | undefined;
+      const recorded = saved.metadata?.usage as LLMUsage[] | LLMUsage | undefined;
+      usages = Array.isArray(recorded) ? recorded : recorded ? [recorded] : [];
       output = makeOutput(state.messages.find(message => message.id === `${turnId}:user`)?.content ?? "",
-        saved.metadata?.provider as string, saved.metadata?.model as string, [answer(saved.content, saved.metadata?.finishReason)]);
+        saved.metadata?.provider as string, saved.metadata?.model as string, [answer(saved.content, saved.metadata?.finishReason)],
+        typeof saved.metadata?.toolCallCount === "number" ? saved.metadata.toolCallCount : 0);
       await replayBotOutput(output, input, context);
     } else {
       const resolved = await resolveAgentImageFiles(input, context, NODE);
@@ -91,6 +98,8 @@ export function createLLMBot<Input extends AgentInput>(
       context.abortSignal?.throwIfAborted();
       const finalInput = applyAgentProjectFixedValues(prepared, params);
       const route = await resolveProvider(finalInput, llm, context.abortSignal);
+      const provider = route.provider;
+      if (!(provider instanceof PiAiLLMProvider)) throw new HarnessError({ type: "provider_call", message: "LLM Bots require a pi-ai provider." });
       const current = userMessage(finalInput.prompt, finalInput.images);
       const host = readOpenAIConversationHostInput({ hostInput: input.hostInput });
       const messages = host ? hostHistory(host, current) : [...completedHistory(state.messages), current];
@@ -98,30 +107,55 @@ export function createLLMBot<Input extends AgentInput>(
       // The ordinary node input is reported even when private model diagnostics are off.
       const nodeInput = { errCode: finalInput.errCode, errMessage: finalInput.errMessage, prompt: finalInput.prompt, requestId,
         provider: finalInput.provider, model: finalInput.model, images: finalInput.images?.map(({ mimeType }) => ({ mimeType })) };
+      let executed = 0;
       const node = createOutputNode<typeof nodeInput, AgentOutputPayload>({ name: NODE, metadata: { type: "llm-stream" },
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
-          let finished = false;
-          const request: LLMChatInput = { messages, system,
-            temperature: host?.settings.temperature ?? llm.temperature,
-            maxOutputTokens: host?.settings.maxOutputTokens ?? llm.maxOutputTokens,
-            topP: host?.settings.topP, maxRetries: 0, abortSignal: nodeContext.abortSignal };
-          if (nodeContext.nodeHooks?.onLLMBotModelRequest) {
-            observeLLMBotModelRequest(request, { provider: route.id, publish: snapshot => nodeContext.nodeHooks?.onLLMBotModelRequest?.(snapshot) });
-          }
-          for await (const chunk of route.provider.stream(request)) {
-            if (chunk.type === "text-delta") yield { type: "output_item_delta", itemId: AGENT_ANSWER_ITEM_ID, delta: chunk.text };
-            else if (chunk.finishReason === "stop" || chunk.finishReason === "length") {
-              finished = true;
-              usage = chunk.usage;
-              yield { type: "output_item_delta", itemId: AGENT_ANSWER_ITEM_ID, delta: "", item: { metadata: answer("", chunk.finishReason).metadata } };
+          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)));
+          const round: LLMBotToolRound = { tools: runner.tools, transcript: [] };
+          const callIds = new Set<string>();
+          try {
+            for (let index = 0; ; index++) {
+              nodeContext.abortSignal?.throwIfAborted();
+              const request: LLMChatInput = { messages, system,
+                temperature: host?.settings.temperature ?? llm.temperature,
+                maxOutputTokens: host?.settings.maxOutputTokens ?? llm.maxOutputTokens,
+                topP: host?.settings.topP, maxRetries: 0, abortSignal: nodeContext.abortSignal };
+              if (nodeContext.nodeHooks?.onLLMBotModelRequest) {
+                observeLLMBotModelRequest(request, { provider: route.id, publish: snapshot => nodeContext.nodeHooks?.onLLMBotModelRequest?.(snapshot) });
+              }
+              let response;
+              for await (const chunk of provider.streamTurn(request, round)) {
+                if (chunk.type === "text-delta") yield { type: "output_item_delta", itemId: AGENT_ANSWER_ITEM_ID, delta: chunk.text };
+                else response = chunk;
+              }
+              nodeContext.abortSignal?.throwIfAborted();
+              if (!response) throw new HarnessError({ type: "provider_call", message: "LLM Bot did not receive a completed answer." });
+              if (response.usage) usages.push(response.usage);
+              if (response.finishReason !== "tool-calls") {
+                yield { type: "output_item_delta", itemId: AGENT_ANSWER_ITEM_ID, delta: "", item: { metadata: answer("", response.finishReason).metadata } };
+                yield { type: "output_item_end", itemId: AGENT_ANSWER_ITEM_ID };
+                return;
+              }
+              const calls = response.message.content.filter(part => part.type === "toolCall");
+              if (!round.tools.length || !calls.length) throw new HarnessError({ type: "provider_call", message: "LLM Bot received an unexpected tool call." });
+              if (index >= MAX_TOOL_ROUNDS || callIds.size + calls.length > MAX_TOOL_CALLS) {
+                throw new HarnessError({ type: "provider_call", message: "LLM Bot reached the tool call limit for this turn." });
+              }
+              for (const call of calls) {
+                if (!call.id || callIds.has(call.id)) throw new HarnessError({ type: "provider_call", message: "LLM Bot received an invalid or duplicate tool call ID." });
+                callIds.add(call.id);
+              }
+              round.transcript.push(response.message);
+              for (const call of calls) {
+                const { result, executed: ran } = await runner.execute(call);
+                if (ran) executed++;
+                round.transcript.push(result);
+              }
             }
-          }
-          nodeContext.abortSignal?.throwIfAborted();
-          if (!finished) throw new HarnessError({ type: "provider_call", message: "LLM Bot did not receive a completed answer." });
-          yield { type: "output_item_end", itemId: AGENT_ANSWER_ITEM_ID };
+          } finally { try { await runner.close(); } catch { /* Keep the original turn result. */ } }
         },
-        format(stream) { return makeOutput(finalInput.prompt, route.id, route.model, stream.items); },
+        format(stream) { return makeOutput(finalInput.prompt, route.id, route.model, stream.items, executed); },
       });
       const result = await runStreamNode(node, nodeInput, context);
       output = result.output!;
@@ -130,14 +164,17 @@ export function createLLMBot<Input extends AgentInput>(
       await context.conversation.appendMessages([
         { id: `${turnId}:user`, role: "user", content: finalInput.prompt, metadata: { images: finalInput.images } },
         { id: `${turnId}:assistant`, role: "assistant", content: String(item.content),
-          metadata: { usage, runId, provider: route.id, model: route.model, finishReason: item.metadata?.finishReason } },
+          metadata: { usage: usages, runId, provider: route.id, model: route.model, finishReason: item.metadata?.finishReason, toolCallCount: executed } },
       ]);
     }
     // A replay in another run has no new usage. Retrying the original run upserts its receipt.
     const receipt = createHash("sha256").update(JSON.stringify([context.conversation.conversationId, requestId])).digest("hex");
-    if (usage && (!saved || saved.metadata?.runId === runId)) await context.tokenUsage.report({ recordId: `${TURN}${receipt}`, providerName: output.provider, modelId: output.model, nodeName: NODE, ...usage,
-      cachedInputTokens: usage.inputTokenDetails.cacheReadTokens, cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens,
-      reasoningTokens: usage.outputTokenDetails.reasoningTokens });
+    if (!saved || saved.metadata?.runId === runId) {
+      for (const [index, usage] of usages.entries()) await context.tokenUsage.report({ recordId: `${TURN}${receipt}${index ? `:${index}` : ""}`,
+        providerName: output.provider, modelId: output.model, nodeName: NODE, ...usage,
+        cachedInputTokens: usage.inputTokenDetails.cacheReadTokens, cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens,
+        reasoningTokens: usage.outputTokenDetails.reasoningTokens });
+    }
     if (options.onCompleted && state.values[`${turnId}:notified`] !== true) {
       try {
         const returned = await options.onCompleted(deepFreezeBotOutput(structuredClone({ requestId, output })), context);
@@ -153,7 +190,7 @@ export function createLLMBot<Input extends AgentInput>(
   }
 }
 
-async function resolveProvider(input: AgentInput, options: BotLLMOptions, signal?: AbortSignal): Promise<{ provider: LLMProvider; id: string; model: string }> {
+async function resolveProvider(input: AgentInput, options: Pick<BotLLMOptions, "model" | "modelSource">, signal?: AbortSignal): Promise<{ provider: LLMProvider; id: string; model: string }> {
   const selection = await selectConfiguredConversationModel(input.model ?? options.model, options.modelSource, signal);
   if (selection?.source === "third-party") {
     const { id, model, apiKind, baseUrl, apiKey } = selection.selected;
@@ -210,6 +247,6 @@ function answer(content: string, finishReason?: unknown): OutputItem {
     contentType: "markdown", metadata: { kind: "agent-answer", ...(finishReason === undefined ? {} : { finishReason }) } };
 }
 
-function makeOutput(prompt: string, provider: string, model: string, items: OutputItem[]): AgentOutputPayload {
-  return { ...createOutputPayload({ items }), prompt, provider, model, workdir: "", effort: "off", agent: "build", toolCallCount: 0 };
+function makeOutput(prompt: string, provider: string, model: string, items: OutputItem[], toolCallCount: number): AgentOutputPayload {
+  return { ...createOutputPayload({ items }), prompt, provider, model, workdir: "", effort: "off", agent: "build", toolCallCount };
 }

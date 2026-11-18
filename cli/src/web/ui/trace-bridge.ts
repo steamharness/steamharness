@@ -17,8 +17,8 @@ export function traceSnapshot(state: Message): Message | undefined {
     id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt,
     agentOwnerId: session.agentOwnerId, agentConversationId: session.agentConversationId, forkSource: session.forkSource,
     messages: (session.messages ?? []).map((message: Message) => {
-      const { id, role, content, items, error, status, durationMs, createdAt, model, runId, report, events, pendingInput, resolvedInputs, submittingInput, modelRequestExecutionId } = message;
-      return { id, role, content, items, error, status, durationMs, createdAt, model, runId, report, events, pendingInput, resolvedInputs, submittingInput, modelRequestExecutionId };
+      const { id, role, content, items, error, status, durationMs, createdAt, model, runId, report, events, pendingInput, resolvedInputs, submittingInput, modelRequestExecutionId, modelRequestCount } = message;
+      return { id, role, content, items, error, status, durationMs, createdAt, model, runId, report, events, pendingInput, resolvedInputs, submittingInput, modelRequestExecutionId, modelRequestCount };
     }),
   })) };
 }

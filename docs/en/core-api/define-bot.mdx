@@ -1,6 +1,6 @@
 ---
 title: "defineBot"
-description: "Declare a Bot entry backed by Core Agent or a single LLM call."
+description: "Declare a Bot entry backed by Core Agent or an LLM, and configure its tools."
 ---
 
 Use `steamharness.defineBot()` and register the entry in `steamharness.json` with `type: "bot"`. The declaration requires an `engine`. Add `engine: "agent"` to existing declarations to keep their behavior.
@@ -9,10 +9,10 @@ You cannot switch engines within a conversation. After changing the project's `e
 
 | Engine | When to use it | Engine-specific options |
 | --- | --- | --- |
-| `"agent"` | Run tools, handle multi-step tasks, or resume durable work. | `agent`, `tools`, `memory` |
-| `"llm"` | Answer from the current conversation without running tools. | `llm` (required; pass `{}` for defaults) |
+| `"agent"` | Handle multi-step work or use planning, memory, and durable recovery. | `agent`, `memory` |
+| `"llm"` | Answer from the current conversation or call tools without starting an Agent. | `llm` (required; pass `{}` for defaults) |
 
-Both engines accept `name`, `params`, `resolveParams`, `conversation`, `prepareInput`, and `onCompleted`. They return a `BotExecutorDefinition` with `AgentOutputPayload` and a final answer item named `agent-answer`. You cannot override `workflow`, `coreAgent`, `createInput`, `tokenUsage`, or `outputItemId`.
+Both engines accept `name`, `params`, `resolveParams`, `conversation`, `tools`, `prepareInput`, and `onCompleted`. They return a `BotExecutorDefinition` with `AgentOutputPayload` and a final answer item named `agent-answer`. You cannot override `workflow`, `coreAgent`, `createInput`, `tokenUsage`, or `outputItemId`.
 
 ## LLM Bot
 
@@ -24,9 +24,11 @@ export const executor = steamharness.defineBot({
 export default executor;
 ```
 
-Each turn sends the completed turns in the current conversation and the new input in one model call. The OpenAI Responses adapter uses the request's history without also adding local messages. LLM Bots stream answers, report usage, and support text, images, queues, and stopping. They do not start an Agent, execute tools, search the web, or read project memory. Plan, permission, and subagent controls are not available.
+LLM Bots send the completed turns and current input to the model and stream the answer. The OpenAI Responses adapter uses only the history provided in the request. LLM Bots support text, images, queues, and stopping. They do not start an Agent or use planning, subagents, project memory, or built-in web search.
 
-Local debugging hosts can pass `nodeHooks.onLLMBotModelRequest` to `runLocalProjectWithReport()` to inspect a model call at dispatch. The `LLMBotModelRequestSnapshot` contains the provider, model, protocol, system prompt, messages, and generation parameters sent; images retain only their type. Core does not include the snapshot in ordinary run reports or events. Restrict access to debug views because the snapshot can contain private instructions and messages.
+A turn takes one model request unless the model calls a tool. Core validates the arguments and permissions, then sends the tool result back to the same model. The answer's usage covers all model requests in the turn. Tool calls and results are not carried into the next turn.
+
+Local debugging hosts can pass `nodeHooks.onLLMBotModelRequest` to `runLocalProjectWithReport()` to inspect each dispatch. The `LLMBotModelRequestSnapshot` includes the provider, model, protocol, system prompt, messages, tool declarations, and dispatched generation settings. Images retain only their media type. Core keeps snapshots out of ordinary reports and events. Restrict access to debug views: snapshots can contain private messages and tool results.
 
 | `llm` option | Type | Purpose |
 | --- | --- | --- |
@@ -35,8 +37,17 @@ Local debugging hosts can pass `nodeHooks.onLLMBotModelRequest` to `runLocalProj
 | `model` | `string` | Default model entry ID. Omit to use the configured default. |
 | `temperature` | `number` | Optional non-negative sampling temperature, where supported. |
 | `maxOutputTokens` | `number` | Optional positive integer cap on output tokens. |
+| `createTools` | Function returning `AgentTool[]` or `AgentToolSet`, optionally async | Creates tools for the turn from `context` and the prepared input. Core calls `close()` at the end of the turn if provided. |
 
-Core saves the completed turn by `requestId` before calling `onCompleted`. When the callback fails, retrying that request replays the saved answer and retries only the callback. An interrupted stream is not saved as a completed turn or sent again automatically. You can retry it manually.
+Core saves the completed turn by `requestId` before calling `onCompleted`. When the callback fails, retrying that request replays the saved answer and retries only the callback. An interrupted stream is not saved as a completed turn or sent again automatically. Before retrying manually, check whether any tools already took effect.
+
+### Use tools in an LLM Bot
+
+Open **Project information → Tools** in Studio or CLI Web to enable tools and set which ones need approval. Only `runtime_info` is enabled and auto-approved by default. Ask, “Where is this Bot running, and what version of Core is it using?” The tool reports the SteamHarness execution host, loaded versions, OS, and project entry, not local absolute paths, credentials, or the model server's location.
+
+File, search, wait, and shell tools are off by default. File tools stay within the current entry directory; `bash` runs with the host process's permissions and is not sandboxed. To add a project tool, declare its name and defaults in top-level `tools`, then return an implementation with the same name from `llm.createTools`. Structure inspection reads the declarations without running the factory.
+
+The model endpoint must support tool calling. With **Auto-approve** turned off in Studio or CLI Web, each call waits for confirmation. Approval continues the same turn; rejection ends it. Hosts without interactive approval, such as the OpenAI Responses entry or direct CLI runs, can run only auto-approved tools. For a model endpoint without tool support, set `tools: [{ name: "runtime_info", enabled: false }]` and leave the other tools disabled.
 
 ## Agent Bot
 

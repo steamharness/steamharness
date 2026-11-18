@@ -2,7 +2,7 @@ import { testDataDirectory } from './test-data-directory';
 import { createServerRuntimePersistence } from 'steamharness/runtime-storage';
 import { runtimeStorageService } from './runtime-storage-service';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -11,10 +11,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { AGENT_MODELS_CONFIGURATION_KEY, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { startEntryWebServer as startWebServer } from '../web/server';
+import { WEB_HOST_ENV } from '../web/runtime';
 import { projectDataDirectory } from '../web/project-data-directory';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
+afterEach(() => vi.unstubAllEnvs());
+
 it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without exposing keys', async engine => {
+  vi.stubEnv(WEB_HOST_ENV, 'studio');
   const directory = await mkdtemp(path.join(os.tmpdir(), 'user-model-runtime-'));
   const applicationId = crypto.randomUUID(), calls: { model: string; token?: string }[] = [];
   const transcripts: string[] = [];
@@ -31,6 +35,14 @@ it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without 
     const prompt = JSON.stringify(body.messages.at(-1));
     const wait = engine === 'llm' && (prompt.includes('Hold queue') || prompt.includes('Cancel this') || prompt.includes('Crash this') && crashOnce);
     response.writeHead(200, { 'content-type': 'text/event-stream' });
+    if (engine === 'llm' && prompt.includes('Request runtime tool') && body.messages.at(-1).role === 'user') {
+      response.end([
+        { choices: [{ index: 0, delta: { role: 'assistant', tool_calls: [{ index: 0, id: 'call_runtime', type: 'function', function: { name: 'runtime_info', arguments: '{}' } }] }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+        { choices: [], usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } },
+      ].map(event => `data: ${JSON.stringify({ id: 'runtime-approval', ...event })}\n\n`).join('') + 'data: [DONE]\n\n');
+      return;
+    }
     const text = wait && !prompt.includes('Hold queue') ? 'Discard this partial answer' : `Answer ${body.model}`;
     response.write(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: null }] })}\n\n`);
     const finish = () => response.end(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: ${JSON.stringify({ id: 'user-answer', choices: [], usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } })}\n\ndata: [DONE]\n\n`);
@@ -167,12 +179,50 @@ it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without 
       expect(transcripts.at(-1)).not.toMatch(/Callback retry|First|Follow-up/);
       expect(app.controller!.sessions.filter(session => session.messages.length)).toHaveLength(2);
       await app.controller!.idle();
+      expect(app.project.tools).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'runtime_info', enabled: true, autoApprove: true }), expect.objectContaining({ name: 'bash', enabled: false }),
+      ]));
+      await post({ type: 'tool-policy', policies: { runtime_info: { enabled: true, autoApprove: false } } });
+      const approvalSession = app.controller!.current.id;
+      await send('Request runtime tool: approve');
+      await expect.poll(() => last()?.pendingInput?.metadata).toMatchObject({ type: 'tool-approval', toolName: 'runtime_info', live: true });
+      expect(last()?.status).toBe('waiting_for_input');
+      expect(calls).toHaveLength(11);
+      await post({ type: 'resume', messageId: last()!.id, requestId: last()!.pendingInput!.requestId, values: { approved: true } });
+      await expect.poll(() => last()?.status).toBe('success');
+      expect(calls).toHaveLength(12);
+      expect(last()?.tokenUsage?.run).toMatchObject({ calls: 2, totalTokens: 24 });
+      const toolMessage = JSON.parse(transcripts.at(-1)!).find((item: { role: string }) => item.role === 'tool');
+      expect(JSON.parse(toolMessage.content)).toMatchObject({ engine: 'llm', host: { kind: 'studio' }, project: { entry: { entryId: 'main' } } });
+      const { executionId } = last()!.modelRequest!;
+      const privateTrace: any = app.readModelRequest(approvalSession, last()!.id!, executionId);
+      expect(privateTrace.requests).toHaveLength(2);
+      expect(privateTrace.requests[1].messages.at(-1)).toMatchObject({ role: 'toolResult', toolName: 'runtime_info' });
+      expect(JSON.stringify(await post({ type: 'ready' }))).not.toContain('toolResult');
+      await app.controller!.idle();
+
+      await send('Request runtime tool: reject');
+      await expect.poll(() => last()?.pendingInput?.metadata?.toolName).toBe('runtime_info');
+      await post({ type: 'resume', messageId: last()!.id, requestId: last()!.pendingInput!.requestId, values: { approved: false } });
+      await expect.poll(() => last()?.status).toBe('failed');
+      expect(last()?.pendingInput).toBeUndefined();
+      expect(calls).toHaveLength(13);
+      await app.controller!.idle();
+
+      await send('Request runtime tool: cancel');
+      await expect.poll(() => last()?.pendingInput?.metadata?.toolName).toBe('runtime_info');
+      await post({ type: 'stop' });
+      await expect.poll(() => last()?.status).toBe('aborted');
+      expect(last()?.pendingInput).toBeUndefined();
+      const priorCalls = calls.length;
+      expect(priorCalls).toBe(14);
+      await app.controller!.idle();
       await writeFile(path.join(directory, 'index.ts'), source('agent'));
       await app.configurations!.refresh();
       const staleHostId = crypto.randomUUID();
       await send('Do not run the new engine in this session', staleHostId);
       await expect.poll(() => last(), { timeout: 12_000 }).toMatchObject({ id: staleHostId, status: 'failed', error: expect.stringContaining('Reopen the project') });
-      expect(calls).toHaveLength(10);
+      expect(calls).toHaveLength(priorCalls);
       await app.controller!.idle();
       await app.close();
       app = await startWebServer(options);
@@ -180,7 +230,7 @@ it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without 
       expect(app.controller!.sessions.find(session => session.id === sessionId)?.messages.at(-1)).toMatchObject({ id: crashId, status: 'success' });
       const blocked = await post({ type: 'send', sessionId, text: 'Old session', params: {}, attachments: [] }, 400);
       expect(blocked.message).toContain('different Bot engine');
-      expect(calls).toHaveLength(10);
+      expect(calls).toHaveLength(priorCalls);
     }
   } finally {
     await app?.close(); await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
@@ -300,7 +350,7 @@ it.each(['agent', 'llm'] as const)('%s Bot runs saved system and third-party mod
       expect(calls.at(-1)?.model).toBe(model.model);
       if (engine === 'llm') {
         expect(app.controller!.current.agent).toBeUndefined();
-        expect(calls.at(-1)?.body.tools).toBeUndefined();
+        expect(calls.at(-1)?.body.tools.map((tool: any) => tool.name ?? tool.function.name)).toEqual(['runtime_info']);
         if (index) expect(JSON.stringify(calls.at(-1)?.body)).toContain(`Answer from ${models[index - 1].model}`);
       }
       if (model.source === 'system') {

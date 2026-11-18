@@ -1,4 +1,4 @@
-import { createModels, createProvider, type Api, type AssistantMessage, type Context, type Model, type SimpleStreamOptions, type Usage } from "@earendil-works/pi-ai";
+import { createModels, createProvider, type Api, type AssistantMessage, type Context, type Model, type SimpleStreamOptions, type Tool, type ToolResultMessage, type Usage } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
@@ -14,6 +14,11 @@ const APIS = {
 } as const;
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const ZERO_USAGE: Usage = { ...ZERO_COST, totalTokens: 0, cost: { ...ZERO_COST, total: 0 } };
+
+export interface LLMBotToolRound {
+  tools: Tool[];
+  transcript: (AssistantMessage | ToolResultMessage)[];
+}
 
 export class PiAiLLMProvider implements LLMProvider {
   readonly name: string;
@@ -53,21 +58,28 @@ export class PiAiLLMProvider implements LLMProvider {
   }
 
   async *stream(input: LLMChatInput): AsyncIterable<LLMStreamChunk> {
-    const call = this.prepare(input);
+    for await (const chunk of this.streamTurn(input)) {
+      yield chunk.type === "finish" ? { type: "finish", finishReason: chunk.finishReason, usage: chunk.usage } : chunk;
+    }
+  }
+
+  async *streamTurn(input: LLMChatInput, round?: LLMBotToolRound) {
+    const call = this.prepare(input, round);
     try {
       const stream = this.models.streamSimple(this.model, call.context, call.options);
       for await (const event of stream) {
         call.options.signal?.throwIfAborted();
-        if (event.type === "text_delta") yield { type: "text-delta", text: event.delta };
+        if (event.type === "text_delta") yield { type: "text-delta" as const, text: event.delta };
       }
-      const { finishReason, usage } = this.finish(await stream.result(), call);
-      yield { type: "finish", finishReason, usage };
+      const message = await stream.result();
+      const { finishReason, usage } = this.finish(message, call);
+      yield { type: "finish" as const, finishReason, usage, message };
     } catch {
       throw this.failure(call);
     }
   }
 
-  private prepare(input: LLMChatInput) {
+  private prepare(input: LLMChatInput, round?: LLMBotToolRound) {
     const settings = { ...this.options.defaults, ...input };
     const observer = readModelRequestObserver(input);
     let recorded = false;
@@ -88,6 +100,8 @@ export class PiAiLLMProvider implements LLMProvider {
         context.messages.push({ role: "user", content, timestamp });
       }
     }
+    if (round?.tools.length) context.tools = round.tools;
+    if (round) context.messages.push(...round.transcript);
     const state: { status?: number; credentialError?: HarnessError; finished?: boolean } = {};
     const options: SimpleStreamOptions = {
       signal: settings.abortSignal, temperature: settings.temperature, maxTokens: settings.maxOutputTokens,
@@ -102,7 +116,7 @@ export class PiAiLLMProvider implements LLMProvider {
             try {
               const snapshot = snapshotLLMBotModelRequest(input, {
                 provider: observer.provider, model: this.model.id, api: this.model.api, systemPrompt: context.systemPrompt, generation,
-              }, this.options.apiKey);
+              }, this.options.apiKey, round);
               void Promise.resolve(observer.publish(snapshot)).catch(() => undefined);
             } catch { /* A diagnostic must not change the model call. */ }
           }

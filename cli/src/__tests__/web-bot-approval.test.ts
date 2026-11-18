@@ -41,7 +41,7 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
             async execute() { await appendFile(new URL('./writes', import.meta.url), 'write\\n'); return { content: [{ type: 'text', text: 'Saved' }], details: {} }; } }]; } },
         tools: [{ name: 'write_business', enabled: true, autoApprove: false, approvalMode: 'always' }],
       });`);
-    app = await startEntryWebServer({ projectDir: directory, dataDir: testDataDirectory(directory) });
+    app = await startEntryWebServer({ projectDir: directory, dataDir: testDataDirectory(directory), host: { surface: 'editor' } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(message) });

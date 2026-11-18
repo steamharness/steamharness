@@ -78,6 +78,8 @@ export interface UserInputContext {
     request?: UserInputRequest,
   ): Promise<UserInputResolved | undefined> | UserInputResolved | undefined;
   requestInput(request: UserInputRequest): Promise<void> | void;
+  /** Resume an active run without restarting it. Hosts without live input leave this unset. */
+  waitForInput?(request: UserInputRequest, signal?: AbortSignal): Promise<UserInputResolved>;
 }
 
 export interface NodeExecutionHooks {

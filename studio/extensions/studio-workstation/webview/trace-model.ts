@@ -154,7 +154,8 @@ export function traceRows(snapshot: TraceSnapshot | undefined, selection: TraceS
     const items: OutputItem[] = message.items ?? message.report?.output?.items ?? (message.content ? [{ content: message.content }] : []);
     if (message.id) turns.set(message.id, turn);
     const executionId = message.modelRequestExecutionId;
-    const modelRequest = message.role === 'assistant' && executionId && message.id ? { sessionId: session.id, messageId: message.id, executionId } : undefined;
+    const modelRequest = message.role === 'assistant' && executionId && message.id ? { sessionId: session.id, messageId: message.id, executionId,
+      ...(message.modelRequestCount !== undefined && { requestCount: message.modelRequestCount }) } : undefined;
     rows.push(...runRows({ ...message, id: message.id ?? String(index), title: message.model ?? t("Assistant"), status: message.status ?? 'success', items,
       resolvedInputs: message.resolvedInputs ?? message.report?.resolvedUserInputs }, turn, true, modelRequest));
   }

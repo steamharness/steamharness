@@ -17,9 +17,14 @@ export interface ProjectRuntimeInfo {
 }
 
 export function readAgentRuntimeInfo(workdir: string, info?: ProjectRuntimeInfo) {
+  const { project, ...runtime } = readRuntimeInfo("agent", info);
+  return { ...runtime, workdir, ...(project && info && { project: { ...project, directory: info.project.directory } }) };
+}
+
+export function readRuntimeInfo(engine: "agent" | "llm", info?: ProjectRuntimeInfo) {
   const { host, project } = info ?? {};
   return {
-    engine: "agent",
+    engine,
     coreVersion: corePackage.version,
     ...(host && { host: { kind: host.kind, ...(host.cliVersion !== undefined && { cliVersion: host.cliVersion }) } }),
     runtime: {
@@ -29,11 +34,9 @@ export function readAgentRuntimeInfo(workdir: string, info?: ProjectRuntimeInfo)
       arch: process.arch,
       ...(process.versions.electron !== undefined && { electronVersion: process.versions.electron }),
     },
-    workdir,
     ...(project && { project: {
       name: project.name,
       ...(project.version !== undefined && { version: project.version }),
-      directory: project.directory,
       entry: { entryId: project.entry.entryId, name: project.entry.name, type: project.entry.type },
     } }),
   };

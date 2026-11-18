@@ -201,6 +201,11 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     isolateAgentConversation: (project, sourceConversationId, conversationId, targetId, retireSource, fileIds) => invoke({ method: 'isolate-conversation', project, sourceConversationId, conversationId, targetId, retireSource, fileIds }),
     inspect: (paths, entryId) => invoke({ method: 'inspect', paths, entryId }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
+    resolveLiveInput: (runId, { requestId, values, submittedAt }) => new Promise((resolve, reject) => {
+      const child = active.get(runId);
+      if (!child?.connected || runCancellation.get(runId)?.signal.aborted) { reject(new Error('The run is no longer waiting for input.')); return; }
+      child.send({ type: 'live-input', input: { requestId, values, submittedAt } }, error => error ? reject(error) : resolve());
+    }),
     run: async (request, onEvent, onModelRequest) => {
       const runId = String(request.runId), cancellation = new AbortController();
       runCancellation.set(runId, cancellation);

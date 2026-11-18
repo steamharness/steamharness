@@ -3,7 +3,7 @@ import { conversationModelName, type ConversationMessage, type ConversationSessi
 type Event = Record<string, unknown>;
 interface EventSummary { count: number; events: Event[]; starts: Map<string, number>; ends: Map<string, number> }
 
-export function withoutModelRequest({ modelRequest: _private, modelRequestExecutionId: _link, ...message }: ConversationMessage): Omit<ConversationMessage, 'modelRequest' | 'modelRequestExecutionId'> {
+export function withoutModelRequest({ modelRequest: _private, modelRequestExecutionId: _link, modelRequestCount: _count, ...message }: ConversationMessage): Omit<ConversationMessage, 'modelRequest' | 'modelRequestExecutionId' | 'modelRequestCount'> {
   return message;
 }
 
@@ -63,7 +63,9 @@ export class ConversationState {
         return { ...event, ...(node.input !== undefined ? { input: undefined } : {}), ...(node.output !== undefined ? { output: undefined } : {}) };
       });
     }
-    return { ...withoutModelRequest(message), events, report, modelRequestExecutionId: message.modelRequest?.executionId };
+    const model = message.modelRequest;
+    return { ...withoutModelRequest(message), events, report, modelRequestExecutionId: model?.executionId,
+      ...(model?.previous?.length && { modelRequestCount: 1 + model.previous.length }) };
   }
 
   private events(source: Event[]): Event[] {

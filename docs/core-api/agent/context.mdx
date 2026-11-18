@@ -18,7 +18,7 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 
 在 Agent 对话里可以问「当前运行在哪？Core 和项目分别是什么版本？」模型可调用无参数的 `runtime_info({})`，读取本轮的工作目录、实际加载的 Core 版本，以及 Node.js 版本、操作系统和架构。通过项目执行器运行时，结果还包括项目名称、版本和入口；CLI、CLI Web、Studio 或 OpenAI Responses 启动时也会标明宿主和 CLI 版本。不确定的字段不返回。
 
-工具结果会发给模型，但不包含环境变量、凭据或服务地址。`read-only` 下仍可调用；项目可通过 `executor.tools` 禁用，或用 `agent.tools` 白名单排除。`engine: "llm"` 不执行工具。
+工具结果会发给模型，但不包含环境变量、凭据或服务地址。`read-only` 下仍可调用；项目可通过 `executor.tools` 禁用，或用 `agent.tools` 白名单排除。[LLM Bot](/core-api/define-bot) 也能调用它，但不返回工作目录或项目绝对路径。
 
 编程式宿主可在 `runLocalProjectWithReport` 或 `runWorkspaceProjectWithReport` 的选项中提供 `runtimeHost: { kind, cliVersion? }`。`kind` 接受 `cli`、`cli-web`、`studio` 或 `openai-responses`；项目执行器将宿主和项目入口信息放入 `NodeContext.runtimeInfo`。
 

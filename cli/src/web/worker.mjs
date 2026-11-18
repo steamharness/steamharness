@@ -17,6 +17,19 @@ let handleAgentControl;
 const pendingAgentControls = [];
 const activeAgentControls = new Set();
 const pendingEntryCalls = new Map();
+const pendingLiveInputs = new Map();
+function waitForInput(request, signal = controller.signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return; }
+    if (pendingLiveInputs.has(request.requestId)) { reject(new Error('Input is already pending.')); return; }
+    const cleanup = () => { pendingLiveInputs.delete(request.requestId); signal.removeEventListener('abort', abort); };
+    const abort = () => { cleanup(); reject(signal.reason); };
+    pendingLiveInputs.set(request.requestId, ({ values, submittedAt }) => {
+      cleanup(); resolve({ requestId: request.requestId, nodeName: request.nodeName, request, values, submittedAt: new Date(submittedAt) });
+    });
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
 const entryConversationHost = { invoke: (entryId, action, input, identity) => new Promise((resolve, reject) => {
   const signal = identity.abortSignal ?? controller.signal;
   if (!process.connected || ownerDisconnected) { reject(new Error('Conversation entry control requires a local execution host.')); return; }
@@ -70,6 +83,10 @@ process.on('disconnect', disconnectOwner);
 // Controls can arrive while stdin, Core or configuration is still loading.
 // Keep them from the first IPC listener until the session handler is installed.
 process.on('message', message => {
+  if (message?.type === 'live-input') {
+    pendingLiveInputs.get(message.input?.requestId)?.(message.input);
+    return;
+  }
   if (message?.type === 'entry-runtime-result') {
     const waiting = pendingEntryCalls.get(message.id);
     waiting?.finish(message.error ? new Error(message.error) : undefined, message.value);
@@ -347,6 +364,7 @@ try {
             return input && { ...input, submittedAt: new Date(input.submittedAt), request: input.request && { ...input.request, createdAt: new Date(input.request.createdAt) } };
           },
           requestInput: () => undefined,
+          waitForInput,
         },
         abortSignal: controller.signal,
         onRuntimeEvent: (event) => send('event', event),

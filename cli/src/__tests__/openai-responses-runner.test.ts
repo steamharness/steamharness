@@ -187,7 +187,8 @@ describe("OpenAI Responses internal runner", () => {
       assert.equal(String(url), "https://model.example.test/v1/chat/completions");
       const payload = String(init.body);
       assert.match(payload, /Project prompt.*Host instructions.*Earlier question.*Earlier answer.*hello/u);
-      assert.doesNotMatch(payload, /Discard partial|"tools"/u);
+      assert.doesNotMatch(payload, /Discard partial/u);
+      assert.deepEqual(JSON.parse(payload).tools.map((tool: { function: { name: string } }) => tool.function.name), ["runtime_info"]);
       assert.deepEqual(frames.map(frame => frame.type), ["ready", "text-delta", "text-delta", "completed"]);
       assert.deepEqual(frames.flatMap(frame => frame.type === "text-delta" ? [frame.delta] : []), ["你好", "，项目"]);
       const completed = frames.at(-1);

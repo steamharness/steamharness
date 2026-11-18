@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import corePackage from "../../package.json" with { type: "json" };
 import { defineBot } from "../agent/bot";
 import { AGENT_MODELS_CONFIGURATION_KEY, withProjectConfiguration } from "../configuration";
 import { createProjectConversationContext } from "../conversation/index";
@@ -8,10 +9,11 @@ import { analyzeProjectScriptSource } from "../executor/rules";
 import type { ConfiguredAgentModel } from "@steamharness/project-configuration";
 import { createProjectTokenUsageContext } from "../token-usage/index";
 import type { LLMBotModelRequestSnapshot, RunContext } from "../types/index";
+import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { withUserSettings } from "../user-settings";
 import { HarnessError } from "../workflow/errors";
 import { createTestResources } from "./entry-test-resources";
-import { llmFrames, llmSSE } from "./fixtures/llm-sse";
+import { llmFrames, llmSSE, llmToolSSE } from "./fixtures/llm-sse";
 import { testConversationStorage } from "./runtime-test-storage";
 
 const endpoint: ConfiguredAgentModel = { id: "third", name: "Test", model: "test-model", source: "third-party",
@@ -26,19 +28,123 @@ function context(id: string, signal?: AbortSignal): RunContext {
   };
 }
 
-test("LLM Bot has a model selector but no durable, recovery, Plan, or tool controls", () => {
+test("LLM Bot statically exposes shared tools and project declarations without loading the factory", () => {
   const bot = defineBot({ engine: "llm", llm: { systemPrompt: "Test" } });
   const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ engine: "llm", llm: { systemPrompt: "Test" } });`);
   assert.deepEqual(report.executorConfigurationViolations, []);
   assert.deepEqual(report.executorConversation, bot.conversation);
   assert.deepEqual(report.executorParams?.map(param => param.name), ["provider", "model"]);
   assert.equal(report.executorParamResolver?.enabled, true);
-  assert.deepEqual(bot.tools, []);
+  assert.deepEqual(report.executorTools, bot.tools);
+  assert.deepEqual(bot.tools?.filter(tool => tool.enabled).map(tool => tool.name), ["runtime_info"]);
+  assert.ok(bot.tools?.some(tool => tool.name === "bash" && !tool.enabled && !tool.autoApprove));
+  const custom = { name: "lookup", autoApprove: false };
+  const variant = defineBot({ engine: "llm", llm: { createTools() { throw new Error("factory was executed"); } }, tools: [custom] });
+  const inspected = analyzeProjectScriptSource(`const tools = [${JSON.stringify(custom)}];
+    export const executor = steamharness.defineBot({ engine: "llm", tools, llm: { createTools() { throw new Error("factory was executed"); } } });`);
+  assert.deepEqual(inspected.executorConfigurationViolations, []);
+  assert.deepEqual(inspected.executorTools, variant.tools);
   assert.equal(bot.conversation?.durable, undefined);
   assert.equal(bot.conversation?.recovery, undefined);
   assert.throws(() => defineBot({} as never), /requires engine/);
   assert.ok(analyzeProjectScriptSource(`export const executor = steamharness.defineBot({});`).executorConfigurationViolations.some(error => error.name === "engine"));
   assert.throws(() => defineBot({ engine: "llm", llm: {}, agent: {} } as never), /requires engine: "agent"/);
+});
+
+for (const [apiKind, wire] of [["openai-responses", "openai-responses"], ["openai-completions", "openai-completion"], ["anthropic-messages", "anthropic"]] as const) {
+  test(`${apiKind} continues with runtime_info using the same model and records both requests`, async t => {
+    const bodies: Record<string, any>[] = [];
+    t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return bodies.length === 1 ? llmToolSSE(wire, "runtime_info") : llmSSE(wire, "Running in Studio");
+    });
+    const run = context(apiKind);
+    const host = { kind: "studio" as const, cliVersion: "4.5.6", secret: "do-not-send-host-secret" };
+    const entry = { entryId: "chat", name: "Chat", type: "bot" as const };
+    run.runtimeInfo = { host, project: { name: "Example", entry, version: "1.5.0", directory: "/private/test-directory" } };
+    const traces: LLMBotModelRequestSnapshot[] = [];
+    run.nodeHooks = { onLLMBotModelRequest(snapshot) { traces.push(snapshot); } };
+    const bot = defineBot({ engine: "llm", llm: { systemPrompt: "Project instructions" } });
+    await withProjectConfiguration({ ...snapshot, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [{ ...endpoint, apiKind }] } }, async () => {
+      const output = await bot.workflow.run(input("runtime", "Where are you running?"), run);
+      assert.equal(output.items[0]?.content, "Running in Studio");
+      assert.equal(output.toolCallCount, 1);
+      const replay = await bot.workflow.run(input("runtime"), run);
+      assert.equal(replay.items[0]?.content, output.items[0]?.content);
+      assert.equal(replay.toolCallCount, 1);
+      assert.equal(run.tokenUsage.getRunUsage().calls, 2);
+      assert.equal(run.tokenUsage.getRunUsage().totalTokens, 28);
+      assert.equal(traces.length, 2);
+      assert.deepEqual(traces[0]!.tools?.map(tool => tool.name), ["runtime_info"]);
+      assert.deepEqual(bodies[0]!.tools.map((tool: any) => tool.name ?? tool.function.name), ["runtime_info"]);
+      assert.equal(bodies[0]!.model, bodies[1]!.model);
+      const result = traces[1]!.messages.find(message => message.role === "toolResult");
+      assert.ok(result?.content[0]?.type === "text");
+      const anthropicResult = wire === "anthropic" && bodies[1]!.messages.at(-1).content.find((item: any) => item.type === "tool_result").content;
+      const wireResult = wire === "openai-responses"
+        ? bodies[1]!.input.find((item: any) => item.type === "function_call_output").output
+        : wire === "anthropic" ? (typeof anthropicResult === "string" ? anthropicResult : anthropicResult[0].text)
+          : bodies[1]!.messages.find((item: any) => item.role === "tool").content;
+      assert.equal(wireResult, result.content[0].text);
+      assert.deepEqual(JSON.parse(wireResult), { engine: "llm", coreVersion: corePackage.version, host: { kind: "studio", cliVersion: "4.5.6" },
+        runtime: { name: "node", version: process.versions.node, platform: process.platform, arch: process.arch }, project: { name: "Example", version: "1.5.0", entry } });
+      await bot.workflow.run(input("follow-up"), run);
+      assert.doesNotMatch(JSON.stringify(bodies[2]), /tool_result|function_call_output|fc_call_1|test-directory|do-not-send-host-secret/u);
+    });
+  });
+}
+
+test("project tools obey permission, validated arguments and live approval without restarting the turn", async t => {
+  const bodies: string[] = [];
+  let nextCall = "lookup", approved = true, closeCount = 0, callCount = 0, approvalCount = 0;
+  let complete = true, args: Record<string, unknown> = { query: "example" };
+  t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+    const body = String(init?.body);
+    bodies.push(body);
+    return JSON.parse(body).input.some((item: any) => item.type === "function_call_output")
+      ? llmSSE("openai-responses", "Done") : llmToolSSE("openai-responses", nextCall, args, "call_1", complete);
+  });
+  const bot = defineBot({ engine: "llm", tools: [{ name: "lookup" }, { name: "read", enabled: true }], llm: { createTools() {
+    const tool = { name: "lookup", label: "Lookup", description: "Look up data.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
+      async execute(_id: string, args: unknown) {
+        callCount++;
+        return { content: [{ type: "text" as const, text: `Tool: ${(args as { query: string }).query}` }], details: {} };
+      } };
+    return { tools: [tool, { ...tool, name: "undeclared" }], async close() { closeCount++; } };
+  } } });
+  const run = context("permissions");
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, policies: { read: { enabled: false } }, projectName: "test", runId: "run" });
+  run.userInput = { requestInput() { assert.fail("must not suspend and restart the run"); }, getResolvedInput() { return undefined; },
+    async waitForInput(request) {
+      approvalCount++;
+      assert.equal(request.metadata?.live, true);
+      assert.deepEqual(request.metadata?.toolArguments, { query: "example" });
+      return { requestId: request.requestId, nodeName: request.nodeName, values: { approved }, submittedAt: new Date() };
+    } };
+  await withProjectConfiguration(snapshot, async () => {
+    await bot.workflow.run(input("approved"), run);
+    assert.equal(bodies.length, 2);
+    assert.equal(callCount, 1);
+    assert.equal(approvalCount, 1);
+    assert.match(bodies[1]!, /Tool: example/);
+    assert.deepEqual(JSON.parse(bodies[0]!).tools.map((tool: any) => tool.name), ["runtime_info", "lookup"]);
+    approved = false;
+    await assert.rejects(async () => bot.workflow.run(input("rejected"), run), /rejected by the approval/);
+    assert.equal(bodies.length, 3);
+    args = {};
+    await bot.workflow.run(input("invalid"), run);
+    assert.match(bodies.at(-1)!, /arguments do not match/);
+    nextCall = "read";
+    await bot.workflow.run(input("disabled"), run);
+    assert.match(bodies.at(-1)!, /tool is not available or is disabled/);
+    nextCall = "lookup"; args = { query: "example" }; complete = false;
+    await assert.rejects(async () => bot.workflow.run(input("truncated"), run), /stream did not complete/);
+    assert.equal(callCount, 1);
+    assert.equal(approvalCount, 2);
+    assert.equal(closeCount, 5);
+    const state = await run.conversation.getValue();
+    assert.deepEqual(state.messages.filter(message => message.role === "user").map(message => message.content), ["approved", "invalid", "disabled"]);
+  });
 });
 
 for (const [apiKind, wire] of [["openai-responses", "openai-responses"], ["openai-completions", "openai-completion"], ["anthropic-messages", "anthropic"]] as const) {

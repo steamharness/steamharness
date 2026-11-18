@@ -8,8 +8,9 @@ draft: true
 #### Added
 
 - Agents can use the read-only `runtime_info` tool to check the current project, launcher, loaded versions and working directory. {/* note: agent-runtime-info */}
+- LLM Bots support built-in and project tools with the same enable and approval settings in Project information → Tools. Only `runtime_info` is enabled by default. {/* note: llm-bot-tools */}
 
 #### Changed
 
-- `defineBot` now requires `engine: "agent"` or `engine: "llm"`. LLM Bots make one model call per turn with the existing model settings and credentials, without starting an Agent or executing tools. {/* note: draft-1 */}
+- `defineBot` now requires `engine: "agent"` or `engine: "llm"`. LLM Bots use the existing model settings and credentials without starting an Agent, and make additional requests only when the model calls a tool. {/* note: draft-1 */}
 - Workflow LLM providers now use pi-ai and no longer accept AI SDK-specific options. `createLLMNode` still returns the completed reply in one result, but built-in providers require SSE support. {/* note: draft-2 */}

@@ -18,7 +18,7 @@ The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, `s
 
 Ask an Agent, “Where is this running, and what versions of Core and the project am I using?” The model can call `runtime_info({})` with no arguments. It reports the working directory for this turn, the loaded Core version, the Node.js version, OS and architecture. Runs through a project executor also report the project name, version and entry. The CLI, CLI Web, Studio and OpenAI Responses launchers identify the host and CLI version. Unknown fields are omitted.
 
-The result goes to the model, but it does not include environment variables, credentials or service addresses. The tool is available under `read-only`; use `executor.tools` to disable it, or omit it from an explicit `agent.tools` allowlist. `engine: "llm"` does not execute tools.
+The result goes to the model, but it does not include environment variables, credentials or service addresses. The tool is available under `read-only`; use `executor.tools` to disable it, or omit it from an explicit `agent.tools` allowlist. [LLM Bots](/en/core-api/define-bot) can also call it, without receiving the working directory or absolute project path.
 
 Programmatic hosts can pass `runtimeHost: { kind, cliVersion? }` to `runLocalProjectWithReport` or `runWorkspaceProjectWithReport`. `kind` accepts `cli`, `cli-web`, `studio` or `openai-responses`. The project executor provides this identity and the project entry in `NodeContext.runtimeInfo`.
 

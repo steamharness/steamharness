@@ -684,6 +684,7 @@ function createExecutorUserInputContext(options: {
 
   const nextContext: UserInputContextWithResumeBarrier = {
     [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]: readResumeRuntimeEventAfterRequestId(options.userInput),
+    ...withLiveRuntimeInput(options.userInput, options.runtime),
     async getResolvedInput(requestId, request) {
       const resolved = await options.userInput?.getResolvedInput(requestId, request);
       if (resolved !== undefined) {
@@ -727,6 +728,7 @@ function createLocalUserInputContext(options: {
 
   const nextContext: UserInputContextWithResumeBarrier = {
     [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]: readResumeRuntimeEventAfterRequestId(options.userInput),
+    ...withLiveRuntimeInput(options.userInput, options.reporter),
     async getResolvedInput(requestId, request) {
       const resolved = await options.userInput?.getResolvedInput(requestId, request);
       if (resolved !== undefined) {
@@ -760,6 +762,17 @@ function createLocalUserInputContext(options: {
   };
 
   return nextContext;
+}
+
+function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "emitUserInputRequested" | "emitUserInputResolved">): Pick<UserInputContext, "waitForInput"> {
+  if (!input.waitForInput) return {};
+  return { async waitForInput(request, signal) {
+    signal?.throwIfAborted();
+    const waiting = input.waitForInput!(request, signal);
+    const [resolved] = await Promise.all([waiting, events.emitUserInputRequested(request)]);
+    if (resolved.requestId === request.requestId) await events.emitUserInputResolved({ ...resolved, request });
+    return resolved;
+  } };
 }
 
 export async function runLocalProject(

@@ -233,6 +233,7 @@ export interface Runtime {
   inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   resolveParams(project: Project, request: ParamRequest, entrypointId?: string): Promise<{ params?: Record<string, ParamState> }>;
   run(request: Run, onEvent: (event: Record<string, unknown>) => void, onModelRequest?: (request: LLMBotModelRequestSnapshot) => void): Promise<Report>;
+  resolveLiveInput?(runId: string, input: ResolvedInput): Promise<void>;
   uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;
   readFile(project: Project, id: string): Promise<{ reference: Attachment; path: string }>;
   deleteFiles(project: Project, conversationId: string, ids: string[]): Promise<void>;
@@ -275,8 +276,9 @@ export interface ConversationMessage {
   tokenUsage?: Report['tokenUsage'];
   report?: Report;
   /** Private local diagnostics. Strip from browser state and exports. */
-  modelRequest?: { executionId: string; snapshot: LLMBotModelRequestSnapshot };
+  modelRequest?: { executionId: string; snapshot: LLMBotModelRequestSnapshot; previous?: LLMBotModelRequestSnapshot[] };
   modelRequestExecutionId?: string;
+  modelRequestCount?: number;
   events?: Record<string, unknown>[];
   input?: Omit<ConversationQueuedInput, 'id' | 'createdAt'>;
   files?: Attachment[];
