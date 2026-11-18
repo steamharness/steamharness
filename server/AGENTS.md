@@ -26,6 +26,7 @@
 - 修改 HTTP API、鉴权、错误码、静态预览或数据访问行为时，同步同级 Docs 仓库的 `../docs/openapi/steamharness.openapi.yaml` 和相关说明。
 - 修改项目管理、版本、文件、KV 或部署行为时，同步 `../docs/guides/server/**`；影响 CLI 调用结果时同步 `../docs/cli/workspace/**`。
 - 上传与发布只处理静态元数据和文件，不安装依赖、不构建、不加载项目代码。版本快照不可变；源码与数据访问统一使用项目和组成员的 `guest / developer / maintainer / owner` 固定角色。
+- 对使用项目内 Core/CLI 归档的项目，校验相对引用和清单声明的版本，上传需同时包含两个归档；不要解析或执行归档内容。公开 Server 的依赖声明不受增强版打包流程影响。
 - 节点 payload 必须继承 `RunPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。
 - 用户可见文案必须遵循现有国际化边界；已有语言资源需要成对维护并补测试。
 

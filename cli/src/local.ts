@@ -22,6 +22,7 @@ import {
   assertCoreCompatibility,
   classifyVersionReference,
   normalizeExactVersion,
+  readBundledProjectRuntimeVersion,
   readRequiredCoreVersion,
   resolveReleaseMode,
   resolveRequiredCoreVersion,
@@ -422,6 +423,10 @@ export function assertLocalCliCoreCompatible(
 
   const projectDirectory = path.resolve(projectDir);
   const projectManifest = readJsonFile(path.join(projectDirectory, "package.json"), "Workflow package.json");
+  const bundled = readBundledProjectRuntimeVersion(projectManifest);
+  if (bundled !== undefined && bundled !== hostCoreVersion) {
+    throw new Error(`The project bundles Core ${bundled}, but Core ${hostCoreVersion} is loaded. Reinstall the project's local dependencies.`);
+  }
   // 内置项目位于 monorepo 的 build-in/ 下；相对引用仍以开源源码根为边界。
   const parentDirectory = path.dirname(projectDirectory);
   const reference = classifyVersionReference(projectManifest, "steamharness");

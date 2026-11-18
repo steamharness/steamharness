@@ -62,7 +62,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return new ProjectServerClient(connection).configurations(String(input.projectId), String(input.entryId), String(input.target ?? 'draft'), signal, input.call as Record<string, unknown>);
     },
   };
-  const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language);
+  const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language, process.env.STEAMHARNESS_PROJECT_PACKAGE_DIR);
   let assistantApplication: Promise<string> | undefined;
   const assistantDirectory = (): Promise<string> => {
     return assistantApplication ??= realpath(context.extensionUri.fsPath).then(extensionDirectory => {

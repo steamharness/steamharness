@@ -12,5 +12,6 @@
 - 代码变更必须补邻近 `src/__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm test:scripts`、`pnpm coverage`、`pnpm build`、`pnpm pack --pack-destination .release` 和 `git diff --check`。
 - Node.js 脚本和测试必须兼容 Windows、macOS 与 Linux 路径和换行；默认测试不得依赖真实 Server、GitLab 或数据库。
 - `package.json` 是 CLI 版本唯一来源。先定版双语文档，再用 `pnpm release:prepare -- --version X.Y.Z` 校验版本页并更新 CLI 版本，不改写 Core 或 Workspace。
-- CLI 与 Core 共同使用根目录 GitHub 发布工作流；两个包版本一致，先 Core 后 CLI。渠道、tag 与发布门禁见根目录 `AGENTS.md`。纯文档勘误不发 npm。未经用户明确授权，不创建发布 tag 或发布 npm 版本。
+- CLI 与 Core 版本一致。增强版产品从源码打包两者，不等待 npm。仅独立公开分发时手动运行根目录的 GitHub npm 工作流，先 Core 后 CLI。渠道、tag 与发布门禁见根目录 `AGENTS.md`。未经用户明确授权，不创建发布 tag 或发布 npm。
+- 本地模板包模式必须把 Core 和 CLI 的归档一起写入项目，使用相对 `file:` 引用；编译项目发行包时保留两个归档及精确版本。不同目录的源码链接不属于此模式。
 - `.env` 可以提交，但日志、测试输出和示例不得泄露凭据。

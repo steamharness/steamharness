@@ -8,19 +8,18 @@ import { createProjectCliEnvironment } from './workflow-cli-process';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { t } from './localization';
 import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
-import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
+import type { CreateProjectFromTemplateRequest, TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 
 interface TemplateModule {
   validateProjectName(value: string): string;
   listProjectTemplates(): Promise<Array<Omit<StartTemplate, 'name' | 'description'> & { name: Record<string, string>; description: Record<string, string> }>>;
-  createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { harness: string; cli: string }; signal?: AbortSignal;
-    deferProjectId?: boolean; allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string> }): Promise<CreatedProject>;
+  createProjectFromTemplate(input: CreateProjectFromTemplateRequest): Promise<CreatedProject>;
   registerTemplateProject(input: { directory: string; signal?: AbortSignal; allocateProjectId: (project: TemplateProjectRegistration) => Promise<string> }): Promise<string>;
 }
 
 export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'steamharness-projects'); }
 
-export function projectTemplatesRuntime(extensionDirectory: string, locale: string) {
+export function projectTemplatesRuntime(extensionDirectory: string, locale: string, runtimePackageDirectory?: string) {
   const directory = path.join(extensionDirectory, 'dist');
   const module = (): Promise<TemplateModule> => import(pathToFileURL(path.join(directory, 'project-templates.mjs')).href);
   const validate = async (input: ProjectCreationInput): Promise<void> => {
@@ -50,9 +49,11 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
       allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>, deferProjectId = false): Promise<CreatedProject> => {
       await validate(input);
       signal?.throwIfAborted();
-      const versions = JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8'));
+      const dependencySource = runtimePackageDirectory === undefined
+        ? { versions: JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8')) }
+        : { runtimePackageDirectory };
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
-      return (await module()).createProjectFromTemplate({ ...input, versions, signal, allocateProjectId, deferProjectId });
+      return (await module()).createProjectFromTemplate({ ...input, ...dependencySource, signal, allocateProjectId, deferProjectId });
     },
     register: async (directory: string, signal: AbortSignal, allocateProjectId: (project: TemplateProjectRegistration) => Promise<string>): Promise<string> =>
       (await module()).registerTemplateProject({ directory, signal, allocateProjectId }),

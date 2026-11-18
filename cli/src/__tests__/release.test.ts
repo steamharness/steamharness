@@ -12,6 +12,7 @@ import { startWebServer } from "./web-test-storage";
 import { materializeAggregateDownload, packProject } from "../workspace";
 import { createProjectUploadPlan } from "@steamharness/project-upload/node";
 import { initI18n } from "@steamharness/i18n";
+import { BUNDLED_PROJECT_RUNTIME_FILES } from "@steamharness/runtime-compatibility";
 
 const folders: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true }); });
@@ -37,6 +38,23 @@ async function expectCompactRelease(directory: string) {
     expect(await readFile(path.join(directory, file), "utf8"), file).not.toMatch(/[\r\n]/);
   }
 }
+it("preserves the bundled runtime when compiling a portable project release", async () => {
+  const { directory } = await fixture();
+  const [core, cli] = BUNDLED_PROJECT_RUNTIME_FILES;
+  const manifest = { name: "portable", type: "module", steamharnessRuntime: { version: "0.2.0" },
+    devDependencies: { steamharness: `file:./${core}`, "@steamharness/cli": `file:./${cli}` } };
+  await writeFile(path.join(directory, "package.json"), JSON.stringify(manifest));
+  await mkdir(path.join(directory, path.dirname(core)), { recursive: true });
+  await writeFile(path.join(directory, core), "core bytes");
+  await writeFile(path.join(directory, cli), "cli bytes");
+  const release = await buildProjectRelease(directory);
+  expect(JSON.parse(await readFile(path.join(release.directory, "package.json"), "utf8"))).toMatchObject(manifest);
+  expect(await readFile(path.join(release.directory, core), "utf8")).toBe("core bytes");
+  expect(await readFile(path.join(release.directory, cli), "utf8")).toBe("cli bytes");
+  expect(readProjectReleaseSync(release.directory)?.files.map(entry => entry.path)).toEqual(expect.arrayContaining([core, cli]));
+  await rm(path.join(directory, cli));
+  await expect(buildProjectRelease(directory)).rejects.toThrow(/steamharness-cli\.tgz/);
+});
 it.each([true, false])("preserves the Bot memory default (%s) in compiled releases and accepts saved overrides", async enabled => {
   const { directory, declaration } = await fixture();
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot" }] }));

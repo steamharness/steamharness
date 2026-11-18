@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamharness/project-card-metadata';
 import type { DeclaredProjectInfo } from '@steamharness/project-info';
 import { isProjectUuid } from '@steamharness/workflow-ids';
+import { copyProjectRuntimeArchives, projectRuntimeSpec, readProjectRuntimeArchives } from './project-runtime-packages';
 
 export type ProjectTemplateType = 'workflow' | 'bot' | 'kanban';
 export interface ProjectTemplateDefinition {
@@ -17,16 +18,15 @@ export interface ProjectTemplateDefinition {
   sources?: Record<string, string>;
   entryFile: string;
 }
-export interface CreateProjectFromTemplateRequest {
+export type CreateProjectFromTemplateRequest = {
   templateId: string;
   name: string;
   parentDirectory: string;
-  versions: { harness: string; cli: string };
   signal?: AbortSignal;
   /** Leave the ID empty so the destination host can register after opening the project. */
   deferProjectId?: boolean;
   allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>;
-}
+} & ({ versions: { harness: string; cli: string }; runtimePackageDirectory?: never } | { versions?: never; runtimePackageDirectory: string });
 export interface TemplateProjectRegistration {
   name: string; entries: import("@steamharness/project-manifest").ProjectEntry[]; defaultEntry: string; projectInfo: DeclaredProjectInfo; projectCard: ProjectCardMetadata;
 }
@@ -80,9 +80,14 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
 export async function createProjectFromTemplate(request: CreateProjectFromTemplateRequest): Promise<CreatedTemplateProject> {
   request.signal?.throwIfAborted();
   const name = validateProjectName(request.name);
-  if (!exactVersion.test(request.versions.harness) || !exactVersion.test(request.versions.cli)) {
+  const { versions, runtimePackageDirectory } = request;
+  if (runtimePackageDirectory === undefined && (!versions || !exactVersion.test(versions.harness) || !exactVersion.test(versions.cli))) {
     throw new ProjectTemplateError('invalid-version', 'Project dependencies must use exact published versions.');
   }
+  const archives = runtimePackageDirectory === undefined ? undefined : await readProjectRuntimeArchives(runtimePackageDirectory);
+  const runtimeDependencies = archives
+    ? Object.fromEntries(archives.map(({ name, file }) => [name, projectRuntimeSpec(file)]))
+    : { steamharness: versions!.harness, '@steamharness/cli': versions!.cli };
   const template = (await listProjectTemplates()).find(entry => entry.id === request.templateId);
   if (!template) { throw new ProjectTemplateError('invalid-template', 'Unknown project template.'); }
   let parent: string;
@@ -97,10 +102,11 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
     name: packageName, version: '0.1.0', private: true, type: 'module',
+    ...(archives ? { steamharnessRuntime: { version: archives[0].version } } : {}),
     scripts: { dev: 'steamharness web .', release: 'steamharness release .', inspect: 'steamharness structure .',
       ...(template.files.includes('build.mjs') ? { build: 'node build.mjs' } : {}),
       ...(template.projectType === 'kanban' ? {} : { 'run:json': 'steamharness json .' }) },
-    devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli, ...(template.files.includes('build.mjs') ? { esbuild: '0.28.2' } : {}) },
+    devDependencies: { ...runtimeDependencies, ...(template.files.includes('build.mjs') ? { esbuild: '0.28.2' } : {}) },
   };
   const projectManifest = {
     id: "", name, version: "0.1.0",
@@ -122,6 +128,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   }
   let idAllocationError: string | undefined;
   try {
+    if (archives) await copyProjectRuntimeArchives(directory, archives, request.signal);
     if (request.deferProjectId) {
       projectManifest.id = '';
     } else if (request.allocateProjectId) {

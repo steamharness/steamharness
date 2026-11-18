@@ -158,6 +158,7 @@
   "The project folder already exists. Choose another name.": "项目文件夹已存在，请使用其他名称。",
   "Choose an existing parent folder.": "请选择已存在的父目录。",
   "The project template requires exact published dependency versions.": "项目模板需要精确的已发布依赖版本。",
+  "The bundled Core and CLI packages are missing or damaged. Rebuild the local packages or repair this Studio installation.": "随附的 Core 和 CLI 包缺失或损坏。请重新打包本地依赖，或修复 Studio 安装。",
   "Install pnpm or npm, then retry dependency installation.": "请安装 pnpm 或 npm 后重试依赖安装。",
   "Studio Analysis is unavailable in this environment.": "此环境无法使用 Studio 分析。",
   "SteamHarness Server": "Workflow 服务器",

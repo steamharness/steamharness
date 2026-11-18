@@ -44,6 +44,21 @@ export function readRequiredCoreVersion(manifest: unknown): string {
   return normalizeExactVersion(value, "Workflow Core requirement");
 }
 
+export const BUNDLED_PROJECT_RUNTIME_FILES = ['vendor/steamharness/steamharness.tgz', 'vendor/steamharness/steamharness-cli.tgz'] as const;
+
+/** A project-local pair is portable, not a link to a development checkout. */
+export function readBundledProjectRuntimeVersion(manifest: unknown): string | undefined {
+  if (!isRecord(manifest) || !isRecord(manifest.devDependencies)) return undefined;
+  const core = manifest.devDependencies[STEAMHARNESS_HARNESS_PACKAGE_NAME];
+  const cli = manifest.devDependencies[STEAMHARNESS_CLI_PACKAGE_NAME];
+  const [coreFile, cliFile] = BUNDLED_PROJECT_RUNTIME_FILES.map(file => `file:./${file}`);
+  if (core !== coreFile && cli !== cliFile) return undefined;
+  if (core !== coreFile || cli !== cliFile || !isRecord(manifest.steamharnessRuntime) || typeof manifest.steamharnessRuntime.version !== 'string') {
+    throw new Error('Bundled projects must declare both runtime archives and their exact version in steamharnessRuntime.version.');
+  }
+  return normalizeExactVersion(manifest.steamharnessRuntime.version, 'Bundled project runtime version');
+}
+
 /** 读取任意依赖段里的精确版本，供 CLI 与内置项目发布校验复用。 */
 export function readExactDevDependency(manifest: unknown, packageName: string): string {
   if (!isRecord(manifest)) throw new Error("Workflow package.json root must be an object.");
@@ -150,6 +165,8 @@ export function resolveRequiredCoreVersion(
     section?: "devDependencies";
   },
 ): string {
+  const bundled = readBundledProjectRuntimeVersion(manifest);
+  if (bundled !== undefined) return bundled;
   const reference = classifyVersionReference(manifest, STEAMHARNESS_HARNESS_PACKAGE_NAME, {
     section: options.section ?? "devDependencies",
   });

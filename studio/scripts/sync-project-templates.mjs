@@ -6,6 +6,7 @@ const source = path.join(await resolveMonorepoRoot(), 'cli/src');
 const target = path.join(ROOT, 'vendor/project-templates');
 await mkdir(target, { recursive: true });
 await writeFile(path.join(target, 'project-templates.ts'), await readFile(path.join(source, 'project-templates.ts')));
+await writeFile(path.join(target, 'project-runtime-packages.ts'), await readFile(path.join(source, 'project-runtime-packages.ts')));
 await rm(path.join(target, 'project-templates'), { recursive: true, force: true });
 await cp(path.join(source, 'project-templates'), path.join(target, 'project-templates'), { recursive: true });
 console.log('Updated the Studio snapshot from CLI project templates.');

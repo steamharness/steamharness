@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { build } from 'esbuild';
@@ -145,12 +146,37 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   assert.equal(await runtime.register(deferred.directory, new AbortController().signal, async () => assignedId), assignedId);
   assert.equal(JSON.parse(await readFile(path.join(deferred.directory, 'steamharness.json'), 'utf8')).id, assignedId);
   assert.equal(await readFile(filename, 'utf8'), '// Edits made in the opened project window\n');
+
+  const bundled = path.join(directory, 'local bundle');
+  const local = projectTemplatesRuntime(extension, 'en', bundled);
+  const localInput = { ...input, name: 'Portable' };
+  await assert.rejects(local.create(localInput), { code: 'runtime-packages-unavailable' });
+  await mkdir(bundled);
+  const packages = {};
+  for (const [key, file] of [['core', 'steamharness.tgz'], ['cli', 'steamharness-cli.tgz']]) {
+    await writeFile(path.join(bundled, file), file);
+    packages[key] = { version: '9.8.7', sha256: createHash('sha256').update(file).digest('hex') };
+  }
+  await writeFile(path.join(bundled, 'runtime-packages.json'), JSON.stringify({ schemaVersion: 1, packages }));
+  const portable = await local.create(localInput);
+  const portableManifest = JSON.parse(await readFile(path.join(portable.directory, 'package.json'), 'utf8'));
+  assert.deepEqual(portableManifest.steamharnessRuntime, { version: '9.8.7' });
+  assert.deepEqual(portableManifest.devDependencies, { steamharness: 'file:./vendor/steamharness/steamharness.tgz', '@steamharness/cli': 'file:./vendor/steamharness/steamharness-cli.tgz' });
+  await writeFile(path.join(bundled, 'steamharness-cli.tgz'), 'damaged');
+  await assert.rejects(local.create({ ...localInput, name: 'Damaged' }, undefined,
+    async () => { assert.fail('Validation must precede Server id allocation'); }), { code: 'runtime-packages-unavailable' });
+  await assert.rejects(readFile(path.join(directory, 'Damaged/package.json')), { code: 'ENOENT' });
+  await local.validate({ ...localInput, name: 'Damaged' });
+  await rm(bundled, { recursive: true });
+  assert.equal(await readFile(path.join(portable.directory, 'vendor/steamharness/steamharness-cli.tgz'), 'utf8'), 'steamharness-cli.tgz');
 });
 
 test('the standalone snapshot matches CLI source when checked out together', async () => {
   const source = path.resolve('../cli/src');
   try { await readFile(path.join(source, 'project-templates.ts')); } catch (error) { if (error.code === 'ENOENT') { return; } throw error; }
-  assert.equal(await readFile('vendor/project-templates/project-templates.ts', 'utf8'), await readFile(path.join(source, 'project-templates.ts'), 'utf8'));
+  for (const file of ['project-templates.ts', 'project-runtime-packages.ts']) {
+    assert.equal(await readFile(path.join('vendor/project-templates', file), 'utf8'), await readFile(path.join(source, file), 'utf8'));
+  }
   const { readdir } = await import('node:fs/promises');
   for (const name of await readdir('vendor/project-templates/project-templates', { recursive: true, withFileTypes: true })) {
     if (!name.isFile()) { continue; }

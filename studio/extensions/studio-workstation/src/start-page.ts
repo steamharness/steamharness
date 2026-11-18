@@ -459,6 +459,7 @@ export class StudioStartController implements vscode.Disposable {
     if (code === 'invalid-id') { return t('The Server returned an invalid project ID.'); }
     if (code === 'identity-changed') { return t('Project identity changed. Open the project folder to review it.'); }
     if (code === 'invalid-version') { return t('The project template requires exact published dependency versions.'); }
+    if (code === 'runtime-packages-unavailable') { return t('The bundled Core and CLI packages are missing or damaged. Rebuild the local packages or repair this Studio installation.'); }
     if (code === 'package-manager-missing') { return t('Install pnpm or npm, then retry dependency installation.'); }
     if (code === 'package-manager-timeout') { return t('Dependency installation timed out. Review the installation log and retry.'); }
     return error instanceof Error ? error.message : String(error);

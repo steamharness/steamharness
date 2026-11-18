@@ -1,10 +1,8 @@
 # 发布 npm 包。
 #
-# 触发：在 GitHub 上创建 Release，tag 以 steamharness/v 开头（例如
-# steamharness/v0.1.0）。版本号取自各 package.json —— 先在普通提交里改版本号，
-# 再打 Release，workflow 只负责把清单里已有的版本发出去。
-# 预发布 Release 使用 X.Y.Z-YYYYMMDDNNN，发到 alpha；正式 Release 发到 latest。
-# 也可以从 dev 分支手动触发，将 dev 预发布版本发布到 npm 的 dev 标签。
+# 独立手动发布，不由产品流水线、推送或 GitHub Release 触发。
+# 选择 steamharness/vX.Y.Z tag 发 latest，日期预发布 tag 发 alpha，
+# 或选择 dev 分支发表日期 dev 版本。版本必须与包清单一致。
 #
 # 凭证：npm Trusted Publishing（OIDC）。workflow 里的 id-token 权限让 npm CLI 用
 # 这一次运行的 OIDC 令牌换出短期发布凭证，GitHub 里不存放任何 npm token。
@@ -13,11 +11,9 @@
 #
 # 只发两个公开包：harness（SDK）与 cli。其余包都是 private: true，递归发布不会
 # 带上它们。
-name: release
+name: Publish npm (optional)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 # 发布不可并发：两个发布同时改 dist-tag 会互相覆盖。
@@ -31,8 +27,6 @@ permissions:
 
 jobs:
   publish:
-    # 正式发布来自 steamharness/v* Release；手动 dev 发布只接受 dev 分支。
-    if: startsWith(github.event.release.tag_name, 'steamharness/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,13 +41,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: 确认要发布的版本
+        run: node scripts/npm-release.mjs
+
       # trusted publishing 需要较新的 npm CLI 才能走 OIDC 换证
       - run: npm install --global npm@latest
 
       - run: pnpm install --frozen-lockfile
-
-      - name: 确认要发布的版本
-        run: node scripts/npm-release.mjs
 
       - name: 检查双语版本页已上线
         run: node docs/scripts/check-npm-release-notes.mjs

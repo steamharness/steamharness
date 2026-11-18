@@ -17,6 +17,8 @@ import { projectManifestForDistribution, projectEntryFilePath, PROJECT_RELEASE_B
 import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRelease } from "@steamharness/project-manifest/release-node";
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
 import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { projectRuntimeDirectory, projectRuntimePackages, projectRuntimeSpec } from "../project-runtime-packages";
+import { readBundledProjectRuntimeVersion } from "@steamharness/runtime-compatibility";
 
 export interface ProjectReleaseResult { directory: string; archive: string; buildId: string; entries: string[]; cached: boolean }
 export interface ReleaseOptions { signal?: AbortSignal; progress?: (message: string) => void }
@@ -177,8 +179,14 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     const { release: _release, entries: _entries, defaultEntry: _default, builtinRelease: _builtin, ...identity } = sourceManifest;
     await writeJson(stage, "steamharness.json", { ...identity, defaultEntry, entries: selected.map(entry => ({ entryId: entry.entryId, root: `entries/${entry.entryId}` })) });
     const externals = config.externals ?? [];
-    const dependencies = Object.fromEntries(externals.map(name => [name, packageVersion(root, name)]));
-    await writeJson(stage, "package.json", { name: pkg.name ?? "steamharness-project", version: declaration.version, type: "module", private: true, ...(pkg.engines ? { engines: pkg.engines } : {}), devDependencies: { steamharness: packageVersion(root, "steamharness"), "@steamharness/cli": packageVersion(root, "@steamharness/cli") }, ...(externals.length ? { dependencies } : {}) });
+    const localRuntimeVersion = readBundledProjectRuntimeVersion(pkg);
+    const devDependencies: Record<string, string> = {};
+    for (const { name, file } of projectRuntimePackages) {
+      devDependencies[name] = localRuntimeVersion ? projectRuntimeSpec(file) : packageVersion(root, name);
+      if (localRuntimeVersion) await copyAsset(root, stage, `${projectRuntimeDirectory}/${file}`);
+    }
+    const dependencies = Object.fromEntries(externals.map(name => [name, devDependencies[name] ?? packageVersion(root, name)]));
+    await writeJson(stage, "package.json", { name: pkg.name ?? "steamharness-project", version: declaration.version, type: "module", private: true, ...(pkg.engines ? { engines: pkg.engines } : {}), ...(localRuntimeVersion ? { steamharnessRuntime: { version: localRuntimeVersion } } : {}), devDependencies, ...(externals.length ? { dependencies } : {}) });
     const entries: ProjectReleaseManifest["entries"] = [];
     for (const entry of selected) {
       options.signal?.throwIfAborted(); options.progress?.(i18n.language.startsWith("zh") ? `正在编译发行入口：${entry.entryId}` : `Compiling release entry: ${entry.entryId}`);

@@ -6,10 +6,22 @@ import {
   formatSupportedProjectCoreRange,
   readExactDevDependency,
   readRequiredCoreVersion,
+  readBundledProjectRuntimeVersion,
   resolveReleaseMode,
   resolveRequiredCoreVersion,
   resolveSiblingDirectory,
 } from "../index";
+
+test("portable archive references carry an exact version without resolving a sibling checkout", () => {
+  const manifest = { steamharnessRuntime: { version: "0.2.0" }, devDependencies: {
+    steamharness: "file:./vendor/steamharness/steamharness.tgz", "@steamharness/cli": "file:./vendor/steamharness/steamharness-cli.tgz",
+  } };
+  expect(readBundledProjectRuntimeVersion(manifest)).toBe("0.2.0");
+  expect(resolveRequiredCoreVersion(manifest, { mode: "main", repositoryDirectory: "project", readSiblingManifest: () => { throw new Error("not used"); } })).toBe("0.2.0");
+  expect(() => readRequiredCoreVersion(manifest)).toThrow(/exact SemVer/);
+  expect(() => readBundledProjectRuntimeVersion({ ...manifest, steamharnessRuntime: { version: "latest" } })).toThrow(/exact SemVer/);
+  expect(() => readBundledProjectRuntimeVersion({ ...manifest, devDependencies: { ...manifest.devDependencies, "@steamharness/cli": "0.2.0" } })).toThrow(/both runtime archives/);
+});
 
 describe("workflow Core compatibility", () => {
   it("reads only an exact Core version from devDependencies", () => {

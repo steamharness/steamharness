@@ -158,6 +158,7 @@
   "The project folder already exists. Choose another name.": "The project folder already exists. Choose another name.",
   "Choose an existing parent folder.": "Choose an existing parent folder.",
   "The project template requires exact published dependency versions.": "The project template requires exact published dependency versions.",
+  "The bundled Core and CLI packages are missing or damaged. Rebuild the local packages or repair this Studio installation.": "The bundled Core and CLI packages are missing or damaged. Rebuild the local packages or repair this Studio installation.",
   "Install pnpm or npm, then retry dependency installation.": "Install pnpm or npm, then retry dependency installation.",
   "Studio Analysis is unavailable in this environment.": "Studio Analysis is unavailable in this environment.",
   "SteamHarness Server": "SteamHarness Server",

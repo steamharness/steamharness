@@ -16,10 +16,9 @@ import {
   verifyPublishState,
 } from "../npm-release.mjs";
 
-const release = (version, prerelease = false) => ({
-  eventName: "release",
+const release = (version) => ({
+  eventName: "workflow_dispatch",
   ref: `refs/tags/steamharness/v${version}`,
-  release: { tag_name: `steamharness/v${version}`, prerelease },
   coreVersion: version,
   cliVersion: version,
   cliCoreVersion: version,
@@ -44,13 +43,11 @@ test("the command resolves its repository root independently of the working dire
     await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.0" }));
     await writeFile(path.join(root, "cli/package.json"), JSON.stringify({ name: "@steamharness/cli", version: "0.2.0",
       devDependencies: { steamharness: "0.2.0" }, peerDependencies: { steamharness: "0.2.0" } }));
-    const eventPath = path.join(root, "event.json");
     const envPath = path.join(root, "github-env");
-    await writeFile(eventPath, JSON.stringify({ release: { tag_name: "steamharness/v0.2.0", prerelease: false } }));
     await promisify(execFile)(process.execPath, [path.join(root, "scripts/npm-release.mjs")], {
       cwd: path.join(root, "unrelated-cwd"),
-      env: { ...process.env, GITHUB_EVENT_NAME: "release", GITHUB_REF: "refs/tags/steamharness/v0.2.0",
-        GITHUB_EVENT_PATH: eventPath, GITHUB_ENV: envPath,
+      env: { ...process.env, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/tags/steamharness/v0.2.0",
+        GITHUB_ENV: envPath,
         STEAMHARNESS_NPM_REGISTRY_URL: `http://127.0.0.1:${registry.address().port}` },
       timeout: 10_000,
     });
@@ -61,19 +58,19 @@ test("the command resolves its repository root independently of the working dire
   }
 });
 
-test("stable and alpha Releases select separate npm tags", () => {
+test("manually selected stable and alpha refs select separate npm tags", () => {
   assert.deepEqual(npmReleasePlan(release("0.1.3")), { version: "0.1.3", distTag: "latest" });
-  assert.deepEqual(npmReleasePlan(release("0.1.3-20261117001", true)), { version: "0.1.3-20261117001", distTag: "alpha" });
+  assert.deepEqual(npmReleasePlan(release("0.1.3-20261117001")), { version: "0.1.3-20261117001", distTag: "alpha" });
 });
 
-test("prereleases cannot update latest or disguise stable versions as alpha", () => {
-  assert.throws(() => npmReleasePlan(release("0.1.3-20261117001")), /prerelease/);
-  assert.throws(() => npmReleasePlan(release("0.1.3", true)), /prerelease/);
+test("ordinary releases and pushes cannot publish, and a dev prerelease cannot publish from a tag", () => {
+  for (const eventName of ["release", "push"]) assert.throws(() => npmReleasePlan({ ...release("0.1.3"), eventName }), /manual/);
+  assert.throws(() => npmReleasePlan(release("0.1.3-dev.20261117001")), /prerelease/);
 });
 
 test("tag identity, paired versions, SDK pin and peer pin must all agree", () => {
   const plan = release("0.1.3");
-  assert.throws(() => npmReleasePlan({ ...plan, release: { tag_name: "steamharness/v0.1.2", prerelease: false } }), /tag/);
+  assert.throws(() => npmReleasePlan({ ...plan, ref: "refs/tags/steamharness/v0.1.2" }), /tag/);
   assert.throws(() => npmReleasePlan({ ...plan, cliVersion: "0.1.2" }), /versions/);
   assert.throws(() => npmReleasePlan({ ...plan, cliCoreVersion: "0.1.2" }), /SDK/);
   assert.throws(() => npmReleasePlan({ ...plan, cliPeerVersion: "^0.1.3" }), /peerDependency/);
@@ -89,8 +86,8 @@ test("dated versions require a real calendar date and a 001-999 sequence", () =>
   assert.equal(parseDatedVersion("0.2.0-20261117000"), undefined, "sequence 000");
   assert.equal(parseDevVersion("0.2.0-dev.20261117001").sequence, 1);
   assert.equal(parseDevVersion("0.2.0-dev.20261117000"), undefined);
-  assert.throws(() => npmReleasePlan({ ...release("0.2.0-20261132001", true) }), /calendar|dated/i);
-  assert.throws(() => npmReleasePlan({ ...release("0.2.0-20261117000", true) }), /calendar|dated/i);
+  assert.throws(() => npmReleasePlan(release("0.2.0-20261132001")), /calendar|dated/i);
+  assert.throws(() => npmReleasePlan(release("0.2.0-20261117000")), /calendar|dated/i);
 });
 
 test("manual dev publication retains its branch and prerelease restrictions", () => {
@@ -153,7 +150,7 @@ test("registry reads treat 404 as not-published and refuse on network errors", a
   );
 });
 
-test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for an alpha Release", async () => {
+test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for a manual alpha dispatch", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "npm-release-"));
   try {
     const version = "0.2.0-20261117001";
@@ -168,13 +165,11 @@ test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for a
         peerDependencies: { steamharness: version },
       })}\n`),
     ]);
-    const eventPath = path.join(root, "event.json");
-    await writeFile(eventPath, JSON.stringify({ release: { tag_name: `steamharness/v${version}`, prerelease: true } }));
     const envPath = path.join(root, "github-env");
     await writeFile(envPath, "");
     const result = await runNpmRelease({
       root,
-      env: { GITHUB_EVENT_NAME: "release", GITHUB_REF: `refs/tags/steamharness/v${version}`, GITHUB_EVENT_PATH: eventPath, GITHUB_ENV: envPath },
+      env: { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: `refs/tags/steamharness/v${version}`, GITHUB_ENV: envPath },
       fetchImpl: stubRegistry({
         steamharness: { versions: { "0.1.2": {} }, "dist-tags": { latest: "0.1.2" } },
         "@steamharness/cli": { versions: { "0.1.2": {} }, "dist-tags": { latest: "0.1.2" } },
@@ -202,13 +197,11 @@ test("the entrypoint refuses to export for an already published stable version",
       devDependencies: { steamharness: "0.2.0" },
       peerDependencies: { steamharness: "0.2.0" },
     })}\n`);
-    const eventPath = path.join(root, "event.json");
-    await writeFile(eventPath, JSON.stringify({ release: { tag_name: "steamharness/v0.2.0", prerelease: false } }));
     const envPath = path.join(root, "github-env");
     await writeFile(envPath, "");
     await assert.rejects(runNpmRelease({
       root,
-      env: { GITHUB_EVENT_NAME: "release", GITHUB_REF: "refs/tags/steamharness/v0.2.0", GITHUB_EVENT_PATH: eventPath, GITHUB_ENV: envPath },
+      env: { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/tags/steamharness/v0.2.0", GITHUB_ENV: envPath },
       fetchImpl: stubRegistry({
         steamharness: { versions: { "0.2.0": {} }, "dist-tags": { latest: "0.2.0" } },
         "@steamharness/cli": { versions: {}, "dist-tags": {} },

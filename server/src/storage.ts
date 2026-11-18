@@ -31,7 +31,7 @@ import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafePr
 import { generateProjectCardMetadata, readProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
 import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath,  readKanbanAssetMimeType,  type KanbanArtifactConfig } from "@steamharness/kanban-project";
-import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
+import { BUNDLED_PROJECT_RUNTIME_FILES, readBundledProjectRuntimeVersion, readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -2929,7 +2929,12 @@ async function validateProjectPackage(
       await resolveProjectEntry(sourceDir, entry.entryId);
       readProjectConfigurationDefinition(sourceDir, entry.entryId);
     }
-    await createProjectUploadPlan(sourceDir);
+    const plan = await createProjectUploadPlan(sourceDir);
+    if (readBundledProjectRuntimeVersion(await readPackageJson(sourceDir)) !== undefined) {
+      for (const archive of BUNDLED_PROJECT_RUNTIME_FILES) {
+        if (!plan.files.some(file => file.path === archive)) throw new Error(`Missing project runtime archive: ${archive}`);
+      }
+    }
   } catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
   return readProjectPackageMetadata(sourceDir, expectedId, undefined, hostCoreVersion);
 }
@@ -2950,7 +2955,8 @@ async function readProjectPackageMetadata(
   const version = readRequiredPackageString(packageJson, "version");
   let requiredCoreVersion: string;
   try {
-    requiredCoreVersion = readRequiredCoreVersion(await readPackageJson(sourceDir));
+    const dependencies = await readPackageJson(sourceDir);
+    requiredCoreVersion = readBundledProjectRuntimeVersion(dependencies) ?? readRequiredCoreVersion(dependencies);
   } catch (error) {
     throw new HttpError(400, 400, readErrorMessage(error));
   }

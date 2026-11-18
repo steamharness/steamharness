@@ -32,7 +32,7 @@ node --test scripts/__tests__/*.test.mjs
 ## 发布
 
 - 公开包只有 `steamharness`（SDK）与 `@steamharness/cli`（CLI），两者同一条版本线，一起抬高版本号。其余包保持 `private: true`。
-- npm 发布由 GitHub Release 触发（tag 形如 `steamharness/v0.1.0`），正式版发到 `latest`，带日期版本的预发布发到 `alpha`；`dev` 分支可手动推送日期预发布到 `dev` 标签。凭证走 npm Trusted Publishing（OIDC），仓库里不存 npm token。SDK 必须先于 CLI。
+- npm 只用于独立公开分发，不是增强版应用发版的前置条件。不要为本地打包创建 tag 或发布 npm。需公开发布时，手动运行 `release.yml`：选定 `steamharness/vX.Y.Z` tag 发 `latest`，日期预发布 tag 发 `alpha`，或从 `dev` 分支发日期版到 `dev`。创建 GitHub Release 不触发 npm。凭证走 npm Trusted Publishing（OIDC），SDK 必须先于 CLI。
 - 用户可见变化直接写到 `docs/guides/releases/<组件>/unreleased.mdx` 及 `docs/en/guides/releases/<组件>/unreleased.mdx`。发布时定版为双语 `v<版本>.mdx`，先确认版本页可访问，GitHub Release 正文链接到对应版本页。格式、校验和定版规则见 `docs/AGENTS.md`。
 - npm 工作流使用 `scripts/npm-release.mjs`，不调用拆分仓库时期的 `shared/release-tools/` 发布门禁；不要给旧特性分支发布工具接入 npm 工作流。
 

@@ -53,26 +53,23 @@ export function serviceChannelForPlan(plan) {
  * 纯计划函数：只判断"这次运行该发什么"，不碰 registry。
  * CLI 的 devDependency 与 peerDependency 都必须精确等于本次 Core 版本。
  */
-export function npmReleasePlan({eventName,ref,release,coreVersion,cliVersion,cliCoreVersion,cliPeerVersion}) {
+export function npmReleasePlan({eventName,ref,coreVersion,cliVersion,cliCoreVersion,cliPeerVersion}) {
+  if(eventName!=='workflow_dispatch')throw new Error('npm publication requires a manual workflow dispatch.');
   if(coreVersion!==cliVersion)throw new Error('Core and CLI versions must match.');
   if(cliCoreVersion!==coreVersion)throw new Error('CLI must pin the exact SDK version being published.');
   if(cliPeerVersion!==coreVersion)throw new Error('CLI peerDependency must equal the exact SDK version being published.');
   if(!STABLE_VERSION.test(coreVersion)&&!DATED_VERSION.test(coreVersion)&&!DEV_VERSION.test(coreVersion))
     throw new Error(`Package version is not a supported release version: ${coreVersion}`);
-  if(eventName==='workflow_dispatch') {
-    if(ref!=='refs/heads/dev'||parseDevVersion(coreVersion)===undefined)
+  if(ref==='refs/heads/dev') {
+    if(parseDevVersion(coreVersion)===undefined)
       throw new Error('Manual dev publication requires the dev branch and a dated dev prerelease (X.Y.Z-dev.YYYYMMDDNNN).');
     return {version:coreVersion,distTag:'dev'};
   }
-  if(eventName!=='release'||release?.tag_name!==`steamharness/v${coreVersion}`||ref!==`refs/tags/steamharness/v${coreVersion}`)
-    throw new Error('Release tag must match the package version and checked out tag.');
-  if(release.prerelease) {
-    if(parseDatedVersion(coreVersion)===undefined)
-      throw new Error('Alpha requires a dated prerelease version (X.Y.Z-YYYYMMDDNNN) with a real calendar date and sequence 001-999.');
-    return {version:coreVersion,distTag:'alpha'};
-  }
-  if(!STABLE_VERSION.test(coreVersion))throw new Error('A prerelease must never update npm latest.');
-  return {version:coreVersion,distTag:'latest'};
+  if(ref!==`refs/tags/steamharness/v${coreVersion}`)
+    throw new Error('Select dev or the steamharness/v* tag that matches the package version.');
+  if(STABLE_VERSION.test(coreVersion))return {version:coreVersion,distTag:'latest'};
+  if(parseDatedVersion(coreVersion)!==undefined)return {version:coreVersion,distTag:'alpha'};
+  throw new Error('A prerelease tag requires an alpha version (X.Y.Z-YYYYMMDDNNN) with a real calendar date and sequence 001-999.');
 }
 
 /**
@@ -132,10 +129,8 @@ export async function runNpmRelease({root,env=process.env,fetchImpl=globalThis.f
   const resolvedRoot=path.resolve(root??path.join(path.dirname(fileURLToPath(import.meta.url)),'..'));
   const core=JSON.parse(await readFile(path.join(resolvedRoot,'harness/package.json'),'utf8'));
   const cli=JSON.parse(await readFile(path.join(resolvedRoot,'cli/package.json'),'utf8'));
-  if(!env.GITHUB_EVENT_PATH)throw new Error('GITHUB_EVENT_PATH is required to select the release channel.');
   if(!env.GITHUB_ENV)throw new Error('GITHUB_ENV is required to export the release environment.');
-  const event=JSON.parse(await readFile(env.GITHUB_EVENT_PATH,'utf8'));
-  const plan=npmReleasePlan({eventName:env.GITHUB_EVENT_NAME,ref:env.GITHUB_REF,release:event.release,
+  const plan=npmReleasePlan({eventName:env.GITHUB_EVENT_NAME,ref:env.GITHUB_REF,
     coreVersion:core.version,cliVersion:cli.version,cliCoreVersion:cli.devDependencies?.steamharness,
     cliPeerVersion:cli.peerDependencies?.steamharness});
   const registry=await fetchRegistryState({fetchImpl});
