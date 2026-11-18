@@ -73,7 +73,10 @@ function fixture(t, options = {}) {
     downloadProject: async (projectId, version, signal) => { f.downloads.push({ projectId, version }); await f.download?.(signal); return [{ id: projectId, name: 'Demo', version, directory: path.resolve('/defaults/demo-0.9.0'), role: 'root' }]; },
   };
   if (options.noTransfers) { delete launcher.uploadProject; delete launcher.downloadProject; }
-  const provider = new module.exports.VersionsView(context, launcher, { getConnection: () => f.connection, onDidChange: accountChanged.event, open: () => { f.signIn = true; } },
+  const provider = new module.exports.VersionsView(context, launcher, {
+    platform: true, getConnection: () => f.connection, connect: async () => f.connection,
+    onDidChange: accountChanged.event, open: () => { f.signIn = true; },
+  },
     { appendLine() {} }, async () => ({ dispose() {} }), async projects => { f.remembered = projects; });
   provider.update(options.noLocal ? [] : [local], options.noLocal ? undefined : local);
   provider.resolveWebviewView(view);
@@ -347,21 +350,21 @@ test('account changes while loading upload options cannot open or submit a stale
 });
 
 
-test('uploading an unregistered project asks for a new application ID before ownership or upload actions', async t => {
+test('uploading an unregistered project requires an explicit CLI action in a release copy', async t => {
   const f = fixture(t); f.projects = [];
   f.read = async url => url.endsWith('/versions') ? Response.json({ errCode: 404, errMessage: 'missing' }, { status: 404 }) : undefined;
   f.pick = () => assert.fail('Project groups must be chosen when applying for an ID');
   await f.command('studio.refreshVersions');
   await f.command('studio.uploadProject');
   assert.equal(f.uploads.length, 0);
-  assert.match(f.uploadResult.error, /apply for a new application ID/);
+  assert.match(f.uploadResult.error, /steamharness workspace upload --create in a separate release copy/);
   assert.equal(f.requests.some(request => request.url.includes('/api/groups?minRole=developer')), false);
 });
 
 
 test('source projects show their authored version without polling for upgrades', async t => {
   const f = fixture(t, { source: true });
-  await f.command('studio.refreshVersions');
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.requests.length, 0);
   assert.equal(f.state().localVersion, '1.0.0');
   assert.equal(f.state().update.status, 'source');

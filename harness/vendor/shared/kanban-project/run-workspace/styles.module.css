@@ -4401,7 +4401,7 @@
 
 /* body: minimal indented region — no nested card, no accent gutter, no
    gradient bg, no inset shadow. Long stderr / JSON / markdown still scrolls
-   internally per ../desktop/AGENTS.md and ../server/web/AGENTS.md "正文区域必须内部滚动".
+   internally instead of resizing the outer project surface.
    The body text originally followed the summary's muted token, but
    markdown output detail now needs to read as body content: darker and a touch
    larger than compact metadata. Links keep var(--color-accent) so they stay
@@ -4525,8 +4525,7 @@
    and screen readers both work without surfacing the label visually. */
 
 /* Shared run diagnostics: Output, Logs, Diagram, and searchable text viewer.
-   These classes intentionally stay in shared so App and server/web render the
-   same run result surfaces instead of forking diagnostic chrome per host. */
+   Keep the presentation consistent across local hosts. */
                   
                 
                     

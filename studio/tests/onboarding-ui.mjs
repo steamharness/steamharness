@@ -29,7 +29,7 @@ await page.route('**/*', async route => {
   } else { await route.abort(); }
 });
 
-async function show(language, theme, width, height) {
+async function show(language, theme, width, height, platform = true) {
   await page.goto('about:blank');
   await page.setViewportSize({ width, height });
   await page.setContent(`<style>${settingsThemeCss(theme)}\n${icons}\n${css}\nbody { font-family:var(--vscode-font-family); }</style><button id="previous">Previous</button><main id="host"></main>`);
@@ -42,7 +42,7 @@ async function show(language, theme, width, height) {
     globalThis._VSCODE_PACKAGE_JSON = { version: '1.141.0' };
   }, language);
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
-  await page.evaluate(() => {
+  await page.evaluate(platform => {
     const { OnboardingVariationA, Emitter, URI } = StudioOnboarding;
     const changes = new Emitter();
     globalThis.authenticated = false; globalThis.calls = []; globalThis.notifications = [];
@@ -50,13 +50,13 @@ async function show(language, theme, width, height) {
     globalThis.onboarding = new OnboardingVariationA(
       { activeContainer: document.querySelector('#host') },
       { getColorTheme: () => ({ settingsId: 'dark' }), getColorThemes: async () => [], setColorTheme() {} },
-      { getContextKeyValue: key => key === 'studio.authenticated' ? authenticated : undefined, onDidChangeContext: changes.event },
+      { getContextKeyValue: key => key === 'studio.authenticated' ? authenticated : key === 'studio.platformAvailable' ? platform : undefined, onDidChangeContext: changes.event },
       {}, {}, {}, { notify: value => notifications.push(value) }, { exists: async () => false }, { userHome: () => URI.file('/studio-test') },
       { publicLog2() {} }, { executeCommand: async id => { calls.push({ id, modal: !!document.querySelector('[role="dialog"]') }); } }, { alert() {} },
     );
     document.querySelector('#previous').focus();
     onboarding.show(); onboarding.show();
-  });
+  }, platform);
   await page.locator('.onboarding-a-overlay.visible').waitFor();
   await page.waitForFunction(() => document.querySelector('.onboarding-a-overlay').getAnimations({ subtree: true }).every(animation => animation.playState === 'finished'));
 }
@@ -72,6 +72,16 @@ async function fits(context) {
 
 try {
   for (const language of ['en', 'zh-cn']) {
+    await show(language, 'light', 420, 480, false);
+    const dialog = page.getByRole('dialog');
+    const nextOffline = page.locator('.onboarding-a-footer-right button:last-child');
+    const login = /sign[ -]?in|登录/iu;
+    assert.doesNotMatch(await dialog.innerText(), login);
+    assert.equal(await nextOffline.textContent(), language === 'en' ? 'Get Started' : '开始使用');
+    await nextOffline.click();
+    await dialog.waitFor({ state: 'detached' });
+    assert.deepEqual(await page.evaluate(() => calls), []);
+    checks.push(`${language}: public onboarding finishes without sign-in text or account commands`);
     for (const theme of ['light', 'dark']) {
       for (const width of [1440, 720, 420, 320, 280]) {
         await show(language, theme, width, width <= 420 ? 480 : 900);

@@ -158,8 +158,16 @@ try {
   const core = await import(coreUrl);
   // IPC callbacks execute outside the async scope that registered the listener.
   // Re-enter the same run snapshot for every command and its asynchronous work.
-  const withSettings = run => request.userSettings !== undefined && typeof core.withUserSettings === 'function'
-    ? core.withUserSettings(request.userSettings, run) : run();
+  const connection = (url, token) => url && token ? { serverUrl: url, accessToken: token } : undefined;
+  const platform = {
+    project: connection(process.env.STEAMHARNESS_SERVER_URL, process.env.STEAMHARNESS_SERVER_ADMIN_KEY),
+    ai: connection(process.env.STEAMHARNESS_AI_SERVER_URL, process.env.STEAMHARNESS_AI_API_KEY),
+  };
+  const withSettings = run => {
+    const configured = () => request.userSettings !== undefined && typeof core.withUserSettings === 'function'
+      ? core.withUserSettings(request.userSettings, run) : run();
+    return typeof core.withPlatformConnections === 'function' ? core.withPlatformConnections(platform, configured) : configured();
+  };
   const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
   const { readProjectInfo, resolveProjectName } = await import('@steamharness/project-info');

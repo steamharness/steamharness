@@ -76,8 +76,8 @@ export function normalizeProjectServerUrl(value: string): string {
  * their scoped Workflow connection through the host protocol instead.
  */
 export function isPrivateEnvironmentKey(key: string): boolean {
-  return key === 'NODE_OPTIONS' ||
-    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
+  return key.toUpperCase() === 'NODE_OPTIONS' ||
+    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|FILE_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/iu.test(key) ||
     /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||
     /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
 }
@@ -93,14 +93,14 @@ export class ServerClient {
   }
 
   private async request<T>(path: string, options: {
-    accessToken?: string; sessionCookie?: string; body?: object; method?: string;
+    accessToken?: string; sessionCookie?: string; body?: object; method?: string; signal?: AbortSignal;
     headersReceived?: (headers: Headers) => void;
   } = {}): Promise<T> {
     const { accessToken, sessionCookie, body, method = body ? 'POST' : 'GET' } = options;
     let response: Response;
     try {
       response = await this.fetcher(`${this.serverUrl}${path}`, {
-        method, redirect: 'error', signal: AbortSignal.timeout(15_000),
+        method, redirect: 'error', signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
         credentials: 'omit',
         headers: {
           Accept: 'application/json', 'Accept-Language': 'zh-CN',
@@ -125,11 +125,11 @@ export class ServerClient {
     return payload.data;
   }
 
-  async verify(connection: Connection): Promise<LoginSession> {
+  async verify(connection: Connection, signal?: AbortSignal): Promise<LoginSession> {
     if (normalizeProjectServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
       throw new AuthError(t("Sign-in credentials do not match the server."), 401);
     }
-    const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken });
+    const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken, signal });
     const profile = me.profile;
     if (!profile || typeof profile.userId !== 'string' || !profile.userId || (profile.email !== null && typeof profile.email !== 'string') || typeof profile.displayName !== 'string' || !me.principal?.apiKeyId) {
       throw new AuthError(t("The server did not return valid account information."));

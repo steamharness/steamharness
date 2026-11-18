@@ -10,7 +10,7 @@ export class StudioModeController {
   private releaseOnly = false;
   private projectIdentity?: string;
 
-  constructor(context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
+  constructor(context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel, private readonly platform = false) {
     for (const [command, native] of [
       ['studio.toggleMode', 'studio.internalToggleMode'],
       ['studio.enterIdeMode', 'studio.internalEnterIdeMode'],
@@ -36,7 +36,7 @@ export class StudioModeController {
     this.ready = ready;
     this.releaseOnly = releaseOnly;
     this.projectIdentity = identity;
-    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, releaseOnly, project, labels: {
+    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, releaseOnly, project, platform: this.platform, labels: {
       mode: t('Workspace Mode'), ide: 'IDE', steam: 'Steam',
       switchToIde: t('Switch to IDE Mode'), switchToSteam: t('Switch to Steam Mode'),
       loading: t('Loading project...'),
@@ -49,7 +49,7 @@ export class StudioModeController {
       terminalProfiles: t('New Terminal With Profile'), terminalSplit: t('Split Terminal'), terminalRename: t('Rename Terminal'), selectProject: t('Select Project'),
       moveEditorsError: t('Unable to move tool workspace editors back to the IDE.'),
       editor: t('Editor'), editorHint: t('Browse and edit current project files'),
-      settings: t('Settings'), settingsHint: t('Manage Studio settings and your account'),
+      settings: t('Settings'), settingsHint: t('Manage Studio settings'),
       login: t('Sign In'), loginHint: t('Sign in to SteamHarness'),
       editorEmpty: t('Open a file from Explorer or Quick Open to start editing.'), openFile: t('Open File'),
       info: t('Project Information'), infoHint: t('View project details and configuration'),

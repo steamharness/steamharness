@@ -70,15 +70,6 @@
                   "guides/development/kanban",
                   "guides/testing"
                 ]
-              },
-              {
-                "group": "管理与部署",
-                "pages": [
-                  "guides/server/overview",
-                  "guides/server/accounts",
-                  "guides/server/project-management",
-                  "guides/server/deployment"
-                ]
               }
             ]
           },
@@ -210,16 +201,6 @@
                     "items": []
                   },
                   {
-                    "label": "Server",
-                    "path": "guides/releases/server",
-                    "items": []
-                  },
-                  {
-                    "label": "Server Web",
-                    "path": "guides/releases/server-web",
-                    "items": []
-                  },
-                  {
                     "label": "开发者小助手",
                     "path": "guides/releases/builtin-developer-assistant",
                     "items": []
@@ -257,13 +238,6 @@
                 ]
               }
             ]
-          },
-          {
-            "tab": "服务端 API",
-            "openapi": {
-              "source": "openapi/steamharness.openapi.yaml",
-              "directory": "reference"
-            }
           }
         ]
       },
@@ -302,15 +276,6 @@
                   "en/guides/development/conversation",
                   "en/guides/development/kanban",
                   "en/guides/testing"
-                ]
-              },
-              {
-                "group": "Management and deployment",
-                "pages": [
-                  "en/guides/server/overview",
-                  "en/guides/server/accounts",
-                  "en/guides/server/project-management",
-                  "en/guides/server/deployment"
                 ]
               }
             ]
@@ -443,16 +408,6 @@
                     "items": []
                   },
                   {
-                    "label": "Server",
-                    "path": "en/guides/releases/server",
-                    "items": []
-                  },
-                  {
-                    "label": "Server Web",
-                    "path": "en/guides/releases/server-web",
-                    "items": []
-                  },
-                  {
                     "label": "Developer Assistant",
                     "path": "en/guides/releases/builtin-developer-assistant",
                     "items": []
@@ -490,13 +445,6 @@
                 ]
               }
             ]
-          },
-          {
-            "tab": "Server API",
-            "openapi": {
-              "source": "en/openapi/steamharness.openapi.yaml",
-              "directory": "en/reference"
-            }
           }
         ]
       }

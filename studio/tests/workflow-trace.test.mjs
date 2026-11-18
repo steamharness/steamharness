@@ -188,7 +188,7 @@ test('model classification uses Core metadata and preserves node display names',
 });
 
 test('the outer webview configures an immediately loaded frame and validates trace and account messages', () => {
-  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Example', 'file:///project', 'dark', 'nonce', 'zh-cn');
+  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Example', 'file:///project', 'dark', 'nonce', 'zh-cn', undefined, undefined, false, true);
   const listeners = {}, sent = [], frameMessages = [], contextMenus = [], child = { postMessage: (...args) => frameMessages.push(args) };
   let frameContext;
   const frame = { contentWindow: child, addEventListener: (name, callback) => { listeners[name] = callback; },

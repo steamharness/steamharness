@@ -16,11 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createProjectMcpDesktopAuditWriter,
   parseProjectMcpCliOptions,
-  readSavedProjectMcpAuthEnv,
   resolveProjectMcpWorkerEntrypoint,
   McpCliRunner,
 } from "../mcp";
 import { writeCliAuthConfig } from "../auth-config";
+import { resolveOnlineConnections } from "../online";
 import { main as cliMain } from "../index";
 import { resolveHarnessVersion } from "./harness-source";
 
@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 describe("steamharness mcp", () => {
-  it("falls back to saved CLI authentication when Desktop is not logged in", async () => {
+  it("only uses saved CLI authentication for the requested purpose", async () => {
     const desktopConfigDir = await createTemporaryDirectory("steamharness-mcp-desktop-auth-");
     const cliAuthDir = await createTemporaryDirectory("steamharness-mcp-cli-auth-");
     await writeFile(path.join(desktopConfigDir, "workflow-desktop.json"), JSON.stringify({
@@ -52,34 +52,14 @@ describe("steamharness mcp", () => {
       "--auth-dir", cliAuthDir,
     ]);
 
-    assert.deepEqual(readSavedProjectMcpAuthEnv(options, {}), {
-      STEAMHARNESS_SERVER_URL: "https://steamharness.example.com",
-      STEAMHARNESS_SERVER_ADMIN_KEY: "cli-saved-key",
+    const env = { STEAMHARNESS_CLI_AUTH_DIR: options.cliAuthDir };
+    assert.deepEqual(await resolveOnlineConnections(options.online ?? [], env), {});
+    assert.deepEqual(await resolveOnlineConnections(['project'], env), {
+      project: { serverUrl: 'https://steamharness.example.com', accessToken: 'cli-saved-key' },
     });
-  });
-
-  it("does not combine a partial explicit MCP credential with saved auth", () => {
-    const options = parseProjectMcpCliOptions([process.cwd()]);
-
-    assert.throws(
-      () => readSavedProjectMcpAuthEnv(options, {
-        STEAMHARNESS_SERVER_URL: "https://explicit.example.com",
-      }),
-      /must be provided together/i,
-    );
-    assert.throws(
-      () => readSavedProjectMcpAuthEnv(options, {
-        STEAMHARNESS_SERVER_ADMIN_KEY: "explicit-key",
-      }),
-      /must be provided together/i,
-    );
-    assert.deepEqual(
-      readSavedProjectMcpAuthEnv(options, {
-        STEAMHARNESS_SERVER_URL: "https://explicit.example.com",
-        STEAMHARNESS_SERVER_ADMIN_KEY: "explicit-key",
-      }),
-      {},
-    );
+    await assert.rejects(resolveOnlineConnections(['ai'], env), /workspace login --ai/);
+    await assert.rejects(resolveOnlineConnections(['project'], { ...env, STEAMHARNESS_SERVER_URL: 'https://other.example.com' }), /workspace login/);
+    await assert.rejects(resolveOnlineConnections(['project'], { ...env, STEAMHARNESS_SERVER_ADMIN_KEY: 'another-key' }), /STEAMHARNESS_SERVER_URL/);
   });
 
   it("prints MCP help when the subcommand receives a help flag", async () => {

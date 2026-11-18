@@ -64,4 +64,6 @@ pnpm exec steamharness workspace login --server http://localhost:7126
 
 `{channel}` 为 `dev`、`alpha` 或 `main`，由安装的 CLI 通道决定；显式设置 `STEAMHARNESS_SERVICE_CHANNEL` 可覆盖。CLI 同时按 Server 保存独立凭据；指定其他 `--server` 不会复用当前 Server 的密钥。旧 `workflow-auth.json` 只在 Server 与当前通道匹配时迁移，注销后不会重新恢复。
 
-CLI Web 使用相同授权流程，并提供返回发起页面的链接。网页只接触公开设备码和返回状态，设备密钥与 API Key 由本机进程保管。详见[账号、登录与恢复](/guides/server/accounts)。
+## 登录系统 AI
+
+系统 AI 需要连接服务器。运行 `steamharness workspace login --ai --server <URL>`，在浏览器批准设备登录，再用 `--online ai` 启动 `run`、`web` 或 `mcp`。AI 和项目凭据按用途与服务器地址分别保存。只打印登录链接而不打开浏览器时，添加 `--no-open`。

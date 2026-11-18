@@ -904,5 +904,13 @@
   "Waiting for browser sign-in...": "等待浏览器登录…",
   "Use browser sign-in.": "请使用浏览器登录。",
   "Sign-in request expired. Start again.": "登录请求已过期，请重新发起。",
-  "Sign-in request was denied.": "登录请求已被拒绝。"
+  "Sign-in request was denied.": "登录请求已被拒绝。",
+  "Connect to System AI": "连接系统 AI",
+  "Manage Studio settings": "管理 Studio 设置",
+  "Generating a local project ID": "正在生成本地项目 ID",
+  "Project created without an ID. Retry Project Setup after selecting a local Node runtime.": "项目已创建，ID 暂为空。请选择本地 Node 运行时，然后重试项目设置。",
+  "This project ID is not registered. Run steamharness workspace upload --create in a separate release copy. The server assigns a new ID to that copy.": "此项目 ID 尚未注册。请在独立发布副本中运行 steamharness workspace upload --create。服务器会为该副本分配新 ID。",
+  "Update the project CLI to connect to System AI.": "请更新项目的 CLI 后连接系统 AI。",
+  "Update the project CLI to open the hosted Web App.": "请更新项目的 CLI 后打开托管 Web App。",
+  "This entry does not declare a hosted Web App.": "此入口未声明托管 Web App。"
 }

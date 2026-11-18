@@ -1,8 +1,6 @@
 packages:
   - harness
   - cli
-  - server
-  - server/web
   - shared
   - shared/*
   - build-in/*

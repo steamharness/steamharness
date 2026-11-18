@@ -29,9 +29,9 @@ Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开
 | `workflow` | 入口与参数、一次运行一个任务、运行记录、结果与诊断 |
 | `kanban` | 通过 CLI Web 打开静态产物、参数配置和页面数据 Bridge |
 
-项目界面由 CLI 提供，Studio 负责标签页、主题、登录状态和进程生命周期。Conversation 的 assistant 主回答直接展示在正文中；工具调用、reasoning、诊断和显式折叠输出单独展示，响应元数据不会折叠主回答。
+项目界面由 CLI 提供，Studio 管理标签页、主题和进程。Conversation 的 assistant 主回答直接展示在正文中；工具调用、reasoning、诊断和显式折叠输出单独展示，响应元数据不会折叠主回答。
 
-参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。使用系统 AI 的项目需要有效的 SteamHarness Server 登录，或项目自身所需的服务配置。
+参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。项目可以使用自行配置的模型或业务 API；系统 AI 需要连接 Server，不由开源 Studio 提供。
 
 对话资源卡片支持看板预览。Workflow 和 Conversation 的轨迹面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
 
@@ -41,7 +41,7 @@ Studio 小助手使用独立应用及其 Core/CLI 依赖，工具工作目录采
 
 ## 运行与数据
 
-Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目识别使用 `web --inspect`；打开标签页时启动 `web --host-stdio`，通过受控 stdio 传入主题、账号和宿主配置。启动失败会显示项目依赖、CLI 构建或协议不兼容的错误。
+Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目识别使用 `web --inspect`；打开标签页时启动 `web --host-stdio`，通过受控 stdio 传入主题和宿主配置。启动失败会显示项目依赖、CLI 构建或协议不兼容的错误。
 
 更新项目依赖后，关闭并重新打开项目标签页即可加载当前安装的 CLI，包括 pnpm 更新后的包链接；已经运行的进程不会自动更换版本。卡片功能依赖项目自身的 CLI，跨项目预览与整行资源卡片需要 `@steamharness/cli` 0.1.0 或更高版本。
 
@@ -53,17 +53,11 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 机器级设置 `studio.project.nodePath` 可指定 Node；默认使用扩展宿主可用的 Node。**Workflow: 打开内置 CLI** 在原生终端中使用当前项目的 CLI。
 
-## 服务器与登录
+## 本地与在线功能
 
-应用级设置 `studio.project.serverUrl` 选择 SteamHarness Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
+开源工作站打开、检查和运行项目时，不验证平台账号、项目注册状态或成员角色。Studio 启动项目自带的 CLI，并隔离继承的平台环境变量和登录缓存；不会替换已经安装的项目依赖。
 
-左下角头像打开 SteamHarness 账号弹层，展示头像、昵称、邮箱与服务器连接状态，提供个人信息、刷新账号资料和退出入口；未登录时提供登录入口。扩展账号授权仍可通过命令面板管理。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
-
-对话回答的时长左侧显示项目头像，点击查看项目资料；用户消息右侧的账号头像打开账号入口。开始页项目头像可直接打开项目，信息面板头像可点击放大预览。最近项目和项目树中的头像沿用原有项目打开操作。
-
-密码只用于当前请求。API Key 和登录会话 Cookie 使用 VS Code SecretStorage 保存，Webview 只接收公开账号资料；项目进程和 CLI 使用当前连接的 API Key。退出时停止相关运行并撤销本次凭据；临时连接失败时可在账号页重试验证。
-
-Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作站账号。Studio 未登录或退出登录后，项目忽略独立 CLI 保存的账号和环境变量凭据；项目内的账号入口打开 Studio 账号页。独立运行 `steamharness web` 仍使用 CLI 的登录配置。项目 CLI 必须支持 `accountProtocolVersion: 1`；旧版本需要更新后再打开。
+要使用受保护的项目配置或系统 AI，可使用增强版的对应功能，或在独立终端分别选择 `steamharness web --online project`、`steamharness web --online ai`。这两项需要连接 Server，普通 `steamharness web` 不读取平台凭据。
 
 ## 聚合与独立 checkout
 
@@ -79,4 +73,6 @@ Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作
 
 `npm run test:project-language-ui` 在隔离的 Electron 窗口中验证中文系统下的英文工作台回退、中文宿主语言、各处项目名称与 Conversation 控件，并检查中文用户内容保持原文。截图和检查记录位于 `.studio/project-language/`。
 
-`npm run test:desktop`、`test:conversation-ui`、`test:workflow-desktop-ui`、`test:kanban-desktop-ui`、`test:resources-ui` 和 `test:trace-ui` 启动 Electron 或浏览器进行交互检查。`test:conversation-server-ui` 还依赖可用的 Server 和模型服务，运行前应确认对应环境与授权。
+构建 Studio 和同仓的 Core、CLI 后，运行 `npm run test:offline-ui`。该测试用无头浏览器运行三类本地项目，并用临时 Server 记录是否有平台请求，不需要真实平台账号或模型。
+
+`npm run test:desktop`、`test:conversation-ui`、`test:workflow-desktop-ui`、`test:kanban-desktop-ui`、`test:resources-ui` 和 `test:trace-ui` 启动 Electron 或浏览器，只在隔离测试环境运行。

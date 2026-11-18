@@ -9,6 +9,8 @@ description: "管理 Server 上的源码草稿、发布版本和下载。"
 
 `steamharness workspace` 管理 Server 上的项目源码与不可变版本。项目在本地安装依赖、构建和运行，Server 处理静态归档。
 
+除 `pack`、`help`、`status`、`logout` 等本地命令外，Workspace 命令**需要连接服务器**。打包不会读取平台凭据。
+
 ## 从登录到下载
 
 ```sh

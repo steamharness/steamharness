@@ -17,9 +17,7 @@ function killGroup(pid, signal) {
 }
 
 for (const name of suites) {
-  const reason = name === 'test:conversation-server-ui'
-    ? 'Requires a configured real dev server and model credentials.'
-    : name === 'test:document-preview-ui' && !process.env.STUDIO_TEST_PREVIEW_FILES
+  const reason = name === 'test:document-preview-ui' && !process.env.STUDIO_TEST_PREVIEW_FILES
       ? 'Requires STUDIO_TEST_PREVIEW_FILES with PDF, DOCX, PPTX, XLSX, TEX and HEIC samples.' : undefined;
   if (reason) {
     results.push({ name, status: 'skipped', reason });

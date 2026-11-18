@@ -10,6 +10,7 @@ import test from 'node:test';
 import {createServer} from 'node:http';
 import {assertProjectConfigurationAccess,createLocalProjectConfigurationStore,createConfigurationState,bindConfigurationProfiles,createPublicationDraft,freezeConfigurationTemplate,cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,configurationSnapshot,type ConfigurationAccess,type ProjectConfigurationState} from '../configuration';
 import {resolveProjectConfigurationAccess} from '../configuration-access';
+import {withPlatformConnections} from '../platform-connections';
 
 test('restricted local stores isolate accounts, preserve overrides, and reject a stored Build resume after downgrade',async()=>{
   const project=await mkdtemp(path.join(tmpdir(),'configuration-profile-'));
@@ -69,10 +70,10 @@ test('project role comes from authenticated Server access and a failed refresh n
     const options={cacheDir:path.join(project,'identity-cache')};
     assert.equal((await resolveProjectConfigurationAccess(project,connection,true,options)).role,'developer');
     globalThis.fetch=async()=>{throw new Error('offline');};
-    assert.equal((await resolveProjectConfigurationAccess(project,connection,false,options)).role,'developer');
+    assert.equal((await resolveProjectConfigurationAccess(project,connection,false,options)).role,'guest');
     const offline=await resolveProjectConfigurationAccess(project,connection,true,options);
     assert.equal(offline.role,'guest');assert.equal(offline.online,false);
-    assert.equal(offline.subject,JSON.stringify([connection.serverUrl,'alice']));
+    assert.equal(offline.subject,'local:guest');
     assert.equal((await resolveProjectConfigurationAccess(project,null,true)).role,'guest');
   }finally{globalThis.fetch=original;await rm(project,{recursive:true,force:true});}
 });
@@ -207,7 +208,8 @@ test('tool access retains a waiting run template after an upgrade but rechecks t
     templates.push(first);await cacheVerifiedConfigurationTemplate(first);
     const source=path.join(project,configurationTemplatePath("main"));
     await writeFile(source,JSON.stringify(first));
-    const store=await configurationFixtureStore(project),state=await store.read(true);
+    const connection={serverUrl:origin,accessToken:token};
+    const store=await configurationFixtureStore(project,{connection:()=>connection}),state=await store.read(true);
     const buildId=state.configurations.find(profile=>profile.profileKey==='build')!.id;
     const snapshot=await store.snapshot({id:buildId,runId:'waiting'});
     const next=structuredClone(first);next.projectVersion='2';
@@ -215,9 +217,10 @@ test('tool access retains a waiting run template after an upgrade but rechecks t
     templates.push(next);await cacheVerifiedConfigurationTemplate(next);await writeFile(source,JSON.stringify(next));
     assert.equal((await store.snapshot({id:buildId})).values.locked,'updated');
     assert.deepEqual(await store.snapshot({runId:'waiting'}),snapshot);
-    await assertProjectConfigurationAccess(project,snapshot);
+    const check=()=>withPlatformConnections({project:connection},()=>assertProjectConfigurationAccess(project,snapshot));
+    await check();
     role='guest';
-    await assert.rejects(assertProjectConfigurationAccess(project,snapshot),/not available/);
+    await assert.rejects(check(),/not available/);
   } finally {
     globalThis.fetch=originalFetch;
     for(const envKey of Object.keys(env)){if(previous[envKey]===undefined)delete process.env[envKey];else process.env[envKey]=previous[envKey];}

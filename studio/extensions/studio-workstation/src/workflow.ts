@@ -76,7 +76,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
+  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; session: WebSession; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
   const findWorkspace = (project: Project, primary = false) => {
     const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project) && (!primary || entry.panel.viewType === 'studio.project'));
     return candidates.find(entry => entry.panel.active) ?? candidates.find(entry => entry.running) ?? candidates[0];
@@ -99,7 +99,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   let refreshing: Promise<void> | undefined;
   let refreshRequested = false;
   let resumeRefresh: (() => void) | undefined;
-  let cliConnection = JSON.stringify(account.getConnection());
   let steamPreparation: AbortController | undefined;
   let windowChrome: ProjectWindowChrome = { active: false, height: 52, left: 0, right: 0, revision: 0 };
   const chromeFor = (uri: string, primary: boolean): ProjectWindowChrome => ({ ...windowChrome, active: windowChrome.active && primary && windowChrome.projectUri === uri });
@@ -226,13 +225,20 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     sessionStops.set(session, async () => { await close(); if ('reveal' in panel) { panel.dispose(); } });
     listeners.push(panel.onDidDispose(() => void close()));
     try {
-      const local = vscode.Uri.parse(session.ready.url);
+      const localAddress = new URL(session.ready.url);
+      if (!account.platform && session.ready.systemAiConnectionProtocolVersion !== 2 && launcher.startLegacyLocalFrame) {
+        const legacy = await launcher.startLegacyLocalFrame(localAddress);
+        if (closed) { legacy.dispose(); throw new Error('Workflow workspace has closed.'); }
+        listeners.push(legacy);
+        localAddress.port = String(legacy.port);
+      }
+      const local = vscode.Uri.parse(localAddress.href);
       const external = await vscode.env.asExternalUri(local);
       const address = new URL(external.toString());
       address.hash = new URL(session.ready.url).hash;
       signal?.throwIfAborted();
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
-      panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(new URL(session.ready.url).port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
+      panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(localAddress.port), extensionHostPort: Number(localAddress.port) }] };
       const bindTrace = () => trace.bind(project, session.ready.traceProtocolVersion, panel.webview,
         session.readModelRequest ? target => session.readModelRequest!(project.entryId, target) : undefined);
       let traceBinding = bindTrace();
@@ -277,7 +283,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, browserOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
-        if (message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
+        if (account.platform && message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
           const open = async () => {
             // One-click creation can replace the local ID while this tab stays open.
             const current = message.projectId === project.id || project.assistant ? project : await resolveProjectTab(vscode.Uri.parse(project.uri), project.entryId);
@@ -314,13 +320,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           void openProjectUserSettings(message).catch(error => output.appendLine(`User settings: ${String(error)}`));
           return;
         }
-        if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
+        if (account.platform && message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !browserOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject);
+      panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
-        workspaces.set(panel, { panel, project, running: true, loaded: false, ready, close });
+        workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
@@ -432,7 +438,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   };
   const assistant = new AssistantViewProvider(context, launcher, output,
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
-  const mode = new StudioModeController(context, output);
+  const mode = new StudioModeController(context, output, account.platform);
   const trace = new TraceView(context, openProject, output);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
     signal.throwIfAborted();
@@ -476,7 +482,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     } catch (error) { release.dispose(); throw error; }
   };
   const versions = new VersionsView(context, launcher, account, output, prepareUpgrade,
-    (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot));
+    (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot), account.platform);
   const info = new InfoView(context, versions);
   const toolInstances = new ToolInstances(context, (kind, subscriptions, restored) => {
     if (kind === 'trace') {
@@ -493,7 +499,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot), false, subscriptions, versions);
     return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolveWebviewView(view),
       selectProject: () => instance.selectProject() };
-  });
+  }, account.platform);
   const inspectProjects = async (epoch: number): Promise<void> => {
     if (upgrading.size) { return; }
     if (!launcher.available || !vscode.workspace.isTrusted) { provider.projects = []; launcher.updateAnalysisProjects?.([]); provider.refresh(); updateEntry(); return; }
@@ -680,9 +686,21 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       scheduleRefresh();
     }), vscode.workspace.onDidGrantWorkspaceTrust(scheduleRefresh), vscode.window.onDidChangeActiveTextEditor(scheduleEntry),
     vscode.window.onDidCloseTerminal(terminal => terminals.delete(terminal)),
-    account.onDidChange(state => { if (state.status !== 'checking') { const next = JSON.stringify(account.getConnection()); if (state.status === 'signed-out' || next !== cliConnection) { closeTerminals(); } cliConnection = next; } }),
     watcher, watcher.onDidChange(changedFile), watcher.onDidCreate(changedFile), watcher.onDidDelete(changedFile),
     { dispose: () => { disposed = true; steamPreparation?.abort(); ++scanEpoch; clearTimeout(refreshTimer); resumeRefresh?.(); resumeRefresh = undefined; clearTimeout(entryTimer); closeTerminals(); for (const controller of starting.keys()) { controller.abort(); } for (const entry of workspaces.values()) { entry.panel.dispose(); } for (const session of sessions) { void session.close(); } } });
+  if (account.platform) context.subscriptions.push(register('studio.internalConnectProjectPlatform', async (purpose: 'project' | 'ai' | 'web-app') => {
+    if (!['project', 'ai', 'web-app'].includes(purpose)) return;
+    const project = currentProject();
+    if (!project) throw new Error(t('Select a SteamHarness project folder.'));
+    const target = purpose === 'web-app' && !project.entries.some(entry => entry.entryId === project.entryId && entry.webApp)
+      ? project.entries.find(entry => entry.webApp) : undefined;
+    const selected = target ? findProject(project.uri, target.entryId) : project;
+    if (!selected || purpose === 'web-app' && !selected.entries.some(entry => entry.entryId === selected.entryId && entry.webApp)) {
+      throw new Error(t('This entry does not declare a hosted Web App.'));
+    }
+    if (!findWorkspace(selected, true)) await openProject(selected);
+    await findWorkspace(selected, true)?.session.connectPlatform?.(purpose, selected.entryId);
+  }));
   initialScan = refresh().catch(error => output.appendLine(`Workflow: ${String(error)}`));
   await initialScan;
   projectScanReady = true;

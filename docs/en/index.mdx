@@ -8,7 +8,7 @@ slug: /
 
 # Start with SteamHarness
 
-Build Agent projects with SteamHarness, run them in Studio or the CLI, and use Server to manage source code, versions, and access.
+Build and run Workflow, Bot, and Kanban projects in Studio or the CLI. Local development does not require a SteamHarness account.
 
 Start with the [quickstart](/en/guides/quickstart) to run a Hello workflow. If you already have a project, [open it in Studio](/en/guides/studio/create-import).
 
@@ -40,11 +40,8 @@ Write HTML, CSS, and JavaScript with `index.html` as the entry. A restricted Bri
 | --- | --- |
 | Studio | Edit source, run local projects, inspect results and traces |
 | Local CLI | Run tasks, inspect structure, export JSON, or expose MCP tools |
-| Server | Store source, versions, members, and files |
-| Server Web management console | Manage Server projects and resources in a browser |
-| Store | Browse, download, and publish project versions |
 
-Project code runs on the machine hosting Studio or the local CLI. Server stores source archives without installing project dependencies or running project code. Server-side Kanban previews serve static pages under access controls.
+Project code runs on the machine hosting Studio or the CLI. A model or business API you configure can still use the network.
 
 ## Main features
 
@@ -53,9 +50,7 @@ Project code runs on the machine hosting Studio or the local CLI. Server stores 
 | Learn the workbench and run a project | [Studio guide](/en/guides/studio/overview) |
 | Work from the terminal | [CLI overview](/en/cli/overview) |
 | Write nodes and Agents | [Core API](/en/core-api/overview) |
-| Manage projects, members, and data | [Server Web](/en/guides/server/overview) |
 | Pack, upload, and publish versions | [Workspace CLI](/en/cli/server-workspace) |
-| Host your own service | [Deploy Server](/en/guides/server/deployment) |
 | Use system AI or Store | [Enhanced features](https://docs.steamharness.yuhe.space/en/enhanced/) |
 
 ## Project data and configuration
@@ -63,17 +58,6 @@ Project code runs on the machine hosting Studio or the local CLI. Server stores 
 Runtime history is scoped to projects and entries; project files follow their own access permissions.
 
 Configuration and conversations are scoped by `projectId + entryId`. Configuration changes apply to subsequent runs. See [project configuration](/en/concepts/project-configuration) and [data storage](/en/concepts/data-storage).
-
-## Accounts, permissions, and collaboration
-
-| Role | Main capabilities |
-| --- | --- |
-| `guest` | View and download published projects, then run them locally |
-| `developer` | Edit drafts, upload, publish, and modify authorized data |
-| `maintainer` | Manage project information, official configuration, guests, and developers |
-| `owner` | Manage every role, project ownership, and deletion |
-
-Groups support nested subgroups. Effective access is the highest role granted directly or inherited from a group. Project access and data-resource grants are checked separately. See [project management](/en/guides/server/project-management).
 
 ## AI capabilities
 
@@ -86,8 +70,7 @@ The enhanced edition adds account-provided models, provider preferences, subscri
 1. [Create a project](/en/guides/studio/create-import), select a template, and wait for dependency installation.
 2. Write the entry and check `entries` and `defaultEntry` in the root `steamharness.json`.
 3. [Run locally](/en/guides/studio/run-debug) and inspect the result and trace.
-4. [Upload and publish](/en/guides/studio/versions), then assign member access as needed.
-5. For public distribution, [publish to Store](https://docs.steamharness.yuhe.space/en/enhanced/store/publishing).
+4. [Pack the project locally](/en/guides/studio/versions) when you need a distributable archive.
 
 ## Project structure
 
@@ -101,8 +84,8 @@ The Developer Assistant handles coding tasks, Studio Control provides permission
 
 ## Versions, testing, and deployment
 
-Pin compatible Core and CLI dependencies in your project. Check [version compatibility](/en/guides/releases/compatibility) before upgrades and run [project tests and structure checks](/en/guides/testing) during development. See [Deploy Server](/en/guides/server/deployment) for hosting.
+Pin compatible Core and CLI dependencies in your project. Check [version compatibility](/en/guides/releases/compatibility) before upgrades and run [project tests and structure checks](/en/guides/testing) during development.
 
 ## Choose your next step
 
-Run your first project with the [quickstart](/en/guides/quickstart), write business logic with [Build a Workflow](/en/guides/development/workflow), or manage existing projects with the [Server Web guide](/en/guides/server/overview).
+Run your first project with the [quickstart](/en/guides/quickstart), write business logic with [Build a Workflow](/en/guides/development/workflow).

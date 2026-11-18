@@ -1,4 +1,5 @@
 import { i18n } from "@steamharness/i18n";
+import { withoutPlatformEnvironment } from '../online';
 import { createReadStream, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -62,7 +63,7 @@ async function regularDirectories(root: string, relative: string): Promise<void>
 async function command(argv: string[], cwd: string, options: ReleaseOptions): Promise<void> {
   options.signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd, shell: false, detached: process.platform !== "win32", env: { ...process.env, COPYFILE_DISABLE: "1", STEAMHARNESS_RELEASE_BUILD: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(argv[0], argv.slice(1), { cwd, shell: false, detached: process.platform !== "win32", env: { ...withoutPlatformEnvironment(process.env), COPYFILE_DISABLE: "1", STEAMHARNESS_RELEASE_BUILD: "1" }, stdio: ["ignore", "pipe", "pipe"] });
     let force: ReturnType<typeof setTimeout> | undefined;
     const stop = (signal: NodeJS.Signals) => { try { if (child.pid && process.platform !== "win32") process.kill(-child.pid, signal); else child.kill(signal); } catch { /* Already exited. */ } };
     const abort = () => { stop("SIGTERM"); force = setTimeout(() => stop("SIGKILL"), 5000); force.unref(); };

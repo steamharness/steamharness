@@ -19,8 +19,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
-import { readCliAuthConfig } from '../auth-config';
-import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
+import { readOnlineConnection } from '../online';
+import type { PlatformConnections } from 'steamharness';
 import { ConversationController, sessionRunning } from './conversation-controller';
 import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
@@ -55,7 +55,7 @@ export interface WebOptions { entryId?: string; mount?: { origin: string; basePa
   openConversationView?: OpenConversationView;
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
   subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
-}; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration }
+}; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration; initialPlatform?: PlatformConnections }
 
 export { startAggregateWebServer as startWebServer } from "./aggregate-server";
 
@@ -70,7 +70,6 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
       await current.close();
       if (!closing) {
         current = await open();
-        if (host && Object.hasOwn(host, 'connection')) await current.setHostConnection(host.connection);
         if (host?.resourceProjects) current.setHostResourceProjects(host.resourceProjects);
         if (host?.userSettings) await current.setHostUserSettings(host.userSettings);
       }
@@ -102,9 +101,9 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
       host = { ...host, surface: host?.surface ?? 'editor', webApps: value };
       await restarting; await current.setHostWebApps(value);
     },
-    setHostConnection: async (value: WebConnection | undefined) => {
-      host = { ...host, surface: host?.surface ?? 'editor', connection: value, webApps: {} };
-      await restarting; await current.setHostConnection(value);
+    setHostConnection: async (value: WebConnection | undefined, ai?: PlatformConnections['ai']) => {
+      host = { ...host, surface: host?.surface ?? 'editor', connection: value, systemAiConnection: ai };
+      await restarting; await current.setHostConnection(value, ai);
     },
     close: async () => { closing = true; try { await restarting; } finally { await current.close(); } },
   };
@@ -118,32 +117,33 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const entryObservers = new Set<() => void>();
   let conversationRevision = 0;
   let connection: WebConnection | undefined;
+  let aiConnection: PlatformConnections['ai'];
+  const runtimeConnection = () => ({ ...connection, aiServerUrl: aiConnection?.serverUrl, aiAccessToken: aiConnection?.accessToken });
   let account: AccountState = { status: 'signed-out', serverUrl: defaultServerUrl(), revision: 0 };
   let signedOut = false;
   let authIdentity = '';
   const browserLogin = sharedWebLogin(credentials ?? options);
   const unsubscribeLogin = browserLogin.subscribe(error => {
+    if (hostManaged || !projectOnline) return;
     if (browserLogin.busy) { account = { ...account, status: 'checking', error: undefined }; broadcast(); }
-    else { authIdentity = ""; void refreshAuth(true).then(() => { if(error) { account = {...account,status:"error",error}; broadcast(); } }); }
+    else { void refreshAuth(true).then(() => { if (error && !hostManaged && !signedOut) { account = { ...account, status: 'error', error }; broadcast(); } }); }
   });
   let hostConnection = options.host?.connection;
+  let hostAiConnection = options.host?.systemAiConnection ?? (hostConnection?.aiServerUrl && hostConnection.aiAccessToken ? { serverUrl: hostConnection.aiServerUrl, accessToken: hostConnection.aiAccessToken } : undefined);
   let webApps = options.host?.webApps ?? {};
   let userSettings = options.host?.userSettings ? parseUserSettings(options.host.userSettings) : getUserSettings();
   let hostManaged = options.host !== undefined;
-  // Host-managed surfaces (editor and assistant) may carry the private system-AI
-  // connection; the open-source host simply never provides those fields.
-  const allowAiConnection = true;
+  const projectOnline = Boolean(options.initialPlatform?.project);
+  const platformUi = options.host?.platform === true || projectOnline;
   let authEpoch = 0;
   let authenticationInitialized = false;
   let authCheck: AbortController | undefined;
-  let authCheckPending = false;
-  let nextProfileCheck = 0;
   const sensitiveTokens = new Set<string>();
   const rememberModelKeys = (settings: UserSettings) => { for (const model of settings.agent.models ?? []) if (model.source === "third-party") sensitiveTokens.add(model.apiKey); };
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
   const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, hostKind, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings, entryRuntime: call => {
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
   } });
@@ -253,7 +253,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const publicProject = project.conversation?.engine === 'llm' ? { ...project, definitions: undefined } : project;
     const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project: publicProject, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
-    account: { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
+    account: platformUi || aiConnection ? { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } } : undefined,
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
@@ -439,24 +439,25 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const refreshAuth = async (force = false) => {
     if ((browserLogin.busy) && !force) { return; }
     const readingEpoch = authEpoch;
-    const config = hostManaged ? createEmptyProjectAuthConfig() : await readCliAuthConfig(process.env, process.env.STEAMHARNESS_SERVER_URL);
+    const projectAuth = hostManaged ? hostConnection : projectOnline && !signedOut ? (force ? await readOnlineConnection('project') : options.initialPlatform?.project) : undefined;
     if (readingEpoch !== authEpoch) { return; }
-    const serverUrl = hostManaged ? hostConnection?.serverUrl : process.env.STEAMHARNESS_SERVER_URL ?? config.serverUrl;
-    const token = hostManaged ? hostConnection?.accessToken : process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? config.apiKey;
-    const aiServerUrl = allowAiConnection
-      ? hostManaged ? hostConnection?.aiServerUrl : process.env.STEAMHARNESS_AI_SERVER_URL ?? config.aiServerUrl
-      : undefined;
-    const aiToken = allowAiConnection
-      ? hostManaged ? hostConnection?.aiAccessToken : process.env.STEAMHARNESS_AI_API_KEY ?? config.aiApiKey
-      : undefined;
+    const serverUrl = projectAuth?.serverUrl, token = projectAuth?.accessToken;
+    const aiAuth = hostManaged ? hostAiConnection : options.initialPlatform?.ai;
+    const aiServerUrl = aiAuth?.serverUrl, aiToken = aiAuth?.accessToken;
     if (token) { sensitiveTokens.add(token); }
     if (aiToken) { sensitiveTokens.add(aiToken); }
-    const identity = signedOut ? '' : `${serverUrl}\n${token}\n${aiServerUrl}\n${aiToken}`;
-    const expired = account.expiresAt && Date.parse(account.expiresAt) <= Date.now();
-    const background = !force && identity === authIdentity && account.status === 'authenticated' && !expired;
+    const identity = serverUrl && token && !signedOut ? JSON.stringify([serverUrl, token]) : '';
+    const aiChanged = aiConnection?.serverUrl !== aiServerUrl || aiConnection?.accessToken !== aiToken;
+    if (aiChanged) {
+      aiConnection = aiAuth;
+      authRevision++;
+      parameterStates.clear();
+      account = { ...account, aiConfigured: !!aiAuth, aiServerUrl, revision: account.revision + 1 };
+      broadcast();
+    }
     if (!force && identity === authIdentity) {
-      if (authCheckPending) { return; }
-      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { await initializeRuntimeStorage(); return; }
+      await initializeRuntimeStorage();
+      return;
     }
     const epoch = ++authEpoch;
     authCheck?.abort();
@@ -464,12 +465,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const changed = identity !== authIdentity;
     if (changed) projectCreation.close();
     authIdentity = identity;
-    const candidate = !signedOut && serverUrl && token ? {
-      serverUrl: serverUrl.replace(/\/+$/, ''), accessToken: token,
-      ...(aiServerUrl && aiToken ? { aiServerUrl: aiServerUrl.replace(/\/+$/, ''), aiAccessToken: aiToken } : {}),
-    } : undefined;
+    const candidate = identity && serverUrl && token ? { serverUrl: serverUrl.replace(/\/+$/, ''), accessToken: token } : undefined;
+    if (changed || !connection) {
+      account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || defaultServerUrl(),
+        aiServerUrl, aiConfigured: !!aiAuth, revision: account.revision + 1 };
+      broadcast();
+    }
     if (changed) {
-      webApps = {};
       resources.clear();
       connection = undefined;
       authRevision++;
@@ -477,19 +479,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       projectActions?.invalidate();
       if (authenticationInitialized) {
         kanbanController?.authenticationChanged();
-        await stopForAuthentication(); await resetRuntimeStorage();
+        await stopForAuthentication();
+        if (epoch !== authEpoch) return;
+        await resetRuntimeStorage();
       }
       if (epoch !== authEpoch) { return; }
     }
-    authenticationInitialized = true;
-    if (!background) {
-      account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || defaultServerUrl(),
-        aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
-        user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
-    }
     if (candidate) {
-      authCheckPending = true;
-      nextProfileCheck = Date.now() + 30_000;
       let unauthorized = false;
       try {
         const response = await fetch(`${candidate.serverUrl}/api/auth/me`, { headers: { Authorization: `Bearer ${candidate.accessToken}` }, signal: AbortSignal.any([check.signal, AbortSignal.timeout(10_000)]), redirect: 'error' });
@@ -504,32 +500,26 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           projectActions?.invalidate();
         }
         connection = candidate;
-        if (!background) { kanbanController?.authenticationChanged(false); }
-        const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
-        const expiresAt = result.data.principal?.expiresAt ?? (savedConnection ? config.expiresAt : undefined);
-        if (background && (['userId', 'email', 'displayName', 'avatarUrl'] as const).every(key => profile[key] === account.user?.[key]) && expiresAt === account.expiresAt) { await initializeRuntimeStorage(); return; }
-        account = { ...account, status: 'authenticated', user: profile, expiresAt, revision: account.revision + (background ? 1 : 0) };
+        kanbanController?.authenticationChanged(false);
+        const next: AccountState = { ...account, status: 'authenticated', user: profile, expiresAt: result.data.principal?.expiresAt, error: undefined };
+        if (JSON.stringify(next) !== JSON.stringify(account)) account = { ...next, revision: account.revision + 1 };
       } catch (error) {
         if (epoch !== authEpoch) { return; }
-        if (background && !unauthorized) { return; }
         const wasAuthenticated = !!connection;
         connection = undefined;
-        webApps = {};
         resources.clear();
         if (wasAuthenticated) kanbanController?.authenticationChanged();
         if (!changed && wasAuthenticated) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
         if (epoch !== authEpoch) { return; }
-        account = { ...account, status: unauthorized ? 'expired' : 'error', error: String((error as Error).message) };
-      } finally {
-        if (epoch === authEpoch) { authCheckPending = false; }
+        account = { ...account, status: unauthorized ? 'expired' : 'error', user: undefined, expiresAt: undefined, error: String((error as Error).message), revision: account.revision + 1 };
       }
     } else { connection = undefined; }
     await initializeRuntimeStorage();
     broadcast();
   };
   await initializeRuntimeStorage();
-  void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`));
-  const authPoll = setInterval(() => void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`)), 5_000); authPoll.unref();
+  if (options.initialPlatform?.project || options.initialPlatform?.ai || hostConnection || hostAiConnection) await refreshAuth();
+  authenticationInitialized = true;
   const { capability, cookie } = credentials;
   let replacementId: string | undefined;
   let origin = '';
@@ -572,6 +562,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
     if (message.type === 'login' || message.type === 'cancel-login') {
+      if (!projectOnline) throw new Error('Run workspace login, then start web with --online project.');
       if (hostManaged) { throw new Error(t('Manage this account through Studio.')); }
       if (message.type === 'cancel-login') { browserLogin.cancel(); return []; }
       if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
@@ -609,9 +600,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
     }
     if (message.type === 'project-ai-catalog') {
-      const epoch = authEpoch;
-      const value = await loadAgentModelCatalog(connection);
-      if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
+      const epoch = authEpoch, revision = authRevision;
+      const value = await loadAgentModelCatalog(runtimeConnection());
+      if (epoch !== authEpoch || revision !== authRevision) throw new Error('Account changed. Refresh AI models.');
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
     }
     if (message.type === 'project-mention-files') {
@@ -898,18 +889,17 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         break;
       }
       case 'usage': {
-        if (!connection) { throw new Error('SteamHarness Server login is not configured.'); }
         const revision = authRevision;
-        if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new Error(t('System AI is unavailable.')); }
-        const response = await fetch(`${connection.aiServerUrl}/api/ai/usage`, { headers: { Authorization: `Bearer ${connection.aiAccessToken}` }, signal: AbortSignal.timeout(15_000), redirect: 'error' }); const result = await response.json();
+        if (!aiConnection) { throw new Error(t('System AI is unavailable.')); }
+        const response = await fetch(`${aiConnection.serverUrl}/api/ai/usage`, { headers: { Authorization: `Bearer ${aiConnection.accessToken}` }, signal: AbortSignal.timeout(15_000), redirect: 'error' }); const result = await response.json();
         if (revision !== authRevision) { throw new Error(t("Account changed. Refresh usage.")); }
         if (!response.ok || result.errCode !== 0) { throw new Error(result.errMessage || 'Cannot load usage.'); }
         replies.push({ type: 'usage', requestId: message.requestId, sessionId: current?.id, usage: result.data }); break;
       }
       case 'verify': await refreshAuth(true); break;
       case 'logout': {
-        if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        signedOut = true; browserLogin.cancel(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await signOutCliAccount(); } authIdentity = 'signed-out'; await refreshAuth(); break;
+        if (hostManaged || !projectOnline) { throw new Error(t("Manage this account through Studio.")); }
+        signedOut = true; browserLogin.cancel(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await signOutCliAccount(); } await refreshAuth(true); break;
       }
       default: throw new Error(`Unsupported action: ${message.type}`);
     }
@@ -976,7 +966,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const message = await readBody(request);
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
-          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
+          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'verify', 'logout', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
@@ -997,7 +987,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const ancestors = options.host ? "'self' vscode-webview: vscode-file: https://*.vscode-cdn.net https://*.vscode-webview.net http://127.0.0.1:* http://localhost:*" : "'self' vscode-webview:";
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-src 'self' https: http:; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}; form-action 'self'` });
         const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isProject ? 'workflow-workspace' : 'workflow-ui';
-        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><meta name="steamharness-base" content="${options.mount?.basePath ?? ""}"><title>Workflow</title><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/codicons/codicon.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/${ui}.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="${options.mount?.basePath ?? ""}/assets/${ui}.js" defer></script></body></html>`); return;
+        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><meta name="steamharness-base" content="${options.mount?.basePath ?? ""}"><title>Workflow</title><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/codicons/codicon.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/${ui}.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}" data-platform="${platformUi}"><div id="app"></div><script src="${options.mount?.basePath ?? ""}/assets/${ui}.js" defer></script></body></html>`); return;
       }
       const assets: Record<string, string> = { '/assets/workflow-ui.js': 'application/javascript', '/assets/workflow-ui.css': 'text/css', '/assets/theme.css': 'text/css', '/assets/codicons/codicon.css': 'text/css', '/assets/codicons/codicon.ttf': 'font/ttf' };
       assets['/assets/workflow-workspace.js'] = 'application/javascript'; assets['/assets/workflow-workspace.css'] = 'text/css';
@@ -1008,7 +998,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { if (!options.mount) await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { projectCreation.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { projectCreation.close(); ownership?.close(); configurations.close(); resources.close(); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = options.mount?.origin ?? `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(activityDirectory, project, () => ({
     identity: connection && account.user ? `${connection.serverUrl}\n${account.user.userId}` : '', runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
@@ -1182,22 +1172,21 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       webApps = value;
       await kanbanController?.setWebAppBinding(value[project.entryId]);
     },
-    setHostConnection: async (value: WebConnection | undefined) => {
-      if (hostManaged && JSON.stringify(value) === JSON.stringify(hostConnection)) { return; }
-      webApps = {};
-      void kanbanController?.setWebAppBinding(undefined);
-      authEpoch++; authCheck?.abort();
-      resources.clear();
-      hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken } : value;
+    setHostConnection: async (value: WebConnection | undefined, ai?: PlatformConnections['ai']) => {
+      if (hostManaged && JSON.stringify([value, ai]) === JSON.stringify([hostConnection, hostAiConnection])) { return; }
+      const projectChanged = !hostManaged || value?.serverUrl !== hostConnection?.serverUrl || value?.accessToken !== hostConnection?.accessToken;
+      if (projectChanged) { authEpoch++; authCheck?.abort(); resources.clear(); }
+      hostConnection = value;
+      hostAiConnection = ai;
       hostManaged = true; signedOut = !value;
-      await refreshAuth(true);
+      await refreshAuth(projectChanged);
     },
     close: () => closing ??= (async () => {
       entryObservers.clear();
       projectCreation.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
-      configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } unsubscribeLogin(); if (!options.mount) browserLogin.cancel(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
+      configurations.close(); resources.close(); if (broadcastTimer) { clearTimeout(broadcastTimer); } unsubscribeLogin(); if (!options.mount) browserLogin.cancel(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
       if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));

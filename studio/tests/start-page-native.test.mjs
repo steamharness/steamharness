@@ -116,15 +116,17 @@ for (const [patchNames, files] of [
   }
   await mkdir(path.join(directory, 'patches'));
   // Replay the later DOM typing refinement too, restricted to this fixture's files.
-  const sequence = patchNames.includes('0067-studio-start-recent-projects.patch') ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch'] : patchNames;
+  const sequence = patchNames.includes('0067-studio-start-recent-projects.patch')
+    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch']
+    : [...patchNames, '0083-studio-explicit-platform-tools.patch'];
   for (const patchName of sequence) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');
-    await writeFile(path.join(directory, 'patches', patchName), relevant);
+    if (relevant) await writeFile(path.join(directory, 'patches', patchName), relevant);
   }
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
-  for (const patchName of [...sequence].reverse()) { git(['apply', '--reverse', path.join(directory, 'patches', patchName)]); }
+  for (const patchName of (await readdir(path.join(directory, 'patches'))).sort().reverse()) { git(['apply', '--reverse', path.join(directory, 'patches', patchName)]); }
   git(['add', '.']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture']);
   const index = git(['write-tree']);

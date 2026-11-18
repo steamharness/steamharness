@@ -34,7 +34,7 @@ interface State { parameterRevision?: number;
   history: { total: number; hasMore: boolean; query: string };
   running: boolean;
   runningCount?: number;
-  account: AccountState;
+  account?: AccountState;
   authenticationRevision: number;
 }
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -80,7 +80,7 @@ const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools
   skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
   tools: () => ({ parameters: parameters(), policies: draft().policies, readOnly: !connected,
     changed: policies => { draft().policies = structuredClone(policies); post({ type: 'tool-policy', policies }); } }),
-  usage: { available: () => state?.account.status === 'authenticated' && !!state.account.aiConfigured,
+  usage: { available: () => !!state?.account?.aiConfigured,
     load: requestId => post({ type: 'usage', requestId }) },
 });
 const output = new ConversationOutput(element('run-output'), {

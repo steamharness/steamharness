@@ -7,6 +7,8 @@ description: "Execute the parameter linkage callback of workflow and return the 
 
 Use `resolve-params` to debug dynamic parameters or compute state patches for CLI Web. Request JSON comes from stdin, keeping its body out of command-line arguments. For Workflow, `--entrypoint` selects an operation resolver and defaults to the default operation. Bot uses its executor resolver and rejects a nonempty `--entrypoint`.
 
+When you run this command directly, the CLI does not read SteamHarness platform credentials from the environment or sign-in cache. To test a callback that requires a platform connection, start the project with [`steamharness web`](/en/cli/web) and select the required capability with `--online`.
+
 ```bash
 printf '%s' '{"draftText":"Search the documentation","args":["--tone","balanced"],"inputMode":"form","trigger":{"kind":"input"}}' \
   | steamharness resolve-params ./my-project --entrypoint search
@@ -26,4 +28,4 @@ In Studio and CLI Web, static Bot parameters are available immediately without s
 
 Typing a normal message does not resolve parameters. Only fields declaring `resolveOnInput: true` request resolution after a 350 ms pause, and IME composition must finish first. Background resolution pauses during a run and resumes afterward if an update is pending. Configuration, identity and connection changes invalidate the cache. The refresh icon in the parameter toolbar updates options manually and retries failed loads.
 
-Every message submission resolves and validates against the latest configuration, so cached options never bypass server validation. You can submit during initial loading or after a loading failure; the server resolves dynamic defaults and validates required fields. An empty option list rejects stale selections.
+On each submission, the local project runtime resolves and validates parameters against the latest configuration. You can submit during initial loading or after a loading failure; the runtime resolves dynamic defaults and validates required fields. An empty option list rejects stale selections.

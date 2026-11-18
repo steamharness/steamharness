@@ -71,15 +71,15 @@ components:
 
 `shared/run-workspace-input` 已整体迁出到 `desktop`（现为 `desktop/packages/run-workspace-input`），不再存在于本仓库、也不再随 `dist/source` 分发给下游。`shared/kanban-project/run-workspace` 保留 Kanban 参数表单与图片附件所需的内联样式，宿主负责注入主题变量。本地执行、conversation、历史和日志界面由本地宿主维护。Server Web 只消费静态 Kanban，不提供执行界面。
 
-`shared/project-types` 是项目类型 ID、显示名翻译键、英文回退名、默认图标、默认图标底色和 executor 能力的唯一注册表。Desktop、server/web、项目模板、卡片元数据与 shared 工作区必须从该注册表派生类型选项和只读标签，并通过 Shared i18n 按当前界面语言解析显示名；宿主可以把共享图标 token 映射为自己的 Lucide 组件，但不得再维护一份独立的项目类型清单。Kanban 必须保留为项目类型且不属于 executor 子集。
+`shared/project-types` 是项目类型 ID、显示名翻译键、英文回退名、默认图标、默认图标底色和 executor 能力的唯一注册表。Studio、CLI Web、私仓 Server Web、项目模板和卡片元数据从该注册表派生类型选项和标签，并通过 Shared i18n 解析显示名。宿主可以把共享图标 token 映射为自己的 Lucide 组件，不另维护类型清单。Kanban 属于项目类型，不属于 executor 子集。
 
 shared 采用与 App 一致的 `Quiet Technical Workbench`：低色度连续 pane、hairline 分隔、紧凑密度和明确状态。禁止装饰渐变、glow、玻璃拟态、身份大卡、panel 套 panel，以及把 conversation composer 做成大圆角聊天气泡。浅色以青绿表达品牌、主要动作和 running；深色以中性灰表达这些层级，蓝色保留给 info，绿色、琥珀、红色分别表达 success、waiting 和 danger。
 
-Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI Web 使用自身主题。Shared 可复用组件消费宿主注入的语义变量。`shared/kanban-project/run-workspace/styles.module.css` 只复制当前 closure 实际命中的 CSS Modules 片段。Kanban 的共享布局规则在对应 Shared 模块中实现，宿主不要复制内部 CSS。
+CLI Web 和私仓 Server Web 各自提供主题。Shared 组件读取宿主注入的语义变量。`shared/kanban-project/run-workspace/styles.module.css` 保留 Kanban 实际使用的 CSS Modules 片段。共享布局规则仍由 Shared 模块维护，宿主不复制内部 CSS。
 
 ## Code Contract
 
-本仓的可复用 UI 由 `kanban-project` 模块维护，Server Web 的组合规范见 [Server Web 契约](../server/DESIGN-CODE-CONTRACT.md)。以下执行界面规范仅适用于本地宿主。调整 shared 设计系统能力时，在 shared owner 内补充 token、组件、API 或 formatter，并在同次变更更新调用方与契约测试。
+本仓的可复用 Kanban UI 由 `kanban-project` 模块维护。以下执行界面规范适用于本地宿主。调整共享能力时，在 Shared 中补充 token、组件、API 或 formatter，并更新调用方和契约测试。
 
 ## Code Entry Guide
 
@@ -87,7 +87,7 @@ Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI
 
 | 场景 | 必用入口 | 说明 |
 | --- | --- | --- |
-| canonical 视觉 token | `server/web/src/theme/tokens.css` 与宿主主题桥接 | Kanban 使用宿主语义变量。必须优先使用 `--hit-target-min`、`--hit-target-compact`、`--hit-target-comfortable`、`--control-visual-xs`、`--control-visual-sm`、`--control-visual-md`、`--control-visual-lg`、`--control-height-sm`、`--control-height-md`、`--control-height-lg`、`--field-height-compact`、`--field-height-default`、`--field-height-comfortable`、`--interactive-chip-height-compact`、`--interactive-chip-height-default`、`--status-badge-height`、`--list-row-height-compact`、`--list-row-height-default`、`--control-radius`、`--panel-radius`、`--radius-control`、`--radius-panel`、`--icon-size-xs`、`--icon-size-sm`、`--icon-size-md`、`--icon-size-lg`、`--control-gap`、`--focus-ring`。 |
+| canonical 视觉 token | 宿主提供的主题桥接 | Kanban 使用宿主语义变量。必须优先使用 `--hit-target-min`、`--hit-target-compact`、`--hit-target-comfortable`、`--control-visual-xs`、`--control-visual-sm`、`--control-visual-md`、`--control-visual-lg`、`--control-height-sm`、`--control-height-md`、`--control-height-lg`、`--field-height-compact`、`--field-height-default`、`--field-height-comfortable`、`--interactive-chip-height-compact`、`--interactive-chip-height-default`、`--status-badge-height`、`--list-row-height-compact`、`--list-row-height-default`、`--control-radius`、`--panel-radius`、`--radius-control`、`--radius-panel`、`--icon-size-xs`、`--icon-size-sm`、`--icon-size-md`、`--icon-size-lg`、`--control-gap`、`--focus-ring`。 |
 | 状态语义 token | `desktop/run-workspace-input/theme.css` | 状态色统一从 `--state-success`、`--state-warning`、`--state-danger`、`--state-running`、`--state-waiting` 及其 `-soft` / `-fg` token 派生；组件可继续消费 bridge token `--color-success`、`--color-warning`、`--color-danger`、`--color-running`、`--color-waiting`。 |
 | CSS Modules class 解析 | `rwiClass` / `resolveRwiClassName` / `rwiTokenClassName` in `desktop/run-workspace-input/styles.ts`；`shared/kanban-project/run-workspace/styles.ts` 暴露 Kanban 内联子集所需的 helper | shared 内部写语义 token，再由 helper 解析成 CSS Modules hash；测试和宿主不得依赖编译后的 hash。 |
 | workflow shell class | `projectRunShellClassName(slot)` / `useProjectRunSidebarLayout` | 本地宿主需要 workflow shell、main、header、diagnostic panel、history restore 等 slot 时调用 shared API；缺 slot 时扩展 `RunShellClassSlot`，不要手拼 `workflow-run-*` 或导入 token 清单。 |

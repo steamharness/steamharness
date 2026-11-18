@@ -7,6 +7,8 @@ description: "执行 workflow 的参数联动回调并返回状态补丁。"
 
 用 `resolve-params` 调试参数联动，或为 CLI Web 计算参数状态补丁。请求 JSON 从 stdin 读取，正文不会出现在命令行参数中。Workflow 用 `--entrypoint` 选择操作的 resolver，省略时选默认操作；Bot 使用执行器 resolver，并拒绝非空 `--entrypoint`。
 
+独立运行此命令时，CLI 不读取环境变量或登录缓存中的 SteamHarness 平台凭证。需要测试依赖平台连接的回调时，用 [`steamharness web`](/cli/web) 启动项目，并显式选择所需的 `--online` 能力。
+
 ```bash
 printf '%s' '{"draftText":"查询文档","args":["--tone","balanced"],"inputMode":"form","trigger":{"kind":"input"}}' \
   | steamharness resolve-params ./my-project --entrypoint search
@@ -26,4 +28,4 @@ Studio 与 CLI Web 中，Bot 的静态参数立即可用，不启动参数解析
 
 普通消息输入不触发参数解析。仅当参数声明 `resolveOnInput: true` 时，主输入停顿 350 毫秒后才重新解析；输入法组合输入结束前不触发。运行期间暂停后台参数解析，确有待更新内容时在运行结束后更新。配置、登录身份或连接变化会使缓存失效；参数工具栏的刷新图标可手动更新选项，加载失败也可重试。
 
-发送消息时始终使用最新配置重新解析并校验，缓存不会跳过服务端校验。初次加载尚未完成或加载失败时仍可发送，由服务端解析动态默认值并校验必填项；选项列表为空时不能沿用旧选择。
+发送消息时，本机项目运行端始终用最新配置重新解析并校验参数，不会跳过校验。初次加载尚未完成或加载失败时仍可发送；运行端会解析动态默认值并校验必填项。选项列表为空时不能沿用旧选择。

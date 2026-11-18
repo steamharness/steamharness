@@ -16,6 +16,7 @@ async function fixture(language: 'en' | 'zh-CN') {
   history.replaceState(null, '', '/'); sessionStorage.clear();
   document.body.innerHTML = '<div id="app"></div>';
   document.body.dataset.accountHost = 'true';
+  document.body.dataset.platform = 'true';
   const add = window.addEventListener.bind(window), remove = window.removeEventListener.bind(window);
   vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
     add(type, listener, options); cleanup.push(() => remove(type, listener, options));

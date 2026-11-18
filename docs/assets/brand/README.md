@@ -13,10 +13,9 @@ Design intent for v5:
 - Use teal as the main consumer-facing brand color without a separate triangle marker.
 - Keep the mark simple enough for favicon, dock, docs, and tray contexts.
 
-Platform copies are derived from these files across the local sibling repositories:
+Consumer assets are derived from these files:
 
-- Electron Desktop: `../desktop/build/` and `../desktop/src/renderer/public/brand/`.
-- Server Web: `../server/web/public/brand/`.
-- Docs (this repository): `images/brand/`, including a wider wordmark logo for the Mintlify header.
+- Docs: [`docs/images/brand/`](../../images/brand/).
+- Server Web assets are maintained with the private Server implementation.
 
 When changing the icon, update this folder first and coordinate the derived asset updates in each affected repository.

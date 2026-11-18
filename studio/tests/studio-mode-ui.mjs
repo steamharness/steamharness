@@ -9,9 +9,11 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribution.mjs';
+import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
 
 await assertRuntime();
 const upstream = await assertUpstream();
+const platform = process.env.STEAMHARNESS_STUDIO_INTERNAL === '1';
 const sourceRoot = path.resolve(process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.join(ROOT, '..'));
 const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
 await mkdir(proof, { recursive: true });
@@ -42,12 +44,12 @@ async function until(read, accept, message, timeout = 60_000) {
 
 for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'studio-mode-ui-')));
-  const folder = path.join(directory, 'workspace'), extension = path.join(directory, 'extensions/mode-test');
+  const folder = path.join(directory, 'workspace'), extension = path.join(directory, 'extensions/mode-test'), home = path.join(directory, 'home');
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
   let child, browser, page, log = '';
   const consoleMessages = [];
   try {
-    await mkdir(folder); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
+    await mkdir(folder); await mkdir(home); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
     await writeFile(path.join(folder, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false,
       'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'files.autoSave': 'off', 'git.enabled': false }));
     await writeProjectFixture(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
@@ -77,6 +79,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
       '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--force-disable-user-env',
       '--telemetry-level', 'off', '--default-folder', folder], { cwd: upstream.directory, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
+      HOME: home, USERPROFILE: home, STEAMHARNESS_DESKTOP_CONFIG_DIR: path.join(directory, 'desktop'),
       NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: sourceRoot,
       STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '',
       STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
@@ -90,25 +93,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
     await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
-    await context.addInitScript(() => {
-      if (location.pathname.endsWith('/webview/browser/pre/index.html')) {
-        const url = new URL(location.href);
-        url.searchParams.set('disableServiceWorker', 'true');
-        history.replaceState(null, '', url);
-      }
-    });
-    await context.route(/https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\/(?:index\.html|fake\.html|service-worker\.js)(?:\?|$)/, async route => {
-      const filename = path.posix.basename(new URL(route.request().url()).pathname);
-      await route.fulfill({ path: path.join(upstream.directory, 'out/vs/workbench/contrib/webview/browser/pre', filename), contentType: filename.endsWith('.js') ? 'application/javascript' : 'text/html' });
-    });
-    // Serve the real extension assets alongside the local source webview bootstrap.
-    // The isolated browser must not depend on the remote CDN's resource worker.
-    await context.route(/https:\/\/[^/]+\.vscode-resource\.vscode-cdn\.net\/.*\/extensions\/studio-workstation\/dist\//, async route => {
-      const relative = decodeURIComponent(new URL(route.request().url()).pathname.split('/extensions/studio-workstation/dist/')[1]);
-      const assets = path.join(ROOT, 'extensions/studio-workstation/dist'), filename = path.resolve(assets, relative);
-      assert.ok(filename.startsWith(assets + path.sep));
-      await route.fulfill({ path: filename, headers: { 'Access-Control-Allow-Origin': '*' } });
-    });
+    await serveLocalWebviewAssets(context, upstream);
     await context.route(/https:\/\/[^/]+\.vscode-resource\.vscode-cdn\.net\/.*\/extensions\/simple-browser\/media\//, async route => {
       const relative = decodeURIComponent(new URL(route.request().url()).pathname.split('/extensions/simple-browser/media/')[1]);
       const assets = path.join(upstream.directory, 'extensions/simple-browser/media'), filename = path.resolve(assets, relative);
@@ -218,7 +203,11 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await symlink(path.join(sourceRoot, 'harness'), path.join(project, 'node_modules/steamharness'), 'dir');
     await symlink(path.join(sourceRoot, 'cli'), path.join(project, 'node_modules/@steamharness/cli'), 'dir');
     await copyFile(path.join(ROOT, 'examples/bot/index.ts'), path.join(project, 'index.ts'));
-    const manifest = JSON.parse(await readFile(path.join(ROOT, 'examples/bot/package.json'), 'utf8'));
+    const manifest = {
+      ...JSON.parse(await readFile(path.join(ROOT, 'examples/bot/package.json'), 'utf8')),
+      ...JSON.parse(await readFile(path.join(ROOT, 'examples/bot/steamharness.json'), 'utf8')),
+    };
+    manifest.entries[0].configuration = 'configuration.json';
     manifest.devDependencies = {
       steamharness: JSON.parse(await readFile(path.join(sourceRoot, 'harness/package.json'), 'utf8')).version,
       '@steamharness/cli': JSON.parse(await readFile(path.join(sourceRoot, 'cli/package.json'), 'utf8')).version,
@@ -278,11 +267,14 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     // Hold the real result iframe so startup and cancellation cannot pass on an already loaded page.
     let releaseFrame, frameHeld = false;
     const frameGate = new Promise(resolve => { releaseFrame = resolve; });
-    const frameRoute = url => url.searchParams.has('projectLocale');
-    const projectNames = new Set([manifest.name, ...Object.values(manifest.projectInfo.localizedNames)]);
+    const frameRoute = url => url.hostname === '127.0.0.1' && url.pathname === '/entries/main/' && url.searchParams.has('projectLocale');
     await context.route(frameRoute, async route => {
-      const title = await route.request().frame().parentFrame()?.locator('#workflow-frame').getAttribute('title').catch(() => undefined);
-      if (!frameHeld && projectNames.has(title)) { frameHeld = true; await frameGate; }
+      // A transient local host can exit when its webview is replaced.
+      const html = frameHeld ? '' : await fetch(route.request().url(), { signal: AbortSignal.timeout(5_000) })
+        .then(response => response.text()).catch(() => '');
+      if (!frameHeld && html.includes(`content="projects/${manifest.id}/entries/main"`)) {
+        frameHeld = true; await frameGate;
+      }
       await route.continue();
     });
     try {
@@ -321,7 +313,10 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     });
     await steam.click(); await page.locator('.studio-steam-tools').waitFor({ state: 'attached', timeout: 90_000 });
     await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
-    assert.equal(await page.locator('.studio-steam-tool').count(), 10);
+    assert.equal(await page.locator('.studio-steam-tool').count(), platform ? 10 : 8);
+    for (const tool of ['login', 'versions']) {
+      assert.equal(await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).count(), Number(platform), tool);
+    }
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, false);
@@ -902,7 +897,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.equal(frame.isDetached(), false);
     }
     check(`${language}: split, new group, layout, move, copy and join commands preserve the runtime surface`);
-    const toolSelectors = { info: '#info-app', assistant: '#app', versions: '#versions-app', trace: '#trace-app' };
+    const toolSelectors = { info: '#info-app', assistant: '#app', ...(platform ? { versions: '#versions-app' } : {}), trace: '#trace-app' };
     const visibleToolFrame = selector => until(async () => {
       for (const candidate of page.frames()) {
         if (candidate === frame || !await candidate.locator(selector).count().catch(() => 0)) { continue; }
@@ -945,7 +940,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await page.setViewportSize({ width: 1440, height: 960 });
       check(`${language}: ${instance} Assistant keeps the input and Send visible across eight window sizes with empty and multiline drafts`);
     };
-    for (const tool of ['info', 'assistant', 'versions', 'trace', 'terminal']) {
+    await command('studio.openSteamTools');
+    assert.equal(await page.locator('.studio-steam-tool[data-tool="versions"]').count(), Number(platform));
+    for (const tool of [...Object.keys(toolSelectors), 'terminal']) {
       await command('studio.openSteamTools'); await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).click();
       if (tool === 'terminal') {
         const terminal = page.locator('.studio-steam-editors[data-tool=terminal]:visible .terminal-editor').first();
@@ -959,26 +956,27 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       if (tool === 'assistant') { await assertAssistantFits(toolFrame, 'default'); }
       assert.equal((await partState()).panel.visible, false);
     }
-    check(`${language}: all five tools including the native terminal open in the right sidebar`);
+    check(`${language}: the ${platform ? 'enhanced' : 'public'} tools including the native terminal open in the right sidebar`);
 
     const tabList = page.locator('.studio-steam-tab-list');
     const toolTabs = tabList.locator('.studio-steam-tab:not([data-tab^="editor:"])');
-    assert.equal(await toolTabs.count(), 6);
+    const expectedToolTabs = platform ? 6 : 5;
+    assert.equal(await toolTabs.count(), expectedToolTabs);
     await page.locator('.studio-steam-tab[data-tab=trace] .studio-steam-tab-select').click();
     await page.locator('.studio-steam-tab[data-tab=info] .studio-steam-tab-close').click();
-    assert.equal(await toolTabs.count(), 5);
+    assert.equal(await toolTabs.count(), expectedToolTabs - 1);
     await page.locator('.studio-steam-add-tab').click();
     // Native menus suppress mouse-up for their first 100ms to avoid accidental selections.
     await page.waitForTimeout(150);
     await page.locator('.context-view').getByText(language === 'en' ? 'Project Information' : '项目信息', { exact: true }).click();
-    await until(() => toolTabs.count(), value => value === 6, 'Add menu did not restore the closed tool tab');
+    await until(() => toolTabs.count(), value => value === expectedToolTabs, 'Add menu did not restore the closed tool tab');
     await command('studio.internalOpenSteamTool', 'trace');
-    assert.equal(await toolTabs.count(), 6);
+    assert.equal(await toolTabs.count(), expectedToolTabs);
     check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
 
     const instanceList = page.locator('.studio-steam-editors:visible .tabs-container');
     const newInstanceButton = page.locator('.studio-steam-editors:visible .editor-group-container.active .editor-actions .codicon-add');
-    for (const tool of ['info', 'assistant', 'versions', 'trace']) {
+    for (const tool of Object.keys(toolSelectors)) {
       await command('studio.internalOpenSteamTool', tool);
       const original = await visibleToolFrame(toolSelectors[tool]);
       await newInstanceButton.click();
@@ -1001,7 +999,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok((await call({ action: 'state' })).groups.find(group => group.column === 1).tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project')));
     }
     await command('studio.internalOpenSteamTool', 'info');
-    check(`${language}: information, assistant, versions and trace each create independent child tabs with working selection and close`);
+    check(`${language}: each available tool view creates independent child tabs with working selection and close`);
 
     const savedTabLabels = await tabList.locator('[role=tab]').allTextContents();
     const assertToolsToggle = async () => {
@@ -1074,14 +1072,6 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       }), Boolean, 'The tool editor must fill the visible right workspace below its tabs');
       return state;
     };
-    await command('studio.openAccount');
-    const accountTab = tabList.getByRole('tab', { name: language === 'en' ? 'Sign In' : '登录', exact: true });
-    await accountTab.waitFor(); await assertProjectKept();
-    const accountFrame = await until(async () => {
-      for (const candidate of page.frames()) { if (await candidate.locator('#login-email').isVisible().catch(() => false)) { return candidate; } }
-    }, Boolean, 'Account content did not open in the tool workspace', 15_000);
-    await accountFrame.locator('#login-email').click({ trial: true });
-    await page.screenshot({ path: path.join(proof, `${language}-workspace-account.png`) });
     const toolsFile = path.join(project, 'tools-only.txt'); await writeFile(toolsFile, 'Opened explicitly in the first editor column.');
     await call({ action: 'file', path: toolsFile, column: 1 });
     const fileState = await assertProjectKept();
@@ -1185,7 +1175,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await page.locator('.studio-steam-tab.active').getAttribute('data-tab'), activeProbeTab);
     await probe.locator('#workspace-probe').click({ trial: true });
     await page.screenshot({ path: path.join(proof, `${language}-workspace-tabs.png`) });
-    check(`${language}: account status, explicit first-column files, settings, diffs and generic webviews open on the right while the live project and its result stay intact`);
+    check(`${language}: explicit first-column files, settings, diffs and generic webviews open on the right while the live project and its result stay intact`);
     await call({ action: 'webview', viewType: 'studio.project', title: 'Secondary Project Probe' });
     const secondary = tabList.locator('.studio-steam-tab').filter({ has: page.getByRole('tab', { name: 'Secondary Project Probe', exact: true }) });
     await secondary.waitFor(); await assertProjectKept();
@@ -1433,6 +1423,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await symlink(path.join(sourceRoot, 'harness'), path.join(otherProject, 'node_modules/steamharness'), 'dir');
     await symlink(path.join(sourceRoot, 'cli'), path.join(otherProject, 'node_modules/@steamharness/cli'), 'dir');
     await copyFile(path.join(project, 'index.ts'), path.join(otherProject, 'index.ts'));
+    await copyFile(path.join(project, 'configuration.json'), path.join(otherProject, 'configuration.json'));
     const otherManifest = structuredClone(manifest); otherManifest.id = '71d1bc8c-7701-4a75-9ab0-1e301c353239'; otherManifest.name = 'external-tool-project';
     otherManifest.projectInfo.localizedNames = { en: 'External Tool Project', 'zh-cn': '工具区外部项目' };
     await writeProjectFixture(path.join(otherProject, 'package.json'), JSON.stringify(otherManifest));

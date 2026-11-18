@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribution.mjs';
+import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
 
 await assertRuntime();
 const upstream = await assertUpstream();
@@ -87,12 +88,7 @@ for (const language of ['en', 'zh-cn']) {
       globalThis._VSCODE_NLS_LANGUAGE = language;
       if (messages) { globalThis._VSCODE_NLS_MESSAGES = messages; }
     }, { language, messages: sourceMessages });
-    // Keep the Webview origin validation while serving its bootstrap from this checkout.
-    await context.route(/https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\/(?:index\.html|fake\.html|service-worker\.js)(?:\?|$)/, async route => {
-      const filename = path.posix.basename(new URL(route.request().url()).pathname);
-      await route.fulfill({ path: path.join(upstream.directory, 'out/vs/workbench/contrib/webview/browser/pre', filename),
-        contentType: filename.endsWith('.js') ? 'application/javascript' : 'text/html' });
-    });
+    await serveLocalWebviewAssets(context, upstream);
     page = await context.newPage(); page.on('pageerror', error => errors.push(`${language}: ${error.message}`));
     await page.goto(`http://127.0.0.1:${port}/?tkn=${token}`, { waitUntil: 'domcontentloaded' });
     let bridge = await until(async () => await exists(readyFile) ? JSON.parse(await readFile(readyFile, 'utf8')) : {}, value => value.port || value.error, 'Studio extension startup timed out', 120_000);
@@ -554,15 +550,11 @@ for (const language of ['en', 'zh-cn']) {
     check(`${language}: source and real built-in Analysis`);
     await command('studio.openStart'); await start().locator('[data-action="studio.openAssistant"]').click();
     await page.locator('.webview').first().waitFor({ state: 'attached' });
-    await start().locator('[data-action="studio.openAccount"]').click();
-    await until(async () => {
-      for (const frame of page.frames()) { if (await frame.locator('#login-form').isVisible().catch(() => false)) { return true; } }
-      return await page.locator('.tab').filter({ hasText: initial.start.labels.account }).count() > 0;
-    }, Boolean, 'Account entry did not open');
+    assert.equal(await start().locator('[data-action="studio.openAccount"]:visible').count(), initial.start.platform ? 1 : 0);
     await command('studio.openStart'); await start().locator('[data-action="studio.openSettings"]').click();
     await until(() => findFrame('#settings-navigation'), Boolean, 'Studio settings did not open');
     await command('studio.openStart');
-    check(`${language}: assistant, account and settings`);
+    check(`${language}: assistant, settings and edition-specific account entry`);
     const dirtyUntitled = await call({ action: 'untitled', text: 'unsaved stays here' }); await command('studio.openStart');
     // Web hot-exit backups are debounced and cannot finish during unload.
     await pause(2_000);

@@ -1,6 +1,6 @@
 # SteamHarness monorepo 规则
 
-本仓库合并了原先 GitLab 上的 9 个开源仓库。以下规则对全仓生效，目录级 `AGENTS.md`（`harness/`、`cli/`、`server/`、`shared/`、`studio/`、`docs/`）补充各自细则，冲突时以目录级为准。
+以下规则对全仓生效，目录级 `AGENTS.md`（`harness/`、`cli/`、`shared/`、`studio/`、`docs/`）补充各自细则，冲突时以目录级为准。
 
 ## 命名
 
@@ -12,7 +12,7 @@
 同一份载荷在仓库内有多个副本，任何一份漂移都会让某个消费方更弱：
 
 - **skill 载荷**：真相源是 `build-in/build-in-developer-assistant/skills/steamharness-generator/`，开发副本是 `harness/.agents/skills/steamharness-generator/`。改动共享载荷（`SKILL.md`、`references/**`、`scripts/**`、`assets/**`）后必须运行 `node scripts/check-skill-copies.mjs --fix` 并把两份一起提交；`AGENTS.md`、`agents/openai.yaml`、`references/project-repair.md` 是目录特有文件，不参与同步。
-- **发布工具**：`shared/release-tools/` 在 `harness|cli|server/vendor/shared/release-tools/` 与两个内置项目的 `scripts/` 中有逐字节副本。改动后运行 `node scripts/check-vendor-copies.mjs --fix` 并一起提交。`builtin-release.mjs` 在 developer-assistant 里有意保留打包过滤，不参与守卫。
+- **发布工具**：`shared/release-tools/` 在 `harness|cli/vendor/shared/release-tools/` 与两个内置项目的 `scripts/` 中有逐字节副本。改动后运行 `node scripts/check-vendor-copies.mjs --fix` 并一起提交。`builtin-release.mjs` 在 developer-assistant 里有意保留打包过滤，不参与守卫。
 
 改动 `.gitmodules`、上述两个守卫脚本或根 workspace 配置后，必须在本地依次运行：
 
@@ -26,7 +26,8 @@ node --test scripts/__tests__/*.test.mjs
 
 ## 工作区边界
 
-- `harness`、`cli`、`server`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）独立安装，不进 workspace；`docs` 只保存 Markdown/MDX、导航与 OpenAPI 源，不含站点工具链。Core 测试集中在 `harness/src/__tests__`，文件系统集成测试按需生成并清理最小临时夹具，不维护嵌套示例 workspace。
+- `harness`、`cli`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）独立安装，不进 workspace；`docs` 保存开发文档和导航，不含站点工具链。Core 测试集中在 `harness/src/__tests__`，文件系统集成测试按需生成并清理最小临时夹具，不维护嵌套示例 workspace。
+- Server 与 Server Web 只在私有仓库维护。开源 Studio 不提供平台登录或发布入口；Core 和独立 CLI 的平台客户端需要显式连接。
 - 内部专有内容不得进入本仓库。跨仓开发通过私有仓库的 `open-sources/` 子模块完成。
 
 ## 发布
@@ -39,8 +40,7 @@ node --test scripts/__tests__/*.test.mjs
 ## 测试
 
 - 日常测试不得在用户正在使用的本机桌面前台启动 Electron、带窗口的浏览器、原生菜单或系统剪贴板测试；需要真实窗口时转入完整测试环境。详见 `studio/AGENTS.md`。
-- 改动 `harness`、`cli`、`server` 或 `shared/*` 后运行对应包的 `typecheck` 与 `test`；改动 `docs` 运行 `node docs/scripts/validate-docs.mjs` 与 `node --test docs/scripts/__tests__/*.test.mjs`；改动内置项目运行其 `test`。
-- `server` 的测试依赖 PostgreSQL 测试容器，先确认 Docker 可用。
+- 改动 `harness`、`cli` 或 `shared/*` 后运行对应包的 `typecheck` 与 `test`；改动 `docs` 运行 `node docs/scripts/validate-docs.mjs` 与 `node --test docs/scripts/__tests__/*.test.mjs`；改动内置项目运行其 `test`。
 
 ## 秘密
 

@@ -62,7 +62,7 @@ npm run dev:web
 npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 ```
 
-两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 入口目前用于本地开发；桌面工作站已接入 SteamHarness Server 账号，公网部署和安装包发布尚未配置。
+两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 工作台和嵌入的 CLI Web 可在本机使用，不需要连接 SteamHarness 平台。
 
 Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)（GPLv3）。在资源管理器或项目文件卡片中点击 `.sqlite`、`.sqlite3`、`.db` 文件，即可在编辑器中查看数据表、表结构和执行 SQL，无需另装 SQLite。Web 版查看的是服务器上的数据库文件。扩展版本及安装包校验值固定在 `config/default-extensions.json` 中，开发启动与发行打包共用该文件；原始许可证随扩展保留。
 
@@ -84,9 +84,9 @@ Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)�
 
 桌面版已接入 Workflow 的最小工作站流程：通过 **File > Open Folder** 打开项目文件夹，识别完成后，窗口顶部会显示带播放图标的 **运行项目** 按钮。点击按钮才在编辑器标签页中打开对应界面，不会执行 `package.json` 中的脚本。
 
-运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/steamharness-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可选择在新窗口或当前窗口打开，再在项目终端安装依赖。
+开源 Studio 不提供平台登录、上传或远端版本管理。要生成本地分发包，可在项目终端运行 `steamharness workspace pack`。
 
-打开 `examples/bot` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
+打开 `examples/bot` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；需要模型时，可在本地模型设置中配置自己的模型和凭据。
 
 标题栏左侧可切换 **IDE / Steam** 模式，并为 macOS 原生窗口按钮预留随缩放调整的空间。IDE 保留编辑器布局；Steam 隐藏活动栏、文件侧栏和底部面板，左侧显示项目运行页面，右侧通过“打开工具”使用项目信息、小助手、版本管理和运行追踪。返回 IDE 会恢复原有布局和编辑器，运行页面及未保存文件会保留。模式按工作区记忆，工具位置只在当前窗口临时调整；普通文件夹不能进入 Steam 模式。过渡动画遵循系统的“减少动态效果”设置。
 
@@ -116,15 +116,13 @@ Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方
 
 工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@steamharness/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_STEAMHARNESS_SOURCE` 指定源码根目录。详细范围见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
-## 语言与账号入口
+## 语言与设置
 
 简体中文使用官方扩展 `MS-CEINTL.vscode-language-pack-zh-hans`，在扩展市场中搜索并安装即可。桌面和 Web 的扩展目录相互独立，需要分别安装。显示语言沿用上游机制；源码开发模式的核心界面仍使用英文，正式构建按上游语言包流程加载翻译。Studio 自有扩展支持中英文；首版 Workflow 项目界面使用中文文案。
 
-设置按钮、设置菜单和 `⌘,` / `Ctrl+,` 打开同一个 **设置** 编辑器标签页，左侧分类提供账号、通用、编辑器与关于；内部扩展可注入额外分类。`studio.openSettings` 默认进入通用，接受 `section`、`query` 和 `target` 参数；`studio.openAccount` 直接进入账号。Steam 模式将设置放入独立工具分类，模式往返保留运行项目、工具与设置内容。重载窗口恢复分类、搜索、配置目标和滚动位置，恢复数据不包含凭据。
+设置按钮、设置菜单和 `⌘,` / `Ctrl+,` 打开同一个 **设置** 编辑器标签页。`studio.openSettings` 默认进入通用，接受 `section`、`query` 和 `target` 参数。Steam 模式将设置放入独立工具分类，切换模式时保留运行项目、工具与设置内容。重载窗口会恢复分类、搜索、配置目标和滚动位置。
 
 通用设置保存到用户配置，包括主题、跟随系统、显示语言、开始页、最近项目数量及运行环境。编辑器设置支持用户与工作区目标，提示工作区覆盖，支持搜索、逐项恢复默认，并保留设置 JSON 和快捷键编辑器入口。显示语言使用现有语言包选择和重启流程；目录和远程高级配置继续使用对应的 JSON 设置文件。
-
-左下角设置按钮上方的账号入口进入设置的账号分类，提供 SteamHarness 登录、资料管理和退出操作，展示头像、昵称、邮箱、用户 ID、服务器连接方式及会话有效期，可复制账号字段、刷新信息，并打开控制台编辑资料或管理登录会话。默认连接本机 dev 服务 `http://localhost:7126`，可通过 `studio.project.serverUrl` 更改。登录凭据保存在 VS Code SecretStorage 中，已打开的 Conversation 会随登录和退出自动刷新参数；Core 和内置 CLI 使用同一份工作站凭据。详见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
 Studio 启动时排除上游内置的 GitHub Copilot，并通过 `chat.disableAIFeatures` 默认隐藏 AI 入口。桌面和 Web 首次启动自动安装 [File & Folder Icons](https://marketplace.visualstudio.com/items?itemName=nextbook.file-and-folder-icons)，默认图标主题为 `file-icons`；已安装的扩展和用户自行选择的主题会保留。该扩展未发布到 Open VSX，安装包从原 Marketplace 下载，版本与 SHA-256 固定在 `config/default-extensions.json`，缓存位于 `.studio/`。
 
@@ -142,7 +140,7 @@ npm run test:desktop     # 在真实 Electron 中验证扩展激活、文件及�
 npm run test:resources-ui # 项目识别、底部资源面板、数据编辑及主题布局回归
 npm run test:conversation-ui # Conversation 界面与交互回归
 npm run test:conversation-clipboard-ui # 系统剪贴板粘贴、图片上传、预览及历史恢复回归
-npm run test:conversation-server-ui # 需要真实 dev 服务及模型的登录与对话回归
+npm run test:offline-ui  # 构建 Studio 与本地 Core/CLI 后，无头验证三类项目运行时不连接平台
 ```
 
 `watch:extension` 构建完成后，在运行的工作站中执行 `Developer: Reload Window`。F5 配置用于在当前编辑器中调试扩展。改品牌后执行 `npm run prepare:studio`；如修改桌面名称，在 Studio 根目录运行 `npm run electron` 重新生成对应 Electron 应用。

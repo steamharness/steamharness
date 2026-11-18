@@ -38,7 +38,7 @@
     "test:assistant-permissions-ui": "node tests/assistant-permissions-ui.mjs",
     "test:conversation-ui": "node tests/conversation-ui.mjs",
     "test:conversation-clipboard-ui": "node tests/conversation-clipboard-desktop-ui.mjs",
-    "test:conversation-server-ui": "node tests/conversation-server-ui.mjs",
+    "test:offline-ui": "node tests/offline-workbench-ui.mjs",
     "test:workflow-ui": "node tests/workflow-ui.mjs",
     "test:workflow-desktop-ui": "node tests/workflow-desktop-ui.mjs",
     "test:kanban-ui": "node tests/kanban-ui.mjs",

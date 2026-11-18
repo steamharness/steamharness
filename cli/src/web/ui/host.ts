@@ -167,7 +167,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       applicationId = message.project.id;
     }
     projectCreation.update(message);
-    if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
+    if (message.type === 'state' && message.account) { accountPanel?.update(message.account); }
     emit(message);
   }, options.live, options.connectionBanner, () => recovery.recover(), returnTicket);
   const request = async (message: Message) => {
@@ -341,8 +341,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     picker.addEventListener('cancel', () => emit({ type: 'attachment-cancelled', sessionId: message.sessionId }));
     picker.click();
   };
-  let accountPanel: AccountPanel;
+  let accountPanel: AccountPanel | undefined;
   queueMicrotask(() => {
+    if (document.body.dataset.platform !== 'true') return;
     const openHostAccount = document.body.dataset.accountHost === 'true'
       ? () => window.parent.postMessage({ type: 'workflow-account', version: 1 }, '*') : undefined;
     // Pages without a sidebar (Kanban) keep account access in the shared toolbar.
@@ -457,7 +458,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
         const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);
         window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }) }, '*'); return;
       }
-      if (message.type === 'login') { accountPanel.open(); return; }
+      if (message.type === 'login') { accountPanel?.open(); return; }
       void request(message).catch(error => emit({ type: 'error', errorSource: 'request', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, projectUri: message.projectUri, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
     fileUrl: id => connection.fileUrl(`/api/file/${encodeURIComponent(id)}`),

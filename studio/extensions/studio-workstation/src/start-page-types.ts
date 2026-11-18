@@ -18,6 +18,7 @@ export interface ProjectCreationInput {
 }
 export type ProjectCreationDialogResult = ProjectCreationInput | { shareUrl: string };
 export interface ProjectCreationDialog {
+  platform?: boolean;
   templates: StartTemplate[];
   labels: Record<string, string>;
   parentDirectory: string;
@@ -41,6 +42,7 @@ export interface PendingProjectSetup extends CreatedProject {
 export interface ProjectRegistrationTarget { serverUrl: string; userId?: string }
 export interface StudioStartState {
   version: 1;
+  platform?: boolean;
   labels: Record<string, string>;
   /** Present only in the internal launcher; the public Studio leaves it empty. */
   badge?: string;

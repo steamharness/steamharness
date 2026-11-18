@@ -23,7 +23,7 @@ async function readManifest(filePath) {
 /** Every workspace package that declares `private: true`, by name. */
 async function privateWorkspacePackages() {
   const privatePackages = new Set();
-  const roots = ["shared", "harness", "cli", "server", "server/web"];
+  const roots = ["shared", "harness", "cli"];
   for (const root of roots) {
     const manifestPath = path.join(workspaceRoot, root, "package.json");
     try {

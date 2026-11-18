@@ -230,7 +230,7 @@ window.addEventListener('message', event => {
     project = message.project; element('kanban-title').textContent = project!.name;
     updateProjectAvatar(element('project-info'), project!);
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.close(); }
-    usageAvailable = message.account.status === 'authenticated' && !!message.account.aiConfigured; update(message.kanban);
+    usageAvailable = !!message.account?.aiConfigured; update(message.kanban);
   }
   if (message.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   if (message.type === 'error' && message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }

@@ -37,15 +37,13 @@ it('processes logout and close while an earlier host authentication is pending',
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
-    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host?.userSettings).toEqual({ agent: { permissionPolicy: 'auto' } });
-    expect(vi.mocked(startWebServer).mock.calls[0][0].host?.connection).toEqual({ ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: systemAiConnection.accessToken });
+    expect(vi.mocked(startWebServer).mock.calls[0][0].host).toMatchObject({ connection, systemAiConnection });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-    expect(setHostConnection).toHaveBeenNthCalledWith(1, { ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: 'rotated-ai-token' });
-    expect(setHostConnection).toHaveBeenNthCalledWith(2, undefined);
-    expect(setHostWebApps).toHaveBeenCalledTimes(2);
-    expect(setHostWebApps.mock.invocationCallOrder[0]).toBeLessThan(setHostConnection.mock.invocationCallOrder[0]);
-    expect(setHostWebApps.mock.invocationCallOrder[1]).toBeLessThan(setHostConnection.mock.invocationCallOrder[1]);
+    expect(setHostConnection).toHaveBeenNthCalledWith(1, connection, { ...systemAiConnection, accessToken: 'rotated-ai-token' });
+    expect(setHostConnection).toHaveBeenNthCalledWith(2, undefined, undefined);
+    expect(setHostWebApps).not.toHaveBeenCalled();
     expect(setHostResourceProjects).toHaveBeenNthCalledWith(1, resourceProjects);
     expect(setHostResourceProjects).toHaveBeenNthCalledWith(2, []);
     expect(setHostUserSettings).toHaveBeenCalledWith({ agent: { permissionPolicy: 'read-only' } });

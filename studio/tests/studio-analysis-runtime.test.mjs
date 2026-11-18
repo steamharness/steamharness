@@ -99,7 +99,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   const reader = await import(pathToFileURL(path.join(cli, 'web/local-analysis.mjs')).href);
   const heldAccount = reader.holdNextRead(), accountQuery = fetch(`${origin}/analysis`).then(response => response.json());
   await heldAccount.ready; userId = 'another-analysis-user'; heldAccount.release();
-  assert.equal((await accountQuery).value.userId, userId, 'A pending read must not publish the previous account history.');
+  assert.equal((await accountQuery).value.userId, undefined, 'Local history must not use a platform account namespace.');
   const heldWorkspace = reader.holdNextRead(), workspaceQuery = fetch(`${origin}/analysis`).then(response => response.json());
   await heldWorkspace.ready;
   runtime.updateAnalysisProjects([]); imports = [];

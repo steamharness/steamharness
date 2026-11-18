@@ -9,6 +9,7 @@ import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import { projectEntryKey } from "@steamharness/project-manifest";
 import { withProjectConfiguration } from "../configuration";
+import { withPlatformConnections } from "../platform-connections";
 import { configurationFixtureStore, declareConfigurationFixture, writeConfigurationFixtureManifest } from "./configuration-fixture";
 import { DurableAgent } from "../agent/durable-agent";
 import type { AgentSessionSnapshot } from "../agent/session-types";
@@ -46,12 +47,8 @@ for (const boundary of ["request", "tool"] as const) for (const denied of [false
   const id = randomUUID(), token = randomUUID(), origin = "https://configuration-retry.test";
   const subject = JSON.stringify([origin, "alice"]);
   const originalFetch = globalThis.fetch;
-  const env = { STEAMHARNESS_SERVER_URL: origin, STEAMHARNESS_SERVER_ADMIN_KEY: token };
-  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
-  Object.assign(process.env, env);
   t.after(async () => {
     globalThis.fetch = originalFetch;
-    for (const key of Object.keys(env)) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; }
     const key = createHash("sha256").update(JSON.stringify([projectEntryKey(id, "main"), subject])).digest("hex");
     const accessKey = createHash("sha256").update(JSON.stringify([origin, token, id])).digest("hex");
     for (const file of [path.join("configurations", `${key}.json`), path.join("configurations", `${key}.json.lock.sqlite`), path.join("configuration-access", `${accessKey}.json`)]) {
@@ -81,16 +78,18 @@ for (const boundary of ["request", "tool"] as const) for (const denied of [false
     ...(boundary === "tool" ? [() => { denials = denied ? Infinity : 2; return ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }); }] : []),
     ai.fauxAssistantMessage("Finished after authorization recovered"),
   ]);
-  const agent = withProjectConfiguration(configuration, () => new DurableAgent({ models, retryDelayMs: 0,
+  const agent = withPlatformConnections({ project: { serverUrl: origin, accessToken: token } }, () =>
+    withProjectConfiguration(configuration, () => new DurableAgent({ models, retryDelayMs: 0,
     session: { compaction: { enabled: false } }, initialState: { systemPrompt: "Test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [{
       name: "inspect", label: "Inspect", description: "Inspect once", parameters: ai.Type.Object({}),
       execute: async () => { assert.equal(recovered, true); tools++; return { content: [ai.fauxText("Inspected once")], details: {} }; },
-    }] } }), directory, "main");
+    }] } }), directory, "main"));
   t.after(() => agent.close());
   let snapshot: AgentSessionSnapshot | undefined;
   agent.subscribe(event => { if ((event as any).type === "project_session") snapshot = (event as any).snapshot; });
-  if (denied) await assert.rejects(agent.prompt("Complete the work"), unavailable());
-  else await agent.prompt("Complete the work");
+  const prompt = () => agent.prompt("Complete the work");
+  if (denied) await assert.rejects(prompt(), unavailable());
+  else await prompt();
   if (denied) {
     assert.equal(snapshot!.turns[0]!.status, "unanswered");
     assert.equal(snapshot!.turns[0]!.reason, "configuration_error");

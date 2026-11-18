@@ -49,7 +49,7 @@ async function service(legacy?: ConversationSession[]) {
   const dataDir = path.join(testDataDirectory(directory));
   const historyDir = path.join(dataDir, 'projects', project.id, 'entries', project.entryId);
   if (legacy) { await mkdir(historyDir, { recursive: true }); await writeFile(path.join(historyDir, 'conversations.json'), JSON.stringify({ sessions: legacy })); }
-  const app = await startWebServer({ projectDir: directory, dataDir, runtime: executor }); services.push(app);
+  const app = await startWebServer({ projectDir: directory, dataDir, runtime: executor, host: { surface: 'editor', platform: true } }); services.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
@@ -244,7 +244,7 @@ describe('SteamHarness Web routing and history', () => {
       const data = address.endsWith('/api/ai/usage') ? usage : { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } };
       return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data })));
     });
-    await app.setHostConnection({ serverUrl: 'https://project.test', accessToken: 'project-token', aiServerUrl: 'https://steamharness.test', aiAccessToken: 'test-usage-token' });
+    await app.setHostConnection(undefined, { serverUrl: 'https://steamharness.test', accessToken: 'test-usage-token' });
     const current = await post({ type: 'usage', requestId: 'current-usage' }).then(response => response.json());
     expect(current.messages).toEqual([{ type: 'usage', requestId: 'current-usage', usage }]);
     delayed = true;
@@ -289,7 +289,7 @@ describe('SteamHarness Web routing and history', () => {
     try {
       await vi.waitFor(() => expect(release).toBeDefined());
       await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'new-token' });
-    } finally { release(); await old; }
+    } finally { release?.(); await old; }
     expect((await state()).account).toMatchObject({ status: 'authenticated', user: { displayName: 'New' } });
   });
 

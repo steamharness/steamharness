@@ -1,4 +1,4 @@
-import { readProjectCliAuthConfigSync } from "../../auth-config";
+import { currentPlatformConnections, type PlatformConnection } from "../../platform-connections";
 import { HarnessError } from "../../workflow/errors";
 import { toAgentModelAttributes } from "./model-attributes";
 import { createLLMProvider } from "./factory";
@@ -97,6 +97,8 @@ export interface ServerLLMModelDetails {
 
 export interface GetServerLLMCredentialsOptions {
   signal?: AbortSignal;
+  /** Explicit AI service connection. Never pass project credentials here. */
+  connection?: PlatformConnection;
   /** Refresh model metadata even when this process has a recent catalogue. */
   fresh?: boolean;
 }
@@ -144,11 +146,12 @@ interface ServerLLMConnection {
 
 let activeManager: { connection: ServerLLMConnection; fetchImpl: typeof fetch; manager: ServerLLMCredentialManager } | undefined;
 
+/** Requires a Server connection to the system AI service. Does not perform interactive login. */
 export async function getServerLLMCredentials(
   options: GetServerLLMCredentialsOptions = {},
 ): Promise<ServerLLMCredential[]> {
   options.signal?.throwIfAborted();
-  const connection = resolveServerLLMConnection(process.env);
+  const connection = resolveServerLLMConnection(options.connection);
   if (!activeManager || activeManager.fetchImpl !== fetch ||
     activeManager.connection.serverUrl !== connection.serverUrl || activeManager.connection.token !== connection.token) {
     activeManager = { connection, fetchImpl: fetch, manager: new ServerLLMCredentialManager(connection) };
@@ -444,22 +447,20 @@ function waitForCatalog<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T
   });
 }
 
-function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection {
-  const specific = readConnectionPair(
-    env.STEAMHARNESS_AI_SERVER_URL,
-    env.STEAMHARNESS_AI_API_KEY,
+function resolveServerLLMConnection(explicit?: PlatformConnection): ServerLLMConnection {
+  const host = currentPlatformConnections();
+  const connection = explicit ?? host?.ai;
+  if (connection) return normalizeConnection(connection.serverUrl, connection.accessToken);
+  const specific = host === undefined ? readConnectionPair(
+    process.env.STEAMHARNESS_AI_SERVER_URL,
+    process.env.STEAMHARNESS_AI_API_KEY,
     "STEAMHARNESS_AI_SERVER_URL/STEAMHARNESS_AI_API_KEY",
-  );
+  ) : undefined;
   if (specific) return specific;
-
-  const saved = readProjectCliAuthConfigSync(env);
-  if (saved.aiServerUrl?.trim() && saved.aiApiKey?.trim()) {
-    return normalizeConnection(saved.aiServerUrl, saved.aiApiKey);
-  }
 
   throw new HarnessError({
     type: "input_validation",
-    message: "System AI is unavailable. Configure the private AI service URL and API key.",
+    message: "System AI requires a Server connection. Run steamharness workspace login --ai --server <URL>, then use --online ai, or open System AI in enhanced Studio.",
     metadata: {
       systemAiConfigured: false,
       steamHarnessI18n: createI18nDescriptor("systemAiUnavailable"),

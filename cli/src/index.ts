@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
 import { prepareCliInvocation } from "./locale";
+import { formatOnlineHelp } from './online';
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (argv[0] === "__openai-responses-runner") {
@@ -43,7 +44,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     argv[0] === "--help" ||
     argv[0] === "-h"
   ) {
-    process.stdout.write(`${formatHelp()}\n`);
+    process.stdout.write(`${formatHelp()}\n${formatOnlineHelp()}\n`);
     return 0;
   }
 

@@ -14,25 +14,27 @@ description: "查看 workspace CLI 保存的登录状态，以及本次调用实
 3. 保存的 CLI 登录信息。
 4. 渠道默认值。
 
-查看 `effective.serverUrl` 判断本次目标，`serverUrl` 只表示保存值。Studio 为项目运行和内置终端注入当前会话，所以它们可能与独立终端保存的登录不同。
+查看 `effective.serverUrl` 和 `effective.tokenSource` 确认本次连接设置。`serverUrl` 只表示保存值。指定其他地址时，不会复用原地址的凭证。
 
 ## 命令格式
 
 ```bash
 pnpm exec steamharness workspace status
+pnpm exec steamharness workspace status --ai --server https://server.example.com
 ```
 
 ## 参数
 
 | 参数 | 说明 |
 | --- | --- |
-| 无 | 该命令不读取位置参数。 |
+| `--ai` | 查看系统 AI 凭证；此时使用 `STEAMHARNESS_AI_SERVER_URL` 和 `STEAMHARNESS_AI_API_KEY`。 |
+| `--server <URL>` | 仅查看指定地址的登录与连接设置。 |
 
 ## 输出字段
 
 | 字段 | 说明 |
 | --- | --- |
-| `loggedIn` | CLI 登录态中同时存在非空 server URL 和 API Key 时为 `true`。 |
+| `loggedIn` | 本机保存了服务器地址和未过期的 API Key 时为 `true`，不代表已通过 Server 验证。 |
 | `serverUrl` | CLI 登录态中保存的 server URL。 |
 | `user` | 最近一次 device flow 登录得到的用户摘要。 |
 | `expiresAt` | API Key 过期时间。 |

@@ -42,6 +42,7 @@ export function agentRuntimeSessionKey(conversationId: string, sessionKey: strin
   return `agent:${encodeURIComponent(conversationId)}:${encodeURIComponent(sessionKey)}`;
 }
 
+/** Requires a Server connection. Use this client explicitly for remote runtime history. */
 export function createServerRuntimePersistence(options: ServerRuntimePersistenceOptions): RuntimePersistence {
   options = { ...options, ownerToken: randomBytes(32).toString("base64url") };
   let workspace: Promise<RuntimeWorkspace> | undefined;

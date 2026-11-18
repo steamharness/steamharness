@@ -11,6 +11,7 @@ import {
   parseToolPermissionPoliciesJson,
   resolveLocalProjectParams,
   runLocalProjectWithReport,
+  withPlatformConnections,
   type ExecutionReport,
   type ParamResolveRequest,
   type RuntimeEvent,
@@ -30,6 +31,7 @@ import {
 } from "@steamharness/runtime-compatibility";
 import { prepareCliInvocation } from "./locale";
 import { CLI_VERSION } from "./version";
+import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
 
 type SteamHarnessCommand = "run" | "json" | "structure" | "check" | "resolve-params" | "help";
 
@@ -68,15 +70,17 @@ export async function main(
     return 0;
   }
   if (command === "resolve-params") {
-    return runResolveParamsCommand(args, abortController.signal);
+    return withPlatformConnections({}, () => runResolveParamsCommand(args, abortController.signal));
   }
 
-  const parsed = parseProjectArgs(args, {
+  const runtimeOptions = parseOnlineOptions(args);
+  const parsed = parseProjectArgs(runtimeOptions.argv, {
     json: command === "json",
   });
   if (parsed.release) parsed.projectDir = (await prepareReleaseRun(parsed.projectDir, { signal: abortController.signal, progress: message => process.stderr.write(message + "\n") })).directory;
   assertLocalCliCoreCompatible(parsed.projectDir);
-  const report = await runLocalProjectWithReport({
+  const platform = await resolveOnlineConnections(runtimeOptions.online);
+  const report = await withPlatformConnections(platform, () => runLocalProjectWithReport({
     runtimeHost: { kind: "cli", cliVersion: CLI_VERSION },
     projectDir: parsed.projectDir,
     entryId: parsed.entryId,
@@ -91,7 +95,7 @@ export async function main(
     nodeHooks: parsed.json ? undefined : createCliOutputStreamHooks(),
     onRuntimeEvent: parsed.json ? createDesktopRuntimeEventEmitter() : undefined,
     abortSignal: abortController.signal,
-  });
+  }));
 
   if (parsed.json) {
     console.log(formatProjectExecutionJson(report));
@@ -560,7 +564,7 @@ function formatProjectStructureError(error: unknown): string {
 }
 
 function formatHelp(): string {
-  return i18n.t("localHelp", { ns: "cli" });
+  return `${i18n.t("localHelp", { ns: "cli" })}\n${formatOnlineHelp()}`;
 }
 
 if (isCliEntrypoint()) {

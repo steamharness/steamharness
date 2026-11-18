@@ -264,7 +264,7 @@ describe("server workspace CLI helpers", () => {
     await writeCliAuthConfig({
         serverUrl: "http://localhost:7125",
         apiKey: "saved-api-key",
-        expiresAt: "2026-07-01T00:00:00.000Z",
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
         user: {
           userId: "user-1",
           email: "user@example.com",
@@ -282,12 +282,12 @@ describe("server workspace CLI helpers", () => {
 
     try {
       expect(parseArgs([
-        "run",
+        "download",
         "hello",
         "--target",
         "latest",
       ])).toMatchObject({
-        command: "run",
+        command: "download",
         positional: ["hello"],
         options: {
           server: "http://localhost:7125",

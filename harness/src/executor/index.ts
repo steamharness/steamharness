@@ -86,11 +86,10 @@ import { isOutputItemStreamChunk } from "../node/output/index";
 import { installProjectRuntimeGlobal } from "../runtime-api";
 import {
   createLocalProjectFileStore,
-  createServerProjectFileStore,
+  createLocalProjectFileCreator,
   createProjectFileStore,
   type FileStore,
 } from "../files/index";
-import { createRemoteProjectFileStoreFromEnv } from "../files/remote";
 import { createProjectNodeMetadata } from "../types/index";
 import {
   createDisabledProjectConversationContext,
@@ -399,7 +398,6 @@ async function runWorkspaceProjectWithReportInternal(
       }),
       timers: runtime.timers,
       files: createExecutorFileStore({
-        env,
         projectName: options.projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -612,7 +610,6 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       }),
       timers: runtime.timers,
       files: createExecutorFileStore({
-        env,
         projectName: options.projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -972,7 +969,6 @@ async function runLocalProjectWithReportInternal(
       }),
       timers,
       files: createExecutorFileStore({
-        env,
         projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -2380,8 +2376,6 @@ function formatProjectStructureError(
 }
 
 function createExecutorFileStore(options: {
-  configuration?: ProjectConfigurationSnapshot;
-  env?: NodeJS.ProcessEnv;
   projectName: string;
   conversationId?: string;
   fileStore?: FileStore;
@@ -2394,32 +2388,16 @@ function createExecutorFileStore(options: {
     return options.fileStore;
   }
 
-  const createRoot = options.fileCreateStoreDir?.trim();
-  if (createRoot !== undefined && createRoot !== "") {
-    const createStore = createServerProjectFileStore({
-      rootDir: createRoot,
-      projectName: options.projectName,
-      conversationId: options.conversationId,
-    });
-    return createProjectFileStore({
-      resolveStore,
-      createFile: (input) => createStore.createFile!(input),
-    });
-  }
-
-  const remoteStore = createRemoteProjectFileStoreFromEnv({
-    env: options.env,
+  const createStore = createLocalProjectFileCreator({
+    rootDir: options.fileCreateStoreDir?.trim() || options.fileStoreDir?.trim() || path.join(os.homedir(), '.steamharness', 'workflow-created-files'),
     projectName: options.projectName,
     conversationId: options.conversationId,
   });
-  if (remoteStore !== undefined) {
-    return createProjectFileStore({
-      resolveStore,
-      createFile: (input) => remoteStore.createFile!(input),
-    });
-  }
-
-  return createProjectFileStore({ resolveStore });
+  return createProjectFileStore({
+    resolveStore: { resolveFile: async reference => reference.storage === 'local' && /^wf_[a-f0-9]{32}$/u.test(reference.id)
+      ? createStore.resolveFile(reference).catch(() => resolveStore.resolveFile(reference)) : resolveStore.resolveFile(reference) },
+    createFile: (input) => createStore.createFile!(input),
+  });
 }
 
 function createLocalResolveFileStore(

@@ -249,7 +249,7 @@ test('upload waits for static preparation and only then publishes release notes'
 test('uploading an unregistered ID guides reapplication without creating a project or uploading files', async t => {
   const f = await fixture(t);
   const remote = await server(t, () => ({ status: 404, payload: { errCode: 404 } }));
-  await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /apply for a new application ID/);
+  await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /workspace upload --create in a separate release copy/);
   assert.ok(remote.requests.every(request => request.method === 'GET'));
   await assert.rejects(fs.stat(path.join(f.directory, 'request.json')), { code: 'ENOENT' });
 });

@@ -15,7 +15,6 @@ export class RecoverableWebSession implements WebSession {
   private exitListener: { dispose(): void };
   private finish!: () => void;
   readonly closed = new Promise<void>(resolve => { this.finish = resolve; });
-  private auth?: { connection?: Connection };
   private resources?: string[];
   private userSettings?: StudioUserSettings;
 
@@ -49,7 +48,6 @@ export class RecoverableWebSession implements WebSession {
         throw new Error(t('Workflow recovery did not restore the original project address.'));
       }
       try {
-        if (this.auth) next.updateAuth(this.auth.connection);
         if (this.resources) next.updateResourceProjects(this.resources);
         if (this.userSettings) next.updateUserSettings(this.userSettings);
       } catch (error) { await next.close(); throw error; }
@@ -60,7 +58,10 @@ export class RecoverableWebSession implements WebSession {
     })().finally(() => { this.restarting = undefined; });
     return this.restarting;
   }
-  updateAuth(connection?: Connection): void { this.auth = { connection }; if (!this.exited) this.current.updateAuth(connection); }
+  updateAuth(connection?: Connection, ai?: Connection): void { if (!this.exited) this.current.updateAuth(connection, ai); }
+  async connectPlatform(purpose: 'project' | 'ai' | 'web-app', entryId: string): Promise<void> {
+    if (!this.exited && !this.closing) await this.current.connectPlatform?.(purpose, entryId);
+  }
   updateUserSettings(settings: StudioUserSettings): void { this.userSettings = structuredClone(settings); if (!this.exited) this.current.updateUserSettings(this.userSettings); }
   updateResourceProjects(projects: string[]): void {
     this.resources = [...projects]; if (!this.exited) this.current.updateResourceProjects(projects);

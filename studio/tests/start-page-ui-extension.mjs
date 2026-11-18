@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
 import { createServer } from 'node:http';
-import { writeFile } from 'node:fs/promises';
+import { rename, writeFile } from 'node:fs/promises';
 
 export async function activate(context) {
+  const ready = process.env.STUDIO_START_TEST_READY;
+  const writeReady = async state => {
+    const temporary = `${ready}.${process.pid}.tmp`;
+    await writeFile(temporary, JSON.stringify(state));
+    await rename(temporary, ready);
+  };
   try {
     await vscode.extensions.getExtension('studio.studio-workstation').activate();
     const server = createServer(async (request, response) => {
@@ -13,6 +19,7 @@ export async function activate(context) {
         const input = body ? JSON.parse(body) : {};
         let result;
         if (input.action === 'command') { result = await vscode.commands.executeCommand(input.command, ...(input.args ?? [])); }
+        else if (input.action === 'commands') { result = await vscode.commands.getCommands(); }
         else if (input.action === 'recent' || input.action === 'nativeRecent') {
           const folders = input.paths.map(path => ({ uri: vscode.Uri.file(path) }));
           for (const folder of folders) { await vscode.commands.executeCommand('_workbench.addToRecentlyOpened', { uri: folder.uri, type: 'folder' }); }
@@ -76,7 +83,6 @@ export async function activate(context) {
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     context.subscriptions.push({ dispose: () => server.close() });
-    await writeFile(process.env.STUDIO_START_TEST_READY, JSON.stringify({ port: server.address().port,
-      folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) }));
-  } catch (error) { await writeFile(process.env.STUDIO_START_TEST_READY, JSON.stringify({ error: error.stack })); }
+    await writeReady({ port: server.address().port, folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) });
+  } catch (error) { await writeReady({ error: error.stack }); }
 }

@@ -11,6 +11,8 @@ description: "Manage Server source drafts, published versions, and downloads."
 
 `steamharness workspace` manages project source and immutable Server versions. Dependencies, builds, and execution remain local; Server processes static archives.
 
+Except for local commands such as `pack`, `help`, `status`, and `logout`, Workspace commands **require a Server connection**. Packing never reads platform credentials.
+
 ## From sign-in to download
 
 ```sh

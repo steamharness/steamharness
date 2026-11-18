@@ -30,3 +30,7 @@ Unknown IDs fail. Each entry has separate configuration and conversation state. 
 ## Results and next steps
 
 The command executes the selected workflow and displays its result. Use [json](/en/cli/steamharness/json) for a structured report or [structure](/en/cli/steamharness/structure) to inspect declarations first. Cross-entry calls load the target configuration and inherit current permissions.
+
+## Opt into platform features
+
+Platform credentials are not read by default. Use `--online project` for protected project configuration, or `--online ai` for System AI. Each option requires a Server connection and its own login. Repeat the flag to enable both.

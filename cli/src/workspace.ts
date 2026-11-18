@@ -6,7 +6,7 @@ import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory }
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
 import { defaultServerUrl, serviceChannel } from "./service-url";
-import { ServerAuthClient, ServerAuthError } from "@steamharness/server-auth";
+import { normalizeAuthServer, ServerAuthClient, ServerAuthError } from "@steamharness/server-auth";
 
 import type {ProjectConfigurationState} from '@steamharness/project-configuration';
 import { spawn } from "node:child_process";
@@ -28,7 +28,7 @@ import {
   type ProjectInfoContract,
 } from "@steamharness/project-info";
 import { cacheVerifiedConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, isProjectKind, parseProjectFileReferences, RemoteProjectFileStore, type ProjectKind } from "steamharness";
-import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
+import { clearCliAuthConfig, cliAuthIsUsable, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
 import { findWorkspaceRepositoryRoot } from "./env";
 import {
   getCurrentLocale,
@@ -36,8 +36,12 @@ import {
   translateSteamHarnessError,
 } from "@steamharness/i18n";
 import { prepareCliInvocation } from "./locale";
+import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
+import { withoutPlatformEnvironment } from './online';
 
 interface CliOptions {
+  ai?: boolean;
+  openBrowser?: boolean;
   server: string;
   token: string;
   target?: string;
@@ -136,7 +140,7 @@ export async function main(
       await commandLogin(parsed);
       return;
     case "logout":
-      await commandLogout();
+      await commandLogout(parsed);
       return;
     case "status":
       await commandStatus(parsed);
@@ -189,22 +193,23 @@ async function commandLogin(parsed: ParsedArgs): Promise<void> {
   }
 
   const client = new ServerAuthClient(server, fetch, getCurrentLocale());
+  const purpose = parsed.options.ai ? 'ai' : 'project';
   const abort = new AbortController();
   const cancel = () => abort.abort();
   process.once("SIGINT", cancel); process.once("SIGTERM", cancel);
   let deviceCode: string | undefined, saved = false;
   try {
-    const started = await client.start({ clientName: DEFAULT_DEVICE_FLOW_CLIENT_NAME, source: "cli",
+    const started = await client.start({ clientName: parsed.options.ai ? 'SteamHarness System AI CLI' : DEFAULT_DEVICE_FLOW_CLIENT_NAME, source: "cli",
       context: { clientKind: "cli", channel: serviceChannel(), state: randomBytes(32).toString("base64url") } }, abort.signal);
     deviceCode = started.deviceCode;
-    void openExternalBrowser(started.verificationUriComplete);
+    if (parsed.options.openBrowser !== false) void openExternalBrowser(started.verificationUriComplete);
     console.error(i18n.t("deviceLoginPrompt", { ns: "cli", url: started.verificationUriComplete, code: started.userCode }));
     const completed = await client.poll(started, abort.signal);
     abort.signal.throwIfAborted();
-    const previous = await readCliAuthConfig();
+    const previous = await readCliAuthConfig(process.env, client.serverUrl, purpose);
     await writeCliAuthConfig({ serverUrl: client.serverUrl, apiKey: completed.accessToken,
-      expiresAt: completed.expiresAt ?? completed.apiKey.expiresAt, user: completed.user, source: "device_flow" });
-    if (abort.signal.aborted) { await clearCliAuthConfig(process.env, completed.accessToken); abort.signal.throwIfAborted(); }
+      expiresAt: completed.expiresAt ?? completed.apiKey.expiresAt, user: completed.user, source: "device_flow" }, process.env, purpose);
+    if (abort.signal.aborted) { await clearCliAuthConfig(process.env, completed.accessToken, purpose, client.serverUrl); abort.signal.throwIfAborted(); }
     saved = true;
     if (previous.apiKey && previous.apiKey !== completed.accessToken) {
       await fetch(`${previous.serverUrl}/api/auth/logout`, { method: "POST", redirect: "error",
@@ -218,13 +223,13 @@ async function commandLogin(parsed: ParsedArgs): Promise<void> {
   }
 }
 
-async function commandLogout(): Promise<void> {
-  await clearCliAuthConfig();
+async function commandLogout(parsed: ParsedArgs): Promise<void> {
+  await clearCliAuthConfig(process.env, undefined, parsed.options.ai ? 'ai' : 'project', parsed.effective.serverSource === 'flag' ? parsed.options.server : undefined);
   printApiResponse({ errCode: 0, errMessage: "", data: { loggedIn: false } });
 }
 
 async function commandStatus(parsed: ParsedArgs): Promise<void> {
-  const authConfig = await readCliAuthConfig();
+  const authConfig = await readCliAuthConfig(process.env, parsed.effective.serverSource === 'flag' ? parsed.options.server : undefined, parsed.options.ai ? 'ai' : 'project');
   // Everything above `effective` describes the saved login file, which is only
   // the fallback identity. `effective` is what a command started with these
   // arguments would actually use, so a caller comparing a project's server
@@ -233,7 +238,7 @@ async function commandStatus(parsed: ParsedArgs): Promise<void> {
     errCode: 0,
     errMessage: "",
     data: {
-      loggedIn: authConfig.serverUrl.trim() !== "" && authConfig.apiKey.trim() !== "",
+      loggedIn: cliAuthIsUsable(authConfig),
       serverUrl: authConfig.serverUrl,
       user: authConfig.user,
       expiresAt: authConfig.expiresAt,
@@ -532,7 +537,7 @@ async function packProject(
     await stageProjectSource({ projectDir: distribution.directory, projectName, stagingRoot: path.join(stagingDir, "workspace", "workflow") });
     const result = await runCommand("tar", ["-czf", archivePath, "-C", stagingDir, "."], {
       cwd: repoRoot,
-      env: { ...process.env, COPYFILE_DISABLE: "1" },
+      env: { ...withoutPlatformEnvironment(process.env), COPYFILE_DISABLE: "1" },
     });
     if (result.exitCode !== 0) {
       throw new Error(i18n.t("archiveCreateFailed", { ns: "cli", details: result.stderr || result.stdout }));
@@ -678,6 +683,7 @@ async function uploadPackage(options: {
     `${trimTrailingSlash(options.server)}/api/projects/${encodeURIComponent(options.projectId)}/package?${query.toString()}`,
     {
       method: "POST",
+      redirect: "error",
       headers: {
         authorization: `Bearer ${options.token}`,
         "content-type": "application/octet-stream",
@@ -782,6 +788,7 @@ async function fetchApi<T = unknown>(options: {
   }
   const response = await fetch(`${trimTrailingSlash(options.server)}${options.path}`, {
     method: options.method ?? "GET",
+    redirect: "error",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
@@ -856,9 +863,14 @@ function hashProjectSourceFiles(
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command = "", ...rest] = argv;
   const positional: string[] = [];
-  const authConfig = readCliAuthConfigSync();
-  const envServer = process.env.STEAMHARNESS_SERVER_URL;
-  const envToken = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+  const local = ['', 'help', '--help', '-h', 'pack', 'login', 'logout'].includes(command);
+  const ai = ['login', 'logout', 'status'].includes(command) && rest.slice(0, rest.includes('--') ? rest.indexOf('--') : undefined).includes('--ai');
+  const purpose = ai ? 'ai' : 'project';
+  const authConfig = local ? createEmptyProjectAuthConfig() : readCliAuthConfigSync(process.env, undefined, purpose);
+  const envServer = (!local || command === 'login' && !ai)
+    ? (ai ? process.env.STEAMHARNESS_AI_SERVER_URL : process.env.STEAMHARNESS_SERVER_URL)?.trim() || undefined : undefined;
+  const envToken = !local && envServer
+    ? (ai ? process.env.STEAMHARNESS_AI_API_KEY : process.env.STEAMHARNESS_SERVER_ADMIN_KEY)?.trim() || undefined : undefined;
   // The saved CLI login is only the fallback: a host that spawns this CLI
   // (SteamHarness Desktop) passes its own session through the environment,
   // and that is the server the command really talks to.
@@ -885,6 +897,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
 
     switch (arg) {
+      case '--ai':
+        if (!['login', 'logout', 'status'].includes(command)) throw new Error('--ai is only available with login, logout, or status.');
+        options.ai = true;
+        break;
+      case '--no-open':
+        if (command !== 'login') throw new Error('--no-open is only available with login.');
+        options.openBrowser = false;
+        break;
       case "--server":
         options.server = requireValue(rest, (index += 1), "--server");
         effective.serverUrl = options.server;
@@ -935,10 +955,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
-  if (effective.tokenSource === "file" || effective.tokenSource === "none") {
-    const matching = readCliAuthConfigSync(process.env, options.server);
-    options.token = matching.apiKey;
-    effective.tokenSource = matching.apiKey ? "file" : "none";
+  if (command === 'login' && options.ai && effective.serverSource !== 'flag') throw new Error('Usage: steamharness workspace login --ai --server <URL>');
+  if (!local && effective.tokenSource !== 'flag') {
+    const usesEnvToken = envToken && envServer && normalizeAuthServer(envServer) === normalizeAuthServer(options.server);
+    if (!usesEnvToken) {
+      const matching = readCliAuthConfigSync(process.env, options.server, purpose);
+      options.token = cliAuthIsUsable(matching) ? matching.apiKey : '';
+      effective.tokenSource = options.token ? 'file' : 'none';
+    }
   }
 
   if (command === "upload" && options.noWait === true && options.releaseLog !== undefined) {
@@ -1063,7 +1087,10 @@ function formatForbiddenMessage(response: ApiResponse): string {
 }
 
 function printUsage(): void {
-  console.log(i18n.t("workspaceHelp", { ns: "cli" }));
+  const zh = i18n.language.startsWith('zh');
+  console.log(`${i18n.t("workspaceHelp", { ns: "cli" })}\n  steamharness workspace login --ai --server <URL> [--no-open]\n  steamharness workspace status|logout [--ai] [--server <URL>]\n\n${zh
+    ? 'pack 始终在本地运行；status 和 logout 管理本地凭证。其余命令需要连接服务器。'
+    : 'pack always runs locally; status and logout manage local credentials. The other commands require a Server connection.'}`);
 }
 
 export function resolveRepoRoot(startDir = process.cwd()): string {
