@@ -9,7 +9,7 @@ const { assertRepositoryBoundaries, scanRepositoryBoundaries } =
 // Shared lives in this repository now, so the boundary scan covers the local
 // packages directly instead of a prepared copy of them.
 const violations = [
-  ...await scanRepositoryBoundaries(root),
+  ...await scanRepositoryBoundaries(root, { allowReleaseNotesTools: true }),
   ...await scanRepositoryBoundaries(sharedRoot),
 ];
 assertRepositoryBoundaries(violations);

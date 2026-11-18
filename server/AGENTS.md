@@ -41,7 +41,7 @@
 ## 分支与发版
 
 - `main`、`alpha`、`dev` 分别承接正式、测试和日常集成，Server 与 Server Web 的声明版本遵循 `main <= alpha = dev`。普通 Alpha 发布保持基础版本不变，只生成同一基础版本的 `X.Y.Z-YYYYMMDDNNN` 日期版本；只有明确收到“版本号 +1”指令时，才让两个分支及两个 Server 单元一起递增 patch。提交范围只有版本字段、文档、CI 或发布元数据时不发布；源码、依赖或实际 vendor 变化才进入 Alpha 级联。准备版本时须已有对应双语定版页。Alpha 转正直接从已验证提交进入 `main`；成功后默认将 `alpha`、`dev` 对齐到 `main` 并跳过 CI，不发布空 Alpha。Alpha 与正式版共用 PostgreSQL 和对象存储目录，但代码、进程、日志和本地缓存隔离；数据库变更必须保持 expand-only。
-- 本仓与所有子仓库一样维护 `dev`、`alpha`、`main` 三条分支。`dev` 和功能分支上内置项目与 `cli` 用 `link:../harness` 引用同级仓库，`alpha`/`main` 上必须是精确的已发布版本；`shared/release-tools/release-gate.mjs`（本仓 `vendor/shared/` 内）是这条规则的执行者，聚合仓库的 `pnpm check:release-references` 可一次检查全列车。
+- 公开 Server 保留自身依赖声明。增强版 Server 和 Studio 从固定的 monorepo 提交打包 Core 与 CLI，不运行旧 registry 门禁，不需要先发 npm，也不随增强版发布更新公开 Server 的依赖版本。
 - Server 与 Server Web 是同仓库内两个独立发布单元。版本源分别为 `package.json` 和 `web/package.json`，正式 tag 分别为 `server/vX.Y.Z` 与 `server-web/vX.Y.Z`。
 - Server 与 Server Web 的用户可见变化分别写入 `../docs/guides/releases/server/unreleased.mdx`、`../docs/guides/releases/server-web/unreleased.mdx` 及英文镜像；不重复记同一条变化。
 - 先定版双语文档，再用 `pnpm release:prepare -- --unit <server|server-web> --version X.Y.Z` 校验对应版本页和更新目标单元。发布前确认两个语言的直链均可访问。

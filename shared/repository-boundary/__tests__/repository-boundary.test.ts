@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -59,6 +59,27 @@ describe("repository boundary scanner", () => {
       file: "scripts/development-sources.mjs",
       kind: "cross-repository-import",
     })]);
+  });
+
+  it("opts in only release scripts and their tests to importing exact docs tools", async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), "workflow-boundary-release-notes-"));
+    const root = path.join(parent, "server");
+    try {
+      await mkdir(path.join(root, "scripts", "__tests__"), { recursive: true });
+      await mkdir(path.join(root, "src"));
+      await writeFile(path.join(root, "scripts", "prepare-release.mjs"), 'import "../../docs/scripts/release-notes.mjs";');
+      await writeFile(path.join(root, "scripts", "deploy-stable.mjs"), 'import "../../docs/scripts/release-notes.mjs";\nimport "../../docs/scripts/other.mjs";');
+      await writeFile(path.join(root, "scripts", "__tests__", "deploy-stable.test.mjs"), 'import "../../../docs/scripts/__tests__/release-fixture.mjs";');
+      await writeFile(path.join(root, "src", "index.ts"), 'import "../../docs/scripts/release-notes.mjs";');
+
+      expect(await scanRepositoryBoundaries(root)).toHaveLength(5);
+      expect(await scanRepositoryBoundaries(root, { allowReleaseNotesTools: true })).toEqual([
+        { file: "scripts/deploy-stable.mjs", kind: "cross-repository-import", detail: "../../docs/scripts/other.mjs" },
+        { file: "src/index.ts", kind: "cross-repository-import", detail: "../../docs/scripts/release-notes.mjs" },
+      ]);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
   });
 
   it("rejects source links only in main mode", async () => {
