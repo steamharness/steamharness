@@ -6,7 +6,17 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { bundleAgentTypes } from "../bundle-agent-types.mjs";
+import { bundleAgentTypes, sharedSourcePath } from "../bundle-agent-types.mjs";
+
+test("shared declarations resolve mixed Windows separators without accepting outside paths", () => {
+  const shared = "D:\\Release Source\\open-sources\\shared";
+  const type = "D:/Release Source/open-sources/shared/auth-config/index.ts";
+  assert.equal(sharedSourcePath(shared, type, path.win32), "auth-config/index.ts");
+  for (const outside of [type.replace("/shared/", "/shared-other/"), type.replace("D:", "E:"), `${shared}/../src/index.ts`, `${shared}/index.js`]) {
+    assert.equal(sharedSourcePath(shared, outside, path.win32), null);
+  }
+  assert.equal(sharedSourcePath("/src/shared", "/src/shared/auth-config/index.ts", path.posix), "auth-config/index.ts");
+});
 
 test("bundled extension declarations resolve TypeScript specifiers and preserve distinct dependency versions", async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-types-"));
