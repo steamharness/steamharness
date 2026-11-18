@@ -30,7 +30,7 @@ description: "Server v0.1.8 的更新说明。"
 #### 新增
 
 - 新增 云端项目创建原子接收 UUID 和完整 `projectInfo`，Desktop 可按同 UUID 创建或恢复绑定。
-- 新增 项目默认名称、本地化名称、手工声明和展示平台，经项目列表与 `PUT /api/workflows/{id}/project-info` 提供。
+- 新增 项目默认名称、本地化名称、手工声明和展示平台，经项目列表与 `PUT /api/projects/{id}/project-info` 提供。
 - 新增 每个版本固化 Server、macOS 和 Windows 发行目标，仅本地版本跳过依赖安装与 runtime 构建。
 - 新增 源码与项目组下载按 macOS/Windows 发行目标校验并独立解析平台 `latest`。
 - 新增 Alpha 部署链路与正式版共用数据库和 bucket，隔离代码、进程、日志和本地缓存。

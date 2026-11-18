@@ -5,11 +5,13 @@ description: "Release notes for Core 0.1.1."
 
 # Core 0.1.1
 
-2026-07-29 · Tag `steamharness/v0.1.1` · npm
+2026-10-18 · Tag `steamharness/v0.1.1` · npm
 
 <span id="steamharness-0-1-1" className="release-version-anchor"></span>
 <span id="steamharness.0.1.1" className="release-version-anchor"></span>
 
 #### Changed
 
-- Changed the Core version to become the sole basis for Workflow runtime compatibility, released independently.
+- Republished under the SteamHarness package names, with an independent version line starting at `steamharness@0.1.0` that is incompatible with the earlier release line.
+- Publishing now uses GitHub Releases and npm Trusted Publishing (OIDC), without long-lived tokens.
+- Runtime dependencies use the peer range `^0.1.0` to state compatibility during installation.

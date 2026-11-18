@@ -25,6 +25,7 @@ description: "Release notes for 开发者小助手 0.1.6."
 
 #### Fixed
 
+- Fixed initial loading ignoring the AI configuration's default model, which an earlier automatic fallback could override.
 - Fixed launching from the Home sidebar aborting on an invalid `primaryTarget.kind`; the Desktop Home workspace target is now accepted.
 - Fixed cloning falling back to `import_project`; create, clone, import, and new-project requests are now routed by intent.
 - Fixed local tool-approval resume not being deduplicated by project, run, and input request, so repeated clicks join the same execution.

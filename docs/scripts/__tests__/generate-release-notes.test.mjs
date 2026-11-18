@@ -121,6 +121,29 @@ test("generateReleaseNotes is idempotent", async () => {
   }
 });
 
+test("regeneration preserves archived versions absent from the current source changelog", async () => {
+  const { docs, workspace } = await createFixture();
+  try {
+    for (const prefix of ["", "en/"]) {
+      await mkdir(path.join(docs, prefix, "guides/releases/server"), { recursive: true });
+      await writeFile(path.join(docs, prefix, "guides/releases/server/v0.1.3.mdx"), "# Archived version\n\nOriginal migration details.\n");
+      await writeFile(path.join(docs, prefix, "guides/releases/server.mdx"), `| [v0.1.3](/${prefix}guides/releases/server/v0.1.3) | 2026-08-07 | Deployment | [Open](https://example.com) |\n`);
+    }
+    await generateReleaseNotes({ root: docs, workspace });
+    await generateReleaseNotes({ root: docs, workspace });
+    for (const prefix of ["", "en/"]) {
+      assert.equal(await readFile(path.join(docs, prefix, "guides/releases/server/v0.1.3.mdx"), "utf8"), "# Archived version\n\nOriginal migration details.\n");
+      const index = await readFile(path.join(docs, prefix, "guides/releases/server.mdx"), "utf8");
+      assert.match(index, /v0\.1\.3.*2026-08-07/u);
+      assert.equal(index.match(/\[v0\.1\.3\]/gu)?.length, 1);
+    }
+    const tree = await releaseNavigationTree({ root: docs, workspace });
+    assert.deepEqual(tree.find(unit => unit.slug === "server").items, ["v0.2.4", "v0.1.3", "v0.1.0"]);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("generateReleaseNotes rejects a release unit whose zh and en versions drifted", async () => {
   const { docs, workspace } = await createFixture();
   try {

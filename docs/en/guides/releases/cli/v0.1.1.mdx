@@ -5,11 +5,13 @@ description: "Release notes for CLI 0.1.1."
 
 # CLI 0.1.1
 
-2026-07-29 · Tag `@steamharness/cli/v0.1.1` · npm
+2026-10-18 · Tag `@steamharness/cli/v0.1.1` · npm
 
 <span id="@steamharness/cli-0-1-1" className="release-version-anchor"></span>
 <span id="@steamharness/cli.0.1.1" className="release-version-anchor"></span>
 
 #### Changed
 
-- Changed the CLI to an independent version and tag, declaring its compatible Core range through a peer dependency.
+- Republished under the SteamHarness package names, with an independent version line starting at `steamharness@0.1.0` that is incompatible with the earlier release line.
+- Publishing now uses GitHub Releases and npm Trusted Publishing (OIDC), without long-lived tokens.
+- Runtime dependencies use the peer range `^0.1.0` to state compatibility during installation.

@@ -75,7 +75,7 @@
                 "group": "管理与部署",
                 "pages": [
                   "guides/server/overview",
-                "guides/server/accounts",
+                  "guides/server/accounts",
                   "guides/server/project-management",
                   "guides/server/deployment"
                 ]
@@ -361,7 +361,7 @@
                 "group": "Management and deployment",
                 "pages": [
                   "en/guides/server/overview",
-                "en/guides/server/accounts",
+                  "en/guides/server/accounts",
                   "en/guides/server/project-management",
                   "en/guides/server/deployment"
                 ]

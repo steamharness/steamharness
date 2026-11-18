@@ -12,8 +12,8 @@ description: "Server v0.1.9 的更新说明。"
 
 #### 新特性
 
-- **Workflow 标准 MCP 入口**：Streamable HTTP 暴露 entrypoint 为 tools，复用运行队列、持久化与审计体系。
-- **Conversation OpenAI 网关**：Bearer-only `/v1` 提供 Responses、Conversations 和 Models 子集，项目 Key 隔离资源。
+- **Workflow 标准 MCP 入口**：Streamable HTTP 暴露 entrypoint 为 tools，复用运行队列、持久化与审计体系。参见 [MCP](../docs/guides/server/mcp.mdx)。
+- **Conversation OpenAI 网关**：Bearer-only `/v1` 提供 Responses、Conversations 和 Models 子集，项目 Key 隔离资源。参见 [OpenAI Responses](../docs/guides/openai-responses.mdx)。
 - **关联项目 KV 授权**：支持双方确认、单边待确认与读写全量或前缀授权，权限撤销立即生效。
 
 #### 破坏性变更

@@ -30,7 +30,7 @@ description: "Release notes for Server 0.1.8."
 #### Added
 
 - Added atomic cloud project creation receiving the UUID and full `projectInfo`, letting Desktop bind or restore by the same UUID.
-- Added default name, localized name, manual declaration, and display platform, served through the project list and `PUT /api/workflows/{id}/project-info`.
+- Added default name, localized name, manual declaration, and display platform, served through the project list and `PUT /api/projects/{id}/project-info`.
 - Added Server, macOS, and Windows release targets pinned per version, with local-only versions skipping dependency install and runtime builds.
 - Added source and project group downloads validated per macOS/Windows target and resolving `latest` per platform.
 - Added an Alpha deployment path sharing the database and bucket with stable while isolating code, processes, logs, and local caches.

@@ -10,7 +10,7 @@
  * 只有工作区里存在源仓库的单元走自动生成；内置项目 codex / conversation / opencode / pi
  * 在本仓库没有对应检出，其页面保留人工维护，本脚本不读也不写。
  */
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -149,7 +149,7 @@ async function versionPage(unit, release, locale, root) {
   return `${out.join("\n").replace(/\n+$/u, "\n")}`;
 }
 
-function indexPage(unit, releases, locale) {
+function indexPage(unit, releases, locale, previous = "") {
   const label = locale === "en" ? `${unit.labelEn ?? unit.label} release notes` : unit.title;
   const out = [
     frontmatter(label, locale === "en" ? `Recorded versions and changes for ${unit.labelEn ?? unit.label}.` : unit.description),
@@ -168,15 +168,23 @@ function indexPage(unit, releases, locale) {
       ? "| --- | --- | --- | --- |"
       : "| --- | --- | --- | --- | --- | --- | --- |",
   ];
-  for (const release of [...releases].sort((left, right) => compareVersions(right.version, left.version))) {
+  // A source changelog may be shorter than the already published archive.
+  // Keep the original rows for those older pages, including their recorded dates.
+  const rows = new Map();
+  for (const line of previous.split("\n")) {
+    const match = /^\| \[v(\d+\.\d+\.\d+)\]\(/u.exec(line);
+    if (match) rows.set(match[1], line);
+  }
+  for (const release of releases) {
     const link = `[v${release.version}](${unitHref(locale, unit.slug, `v${release.version}`)})`;
     const target = locale === "en"
       ? ({ "当前设备": "Deployment", "内置项目更新": "Built-in project" }[unit.target] ?? unit.target)
       : unit.target;
-    out.push(locale === "en"
+    rows.set(release.version, locale === "en"
       ? `| ${link} | ${release.date} | ${target} | [Open](${unit.endpoint}) |`
       : `| ${link} | \`${unit.packageLabel}/v${release.version}\` | ${release.date} | ${unit.target} | — | — | [入口](${unit.endpoint}) |`);
   }
+  out.push(...[...rows.entries()].sort(([left], [right]) => compareVersions(right, left)).map(([, row]) => row));
   out.push("");
   return out.join("\n");
 }
@@ -208,7 +216,6 @@ export async function generateReleaseNotes(options = {}) {
         }
       }
       const base = path.join(root, locale === "en" ? "en/guides/releases" : "guides/releases", unit.slug);
-      await rm(base, { recursive: true, force: true });
       await mkdir(base, { recursive: true });
       for (const release of parsed) {
         const target = path.join(base, `v${release.version}.mdx`);
@@ -216,7 +223,11 @@ export async function generateReleaseNotes(options = {}) {
         written.push(path.relative(root, target));
       }
       const indexPath = path.join(root, locale === "en" ? "en/guides/releases" : "guides/releases", `${unit.slug}.mdx`);
-      await writeFile(indexPath, indexPage(unit, parsed, locale), "utf8");
+      const previous = await readFile(indexPath, "utf8").catch(error => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      });
+      await writeFile(indexPath, indexPage(unit, parsed, locale, previous), "utf8");
       written.push(path.relative(root, indexPath));
     }
   }
@@ -229,10 +240,11 @@ export async function releaseNavigationTree(options = {}) {
   const workspace = options.workspace ?? path.resolve(root, "..");
   const tree = [];
   for (const unit of RELEASE_UNITS) {
-    const versions = unit.source
+    const sourceVersions = unit.source
       ? parseChangelog(await readFile(path.join(workspace, unit.source, "CHANGELOG.md"), "utf8"))
         .map((release) => `v${release.version}`)
-      : await listExistingVersions(root, unit.slug);
+      : [];
+    const versions = [...new Set([...sourceVersions, ...await listExistingVersions(root, unit.slug)])];
     // 与索引页的版本表一致：新版本在前
     versions.sort((left, right) => compareVersions(right, left));
     tree.push({ slug: unit.slug, label: unit.label, labelEn: unit.labelEn, path: `guides/releases/${unit.slug}`, items: versions });

@@ -5,11 +5,14 @@ description: "Core v0.1.1 的更新说明。"
 
 # Core v0.1.1
 
-2026-07-29 · Tag `steamharness/v0.1.1` · npm
+2026-10-18 · Tag `steamharness/v0.1.1` · npm
 
 <span id="steamharness-0-1-1" className="release-version-anchor"></span>
 <span id="steamharness.0.1.1" className="release-version-anchor"></span>
 
 #### 变更
 
-- 变更 Core 版本成为 Workflow 运行兼容性的唯一依据，并保持独立发版。
+- 以 SteamHarness 包名重新发布：`steamharness` 从 0.1.0 起独立版本线，
+  不与更早的发布线保持兼容。
+- 发布改由 GitHub Release 触发，使用 npm Trusted Publishing（OIDC）完成，不再需要长期令牌。
+- 运行时依赖改为 peer 声明 `^0.1.0`，安装时给出明确的兼容范围。

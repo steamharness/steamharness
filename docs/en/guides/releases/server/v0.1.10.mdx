@@ -14,7 +14,7 @@ description: "Release notes for Server 0.1.10."
 
 - **Local execution mode**: `pnpm dev` and `pnpm start:local` run cloud Workflows on the host without a Runner or container build. See [Deployment](/en/guides/server/deployment).
 - **Cross-service related project calls**: run containers read a target project's knowledge base and invoke its entrypoints as the calling user. See [Project management](/en/guides/server/project-management).
-- **Project KV entry deletion**: `DELETE /api/workflows/:name/kv/entry` removes a single project KV entry by scope and key.
+- **Project KV entry deletion**: `DELETE /api/projects/:name/kv/entry` removes a single project KV entry by scope and key.
 
 #### Breaking Changes
 
@@ -60,7 +60,7 @@ description: "Release notes for Server 0.1.10."
 
 #### Removed
 
-- Removed `GET/PUT /api/workflows/{projectName}/embed` and every `/embed/**` route.
+- Removed `GET/PUT /api/projects/{projectId}/embed` and every `/embed/**` route.
 - Removed the `wfembed` host and `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`; `project_embed_configs` stays expand-only.
 - Removed the Server Web `/web` entry page with its runnable version list and `next=web` redirect.
 - Removed the `server-live` release unit, the `/api/desktop/v1/*` and `/api/web-runs/*` routes, and the `web` release target.
