@@ -48,6 +48,8 @@ it.each([
 
   const login = f.request.mock.calls[0][0];
   if (login.type !== 'login') throw new Error('Expected login');
+  expect(restoreSignInReturn()).toBeUndefined();
+  expect(location.href).toBe(location.origin + original);
   const callback = `/entries/bot/?auth_state=${signIn(url).state}`;
   history.replaceState(null, '', callback);
   expect(restoreSignInReturn()).toBe(login.returnTicket);

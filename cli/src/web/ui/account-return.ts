@@ -6,9 +6,9 @@ export function rememberSignInReturn(state: string, ticket: string): void {
 
 /** The Server gets only a loopback callback. The original link stays in the initiating tab. */
 export function restoreSignInReturn(): string | undefined {
-  const callback = new URL(location.href);
-  const state = callback.searchParams.get('auth_state');
+  const state = new URLSearchParams(location.search).get('auth_state');
   if (state === null) return;
+  const callback = new URL(location.href);
   callback.searchParams.delete('auth_state');
   let target = callback;
   let ticket: string | undefined;
