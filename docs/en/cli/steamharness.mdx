@@ -59,6 +59,8 @@ Source windows show the version declared in source. Opening a release project sh
 
 See [Use CLI Web](/en/cli/web).
 
+Ask an Agent, “What runtime am I using?” to check the Core, CLI and project versions and the working directory for the current turn. The [`runtime_info` tool](/en/core-api/agent/context#your-own-tools) distinguishes direct CLI runs, CLI Web in a browser and projects launched by Studio.
+
 ## Validation and output
 
 `check` and `structure` statically inspect registered entries without executing user modules. Unsafe paths, duplicate entry IDs, invalid defaults, mismatched types and legacy declarations fail. `json` returns a run report with project and entry identity. Failed runs return a nonzero exit code. Cancellation propagates to the current execution and calls to other entries.

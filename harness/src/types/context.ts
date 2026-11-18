@@ -103,6 +103,8 @@ export interface NodeExecutionHooks {
 export interface NodeContext {
   projectId: string;
   entryId: string;
+  /** Identity of the project entry and host executing this run. */
+  runtimeInfo?: import("../runtime-info").ProjectRuntimeInfo;
   config: import("../configuration").ConfigurationValues;
   providers: ProviderRegistry;
   entries: EntriesContext;

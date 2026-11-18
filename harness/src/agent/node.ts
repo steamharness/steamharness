@@ -692,6 +692,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const memoryEnabled = botMemory && isBotMemoryEnabled(context, botMemory.memoryDefaultEnabled);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
+      runtimeInfo: context.runtimeInfo,
       botMemoryPrompt: memoryEnabled ? BOT_MEMORY_SYSTEM_PROMPT : undefined,
       botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,

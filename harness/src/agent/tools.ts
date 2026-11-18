@@ -10,6 +10,7 @@ import {
 import type { AgentQuestion } from "./types";
 import { pageInteger } from "./result-pages";
 import { setTimeout as delay } from "node:timers/promises";
+import { readAgentRuntimeInfo, type ProjectRuntimeInfo } from "../runtime-info";
 
 /**
  * The subset of TypeBox this module needs. Passed in by the runtime so the SDK
@@ -50,12 +51,13 @@ export const BUILTIN_AGENT_TOOL_NAMES = [
   "find",
   "ls",
   "sleep",
+  "runtime_info",
 ] as const;
 
 export type BuiltinAgentToolName = (typeof BUILTIN_AGENT_TOOL_NAMES)[number];
 
-/** Tools that only observe the workspace; the `read-only` policy keeps just these. */
-export const READ_ONLY_AGENT_TOOL_NAMES: readonly string[] = ["read", "grep", "find", "ls", "sleep"];
+/** Tools without external side effects; safe to replay. */
+export const READ_ONLY_AGENT_TOOL_NAMES: readonly string[] = ["read", "grep", "find", "ls", "sleep", "runtime_info"];
 
 /** Tools whose effect leaves the process; these always pause for approval under `workspace`. */
 export const MUTATING_AGENT_TOOL_NAMES: readonly string[] = ["write", "edit", "bash"];
@@ -84,6 +86,7 @@ export const BUILTIN_AGENT_TOOL_CATALOG: readonly BuiltinAgentToolDescriptor[] =
   { name: "find", label: "Find files", description: "按路径子串查找文件。" },
   { name: "ls", label: "List", description: "列出目录内容。" },
   { name: "sleep", label: "Sleep", description: "等待指定秒数，可取消，不执行 shell 命令。" },
+  { name: "runtime_info", label: "Runtime info", description: "查看本轮运行的项目、宿主、版本和工作目录。" },
 ];
 
 const DEFAULT_READ_LIMIT = 400;
@@ -144,6 +147,7 @@ export function createAskUserTool(input: { Type: TypeboxLike }): AgentTool {
 export function createBuiltinAgentTools(input: {
   Type: TypeboxLike;
   scope: AgentToolScope;
+  runtimeInfo?: ProjectRuntimeInfo;
 }): AgentTool[] {
   return [
     createReadTool(input),
@@ -154,7 +158,22 @@ export function createBuiltinAgentTools(input: {
     createFindTool(input),
     createLsTool(input),
     createSleepTool(input),
+    createRuntimeInfoTool(input),
   ].map(tool => ({ ...tool, replay: READ_ONLY_AGENT_TOOL_NAMES.includes(tool.name) ? "safe" : "never" })) as unknown as AgentTool[];
+}
+
+function createRuntimeInfoTool({ Type, scope, runtimeInfo }: { Type: TypeboxLike; scope: AgentToolScope; runtimeInfo?: ProjectRuntimeInfo }) {
+  return {
+    name: "runtime_info",
+    label: "Runtime info",
+    description: "Get the actual execution environment for this turn: project and entry, Core and CLI versions, launcher, Node.js version, OS, architecture and working directory. Use it to answer runtime or version questions instead of running shell commands. Unavailable information is omitted.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute(_id: string, _args: unknown, signal?: AbortSignal) {
+      signal?.throwIfAborted();
+      const details = readAgentRuntimeInfo(scope.workdir, runtimeInfo);
+      return { content: [{ type: "text" as const, text: JSON.stringify(details) }], details };
+    },
+  };
 }
 
 export function agentSleepSeconds(args: unknown): number {

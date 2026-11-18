@@ -524,9 +524,21 @@ test("a read-only policy offers the model no mutating tools", async () => {
     const agent = (runtime as unknown as { agent?: { state: { tools: Array<{ name: string }> } } }).agent;
     assert.ok(agent, "runtime must have created an agent");
     const names = agent.state.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["find", "grep", "ls", "read", "sleep"]);
+    assert.deepEqual(names, ["find", "grep", "ls", "read", "runtime_info", "sleep"]);
     assert.deepEqual(seen, []);
   });
+});
+
+test("an explicit tool allowlist never restores excluded tools in read-only mode", async () => {
+  for (const tools of [[], ["bash"], ["ls"]]) {
+    const { pi, ai } = await createFauxRuntime([() => ai.fauxAssistantMessage("ok")]);
+    const runtime = await createAgentRuntime({ pi, tools });
+    try {
+      for await (const _event of runtime.run({ prompt: "hi", errCode: 0, errMessage: "", permissionPolicy: "read-only" })) { /* Drain the turn. */ }
+      const agent = (runtime as unknown as { agent: { state: { tools: Array<{ name: string }> } } }).agent;
+      assert.deepEqual(agent.state.tools.map(tool => tool.name), tools.filter(name => name === "ls"));
+    } finally { await runtime.close(); }
+  }
 });
 
 test("the workspace policy pauses a mutating tool for approval", async () => {

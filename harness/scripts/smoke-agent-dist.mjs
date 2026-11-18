@@ -27,7 +27,7 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream" });
   if (codemode && !input.messages.some(message => message.role === "tool")) {
     response.end(`data: ${JSON.stringify({ id: "script", object: "chat.completion.chunk", model: "dist-smoke", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [
-      { index: 0, id: "script-call", type: "function", function: { name: "codemode", arguments: JSON.stringify({ code: 'text(await tools.echo({})); text(typeof process);' }) } },
+      { index: 0, id: "script-call", type: "function", function: { name: "codemode", arguments: JSON.stringify({ code: 'text(await tools.echo({})); text(await tools.runtime_info({})); text(typeof process);' }) } },
     ] }, finish_reason: "tool_calls" }] })}\n\ndata: [DONE]\n\n`);
     return;
   }
@@ -120,6 +120,9 @@ void session;
   try { for await (const _event of sandbox.run({ prompt: "Execute the script", requestId: "code-dist" })) { /* Drain the real worker. */ } }
   finally { await sandbox.close(); }
   assert.match(scriptOutput, /isolated 42/); assert.match(scriptOutput, /undefined/);
+  assert.ok(advertisedTools.has("runtime_info"));
+  assert.match(scriptOutput, /coreVersion/);
+  assert.ok(scriptOutput.includes(manifest.version));
   assert.equal(advertisedTools.has("memory"), false);
   assert.equal(advertisedTools.has("global_memory"), false);
   console.log("Copied dist: built-in skill injection, typed extension API, SQLite replay and QuickJS nested execution passed with production dependencies only.");

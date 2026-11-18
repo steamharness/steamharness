@@ -252,7 +252,7 @@ test("createEmbeddedBotExecutor produces a complete conversation executor", () =
   assert.equal(executor.tokenUsage?.enabled, true);
 
   const toolNames = (executor.tools ?? []).map((tool) => tool.name).sort();
-  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "memory_delete", "memory_get", "memory_save", "memory_search", "memory_update", "read", "sleep", "update_plan", "write"]);
+  assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "memory_delete", "memory_get", "memory_save", "memory_search", "memory_update", "read", "runtime_info", "sleep", "update_plan", "write"]);
 
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
@@ -341,7 +341,7 @@ test("host-disabled tools stay out of model requests while sleep remains usable"
   const result = await project.run({ errCode: 0, errMessage: "", prompt: "Wait for background progress", permissionPolicy: "auto" }, context);
   assert.equal(result.toolCallCount, 1);
   assert.match(requests.join(""), /Waited 0.001 seconds/);
-  assert.doesNotMatch(requests.join(""), /"name":"(?:bash|read|write|edit|grep|find|ls|disabled_custom)"/);
+  assert.doesNotMatch(requests.join(""), /"name":"(?:bash|read|write|edit|grep|find|ls|runtime_info|disabled_custom)"/);
 });
 
 test("sleep streams its expected end time before returning its actual completion time", async () => {

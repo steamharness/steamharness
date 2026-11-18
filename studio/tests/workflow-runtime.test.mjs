@@ -50,7 +50,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
               setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(effectiveConnection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
               return;
             }
-            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl}));
+            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl,runtimeHost:process.env.STEAMHARNESS_WEB_HOST}));
           });
           setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},traceModelRequestProtocolVersion:${modelRequestProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
@@ -74,6 +74,7 @@ test('user settings use host stdin, deduplicate updates and respect older CLI ca
     const f = await fixture(t, '1.0.0', 1, false, 0, 1, 1, 1, 1, protocol);
     const initial = { agent: { permissionPolicy: 'auto' } }, next = { agent: { permissionPolicy: 'read-only' } };
     const session = await startProjectCli({ ...f.options, userSettings: initial }); t.after(() => session.close());
+    assert.equal((await (await fetch(session.ready.url)).json()).runtimeHost, 'studio');
     session.updateUserSettings(initial);
     session.updateUserSettings(next); session.updateUserSettings(structuredClone(next));
     const state = await (await fetch(session.ready.url)).json();

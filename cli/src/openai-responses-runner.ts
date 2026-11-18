@@ -5,6 +5,7 @@ import {
   runLocalProjectWithReport,
   type NodeExecutionHooks,
   type ExecutionReport,
+  type RunLocalProjectOptions,
 } from "steamharness";
 import {
   isOpenAIConversationHostInput,
@@ -16,6 +17,7 @@ import {
   isolateOpenAIRunnerStdout,
   type OpenAIProtocolLineWriter,
 } from "./openai-runner-stdio";
+import { CLI_VERSION } from "./version";
 
 interface RunnerDependencies {
   readInput?: () => string;
@@ -68,12 +70,14 @@ export async function runOpenAIResponsesRunner(
 
     const runProject = dependencies.runProject ?? runLocalProjectWithReport;
     executionReport = await (runProject as unknown as (options: {
+      runtimeHost: RunLocalProjectOptions["runtimeHost"];
       projectDir: string;
       runId: string;
       hostInput: unknown;
       abortSignal?: AbortSignal;
       nodeHooks: NodeExecutionHooks;
     }) => Promise<ExecutionReport>)({
+      runtimeHost: { kind: "openai-responses", cliVersion: CLI_VERSION },
       projectDir: request.projectPath,
       runId: request.executionId,
       hostInput: request.hostInput,

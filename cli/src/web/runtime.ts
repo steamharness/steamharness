@@ -12,6 +12,10 @@ import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agen
 import { createSecretStreamRedactor } from './runtime-log';
 import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
 import type { AggregateEntryCall } from './entry-conversations';
+import { CLI_VERSION } from '../version';
+
+// Set by the Studio launcher for its private stdio host, not by page requests.
+export const WEB_HOST_ENV = 'STEAMHARNESS_WEB_HOST';
 
 export interface WebConnection {
   serverUrl: string;
@@ -31,7 +35,8 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
-  options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown> } = {}): Runtime {
+  options: { entryId?: string; hostKind?: 'cli-web' | 'studio'; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown> } = {}): Runtime {
+  const runtimeHost = { kind: options.hostKind ?? 'cli-web', cliVersion: CLI_VERSION };
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
@@ -67,6 +72,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     });
     delete env.STEAMHARNESS_LLM_SERVER_URL;
     delete env.STEAMHARNESS_LLM_SERVER_TOKEN;
+    delete env[WEB_HOST_ENV];
     for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
       'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST']) { delete env[key]; }
     if (env.NODE_OPTIONS) { env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/(?:--conditions=development|--conditions\s+development|-C=development|-C\s+development)/g, ''); }
@@ -163,7 +169,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     });
     child.stdin!.on('error', () => undefined);
     child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId,
-      actor, captureModelRequest: Boolean(onModelRequest) }));
+      actor, runtimeHost, captureModelRequest: Boolean(onModelRequest) }));
   });
   const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal,
     onModelRequest?: (request: LLMBotModelRequestSnapshot) => void): Promise<Report> => {

@@ -5,6 +5,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { ProjectRuntimeInfo } from "../runtime-info";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
@@ -75,6 +76,7 @@ type PiAgent = DurableAgent;
 type PiAgentTool = PiAgent["state"]["tools"][number];
 
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
+  runtimeInfo?: ProjectRuntimeInfo;
   /** Core-owned guidance for Bot project memory, including custom and prepared personas. */
   botMemoryPrompt?: string;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
@@ -211,7 +213,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     this.options = options;
     void options.sessionSuspend?.then(() => { this.suspended = true; });
     this.connection = readConnection(options);
-    this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy));
+    this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy), options.runtimeInfo);
     this.externalTools = [...(options.extraTools ?? []), ...(options.externalTools ?? [])];
   }
 
@@ -386,7 +388,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     this.allTools.splice(
       0,
       this.allTools.length,
-      ...createAgentTools(this.pi, scopeFromOptions(this.options), next.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY),
+      ...createAgentTools(this.pi, scopeFromOptions(this.options), next.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY, this.options.runtimeInfo),
     );
     this.connection = next;
 
@@ -733,10 +735,12 @@ function createAgentTools(
   pi: PiRuntime,
   scope: AgentToolScope,
   policy: AgentPermissionPolicy,
+  runtimeInfo?: ProjectRuntimeInfo,
 ): PiAgentTool[] {
   return createBuiltinAgentTools({
     Type: pi.Type as TypeboxLike,
     scope: resolveAgentToolScope(policy, scope),
+    runtimeInfo,
   }) as unknown as PiAgentTool[];
 }
 
@@ -867,8 +871,7 @@ function applyRunConfiguration(
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.
   const allowed = new Set(listEnabledAgentToolNames(parsed.permissionPolicy, definitions));
-  const requested = parsed.tools?.filter((name) => allowed.has(name)) ?? [...allowed];
-  const active = new Set(requested.length === 0 ? [...allowed] : requested);
+  const active = parsed.tools === undefined ? allowed : new Set(parsed.tools.filter(name => allowed.has(name)));
 
   // Built from the run's own scope rather than from the runtime's: a run that
   // names its own `workdir` or `allowedDirectories` means those to be what its
@@ -876,7 +879,7 @@ function applyRunConfiguration(
   const allTools = createAgentTools(pi, {
     workdir: parsed.workdir,
     allowedDirectories: parsed.allowedDirectories,
-  }, parsed.permissionPolicy);
+  }, parsed.permissionPolicy, options.runtimeInfo);
 
   // Asking the user is planning's own tool: the answer to "which approach?"
   // is what a plan is for, and a build turn is running a plan that was already

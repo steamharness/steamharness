@@ -5,6 +5,10 @@ draft: true
 
 # Core unreleased
 
+#### Added
+
+- Agents can use the read-only `runtime_info` tool to check the current project, launcher, loaded versions and working directory. {/* note: agent-runtime-info */}
+
 #### Changed
 
 - `defineBot` now requires `engine: "agent"` or `engine: "llm"`. LLM Bots make one model call per turn with the existing model settings and credentials, without starting an Agent or executing tools. {/* note: draft-1 */}

@@ -125,7 +125,7 @@ export async function startProjectCli(options: {
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(options.connection, options.surface);
   const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
-    { cwd: options.projectDir, env: environment(options.studioControl, options.runtime), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
+    { cwd: options.projectDir, env: { ...environment(options.studioControl, options.runtime), STEAMHARNESS_WEB_HOST: 'studio' }, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));
   const rememberModels = (settings?: StudioUserSettings) => { for (const model of settings?.agent.models ?? []) if (model.source === 'third-party') secrets.add(model.apiKey); };

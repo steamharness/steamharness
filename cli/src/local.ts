@@ -29,6 +29,7 @@ import {
   type RepositoryMode,
 } from "@steamharness/runtime-compatibility";
 import { prepareCliInvocation } from "./locale";
+import { CLI_VERSION } from "./version";
 
 type SteamHarnessCommand = "run" | "json" | "structure" | "check" | "resolve-params" | "help";
 
@@ -76,6 +77,7 @@ export async function main(
   if (parsed.release) parsed.projectDir = (await prepareReleaseRun(parsed.projectDir, { signal: abortController.signal, progress: message => process.stderr.write(message + "\n") })).directory;
   assertLocalCliCoreCompatible(parsed.projectDir);
   const report = await runLocalProjectWithReport({
+    runtimeHost: { kind: "cli", cliVersion: CLI_VERSION },
     projectDir: parsed.projectDir,
     entryId: parsed.entryId,
     entrypointId: parsed.entrypointId,

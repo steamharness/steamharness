@@ -80,7 +80,7 @@ const agent = await steamharness.createAgent({
 | `effort` | `AgentEffort` | 默认思考强度。 |
 | `permissionPolicy` | `AgentPermissionPolicySetting` | 默认权限策略。 |
 | `mode` | `AgentMode` | 默认运行模式。 |
-| `tools` | `string[]` | 收紧可用工具；不能放宽策略已经禁用的工具。 |
+| `tools` | `string[]` | 内置工具白名单；省略时使用策略允许的工具，空数组不启用任何内置工具。白名单不能放宽权限策略。 |
 | `allowedDirectories` | `string[]` | 允许读写根目录，默认只有 `workdir`。 |
 | `extraTools` | `AgentTool[]` | 内置工具之外再加的工具，见下方「自带工具」。 |
 | `models` / `resolvedModel` | pi 类型 | 需要复用自建 provider 集合或直接指定模型时使用。 |

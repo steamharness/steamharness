@@ -12,6 +12,7 @@ import {
   runOpenAIResponsesRunner,
 } from "../openai-responses-runner";
 import { isolateOpenAIRunnerStdout, type OpenAIRunnerWritable } from "../openai-runner-stdio";
+import cliPackage from "../../package.json" with { type: "json" };
 
 const request = {
   protocolVersion: 1 as const,
@@ -100,7 +101,8 @@ describe("OpenAI Responses internal runner", () => {
         projectType: "bot",
         conversation: { openai: { enabled: true, outputItemId: "conversation-answer" } },
       })) as never,
-      runProject: (async (options: { nodeHooks: { onNodeChunk?: (event: unknown) => void } }) => {
+      runProject: (async (options: { runtimeHost: unknown; nodeHooks: { onNodeChunk?: (event: unknown) => void } }) => {
+        assert.deepEqual(options.runtimeHost, { kind: "openai-responses", cliVersion: cliPackage.version });
         options.nodeHooks.onNodeChunk?.({
           nodeName: "conversation-answer",
           executionId: "node_test",

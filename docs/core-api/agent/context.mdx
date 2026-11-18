@@ -14,7 +14,13 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 默认本机编码工具的 `read` 按字节限制输出，可读取 8 MiB 之后的行。完整行用 `offset: nextOffset` 续读，超长行或原始文本用 `byteOffset: nextByteOffset`（UTF-8 字节偏移），此模式省略行 `offset` 和 `limit`。配置 `session.environment` 时，同一字节续读入口通过该环境读取，也适用于没有 shell 的只读子代理。`grep`、`find`、`ls` 返回截断标记与 `nextOffset`；长匹配行只返回预览，可用 `read` 获取全文。`bash` 输出按 UTF-8 字节限制并明确标记截断，超时或取消说明保留在尾部；需要完整日志时先重定向到文件再读取。
 
 
-内置工具包括 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`sleep`，以及只在 plan 模式提供的 `ask_user`。模型用 `ask_user` 中途向用户提问，运行暂停等回答，回答后继续同一份计划；每次可问多题，每题可带选项、多选或自定义回答。添加工具时，编程式运行用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
+内置工具包括 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`sleep`、`runtime_info`，以及只在 plan 模式提供的 `ask_user`。模型用 `ask_user` 中途向用户提问，运行暂停等回答，回答后继续同一份计划；每次可问多题，每题可带选项、多选或自定义回答。添加工具时，编程式运行用 `extraTools`，workflow 节点用 [createAgentNode](/core-api/create-agent-node) 的 `createTools`。
+
+在 Agent 对话里可以问「当前运行在哪？Core 和项目分别是什么版本？」模型可调用无参数的 `runtime_info({})`，读取本轮的工作目录、实际加载的 Core 版本，以及 Node.js 版本、操作系统和架构。通过项目执行器运行时，结果还包括项目名称、版本和入口；CLI、CLI Web、Studio 或 OpenAI Responses 启动时也会标明宿主和 CLI 版本。不确定的字段不返回。
+
+工具结果会发给模型，但不包含环境变量、凭据或服务地址。`read-only` 下仍可调用；项目可通过 `executor.tools` 禁用，或用 `agent.tools` 白名单排除。`engine: "llm"` 不执行工具。
+
+编程式宿主可在 `runLocalProjectWithReport` 或 `runWorkspaceProjectWithReport` 的选项中提供 `runtimeHost: { kind, cliVersion? }`。`kind` 接受 `cli`、`cli-web`、`studio` 或 `openai-responses`；项目执行器将宿主和项目入口信息放入 `NodeContext.runtimeInfo`。
 
 `sleep({ seconds })` 最多等待 0–3600 秒，支持小数秒和取消，不执行 shell 命令。持久会话保存等待截止时间，重开后只等待剩余时间。它在 `read-only` 策略下也可用；宿主仍可在 `executor.tools` 中禁用它。宿主禁用的内置工具和自带工具会从模型工具列表中移除，调用时继续校验权限。
 

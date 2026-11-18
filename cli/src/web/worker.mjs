@@ -323,6 +323,7 @@ try {
         for (const message of pendingAgentControls.splice(0)) dispatchAgentControl(message);
       }
       const running = runLocalProjectWithReport({
+        runtimeHost: request.runtimeHost,
         entryConversationHost,
         entryCall: request.entryCall,
         readOnly: request.readOnly === true,

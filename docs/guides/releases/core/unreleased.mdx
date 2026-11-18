@@ -5,6 +5,10 @@ draft: true
 
 # Core 待发布
 
+#### 新增
+
+- Agent 可通过只读工具 `runtime_info` 查询当前项目、启动宿主、实际运行版本和工作目录。 {/* note: agent-runtime-info */}
+
 #### 变更
 
 - `defineBot` 必须显式声明 `engine: "agent"` 或 `engine: "llm"`。LLM Bot 每轮只调用一次模型，使用现有模型配置及凭据，不启动 Agent 或工具。 {/* note: draft-1 */}

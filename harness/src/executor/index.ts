@@ -128,6 +128,8 @@ import {
 } from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceProjectOptions {
+  /** Optional diagnostic identity supplied by the trusted launcher. */
+  runtimeHost?: import("../runtime-info").ProjectRuntimeHost;
   /** Trusted host restriction; nested entry calls inherit it. */
   readOnly?: boolean;
   entryConversationHost?: import('../entries/index').EntryConversationHost;
@@ -164,6 +166,8 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  /** Optional diagnostic identity supplied by the trusted launcher. */
+  runtimeHost?: import("../runtime-info").ProjectRuntimeHost;
   /** Require an author-declared read-only Workflow operation. Not a JavaScript sandbox. */
   readOnly?: boolean;
   /** Reject a source change that would run a different engine in the host's existing session. */

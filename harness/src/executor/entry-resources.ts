@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createEntriesContext, type ResolvedProjectEntry } from "../entries/index";
+import type { ProjectRuntimeInfo } from "../runtime-info";
 import type { RunContext } from "../types/context";
 import type { RunLocalProjectOptions } from "./index";
 
@@ -8,9 +9,19 @@ const entryCallDepth = new AsyncLocalStorage<number>();
 export type EntryDeclaration = ResolvedProjectEntry & { projectId: string; entryId: string };
 
 export function createExecutorResources(declaration: EntryDeclaration, options: RunLocalProjectOptions, context: () => RunContext) {
+  const { manifest, projectDir, registration } = declaration;
   return {
     projectId: declaration.projectId,
     entryId: declaration.entryId,
+    runtimeInfo: {
+      host: options.runtimeHost,
+      project: {
+        name: manifest.name,
+        version: manifest.version,
+        directory: projectDir,
+        entry: { entryId: registration.entryId, name: registration.name, type: registration.type },
+      },
+    } satisfies ProjectRuntimeInfo,
     actor: options.actor,
     entries: createEntriesContext(declaration.manifest, { actor: options.actor ?? { isSystemAdmin: false }, projectId: declaration.projectId, sourceEntryId: declaration.entryId, get sourceConversationId() { return context().conversation.conversationId; }, get sourceRunId() { return String(context().metadata?.runId ?? ''); }, get abortSignal() { return context().abortSignal; }, get toolPermissions() { return context().toolPermissions; } }, {
       async list(entryId, identity) {

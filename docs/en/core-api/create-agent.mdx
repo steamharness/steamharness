@@ -79,7 +79,7 @@ The returned runtime exposes:
 | `effort` | `AgentEffort` | Default reasoning effort. |
 | `permissionPolicy` | `AgentPermissionPolicySetting` | Default permission policy. |
 | `mode` | `AgentMode` | Default run mode. |
-| `tools` | `string[]` | Narrow the available tools. Never widens what the policy disabled. |
+| `tools` | `string[]` | Allowlist for built-in tools. Omit it to use the tools the policy allows, or pass an empty array to disable all of them. It cannot override the policy. |
 | `allowedDirectories` | `string[]` | Roots the tools may touch. Defaults to `workdir` alone. |
 | `extraTools` | `AgentTool[]` | Tools to add alongside the built-ins. See "Your own tools" below. |
 | `models` / `resolvedModel` | pi types | For reusing your own provider collection or pinning a model. |

@@ -18,6 +18,7 @@ import { createLocalProjectConfigurationStore } from 'steamharness';
 import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+import cliPackage from '../../package.json' with { type: 'json' };
 
 it('carries host settings into real workers and IPC tools until a durable session is safely remounted', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-user-settings-'));
@@ -65,7 +66,8 @@ tools: [{ name: 'fixture_settings', enabled: true, autoApprove: true }],
 params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [{ name: 'access', flag: '--access', type: 'string', control: 'select',
             userSetting: { key: 'agent.permissionPolicy', mode: 'fixed' },
             options: [{ value: 'read-only' }, { value: 'workspace' }, { value: 'auto' }] }] }],
-prepareInput(input, { args, paramValues }) {
+prepareInput(input, { args, paramValues, runtimeInfo }) {
+          if (runtimeInfo?.host?.kind !== 'cli-web' || runtimeInfo.host.cliVersion !== ${JSON.stringify(cliPackage.version)}) throw new Error('Unexpected Web worker runtime host');
           writeFileSync(new URL('./settings-seen', import.meta.url), steamharness.getUserSettings().agent.permissionPolicy);
           return { ...input, permissionPolicy: paramValues.access };
         }

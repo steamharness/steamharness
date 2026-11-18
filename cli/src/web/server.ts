@@ -26,7 +26,7 @@ import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
 import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
-import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
+import { createWebRuntime, cliRoot, WEB_HOST_ENV, type WebConnection } from './runtime';
 import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
@@ -142,7 +142,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const rememberModelKeys = (settings: UserSettings) => { for (const model of settings.agent.models ?? []) if (model.source === "third-party") sensitiveTokens.add(model.apiKey); };
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings, entryRuntime: call => {
+  const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, hostKind, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
   } });
