@@ -47,6 +47,7 @@ it('carries host settings into real workers and IPC tools until a durable sessio
     await writeFile(path.join(directory, 'index.ts'), `
       import { writeFileSync } from 'node:fs';
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {provider: 'openai',
 model: 'fixture',
 apiKind: 'openai-completions',
@@ -137,6 +138,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {provider: 'openai',
 model: 'fixture',
 apiKind: 'openai-completions',
@@ -208,6 +210,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {provider: 'openai',
 model: 'fixture',
 apiKey: 'offline-fixture',
@@ -303,6 +306,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
         abort: async (_task, api, ctx) => { await api.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx); },
       })] }));
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {provider: 'openai',
 model: 'ipc-test',
 apiKind: 'openai-completions',

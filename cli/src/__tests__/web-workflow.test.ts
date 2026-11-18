@@ -457,7 +457,7 @@ it('persists nested conversation state on the Server while preserving authored f
       await context.conversation.setValue('marker', 'manifest-workflow');
       return steamharness.createOutputPayload({items:[{title:'Result',content:(await context.conversation.getValue()).values.marker,contentType:'text'}]});
     }});
-    export const executor = steamharness.defineBot({ async prepareInput(input, context) { const result = await flow.run(input, context); return { ...input, prompt: result.items[0].content }; } });
+    export const executor = steamharness.defineBot({ engine: "agent", async prepareInput(input, context) { const result = await flow.run(input, context); return { ...input, prompt: result.items[0].content }; } });
   `);
   const connection = await runtimeStorageService().start();
   const model = await offlineModel('manifest-workflow');

@@ -160,7 +160,7 @@ async function createScriptProject(
         })],
       });
     ` : `
-      export const executor = steamharness.defineBot({});
+      export const executor = steamharness.defineBot({ engine: "agent" });
     `),
   ]);
   return projectDir;

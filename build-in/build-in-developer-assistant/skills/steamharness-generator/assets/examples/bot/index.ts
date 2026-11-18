@@ -2,6 +2,7 @@ import type { RuntimeApi } from "steamharness/runtime-api";
 declare const steamharness: RuntimeApi;
 
 export const executor = steamharness.defineBot({
+  engine: "agent",
   name: "assistant",
   agent: { systemPrompt: "你是项目助手。依据实际工具结果回答，遵守当前权限。" },
   conversation: {

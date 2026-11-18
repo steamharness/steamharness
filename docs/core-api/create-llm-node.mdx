@@ -1,11 +1,13 @@
 ---
 title: "createLLMNode"
-description: "创建非流式 LLM 调用节点，并把业务输入映射为 LLMChatInput。"
+description: "调用模型并在流结束后一次返回完整结果。"
 ---
 
 # createLLMNode
 
-用 `steamharness.createLLMNode()` 发起一次非流式模型调用。节点解析 Provider 后调用 `provider.chat(llmInput)`；需要业务格式时，用 `mapOutput` 转换返回值。
+用 `steamharness.createLLMNode()` 在 Workflow 中调用模型，等回复完整后一次返回结果。节点通过 `provider.chat(llmInput)` 接收完整答复；需要业务格式时，用 `mapOutput` 转换。
+
+内置 Provider 使用 pi-ai 请求上游流。即使使用这个节点，端点也必须支持 SSE；只返回非流式 JSON 的端点不受支持。
 
 ## 示例
 
@@ -75,18 +77,17 @@ steamharness.createLLMNode<Input, Output>(
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `prompt` | `string` | 单条 prompt；与 `messages` 二选一。 |
-| `messages` | `ModelMessage[]` | 多轮消息；与 `prompt` 二选一。 |
+| `messages` | `LLMMessage[]` | 多轮消息；与 `prompt` 二选一。支持 `system`、`user`、`assistant`，用户消息可带图片。 |
 | `system` | `string` | system prompt。 |
 | `temperature` | `number` | 采样温度。 |
 | `maxOutputTokens` | `number` | 最大输出 token 数。 |
-| `topP` / `topK` | `number` | 采样参数。 |
-| `presencePenalty` / `frequencyPenalty` | `number` | 重复惩罚参数。 |
-| `stopSequences` | `string[]` | 停止序列。 |
-| `seed` | `number` | 随机种子。 |
-| `maxRetries` | `number` | 重试次数。 |
-| `timeout` | `number` | 调用超时。 |
-| `headers` | `object` | 额外请求头。 |
-| `providerOptions` | `LLMProviderOptions` | provider 私有扩展参数。 |
+| `topP` | `number` | 采样参数，适用于 Chat Completions 和 Anthropic Messages。 |
+| `presencePenalty` / `frequencyPenalty` | `number` | Chat Completions 的重复惩罚参数。 |
+| `stopSequences` | `string[]` | 停止序列，适用于 Chat Completions 和 Anthropic Messages。 |
+| `seed` | `number` | Chat Completions 的随机种子。 |
+| `maxRetries` | `number` | SDK 请求重试次数，默认 `0`。 |
+| `timeout` | `number` | 调用超时（毫秒）。 |
+| `headers` | `Record<string, string>` | 额外请求头。 |
 | `abortSignal` | `AbortSignal` | 节点会自动从 `context.abortSignal` 注入。 |
 
 ## 输出
@@ -101,9 +102,8 @@ steamharness.createLLMNode<Input, Output>(
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `text` | `string` | 模型文本输出。 |
-| `finishReason` | `FinishReason \| undefined` | 停止原因。 |
-| `usage` | `LanguageModelUsage \| undefined` | token 用量。 |
-| `providerMetadata` | `ProviderMetadata \| undefined` | provider 元信息。 |
+| `finishReason` | `LLMFinishReason \| undefined` | `"stop"`、`"length"` 或 `"tool-calls"`。 |
+| `usage` | `LLMUsage \| undefined` | 输入、输出、总 token 数及缓存和推理明细。 |
 
 当 executor 配置 `tokenUsage: { enabled: true }` 时，节点执行时通过 `getLLMProvider()` 解析出的 provider 会在 `chat` 返回后读取 `LLMChatOutput.usage` 并上报到 `context.tokenUsage`，因此即使 `mapOutput` 不再返回 `usage` 字段也能统计。本次 run 的聚合会出现在 `report.tokenUsage.run`；累计值写入平台项目用量表，存在会话时还会写入该会话用量表。本地宿主可以聚合各项目总量；支持 input、output、reasoning、cached input 和 cache creation/write token 明细。
 

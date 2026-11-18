@@ -1,5 +1,7 @@
 # Unreleased
 
+- Bot 入口可使用 LLM 引擎直接对话，复用设置中的模型，不显示 Agent 权限、Plan 或子 Agent 控件。现有 Bot 模板继续使用 Agent 引擎。
+
 - Workflow、Bot 和 Kanban 本地运行不再显示项目登记、Server 或 AI 连接检查；没有项目 ID 也可启动，ID 仅在发行构建时校验。
 
 - 修复 localhost 登录备用链接与旧账号覆盖 Server 输入；发起登录后即可取消。

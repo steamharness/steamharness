@@ -1,21 +1,22 @@
 ---
 title: "编写一个 Bot"
-description: "配置 Core Agent，在标准会话中接收消息、调用工具并保留上下文。"
+description: "选择模型直答或 Agent 工具模式，在 Studio 验证连续对话。"
 ---
 
 # 编写一个 Bot
 
-Bot 使用 Core Agent 处理消息，适合需要持续上下文的助手。先在 Studio 新建 Bot 项目，安装依赖，并配置一个可用模型。
+先在 Studio 新建 Bot 项目，安装依赖，并配置一个可用模型。只需要针对本会话回答时选择 `engine: "llm"`；需要工具、项目记忆或持久恢复时选择 `engine: "agent"`。
 
 ## 声明入口
 
-把下面的代码放入 Bot 入口文件。它只追加一个业务参数；模型、Effort、Plan 和权限控件由 Core 提供。
+把下面的代码放入 Bot 入口文件。这个 Agent 示例追加一个业务参数；模型、Effort、Plan 和权限控件由 Core 提供。
 
 ```ts
 import type { RuntimeApi } from "steamharness/runtime-api";
 declare const steamharness: RuntimeApi;
 
 export const executor = steamharness.defineBot({
+  engine: "agent",
   name: "发布助手",
   agent: { tools: [], systemPrompt: "你是项目助手，请根据当前会话回答。" },
   params: [{
@@ -30,6 +31,16 @@ export default executor;
 ```
 
 入口在 `steamharness.json` 中注册为 `type: "bot"`。保留创建项目时生成的项目 UUID 和入口 ID。
+
+如果只需模型回答，把入口声明替换为以下代码。两种引擎使用相同的模型设置，不必为 LLM 另配凭据。
+
+```ts
+export const executor = steamharness.defineBot({
+  engine: "llm",
+  llm: { systemPrompt: "你是项目助手，请根据当前会话回答。" },
+});
+export default executor;
+```
 
 ## 验证连续对话
 
@@ -47,12 +58,13 @@ export default executor;
 | 配置 | 用途 |
 | --- | --- |
 | `agent` | 提示词、模型来源、权限、技能和工具扩展 |
+| `llm` | 提示词、模型来源和输出设置；每轮只调用模型一次 |
 | `params` | 追加业务字段；内置字段通过 `agent.paramOptions` 定制 |
 | `prepareInput(input, context)` | 在 Core 解析文本和图片后补充业务上下文 |
 | `onCompleted(result, context)` | 成功后保存业务回执，返回 `void` |
 
-Core 固定提供输出、会话历史、用量、审批、队列与恢复；最终正文标识为 `agent-answer`。Bot 不能替换 `workflow`、`createInput` 或输出类型。
+两种引擎均提供输出、会话历史、用量和队列；审批和自动恢复仅适用于 Agent。最终正文标识为 `agent-answer`。Bot 不能替换 `workflow`、`createInput` 或输出类型。
 
-完成通知应按 `result.requestId` 幂等保存。通知失败后，恢复只补发通知，不重新运行已经完成的 Agent。
+完成通知应按 `result.requestId` 幂等保存。通知失败后，重试同一请求只补跑通知，不会再次调用模型。
 
 聚合项目用 `--entry` 选择 Bot；`--entrypoint` 只适用于 Workflow。完整开发契约见 [defineBot](/core-api/define-bot)，队列与恢复操作见[小助手与持久任务](/guides/studio/assistant)。

@@ -14,7 +14,7 @@ const customized = { modelSource: "project" as const, paramOptions: { fields: {
 } } };
 
 test("Bot inherits the Core parameter contract, independent model and effort controls, and resolver", async () => {
-  const bot = defineBot();
+  const bot = defineBot({ engine: "agent" });
   assert.equal(bot.projectType, "bot");
   const normalized = normalizeProjectParamDeclarations(bot.params);
   assert.deepEqual(normalized.params.map(p => p.name), ["provider", "model", "effort", "plan", "permissionPolicy"]);
@@ -27,8 +27,8 @@ test("Bot inherits the Core parameter contract, independent model and effort con
 });
 
 test("Bot parameter customization remains isolated and enforces fixed values", async () => {
-  const bot = defineBot({ agent: customized });
-  defineBot({ agent: { effort: "max" } });
+  const bot = defineBot({ engine: "agent", agent: customized });
+  defineBot({ engine: "agent", agent: { effort: "max" } });
   const fields = normalizeProjectParamDeclarations(bot.params).params;
   assert.equal(fields.some(p => p.name === "plan"), false);
   for (const permissionPolicy of ["read-only", "workspace", "auto"] as const) {
@@ -41,11 +41,11 @@ test("Bot parameter customization remains isolated and enforces fixed values", a
 });
 
 test("business params append to Core fields and cannot replace reserved fields", async () => {
-  const bot = defineBot({ params: [{ kind: "auxiliary", id: "business", label: "Business", fields: [{ name: "topic", flag: "--topic", type: "string" }] }],
+  const bot = defineBot({ engine: "agent", params: [{ kind: "auxiliary", id: "business", label: "Business", fields: [{ name: "topic", flag: "--topic", type: "string" }] }],
     resolveParams: () => ({ params: { topic: { value: "approved" } } }) });
   assert.equal(normalizeProjectParamDeclarations(bot.params).params.length, 6);
   assert.equal((await bot.resolveParams!(resolverContext())).params?.topic?.value, "approved");
-  assert.throws(() => defineBot({ params: [{ kind: "auxiliary", id: "bad", label: "Bad", fields: [{ name: "model", type: "string" }] }] }), /paramOptions/);
+  assert.throws(() => defineBot({ engine: "agent", params: [{ kind: "auxiliary", id: "bad", label: "Bad", fields: [{ name: "model", type: "string" }] }] }), /paramOptions/);
 });
 
 test("input parsing retains business defaults and ignores disabled fields", async () => {
@@ -53,7 +53,7 @@ test("input parsing retains business defaults and ignores disabled fields", asyn
     ...customized, workdir: "/business", allowedDirectories: ["../linked"], systemPrompt: "Business prompt", webSearch: false,
   });
   assert.equal(input.model, "resolved"); assert.equal(input.systemPrompt, "Business prompt"); assert.equal(input.workdir, "/business");
-  const bot = defineBot({ agent: { paramOptions: { fields: { plan: false, effort: false } } } });
+  const bot = defineBot({ engine: "agent", agent: { paramOptions: { fields: { plan: false, effort: false } } } });
   await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () => {
     const parsed = await bot.createInput({ ...resolverContext(), args: ["--message", "Question", "--agent", "plan"], paramValues: { plan: "true", effort: "max", permissionPolicy: "auto" } });
     assert.equal(parsed.agent, undefined); assert.equal(parsed.effort, undefined); assert.equal(parsed.permissionPolicy, "read-only");
@@ -62,6 +62,7 @@ test("input parsing retains business defaults and ignores disabled fields", asyn
 
 test("static Bot inspection expands the same contract without executing hooks", () => {
   const report = analyzeProjectScriptSource(`throw new Error("never execute"); export const executor = steamharness.defineBot({
+    engine: "agent",
     agent: ${JSON.stringify(customized)}, prepareInput() { throw new Error("never execute"); } });`);
   assert.deepEqual(report.executorConfigurationViolations, []);
   const normalized = normalizeProjectParamDeclarations(createAgentProjectParams(customized));
@@ -72,11 +73,11 @@ test("static Bot inspection expands the same contract without executing hooks", 
 
 test("static inspection reports unresolved Bot configuration and forbidden execution overrides", () => {
   for (const agent of ['{ paramOptions: readOptions() }', '{ effort: readEffort() }', '{ ...readOptions() }', '{ outputItemId: "custom" }']) {
-    const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ agent: ${agent} });`);
+    const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ engine: "agent", agent: ${agent} });`);
     assert.ok(report.executorConfigurationViolations.length > 0);
   }
   for (const key of ["workflow", "coreAgent", "createInput", "tokenUsage", "projectType"]) {
-    assert.ok(analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ ${key}: {} });`).executorConfigurationViolations.length > 0);
+    assert.ok(analyzeProjectScriptSource(`export const executor = steamharness.defineBot({ engine: "agent", ${key}: {} });`).executorConfigurationViolations.length > 0);
   }
 });
 
@@ -86,10 +87,9 @@ test("fixed positional and multiple parameters cannot be overridden", () => {
     ["external", "--models", '["third"]']), { target: "project", models: ["first", "second"] });
 });
 
-test("an empty defineBot call has the same static defaults as an empty object", () => {
-  const empty = analyzeProjectScriptSource("export const executor = steamharness.defineBot();");
-  const object = analyzeProjectScriptSource("export const executor = steamharness.defineBot({});");
-  assert.equal(empty.executorProjectType, "bot");
-  assert.deepEqual(empty.executorParams, object.executorParams);
-  assert.deepEqual(empty.executorConversation, object.executorConversation);
+test("Bot source inspection requires an explicit engine", () => {
+  for (const input of ["{}", "{ agent: {} }"]) {
+    const report = analyzeProjectScriptSource(`export const executor = steamharness.defineBot(${input});`);
+    assert.ok(report.executorConfigurationViolations.some(violation => violation.name === "engine"));
+  }
 });

@@ -300,7 +300,7 @@ When any explicit group exists, the local Run workspace renders entrypoints in c
 
 Projects can use `steamharness.json.entries[].schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
 
-Bot projects use `steamharness.defineBot()`, which fixes the Core Agent execution, standard input, and output. They do not declare Workflow entrypoints. Project types are `workflow`, `bot`, and `kanban`; Kanban registers static HTML in `steamharness.json.entries`.
+Bot projects declare `engine: "agent"` or `engine: "llm"` through `steamharness.defineBot()`. Both use the same conversation input and output, without Workflow entrypoints. Project types are `workflow`, `bot`, and `kanban`; Kanban registers static HTML in `steamharness.json.entries`.
 
 `createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `config`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 

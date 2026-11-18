@@ -10,6 +10,7 @@ const models = ai.createModels(); models.setProvider(provider.provider);
 provider.setResponses(Array.from({ length: 64 }, () => request => ai.fauxAssistantMessage(String(request.messages.filter(message => message.role === 'user').at(-1)?.content ?? 'Ready'))));
 
 export const executor = steamharness.defineBot({
+  engine: "agent",
   agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: [],
     paramOptions: { fields: { provider: false, model: false, effort: false, plan: false, permissionPolicy: false } } },
   params: [

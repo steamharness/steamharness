@@ -1,5 +1,6 @@
 import { readProjectCliAuthConfigSync } from "../../auth-config";
 import { HarnessError } from "../../workflow/errors";
+import { toAgentModelAttributes } from "./model-attributes";
 import { createLLMProvider } from "./factory";
 import {
   startLLMProxyBridge,
@@ -246,7 +247,9 @@ class ServerLLMCredentialManager {
           system: options.system,
           defaults: options.defaults,
           webSearch: options.webSearch,
-          fetch: this.createCredentialFetch(record.id, record.providerType),
+          modelAttributes: toAgentModelAttributes(modelDetailsById.get(model)),
+          fetch: this.createCredentialFetch(record.id, record.providerType,
+            record.providerType === "anthropic" ? joinServerUrl(this.connection.serverUrl, `${record.proxyPath.replace(/\/+$/, "")}/messages`) : undefined),
         });
       },
       startOpenAIProxyBridge: async (options: { signal?: AbortSignal } = {}) => {
@@ -290,6 +293,7 @@ class ServerLLMCredentialManager {
   private createCredentialFetch(
     credentialId: string,
     providerType: ServerLLMSupportedProviderType,
+    targetUrl?: string,
   ): typeof fetch {
     return async (input, init) => {
       const token = await this.readCredentialToken(credentialId, init?.signal ?? undefined);
@@ -302,7 +306,8 @@ class ServerLLMCredentialManager {
       } else {
         headers.set("authorization", `Bearer ${token}`);
       }
-      const response = await this.fetchImpl(input, { ...init, headers });
+      const target = targetUrl === undefined ? input : input instanceof Request ? new Request(targetUrl, input) : targetUrl;
+      const response = await this.fetchImpl(target, { ...init, headers });
       if (response.status === 401 || response.status === 403) this.catalog = undefined;
       return response;
     };

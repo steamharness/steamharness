@@ -113,7 +113,13 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   const [harness, cli] = await Promise.all(['harness', 'cli'].map(name => readJSON(path.join(monorepo, name, 'package.json'))));
   await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ harness: harness.version, cli: cli.version }));
   const runtime = projectTemplatesRuntime(extension, 'zh-cn');
-  const templates = await runtime.templates(); assert.equal(templates.length, 7); assert.equal(templates[0].name, '\u5de5\u4f5c\u6d41');
+  const templates = await runtime.templates();
+  assert.deepEqual(templates.map(template => template.id), ['workflow-starter', 'bot-starter', 'kanban-starter', 'workflow-hello', 'bot-tools']);
+  assert.equal(templates[0].name, '\u5de5\u4f5c\u6d41');
+  for (const templateId of ['bot-starter', 'bot-tools']) {
+    const bot = await runtime.create({ templateId, name: templateId, parentDirectory: directory });
+    assert.match(await readFile(path.join(bot.directory, 'index.ts'), 'utf8'), /steamharness\.defineBot\(\{\s*engine: "agent",/u);
+  }
   const input = { templateId: 'workflow-starter', name: 'Created', parentDirectory: directory };
   await runtime.validate(input);
   await assert.rejects(runtime.validate({ ...input, name: '../escape' }), { code: 'invalid-name' });

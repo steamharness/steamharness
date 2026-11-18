@@ -51,6 +51,7 @@ it('recovers a killed worker inside managed child execution without replaying it
       import { appendFileSync, writeFileSync } from 'node:fs';
 
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {paramOptions: { fields: { provider: false, model: false } }, provider: 'openai',
 model: 'fixture',
 apiKind: 'openai-completions',

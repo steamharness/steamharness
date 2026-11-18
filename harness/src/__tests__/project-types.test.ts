@@ -331,7 +331,7 @@ test("runtime reports static violations before server storage connection checks"
 });
 
 function createExecutorSource(configuration: string): string {
-  if (/"?projectType"?: "bot"/.test(configuration)) return `export const executor = steamharness.defineBot({ ${configuration.replace(/"?projectType"?: "bot",?/, "")} });`;
+  if (/"?projectType"?: "bot"/.test(configuration)) return `export const executor = steamharness.defineBot({ engine: "agent", ${configuration.replace(/"?projectType"?: "bot",?/, "")} });`;
 
   const execution = /projectType\s*:\s*["']workflow["']/.test(configuration)
     ? `

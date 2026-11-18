@@ -1,18 +1,52 @@
 ---
 title: "defineBot"
-description: "Declare a Bot project with a fixed Core Agent runtime."
+description: "Declare a Bot entry backed by Core Agent or a single LLM call."
 ---
 
-`steamharness.defineBot({ name?, memory?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })` returns a `BotExecutorDefinition` with `projectType: "bot"`. The output is always `AgentOutputPayload`; the final answer item is `agent-answer`. Custom workflows, coreAgent wrappers, createInput, tokenUsage and outputItemId overrides are rejected. The former `conversation` project type and factories are removed.
+Use `steamharness.defineBot()` and register the entry in `steamharness.json` with `type: "bot"`. The declaration requires an `engine`. Add `engine: "agent"` to existing declarations to keep their behavior.
 
-Configure models, prompts, skills, permissions, tools and sessions through `agent`. Core provides Model, Effort, Plan and permission parameters. Customize them through `agent.paramOptions`; top-level `params` adds business fields without replacing reserved fields. Fixed values remain enforced after input preparation.
+You cannot switch engines within a conversation. After changing the project's `engine`, reopen it to start a new conversation. You can still read the old history.
 
-Core parses text, image attachments and OpenAI host input. `prepareInput(input, context)` returns an extended `AgentInput` and can read configuration, call aggregate operations and load business context. Its context includes resources, cancellation, args and paramValues. `agent.createTools(context, input)` and `agent.createSession(context, input)` receive prepared input. Queueing, durability, recovery, usage and gateway output are supplied by Core. Bot options customize presentation, commands, input interactions and `recovery.startup: "automatic" | "manual"`.
+| Engine | When to use it | Engine-specific options |
+| --- | --- | --- |
+| `"agent"` | Run tools, handle multi-step tasks, or resume durable work. | `agent`, `tools`, `memory` |
+| `"llm"` | Answer from the current conversation without running tools. | `llm` (required; pass `{}` for defaults) |
 
-`onCompleted({ requestId, output }, context)` receives a read-only successful result and returns void. Save business receipts idempotently by requestId. Core persists the result and notification status; notification failures are reported separately and recovery retries notification without repeating the model call. Subsequent inputs under a durable owner also pass through the hooks. `conversationId`, history and `context.entries.conversations` keep their session meaning.
+Both engines accept `name`, `params`, `resolveParams`, `conversation`, `prepareInput`, and `onCompleted`. They return a `BotExecutorDefinition` with `AgentOutputPayload` and a final answer item named `agent-answer`. You cannot override `workflow`, `coreAgent`, `createInput`, `tokenUsage`, or `outputItemId`.
+
+## LLM Bot
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "llm",
+  llm: { systemPrompt: "You are a project assistant." },
+});
+export default executor;
+```
+
+Each turn sends the completed turns in the current conversation and the new input in one model call. The OpenAI Responses adapter uses the request's history without also adding local messages. LLM Bots stream answers, report usage, and support text, images, queues, and stopping. They do not start an Agent, execute tools, search the web, or read project memory. Plan, permission, and subagent controls are not available.
+
+| `llm` option | Type | Purpose |
+| --- | --- | --- |
+| `systemPrompt` | `string` | System prompt shared across turns. |
+| `modelSource` | `"user-settings"` or `"project"` | Select models from host settings or project configuration. |
+| `model` | `string` | Default model entry ID. Omit to use the configured default. |
+| `temperature` | `number` | Optional non-negative sampling temperature, where supported. |
+| `maxOutputTokens` | `number` | Optional positive integer cap on output tokens. |
+
+Core saves the completed turn by `requestId` before calling `onCompleted`. When the callback fails, retrying that request replays the saved answer and retries only the callback. An interrupted stream is not saved as a completed turn or sent again automatically. You can retry it manually.
+
+## Agent Bot
+
+Configure models, prompts, skills, permissions, tools and sessions through `agent`. Core provides Model, Effort, Plan and permission parameters. Customize them through `agent.paramOptions`; top-level `params` adds business fields without replacing reserved fields. Fixed values remain enforced after input preparation.
+
+`agent.createTools(context, input)` and `agent.createSession(context, input)` receive prepared input. Agent Bots support durability and recovery; choose `"automatic"` or `"manual"` via `conversation.recovery.startup`. Both engines accept `conversation` options for presentation, commands, and input interactions.
+
+`prepareInput(input, context)` runs after Core parses text and images and returns an extended `AgentInput`. The context exposes configuration, `args`, `paramValues`, and cancellation. `onCompleted({ requestId, output }, context)` receives a read-only successful result and must return `void`. Use `requestId` as the idempotency key for any business receipt.
+
+```ts
+export const executor = steamharness.defineBot({
+  engine: "agent",
   name: "assistant",
   agent: { systemPrompt: "You are a project assistant." },
   async prepareInput(input, context) {
@@ -22,13 +56,13 @@ export const executor = steamharness.defineBot({
 export default executor;
 ```
 
-Models default to host settings, or project configuration in standalone CLI Web. Set `agent.modelSource: "project"` to require project models. Tool declarations retain host approval and permission checks. Register the entry in `steamharness.json` with `type: "bot"`. Local runs may omit the project `id`; release builds validate the project UUID.
+Both engines use the same [model and credential configuration](/en/concepts/project-configuration). They default to Studio user settings, or project configuration in standalone CLI Web. Set `modelSource: "project"` to require project models. System AI and third-party models are subject to the project's model source policy. Authentication failure does not select a different model. Local runs may omit the project `id`; release builds validate the project UUID.
 
 Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
 
 ## Project memory
 
-Project memory is enabled by default. Conversations in the same project and Bot entry share memories. Other projects and entries have separate storage. Each entry has a `category` and `key`, so project facts, decisions and procedures can be kept apart.
+Agent Bots enable project memory by default. Conversations in the same project and Bot entry share memories. Other projects and entries have separate storage. Each entry has a `category` and `key`, so project facts, decisions and procedures can be kept apart.
 
 Open the active configuration under **Project configurations**, toggle **Bot memory**, and save. Subsequent executions use the setting; saved run snapshots keep their original configuration. Turning memory off removes its tools and guidance from that execution while preserving saved entries. Turn it on again to retrieve them.
 
@@ -36,6 +70,7 @@ Open the active configuration under **Project configurations**, toggle **Bot mem
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "agent",
   memory: { enabled: false },
   agent: { systemPrompt: "You are a project assistant." },
 });
@@ -77,6 +112,7 @@ Core supplies the `skill` tool automatically; projects can adjust its permission
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "agent",
   agent: { skills: { directories: ["skills"] } },
 });
 ```

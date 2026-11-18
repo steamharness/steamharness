@@ -49,6 +49,7 @@ import {
   messageSettled,
   sessionRunning,
   conversationModelName,
+  archivedConversation,
   type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type Project, type Field,
   type ParamValues, type ParamValue, type ParamState, type ParamRequest,
   type Attachment,
@@ -233,7 +234,8 @@ function initialize(): void {
     if (sourceId) navigate(sourceId);
   });
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
-  const readOnly = () => state?.conversationAccess?.readOnly === true;
+  const oldEngine = () => !!state && archivedConversation(state.project, currentSession());
+  const readOnly = () => oldEngine() || state?.conversationAccess?.readOnly === true;
   const accessNotice = document.createElement('div');
   accessNotice.className = 'conversation-access'; accessNotice.setAttribute('role', 'status'); accessNotice.hidden = true;
   accessNotice.textContent = t('This conversation is open or running in another window. You can read it here or start a new conversation.');
@@ -659,7 +661,9 @@ function initialize(): void {
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
-    accessNotice.hidden = !readOnly() || state.conversationAccess?.reason === 'pending';
+    accessNotice.hidden = !readOnly() || !oldEngine() && state.conversationAccess?.reason === 'pending';
+    accessNotice.textContent = oldEngine() ? t('This conversation belongs to a different Bot engine.')
+      : t('This conversation is open or running in another window. You can read it here or start a new conversation.');
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
@@ -836,7 +840,7 @@ function initialize(): void {
 
   function blankSession(id: string): ConversationSession {
     const now = Date.now();
-    return { id, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
+    return { id, engine: state?.project.conversation?.engine, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
   }
 
   function navigate(id?: string): void {
@@ -1189,7 +1193,7 @@ function initialize(): void {
     if (view.configureModel) view.configureModel.hidden = !configureModel;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content && !message.references?.length;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
-    if (fork) { fork.hidden = !!embeddedConversation || !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
+    if (fork) { fork.hidden = !!embeddedConversation || oldEngine() || !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
     const signature = JSON.stringify([message.attachments, message.references]);
     if (signature !== view.extrasSignature) {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
@@ -1206,6 +1210,7 @@ function initialize(): void {
   }
 
   function subagentState(session: ConversationSession): ConversationSubagentsState | undefined {
+    if (oldEngine()) return undefined;
     const owner = state?.sessions.find(entry => entry.id === (session.agentOwnerId ?? session.id));
     const result = conversationSubagents(session.agent ?? owner?.agent, session.agentConversationId,
       connectionAvailable, session.agentInterrupted ?? owner?.agentInterrupted);
@@ -1215,7 +1220,7 @@ function initialize(): void {
   function updateChildWorkStatus(session: ConversationSession): void {
     const owner = state?.sessions.find(entry => entry.id === session.agentOwnerId);
     const connected = connectionAvailable;
-    childWorkStatus.update(session.agentOwnerId && !session.forkSource
+    childWorkStatus.update(!oldEngine() && session.agentOwnerId && !session.forkSource
       ? childConversationSubagent(session.agent ?? owner?.agent, session.agentConversationId, connected, session.agentInterrupted ?? owner?.agentInterrupted)
       : undefined, connected);
   }

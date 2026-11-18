@@ -56,9 +56,8 @@ steamharness.createLLMStreamNode<Input>(
 |Type|Field|Description|
 | --- | --- | --- |
 | `text-delta` | `text: string` |A piece of incremental text.|
-| `finish` | `finishReason?: FinishReason` |Stream end reason.|
-| `finish` | `usage?: LanguageModelUsage` |token usage.|
-| `finish` | `providerMetadata?: ProviderMetadata` |provider meta information.|
+| `finish` | `finishReason?: LLMFinishReason` | Why the stream ended. |
+| `finish` | `usage?: LLMUsage` | Token usage. |
 
 ## Return value
 

@@ -1,18 +1,52 @@
 ---
 title: "defineBot"
-description: "声明固定使用 Core Agent 的 Bot 项目。"
+description: "声明使用 Core Agent 或单次 LLM 调用的 Bot 入口。"
 ---
 
-Bot 使用 `steamharness.defineBot({ name?, memory?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 `conversation` 项目类型与工厂已删除。
+用 `steamharness.defineBot()` 声明 Bot，入口在 `steamharness.json` 中注册为 `type: "bot"`。声明必须包含 `engine`；原有 Bot 加上 `engine: "agent"`，其余配置不变。
 
-`agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
+会话内不能切换引擎。修改项目的 `engine` 后，重新打开项目，从新会话开始聊天；旧会话仍可查看。
 
-Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, context)` 返回扩展的 `AgentInput`，可读取配置、调用聚合入口或加载索引；context 提供资源、取消信号、args 与 paramValues。工具工厂 `agent.createTools(context, input)` 和 session 工厂 `agent.createSession(context, input)` 接收准备后的输入。会话队列、durable、recovery、用量和网关由 Core 固定提供；`conversation` 仅定制展示、命令、输入交互和 `recovery.startup: "automatic" | "manual"`。
+| 引擎 | 适用场景 | 引擎专属配置 |
+| --- | --- | --- |
+| `"agent"` | 调用工具、执行多步任务或需要持久恢复。 | `agent`、`tools`、`memory` |
+| `"llm"` | 只需模型根据本会话回答。 | `llm`（必填，不需要选项时传 `{}`） |
 
-`onCompleted({ requestId, output }, context)` 接收成功结果的只读快照，返回 void。按 requestId 幂等保存业务回执，不修改输出或再次运行模型。Core 持久化结果与通知状态；通知失败单独报告，恢复只补通知。持久宿主的后续消息也经过输入钩子与完成通知。`conversationId`、会话历史及 `context.entries.conversations` 继续表示会话。
+两种引擎都支持 `name`、`params`、`resolveParams`、`conversation`、`prepareInput` 和 `onCompleted`，返回 `BotExecutorDefinition`。输出类型为 `AgentOutputPayload`，最终正文项固定为 `agent-answer`。不能覆盖 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`。
+
+## LLM Bot
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "llm",
+  llm: { systemPrompt: "你是项目助手。" },
+});
+export default executor;
+```
+
+每轮把当前会话已完成的问答和本轮输入交给模型，流式返回答复并记录用量。OpenAI Responses 入口使用请求提供的历史，不额外拼接本地会话。LLM Bot 支持文本、图片、排队和停止，不启动 Agent、调用工具、联网搜索或读取项目记忆，也没有 Plan、权限或子 Agent 控件。
+
+| `llm` 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| `systemPrompt` | `string` | 各轮共用的系统提示词。 |
+| `modelSource` | `"user-settings"` 或 `"project"` | 控制从宿主设置还是项目配置选模型。 |
+| `model` | `string` | 默认模型条目 ID；省略时使用配置中的默认模型。 |
+| `temperature` | `number` | 可选的非负采样温度，端点须支持。 |
+| `maxOutputTokens` | `number` | 可选的输出 token 上限，须为正整数。 |
+
+答复完整返回后，Core 先按 `requestId` 保存问答，再调用 `onCompleted`。回调报错时，对同一请求点“重试”只重放已保存的答复并补跑回调。模型流中断时不保存半截答复，也不自动重发；可手动重试。
+
+## Agent Bot
+
+`agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
+
+`agent.createTools(context, input)` 和 `agent.createSession(context, input)` 接收准备后的输入。Agent Bot 支持 durable 和 recovery；通过 `conversation.recovery.startup` 选择 `"automatic"` 或 `"manual"`。两种引擎都可通过 `conversation` 定制展示、命令及输入交互。
+
+`prepareInput(input, context)` 在 Core 解析文本和图片后运行，返回扩展的 `AgentInput`。它可读取 `context.config`、`args`、`paramValues` 和取消信号。`onCompleted({ requestId, output }, context)` 接收成功结果的只读快照，必须返回 `void`。业务回执应按 `requestId` 幂等保存。
+
+```ts
+export const executor = steamharness.defineBot({
+  engine: "agent",
   name: "assistant",
   agent: { systemPrompt: "你是项目助手。" },
   async prepareInput(input, context) {
@@ -22,13 +56,13 @@ export const executor = steamharness.defineBot({
 export default executor;
 ```
 
-`agent` 默认使用宿主用户模型设置；独立 CLI Web 使用项目模型配置。显式 `modelSource: "project"` 只使用项目模型。工具声明继续经过宿主权限与审批。入口仍在 `steamharness.json` 注册，`type` 必须为 `bot`。本地运行可省略项目 `id`；发行构建才校验项目 UUID。
+两种引擎共用[模型与凭据配置](/concepts/project-configuration)。默认使用 Studio 用户设置，独立 CLI Web 使用项目模型配置；设 `modelSource: "project"` 时只使用项目模型。系统 AI 与第三方模型都遵循项目的来源限制，鉴权失败不会自动换模型。本地运行可省略项目 `id`；发行构建才校验项目 UUID。
 
 工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
 
 ## 项目记忆
 
-每个 Bot 默认开启项目记忆，同一项目、同一 Bot 入口的会话共享记忆。不同项目和不同入口分别保存；每条记忆再用 `category` 和 `key` 定位，适合把项目事实、决策和操作流程分开存储。
+Agent Bot 默认开启项目记忆，同一项目、同一 Bot 入口的会话共享记忆。不同项目和不同入口分别保存；每条记忆再用 `category` 和 `key` 定位，适合把项目事实、决策和操作流程分开存储。
 
 在项目的“项目配置”中打开当前使用的配置，切换“Bot 记忆”并保存，后续新执行使用该设置。已保存的运行快照继续使用原配置。关闭记忆会移除该次执行的记忆工具与操作提示词，保留已有条目；重新开启后可以继续读取。
 
@@ -36,6 +70,7 @@ export default executor;
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "agent",
   memory: { enabled: false },
   agent: { systemPrompt: "你是项目助手。" },
 });
@@ -77,6 +112,7 @@ Core 自动提供 `skill` 工具，项目可通过 `tools` 调整其权限。宿
 
 ```ts
 export const executor = steamharness.defineBot({
+  engine: "agent",
   agent: { skills: { directories: ["skills"] } },
 });
 ```

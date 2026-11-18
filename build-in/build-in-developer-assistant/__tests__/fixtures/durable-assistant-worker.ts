@@ -28,7 +28,7 @@ const timer = runtime.defineAgentTask<{ wakeAt: number }, { phase: "sleep"; wake
 registry.install(runtime.defineAgentExtension({ name: "fixture", tasks: [timer] }));
 let scriptWaiting = false;
 // Keep the real assistant declaration, persona, tools and nodes; only the model is scripted.
-globalThis.steamharness = { ...runtime, defineBot: options => runtime.defineBot({ ...options, agent: {
+globalThis.steamharness = { ...runtime, defineBot: options => runtime.defineBot({ engine: "agent", ...options, agent: {
   ...options?.agent, models: injectedModels, resolvedModel: models.getModel("faux", "fixture")!,
   ...(scenario === "extensions" ? { session: { ...options?.agent?.session, codeMode: {}, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
     parameters: ai.Type.Object({}), execute: async () => { scriptWaiting = true;

@@ -14,9 +14,12 @@ import { startEntryWebServer as startWebServer } from '../web/server';
 import { projectDataDirectory } from '../web/project-data-directory';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
-it('loads user models through the host and worker without project configuration, while keeping keys out of state, history and exports', async () => {
+it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without exposing keys', async engine => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'user-model-runtime-'));
   const applicationId = crypto.randomUUID(), calls: { model: string; token?: string }[] = [];
+  const transcripts: string[] = [];
+  let finishQueued: (() => void) | undefined;
+  let crashOnce = true;
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
   const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
@@ -24,8 +27,16 @@ it('loads user models through the host and worker without project configuration,
     if (request.method === 'GET') { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'fixture-user', email: 'fixture@example.test', displayName: 'Fixture' } } })); return; }
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({ model: body.model, token: request.headers.authorization });
+    transcripts.push(JSON.stringify(body.messages));
+    const prompt = JSON.stringify(body.messages.at(-1));
+    const wait = engine === 'llm' && (prompt.includes('Hold queue') || prompt.includes('Cancel this') || prompt.includes('Crash this') && crashOnce);
     response.writeHead(200, { 'content-type': 'text/event-stream' });
-    response.end(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: { role: 'assistant', content: `Answer ${body.model}` }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+    const text = wait && !prompt.includes('Hold queue') ? 'Discard this partial answer' : `Answer ${body.model}`;
+    response.write(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: null }] })}\n\n`);
+    const finish = () => response.end(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: ${JSON.stringify({ id: 'user-answer', choices: [], usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } })}\n\ndata: [DONE]\n\n`);
+    if (!wait) finish();
+    else if (prompt.includes('Hold queue')) finishQueued = finish;
+    else if (prompt.includes('Crash this')) crashOnce = false;
   });
   try {
     upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
@@ -33,26 +44,36 @@ it('loads user models through the host and worker without project configuration,
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() },  defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'bot', root: '.', entry: 'index.ts' }]  }));
-    await writeFile(path.join(directory, 'index.ts'), `
-
+    const source = (engine: 'agent' | 'llm') => `
+      import { writeFileSync } from 'node:fs';
       export const executor = steamharness.defineBot({
-agent: {modelSource: 'user-settings',
-tools: []},
-prepareInput(input) {
-  if (input.apiKey || input.baseUrl) throw new Error('Resolved credentials must not reach Bot input hooks');
-  return input;
-}
-}); export default executor;
-    `);
+        engine: '${engine}',
+        ${engine === 'agent' ? "agent: { modelSource: 'user-settings', tools: [] }" : "llm: { modelSource: 'user-settings' }"},
+        prepareInput(input) {
+          if (input.apiKey || input.baseUrl) throw new Error('Resolved credentials must not reach Bot input hooks');
+          if (input.prompt === 'Crash this') writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid));
+          return input;
+        },
+        async onCompleted({ requestId, output }, context) {
+          if (output.prompt !== 'Callback retry') return;
+          if (!(await context.conversation.getValue()).values[requestId]) {
+            await context.conversation.setValue(requestId, true);
+            throw new Error('Fixture notification failure');
+          }
+        },
+      }); export default executor;
+    `;
+    await writeFile(path.join(directory, 'index.ts'), source(engine));
     const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
       id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
     }] } };
-    app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
-    const token = new URL(app.url).hash.slice('#session='.length);
-    const post = async (message: object) => {
+    const options = { projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor' as const, userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } };
+    app = await startWebServer(options);
+    const post = async (message: object, status = 200) => {
+      const token = new URL(app!.url).hash.slice('#session='.length);
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
       const result = await response.json();
-      expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
+      expect(response.status, JSON.stringify(result)).toBe(status); return status === 200 ? result.messages : result;
     };
     const resolution = (await post({ type: 'resolve', params: {}, requestId: 'user-models' }))[0];
     expect(resolution.error).toBeUndefined(); expect(resolution.params.model.value).toBeUndefined();
@@ -63,9 +84,14 @@ prepareInput(input) {
     if (selectedModel.source !== 'third-party') throw new Error('Expected the third-party fixture model.');
     const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...selectedModel, model: 'actual-two', apiKey: 'test-only-next-key' }] } };
     await app.setHostUserSettings(updated);
-    await post({ type: 'send', text: 'Second', params: {}, attachments: [] }); await expect.poll(() => app!.controller.current.messages.at(-1)?.content).toBe("Answer actual-two");
-    await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe("success");
-    expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-two' });
+    const second = crypto.randomUUID();
+    await post({ type: 'send', requestId: second, text: 'Second', params: {}, attachments: [] });
+    await expect.poll(() => {
+      const session = app!.controller.current;
+      const answer = session.messages.find(message => message.role === 'assistant' && (message.id === second || message.sessionRequestId === second));
+      return { content: answer?.content, status: answer?.status, error: answer?.error,
+        queued: session.queuedInputs?.some(input => input.requestId === second) ?? false };
+    }, { timeout: 12_000 }).toEqual({ status: 'success', content: 'Answer actual-two', error: undefined, queued: false });
     await post({ type: 'send', text: 'Follow-up', params: {}, attachments: [] });
     await expect.poll(() => calls.length).toBe(3);
     await expect.poll(() => app!.controller.current.messages.filter(message => message.role === 'assistant' && message.status === 'success').length).toBe(3);
@@ -79,6 +105,83 @@ prepareInput(input) {
     for (const secret of ['test-only-first-key', 'test-only-next-key']) {
       expect(view).not.toContain(secret); expect(exported).not.toContain(secret); expect(history).not.toContain(secret);
     }
+    if (engine === 'llm') {
+      expect(app.controller!.current.agent).toBeUndefined();
+      expect(app.controller!.current.messages.at(-1)?.tokenUsage?.run).toMatchObject({ calls: 1, totalTokens: 12 });
+      expect(transcripts[2]).toMatch(/First.*Answer actual-one.*Second.*Answer actual-two.*Follow-up/);
+      const id = crypto.randomUUID();
+      await post({ type: 'send', requestId: id, text: 'Callback retry', params: {}, attachments: [] });
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe('failed');
+      await app.controller!.idle();
+      expect(app.controller!.current.messages.at(-1)?.error).toContain('completion notification failed');
+      expect(calls).toHaveLength(4);
+      await post({ type: 'retry', messageId: id });
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe('success');
+      expect(calls).toHaveLength(4);
+      expect(app.controller!.current.messages.at(-1)).toMatchObject({ id, content: 'Answer actual-two' });
+      await post({ type: 'send', requestId: id, text: 'Duplicate', params: {}, attachments: [] });
+      expect(calls).toHaveLength(4);
+
+      const send = (text: string, requestId = crypto.randomUUID()) => post({ type: 'send', text, requestId, params: {}, attachments: [] });
+      const last = () => app!.controller!.current.messages.at(-1);
+      await send('Hold queue');
+      await expect.poll(() => last()?.content).toBe('Answer actual-two');
+      expect(last()?.status).toBe('running');
+      const queuedId = crypto.randomUUID();
+      await send('Queued question', queuedId);
+      await send('Queued question', queuedId);
+      expect(app.controller!.current.queuedInputs?.map(input => input.id)).toEqual([queuedId]);
+      expect(calls).toHaveLength(5);
+      finishQueued!();
+      await expect.poll(() => last()?.id === queuedId && last()?.status).toBe('success');
+      expect(calls).toHaveLength(6);
+
+      await send('Cancel this');
+      await expect.poll(() => last()?.content).toBe('Discard this partial answer');
+      await post({ type: 'stop' });
+      await expect.poll(() => last()?.status).toBe('aborted');
+      await app.controller!.idle();
+      const crashId = crypto.randomUUID(), sessionId = app.controller!.current.id;
+      await send('Crash this', crashId);
+      await expect.poll(() => last()?.content).toBe('Discard this partial answer');
+      expect(transcripts.at(-1)).not.toMatch(/Cancel this|Discard this partial answer/);
+      const worker = Number(await readFile(path.join(directory, 'worker-pid'), 'utf8'));
+      expect(worker).toBeGreaterThan(1); expect(worker).not.toBe(process.pid);
+      process.kill(worker, 'SIGKILL');
+      await expect.poll(() => last()?.status).toBe('failed');
+      await app.controller!.idle();
+      expect(calls).toHaveLength(8);
+      await app.close(); app = await startWebServer(options);
+      expect(app.controller!.current.id).toBe(sessionId);
+      expect(last()?.recovering).not.toBe(true);
+      expect(calls).toHaveLength(8);
+      await post({ type: 'retry', messageId: crashId });
+      await expect.poll(() => last()?.status).toBe('success');
+      expect(calls).toHaveLength(9);
+      expect(transcripts.at(-1)?.match(/Crash this/g)).toHaveLength(1);
+      expect(transcripts.at(-1)).not.toContain('Discard this partial answer');
+
+      await app.controller!.create(true);
+      await send('New conversation');
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe('success');
+      expect(transcripts.at(-1)).not.toMatch(/Callback retry|First|Follow-up/);
+      expect(app.controller!.sessions.filter(session => session.messages.length)).toHaveLength(2);
+      await app.controller!.idle();
+      await writeFile(path.join(directory, 'index.ts'), source('agent'));
+      await app.configurations!.refresh();
+      const staleHostId = crypto.randomUUID();
+      await send('Do not run the new engine in this session', staleHostId);
+      await expect.poll(() => last(), { timeout: 12_000 }).toMatchObject({ id: staleHostId, status: 'failed', error: expect.stringContaining('Reopen the project') });
+      expect(calls).toHaveLength(10);
+      await app.controller!.idle();
+      await app.close();
+      app = await startWebServer(options);
+      expect(app.controller!.current).toMatchObject({ engine: 'agent', messages: [] });
+      expect(app.controller!.sessions.find(session => session.id === sessionId)?.messages.at(-1)).toMatchObject({ id: crashId, status: 'success' });
+      const blocked = await post({ type: 'send', sessionId, text: 'Old session', params: {}, attachments: [] }, 400);
+      expect(blocked.message).toContain('different Bot engine');
+      expect(calls).toHaveLength(10);
+    }
   } finally {
     await app?.close(); await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
     const runKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
@@ -87,11 +190,10 @@ prepareInput(input) {
     const key = createHash('sha256').update(`${applicationId}:main`).digest('hex');
     for (const suffix of ['.json', '.json.lock.sqlite']) await rm(path.join(os.homedir(), '.steamharness', 'configurations', `${key}${suffix}`), { force: true });
   }
-}, 30_000);
+}, 60_000);
 
-// Exercise the real page protocol, configuration service, child worker, SDK
-// Agent and loopback credential bridge. Only the upstream HTTP service is fake.
-it('runs saved system and third-party models through the real Web worker with refreshed scoped credentials', async () => {
+// Exercise the real page protocol, configuration service and worker. Only the upstream HTTP service is fake.
+it.each(['agent', 'llm'] as const)('%s Bot runs saved system and third-party models with refreshed scoped credentials', async engine => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-agent-runtime-'));
   const applicationId = crypto.randomUUID();
   const configurationKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
@@ -159,10 +261,9 @@ it('runs saved system and third-party models through the real Web worker with re
     await writeFile(path.join(directory, 'index.ts'), `
 
       export const executor = steamharness.defineBot({
-agent: {tools: []},
-params: [],
-resolveParams: steamharness.createAgentProjectParamResolver()
-});
+        engine: '${engine}',
+        ${engine === 'agent' ? 'agent: { tools: [] }' : 'llm: { modelSource: "project" }'},
+      });
       export default executor;
     `);
     app = await startWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: {
@@ -197,6 +298,11 @@ resolveParams: steamharness.createAgentProjectParamResolver()
       expect(answer.status, answer.error).toBe('success'); expect(answer.content).toContain(`Answer from ${model.model}`);
       expect(answer.model).toBe(model.name);
       expect(calls.at(-1)?.model).toBe(model.model);
+      if (engine === 'llm') {
+        expect(app.controller!.current.agent).toBeUndefined();
+        expect(calls.at(-1)?.body.tools).toBeUndefined();
+        if (index) expect(JSON.stringify(calls.at(-1)?.body)).toContain(`Answer from ${models[index - 1].model}`);
+      }
       if (model.source === 'system') {
         expect(catalogRequests.length - catalogsBefore).toBe(2);
         expect(calls.at(-1)?.token).toBe(model.id === 'responses' ? `Bearer responses-${generation}` : `anthropic-${generation}`);
@@ -208,8 +314,15 @@ resolveParams: steamharness.createAgentProjectParamResolver()
     subscribed = false;
     const revoked = await fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'send', text: 'Revoked subscription', params: { model: 'responses' }, attachments: [] }) });
-    expect(revoked.status).toBe(400);
-    expect((await revoked.json()).message).toContain('no available server AI credentials');
+    if (engine === 'llm') {
+      expect(revoked.status).toBe(200);
+      await expect.poll(() => app!.controller!.current.messages.at(-1)?.status).toBe('failed');
+      await app.controller!.idle();
+      expect(app.controller!.current.messages.at(-1)?.error).toContain('no available server AI credentials');
+    } else {
+      expect(revoked.status).toBe(400);
+      expect((await revoked.json()).message).toContain('no available server AI credentials');
+    }
     expect(calls).toHaveLength(3);
 
     subscribed = true;
@@ -292,7 +405,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module',  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}], devDependencies: { steamharness: await resolveHarnessVersion() } }));
     await writeFile(path.join(directory, 'index.ts'), `
-      export const executor = steamharness.defineBot({ agent: { modelSource: '${modelSource}', tools: [], session: { compaction: { enabled: false } } } });
+      export const executor = steamharness.defineBot({ engine: "agent", agent: { modelSource: '${modelSource}', tools: [], session: { compaction: { enabled: false } } } });
     `);
     const options = { projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor' as const, userSettings: { agent: { permissionPolicy: 'auto' as const, models: [] as import('steamharness').UserAgentModel[] } }, connection: {
       serverUrl: origin, accessToken: 'identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
@@ -303,6 +416,9 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...message, clientId }) });
       const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
     };
+    const waitForLogin = () => expect.poll(async () => (await post({ type: 'ready' })).find((message: { type: string }) => message.type === 'state')?.account?.status,
+      { timeout: 10_000 }).toBe('authenticated');
+    await waitForLogin();
     const models: import('steamharness').UserAgentModel[] = [
       { id: 'old', name: 'Original model', source: 'system', credentialId: 'subscription', model: 'system-old' },
       { id: 'custom', name: 'Custom model', source: 'third-party', apiKind: 'openai-responses', model: 'third-party', baseUrl: `${origin}/v1`, apiKey: 'third-identity' },
@@ -343,6 +459,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
       if (sessionId) expect(app.controller!.current.id).toBe(sessionId); else sessionId = app.controller!.current.id;
     }
     await app.close(); app = await startWebServer(options);
+    await waitForLogin();
     expect(app.controller!.current.id).toBe(sessionId);
     expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     expect(calls).toHaveLength(3);
@@ -386,6 +503,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     const forkVersion = currentFork().agent!.configuration.version;
     expect(currentOwner().messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     await app.close(); app = await startWebServer(options);
+    await waitForLogin();
     await continueFork('Continue the reopened fork');
     expect(calls).toHaveLength(5);
     expect(app.controller!.sessions.find(session => session.id === owner.id)!.agent!.configuration.effort).toBe('high');

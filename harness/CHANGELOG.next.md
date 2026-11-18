@@ -1,1 +1,4 @@
 # Unreleased
+
+- `defineBot` 必须显式声明 `engine: "agent"` 或 `engine: "llm"`。LLM Bot 每轮只调用一次模型，使用现有模型配置及凭据，不启动 Agent 或工具。
+- Workflow LLM Provider 改用 pi-ai，移除 AI SDK 专用选项。`createLLMNode` 仍一次返回完整结果，但内置 Provider 要求端点支持 SSE。

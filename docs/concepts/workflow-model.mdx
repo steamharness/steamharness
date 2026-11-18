@@ -288,7 +288,7 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 
 项目可以通过 `steamharness.json.entries[].schedulePresets` 为某个入口声明建议定时计划。Structure 会校验预设 ID、入口、时区、触发规则和 JSON 参数，并把目录交给本地宿主；预设不会自动启用。参见 [Workflow 定时运行](/concepts/workflow-schedules)。
 
-Bot 使用 `steamharness.defineBot()`，由 Core 固定提供 Agent 执行、标准输入和输出，不声明 Workflow 的操作目录。项目类型为 `workflow`、`bot` 和 `kanban`；Kanban 在 `steamharness.json.entries` 中注册静态 HTML。
+Bot 使用 `steamharness.defineBot()` 声明 `engine: "agent"` 或 `engine: "llm"`；两者使用同一套会话输入和输出，不声明 Workflow 的操作目录。项目类型为 `workflow`、`bot` 和 `kanban`；Kanban 在 `steamharness.json.entries` 中注册静态 HTML。
 
 `createInput` 会接收 `projectName`、`projectDir`、`args`、`paramValues`、`config`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 

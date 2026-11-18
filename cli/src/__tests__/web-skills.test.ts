@@ -33,6 +33,7 @@ it('lists and previews the selected agent through the real worker and authentica
   await writeFile(path.join(root, 'index.ts'), `
 
     export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {skills: { directories: ['guides'] },
 createTools() { throw new Error('Tool factories must not run during preview'); }},
 tools: [{ name: 'skill', label: 'List and read skill guides', enabled: true, autoApprove: true }]
@@ -44,6 +45,7 @@ tools: [{ name: 'skill', label: 'List and read skill guides', enabled: true, aut
 
     const wrapper = steamharness.defineProject({ name: 'wrapper', async run() { throw new Error('Preview must not run the wrapper'); } });
     export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {skills: { directories: ['guides'] }},
 prepareInput(input, ) { return {}; }
 });

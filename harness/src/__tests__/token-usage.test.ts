@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDisabledProjectConversationContext,
+  createLLMProvider,
   createLLMNode,
   createLLMStreamNode,
   createProjectTokenUsageContext,
@@ -15,6 +16,25 @@ import {
   type TokenUsageAggregate,
   type TokenUsageContext,
 } from "../index";
+import { llmSSE } from "./fixtures/llm-sse";
+
+test("Workflow LLM nodes retain completed and streamed results through the pi-ai provider", async () => {
+  let calls = 0;
+  const provider = createLLMProvider({ type: "openai-responses", apiKey: "fixture", async fetch() {
+    calls++;
+    return llmSSE("openai-responses", "Workflow reply");
+  } });
+  const usage = createProjectTokenUsageContext({ definition: { enabled: true }, projectId: "demo", runId: "run", store: async () => undefined });
+  const context = createNodeContext({}, usage, provider);
+  const options = { provider, mapInput: () => ({ prompt: "Summarize" }) };
+  const buffered = await runNode(createLLMNode(options), undefined, context);
+  const streamed = await runStreamNode(createLLMStreamNode(options), undefined, context);
+  assert.equal(buffered.text, "Workflow reply");
+  assert.equal(streamed.output, "Workflow reply");
+  assert.equal(calls, 2);
+  assert.equal(usage.getRunUsage().calls, 2);
+  assert.equal(usage.getRunUsage().totalTokens, 28);
+});
 
 test("disabled token usage never calls persistence", async () => {
   const usage = createProjectTokenUsageContext({ definition: { enabled: false }, projectId: "demo", runId: "run", store: async () => { throw new Error("must not write"); } });

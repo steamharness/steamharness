@@ -80,6 +80,8 @@ In project mode an empty model list shows Configure model in Workflow and Bot co
 
 ### Declare the model field
 
+Agent and LLM Bots use the same model field. Select the engine in `defineBot`; `agent.modelSource` and `llm.modelSource` only choose between Studio user settings and project configuration.
+
 The list uses the reserved `STEAMHARNESS_AGENT_MODELS` JSON field with `control: "ai-models"`. Core statically detects calls to `createAgentNode`, `defineBot`, or `createAgentProjectParamResolver` and adds it without executing project code. Local configuration services update discovery after source changes without reopening the panel. For indirect wrappers that static discovery cannot see, declare the field explicitly in `configuration.json` with `secret: true`, `defaultValue: []` and `sharing: { "publish": true, "includeValue": false, "editable": true }`.
 
 ### Restrict models to System AI

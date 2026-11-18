@@ -50,8 +50,8 @@ export function inspectProjectAgentModelUsage(projectDir: string, entryFile: str
   return { found: discoverProjectAgentModels(projectDir, undefined, entryFile, "found", aggregateDir), projectModels: discoverProjectAgentModels(projectDir, undefined, entryFile, "projectModels", aggregateDir) };
 }
 
-type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean; botMemoryDisabled: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" | "botMemoryDisabled" = "found", aggregateDir = projectDir): boolean {
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean; botMemoryDisabled: boolean; llmBot: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" | "botMemoryDisabled" | "llmBot" = "found", aggregateDir = projectDir): boolean {
   // Kanban HTML is an artifact outside its source root, never executable Agent source.
   if (entryFile && /\.html$/i.test(entryFile)) return false;
   const release = readProjectReleaseSync(aggregateDir);
@@ -62,6 +62,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
     // Releases predating project memory use the default-on switch.
     if (mode === "botMemoryDisabled") return false;
     const report = readReleaseStructureSync(aggregateDir, entry.entryId);
+    if (mode === "llmBot") return report?.report.conversation?.engine === "llm";
     return report?.agentModels?.[mode] === true;
   }
   const entrySources = entryFile ? projectEntrySources(projectDir, entryFile) : undefined;
@@ -145,7 +146,12 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
         }
         return selected;
       };
-      let found = false, projectModels = false, botMemoryDisabled = false;
+      let found = false, projectModels = false, botMemoryDisabled = false, llmBot = false;
+      const property = (object: ts.Expression | undefined, name: string): ts.Expression | undefined => {
+        if (!object || !ts.isObjectLiteralExpression(object)) return;
+        const field = [...object.properties].reverse().find(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) && item.name.text === name);
+        return field && ts.isPropertyAssignment(field) ? unwrap(field.initializer) : field && ts.isShorthandPropertyAssignment(field) ? unwrap(field.name) : undefined;
+      };
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node)) {
           const expression = node.expression;
@@ -154,24 +160,20 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
             found = true;
             const isBot = ts.isPropertyAccessExpression(expression) ? expression.name.text === "defineBot" : ts.isIdentifier(expression) && imports.get(expression.text) === "defineBot";
             const argument = node.arguments[0] && unwrap(node.arguments[0]);
-            // Keep an explicit opt-out for legacy export shapes we cannot resolve statically.
-            if (isBot && (!memoryDefinition || memoryDefinition.file === file && memoryDefinition.start === node.getStart(source)) && argument && ts.isObjectLiteralExpression(argument)) {
-              const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined => {
-                const field = [...object.properties].reverse().find(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) && item.name.text === name);
-                return field && ts.isPropertyAssignment(field) ? unwrap(field.initializer) : field && ts.isShorthandPropertyAssignment(field) ? unwrap(field.name) : undefined;
-              };
+            const engine = property(argument, "engine");
+            const isLLM = engine && ts.isStringLiteralLike(engine) && engine.text === "llm";
+            if (isBot && (!memoryDefinition || memoryDefinition.file === file && memoryDefinition.start === node.getStart(source))) {
+              llmBot ||= isLLM === true;
               const memory = property(argument, "memory");
-              if (memory && ts.isObjectLiteralExpression(memory)) botMemoryDisabled ||= property(memory, "enabled")?.kind === ts.SyntaxKind.FalseKeyword;
+              botMemoryDisabled ||= property(memory, "enabled")?.kind === ts.SyntaxKind.FalseKeyword;
             }
-            const agent = isBot && argument && ts.isObjectLiteralExpression(argument)
-              ? argument.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && property.name.getText(source) === "agent")?.initializer : undefined;
-            const mode = modelSource(isBot ? agent : node.arguments[0]);
+            const mode = modelSource(isBot ? property(argument, isLLM ? "llm" : "agent") : node.arguments[0]);
             projectModels ||= mode === "project" || mode === "unknown";
           }
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); cache?.set(file, { stamp, found, projectModels, botMemoryDisabled }); if ({ found, projectModels, botMemoryDisabled }[mode]) return true;
+      visit(source); cache?.set(file, { stamp, found, projectModels, botMemoryDisabled, llmBot }); if ({ found, projectModels, botMemoryDisabled, llmBot }[mode]) return true;
     }
     return false;
   };
@@ -184,7 +186,9 @@ function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?:
 }
 
 function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, aggregateDir = projectDir, bot = false) {
-  if (bot) {
+  if (bot && discoverProjectAgentModels(projectDir, cache, entryFile, "llmBot", aggregateDir)) {
+    definition.fields = definition.fields.filter(field => field.name !== BOT_MEMORY_CONFIGURATION_KEY);
+  } else if (bot) {
     const field = definition.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY);
     if (field && field.type !== "boolean") throw new ProjectConfigurationError("Bot memory configuration must be a boolean field.");
     if (!field) definition.fields.push(botMemoryConfigurationField(!discoverProjectAgentModels(projectDir, cache, entryFile, "botMemoryDisabled", aggregateDir)));

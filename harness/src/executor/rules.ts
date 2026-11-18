@@ -1,4 +1,4 @@
-import { botConversationDefaults, botParams, botTools } from "../agent/bot";
+import { assertBotLLMOptions, botConversationDefaults, botParams, botTools, type BotEngine } from "../agent/bot";
 import { botMemoryDefault, type BotMemoryOptions } from "../agent/memory-configuration";
 import { projectEntrySources } from "../project-sources";
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
@@ -1484,7 +1484,7 @@ function analyzeSourceFile(
   };
   const scopeStack = [createScopeKey(filePath, "source", 0)];
   const constValues = new Map<string, StructureValue>();
-  const coreOptions = new WeakMap<ts.ObjectLiteralExpression, AgentProjectOptions | null>();
+  const coreOptions = new WeakMap<ts.ObjectLiteralExpression, { engine: BotEngine; options: AgentProjectOptions } | null>();
   const nodeIdsByVariable = new Map<string, string>();
   const nodeNamesById = new Map<string, string>();
   const outputVariables = new Map<string, StructureReference>();
@@ -1695,7 +1695,7 @@ function analyzeSourceFile(
     if (paramsProperty === undefined) {
       const options = readCoreAgentOptions(objectArg);
       if (options) {
-        const normalized = normalizeProjectParamDeclarations(botParams(options));
+        const normalized = normalizeProjectParamDeclarations(botParams(options.engine, options.options));
         analysis.executorParams = normalized.params;
         analysis.executorParamLayout = normalized.layout;
       }
@@ -1705,7 +1705,7 @@ function analyzeSourceFile(
     if (normalized !== undefined) {
       const core = readCoreAgentOptions(objectArg);
       if (core) {
-        const combined = normalizeProjectParamDeclarations(botParams(core, readParamLiteral(paramsProperty.initializer) as import("./types").BotParamDeclaration[]));
+        const combined = normalizeProjectParamDeclarations(botParams(core.engine, core.options, readParamLiteral(paramsProperty.initializer) as import("./types").BotParamDeclaration[]));
         analysis.executorParams = combined.params;
         analysis.executorParamLayout = combined.layout;
       } else {
@@ -1741,7 +1741,7 @@ function analyzeSourceFile(
     if (resolver || readCoreAgentOptions(objectArg)) analysis.executorParamResolver = { enabled: true };
   }
 
-  function readCoreAgentOptions(executor: ts.ObjectLiteralExpression): AgentProjectOptions | undefined {
+  function readCoreAgentOptions(executor: ts.ObjectLiteralExpression) {
     if (coreOptions.has(executor)) return coreOptions.get(executor) ?? undefined;
     coreOptions.set(executor, null);
     const findReference = (name: string) => executor.properties.find(
@@ -1749,7 +1749,15 @@ function analyzeSourceFile(
         (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && readStructurePropertyName(property.name) === name,
     );
     if (!ts.isCallExpression(executor.parent) || readProjectApiCallName(executor.parent.expression) !== "defineBot") return;
-    const reference = findReference("agent");
+    const engineProperty = findStaticPropertyAssignment(executor, "engine");
+    const expression = engineProperty && unwrapExpression(engineProperty.initializer);
+    const engine = expression && ts.isStringLiteralLike(expression) ? expression.text : undefined;
+    if (engine !== "agent" && engine !== "llm") {
+      analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: "engine",
+        message: 'defineBot requires engine: "agent" or "llm".', locations: [createLocation(cwd, filePath, sourceFile, engineProperty ?? executor)] });
+      return;
+    }
+    const reference = findReference(engine);
     const seen = new Set<string>();
     const resolve = (expression: ts.Expression): ts.Expression => {
       expression = unwrapExpression(expression);
@@ -1764,8 +1772,16 @@ function analyzeSourceFile(
       return expression;
     };
     try {
-      const options: AgentProjectOptions = { session: {} };
       const argument = reference === undefined ? undefined : resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
+      if (engine === "llm") {
+        if (!argument || !ts.isObjectLiteralExpression(argument)) throw new Error("Bot llm settings must be a static object.");
+        const options = readParamLiteral(argument);
+        assertBotLLMOptions(options);
+        const result = { engine, options } as const;
+        coreOptions.set(executor, result);
+        return result;
+      }
+      const options: AgentProjectOptions = { session: {} };
       if (argument !== undefined && !ts.isObjectLiteralExpression(argument)) throw new Error("Core Agent options must be a static object.");
       for (const property of argument?.properties ?? []) {
         if (ts.isSpreadAssignment(property)) throw new Error("Core Agent options cannot spread dynamic parameter configuration.");
@@ -1790,12 +1806,13 @@ function analyzeSourceFile(
         const expression = ts.isPropertyAssignment(property) ? property.initializer : property.name;
         (options as Record<string, unknown>)[name] = literal(evaluateExpression(resolve(expression)));
       }
-      normalizeProjectParamDeclarations(botParams(options));
-      coreOptions.set(executor, options);
-      return options;
+      normalizeProjectParamDeclarations(botParams(engine, options));
+      const result = { engine, options } as const;
+      coreOptions.set(executor, result);
+      return result;
     } catch (error) { invalid(error instanceof Error ? error.message : String(error)); }
     function invalid(message: string): void {
-      analysis.executorConfigurationViolations.push({ type: "invalid_executor_param_configuration", name: "coreAgent", message,
+      analysis.executorConfigurationViolations.push({ type: "invalid_executor_param_configuration", name: reference?.name.getText(sourceFile) ?? "engine", message,
         locations: [createLocation(cwd, filePath, sourceFile, reference ?? executor)] });
     }
     function literal(value: StructureValue): unknown {
@@ -1838,7 +1855,7 @@ function analyzeSourceFile(
 
     if (toolsProperty === undefined || !ts.isArrayLiteralExpression(toolsProperty.initializer)) {
       const core = readCoreAgentOptions(objectArg);
-      if (core) analysis.executorTools = botTools(core);
+      if (core) analysis.executorTools = core.engine === "agent" ? botTools(core.options) : [];
       return;
     }
 
@@ -1860,7 +1877,7 @@ function analyzeSourceFile(
       // Expose registered tool permissions through the structure
       // report so local hosts can render their policy controls.
       const core = readCoreAgentOptions(objectArg);
-      analysis.executorTools = core ? botTools(core, tools) : tools;
+      analysis.executorTools = core ? core.engine === "agent" ? botTools(core.options, tools) : [] : tools;
     }
   }
 
@@ -1883,10 +1900,12 @@ function analyzeSourceFile(
     }
 
     if (readProjectApiCallName(node.expression) !== "defineBot") return;
+    const core = readCoreAgentOptions(objectArg);
+    if (!core) return;
     const property = findStaticPropertyAssignment(objectArg, "conversation");
     try {
       const value = property ? readParamLiteral(property.initializer) : {};
-      analysis.executorConversation = botConversationDefaults(value as import("../agent/bot").BotConversationOptions);
+      analysis.executorConversation = botConversationDefaults(core.engine, value as import("../agent/bot").BotConversationOptions);
       const fields = analysis.executorParams ?? [];
       assertConversationFooter(analysis.executorConversation.footer, fields);
       assertConversationCommands(analysis.executorConversation.commands, fields);
@@ -1936,7 +1955,9 @@ function analyzeSourceFile(
       analysis.executorConfigurationViolations.push({ type: "invalid_executor_project_type", name: "projectType", message: "Bot projects must use defineBot.", locations: [location] });
     }
     if (bot) {
-      const allowed = new Set(["name", "memory", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
+      const engine = readCoreAgentOptions(objectArg)?.engine;
+      const allowed = new Set(["engine", "name", "params", "resolveParams", "conversation", "prepareInput", "onCompleted",
+        ...(engine === "llm" ? ["llm"] : engine === "agent" ? ["agent", "memory", "tools"] : ["llm", "agent", "memory", "tools"])]);
       for (const property of objectArg.properties) {
         const name = property.name ? readStructurePropertyName(property.name) : undefined;
         if (!name || !allowed.has(name)) analysis.executorConfigurationViolations.push({ type: "project_type_configuration_conflict", name: name ?? "spread", message: `Unsupported Bot field ${name ?? "spread"}.`, locations: [location] });

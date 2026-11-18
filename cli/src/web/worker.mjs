@@ -326,6 +326,7 @@ try {
         entryConversationHost,
         entryCall: request.entryCall,
         readOnly: request.readOnly === true,
+        expectedBotEngine: request.project.conversation?.engine,
         configuration,
         configurationRunId: request.configurationRunId,
         projectDir: request.project.folderPath,

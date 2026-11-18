@@ -38,6 +38,8 @@ export interface ConversationContext {
   appendMessage(
     message: AppendProjectConversationMessageInput,
   ): Promise<ConversationState>;
+  /** Persist a group of messages together, for example a completed question and answer. */
+  appendMessages(messages: readonly AppendProjectConversationMessageInput[]): Promise<ConversationState>;
 }
 
 export interface ConversationStateStorage {
@@ -95,7 +97,8 @@ export function createProjectConversationContext(
     getValue: () => store.readState(),
     setValue: (key, value) => store.setValue(key, value),
     setTitle: (title) => store.setTitle(title),
-    appendMessage: (message) => store.appendMessage(message),
+    appendMessage: (message) => store.appendMessages([message]),
+    appendMessages: (messages) => store.appendMessages(messages),
   };
 }
 
@@ -116,6 +119,9 @@ export function createDisabledProjectConversationContext(): ConversationContext 
     async appendMessage() {
       throw createDisabledConversationError();
     },
+    async appendMessages() {
+      throw createDisabledConversationError();
+    },
   };
 }
 
@@ -132,7 +138,7 @@ function createProjectConversationStore(options: {
   readState(): Promise<ConversationState>;
   setValue(key: string, value: unknown): Promise<ConversationState>;
   setTitle(title: string): Promise<ConversationState | undefined>;
-  appendMessage(message: AppendProjectConversationMessageInput): Promise<ConversationState>;
+  appendMessages(messages: readonly AppendProjectConversationMessageInput[]): Promise<ConversationState>;
 } {
   async function readState(): Promise<ConversationState> {
     return options.storage.read(createInitialConversationState(options.projectName, options.conversationId));
@@ -157,16 +163,13 @@ function createProjectConversationStore(options: {
       await options.onTitleChange?.({ conversationId: options.conversationId, title: written.title, updatedAt: written.updatedAt });
       return written;
     },
-    async appendMessage(message) {
-      const id = message.id ?? randomUUID();
+    async appendMessages(entries) {
+      const updates = entries.map(entry => ({ ...entry, id: entry.id ?? randomUUID() }));
       return update(state => {
-        const existing = state.messages.findIndex(entry => entry.id === id);
         const now = new Date().toISOString();
-        const next = { id, role: message.role, content: message.content,
-          createdAt: existing < 0 ? now : state.messages[existing]!.createdAt, metadata: message.metadata };
-        const messages = [...state.messages];
-        if (existing < 0) messages.push(next); else messages[existing] = next;
-        return { ...state, updatedAt: now, messages };
+        const messages = new Map(state.messages.map(entry => [entry.id, entry]));
+        for (const entry of updates) messages.set(entry.id, { ...entry, createdAt: messages.get(entry.id)?.createdAt ?? now });
+        return { ...state, updatedAt: now, messages: [...messages.values()] };
       });
     },
   };

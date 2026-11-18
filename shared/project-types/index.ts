@@ -56,7 +56,7 @@ const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS_BY_ID = Object.fromEntries(
   >;
 };
 
-export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `export const executor = steamharness.defineBot({ name: "bot" });`;
+export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `export const executor = steamharness.defineBot({ engine: "agent", name: "bot" });`;
 
 export function isProjectKind(value: unknown): value is ProjectKind {
   return typeof value === "string" && STEAMHARNESS_PROJECT_TYPES.includes(value as ProjectKind);

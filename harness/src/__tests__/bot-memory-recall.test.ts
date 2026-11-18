@@ -36,7 +36,7 @@ test("automatic recall follows follow-up and busy steering inputs without persis
   const models = ai.createModels(); models.setProvider(faux.provider);
   const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
   const run = testContext(persistence);
-  run.toolPermissions = createProjectToolPermissionContext({ definitions: defineBot({}).tools, projectName: "bot", runId: "recall" });
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: defineBot({ engine: "agent" }).tools, projectName: "bot", runId: "recall" });
   const store = persistence.botMemory!({ projectId: run.projectId, entryId: run.entryId });
   for (const [key, content] of [["database", "数据库使用 PostgreSQL。"], ["images", "图片格式固定 PNG。"], ["timeout", "HTTP 超时为 30 秒。"]]) {
     await store.execute({ action: "save", category: "facts", key: key!, content: content! });
@@ -84,7 +84,7 @@ for (const mode of ["plan", "read-only", "disabled", "host-disabled", "manual-ap
     const models = ai.createModels(); models.setProvider(faux.provider);
     const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
     const run = testContext(persistence); run.config[BOT_MEMORY_CONFIGURATION_KEY] = mode !== "disabled";
-    const bot = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "recall-policy")!, tools: [], permissionPolicy: mode === "read-only" ? "read-only" : "workspace" } });
+    const bot = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "recall-policy")!, tools: [], permissionPolicy: mode === "read-only" ? "read-only" : "workspace" } });
     run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools,
       policies: { memory_search: { enabled: mode !== "host-disabled", autoApprove: mode !== "manual-approval" } }, projectName: "bot", runId: "recall-policy" });
     let approvalPrompts = 0;
@@ -103,7 +103,7 @@ for (const mode of ["plan", "read-only", "disabled", "host-disabled", "manual-ap
 test("reopened sessions search the resumed input before model recovery", { timeout: 15_000 }, async t => {
   const database = `memory-recall:${crypto.randomUUID()}`, persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
   const run = testContext(persistence);
-  run.toolPermissions = createProjectToolPermissionContext({ definitions: defineBot({}).tools, projectName: "bot", runId: "resume-recall" });
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: defineBot({ engine: "agent" }).tools, projectName: "bot", runId: "resume-recall" });
   await persistence.botMemory!({ projectId: run.projectId, entryId: run.entryId }).execute({ action: "save", category: "facts", key: "database", content: "数据库选择 PostgreSQL。" });
   const create = (resumeSession = false) => {
     const faux = ai.fauxProvider({ models: [{ id: "recovered-recall", contextWindow: 100_000, maxTokens: 500 }] });

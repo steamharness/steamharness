@@ -24,6 +24,7 @@ import { HarnessError } from "../workflow/errors";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
 import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration";
 import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
+import { createLLMBot } from "./llm-bot";
 
 export interface BotInputContext extends NodeContext {
   readonly args: string[];
@@ -41,47 +42,72 @@ export interface BotCompletion {
   readonly requestId: string;
   readonly output: Immutable<AgentOutputPayload>;
 }
-export type BotConversationOptions = Omit<ConversationDefinition, "durable" | "inputQueue" | "openai" | "recovery"> & {
+export type BotConversationOptions = Omit<ConversationDefinition, "engine" | "durable" | "inputQueue" | "openai" | "recovery"> & {
   recovery?: { startup?: "automatic" | "manual" };
 };
-export interface BotDefinition<Input extends AgentInput = AgentInput> {
+export type BotEngine = "agent" | "llm";
+export interface BotLLMOptions {
+  systemPrompt?: string;
+  modelSource?: "user-settings" | "project";
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}
+interface BotHooks<Input extends AgentInput> {
   name?: string;
-  /** Project memory defaults to enabled; the saved project configuration can override it. */
-  memory?: BotMemoryOptions;
-  agent?: BotAgentOptions<Input>;
-  tools?: ToolPermissionDefinition[];
   params?: BotParamDeclaration[];
   resolveParams?(context: ParamResolverContext): ParamResolveResult | Promise<ParamResolveResult>;
   conversation?: BotConversationOptions;
   prepareInput?(input: AgentInput, context: BotInputContext): Input | Promise<Input>;
   onCompleted?(result: BotCompletion, context: NodeContext): void | Promise<void>;
 }
+export type BotDefinition<Input extends AgentInput = AgentInput> = BotHooks<Input> & (
+  | { engine: "agent"; agent?: BotAgentOptions<Input>; llm?: never; tools?: ToolPermissionDefinition[]; memory?: BotMemoryOptions }
+  | { engine: "llm"; llm: BotLLMOptions; agent?: never; tools?: never; memory?: never }
+);
 
 const definitions = new WeakSet<object>();
 export function isDefinedBot(value: object): boolean { return definitions.has(value); }
 
-/** Shared by the source inspector and runtime: a Bot always has the same host contract. */
-export function botConversationDefaults(options: BotConversationOptions = {}): ConversationDefinition {
+/** Shared by the source inspector and runtime. */
+export function botConversationDefaults(engine: BotEngine, options: BotConversationOptions = {}): ConversationDefinition {
   if (!options || typeof options !== "object" || Array.isArray(options)) invalid("Bot conversation settings must be an object.");
   assertConversationPresentation(options.collapseIntermediate);
   if (options.recovery?.startup !== undefined && !["automatic", "manual"].includes(options.recovery.startup)) invalid("Bot recovery.startup must be automatic or manual.");
-  for (const key of ["durable", "inputQueue", "openai", "defaultInput", "enabled"]) {
+  for (const key of ["engine", "durable", "inputQueue", "openai", "defaultInput", "enabled"]) {
     if (Object.hasOwn(options, key)) invalid(`Bot conversation.${key} is owned by Core.`);
   }
   if (options.recovery && Object.hasOwn(options.recovery, "enabled")) invalid("Bot recovery is always enabled.");
-  return { attachments: { images: true }, ...options, collapseIntermediate: options.collapseIntermediate ?? true,
-    recovery: { enabled: true, startup: options.recovery?.startup ?? "automatic" },
-    durable: { enabled: true }, inputQueue: { enabled: true }, openai: { enabled: true, outputItemId: AGENT_ANSWER_ITEM_ID } };
+  const { recovery, ...presentation } = options;
+  if (engine === "llm" && (recovery !== undefined || options.attachments?.files || options.attachments?.videos)) {
+    invalid("LLM Bots do not support automatic recovery, file or video attachments.");
+  }
+  return { engine, attachments: { images: true }, ...presentation, collapseIntermediate: options.collapseIntermediate ?? true,
+    ...(engine === "agent" ? { recovery: { enabled: true, startup: recovery?.startup ?? "automatic" }, durable: { enabled: true } } as const : {}),
+    inputQueue: { enabled: true }, openai: { enabled: true, outputItemId: AGENT_ANSWER_ITEM_ID } };
 }
-export function botParams(agent: Pick<AgentProjectOptions, "paramOptions" | "modelSource" | "model" | "effort" | "permissionPolicy" | "mode"> = {}, extra: BotParamDeclaration[] = []): BotParamDeclaration[] {
-  const builtins = createAgentProjectParams(agent);
+export function botParams(engine: BotEngine, modelOptions: Pick<AgentProjectOptions, "paramOptions" | "modelSource" | "model" | "effort" | "permissionPolicy" | "mode"> = {}, extra: BotParamDeclaration[] = []): BotParamDeclaration[] {
+  const builtins = createAgentProjectParams(modelOptions).filter(field => engine === "agent" || field.kind === "quick" && field.id === "model");
   const reserved = new Set(["provider", "model", "effort", "plan", "permissionPolicy"]);
   for (const field of normalizeProjectParamDeclarations(extra).params) {
-    if (reserved.has(field.name)) invalid(`Bot parameter "${field.name}" must be customized through agent.paramOptions.`);
+    if (reserved.has(field.name)) invalid(engine === "agent" ? `Bot parameter "${field.name}" must be customized through agent.paramOptions.` : `Bot parameter "${field.name}" is reserved.`);
   }
   const result = [...builtins, ...extra];
   assertProjectParamDeclarations(result, "bot");
   return result;
+}
+
+export function assertBotLLMOptions(value: unknown): asserts value is BotLLMOptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("Bot llm settings must be an object.");
+  const llm = value as Record<string, unknown>;
+  for (const key of Object.keys(llm)) {
+    if (!["systemPrompt", "modelSource", "model", "temperature", "maxOutputTokens"].includes(key)) invalid(`Unsupported Bot llm field "${key}".`);
+  }
+  if (llm.modelSource !== undefined && llm.modelSource !== "user-settings" && llm.modelSource !== "project") invalid("Bot llm.modelSource must be user-settings or project.");
+  if (llm.systemPrompt !== undefined && typeof llm.systemPrompt !== "string") invalid("Bot llm.systemPrompt must be a string.");
+  if (llm.model !== undefined && (typeof llm.model !== "string" || !llm.model.trim())) invalid("Bot llm.model must be a non-empty string.");
+  if (llm.temperature !== undefined && (typeof llm.temperature !== "number" || !Number.isFinite(llm.temperature) || llm.temperature < 0)) invalid("Bot llm.temperature must be a non-negative number.");
+  if (llm.maxOutputTokens !== undefined && (typeof llm.maxOutputTokens !== "number" || !Number.isSafeInteger(llm.maxOutputTokens) || llm.maxOutputTokens <= 0)) invalid("Bot llm.maxOutputTokens must be a positive integer.");
 }
 export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | "skills"> & { createSession?: unknown } = {}, overrides: ToolPermissionDefinition[] = []): ToolPermissionDefinition[] {
   normalizeToolPermissionDefinitions(overrides);
@@ -94,24 +120,33 @@ export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | 
 }
 
 /** A project supplies policy and hooks; only Core supplies its executable workflow. */
-export function defineBot<Input extends AgentInput = AgentInput>(options: BotDefinition<Input> = {}): BotExecutorDefinition<Input> {
+export function defineBot<Input extends AgentInput = AgentInput>(options: BotDefinition<Input>): BotExecutorDefinition<Input> {
   if (!options || typeof options !== "object" || Array.isArray(options)) invalid("defineBot requires a configuration object.");
-  const allowed = new Set(["name", "memory", "agent", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
+  const allowed = new Set(["engine", "name", "memory", "agent", "llm", "tools", "params", "resolveParams", "conversation", "prepareInput", "onCompleted"]);
   for (const key of Object.keys(options)) if (!allowed.has(key)) invalid(`Unsupported Bot field "${key}". Use defineBot configuration and hooks.`);
+  if (options.engine !== "agent" && options.engine !== "llm") invalid('defineBot requires engine: "agent" or "llm".');
+  if (options.engine === "llm") {
+    for (const key of ["agent", "tools", "memory"]) if (Object.hasOwn(options, key)) invalid(`Bot ${key} requires engine: "agent".`);
+    assertBotLLMOptions(options.llm);
+    const conversation = botConversationDefaults("llm", options.conversation);
+    const params = botParams("llm", options.llm, options.params);
+    assertBotPresentation(conversation, params);
+    const definition = createLLMBot(options, params, conversation);
+    definitions.add(definition);
+    Object.freeze(definition.workflow);
+    return Object.freeze(definition);
+  }
+  if (Object.hasOwn(options, "llm")) invalid('Bot llm requires engine: "llm".');
   if (options.agent === null) invalid("Bot agent settings must be an object.");
   const agent = options.agent ?? {};
   if (typeof agent !== "object" || Array.isArray(agent)) invalid("Bot agent settings must be an object.");
   for (const key of ["outputItemId", "executorName", "projectName", "params", "collapseIntermediate", "toolDefinitions"]) {
     if (Object.hasOwn(agent, key)) invalid(`Bot agent.${key} is not customizable.`);
   }
-  const params = botParams(agent, options.params);
+  const params = botParams("agent", agent, options.params);
   const memoryDefaultEnabled = botMemoryDefault(options.memory);
-  const conversation = botConversationDefaults(options.conversation);
-  const fields = normalizeProjectParamDeclarations(params).params;
-  assertConversationCommands(conversation.commands, fields);
-  assertConversationFooter(conversation.footer, fields);
-  assertConversationUserInput(conversation.userInput, fields);
-  assertConversationPresentation(conversation.collapseIntermediate);
+  const conversation = botConversationDefaults("agent", options.conversation);
+  assertBotPresentation(conversation, params);
   const current = new AsyncLocalStorage<Input>();
   const inputContexts = new WeakMap<object, ExecutorContext>();
   const ownerContexts = new Map<string, ExecutorContext>();
@@ -150,7 +185,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
       const original = saved?.output ?? output;
       await context.conversation.setValue(key, { output: original, notified: false } satisfies CompletionState);
       try {
-        const returned = await withBotRequest(requestId, () => options.onCompleted!(deepFreeze(structuredClone({ requestId, output: original })), context), context);
+        const returned = await withBotRequest(requestId, () => options.onCompleted!(deepFreezeBotOutput(structuredClone({ requestId, output: original })), context), context);
         if (returned !== undefined) invalid("Bot onCompleted must return void; output replacement is forbidden.");
         const done = { notified: true } satisfies CompletionState;
         await context.conversation.setValue(key, done); completionStates.set(key, done);
@@ -220,7 +255,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
       const previous = options.onCompleted ? (await context.conversation.getValue()).values[completionKey(requestId, context)] as CompletionState | undefined : undefined;
       let output: AgentOutputPayload;
       if (previous?.output && !agentSessionLease(context.conversation.conversationId ?? "")) {
-        output = await replayOutput(previous.output, input, context);
+        output = await replayBotOutput(previous.output, input, context);
       } else {
         const finalInput = await prepare({ ...input, requestId }, context);
         output = await withBotRequest(requestId, () => current.run(finalInput, () => core.run(finalInput, context)), context);
@@ -257,15 +292,22 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
   return Object.freeze(definition);
 }
 
+function assertBotPresentation(conversation: ConversationDefinition, params: BotParamDeclaration[]) {
+  const fields = normalizeProjectParamDeclarations(params).params;
+  assertConversationCommands(conversation.commands, fields);
+  assertConversationFooter(conversation.footer, fields);
+  assertConversationUserInput(conversation.userInput, fields);
+}
+
 interface CompletionState { output?: AgentOutputPayload; notified: boolean; error?: string }
-async function replayOutput(output: AgentOutputPayload, input: AgentInput, context: NodeContext): Promise<AgentOutputPayload> {
+export async function replayBotOutput(output: AgentOutputPayload, input: AgentInput, context: NodeContext): Promise<AgentOutputPayload> {
   const node = createOutputNode<AgentInput, AgentOutputPayload>({ name: "bot-completed-output",
     async *stream() { for (const item of output.items) yield { type: "output_item_start" as const, item }; },
     format() { return structuredClone(output); } });
   return (await runStreamNode(node, input, context)).output!;
 }
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object") { for (const child of Object.values(value)) deepFreeze(child); Object.freeze(value); }
+export function deepFreezeBotOutput<T>(value: T): T {
+  if (value && typeof value === "object") { for (const child of Object.values(value)) deepFreezeBotOutput(child); Object.freeze(value); }
   return value;
 }
 function invalid(message: string): never { throw new HarnessError({ type: "input_validation", message }); }

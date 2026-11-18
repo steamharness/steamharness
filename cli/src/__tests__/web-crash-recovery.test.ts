@@ -47,6 +47,7 @@ it.each(['generation', 'uncooperative-tool'])('recovers a Bot after its CLI is S
       import { writeFileSync } from 'node:fs';
 
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {paramOptions: { fields: { provider: false, model: false } }, provider: 'openai',
 model: 'fixture',
 apiKind: 'openai-completions',

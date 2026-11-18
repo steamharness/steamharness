@@ -25,7 +25,7 @@ description: 生成、修改或迁移 steamharness Workflow、Bot 或 Kanban 项
 
 ## Bot 开发契约
 
-Bot 使用 `steamharness.defineBot({ name?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 Conversation 项目类型与工厂已删除。
+Bot 必须显式声明 `engine`。需要工具、项目记忆或持久执行时用 `steamharness.defineBot({ engine: "agent", agent: { ... } })`；只需模型回答时用 `steamharness.defineBot({ engine: "llm", llm: { systemPrompt: "..." } })`。两者输出 `AgentOutputPayload`，最终正文项为 `agent-answer`，不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`。
 
 `agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 
@@ -51,7 +51,7 @@ Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, c
 - workflow `steamharness.json.id` 必须是顶层 UUID，不要再使用目录名、包名或 `steamharness.json.id`。新 scaffold 应直接写入固定 UUID；上传、发布和数据权限边界都以这个顶层 UUID 为准。每个注册入口的 `type` 静态声明 `workflow`、`conversation` 或 `kanban`；Workflow/Bot 的 executor 类型必须与注册匹配。
 - 在 `interface.ts` 中定义最小本地类型，尤其是 `RunPayload`、`OutputItem`、`RunOutputPayload` 和 `ExecutorResult`，让 workflow 源码保持自包含。
 - 所有节点 payload 类型都必须继承或包含 `RunPayload`：`errCode: number` 和 `errMessage: string`。成功输出统一使用 `errCode: 0, errMessage: ""`。
-- Workflow 使用内联 `steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint, entrypoints })`；Bot 使用内联 `steamharness.defineBot({ ... })`，类型由 Core 固定。Bot 的标准输入、输出、队列、恢复和用量无需重复声明。
+- Workflow 使用内联 `steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint, entrypoints })`；Bot 使用内联 `steamharness.defineBot({ engine: "agent" | "llm", ... })` 声明其中一种引擎。Bot 的输入、输出、队列和用量无需重复声明，自动恢复仅适用于 Agent。
 - Workflow 的 `defineExecutor` 和 Bot 的 `defineBot` 必须接收内联对象并导出为 executor。Workflow 的执行配置属于各 entrypoint；Bot 仅提供 agent 配置、静态业务参数、工具权限、会话展示和输入／完成钩子。结构检查不执行这些钩子。
 - Workflow entrypoint 是同一项目下可独立启动的扁平入口，不表达强制父子关系。需要组合业务流程时在 workflow 内显式调用 `steamharness.runProject(...)`；不要生成多级入口路径或让子入口先运行默认入口。
 - 多入口项目按业务域折叠时，在入口对象上声明静态 `group: { id, title, order? }`。`group` 必须是内联对象字面量且只含这三个属性；`id`、`title` 是非空静态字符串，`order` 一旦声明就必须是非负整数（写 `order: undefined` 也算失败）；同一个 `group.id` 在所有入口上的 `title` 和 `order` 必须逐字一致。分区只影响 Desktop Run 区和 CLI Web 的折叠展示，本地 CLI、MCP 和 OpenAI 接口 仍只按 `entrypoint.id` 执行；不要把业务层级编码进 `group.id`。单入口或不需要分组的项目不要声明 `group`。

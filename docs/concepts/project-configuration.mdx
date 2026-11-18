@@ -78,6 +78,8 @@ Core Agent 的模型有两种模式：Studio 默认使用设置中的全部内�
 
 ### 声明模型字段
 
+Agent Bot 和 LLM Bot 使用同一个模型字段。引擎在 `defineBot` 中声明；`agent.modelSource` 或 `llm.modelSource` 只决定使用 Studio 用户设置还是项目模型，不会改变引擎。
+
 模型列表使用保留字段 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`）。Core 静态识别 `createAgentNode`、`defineBot` 或 `createAgentProjectParamResolver` 的调用后自动补入字段，不执行项目代码。本地配置服务在源码变更后更新识别结果，无需重开面板。间接封装无法被静态识别时，可在 `configuration.json` 显式声明此字段，使用 `secret: true`、`defaultValue: []` 与 `sharing: { "publish": true, "includeValue": false, "editable": true }`。
 
 ### 限定为系统 AI

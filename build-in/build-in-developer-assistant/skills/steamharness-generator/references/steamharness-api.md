@@ -977,7 +977,7 @@ const provider = credential.createProvider({ model: credential.models[0] });
 
 每个凭据对象另有 `defaultModelId: string | null`，表示账号在该平台上配置的默认模型；用户没有显式指定模型时优先使用它，再把结果传给 `createProvider({ model })`，不要自行猜模型 ID。
 
-非流式 LLM 节点使用 `steamharness.createLLMNode(...)`，适合小型内部转换或需要自定义输出映射的场景：
+`steamharness.createLLMNode(...)` 等上游流结束后一次返回完整结果，适合内部转换或自定义输出映射。内置 Provider 使用 pi-ai，端点必须支持 SSE；不再接受 AI SDK 的 `providerOptions`：
 
 ```ts
 const classifyNode = steamharness.createLLMNode<Input, JudgmentPayload>({
@@ -999,7 +999,12 @@ const classifyNode = steamharness.createLLMNode<Input, JudgmentPayload>({
 
 ## Agent（pi SDK 能力层）
 
-Bot 使用 `steamharness.defineBot({ name?, memory?, agent?, tools?, params?, resolveParams?, conversation?, prepareInput?, onCompleted? })`，返回固定 `projectType: "bot"` 的 `BotExecutorDefinition`。输出固定为 `AgentOutputPayload`，最终正文地址为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`，旧 Conversation 项目类型与工厂已删除。
+Bot 用 `steamharness.defineBot()` 声明。必须显式选择 `engine: "agent"` 或 `engine: "llm"`。两者返回 `BotExecutorDefinition`（`projectType: "bot"`）、输出 `AgentOutputPayload`，最终正文项固定为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`。
+
+- `engine: "llm"` 要求 `llm: { systemPrompt?, modelSource?, model?, temperature?, maxOutputTokens? }`。使用现有的 Studio 用户模型和 CLI Web 项目模型配置；不传 `agent`、`tools` 或 `memory`。每轮只请求一次模型，不运行工具、联网搜索或加载项目记忆。
+- 两种引擎都有 `prepareInput` 和 `onCompleted`。LLM 答复先按 `requestId` 保存；重试只补跑失败的完成回调，不重调已完成的模型请求。模型断流则由用户手动重试。
+
+以下 Agent 配置只适用于 `engine: "agent"`。
 
 Bot 项目记忆默认开启。`memory: { enabled: false }` 定义新配置的默认关闭值，已保存的项目配置布尔键 `STEAMHARNESS_BOT_MEMORY_ENABLED` 优先；用户可在项目配置界面切换，后续执行生效，已有运行快照保持原值。关闭保留已有条目，但不提供记忆工具与提示词。
 

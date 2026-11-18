@@ -32,6 +32,7 @@ const toolApproval = steamharness.createToolApprovalGate();
 
 /** Core supplies execution and output; this declaration supplies the assistant's tools and workspace input. */
 export const executor = steamharness.defineBot<AgentInput>({
+  engine: "agent",
   name: STEAMHARNESS_NAME,
   agent: {
   modelSource: "user-settings",

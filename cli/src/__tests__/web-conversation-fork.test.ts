@@ -55,6 +55,7 @@ it('forks through the page protocol without system AI and resumes only when the 
     const source = `
 
       export const executor = steamharness.defineBot({
+engine: "agent",
 agent: {modelSource: 'user-settings',
 tools: [],
 session: { compaction: { enabled: false } }},

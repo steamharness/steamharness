@@ -7,7 +7,7 @@ import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
 import {
-  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type ResolvedInput,
@@ -71,6 +71,7 @@ export class ConversationController {
       entry.createdAt ??= entry.messages[0]?.createdAt ?? 0;
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
       delete entry.activeRunId;
+      if (archivedConversation(project, entry)) continue;
       entry.queuedInputs ??= [];
       if (entry.queuedInputs.length) entry.queuePaused = true;
       const agent = this.project.conversation?.durable?.enabled
@@ -103,6 +104,11 @@ export class ConversationController {
     // Legacy histories could retain the first ID even after navigating elsewhere.
     const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
     this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
+    if (archivedConversation(project, this.current)) {
+      const next = this.blank();
+      this.sessions.push(next);
+      this.activeId = next.id;
+    }
   }
   replace(saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }): void {
     if (this.tasks.size) throw new Error('Stop executions before replacing runtime history.');
@@ -115,7 +121,7 @@ export class ConversationController {
   get executingIds(): Set<string> { return new Set([...this.tasks.values()].map(task => task.sessionId)); }
   private blank(id: string = globalThis.crypto.randomUUID()): ConversationSession {
     const now = Date.now();
-    return { id, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
+    return { id, engine: this.project.conversation?.engine, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
   }
   persist(): Promise<void> {
     if (!this.pendingSave) {
@@ -143,7 +149,7 @@ export class ConversationController {
   recover(): void {
     if (!this.project.conversation?.recovery?.enabled || this.disposed || this.options.canStart?.() === false) return;
     for (const entry of this.sessions) {
-      if (entry.agentOwnerId || entry.recoveryPaused) continue;
+      if (archivedConversation(this.project, entry) || entry.agentOwnerId || entry.recoveryPaused) continue;
       if (entry.agentInterrupted) continue;
       if (entry.activeRunId) continue;
       if (entry.messages.some(message => message.cancelRequested)) {
@@ -179,7 +185,7 @@ export class ConversationController {
     catch { return true; }
   }
   async create(force = false): Promise<void> {
-    const blank = force ? undefined : this.sessions.find((entry) => !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
+    const blank = force ? undefined : this.sessions.find((entry) => !archivedConversation(this.project, entry) && !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     const next = blank ?? this.blank();
     next.updatedAt = Date.now();
     if (blank) { this.sessions.splice(this.sessions.indexOf(blank), 1); }
@@ -274,6 +280,7 @@ export class ConversationController {
     entry.updatedAt = now; this.changed(); await this.persist();
   }
   async send(input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>, entry = this.current, preserveDraft = false, requestId?: string, mode: 'steer' | 'followUp' | 'reject' = 'followUp', editingQueueId?: string): Promise<void> {
+    this.assertCurrentEngine(entry);
     if (this.options.canStart?.() === false) throw new Error(t('Project data is unavailable. Follow the Server setup guidance and choose Check again.'));
     const parameters = projectParameters(this.project, input.entrypointId);
     validateProjectValues(parameters.fields, input.params, input.states);
@@ -365,6 +372,7 @@ export class ConversationController {
   }
   private start(entry: ConversationSession, input: ConversationQueuedInput, answer?: ConversationMessage): void {
     if (entry.activeRunId) return;
+    this.assertCurrentEngine(entry);
     if (this.options.canRun && !this.options.canRun(entry)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
     const resumeConfiguration = !!answer && !input.configurationSelection;
     const resumeAgent = !!answer && this.project.conversation?.durable?.enabled === true && !!entry.agent?.turns.length
@@ -669,6 +677,7 @@ export class ConversationController {
   async openAgentConversation(sessionId: string, conversationId: number): Promise<string> {
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry) throw new Error(t("Conversation no longer exists."));
+    this.assertCurrentEngine(entry);
     const owner = this.owner(entry);
     const isolated = this.sessions.find(session => session.forkSource?.agentOwnerId === owner.id && session.forkSource.agentConversationId === conversationId);
     if (isolated) return isolated.id;
@@ -715,7 +724,7 @@ export class ConversationController {
     }
   }
   restoreAgentState(sessions = this.sessions): void {
-    for (const entry of sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
+    for (const entry of sessions) if (!archivedConversation(this.project, entry) && !entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
   }
   private projectAgent(owner: ConversationSession, snapshot: AgentSessionSnapshot, restore = false): void {
     if (snapshot?.version !== 1 || !Number.isSafeInteger(snapshot.revision)) return;
@@ -858,6 +867,7 @@ export class ConversationController {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry || this.disposed) throw new Error(t("Conversation no longer exists."));
+    this.assertCurrentEngine(entry);
     const previousTarget = entry.agentConversationId ?? (this.isolating.has(entry.id) ? entry.forkSource?.agentConversationId : undefined);
     const isolation = await this.ensureIndependentFork(entry);
     if (isolation) {
@@ -937,7 +947,7 @@ export class ConversationController {
   }
   configurationChanged(): void {
     if (this.disposed || !this.project.conversation?.durable?.enabled) return;
-    for (const owner of this.sessions.filter(entry => !entry.agentOwnerId)) {
+    for (const owner of this.sessions.filter(entry => !entry.agentOwnerId && !archivedConversation(this.project, entry))) {
       if (owner.agentParameters && (this.settingsChanged(owner) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) {
         void this.reloadConfiguration(owner).catch(error => this.options.log(String(error)));
       }
@@ -1058,7 +1068,7 @@ export class ConversationController {
         && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }
   private drain(entry: ConversationSession, explicit = false): void {
-    if (this.options.canStart?.() === false || !explicit && (this.options.canDrain?.() === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
+    if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.() === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
       || entry.agentInterrupted || (this.project.conversation?.durable?.enabled ? this.agentBusy(entry) : entry.activeRunId)
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
@@ -1076,6 +1086,7 @@ export class ConversationController {
     }
   }
   async stop(entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
+    if (archivedConversation(this.project, entry)) return;
     // Root cancellation must mark the run synchronously, before late chunks
     // or completion events can land in the same turn of the event loop.
     if (entry.agentOwnerId || this.isolating.has(entry.id)) await this.ensureIndependentFork(entry);
@@ -1193,6 +1204,7 @@ export class ConversationController {
     return target;
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
+    this.assertCurrentEngine(entry);
     await this.ensureIndependentFork(entry);
     const answer = entry.messages.find((message) => message.id === messageId && message.pendingInput?.requestId === requestId);
     if (!answer?.pendingInput || entry.activeRunId) { return; }
@@ -1265,6 +1277,7 @@ export class ConversationController {
     return agent?.turns.find(turn => turn.conversationId === conversationId && turn.requestId === (input.requestId ?? input.id));
   }
   async retry(id: string, entry = this.current): Promise<void> {
+    this.assertCurrentEngine(entry);
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');
     if (index < 0) return;
     await this.ensureIndependentFork(entry);
@@ -1276,11 +1289,23 @@ export class ConversationController {
     }
     const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user' && message.status !== 'steer');
     if (!user || entry.activeRunId && !entry.agent) { return; }
+    if (this.project.conversation?.engine === 'llm' && answer?.runId && user.input) {
+      if (answer.status !== 'failed' && answer.status !== 'aborted' && answer.status !== 'timed_out') return;
+      const prior = { ...answer };
+      answer.items = []; answer.content = ''; answer.recovering = false;
+      answer.userSettings = this.currentUserSettings();
+      try { this.start(entry, { ...user.input, id: answer.id!, createdAt: user.createdAt ?? Date.now() }, answer); }
+      catch (error) { Object.assign(answer, prior); throw error; }
+      await this.persist(); return;
+    }
     if (user.input) { await this.send(user.input, entry, true); return; }
     const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = { ...entry.parameterValues?.[user.entrypointId ?? ''] };
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
     await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry, true);
+  }
+  private assertCurrentEngine(entry: ConversationSession): void {
+    if (archivedConversation(this.project, entry)) throw new Error(t('This conversation belongs to a different Bot engine.'));
   }
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {

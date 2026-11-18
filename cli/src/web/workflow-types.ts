@@ -113,6 +113,7 @@ export interface Project extends Parameters {
   requiresLogin?: boolean;
   assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean };
   conversation?: {
+    engine?: 'agent' | 'llm';
     collapseIntermediate?: boolean;
     commands?: ConversationCommandDefinition[];
     footer?: ConversationFooterItem[];
@@ -281,6 +282,7 @@ export interface ConversationMessage {
 export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
+  engine?: NonNullable<Project['conversation']>['engine'];
   agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
@@ -305,6 +307,11 @@ export interface ConversationSession {
   draft?: { text: string; attachments: Attachment[]; references?: PathReference[]; editingQueueId?: string };
   titleLocked?: boolean;
   activeRunId?: string;
+}
+
+export function archivedConversation(project: Project, session?: ConversationSession): boolean {
+  const engine = project.conversation?.engine;
+  return !!session && engine !== undefined && (session.engine ?? 'agent') !== engine;
 }
 
 export interface ConversationDraftUpdate { id: string; create?: boolean; draft: NonNullable<ConversationSession['draft']> }

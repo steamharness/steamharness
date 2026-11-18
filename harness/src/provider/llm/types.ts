@@ -1,26 +1,23 @@
-import type {
-  FinishReason,
-  LanguageModel,
-  LanguageModelUsage,
-  ModelMessage,
-  ProviderMetadata,
-  JSONValue,
-} from "ai";
+export interface LLMTextPart { type: "text"; text: string }
+export interface LLMImagePart { type: "image"; data: string; mimeType: string }
+export type LLMMessage =
+  | { role: "system"; content: string | LLMTextPart[] }
+  | { role: "assistant"; content: string | LLMTextPart[] }
+  | { role: "user"; content: string | (LLMTextPart | LLMImagePart)[] };
 
-export type LLMModel = LanguageModel;
-export type LLMMessage = ModelMessage;
-export type LLMProviderOptions = Record<
-  string,
-  {
-    [key: string]: JSONValue | undefined;
-  }
->;
+export type LLMFinishReason = "stop" | "length" | "tool-calls";
+export interface LLMUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  inputTokenDetails: { noCacheTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+  outputTokenDetails: { textTokens?: number; reasoningTokens?: number };
+}
 
 export interface LLMCallSettings {
   temperature?: number;
   maxOutputTokens?: number;
   topP?: number;
-  topK?: number;
   presencePenalty?: number;
   frequencyPenalty?: number;
   stopSequences?: string[];
@@ -28,7 +25,6 @@ export interface LLMCallSettings {
   maxRetries?: number;
   timeout?: number;
   headers?: Record<string, string>;
-  providerOptions?: LLMProviderOptions;
   abortSignal?: AbortSignal;
 }
 
@@ -40,7 +36,7 @@ export type LLMChatInput = LLMCallSettings &
       }
     | {
         prompt?: never;
-        messages: ModelMessage[];
+        messages: LLMMessage[];
       }
   ) & {
     system?: string;
@@ -48,9 +44,8 @@ export type LLMChatInput = LLMCallSettings &
 
 export interface LLMChatOutput {
   text: string;
-  finishReason?: FinishReason;
-  usage?: LanguageModelUsage;
-  providerMetadata?: ProviderMetadata;
+  finishReason?: LLMFinishReason;
+  usage?: LLMUsage;
 }
 
 export type LLMStreamChunk =
@@ -60,9 +55,8 @@ export type LLMStreamChunk =
     }
   | {
       type: "finish";
-      finishReason?: FinishReason;
-      usage?: LanguageModelUsage;
-      providerMetadata?: ProviderMetadata;
+      finishReason?: LLMFinishReason;
+      usage?: LLMUsage;
     };
 
 export interface LLMProvider {

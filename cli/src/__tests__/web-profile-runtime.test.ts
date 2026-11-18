@@ -33,7 +33,7 @@ it('enforces verified profiles through the real child worker, including downgrad
     await symlink(await resolveHarnessRoot(),path.join(directory,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
     await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'restricted-profile',type:'module',version:'1.0.0', defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts',configuration:'configuration.json'}]}));
     await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
-    await writeFile(path.join(directory,'index.ts'),`export const executor=steamharness.defineBot({ prepareInput(input) { return { ...input, prompt: String(steamharness.getConfig('mode')) }; } });`);
+    await writeFile(path.join(directory,'index.ts'),`export const executor=steamharness.defineBot({ engine: "agent", prepareInput(input) { return { ...input, prompt: String(steamharness.getConfig('mode')) }; } });`);
 
     const inspected=await runtime.inspect([directory]);expect(inspected.errors).toEqual([]);
     const project={...inspected.projects[0],uri:'',conversation:undefined};

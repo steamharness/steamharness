@@ -1144,7 +1144,7 @@ async function writeFileVersion(
     path.join(versionRoot, "source", "index.ts"),
     projectType === "workflow"
       ? `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\n`
-      : `export default steamharness.defineBot({ name: "test" });\n`,
+      : `export default steamharness.defineBot({ engine: "agent", name: "test" });\n`,
     "utf8",
   );
   await writeFile(path.join(versionRoot, "source", "configuration.json"), JSON.stringify({version:2,fields:[]}));

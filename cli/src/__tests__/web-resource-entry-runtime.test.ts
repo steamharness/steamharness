@@ -22,7 +22,7 @@ it.each(['assistant', 'conversation'] as const)('opens and refreshes a sibling K
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const workspace = path.join(root, 'workspace'), assistant = path.join(root, 'assistant'), id = randomUUID();
-  const conversationSource = `export const executor = steamharness.defineBot({});`;
+  const conversationSource = `export const executor = steamharness.defineBot({ engine: "agent" });`;
   for (const directory of [workspace, assistant]) {
     await mkdir(path.join(directory, 'node_modules'), { recursive: true });
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');

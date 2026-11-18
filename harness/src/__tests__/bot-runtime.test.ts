@@ -36,13 +36,14 @@ test("public API exposes only defineBot for Bot declarations and rejects arbitra
   assert.throws(() => defineProjectExecutor({ projectType: "conversation" } as never), /defineBot/);
   assert.throws(() => defineProjectExecutor({ projectType: "bot" } as never), /defineBot/);
   for (const key of ["workflow", "coreAgent", "createInput", "outputItemId", "tokenUsage"]) {
-    assert.throws(() => defineBot({ [key]: {} } as BotDefinition), /Unsupported Bot field/);
+    assert.throws(() => defineBot({ engine: "agent", [key]: {} } as BotDefinition), /Unsupported Bot field/);
   }
 });
 
 test("prepared input and fixed policy reach tool and session factories", async () => {
   const fake = await model(); const seen: unknown[] = [];
   const bot = defineBot<AgentInput & { topic: string }>({
+    engine: "agent",
     agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [],
       paramOptions: { fields: { permissionPolicy: { fixedValue: "read-only" } } },
       createTools(_context, input) { seen.push([input.topic, input.permissionPolicy]); return []; },
@@ -58,7 +59,7 @@ test("prepared input and fixed policy reach tool and session factories", async (
 test("Bot resolves image attachments before preparing business input", async () => {
   const fake = await model(); const run = context(); let reads = 0;
   run.files = { async resolveFile() { reads++; return { mimeType: "image/png", async readBase64() { return "aGkh"; } }; } } as unknown as RunContext["files"];
-  const bot = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+  const bot = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
     prepareInput(input) {
       assert.deepEqual(input.images, [{ mimeType: "image/png", data: "aGkh" }]);
       assert.equal(input.imageFiles, undefined);
@@ -73,7 +74,7 @@ test("Bot resolves image attachments before preparing business input", async () 
 
 test("completion failure replays the saved answer and retries only the notification", async () => {
   const fake = await model(); const run = context(); let attempts = 0; let prepareCalls = 0;
-  const bot = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+  const bot = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
     prepareInput(input) { prepareCalls++; return input; },
     onCompleted(result) {
       attempts++; assert.equal(result.requestId, "stable-request");
@@ -90,14 +91,14 @@ test("completion failure replays the saved answer and retries only the notificat
   });
   const output = await bot.workflow.run(input, run);
   assert.equal(output.errCode, 0); assert.equal(attempts, 2); assert.equal(fake.calls(), 1); assert.equal(prepareCalls, 1);
-  const restarted = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { attempts++; } });
+  const restarted = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { attempts++; } });
   await restarted.workflow.run(input, run);
   assert.equal(attempts, 2); assert.equal(fake.calls(), 1);
 });
 
 test("completion hook cannot return replacement output", async () => {
   const fake = await model();
-  const bot = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+  const bot = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
     onCompleted: (() => ({ items: [] })) as unknown as BotDefinition["onCompleted"] });
   await assert.rejects(Promise.resolve(bot.workflow.run(await bot.createInput(executorContext()), context())), /output replacement is forbidden/);
 });
@@ -117,7 +118,7 @@ test("a durable owner prepares and completes subsequent requests before it close
     const chunk = event.chunk as { item?: { metadata?: { kind?: string }; content?: unknown } };
     if (chunk.item?.metadata?.kind === "agent-session") snapshot = chunk.item.content as typeof snapshot;
   } };
-  const bot = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "multi")!, tools: [] },
+  const bot = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "multi")!, tools: [] },
     prepareInput(input) { prepared.push(input.prompt); return { ...input, prompt: `prepared: ${input.prompt}`, systemPrompt: `policy for ${input.prompt}` }; },
     onCompleted(result) { completed.push(result.requestId); },
   });
@@ -157,7 +158,7 @@ for (const policy of ["automatic", "approve", "reject"] as const) test(`Bot busi
   };
   const tools = [{ name: "business", enabled: true, autoApprove: policy === "automatic", approvalMode: "always" as const }];
   run.toolPermissions = createProjectToolPermissionContext({ definitions: tools, userInput: run.userInput, projectName: "bot", runId: "approval" });
-  const bot = defineBot({ tools, agent: { models, resolvedModel: models.getModel("faux", "approval")!, tools: [],
+  const bot = defineBot({ engine: "agent", tools, agent: { models, resolvedModel: models.getModel("faux", "approval")!, tools: [],
     createTools: () => [{ name: "business", label: "Business", description: "A guarded business operation.",
       parameters: { type: "object", properties: {} },
       async execute() { writes++; return { content: [{ type: "text" as const, text: "Saved" }], details: {} }; } }],
@@ -180,7 +181,7 @@ test("notification failure stays visible in a live owner and reconnect retries w
     if (chunk.item?.metadata?.kind === "agent-session") visible ||= !!chunk.item.content?.turns.some(turn => turn.items.some(item => item.metadata?.phase === "bot_completion"));
   } };
   const input: AgentInput = { errCode: 0, errMessage: "", prompt: "Hello", requestId: "notification" };
-  const first = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { throw new Error("Receipt unavailable"); } });
+  const first = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { throw new Error("Receipt unavailable"); } });
   const host = createAgentSessionHost(scope);
   const running = Promise.resolve(first.workflow.run(input, run)).catch(error => error);
   const until = async (ready: () => boolean) => {
@@ -189,7 +190,7 @@ test("notification failure stays visible in a live owner and reconnect retries w
   };
   try { await until(() => visible); assert.equal(fake.calls(), 1); }
   finally { host.suspend(); await running; }
-  const second = defineBot({ agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { notified = true; } });
+  const second = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { notified = true; } });
   const reopened = createAgentSessionHost(scope, { resume: true });
   const resumed = Promise.resolve(second.workflow.run(input, run));
   try { await until(() => notified); assert.equal(fake.calls(), 1); }
@@ -203,6 +204,7 @@ test("parallel entries with the same conversation and request IDs keep their inp
   faux.setResponses([ai.fauxAssistantMessage("First"), ai.fauxAssistantMessage("Second")]);
   const inputs: string[] = [], receipts: string[] = [];
   const bot = defineBot<AgentInput & { topic: string }>({
+    engine: "agent",
     params: [{ kind: "auxiliary", id: "business", label: "Business", fields: [{ name: "topic", flag: "--topic", type: "string" }] }],
     agent: { models, resolvedModel: models.getModel("faux", "parallel")!, tools: [],
       createTools(_context, input) { inputs.push(input.topic); return []; } },

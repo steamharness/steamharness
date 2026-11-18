@@ -63,7 +63,7 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'bot'], ['zh-CN', 'bo
       const graph = steamharness.defineProject({ name: 'locale-fixture', async run() { return steamharness.createOutputPayload({ items: [] }); } });
       export const executor = steamharness.${projectType === 'workflow' ? 'defineExecutor' : 'defineBot'}(${projectType === 'workflow' ? `
         { projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: graph, createInput: context => context.paramValues })] }`
-        : `{}`});`);
+        : `{ engine: 'agent' }`});`);
     const result = await runtime.inspect([directory]);
     expect(result.errors).toEqual([]);
     expect(result.projects[0].aggregateName).toBe(language === 'en' ? 'English name' : '\u4e2d\u6587\u540d\u79f0');

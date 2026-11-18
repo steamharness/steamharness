@@ -5,7 +5,9 @@ import {
   type ServerLLMModelDetails,
 } from "../provider/llm/server";
 import { HarnessError } from "../workflow/errors";
-import type { AgentInputModality, AgentModelAttributes } from "./types";
+import type { AgentModelAttributes } from "./types";
+import { toAgentModelAttributes } from "../provider/llm/model-attributes";
+export { toAgentModelAttributes } from "../provider/llm/model-attributes";
 import { type ConfigurationValues } from "@steamharness/project-configuration";
 import { agentConfiguredModels } from "./model-settings";
 
@@ -210,36 +212,9 @@ export async function startAgentSystemLLMRuntime(options: {
  * catalogue's own answer and arrives separately, precisely so an unknown model
  * keeps pi's default instead of losing its effort options.
  */
-export function toAgentModelAttributes(
-  details: ServerLLMModelDetails | undefined,
-): AgentModelAttributes | undefined {
-  if (details === undefined) return undefined;
-
-  const attributes: AgentModelAttributes = {};
-  attributes.webSearch = details.capabilities.webSearch;
-  if (details.reasoning !== undefined) attributes.reasoning = details.reasoning;
-  const input = details.input?.filter(isAgentInputModality);
-  if (input !== undefined && input.length > 0) attributes.input = input;
-  if (details.contextWindow !== undefined) attributes.contextWindow = details.contextWindow;
-  if (details.maxTokens !== undefined) attributes.maxTokens = details.maxTokens;
-  if (details.cost !== undefined) attributes.cost = { ...details.cost };
-  if (details.thinkingLevelMap !== undefined) {
-    attributes.thinkingLevelMap = { ...details.thinkingLevelMap } as AgentModelAttributes["thinkingLevelMap"];
-  }
-
-  return Object.keys(attributes).length === 0 ? undefined : attributes;
-}
-
-function isAgentInputModality(value: string): value is AgentInputModality {
-  return value === "text" || value === "image";
-}
-
 /**
- * The bridge hands out `http://127.0.0.1:<port>/<token>/v1`, which is the shape
- * the Vercel AI SDK wants: `@ai-sdk/anthropic` and `@ai-sdk/openai` both treat
- * `baseURL` as ending at `/v1` and append `/messages` or `/responses`.
- *
- * The agent SDK does not agree. `@anthropic-ai/sdk` takes the **API root** and
+ * The bridge hands out `http://127.0.0.1:<port>/<token>/v1`.
+ * `@anthropic-ai/sdk` takes the **API root** and
  * appends `/v1/messages` itself, so passing the bridge URL through unchanged
  * requests `/<token>/v1/v1/messages`, which 404s and leaves the run with no
  * output at all. Its OpenAI client already matches the `/v1` shape, so only the

@@ -56,9 +56,8 @@ steamharness.createLLMStreamNode<Input>(
 | 类型 | 字段 | 说明 |
 | --- | --- | --- |
 | `text-delta` | `text: string` | 一段增量文本。 |
-| `finish` | `finishReason?: FinishReason` | 流结束原因。 |
-| `finish` | `usage?: LanguageModelUsage` | token 用量。 |
-| `finish` | `providerMetadata?: ProviderMetadata` | provider 元信息。 |
+| `finish` | `finishReason?: LLMFinishReason` | 流结束原因。 |
+| `finish` | `usage?: LLMUsage` | token 用量。 |
 
 ## 返回值
 

@@ -40,7 +40,7 @@ async function expectCompactRelease(directory: string) {
 it.each([true, false])("preserves the Bot memory default (%s) in compiled releases and accepts saved overrides", async enabled => {
   const { directory, declaration } = await fixture();
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot" }] }));
-  await writeFile(path.join(directory, "index.ts"), `const steamharness=globalThis.steamharness; export default steamharness.defineBot({ memory: { enabled: ${enabled} } });`);
+  await writeFile(path.join(directory, "index.ts"), `const steamharness=globalThis.steamharness; export default steamharness.defineBot({ engine: "agent", memory: { enabled: ${enabled} } });`);
   const release = await buildProjectRelease(directory);
   const definition = readProjectConfigurationDefinition(release.directory);
   expect(definition.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)?.defaultValue).toBe(enabled);
@@ -57,8 +57,8 @@ it.each([true, false])("uses the release override's Bot memory default (%s)", as
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration,
     entries: [{ ...declaration.entries[0], type: "bot", configuration: "configuration.json" }],
     release: { entryOverrides: { main: { entry: "release.ts", configuration: "release-configuration.json" } } } }));
-  await writeFile(path.join(directory, "index.ts"), `export default steamharness.defineBot({ memory: { enabled: ${!enabled} } });`);
-  await writeFile(path.join(directory, "release.ts"), `export default steamharness.defineBot({ memory: { enabled: ${enabled} } });`);
+  await writeFile(path.join(directory, "index.ts"), `export default steamharness.defineBot({ engine: "agent", memory: { enabled: ${!enabled} } });`);
+  await writeFile(path.join(directory, "release.ts"), `export default steamharness.defineBot({ engine: "agent", memory: { enabled: ${enabled} } });`);
   await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [{ name: BOT_MEMORY_CONFIGURATION_KEY, type: "boolean", defaultValue: !enabled }] }));
   await writeFile(path.join(directory, "release-configuration.json"), JSON.stringify({ version: 1, fields: [{ name: BOT_MEMORY_CONFIGURATION_KEY, type: "boolean" }] }));
   const release = await buildProjectRelease(directory);
@@ -71,8 +71,8 @@ it.each([true, false])("uses the release override's Bot memory default (%s)", as
 it("inspects the memory default of an alternate Bot source entry", async () => {
   const { directory, declaration } = await fixture();
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot" }] }));
-  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({});');
-  await writeFile(path.join(directory, "release.ts"), 'export default steamharness.defineBot({ memory: { enabled: false } });');
+  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({ engine: "agent" });');
+  await writeFile(path.join(directory, "release.ts"), 'export default steamharness.defineBot({ engine: "agent", memory: { enabled: false } });');
   const report = inspectLocalProjectStructure({ projectDir: directory, sourceEntry: "release.ts" });
   expect(report.configuration?.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)?.defaultValue).toBe(false);
   const release = await buildProjectRelease(directory);
@@ -83,7 +83,7 @@ it("preserves versioned configuration profiles when adding the Bot memory switch
   const { directory, declaration } = await fixture();
   const profilePolicy = { version: 1, manageMinimumRole: "guest", defaultProfileKey: "ask", profiles: [{ key: "ask", name: "Ask", minimumRole: "guest", fixedValues: {} }] };
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot", configuration: "configuration.json" }] }));
-  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({ memory: { enabled: false } });');
+  await writeFile(path.join(directory, "index.ts"), 'export default steamharness.defineBot({ engine: "agent", memory: { enabled: false } });');
   await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 2, fields: [], profilePolicy }));
   const release = await buildProjectRelease(directory);
   const definition = readProjectConfigurationDefinition(release.directory);
@@ -215,7 +215,7 @@ it("keeps configured Agent model ownership after identifier minification", async
   declaration.entries[0].type = "bot";
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(declaration));
   await writeFile(path.join(directory, "index.ts"), `const steamharness=globalThis.steamharness;
-export const executor=steamharness.defineBot({name:'release-agent',agent:{modelSource:'project'}});`);
+export const executor=steamharness.defineBot({ engine: "agent", name:'release-agent',agent:{modelSource:'project'}});`);
   const release = await buildProjectRelease(directory);
   expect(projectUsesConfiguredAgentModels(path.join(release.directory, "entries/main"), path.join(release.directory, "entries/main/index.mjs"), release.directory)).toBe(true);
   await withUserSettings({ agent: { permissionPolicy: "auto", models: [] } }, async () => {

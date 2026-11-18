@@ -42,10 +42,6 @@ export async function main(options: RunnerMainOptions = {}): Promise<number> {
 export async function runOpenAIResponsesRunner(
   dependencies: RunnerDependencies = {},
 ): Promise<number> {
-  // Provider compatibility warnings are returned in the protocol metadata;
-  // keep the runner's stderr reserved for actual diagnostics even when this
-  // exported function is embedded without going through main().
-  disableAiSdkWarningLogs();
   const writeFrame = dependencies.writeFrame ?? writeRunnerFrame;
   let request: OpenAIInternalRunnerRequest | undefined;
   let executionReport: ExecutionReport | undefined;
@@ -233,12 +229,6 @@ function redirectConsoleToStderr(): void {
   console.info = write;
   console.debug = write;
   console.warn = write;
-}
-
-function disableAiSdkWarningLogs(): void {
-  (globalThis as typeof globalThis & {
-    AI_SDK_LOG_WARNINGS?: false;
-  }).AI_SDK_LOG_WARNINGS = false;
 }
 
 function formatDiagnosticValue(value: unknown): string {

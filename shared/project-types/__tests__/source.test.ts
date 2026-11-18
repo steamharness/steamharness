@@ -76,7 +76,7 @@ it.each([true, false])("rejects removed defaultInput settings with enabled=%s", 
 });
 
 function executor(properties: string): string {
-  if (/"?projectType"?: "bot"/.test(properties)) return `steamharness.defineBot({ ${properties.replace(/"?projectType"?: "bot",?/, "")} });`;
+  if (/"?projectType"?: "bot"/.test(properties)) return `steamharness.defineBot({ engine: "agent", ${properties.replace(/"?projectType"?: "bot",?/, "")} });`;
   return `steamharness.defineExecutor({
     ${properties}
     workflow: demo,

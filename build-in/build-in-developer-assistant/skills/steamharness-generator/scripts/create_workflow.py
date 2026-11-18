@@ -287,6 +287,7 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
             'import type { RuntimeApi } from "steamharness/runtime-api";',
             'declare const steamharness: RuntimeApi;', '',
             'export const executor = steamharness.defineBot({',
+            '  engine: "agent",',
             '  name: ' + json.dumps(name, ensure_ascii=False) + ',',
             '  agent: { systemPrompt: ' + prompt_literal + ' },',
             '});', 'export default executor;', '',

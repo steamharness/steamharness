@@ -121,7 +121,7 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
         projectAccount: process.env.STEAMHARNESS_SERVER_ADMIN_KEY === 'assistant-project-fixture',
         aiAccount: process.env.STEAMHARNESS_AI_API_KEY === 'assistant-ai-fixture' };
     } });
-    export const executor = steamharness.defineBot({ agent: { tools: [] }, tools: [{ name: 'skill', enabled: true, autoApprove: true }], async prepareInput(input, context) { return { ...input, prompt: JSON.stringify(await flow.run(input, context)) }; } });
+    export const executor = steamharness.defineBot({ engine: "agent", agent: { tools: [] }, tools: [{ name: 'skill', enabled: true, autoApprove: true }], async prepareInput(input, context) { return { ...input, prompt: JSON.stringify(await flow.run(input, context)) }; } });
   `);
   const storageService = runtimeStorageService();
   const server = createServer(async (request, response) => {

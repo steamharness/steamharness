@@ -209,7 +209,7 @@ describe("steamharness-generator contract", () => {
       expect(structure.params?.map(param => param.name)).toEqual(["provider", "model", "effort", "plan", "permissionPolicy"]);
       expect(structure.conversation?.durable?.enabled).toBe(true);
       const source = await readFile(path.join(directory, "index.ts"), "utf8");
-      expect(source).toContain("steamharness.defineBot({");
+      expect(source).toMatch(/steamharness\.defineBot\(\{\s*engine: "agent",/u);
       expect(await readFile(path.join(directory, "README.md"), "utf8")).toContain('steamharness run . -- --message "input text"');
     } finally {
       await rm(directory, { recursive: true, force: true });

@@ -121,6 +121,7 @@ test("conversation structure reports every declared parameter action", async () 
       writeFile(path.join(projectDir, "index.ts"), `
         const conversationProject = steamharness.defineProject({ name: "conversation", run(input) { return input; } });
         export const executor = steamharness.defineBot({
+          engine: "agent",
           agent: { paramOptions: { fields: { provider: false, model: false, effort: false, plan: false, permissionPolicy: false } } },
           params: [{ kind: "auxiliary", id: "workspace", label: "Workspace", fields: [{ name: "workdir", flag: "--workdir", type: "string" },{ name: "trace", flag: "--trace", type: "boolean" }] },
 { kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["responseModel"], fields: [{ name: "responseModel", flag: "--responseModel", type: "string", control: "select", options: [{ value: "sol" }] }] },
@@ -279,6 +280,7 @@ test("a param step must be a positive integer", () => {
   assert.equal(readProjectParamDefinitionError({ name: "question_2", type: "string" }), undefined);
 
   assert.throws(() => defineBot({
+    engine: "agent",
     params: [{ name: "notAStep", type: "string", step: 0 }],
   } as never), /step must be a positive integer/);
 });
@@ -333,6 +335,7 @@ test("date params reject invalid type, quick, options and multiple combinations"
   assert.match(dateViolations[3]?.message ?? "", /multiple: true/);
 
   assert.throws(() => defineBot({
+    engine: "agent",
     params: [{ name: "hiddenDate", type: "string", control: "date", panel: "quick" }],
   } as never), /must declare placement through/);
 });

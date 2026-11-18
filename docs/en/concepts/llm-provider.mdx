@@ -7,6 +7,8 @@ description: "Declare an owned LLM provider, its project configuration fields, a
 
 An LLM Provider connects model calls to a workflow. Projects can configure their own endpoint, model, and API key. Server neither stores nor proxies those third-party credentials.
 
+Built-in providers use pi-ai with OpenAI Responses, Chat Completions, or Anthropic Messages. The endpoint must support SSE even when `createLLMNode` returns the completed response all at once. Workflows can still opt in to native web search; [LLM Bots](/en/core-api/define-bot) do not enable it.
+
 ## System AI catalogue
 
 Call `getServerLLMCredentials({ signal })` to obtain the catalogue available to the current account. Catalogues are reused for 30 seconds in the process, scoped to service URL and account; concurrent refreshes are merged.
@@ -34,7 +36,7 @@ The node resolves the provider at runtime instead of reading business configurat
 
 ## LLM nodes
 
-Non-streaming node:
+Node that returns the complete reply:
 
 ```ts
 const llmNode = steamharness.createLLMNode<Input>({

@@ -12,7 +12,7 @@ import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { startEntryWebServer } from '../web/server';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
-it('falls back to project models in standalone Web and follows later host capability changes through real workers', async () => {
+it.each(['agent', 'llm'] as const)('%s Bot uses project models in standalone Web and follows host capability changes', async engine => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'model-source-fallback-'));
   const projectId = crypto.randomUUID(), configurationKey = createHash('sha256').update(`${projectId}:main`).digest('hex');
   const calls: { model: string; key?: string }[] = [];
@@ -36,9 +36,9 @@ it('falls back to project models in standalone Web and follows later host capabi
     await writeFile(path.join(directory, 'index.ts'), `
 
       export const executor = steamharness.defineBot({
-agent: {modelSource: 'user-settings',
-tools: []}
-});
+        engine: '${engine}',
+        ${engine === 'agent' ? "agent: { modelSource: 'user-settings', tools: [] }" : 'llm: {}'},
+      });
     `);
     app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
@@ -59,12 +59,12 @@ tools: []}
     };
     expect((await resolve('standalone')).resolvedOptions).toEqual([{ value: project.id, label: project.name, description: project.model }]);
     const send = async (text: string) => {
-      const count = app!.controller.current.messages.filter(message => message.role === 'assistant').length;
-      await post({ type: 'send', text, params: {}, attachments: [] });
-      await expect.poll(() => app!.controller.current.messages.filter(message => message.role === 'assistant').length).toBe(count + 1);
-      await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe("success");
-      const answer = app!.controller.current.messages.at(-1);
-      expect(answer?.status, answer?.error).toBe('success');
+      const requestId = crypto.randomUUID();
+      await post({ type: 'send', text, requestId, params: {}, attachments: [] });
+      await expect.poll(() => {
+        const answer = app!.controller.current.messages.find(message => message.role === 'assistant' && (message.id === requestId || message.sessionRequestId === requestId));
+        return { status: answer?.status, error: answer?.error };
+      }, { timeout: 12_000 }).toEqual({ status: 'success', error: undefined });
     };
     await send('Standalone');
     await app.setHostUserSettings({ agent: { permissionPolicy: 'auto', models: [host] } });
@@ -95,4 +95,4 @@ tools: []}
     for (const suffix of ['.json', '.json.lock.sqlite']) await rm(path.join(configurations, configurationKey + suffix), { force: true });
     await rm(path.join(configurations, 'snapshots', configurationKey), { recursive: true, force: true });
   }
-}, 40_000);
+}, 60_000);

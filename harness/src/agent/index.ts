@@ -215,4 +215,4 @@ export { exportAgentSession, importAgentSession, forkStoredAgentConversation, is
 export { defineBot } from "./bot";
 export { BOT_MEMORY_CONFIGURATION_KEY } from "./memory-configuration";
 export type { BotMemoryOptions } from "./memory-configuration";
-export type { BotDefinition, BotAgentOptions, BotInputContext, BotCompletion, BotConversationOptions } from "./bot";
+export type { BotDefinition, BotEngine, BotAgentOptions, BotLLMOptions, BotInputContext, BotCompletion, BotConversationOptions } from "./bot";

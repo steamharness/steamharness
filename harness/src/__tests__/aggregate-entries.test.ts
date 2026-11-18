@@ -31,7 +31,7 @@ async function fixture() {
   for (const entry of entries) {
     await writeFile(path.join(directory, entry.configuration), JSON.stringify({ version: 1, fields: [{ name: "label", label: "Label", type: "string", defaultValue: entry.entryId }] }));
     if (entry.type === "kanban") { await writeFile(path.join(directory, entry.entry), "<!doctype html><title>Board</title>"); continue; }
-    if (entry.type === "bot") { await writeFile(path.join(directory, entry.entry), 'export const executor = steamharness.defineBot({});'); continue; }
+    if (entry.type === "bot") { await writeFile(path.join(directory, entry.entry), 'export const executor = steamharness.defineBot({ engine: "agent" });'); continue; }
     const workflow = `const flow = steamharness.defineProject({ name: "${entry.entryId}", async run(input, context) {
       if (input.nested) return context.entries.get("two").runEntrypoint("read");
       return { errCode: 0, errMessage: "", entryId: context.metadata.entryId, label: context.config.label, actor: context.actor };

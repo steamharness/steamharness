@@ -40,7 +40,6 @@ export async function main(
   argv = process.argv.slice(2),
   options: { localeInitialized?: boolean } = {},
 ): Promise<number> {
-  disableAiSdkWarningLogs();
   if (options.localeInitialized !== true) {
     argv = prepareCliInvocation(argv).argv;
   }
@@ -555,12 +554,6 @@ function formatProjectStructureError(error: unknown): string {
 
 function formatHelp(): string {
   return i18n.t("localHelp", { ns: "cli" });
-}
-
-function disableAiSdkWarningLogs(): void {
-  (globalThis as typeof globalThis & {
-    AI_SDK_LOG_WARNINGS?: false;
-  }).AI_SDK_LOG_WARNINGS = false;
 }
 
 if (isCliEntrypoint()) {

@@ -84,6 +84,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         export const executor = steamharness.defineBot({
+          engine: "agent",
           conversation: { attachments: { images: true, videos: true, files: true } },
         });
       `, "utf8"),
@@ -104,7 +105,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
 });
 
 test("Conversation needs no input setting and rejects removed input settings", () => {
-  const definition = {};
+  const definition = { engine: "agent" as const };
   assert.equal(defineBot(definition).projectType, "bot");
   for (const enabled of [true, false]) {
     assert.throws(() => defineBot({

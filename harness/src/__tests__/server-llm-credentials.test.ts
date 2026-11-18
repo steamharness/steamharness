@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { getServerLLMCredentials } from "../provider/llm/server";
+import { llmSSE } from "./fixtures/llm-sse";
 
 test("server LLM credentials hide proxy tokens and refresh before provider calls", async () => {
   const previousFetch = globalThis.fetch;
@@ -48,21 +49,7 @@ test("server LLM credentials hide proxy tokens and refresh before provider calls
     }
     proxyAuthorizations.push(new Headers(init?.headers).get("authorization") ?? "");
     proxyBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-    return Response.json({
-      id: "resp-1",
-      object: "response",
-      created_at: Math.floor(Date.now() / 1000),
-      status: "completed",
-      model: "gpt-test",
-      output: [{
-        id: "msg-1",
-        type: "message",
-        role: "assistant",
-        status: "completed",
-        content: [{ type: "output_text", text: "hello", annotations: [] }],
-      }],
-      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-    });
+    return llmSSE("openai-responses");
   }) as typeof fetch;
 
   try {
@@ -488,7 +475,7 @@ test('a denied credential refresh cannot reuse a previously valid proxy token', 
   }) as typeof fetch;
   try {
     const [credential] = await getServerLLMCredentials();
-    await assert.rejects(credential!.createProvider({ model: 'gpt-test' }).chat({ prompt: 'hello' }), /LLM provider chat call failed/);
+    await assert.rejects(credential!.createProvider({ model: 'gpt-test' }).chat({ prompt: 'hello' }), /Revoked|403|sign in|account/i);
     assert.equal(reads, 2); assert.equal(calls, 0);
   } finally { globalThis.fetch = previousFetch; restoreEnvSnapshot(previous); }
 });
@@ -517,7 +504,7 @@ test("server LLM provider keeps a still-valid token when refresh fails", async (
       });
     }
     proxyAuthorization = new Headers(init?.headers).get("authorization") ?? "";
-    return createOpenAIResponse();
+    return llmSSE("openai-responses");
   }) as typeof fetch;
 
   try {

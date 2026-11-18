@@ -87,4 +87,19 @@ it('shows one live entry on the latest response and routes child navigation thro
   expect(document.querySelector('[data-message-id="next"] .message-metadata')!.textContent).not.toContain('Conversation usage');
   document.querySelector<HTMLButtonElement>('.subagents-button')!.click();
   expect(document.querySelector('.subagent-metrics')!.textContent).not.toContain('tokens');
+
+  project.conversation = { engine: 'llm' };
+  await show(child);
+  expect(banner.hidden).toBe(true);
+  expect(document.querySelector('.subagents-button')).toBeNull();
+  expect(document.querySelector<HTMLTextAreaElement>('textarea')!.disabled).toBe(true);
+  expect(document.querySelector('.conversation-access')!.textContent).toContain('different Bot engine');
+  expect(document.querySelector('#transcript')!.textContent).toContain('Draft saved; ready=false');
+
+  await show({ id: 'llm', title: 'LLM conversation', engine: 'llm', messages: [
+    { id: 'llm-reply', role: 'assistant', content: 'LLM answer', status: 'success', tokenUsage: { enabled: true, display: true, run: { calls: 1, totalTokens: 12 } } },
+  ] });
+  expect(document.querySelector<HTMLTextAreaElement>('textarea')!.disabled).toBe(false);
+  expect(document.querySelector('.subagents-button')).toBeNull();
+  expect(document.querySelector('[data-message-id="llm-reply"] .message-metadata')!.textContent).toContain('Turn usage: 12 tokens');
 });

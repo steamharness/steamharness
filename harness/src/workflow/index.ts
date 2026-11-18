@@ -772,6 +772,9 @@ function createReadonlyConversationContext(
     async appendMessage() {
       return conversation.enabled ? conversation.getValue() : createReadonlyDisabledConversationState(conversation);
     },
+    async appendMessages() {
+      return conversation.enabled ? conversation.getValue() : createReadonlyDisabledConversationState(conversation);
+    },
   };
 }
 

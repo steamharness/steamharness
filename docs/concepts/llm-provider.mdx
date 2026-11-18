@@ -7,6 +7,8 @@ description: "在 workflow 中声明自有 LLM provider、项目配置和节点�
 
 LLM Provider 把模型调用接入工作流。项目可以配置自己的服务地址、模型与 API Key，Server 不保存或代理这些第三方凭据。
 
+内置 Provider 使用 pi-ai，支持 OpenAI Responses、Chat Completions 和 Anthropic Messages。即使使用一次性返回完整结果的 `createLLMNode`，端点也必须支持 SSE。配置过原生联网搜索的 Workflow 可以继续使用它；[LLM Bot](/core-api/define-bot) 不启用搜索。
+
 ## 系统 AI 目录
 
 通过 `getServerLLMCredentials({ signal })` 取得当前账号可用目录。目录按服务地址和账号在进程内复用 30 秒，并合并并发刷新。
@@ -34,7 +36,7 @@ const llmProvider = steamharness.createLLMProviderRef("default", () => {
 
 ## LLM 节点
 
-非流式节点：
+一次返回完整结果的节点：
 
 ```ts
 const llmNode = steamharness.createLLMNode<Input>({

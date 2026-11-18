@@ -167,7 +167,7 @@ for (const withFactory of [false, true]) test(`default memory tools preserve con
   const custom = (name: string) => ({ name, label: name, description: name, parameters: { type: "object", properties: {} },
     async execute() { calls.push(name); return { content: [{ type: "text" as const, text: name }], details: {} }; },
   });
-  const definition = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "memory-extra-tools")!, tools: [], permissionPolicy: "auto",
+  const definition = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "memory-extra-tools")!, tools: [], permissionPolicy: "auto",
     extraTools: [custom("configured_tool") as never], ...(withFactory ? { createTools: async () => [custom("per_run_tool") as never] } : {}) },
     tools: ["configured_tool", "per_run_tool"].map(name => ({ name, enabled: true, autoApprove: true })),
   });
@@ -190,7 +190,7 @@ for (const enabled of [true, false]) test(`configured extra tools cannot replace
   const faux = ai.fauxProvider({ models: [{ id: "reserved-memory-tools", contextWindow: 100_000, maxTokens: 500 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
-  const definition = defineBot({ memory: { enabled }, agent: { models, resolvedModel: models.getModel("faux", "reserved-memory-tools")!, tools: [],
+  const definition = defineBot({ engine: "agent", memory: { enabled }, agent: { models, resolvedModel: models.getModel("faux", "reserved-memory-tools")!, tools: [],
     extraTools: [{ name: "memory_get", label: "Memory", description: "Conflicting tool", parameters: { type: "object", properties: {} },
       async execute() { return { content: [{ type: "text", text: "Wrong tool" }], details: {} }; } } as never] } });
   faux.setResponses([ai.fauxAssistantMessage("Done")]);
@@ -226,7 +226,7 @@ test("a Bot can save memory and a new conversation can retrieve, update and dele
   const models = ai.createModels(); models.setProvider(faux.provider);
   const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
   const resources = createTestResources(), address = { category: "decisions", key: "database" };
-  const bot = () => defineBot({ agent: { models, resolvedModel: models.getModel("faux", "memory-tools")!, tools: [], permissionPolicy: "auto", ...{ retryDelayMs: 0 } } });
+  const bot = () => defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "memory-tools")!, tools: [], permissionPolicy: "auto", ...{ retryDelayMs: 0 } } });
   const run = async (requestId: string, conversationId: string) => {
     const definition = bot(), execution = context(persistence, resources, conversationId);
     execution.toolPermissions = createProjectToolPermissionContext({ definitions: definition.tools ?? [], projectName: "bot", runId: requestId });
@@ -271,7 +271,7 @@ for (const mode of ["enabled", "disabled", "source-disabled", "source-disabled-u
     const run = context(persistence);
     if (mode === "disabled") run.config[BOT_MEMORY_CONFIGURATION_KEY] = false;
     if (mode === "source-disabled-ui-enabled") run.config[BOT_MEMORY_CONFIGURATION_KEY] = true;
-    const bot = defineBot({ memory: { enabled: !mode.startsWith("source-disabled") },
+    const bot = defineBot({ engine: "agent", memory: { enabled: !mode.startsWith("source-disabled") },
       agent: { models, resolvedModel: models.getModel("faux", "memory-test")!, tools: [], permissionPolicy: mode === "read-only" ? "read-only" : "workspace", ...{ retryDelayMs: 0 } },
       prepareInput(value) { return { ...value, systemPrompt: "Custom prepared persona." }; },
     });
@@ -298,7 +298,7 @@ test("Bot searches project memory before its first model request and refreshes a
   const revision = (saved.memory as BotMemorySummary).revision;
   await store.execute({ action: "save", category: "images", key: "format", content: "图片输出 PNG。" });
   await persistence.botMemory!({ projectId: "other-project", entryId: run.entryId }).execute({ action: "save", ...address, content: "数据库使用 OTHER_PROJECT_SECRET。" });
-  const bot = defineBot({ agent: { models, resolvedModel: models.getModel("faux", "automatic-memory")!, tools: [], permissionPolicy: "auto" },
+  const bot = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "automatic-memory")!, tools: [], permissionPolicy: "auto" },
     prepareInput(value) { return { ...value, systemPrompt: "Prepared database assistant." }; } });
   run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: "bot", runId: "auto" });
   const snapshots: string[] = [];

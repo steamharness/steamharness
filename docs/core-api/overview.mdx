@@ -35,7 +35,7 @@ const steamharness = globalThis.steamharness as RuntimeApi;
 | [`createFileInputNode`](/core-api/create-file-input-node) | 创建文件输入节点，把 file param 引用解析成文件对象。 |
 | [`createUserInputNode`](/core-api/create-user-input-node) | 创建可持久恢复的人工输入节点，让 workflow 暂停为 `waiting_for_input`。 |
 | [`createToolApprovalGate`](/core-api/create-tool-approval-gate) | 创建工具审批包装器；结合 executor `tools` 注册项和 `context.toolPermissions` 复用 user-input 等待/恢复协议审批工具调用。 |
-| [`createLLMNode`](/core-api/create-llm-node) | 创建非流式 LLM 调用节点。 |
+| [`createLLMNode`](/core-api/create-llm-node) | 调用模型并一次返回完整结果。 |
 | [`createLLMStreamNode`](/core-api/create-llm-stream-node) | 创建流式 LLM 调用节点。 |
 | [`createLLMProviderFromConfig`](/core-api/create-llm-provider-from-config) | 从当前运行的项目配置快照创建 LLM provider。 |
 | [`createLLMProviderRef`](/core-api/create-llm-provider-ref) | 创建可延迟解析的 provider 引用。 |

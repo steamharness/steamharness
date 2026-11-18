@@ -166,6 +166,8 @@ export interface RunWorkspaceProjectOptions {
 export interface RunLocalProjectOptions {
   /** Require an author-declared read-only Workflow operation. Not a JavaScript sandbox. */
   readOnly?: boolean;
+  /** Reject a source change that would run a different engine in the host's existing session. */
+  expectedBotEngine?: "agent" | "llm";
   entryConversationHost?: import('../entries/index').EntryConversationHost;
   entryCall?: import('../entries/index').EntryCallSource;
   entryId?: string;
@@ -845,6 +847,9 @@ async function runLocalProjectWithReportInternal(
       projectName,
     );
     if (definition.projectType !== projectStorageDeclaration.registration.type) throw new Error("The registered entry type does not match its executor.");
+    if (options.expectedBotEngine !== undefined && (definition.projectType !== "bot" || definition.conversation?.engine !== options.expectedBotEngine)) {
+      throw new HarnessError({ type: "input_validation", message: "The Bot engine changed. Reopen the project to start a new conversation." });
+    }
     const selected = resolveExecutorExecution(
       definition,
       options.entrypointId,
@@ -1180,7 +1185,7 @@ async function localAgentProjectContract(options: LocalProjectSkillsOptions) {
 }
 
 function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string, entryFile: string, aggregateDir: string): StructureReport["conversation"] {
-  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir, entryFile, aggregateDir)
+  return conversation && conversation.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir, entryFile, aggregateDir)
     ? { ...conversation, collapseIntermediate: true } : conversation;
 }
 
@@ -2150,16 +2155,7 @@ function isExecutorCliEntrypoint(): boolean {
   return resolvedEntryPath === fileURLToPath(import.meta.url);
 }
 
-if (isExecutorCliEntrypoint()) {
-  disableAiSdkWarningLogs();
-  void runExecutorCli();
-}
-
-function disableAiSdkWarningLogs(): void {
-  (globalThis as typeof globalThis & {
-    AI_SDK_LOG_WARNINGS?: false;
-  }).AI_SDK_LOG_WARNINGS = false;
-}
+if (isExecutorCliEntrypoint()) void runExecutorCli();
 
 async function runExecutorCli(): Promise<void> {
   const argv = process.argv.slice(2);

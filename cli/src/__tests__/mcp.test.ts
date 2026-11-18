@@ -674,7 +674,7 @@ async function createConversationProject(): Promise<string> {
     devDependencies: { "steamharness": await resolveHarnessVersion() },
     version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}], projectInfo:{} ,
   }), "utf8");
-  await writeFile(path.join(projectDir, "index.ts"), "export const executor = steamharness.defineBot({});", "utf8");
+  await writeFile(path.join(projectDir, "index.ts"), "export const executor = steamharness.defineBot({ engine: 'agent' });", "utf8");
   return projectDir;
 }
 

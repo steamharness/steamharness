@@ -25,6 +25,7 @@ provider.setResponses(Array.from({ length: 128 }, () => request => {
   return ai.fauxAssistantMessage(text || 'Ready');
 }));
 export const executor = steamharness.defineBot({
+  engine: "agent",
   name: 'conversation-features',
   agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: [],
     paramOptions: { fields: { provider: false, model: false, effort: false, permissionPolicy: false } },

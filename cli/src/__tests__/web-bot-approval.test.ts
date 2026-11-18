@@ -34,6 +34,7 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
     await writeFile(path.join(directory, 'index.ts'), `
       import { appendFile } from 'node:fs/promises';
       export const executor = steamharness.defineBot({
+        engine: "agent",
         agent: { provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline', baseUrl: 'http://127.0.0.1:${(server.address() as { port: number }).port}/v1', tools: [],
           paramOptions: { fields: { provider: false, model: false } },
           createTools() { return [{ name: 'write_business', label: 'Write business data', description: 'Write only after approval.', parameters: { type: 'object', properties: {} },

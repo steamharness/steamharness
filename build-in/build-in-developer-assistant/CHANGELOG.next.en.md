@@ -1,5 +1,7 @@
 # Unreleased
 
+- Bot templates explicitly declare the Agent engine. The development reference explains single-call LLM Bots and the SSE endpoint requirement.
+
 - Updated project development guidance: local runs need neither a project UUID nor cloud registration; release builds validate the ID.
 
 - Project generation guidance covers explicit Kanban Web applications, scoped sessions, fixed proxies, and microphone consent.

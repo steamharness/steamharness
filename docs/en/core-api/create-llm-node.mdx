@@ -1,11 +1,13 @@
 ---
 title: "createLLMNode"
-description: "Create a non-streaming LLM invocation node and map the business input to the LLMChatInput."
+description: "Call a model and return its complete reply when the stream ends."
 ---
 
 # createLLMNode
 
-Use `steamharness.createLLMNode()` for a non-streaming model call. The node resolves its provider and calls `provider.chat(llmInput)`. Convert the reply to a business payload with `mapOutput` when needed.
+Use `steamharness.createLLMNode()` to call a model from a Workflow and return the complete reply. The node calls `provider.chat(llmInput)` and can convert the result to a business payload with `mapOutput`.
+
+Built-in providers use pi-ai to read the upstream stream. The endpoint must support SSE even for this node; endpoints that only return non-streaming JSON are not supported.
 
 ## Example
 
@@ -75,18 +77,17 @@ steamharness.createLLMNode<Input, Output>(
 |Field|Type|Description|
 | --- | --- | --- |
 | `prompt` | `string` |Single prompt; and `messages` two-choice 1.|
-| `messages` | `ModelMessage[]` |Multi-round message; 1 with `prompt` binary.|
+| `messages` | `LLMMessage[]` | Conversation messages, instead of `prompt`. Supports `system`, `user`, and `assistant`; user messages can contain images. |
 | `system` | `string` | System prompt. |
 | `temperature` | `number` |Sampling temperature.|
 | `maxOutputTokens` | `number` |The maximum number of output tokens.|
-| `topP` / `topK` | `number` |Sampling parameters.|
+| `topP` | `number` | Sampling parameter for Chat Completions and Anthropic Messages. |
 | `presencePenalty` / `frequencyPenalty` | `number` |Repeat the penalty parameter.|
 | `stopSequences` | `string[]` |Stop the sequence.|
 | `seed` | `number` |Random seed.|
 | `maxRetries` | `number` |Number of retries.|
 | `timeout` | `number` |The call timed out.|
 | `headers` | `object` |Extra request header.|
-| `providerOptions` | `LLMProviderOptions` |provider private extension parameters.|
 | `abortSignal` | `AbortSignal` |Nodes are automatically injected from `context.abortSignal`.|
 
 ## Output
@@ -101,9 +102,8 @@ steamharness.createLLMNode<Input, Output>(
 |Field|Type|Description|
 | --- | --- | --- |
 | `text` | `string` |Model text output.|
-| `finishReason` | `FinishReason \| undefined` |Stop the cause.|
-| `usage` | `LanguageModelUsage \| undefined` |token usage.|
-| `providerMetadata` | `ProviderMetadata \| undefined` |provider meta information.|
+| `finishReason` | `LLMFinishReason \| undefined` | `"stop"`, `"length"`, or `"tool-calls"`. |
+| `usage` | `LLMUsage \| undefined` | Input, output, and total tokens with cache and reasoning details. |
 
 When an executor configures `tokenUsage: { enabled: true }`, the provider resolved by `getLLMProvider()` reports `LLMChatOutput.usage` to `context.tokenUsage` after `chat` returns, so accounting still works when `mapOutput` omits `usage`. The run aggregate appears in `report.tokenUsage.run`; cumulative totals are written to platform usage tables scoped by account, project, entry and conversation. Server derives the system total by aggregating project totals. Input, output, reasoning, cached-input, and cache-creation token details are supported.
 

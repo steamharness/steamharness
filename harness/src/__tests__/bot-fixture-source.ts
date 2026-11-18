@@ -6,6 +6,7 @@ export function botFixtureSource(options: { prepare?: string; properties?: strin
     const models = createModels(); models.setProvider(provider.provider);
     provider.setResponses(Array.from({ length: 32 }, () => () => fauxAssistantMessage(${JSON.stringify(options.response ?? "Fixture answer")})));
     export const executor = steamharness.defineBot({
+      engine: "agent",
       agent: { models, resolvedModel: models.getModel("faux", "fixture"), tools: [] },
       async prepareInput(input, context) {
         ${options.prepare ?? 'return { ...input, prompt: input.prompt || "Fixture question" };'}

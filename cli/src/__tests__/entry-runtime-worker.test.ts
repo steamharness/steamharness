@@ -39,7 +39,7 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
       }});
       export const executor=steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',workflow:ipcProject,params:[{name:'request',flag:'--request',type:'string'}],createInput({args}){return {errCode:0,errMessage:'',requestId:args[1]};}})]});
     `);
-    await writeFile(path.join(directory,'bot.ts'),`export const executor=steamharness.defineBot({});`);
+    await writeFile(path.join(directory,'bot.ts'),`export const executor=steamharness.defineBot({ engine: "agent" });`);
     const inspected=await runtime.inspect([directory]);expect(inspected.errors).toEqual([]);
     const project={...inspected.projects.find(project=>project.entryId==='api')!,uri:''};
     const entryCall={entryId:'bot',conversationId:'source',runId:'bot-run'};

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Bot entries can use the LLM engine with existing model settings, without Agent permission, Plan, or subagent controls. Existing Bot templates continue to use the Agent engine.
+
 - Local Workflow, Bot, and Kanban runs no longer show project registration, Server, or AI connection checks. Projects can start without an ID; release builds validate it.
 
 - Fixed localhost fallback links and old account updates overwriting the chosen Server. Sign-in can be cancelled as soon as it starts.
