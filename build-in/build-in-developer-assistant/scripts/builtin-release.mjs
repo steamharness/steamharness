@@ -23,6 +23,7 @@ import { create as createTar, list as listTar } from "tar";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveReleaseMode, resolveVersionReference } from "./release-gate.mjs";
 import { resolveSiblingWorkspaceRoot } from "./prepare-local-siblings.mjs";
+import { validateReleasePair, verifyReleaseNoteLinks } from "../../../docs/scripts/release-notes.mjs";
 
 const INDEX_SCHEMA_VERSION = 2;
 const RUNNER_SCHEMA_VERSION = 1;
@@ -179,12 +180,12 @@ export async function verifyBuiltinProject(options = {}) {
     await assertLockfileCurrent(definition.root, definition.packageJson, ["dependencies", "optionalDependencies"]);
   }
   await assertLocalizedProjectPresentation(definition.root, definition.projectDocument);
-  await assertChangelogParity(definition.root, definition.version);
+  validateReleasePair(options.docsRoot ?? path.join(repoRoot, "../../docs"), definition.unit, definition.version);
   return definition;
 }
 
 export async function buildReleaseArtifacts(options = {}) {
-  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel, mode: options.mode });
+  const definition = await verifyBuiltinProject(options);
   assertReleaseIdentity(definition, options);
   const targetGroup = normalizeTargetGroup(options.targetGroup);
   if (definition.artifactKind === "universal" && targetGroup !== "mac") {
@@ -221,7 +222,7 @@ export async function buildReleaseArtifacts(options = {}) {
 }
 
 export async function assembleRelease(options = {}) {
-  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel, mode: options.mode });
+  const definition = await verifyBuiltinProject(options);
   assertReleaseIdentity(definition, options);
   const commit = normalizeCommit(options.commit);
   const groups = [{ name: "mac", directory: options.macArtifactsDir }];
@@ -326,6 +327,9 @@ export async function publishDistribution(options = {}) {
     mode: options.mode,
   });
   const { definition, release } = verified;
+  const docsPaths = validateReleasePair(options.docsRoot ?? path.join(repoRoot, '../../docs'), definition.unit, definition.version);
+  const docsOrigin = `https://docs${definition.channel === 'alpha' ? '-alpha' : ''}.steamharness.yuhe.space`;
+  await (options.verifyDocs ?? verifyReleaseNoteLinks)(docsOrigin, docsPaths);
   const publishRoot = path.resolve(options.publishRoot);
   await validatePublishedDependencies(publishRoot, release, definition);
   const channelPath = channelProjectPath(definition).split("/");
@@ -547,20 +551,6 @@ async function validatePublishedDependencies(publishRoot, release, definition) {
     if (!compatible) {
       throw new Error(`${release.tag} requires published ${dependency.id} ${dependency.minVersion} or later.`);
     }
-  }
-}
-
-async function assertChangelogParity(root, currentVersion) {
-  const [zh, en] = await Promise.all([
-    readFile(path.join(root, "CHANGELOG.md"), "utf8"),
-    readFile(path.join(root, "CHANGELOG.en.md"), "utf8"),
-  ]);
-  const read = (contents) => [...contents.replace(/\r\n?/g, "\n").matchAll(/^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})$/gm)]
-    .map((match) => ({ version: match[1], date: match[2] }));
-  const zhReleases = read(zh);
-  if (JSON.stringify(zhReleases) !== JSON.stringify(read(en))) throw new Error("Changelog histories differ by locale.");
-  if (!zhReleases.some((release) => release.version === currentVersion)) {
-    throw new Error(`CHANGELOG.md does not contain current version ${currentVersion}.`);
   }
 }
 

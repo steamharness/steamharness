@@ -1,0 +1,21 @@
+name: docs
+
+on:
+  push:
+    paths: ['docs/**', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/**', '.github/workflows/docs.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node docs/scripts/validate-docs.mjs
+      - run: node --test docs/scripts/__tests__/*.test.mjs

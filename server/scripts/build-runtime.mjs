@@ -28,7 +28,7 @@ export async function buildRuntime(options = {}) {
       env: options.env ?? process.env,
       maxBuffer: 10 * 1024 * 1024,
     });
-    const keep = new Set(["node_modules", ".shared", "package.json", "assets", "CHANGELOG.md", "CHANGELOG.en.md"]);
+    const keep = new Set(["node_modules", ".shared", "package.json", "assets"]);
     for (const name of await readdir(staging)) {
       if (!keep.has(name)) await rm(path.join(staging, name), { recursive: true, force: true });
     }

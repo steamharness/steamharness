@@ -1,0 +1,170 @@
+---
+title: "Developer Assistant unreleased"
+draft: true
+---
+
+# Developer Assistant unreleased
+
+#### New Features
+
+- **Studio VS Code host**: the default host becomes Studio VS Code with an independent working directory and Studio Control's standard MCP. {/* note: draft-90 */}
+- **Asking mid-plan**: in plan mode the assistant uses Core's `ask_user` tool to ask one or more questions in a single turn. {/* note: draft-91 */}
+
+#### Breaking Changes
+
+- Breaking: the assistant now uses defineBot while preserving workspace, skills, Studio Control and permission capabilities; generator guidance and examples use the Core Bot contract. {/* note: draft-23 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure. {/* note: draft-53 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Breaking: the generator, templates and API references use aggregate entries. Calls use context.entries. Related-project declarations and combined publication locks are removed. {/* note: draft-60 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Conversation hides the composer by default while awaiting an answer or plan approval, and turns off `/plan` and its footer notice once the plan is accepted. {/* note: draft-92 */}
+  Migration: projects that keep the composer declare it explicitly in the generic `userInput` configuration.
+- Conversation removes its enable setting and custom main fields, moves attachments to `conversation.attachments`, and rejects retired configurations during validation. {/* note: draft-93 */}
+  Migration: declare attachments through `conversation.attachments` and keep only Auxiliary, Quick, Mode, and Slash parameters.
+
+#### Added
+
+- Added a generic Conversation `userInput` configuration covering composer behavior for question and plan-approval requests. {/* note: draft-94 */}
+- Added `/export` exporting every current session record and showing the result in the body. {/* note: draft-95 */}
+- Added `/compact` immediately summarizing actual context with running, completed, or failed states. {/* note: draft-96 */}
+- Added reading VS Code workspace state and diagnostics, file navigation, themes, terminals, and views through Studio Control's standard MCP. {/* note: draft-97 */}
+- Added Studio Control credentials staying out of coding shells while tool permissions and Build/Plan approvals stay intact. {/* note: draft-98 */}
+- Added Kanban discovery and invocation of registered page queries, navigation, and viewpoint methods after resolving the configuration and preview instance. {/* note: draft-99 */}
+- Added generator coverage of the Kanban file Bridge and CLI image migration commands, verifying bytes by reading back after upload. {/* note: draft-100 */}
+- Added generator card guidance for the browser preview switch and Desktop's upper-right preview area. {/* note: draft-101 */}
+- Added Core API reference coverage for Conversation resource card tools and Kanban preview and save parameters. {/* note: draft-102 */}
+- Added a task-oriented generator index of APIs and public types so the assistant locates a contract before reading the detail. {/* note: draft-103 */}
+- Added plan-mode questions through `ask_user` with options, multi-select, or free-form answers, all kept in the conversation. {/* note: draft-104 */}
+- Added declaring the context window in an Auxiliary panel. {/* note: draft-105 */}
+
+#### Changed
+
+- Bot templates explicitly declare the Agent engine. The development reference explains single-call LLM Bots and the SSE endpoint requirement. {/* note: draft-1 */}
+- Updated project development guidance: local runs need neither a project UUID nor cloud registration; release builds validate the ID. {/* note: draft-2 */}
+- Project generation guidance covers explicit Kanban Web applications, scoped sessions, fixed proxies, and microphone consent. {/* note: draft-3 */}
+- The generator documents silent automatic memory, keyword retrieval at the start of each turn, and `memory_search` relevance, count and response limits. {/* note: draft-4 */}
+- Document Bot project memory settings, categorized entries, four built-in tools and revision checks in the generator reference. {/* note: draft-5 */}
+- Document Kanban timeline reads, capture-time ordering, and bounded viewer caches. {/* note: draft-6 */}
+- Document background Workflow controls and paged results for Kanban projects. {/* note: draft-7 */}
+- Project generation guidance covers optional image cropping, minimum/maximum pixel dimensions, and uploading only after confirmation. {/* note: draft-8 */}
+- Parameter guidance supports numeric sliders, covering bounds, increments, current values, and the separate prompt-step setting. {/* note: draft-9 */}
+- Update Generator guidance for v2 encoded release structures, readable project and entry summaries, compact JSON, and matching host decoders. {/* note: draft-10 */}
+- The project generator documents structured activity records and host output following. {/* note: draft-11 */}
+- The project generator documents streaming listeners, host output pagination, and the local incremental run journal. {/* note: draft-12 */}
+- Document embedded copying, focused editing, and text-selection behavior in the generator skill. {/* note: draft-13 */}
+- Document display labels, unknown-reference fallback, and suggestion visibility for historical members in the generator skill. {/* note: draft-14 */}
+- Document message-card callbacks, status excerpts, and handling of stale card events in the generator skill. {/* note: draft-15 */}
+- Document message cards in native Conversation views, including request-ID anchoring, bounded plain text, and preservation of drafts and history. {/* note: draft-16 */}
+- Keep built-in and generated project caches, reports, temporary files and release output under dist/steamharness/; package only required build artifacts. {/* note: draft-17 */}
+- Document the transactional background notification API, business event identities, explicit continuation after failure, and configuration failure categories and retry budgets in Generator. {/* note: draft-18 */}
+- Generator documents automatic parent continuation when child work drains, early sleep completion and hidden internal input recovery. {/* note: draft-19 */}
+- Generator documents expected and actual sleep end times and their display in the conversation's local timezone. {/* note: draft-20 */}
+- The assistant uses the default of three concurrent child agents, durable queuing and cancellable sleep. Generator documents bounded run configuration checks and filtering of disabled tools. {/* note: draft-21 */}
+- [Fix] Resolve exact CLI versions from the adjacent package in SDK checkouts while retaining host dependency resolution, removing the generator's dependency on the example workspace. {/* note: draft-22 */}
+- Generator documents shared Agent recovery for command confirmation, snapshot delivery, and safe tools, including Stop, authorization, and uncertain write boundaries. {/* note: draft-24 */}
+- Project generation documents release commands, entry/configuration selection and distribution validation. {/* note: draft-25 */}
+- Generator documents local entry discovery and native Conversation mounting, including business submission receipts, session isolation, and view disposal. {/* note: draft-26 */}
+- Generator templates and guidance group entry builds by source root. {/* note: draft-27 */}
+- Generator guidance covers reserved entry names, isolated package staging, and complete download validation. {/* note: draft-28 */}
+- Generator templates, built-in caches, reports, and archives use aggregate root dist. Generated Kanban entries use dist/steamharness/build/main/index.html and runtime data lives in host or user directories. {/* note: draft-29 */}
+- [Fix] Align project guidance with aggregate Workflow and Conversation receipt deadlines and receipt checks after timeouts. {/* note: draft-30 */}
+- Updated generation guidance for the 120-second aggregate Workflow receipt deadline, retaining request IDs and checking receipts after timeouts without automatically replaying writes. {/* note: draft-31 */}
+- Document multi-Bot aggregate workbenches, Conversation control, trusted provenance, and subscription generations in the generator skill. {/* note: draft-32 */}
+- Documented account-scoped system AI catalogue caching, explicit refresh and expiry/revocation handling in the generator API reference. {/* note: draft-33 */}
+- Documented full-session snapshot collection, worker crash recovery and main-Agent child management in the generator API reference, preserving paused user queues and safe retry boundaries. {/* note: draft-34 */}
+- Document reserved model names, UTC dates, mapped enums and document version preservation for independent conversations in generation guidance. {/* note: draft-35 */}
+- Document local SQLite as the default conversation, run history and Agent backend, with explicit cloud storage or on-demand background snapshot backup and separate system AI authorization. {/* note: draft-36 */}
+- Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries. {/* note: draft-37 */}
+- Updated the generator API reference with unlimited subagent concurrency and safe retries for proven unsent requests while preserving authorization barriers. {/* note: draft-38 */}
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls. {/* note: draft-39 */}
+- Fixed generator preflight checks for configuration, ignore files and symlink conflicts to avoid partial projects. Generator scaffolds support names beginning with digits and multiline prompts. {/* note: draft-40 */}
+- Fixed: Existing Assistant conversations discover newly added Studio diagnostics while keeping existing tools usable. Catalog additions preserve checks on existing definitions and permissions. {/* note: draft-41 */}
+- Documented subagent attempt budgets, durable retries, completion receipts and non-retryable barriers in the generator API reference to prevent unbounded retries and repeated side effects. {/* note: draft-42 */}
+- Added: Generator guidance covers single subagent model fields and Core bindings, reusing configured models with inheritance and authorization constraints. {/* note: draft-43 */}
+- Added Kanban runtime diagnostics and page-readiness checks to the assistant. Project-managed files and configuration attachments have distinct import guidance; backend readback does not prove rendering, and timeouts require transport diagnosis before image transcoding. {/* note: draft-44 */}
+- Added generator guidance for named agents, durable concurrency queues, management commands and staged safe retries. {/* note: draft-45 */}
+- The assistant uses only built-in/custom Settings models in Studio and hides project AI models. Standalone CLI Web automatically uses project model configuration. {/* note: draft-46 */}
+- Fixed: Update generator references for bounded retries of model-call exceptions and manual compaction, distinguishing provider failures from host storage, usage and observer failures. {/* note: draft-47 */}
+- Fixed: Document Core Agent retry behavior for in-stream transient upstream failures and connection interruptions, including preservation of partial text and committed tool results. {/* note: draft-48 */}
+- Renamed the project generation skill to steamharness-generator, including its directory, assistant prompts, development and packaging references, and documentation. {/* note: draft-49 */}
+- Declared assistant skill roots through Core Agent so the catalog and runtime tools stay aligned. Project information lists steamharness-generator and Core built-in guides with complete read-only document previews. {/* note: draft-50 */}
+- Fixed assistant continuation guidance for skill catalogs, file listings and large JSON results. Long child output reads the existing task instead of delegating again. Read-only environments can continue long text lines, and child failures and shell truncation receive explicit recovery guidance. {/* note: draft-51 */}
+- Fixed assistant skill pagination and recovery so implementation and checks can finish in one run. Read-only subagents can read bundled skills and inherit the current model. Clarified filePath card arguments, deferred tool discovery scope and project-local CLI use. {/* note: draft-52 */}
+- Fixed Core Agent input to exclude disabled fields, enforce fixed user-setting bindings, preserve legacy model and mode flags, and keep message text out of parameter parsing. Static inheritance supports shorthand references and namespace imports; undefined field overrides retain existing defaults. {/* note: draft-54 */}
+- The assistant and generated Agent examples now inherit Core parameters without duplicate declarations, preserving separate model and effort controls, Plan approval and user permission settings. Generator guidance covers business wrappers, hidden fields and fixed values. {/* note: draft-55 */}
+- The assistant now separates model and effort controls and uses the available model catalogue automatically loaded by the host. Its model menu groups sources and provides Add model at the bottom. {/* note: draft-56 */}
+- Clarified generated Agent parameters: automatic user models retain default inheritance, explicit project models keep the original configuration, and direct calls share a model and inherited-permission snapshot. {/* note: draft-57 */}
+- The assistant now defaults to user models from host settings, supports conversation overrides and reset, and opens available models before Manage models. Active and background tasks retain their settings snapshot. {/* note: draft-58 */}
+- Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation. {/* note: draft-59 */}
+- The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates. {/* note: draft-61 */}
+- Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History never writes to a shared Server project, while Server AI still requires account authorization. {/* note: draft-62 */}
+- Updated generator guidance to preserve structured Server storage errors and distinguish project registration, optional source upload and related data grants. {/* note: draft-63 */}
+- Fixed project-generation guidance to require official field locks and source system-only AI restrictions on supplied and restored snapshots. {/* note: draft-64 */}
+- Updated generator references with source-owned profile policies and snapshot authorization; per-turn parameters must not override fixed modes. {/* note: draft-65 */}
+- Clarified in generation guidance that system-only policy survives hidden model fields and cannot be relaxed by older drafts or templates. {/* note: draft-66 */}
+- Project generation guidance documents system-only AI model declarations and direct endpoint restrictions. {/* note: draft-67 */}
+- Generator reference documents code-configured Conversation process folding, Core Agent defaults, the toggle after model and usage, and keeping only the error visible on failure. {/* note: draft-68 */}
+- Removed the assistant Code Mode configuration parameter and its legacy value lookup. Code Mode remains off by default and requires explicit SDK opt-in by project hosts. {/* note: draft-69 */}
+- Improved assistant model configuration for system and third-party sources. Generation guidance uses saved model lists and removes Provider management from the composer. {/* note: draft-70 */}
+- Improved Assistant recovery with silent host and internal continuations, without flashing interruption errors. Connection retries and final failure details remain visible; generator guidance now documents retry kinds and presentation. {/* note: draft-71 */}
+- Fixed Assistant recovery after host disconnects: durable work resumes on reconnect, unexpected model interruptions retry automatically, and exhausted retries show their cause on the affected answer. {/* note: draft-72 */}
+- Added guidance and tools for configuration publication and child permissions, lock reasons, author drafts and recipient previews without automatically publishing personal credentials. {/* note: draft-73 */}
+- Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail. {/* note: draft-74 */}
+- Let the assistant manage all project configurations and custom fields through Studio Control, including headless operations and complete import/export. Generate `configuration.json` for every project type and remove business env scaffolds and the legacy host configuration tool. {/* note: draft-75 */}
+- Generator guidance now covers Agent native web search capability declarations, per-run controls, protocol limits, activity and source outputs, and persistent follow-up context. {/* note: draft-76 */}
+- Update Agent guidance for automatic compaction at 90% before every model request, including tool loops, overflow recovery, bounded summaries and their limits. {/* note: draft-77 */}
+- Rename `skill` to “List and read skill guides”, explain `list`, `read`, the default `SKILL.md` and reference paths, and distinguish the section's tool count from its guide count. {/* note: draft-78 */}
+- Remove server environment, execution form and related execution guidance; related entrypoints execute locally with explicit server data access. Upload and publish through the existing CLI commands. {/* note: draft-89 */}
+- Changed modes to a single `/plan` toggle that defaults to Build and shows a footer notice while Plan is enabled. {/* note: draft-106 */}
+- Changed generator guidance to cover generic Slash parameters, execution commands, and conditional footer text below the input. {/* note: draft-107 */}
+- Changed generator guidance to cover live Agent context queries, measurement updates, and the ring shown at run start. {/* note: draft-108 */}
+- Changed current context occupancy to stay separate from incrementally reported billed usage. {/* note: draft-109 */}
+- Changed generator guidance to reuse Core's standard ring output pinned to the right of the composer, without host-specific context logic. {/* note: draft-110 */}
+- Changed AI and permission triggers to icons plus the current selection, dropping the right trigger's text first at narrow widths. {/* note: draft-111 */}
+- Changed the default Auto approve policy to allow directories outside the workspace. {/* note: draft-112 */}
+- Changed the prompt and Studio Control to follow each turn's policy, with Workspace and Read only keeping their path boundaries. {/* note: draft-113 */}
+- Changed the default host to Studio VS Code with an independent working directory, keeping Core coding tools, skills, and resource cards. {/* note: draft-114 */}
+- Changed generator guidance to cover method registration, disposal, cancellation, and state queries after timeouts. {/* note: draft-115 */}
+- Changed Kanban previews to run independently by configuration ID without touching the host's active configuration, and to document pinned height and borders. {/* note: draft-116 */}
+- Changed the Kanban skill to separate small-card presentation from device dimensions through the presentation API, keeping read-only cards on content while preserving edit state. {/* note: draft-117 */}
+- Changed the Kanban generator skill to cover full-screen, phone, tablet, and Conversation previews, reflowing content by iframe size while preserving drafts and uploads. {/* note: draft-118 */}
+- Changed the generator card reference to spell out the `current` target, pin precedence, removal arguments, and preview parameter validation. {/* note: draft-119 */}
+- Changed Kanban project resource cards to default to previewable types and to separate the preview switch from Kanban parameter mode. {/* note: draft-120 */}
+- Changed upload targeting to check the effective server through `workspace status` before uploading. {/* note: draft-121 */}
+- Changed generator guidance to stop treating "do not install dependencies" as absolute when the project root is writable, the package manager runs, and the task needs it. {/* note: draft-122 */}
+- Changed installs to run only `<manager> install`, without editing dependency versions or inventing build scripts, reporting any lockfile change. {/* note: draft-123 */}
+- Changed unsupported environments to keep the real error instead of switching registries, hand-placing packages, or editing source. {/* note: draft-124 */}
+- Changed the two Desktop tools for login items and updates to stop raising confirmation cards in build mode while plan mode still confirms each call. {/* note: draft-125 */}
+- Changed Core tool approval to stop only plan-mode turns by setting `requiresUserApproval` from the mode of the turn. {/* note: draft-126 */}
+- Changed build mode to still require the matching tool permission for those two tools, refusing disabled tools as before. {/* note: draft-127 */}
+- Changed assistant parameters to explicit action declarations: separate Quick menus for system AI and permissions, and an independent Build/Plan Mode switch. {/* note: draft-128 */}
+- Changed the generator skill's `references/param-panels.md` to document action order, group fields, group-local reset, and argument propagation. {/* note: draft-129 */}
+
+#### Fixed
+
+- Fixed generator guidance conflating manual summarization of all context with automatic compaction that keeps recent turns. {/* note: draft-130 */}
+- Fixed incomplete summaries replacing the original transcript on provider failure, truncation, or cancellation. {/* note: draft-131 */}
+- Fixed images being split into KV chunks and file APIs being reported as absent. {/* note: draft-132 */}
+- Fixed the boundary between Agent convenience executors and static project declarations, so params and tools reach structure reports. {/* note: draft-133 */}
+- Fixed falling back to `node -e` JSON parsing and announcing that dependencies must not be installed. {/* note: draft-134 */}
+- Fixed `--fix` overwriting a reference page with no generated-block markers and taking the surrounding text with it. {/* note: draft-135 */}
+
+#### Removed
+
+- Removed Project Assistant's Context parameter menu; the context window now comes from the model itself. {/* note: draft-136 */}
+- Removed Desktop Control integration, its built-in dependency, and unadapted Kanban host control tools. {/* note: draft-137 */}
+- Removed Conversation's enable setting and custom main field declarations. {/* note: draft-138 */}
+
+#### Pi Durable
+
+- Align retry guidance with budgets resetting after a successful model response. Later failures restart at Retry 1 / 10 while records with repeated attempt numbers remain separate. {/* note: draft-79 */}
+- Update per-turn model usage and per-conversation context contracts, isolate fork consumption, and include system instructions and tool declarations in estimates. Verify the actual assistant's answer usage and standard composer rings remain consistent after recovery. {/* note: draft-80 */}
+- Align generation guidance with next-turn queuing, atomic send-now promotion and fork confirmation, preserving the standard composer and original input identity. {/* note: draft-81 */}
+- Align tool diagnostics with retained submitted arguments and separate output for call IDs reused across turns, binding approvals to each durable task. Synchronize the Studio bundle with the complete durable session integration. {/* note: draft-82 */}
+- Generation guidance specifies command snapshots before queuing, strict JSON task input, persisted predeclared catalog checks, and exclusive source/destination ownership for SQLite backups. {/* note: draft-83 */}
+- Added authorized tool discovery with Studio Control connecting on the first search. Hosts can opt into QuickJS Code Mode through an environment variable; it remains off by default. Update generation guidance for durable extensions, tasks, remote execution and storage, with cross-process recovery checks for nested script tools and background timers. {/* note: draft-84 */}
+- Enabled durable sessions and task plans in Developer Assistant, with restricted background subagents (up to 4, read/grep/find/ls only, no recursive delegation), single-result reporting, and fork plan inheritance. Studio / CLI Web displays tasks, plans, records, and parent/child usage. {/* note: draft-85 */}
+- Updated generation guidance for session leases, controls/snapshots, child-tool permissions, configuration switching, and background compaction. Offline tests exercise the real workflow through background tool crash recovery and result deduplication. {/* note: draft-86 */}
+- Update Agent recovery guidance for retained approvals, initial context that preserves durable history, and continuation from committed stream fragments. Verify the actual assistant's SIGKILL recovery and output and usage replay. {/* note: draft-87 */}
+- Enable Pi Durable recovery for Project Assistant, preserving committed tool results, questions and plan approvals across processes without duplicating answers, writes or usage. Update tool contracts and generator guidance for Pi 1.2.0, SQLite, stable request identities and durable cancellation. {/* note: draft-88 */}

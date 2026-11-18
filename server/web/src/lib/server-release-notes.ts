@@ -7,7 +7,6 @@ export const LAST_SEEN_SERVER_RELEASE_VERSION_KEY =
 export interface ServerReleaseAnnouncement {
   version: string;
   title: string;
-  summary: string;
   docsUrl: string;
 }
 
@@ -18,8 +17,8 @@ export function consumeUnseenServerRelease(
   storage: ReleaseVersionStorage = window.localStorage,
 ): ServerReleaseAnnouncement | null {
   const version = health.versions.serverVersion?.trim();
-  const summary = health.currentRelease?.summary.trim();
-  if (!version || !summary || !health.currentRelease) {
+  const docsUrl = health.currentRelease?.docsUrl?.trim();
+  if (!version || !docsUrl) {
     return null;
   }
   if (storage.getItem(LAST_SEEN_SERVER_RELEASE_VERSION_KEY) === version) {
@@ -30,7 +29,6 @@ export function consumeUnseenServerRelease(
   return {
     version,
     title: i18n.t("serverReleaseAnnouncement", { ns: "serverWeb", version }),
-    summary,
-    docsUrl: health.currentRelease.docsUrl,
+    docsUrl,
   };
 }

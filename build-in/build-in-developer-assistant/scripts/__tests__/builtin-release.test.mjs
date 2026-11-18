@@ -21,6 +21,7 @@ import {
 import { resolveVersionReference } from "../release-gate.mjs";
 import { prepareRelease } from "../prepare-release.mjs";
 import { resolveSiblingWorkspaceRoot } from "../prepare-local-siblings.mjs";
+import { writeReleaseFixture } from "../../../../docs/scripts/__tests__/release-fixture.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const commit = "7316652cf77bcbf766084839971208f3399aecc9";
@@ -302,42 +303,36 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-`));
     const manifest = releaseManifest(definition);
-    await Promise.all([
-      writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.en.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 独立发布。\n", "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.next.en.md"), "# Unreleased\n\n### Added\n\n- Added Independent release.\n", "utf8"),
-    ]);
     const nextVersion = incrementPatch(definition.version);
-    await expect(prepareRelease({ root: fixture, version: nextVersion, date: "2026-08-12" }))
+    const docsRoot = path.join(fixture, "docs");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await expect(prepareRelease({ root: fixture, docsRoot, version: nextVersion })).rejects.toThrow(/Missing release notes/);
+    expect(JSON.parse(await readFile(path.join(fixture, "steamharness.json"), "utf8")).version).toBe(definition.version);
+    await writeReleaseFixture(docsRoot, definition.unit, nextVersion);
+    await expect(prepareRelease({ root: fixture, docsRoot, version: nextVersion }))
       .resolves.toEqual({
         projectId: definition.projectId,
         version: nextVersion,
         channel: "stable",
         tag: `builtin-${definition.projectId}/v${nextVersion}`,
+        docsPaths: { "zh-CN": `/guides/releases/${definition.unit}/v${nextVersion}/`, en: `/en/guides/releases/${definition.unit}/v${nextVersion}/` },
       });
     expect(JSON.parse(await readFile(path.join(fixture, "steamharness.json"), "utf8")).version).toBe(nextVersion);
     expect(JSON.parse(await readFile(path.join(fixture, "package.json"), "utf8")).version).toBe(definition.packageJson.version);
-    expect(await readFile(path.join(fixture, "CHANGELOG.next.md"), "utf8")).toBe("# Unreleased\n");
   });
   it("names the Alpha channel's tag when asked for it", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-alpha-`));
     const manifest = releaseManifest(definition);
-    await Promise.all([
-      writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.en.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n`, "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 Alpha 通道发布。\n", "utf8"),
-      writeFile(path.join(fixture, "CHANGELOG.next.en.md"), "# Unreleased\n\n### Added\n\n- Added Alpha channel release.\n", "utf8"),
-    ]);
     const nextVersion = incrementPatch(definition.version);
+    const docsRoot = path.join(fixture, "docs");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeReleaseFixture(docsRoot, definition.unit, nextVersion);
     const prepared = await prepareRelease({
       root: fixture,
+      docsRoot,
       version: nextVersion,
       channel: "alpha",
-      date: "2026-08-12",
     });
     // The same project version publishes from both channels, so the Alpha tag
     // needs its own namespace; a git tag name cannot be reused.

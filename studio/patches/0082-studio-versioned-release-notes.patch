@@ -1,0 +1,105 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index a8bfd4c..0ced6b5 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -211,6 +211,7 @@ export interface IProductConfiguration {
+ 	readonly documentationUrl?: string;
+ 	readonly serverDocumentationUrl?: string;
+ 	readonly releaseNotesUrl?: string;
++	readonly studioReleaseNotesBaseUrl?: string;
+ 	readonly keyboardShortcutsUrlMac?: string;
+ 	readonly keyboardShortcutsUrlLinux?: string;
+ 	readonly keyboardShortcutsUrlWin?: string;
+diff --git a/src/vs/workbench/contrib/update/browser/update.contribution.ts b/src/vs/workbench/contrib/update/browser/update.contribution.ts
+index 3a3ca53..f87ee1d 100644
+--- a/src/vs/workbench/contrib/update/browser/update.contribution.ts
++++ b/src/vs/workbench/contrib/update/browser/update.contribution.ts
+@@ -11,7 +11,7 @@ import { Categories } from '../../../../platform/action/common/actionCommonCateg
+ import { MenuId, registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
+ import { ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+-import { ProductContribution, UpdateContribution, CONTEXT_UPDATE_STATE, SwitchProductQualityContribution, showReleaseNotesInEditor, DefaultAccountUpdateContribution } from './update.js';
++import { ProductContribution, UpdateContribution, CONTEXT_UPDATE_STATE, SwitchProductQualityContribution, showReleaseNotesInEditor, openStudioReleaseNotes, DefaultAccountUpdateContribution } from './update.js';
+ import { UpdateTitleBarContribution } from './updateTitleBarEntry.js';
+ import { PostUpdateWidgetContribution } from './postUpdateWidget.js';
+ import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
+@@ -44,7 +44,7 @@ AccessibleViewRegistry.register(new ReleaseNotesAccessibilityHelp());
+ 
+ export class ShowReleaseNotesAction extends Action2 {
+ 
+-	static readonly AVAILABLE = !!product.releaseNotesUrl;
++	static readonly AVAILABLE = !!(product.releaseNotesUrl || product.studioReleaseNotesBaseUrl);
+ 
+ 	constructor() {
+ 		super({
+@@ -66,6 +66,10 @@ export class ShowReleaseNotesAction extends Action2 {
+ 	async run(accessor: ServicesAccessor, version?: string): Promise<void> {
+ 		const instantiationService = accessor.get(IInstantiationService);
+ 		const productService = accessor.get(IProductService);
++		if (productService.studioReleaseNotesBaseUrl) {
++			await openStudioReleaseNotes(accessor, productService.version);
++			return;
++		}
+ 		const openerService = accessor.get(IOpenerService);
+ 		const targetVersion = version ?? productService.version;
+ 
+diff --git a/src/vs/workbench/contrib/update/browser/update.ts b/src/vs/workbench/contrib/update/browser/update.ts
+index 52c517f..c9a830a 100644
+--- a/src/vs/workbench/contrib/update/browser/update.ts
++++ b/src/vs/workbench/contrib/update/browser/update.ts
+@@ -17,7 +17,7 @@ import { INotificationService, NotificationPriority, Severity } from '../../../.
+ import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
+ import { ReleaseNotesManager } from './releaseNotesEditor.js';
+-import { isWeb } from '../../../../base/common/platform.js';
++import { isWeb, language } from '../../../../base/common/platform.js';
+ import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+ import { RawContextKey, IContextKey, IContextKeyService, ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
+ import { MenuRegistry, MenuId, registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
+@@ -60,6 +60,10 @@ async function openLatestReleaseNotesInBrowser(accessor: ServicesAccessor) {
+ }
+ 
+ async function showReleaseNotes(accessor: ServicesAccessor, version: string) {
++	if (accessor.get(IProductService).studioReleaseNotesBaseUrl) {
++		await openStudioReleaseNotes(accessor, version);
++		return;
++	}
+ 	const instantiationService = accessor.get(IInstantiationService);
+ 	try {
+ 		await showReleaseNotesInEditor(instantiationService, version, false);
+@@ -78,6 +82,17 @@ async function showReleaseNotes(accessor: ServicesAccessor, version: string) {
+  * update status. The underlying commands (`update.check`, `update.restart`, etc.)
+  * must be registered separately.
+  */
++export async function openStudioReleaseNotes(accessor: ServicesAccessor, version: string): Promise<void> {
++	const base = accessor.get(IProductService).studioReleaseNotesBaseUrl;
++	const opener = accessor.get(IOpenerService);
++	if (!base || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/.test(version)) {
++		return;
++	}
++	const url = new URL(base);
++	url.pathname = `${/^zh(?:-|$)/i.test(language) ? '' : '/en'}${url.pathname}/v${version}/`;
++	await opener.open(URI.parse(url.href), { openExternal: true });
++}
++
+ export function appendUpdateMenuItems(menuId: MenuId, group: string): void {
+ 	MenuRegistry.appendMenuItem(menuId, {
+ 		group,
+@@ -175,7 +190,7 @@ export class ProductContribution implements IWorkbenchContribution {
+ 		@IHostService hostService: IHostService,
+ 		@IProductService productService: IProductService,
+ 	) {
+-		if (isWeb) {
++		if (isWeb || productService.studioReleaseNotesBaseUrl) {
+ 			return;
+ 		}
+ 
+@@ -331,7 +346,7 @@ export class UpdateContribution extends Disposable implements IWorkbenchContribu
+ 
+ 		appendUpdateMenuItems(MenuId.GlobalActivity, '7_update');
+ 
+-		if (this.productService.quality === 'stable') {
++		if (this.productService.quality === 'stable' || this.productService.studioReleaseNotesBaseUrl) {
+ 			CommandsRegistry.registerCommand('update.showUpdateReleaseNotes', () => {
+ 				if (this.updateService.state.type !== StateType.Ready) {
+ 					return;

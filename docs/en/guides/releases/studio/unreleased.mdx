@@ -1,0 +1,166 @@
+---
+title: "Studio unreleased"
+draft: true
+---
+
+# Studio unreleased
+
+#### New Features
+
+- **Native Start workbench**: empty editor groups and a restorable Start tab share one entry offering new projects, offline examples, and system status. {/* note: draft-85 */}
+- **Built-in Studio Analysis**: summarizes imported local projects, live run states, and histories with charts, trends, filtered tables, and CSV export. {/* note: draft-86 */}
+- **Assistant slash commands**: `/plan` switches to plan mode, `/export` exports every session record, and `/compact` summarizes context immediately. {/* note: draft-87 */}
+- **Projects open a window first**: new projects and examples open in a new Studio window where dependencies are installed. {/* note: draft-88 */}
+
+#### Breaking Changes
+
+- Breaking: project creation, discovery and type labels now use Bot, with templates built directly on Core Agent and native conversation, Workflow and Kanban views. {/* note: draft-17 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure. {/* note: draft-40 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Transfers include the complete aggregate. {/* note: draft-51 */}
+  Migration: Update the affected project declarations or clients to the contract described above before upgrading.
+- Conversation always renders the standard message input and no longer accepts an enable setting or custom main fields, with attachments moved to `conversation.attachments`. {/* note: draft-89 */}
+  Migration: drop the enable setting and custom main fields from the project manifest and declare attachments as `conversation.attachments`.
+
+#### Added
+
+- Added a generic upload provider hook for optional checkboxes and post-upload actions, retaining successful transfer results when a follow-up action fails to prevent duplicate uploads. {/* note: draft-90 */}
+- Added an upload button beside Run to publish local source as a Server project version. {/* note: draft-91 */}
+- Added a Versions sidebar with history, release notes, uploader, related versions, and downloads. {/* note: draft-92 */}
+- Added downloads into independent version folders under the default project location, with unique names for repeated downloads. {/* note: draft-93 */}
+- Added a native Start workbench shared by the empty background and a restorable Start tab. {/* note: draft-94 */}
+- Added three project starters and four offline examples to the Start workbench. {/* note: draft-95 */}
+- Added install progress, cancellation, logs, retry, and opening a project in a new window. {/* note: draft-96 */}
+- Added current and recent projects, system status, and Analysis, Assistant, Account, and Settings entries to the Start workbench. {/* note: draft-97 */}
+- Added bilingual UI, theme switching, and narrow split layouts to the Start workbench. {/* note: draft-98 */}
+- Added an Analysis dashboard summarizing imported local projects, live run states, and histories. {/* note: draft-99 */}
+- Added charts, run trends, filterable detail tables, and CSV export to the Analysis dashboard. {/* note: draft-100 */}
+- Added `/export` to the Assistant for exporting every session record. {/* note: draft-101 */}
+- Added `/compact` to the Assistant to summarize context immediately and show execution states in the body. {/* note: draft-102 */}
+
+#### Changed
+
+- Bot entries can use the LLM engine with existing model settings, without Agent permission, Plan, or subagent controls. Existing Bot templates continue to use the Agent engine. {/* note: draft-1 */}
+- Local Workflow, Bot, and Kanban runs no longer show project registration, Server, or AI connection checks. Projects can start without an ID; release builds validate it. {/* note: draft-2 */}
+- Fixed localhost fallback links and old account updates overwriting the chosen Server. Sign-in can be cancelled as soon as it starts. {/* note: draft-3 */}
+- Studio now uses browser sign-in and an application return link, replacing its password form. Dev, alpha and main have separate protocols, installation identities and local credentials. Accounts without uploads use generated geometric avatars. {/* note: draft-4 */}
+- Distinguish missing Server setup, unsupported endpoints, expired sign-in and unreachable application services when Web application account connections fail. Keep retry available without exposing raw provider errors. {/* note: draft-5 */}
+- Host providers can issue scoped sessions for bundled Kanban Web applications without exposing host credentials. Account and Server changes clear old sessions; microphone recording requires consent. {/* note: draft-6 */}
+- Added optional host-provided start-page recommendations for windows without folders, including refresh, offline feedback, validated actions, and stale-response protection. {/* note: draft-7 */}
+- Fix release windows stopping at Start by initializing the Steam workspace once the workbench containers exist, then opening the project entry automatically. Tools remain collapsed on startup. {/* note: draft-8 */}
+- Add a General setting for opening website links in the built-in browser or the system default browser. The built-in browser is the default; conversation links and website resource cards use the preference on the next click. {/* note: draft-9 */}
+- The kernel revision now comes from the submodule checkout alone; `config/upstream.json` only records the path and VS Code version. Advancing the kernel locally or committing in the fork no longer requires syncing a lock file, and startup and preparation no longer refuse to run on a revision mismatch. The upstream `product.json` is still generated from the current checkout. {/* note: draft-10 */}
+- Use project artifacts under dist/steamharness/ for release runs, uploads and examples. {/* note: draft-11 */}
+- Release windows select the Steam layout before the first workbench render, without showing the IDE or opening Assistant. Project restoration and retries keep the main project in its primary area instead of reusing a tools tab. {/* note: draft-12 */}
+- Bundle the open-source SQLite3 Editor by default. Click a `.sqlite`, `.sqlite3`, or `.db` file to browse tables, inspect schemas, and run SQL in the Studio editor. Development builds and release installers use the same pinned version and SHA-256 verification. {/* note: draft-13 */}
+- Resource cards reuse a split editor and preview tab in the current Studio window instead of opening a separate native window. {/* note: draft-14 */}
+- Align Steam mode project icons and toolbar buttons. The tools area starts collapsed when entering Steam mode or reopening a window, while manual opening retains its tabs and width. {/* note: draft-15 */}
+- Open Server project in connection guidance now uses the Studio host and current sign-in, with visible errors when opening fails, fixing navigation blocked by the embedded page. {/* note: draft-16 */}
+- Add Run (Release Mode) and release uploads. Release runs open the selected entry in a new window rooted at its release directory, with the project logo and name in the upper left and no Editor or Assistant tools. Source projects show their local version, while release installations check upgrades and stay in Steam mode. {/* note: draft-18 */}
+- Built-in analysis, Kanban examples, and project templates use build directories grouped by source root under dist/steamharness. {/* note: draft-19 */}
+- Fix Trace status and elapsed time for the selected turn, freeze timing on disconnection, and preserve timeline keyboard focus. Tasks show persisted timing and delegated token usage, Usage includes the selected conversation's cumulative tokens and context occupancy, Plan restores approval content from run reports, and separate Trace windows reload selected history after reconnection. {/* note: draft-20 */}
+- Fix Trace duration axes to include the selected turn's full elapsed time and render model, tool and output spans from the runtime; missing item timings no longer collapse a completed reply to 1 ms. {/* note: draft-21 */}
+- System model catalogues reuse a 30-second host snapshot and shared refreshes while preserving manual refresh. Resource views briefly reuse display data, merge concurrent refreshes, and clear cached data immediately when accounts change. {/* note: draft-22 */}
+- Conversation, Workflow and assistant history default to local SQLite with file locks, and analysis reads local history. Bundled runtime storage avoids per-operation remote waits before replies. System AI keeps its authorization checks; cloud storage is explicit or used for on-demand background backup, preserving existing data. {/* note: draft-23 */}
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls. {/* note: draft-24 */}
+- Fixed dependency setup for new projects to ignore unrelated ancestor Corepack settings and respect an explicit npm choice. Updated board templates, execution scripts and bilingual guidance. {/* note: draft-25 */}
+- Fixed recent history and imported registrations to stay in sync when folders are deleted or recent entries are removed. Start updates readable project counts while keeping individual read failures in Analysis, without marking all counts unavailable or showing a persistent refresh failure. {/* note: draft-26 */}
+- Fixed project creation to generate local files and open the selected window immediately. Install dependencies, allocate an ID, and validate in that window; allocation or sign-in failures retain complete files with an empty ID, and retries preserve source and dependencies. Server entry key order no longer causes false project mismatches. {/* note: draft-27 */}
+- Fixed: Unhandled project shortcuts reach Studio while Kanban shortcuts take priority, including nested previews, without interrupting text editing or IME input. {/* note: draft-28 */}
+- Added Studio Control diagnostics for open Kanban entries and read-only page queries, scoped to the aggregate directory, entry and current configuration so the assistant can verify actual image readiness. {/* note: draft-29 */}
+- Add: Trace now includes an Errors filter for node, tool and run failures and model retry reasons, retaining diagnostics after success. Composer parameter and operation alerts can be dismissed and ignore late errors from other conversations. {/* note: draft-30 */}
+- Fixed conversation resource cards to retain explicit target projects instead of replacing them with the Assistant project, preserving map entry and named configuration references. {/* note: draft-31 */}
+- Added an inline subagent entry beside the response status. Expand actual task state, progress, results and errors, and open child conversations, including anonymous delegations and reopened history. The entry remains after the parent reply completes. {/* note: draft-32 */}
+- Added: Show named roles, sources, phases and completion counts in Tasks, with child conversation navigation, cancellation and failed-item retry through Core control. {/* note: draft-33 */}
+- Added: Click local file paths in Agent replies and plans to open them in the editor. Resolve relative paths from the project root or Assistant working directory, support line/column locations and paths containing spaces or Unicode, and reuse document previews. {/* note: draft-34 */}
+- Resolve local Node symlinks before preparing child environments, revalidate runtimes for new sessions and status requests, and check every declared toolchain checksum, rejecting paths and links outside the installation. {/* note: draft-35 */}
+- Unify project Node runtime selection, validation and environment propagation, with optional host toolchains and local executables. Changes apply to new sessions; service recovery retains its original environment. Public Studio does not download or bundle Node. {/* note: draft-36 */}
+- Improved CLI Web exports: conversations, messages and workflow records use the native save dialog, defaulting to the user's Downloads folder, with a notification showing the saved path after writing succeeds. Cancellation stays quiet and save failures show an error notification. {/* note: draft-37 */}
+- Improved Start: recent projects show a Current Project badge for folders and workspaces open in this window. Removing a recent entry now requires confirmation and explains that project files and the current workspace are preserved. {/* note: draft-38 */}
+- Added **Open Project Window** below Explorer's file tree. It lists only the current project and its entries; each click on an entry or its open icon creates and activates a separate native tab. Focusing tools or the Assistant preserves the current project's list. {/* note: draft-39 */}
+- Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry. {/* note: draft-41 */}
+- Fixed Assistant extension and standalone runtime bundles omitting `config.json`, configuration definitions or the registered Studio Control entry, which could prevent startup after an upgrade. {/* note: draft-42 */}
+- Improvement: Start shows one card per aggregate and opens its default entry. Project windows and entry actions use icons with redesigned entry details. Removed split views; all entries, including the current one, can open and restore multiple independent native tabs on the shared host. Closing one tab leaves the others open. Entry icons and colors are independent; entry labels no longer repeat the root version. {/* note: draft-43 */}
+- Improved model tables with compact rows, consistent hover backgrounds, inline custom-provider details, and locally bundled brand icons for common models. {/* note: draft-44 */}
+- Improved model settings with a three-column table grouping all automatically loaded built-ins above custom models, a built-in refresh action, catalogue names and centered custom-model dialogs. Model and effort now use separate controls; the grouped model menu keeps Add model at the bottom across locales, themes, narrow windows and keyboard navigation. {/* note: draft-45 */}
+- Fixed the assistant's empty model control to show Configure model with setup guidance and open Settings → Models directly. Configured models restore the list, with keyboard and English/Chinese support. {/* note: draft-46 */}
+- Fixed concurrent user model writes with a cross-window lock and prevented open-source windows from replacing hidden system models. Stale catalogue results no longer change a form after switching sources or reopening the editor. {/* note: draft-47 */}
+- Added a user model settings page with add, edit, delete and default actions across workspaces and SecretStorage for third-party keys. Open-source Studio offers third-party models; host extensions may supply a system AI catalogue. The assistant opens available choices before model settings. {/* note: draft-48 */}
+- Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation. {/* note: draft-49 */}
+- Fixed remote entry configuration and upload revision queries using an unavailable Server API path. Requests preserve entry selection, cancellation and configuration conflict codes. {/* note: draft-50 */}
+- Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle. {/* note: draft-52 */}
+- Parameter `userSetting` bindings support fixed user policies or user defaults with project overrides. Fixed controls show the actual policy and open user settings; editable controls retain the three original choices. Reset restores inheritance without persisting the displayed value as an override; active work keeps its snapshot. {/* note: draft-53 */}
+- Added a Permissions settings category with Read only, Workspace, and Auto approve cards, defaulting to Auto approve. The user-only preference supports search, reset, and English/Chinese labels. Capability-negotiated updates reach open projects and the assistant, including startup and reconnect changes, and take effect after active work finishes and the session is idle. {/* note: draft-54 */}
+- Ordinary projects now start with older installed CLIs without the “AI connection requires the assistant surface” error. An optional host protocol preserves system AI for capable CLIs, including account refresh and logout. Older CLIs retain project authentication and local features, while Assistant keeps its independent AI connection. {/* note: draft-55 */}
+- Fixed non-versioned Windows background updates by passing extended-length paths to the helper and providing a pinned, checksum-verified compatible updater cache. {/* note: draft-56 */}
+- Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit. {/* note: draft-57 */}
+- New Workflow, Conversation and Kanban projects apply for a Server ID using the current account before generating local files, without uploading source. Failed allocation or account changes create no project files; installation and validation retries do not allocate again. Uploading an unregistered project guides users to reapply first. {/* note: draft-58 */}
+- Fixed new projects failing validation after a successful install by matching untouched templates to the installed SDK API. Installation and validation now show separate status and diagnostics, and retries skip successful installation. Workflow, Conversation, and Kanban apply for Server IDs before creating private personal projects without uploading source; installation or validation failure preserves local source. Setup logs persist as files with native tab path and reveal actions. Fixed the Harness version field on Start. {/* note: draft-59 */}
+- Place the enhanced badge beside the Start page title and remove its refresh button. The bottom-left gear opens Studio Settings directly. {/* note: draft-60 */}
+- Fixed Server storage setup guidance for local Kanban, Workflow and Bot projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists. {/* note: draft-61 */}
+- Fixed: The default project Server follows the build channel: local services for dev and the corresponding site for alpha and main. User-configured addresses retain priority. {/* note: draft-62 */}
+- Conversation and Assistant file cards now use the active VS Code file icon theme to match Explorer file and named-folder icons, refreshing on theme changes while ignoring stale responses. {/* note: draft-63 */}
+- Improvement: File path cards in Conversation and Assistant can be opened with a click. Documents use Studio previews, code uses the editor, and folders open in the system file manager. Cards show icons for common file types and report missing paths. {/* note: draft-64 */}
+- Conversation and Assistant file menus now offer native file and folder selection, preserving original paths and sharing the same path cards and Core Agent context as drag and drop. {/* note: draft-65 */}
+- Use native VS Code tabs and context menus for Steam tool instances, including file previews, pinning, splitting and close actions. Tool categories offer Close, Close Others and Close All. Each tool keeps its own editor groups, content and selection across mode switches and reloads; closing the terminal category retains its sessions. {/* note: draft-66 */}
+- Desktop and Web startup now check incremental build inputs after applying kernel patches, rebuilding changed sources even when the upstream commit is unchanged so features such as file drops no longer keep using an old workbench after restart. {/* note: draft-67 */}
+- Added native Conversation drag and drop for VS Code files and folders and desktop folders, preserving real paths for CLI Web display and submission. {/* note: draft-68 */}
+- Changed Server projects to use effective project and group access. First uploads select an owning group, published downloads require guest access, uploads require developer access and permission errors are localized. {/* note: draft-69 */}
+- Fix: Assistant startup retries immediately show progress and a spinner, prevent duplicate clicks, and display the original reason if retry fails before allowing another attempt. {/* note: draft-70 */}
+- Steam tools initially occupy one third of the window. Manually resized widths are saved per workspace and restored after hiding, mode switches and reloads; temporary window constraints preserve the preferred width. {/* note: draft-71 */}
+- Added configuration permission queries, recipient previews and author draft management through Studio Control with read-only enforcement; local RPC uses the current account and publishing checks the draft revision. {/* note: draft-72 */}
+- Keep Steam project configurations, field editors, rename and project information dialogs clear of native window and mode controls. Close and configuration save actions remain accessible with menus or tools hidden, and in narrow or short windows. {/* note: draft-73 */}
+- Keep the Assistant input and bottom controls accessible in short windows and with long drafts, in both the default tool and additional tabs. {/* note: draft-74 */}
+- A native Editor tool in Steam with file tabs below the tool row and Explorer, Search and Source Control on its right. Resize the sidebar, create and save files, and retain native unsaved-file confirmation and document state across tools and IDE mode. {/* note: draft-75 */}
+- Remove duplicate Open Tools labels, place New on the left and keep only the tools visibility toggle on the right. Empty areas of project and tool headers drag the application window while controls, tabs and selectable text remain interactive. {/* note: draft-76 */}
+- Rounded Steam tool tabs with truncated labels, add and close controls, and a trailing titlebar toggle for the tool area. Ten tools now include the terminal, browser and other projects on the right; sessions survive hiding tools and mode switches, and reload restores the selected tool editor and the original left-hand runtime. {/* note: draft-77 */}
+- Use dynamic, closable tabs and an add-tool menu in the Steam tool workspace. Accounts, files, settings, diffs, and other editors open on the right while the project and its results stay on the left. Unsaved documents survive returning to IDE, and tool editors restore after reload. {/* note: draft-78 */}
+- Recognize patches already included in the pinned upstream revision during startup preparation, avoiding false conflicts from overlapping patches while preserving staged and unstaged local edits. {/* note: draft-79 */}
+- Keep IDE / Steam layout changes in the main window, restore maximized panels and editor groups, preserve tool placement preferences, ignore outdated startup failures, and handle skipped transition animations without unhandled errors. {/* note: draft-80 */}
+- Share project configuration panels and local storage with the standalone CLI for all three project types. Studio Control can query, fully manage, import and export local or Server configurations with the panel closed, subject to project scope and read-only permissions. {/* note: draft-81 */}
+- Fixed project creation failing when template dependencies used version ranges by bundling exact compatible versions. {/* note: draft-82 */}
+- Changed new project templates to declare their static project type explicitly and aligned the bundled Assistant and Studio Control with the project storage contract; Server uploads store source and data. {/* note: draft-103 */}
+- Changed Untitled to use the native blank text editor. Double-clicking the editor background or empty tab strip no longer creates files; commands and shortcuts still do. {/* note: draft-104 */}
+- Changed project and template pickers to reuse the same type icons while folders and workspaces keep their existing icons. {/* note: draft-105 */}
+- Changed new projects and examples to share one creation dialog for type, template, name, and location. {/* note: draft-106 */}
+- Changed the default location to `Documents/steamharness-projects` under the home directory. {/* note: draft-107 */}
+- Changed creation to offer a new or current window before opening; cancelling generates no files. {/* note: draft-108 */}
+- Changed dependencies to install in the target project window after it opens, keeping progress out of the dialog. {/* note: draft-109 */}
+- Changed current projects to cards showing name, type, path, and Run. {/* note: draft-110 */}
+- Changed reloading after a cancelled or failed install to no longer reinstall dependencies automatically. {/* note: draft-111 */}
+- Changed Start workbench icons, labels, action buttons, and status rows to align consistently. {/* note: draft-112 */}
+- Changed recent-project removal to appear on hover or keyboard focus while reserving its space to avoid layout shifts. {/* note: draft-113 */}
+- Changed manual context summaries to cover all existing context and keep the original transcript on failure, truncation, or cancellation. {/* note: draft-114 */}
+- Changed context summaries to report the model usage they consumed. {/* note: draft-115 */}
+- Changed the Assistant permission trigger to open Read only, Workspace, and Auto approve in one click and close after selection. {/* note: draft-116 */}
+- Changed Quick triggers to show icons and current selections, collapsing text from the right in narrow layouts and keeping full selections on hover. {/* note: draft-117 */}
+- Changed the Assistant to default to Build, with a single `/plan` toggle and a Plan mode footer outside the input. {/* note: draft-118 */}
+- Changed Conversation attachment capabilities to `conversation.attachments`, aligning the built-in Assistant and generator protocol. {/* note: draft-119 */}
+
+#### Fixed
+
+- Fixed recent-project avatars touching their names on Start, with consistent spacing and label alignment for project avatars and folder icons. {/* note: draft-120 */}
+- Fix profile image data URLs being discarded in Studio. Refresh avatars and names when returning to the window and periodically, preserving the active connection and ignoring stale refresh results. {/* note: draft-121 */}
+- Fixed the Start logo moving above its title in narrow editor groups; the logo stays beside the title and actions wrap based on the editor width. {/* note: draft-122 */}
+- Fixed transfers potentially uploading or downloading a prior selection through a new account after switching accounts during project selection, saves, or progress startup. {/* note: draft-123 */}
+- Fixed the Versions view retaining the old project after changing its UUID in the same folder, and cancelled requests reporting invalid responses. {/* note: draft-124 */}
+- Fixed isolated icons appearing during the first Start load by showing theme-aware skeletons and a loading indicator. Later refreshes keep existing content, and reduced motion disables animations. {/* note: draft-125 */}
+- Fixed low-contrast icons in the Start workbench New Project and Run Project buttons by rendering them in white. {/* note: draft-126 */}
+- Fixed stale Assistant inspections still opening a previous workspace's session after the active workspace changed. {/* note: draft-127 */}
+- Fixed Assistant retries still reusing an invalid cached project after validation failed. {/* note: draft-128 */}
+- Fixed analysis queries still returning removed projects when the workspace or imported project scope changed mid-query. {/* note: draft-129 */}
+- Fixed rolling time filters in the Analysis dashboard stopping when history was unchanged. {/* note: draft-130 */}
+- Fixed record timestamps in the Analysis dashboard missing the date and seconds. {/* note: draft-131 */}
+- Fixed insufficient dark theme status text contrast in the Analysis dashboard. {/* note: draft-132 */}
+- Fixed incomplete CSV formula prefix escaping in Analysis exports. {/* note: draft-133 */}
+
+#### Removed
+
+- Removed the Assistant's Context parameter menu. {/* note: draft-134 */}
+- Removed the submenu used by single-parameter Quick triggers. {/* note: draft-135 */}
+
+#### Pi Durable
+
+- Move all durable Agent Tasks, Plan, Records and Usage capabilities into Trace while retaining its timeline, search and history. Add task details, child/fork navigation, versioned plan updates, compaction/reset and scoped cancellation. Follow the open conversation by default, inspect history independently, retain scroll/expansion/focus and disable offline actions, with bilingual themes and narrow layouts. {/* note: draft-83 */}
+- Update the bundled assistant to enable durable recovery, Trace task views, queued input and steering, restricted subagents, plans, and parent/child usage. Studio Control connects lazily; Code Mode remains host opt-in, with the existing VS Code styling. {/* note: draft-84 */}

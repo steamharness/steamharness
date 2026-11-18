@@ -14,5 +14,5 @@
 ## 发版
 
 - Server Web 版本唯一来源是 `package.json`，正式 tag 为 `server-web/vX.Y.Z`；不得因为 Server 发版而联动提升版本。
-- 中文/英文历史与 next 日志位于本目录。用户可见变化必须成对更新；同时改变 Server API 时也更新根目录 Server 日志。
-- 使用 `pnpm -C .. release:prepare -- --unit server-web --version X.Y.Z` 准备版本。未获明确发布授权时不创建 tag、不部署生产。
+- 公开管理端变化写入 `../../docs/guides/releases/server-web/unreleased.mdx` 和 `../../docs/en/guides/releases/server-web/unreleased.mdx`。Server API 与管理端的同一条变化只记一次。
+- 先定版双语文档，再用 `pnpm -C .. release:prepare -- --unit server-web --version X.Y.Z` 校验日志并更新版本。未获明确发布授权时不创建 tag、不部署生产。

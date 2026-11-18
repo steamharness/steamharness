@@ -9,7 +9,7 @@ import { configureProjectAuthContext, ensureProjectAuthService } from "./auth";
 import { AccountRepository } from "./account-db";
 import { DEFAULT_DEV_SERVER_PORT, DEFAULT_PRODUCTION_SERVER_PORT, listenServerWithDevPortFallback } from "./dev-port";
 import { loadServerEnv } from "./env";
-import { createProjectServerHealthData } from "./health";
+import { createProjectServerHealthData, registerLegacyReleaseNoteRoutes } from "./health";
 import { ensureServerI18n, getRequestT, localizeHttpErrorMessage, resolveRequestLocale } from "./i18n";
 import { resolveServerPathRoots } from "./paths";
 import { retryTransientPostgres } from "./postgres";
@@ -106,6 +106,8 @@ app.get("/health", (req, res) => {
     });
   });
 });
+
+registerLegacyReleaseNoteRoutes(app, () => ({ buildInfo: storage.getBuildInfo() }));
 
 app.use(createRemovedApiRouter());
 

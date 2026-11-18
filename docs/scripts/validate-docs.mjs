@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { contentQualityIssues, renderedInternalLinks, validateImages, validateNavigationCoverage } from "./content-quality.mjs";
+import { validateReleaseCatalog, withReleaseNavigation } from "./release-notes.mjs";
 
 /**
  * 公开文档的内容校验器。这里不依赖 Docusaurus 或任何 npm 包：
@@ -16,8 +17,7 @@ const REMOVED_BOT_DECLARATIONS = /\b(?:createAgentConversationProject|defineAgen
 const RELEASE_PAGE_PATH = /^(?:en\/)?guides\/releases\/[^/]+\.mdx$/u;
 const ISO_DISPLAY_TIMESTAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/u;
 const GENERATED_MDX_DIRECTORIES = new Set(["reference", "en/reference"]);
-const GENERATED_RELEASE_PAGE = /^(?:en\/)?guides\/releases\/[a-z-]+\/v\d+\.\d+\.\d+\.mdx$/u;
-const isGeneratedReleasePage = (relativeFile) => GENERATED_RELEASE_PAGE.test(relativeFile);
+const HISTORICAL_RELEASE_PAGE = /^(?:en\/)?guides\/releases\/[a-z-]+\/v[^/]+\.mdx$/u;
 
 export function validateStandaloneDocsSource(relativeFile, source, options = {}) {
   if (options.generated === true) return;
@@ -45,14 +45,15 @@ export async function validateDocs(options = {}) {
   const root = path.resolve(options.root ?? path.resolve(import.meta.dirname, ".."));
   const config = JSON.parse(await readFile(path.join(root, "docs.json"), "utf8"));
   validateStandaloneDocsSource("docs.json", JSON.stringify(config));
-  const languages = config.navigation?.languages;
-  if (!Array.isArray(languages) || languages.length !== 2) {
+  const sourceLanguages = config.navigation?.languages;
+  if (!Array.isArray(sourceLanguages) || sourceLanguages.length !== 2) {
     throw new Error("docs.json must declare exactly the zh-Hans and en navigation languages.");
   }
-  const languageNames = languages.map((language) => language.language);
+  const languageNames = sourceLanguages.map((language) => language.language);
   if (JSON.stringify(languageNames) !== JSON.stringify(["zh-Hans", "en"])) {
     throw new Error(`Unexpected Docs language order: ${languageNames.join(", ")}.`);
   }
+  const languages = withReleaseNavigation(sourceLanguages, validateReleaseCatalog(root), undefined, { preview: true });
 
   const navigatedPages = [];
   for (const language of languages) {
@@ -95,9 +96,9 @@ export async function validateDocs(options = {}) {
   for (const relativeFile of allMdx) {
     const source = await readFile(path.join(root, relativeFile), "utf8");
     validateStandaloneDocsSource(relativeFile, source, {
-      generated: isGeneratedReleasePage(relativeFile),
+      generated: HISTORICAL_RELEASE_PAGE.test(relativeFile),
     });
-    qualityIssues.push(...contentQualityIssues(relativeFile, source, { historical: isGeneratedReleasePage(relativeFile) }));
+    qualityIssues.push(...contentQualityIssues(relativeFile, source, { historical: /guides\/releases\/[^/]+\//u.test(relativeFile) }));
     await validateImages({ file: path.join(root, relativeFile), source, publicImages: path.join(root, "images") });
     for (const link of readInternalLinks(source)) {
       const normalized = link.replace(/^\//u, "").split(/[?#]/u, 1)[0].replace(/\/$/u, "");

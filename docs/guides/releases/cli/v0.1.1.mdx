@@ -12,7 +12,13 @@ description: "CLI v0.1.1 的更新说明。"
 
 #### 变更
 
-- 以 SteamHarness 包名重新发布：`steamharness` 从 0.1.0 起独立版本线，
+- 以 SteamHarness 包名重新发布：`steamharness` 从 0.1.0 起独立版本线， {/* note: entry-1 */}
   不与更早的发布线保持兼容。
-- 发布改由 GitHub Release 触发，使用 npm Trusted Publishing（OIDC）完成，不再需要长期令牌。
-- 运行时依赖改为 peer 声明 `^0.1.0`，安装时给出明确的兼容范围。
+- 发布改由 GitHub Release 触发，使用 npm Trusted Publishing（OIDC）完成，不再需要长期令牌。 {/* note: entry-2 */}
+- 运行时依赖改为 peer 声明 `^0.1.0`，安装时给出明确的兼容范围。 {/* note: entry-3 */}
+
+## 历史发布线 (2026-07-29)
+
+#### 变更
+
+- 变更 CLI 改为独立版本和独立 tag 发布，并通过 peer dependency 声明兼容的 Core 范围。 {/* note: entry-4 */}

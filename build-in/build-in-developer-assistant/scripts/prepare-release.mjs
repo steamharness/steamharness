@@ -2,19 +2,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
-import {
-  appendHistory,
-  assertHistoryParity,
-  assertNextParity,
-  parseNext,
-  readHistoryVersions,
-} from "./release-notes.mjs";
+import { validateReleasePair } from "../../../docs/scripts/release-notes.mjs";
 
 /**
  * Which release channel this preparation targets. `alpha` publishes the same
  * project version from the Alpha branch under its own tag namespace; the
  * stable release of a promoted version is a tag-only step, because the version
- * and the changelog entry already arrived with the promotion.
+ * and the version documentation already arrived with the promotion.
  */
 function normalizeChannel(value) {
   const channel = String(value ?? "").trim() || "stable";
@@ -36,16 +30,7 @@ export async function prepareRelease(options) {
     throw new Error("Release version must be a stable X.Y.Z SemVer.");
   }
   const manifestPath = path.join(root, "steamharness.json");
-  const zhHistoryPath = path.join(root, "CHANGELOG.md");
-  const enHistoryPath = path.join(root, "CHANGELOG.en.md");
-  const zhNextPath = path.join(root, "CHANGELOG.next.md");
-  const enNextPath = path.join(root, "CHANGELOG.next.en.md");
-  const paths = [manifestPath, zhHistoryPath, enHistoryPath, zhNextPath, enNextPath];
-  const originals = new Map(await Promise.all(paths.map(async (filePath) => [
-    filePath,
-    await readFile(filePath, "utf8"),
-  ])));
-  const manifest = JSON.parse(originals.get(manifestPath));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const projectId = String(manifest?.builtinRelease?.projectId ?? "").trim();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
     throw new Error("steamharness.json.builtinRelease.projectId is invalid.");
@@ -53,30 +38,9 @@ export async function prepareRelease(options) {
   if (!semver.valid(manifest.version) || !semver.gt(version, manifest.version)) {
     throw new Error(`${version} must be greater than ${manifest.version}.`);
   }
-  const zhHistory = originals.get(zhHistoryPath);
-  const enHistory = originals.get(enHistoryPath);
-  assertHistoryParity(zhHistory, enHistory);
-  if (readHistoryVersions(zhHistory).some((release) => release.version === version)) {
-    throw new Error(`${version} already exists in CHANGELOG.md.`);
-  }
-  const zhNext = parseNext(originals.get(zhNextPath), "zh-CN");
-  const enNext = parseNext(originals.get(enNextPath), "en");
-  assertNextParity(zhNext, enNext);
-  const date = options.date ?? new Date().toISOString().slice(0, 10);
-  const updates = new Map([
-    [manifestPath, `${JSON.stringify({ ...manifest, version }, null, 2)}\n`],
-    [zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body)],
-    [enHistoryPath, appendHistory(enHistory, version, date, enNext.body)],
-    [zhNextPath, "# Unreleased\n"],
-    [enNextPath, "# Unreleased\n"],
-  ]);
-  try {
-    for (const filePath of paths) await writeFile(filePath, updates.get(filePath), "utf8");
-  } catch (error) {
-    await Promise.all([...originals].map(([filePath, contents]) => writeFile(filePath, contents, "utf8")));
-    throw error;
-  }
-  return { projectId, version, channel, tag: releaseTag(projectId, version, channel) };
+  const docsPaths = validateReleasePair(options.docsRoot ?? path.join(root, "../../docs"), `builtin-${projectId}`, version);
+  await writeFile(manifestPath, `${JSON.stringify({ ...manifest, version }, null, 2)}\n`);
+  return { docsPaths, projectId, version, channel, tag: releaseTag(projectId, version, channel) };
 }
 
 function parseArgs(argv) {

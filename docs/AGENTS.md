@@ -3,10 +3,12 @@
 本目录只维护 SteamHarness 的**公开文档内容**，不再包含 Docusaurus 站点、依赖或构建脚本。站点由独立工作区消费这些源文件生成。
 
 - 内容形态固定为 Markdown/MDX、`docs.json` 导航、`openapi/` 规范与 `images/` 静态图。不要在 `docs/` 下重新引入 `package.json`、Docusaurus 配置、主题、插件或构建产物。
-- 简体中文使用根路径，英文使用 `/en/**` 镜像。新增、移动或删除 MDX 或 OpenAPI 时，必须同步两种语言与 `docs.json` 的同一信息架构；英文站内绝对链接必须带 `/en/` 前缀。
+- 简体中文使用根路径，英文使用 `/en/**` 镜像。新增、移动或删除 MDX 或 OpenAPI 时，必须同步两种语言及导航；版本页由文件生成导航，不手动登记。英文站内绝对链接必须带 `/en/` 前缀。
 - 公开文档只写用户可执行的功能、配置、API、限制和排查方法，不写内部 issue、MR、构建机、本机路径、私有域名、未脱敏凭据或过程性讨论。
 - 浏览器产品统一称为 “Server Web 管理端”；它连接 Server 并管理云端项目。不得再描述 Desktop renderer Web Studio、`app/out/studio-web`、7133 端口或在浏览器执行 Electron 本地逻辑。
-- Studio、Core、CLI、Server、Server Web 和六个内置项目的用户可见行为由同级目录维护；相关变化必须在同次工作中同步本目录对应页面。发布日志页由各发布仓提供的稳定 metadata/历史输入更新，不在正文手工编造版本事实。
+- 用户可见变更写入 `guides/releases/<组件>/unreleased.mdx` 和 `en/guides/releases/<组件>/unreleased.mdx`。组件依次使用 `core`、`cli`、`server`、`server-web`、`studio` 或 `builtin-<项目标识>`；跨组件的同一条变更在主要受影响组件记一次。环境部署记录、内部实现和纯测试调整不写公开日志。
+- 草稿保留 `draft: true`，不进生产网页或搜索。发新版时将本次条目移入对应的双语 `v<产品版本>.mdx`，移除 `draft` 属性，标题和 H1 结尾写明版本。保持旧页面和锚点；勘误直接更新原页，不改版本号。版本目录由文件生成，不手填 `docs.json` 的版本条目。
+- 每条用 `- 一句话说明 {/* note: stable-id */}`，双语使用同一 ID、分类和顺序；破坏性变更紧跟两空格缩进的 `迁移：…` / `Migration: …`。沿用已有页面的中文和英文分类标题。编译前用下方命令检查结构、双语和链接，并人工核对翻译。
 - 校验命令（都不需要安装依赖）：
 
 ```sh
@@ -14,7 +16,7 @@ node scripts/validate-docs.mjs
 node --test --test-reporter=spec scripts/__tests__/*.test.mjs
 ```
 
-- `scripts/validate-docs.mjs` 检查导航、双语页面、站内链接、OpenAPI 文件与已删除术语；`scripts/generate-release-notes.mjs` 从各仓 CHANGELOG 生成发布日志。
+- `scripts/validate-docs.mjs` 同时校验日志、导航、双语页面、站内链接和 OpenAPI。文档站从公开仓的固定提交读取内容；修改正文不要求重发产品。
 - 发布与部署不在本目录进行。本目录的任何改动都不会生成或提交站点产物。
 - 任务完成后，将本次任务产生的全部更改提交并推送到远程。若当前分支是 `dev`，直接提交并推送到 `dev`；若仓库仅维护 `main`，直接提交并推送到 `main`。用户另有目标分支、提交或推送要求时，以用户要求为准。
 - Issue 编号仅作为可选上下文；没有 issue 也可以直接分析、修改、测试、提交和说明。

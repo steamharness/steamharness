@@ -393,10 +393,7 @@ paths:
                             properties:
                               summary:
                                 type: string
-                              body:
-                                type: string
-                                description: Complete Markdown release notes in the requested language. Older metadata without localizations
-                                  falls back to `releaseNotes.body`.
+                                description: "Short link label retained for older consoles."
                               docsUrl:
                                 type: string
                                 format: uri
@@ -405,7 +402,6 @@ paths:
                                 example: https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.1.3
                             required:
                               - summary
-                              - body
                               - docsUrl
                     required:
                       - status
@@ -7260,20 +7256,14 @@ components:
               additionalProperties:
                 type: string
               description: The built-in component versions of this release, such as the Server built-in Core version.
+            docsUrl:
+              type: string
+              format: uri
+              description: "Release notes URL for the version in the requested language."
             releaseNotes:
-              oneOf:
-                - type: "null"
-                - type: object
-                  properties:
-                    format:
-                      type: string
-                      const: markdown
-                    body:
-                      type: string
-                      description: Markdown release notes in the requested language. Older metadata falls back to the default body.
-                  required:
-                    - format
-                    - body
+              type: "null"
+              deprecated: true
+              description: "Compatibility field; always null because notes are no longer embedded."
             source:
               type: string
               enum:

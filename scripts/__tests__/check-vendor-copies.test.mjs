@@ -18,7 +18,6 @@ async function createFixture() {
   const shared = path.join(root, "shared/release-tools");
   await mkdir(shared, { recursive: true });
   await writeFile(path.join(shared, "release-gate.mjs"), "export const gate = 1;\n");
-  await writeFile(path.join(shared, "release-notes.mjs"), "export const notes = 1;\n");
   await writeFile(path.join(shared, "npm-alpha-publish.mjs"), "export const publish = 1;\n");
   // 嵌套文件：曾经的枚举只返回文件名，导致 resources/ 这类路径从未被比较过。
   await mkdir(path.join(shared, "resources"), { recursive: true });
@@ -40,7 +39,7 @@ async function createFixture() {
     }
     const directory = path.join(root, consumer, "vendor/shared/release-tools");
     await mkdir(directory, { recursive: true });
-    for (const file of ["release-gate.mjs", "release-notes.mjs", "npm-alpha-publish.mjs"]) {
+    for (const file of ["release-gate.mjs", "npm-alpha-publish.mjs"]) {
       await writeFile(path.join(directory, file), await readFile(path.join(shared, file), "utf8"), "utf8");
     }
     await mkdir(path.join(directory, "resources"), { recursive: true });
@@ -50,7 +49,6 @@ async function createFixture() {
     const directory = path.join(root, project, "scripts/__tests__");
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(root, project, "scripts/release-gate.mjs"), "export const gate = 1;\n");
-    await writeFile(path.join(root, project, "scripts/release-notes.mjs"), "export const notes = 1;\n");
     await writeFile(path.join(root, project, "scripts/prepare-local-siblings.mjs"), "export const prepare = 1;\n");
     await writeFile(path.join(root, project, "scripts/prepare-release.mjs"), "export const prepare = 1;\n");
     await writeFile(path.join(directory, "prepare-local-siblings.test.mjs"), "// test\n");
@@ -175,7 +173,7 @@ test("--fix rewrites every copy from its source", async () => {
       path.join(root, "build-in/build-in-developer-assistant/scripts/prepare-local-siblings.mjs"),
       "export const prepare = 2;\n",
     );
-    await rm(path.join(root, "harness/vendor/shared/release-tools/release-notes.mjs"));
+    await rm(path.join(root, "harness/vendor/shared/release-tools/release-gate.mjs"));
 
     await syncVendorCopies(root);
 
@@ -186,8 +184,8 @@ test("--fix rewrites every copy from its source", async () => {
       "export const gate = 1;\n",
     );
     assert.equal(
-      await readFile(path.join(root, "harness/vendor/shared/release-tools/release-notes.mjs"), "utf8"),
-      "export const notes = 1;\n",
+      await readFile(path.join(root, "harness/vendor/shared/release-tools/release-gate.mjs"), "utf8"),
+      "export const gate = 1;\n",
     );
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -12,20 +12,20 @@ description: "Server v0.1.1 的更新说明。"
 
 #### 新特性
 
-- **健康检查暴露版本信息**：`/health` 返回 Server、内置 Core、当前更新摘要和对应 Docs 入口。
-- **运行记录固化 Core 版本**：记录项目要求、构建和实际运行时的 Core 与 Server 版本。
+- **健康检查暴露版本信息**：`/health` 返回 Server、内置 Core、当前更新摘要和对应 Docs 入口。 {/* note: entry-1 */}
+- **运行记录固化 Core 版本**：记录项目要求、构建和实际运行时的 Core 与 Server 版本。 {/* note: entry-2 */}
 
 #### 新增
 
-- 新增 `/health` 返回 Server 版本、内置 Core 版本、当前更新摘要和对应 Docs 入口。
-- 新增 托管版本与运行记录记录项目要求、构建和实际运行时的 Core 与 Server 版本。
+- 新增 `/health` 返回 Server 版本、内置 Core 版本、当前更新摘要和对应 Docs 入口。 {/* note: entry-3 */}
+- 新增 托管版本与运行记录记录项目要求、构建和实际运行时的 Core 与 Server 版本。 {/* note: entry-4 */}
 
 #### 变更
 
-- 变更 上传、编辑、复制、预览和运行 Workflow 时按项目的精确 Core 依赖计算兼容性。
+- 变更 上传、编辑、复制、预览和运行 Workflow 时按项目的精确 Core 依赖计算兼容性。 {/* note: entry-5 */}
 
 #### 修复
 
-- 修复 无法识别 Core 版本的旧托管版本按猜测的兼容范围运行，现在标记为 unknown 并下线。
-- 修复 `/health` 在发布元数据滞后或部署回滚时报告错误的 Server/Core 版本。
-- 修复 暂时性对象存储故障导致旧 Workflow Core 元数据迁移永久下线版本。
+- 修复 无法识别 Core 版本的旧托管版本按猜测的兼容范围运行，现在标记为 unknown 并下线。 {/* note: entry-6 */}
+- 修复 `/health` 在发布元数据滞后或部署回滚时报告错误的 Server/Core 版本。 {/* note: entry-7 */}
+- 修复 暂时性对象存储故障导致旧 Workflow Core 元数据迁移永久下线版本。 {/* note: entry-8 */}

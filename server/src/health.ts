@@ -7,6 +7,7 @@ import type { ServerBuildInfo } from "./build-info";
 import type { SupportedLocale } from "@steamharness/i18n";
 import { publicServiceUrls } from "@steamharness/service-urls";
 import { checkoutServiceChannel } from "@steamharness/service-urls/node";
+import type { Express } from "express";
 
 export interface ServerHealthRelease {
   unit: "server" | "server-web";
@@ -16,9 +17,11 @@ export interface ServerHealthRelease {
   publishedAt: string | null;
   commitSha: string | null;
   components: Record<string, string>;
-  releaseNotes: { format: "markdown"; body: string } | null;
+  /** @deprecated Release notes are linked, not embedded. */
+  releaseNotes: null;
   deploymentId?: string;
   docsPath?: string;
+  docsUrl?: string;
   source: "release-metadata" | "package-manifest";
 }
 
@@ -34,7 +37,6 @@ export interface ServerHealthData {
   };
   currentRelease: {
     summary: string;
-    body: string;
     docsUrl: string;
   } | null;
   deployment: {
@@ -88,11 +90,9 @@ export async function createProjectServerHealthData(options: {
   const serverVersion = options.buildInfo?.productVersion ?? serverRelease?.version ?? null;
   const coreVersion = options.buildInfo?.coreVersion ?? serverRelease?.components.core
     ?? readOptionalString((await readJsonIfExists(path.join(resolvedServerRoot, "node_modules", "steamharness", "package.json")))?.version);
-  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? publicServiceUrls(serviceChannel).docs)
-    .replace(/\/$/, "");
-  const serverReleaseBody = serverRelease !== null && serverRelease.version === serverVersion
-    ? serverRelease.releaseNotes?.body.trim() ?? ""
-    : "";
+  const docsBaseUrl = docsOrigin(options.docsBaseUrl, serviceChannel);
+  const server = attachReleaseLink(serverRelease, docsBaseUrl, locale, serverVersion);
+  const serverWeb = attachReleaseLink(serverWebRelease, docsBaseUrl, locale);
 
   return {
     status: "ok",
@@ -104,20 +104,45 @@ export async function createProjectServerHealthData(options: {
       serverVersion,
       coreVersion,
     },
-    currentRelease: serverVersion && serverReleaseBody
+    currentRelease: serverVersion && server?.docsUrl
       ? {
-          summary: summarizeMarkdown(serverReleaseBody),
-          body: serverReleaseBody,
-          // Server announcements link to the dedicated generated
-          // page for this exact version.
-          docsUrl: serverRelease?.docsPath ? `${docsBaseUrl}${serverRelease.docsPath}` : `${docsBaseUrl}${locale === "en" ? "/en" : ""}/guides/releases/server/v${serverVersion}`,
+          // Older Server Web clients require a nonempty summary to show the link.
+          summary: locale === "en" ? `View Server v${serverVersion} release notes` : `查看 Server v${serverVersion} 更新日志`,
+          docsUrl: server.docsUrl,
         }
       : null,
     deployment: {
-      server: serverRelease,
-      serverWeb: serverWebRelease,
+      server,
+      serverWeb,
     },
   };
+}
+
+function docsOrigin(override?: string, channel = checkoutServiceChannel({ fallback: "main" })) {
+  return (override ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? publicServiceUrls(channel).docs).replace(/\/$/u, "");
+}
+
+export function registerLegacyReleaseNoteRoutes(app: Express, options: () => Parameters<typeof createProjectServerHealthData>[0]) {
+  app.get(/^\/(deployment-notes|server-web-notes)(?:\.(zh-CN|en))?\.md$/u, async (req, res, next) => {
+    try {
+      const locale = req.params[1] === "en" ? "en" : "zh-CN";
+      const config = options();
+      const health = await createProjectServerHealthData({ ...config, locale });
+      const web = req.params[0] === "server-web-notes";
+      const release = web ? health.deployment.serverWeb : health.deployment.server;
+      const unit = web ? "server-web" : "server";
+      const index = `${locale === "en" ? "/en" : ""}/guides/releases/${unit}/`;
+      const base = docsOrigin(config?.docsBaseUrl, config?.channel === "alpha" ? "alpha" : undefined);
+      const version = req.query.version;
+      const activeVersion = web ? release?.version : health.versions.serverVersion;
+      const target = typeof version !== "string" || !isReleaseVersion(version)
+        ? `${base}${index}`
+        : version === activeVersion && release?.docsUrl ? release.docsUrl : `${base}${index}v${version}/`;
+      res.set("Cache-Control", "no-store").redirect(302, target);
+    } catch (error) {
+      next(error);
+    }
+  });
 }
 
 async function resolveDeploymentRelease(options: {
@@ -142,7 +167,6 @@ async function resolveDeploymentRelease(options: {
       components: readStringRecord(metadata.components),
       ...(readOptionalString(metadata.deploymentId) ? { deploymentId: readOptionalString(metadata.deploymentId)! } : {}),
       ...(readDocsPath(metadata.docsPaths, options.locale) ? { docsPath: readDocsPath(metadata.docsPaths, options.locale)! } : {}),
-      releaseNotes: readReleaseNotes(metadata.releaseNotes, options.locale),
       source: "release-metadata",
     });
   }
@@ -161,7 +185,6 @@ async function resolveDeploymentRelease(options: {
     publishedAt: null,
     commitSha: null,
     components: {},
-    releaseNotes: null,
     source: "package-manifest",
   });
 }
@@ -173,7 +196,6 @@ function normalizeHealthRelease(input: {
   publishedAt: string | null;
   commitSha: string | null;
   components: Record<string, string>;
-  releaseNotes: { format: "markdown"; body: string } | null;
   deploymentId?: string;
   docsPath?: string;
   source: "release-metadata" | "package-manifest";
@@ -190,7 +212,7 @@ function normalizeHealthRelease(input: {
     publishedAt: input.publishedAt,
     commitSha: input.commitSha,
     components: input.components,
-    releaseNotes: input.releaseNotes,
+    releaseNotes: null,
     ...(input.deploymentId ? { deploymentId: input.deploymentId } : {}),
     ...(input.docsPath ? { docsPath: input.docsPath } : {}),
     source: input.source,
@@ -216,39 +238,23 @@ function readStringRecord(value: unknown): Record<string, string> {
   ));
 }
 
-function readReleaseNotes(value: unknown, locale: SupportedLocale): { format: "markdown"; body: string } | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const localizations = isRecord(record.localizations) ? record.localizations : null;
-  const localized = localizations && isRecord(localizations[locale])
-    ? localizations[locale]
-    : null;
-  if (localized?.format === "markdown" && typeof localized.body === "string") {
-    return { format: "markdown", body: localized.body };
-  }
-  return record.format === "markdown" && typeof record.body === "string"
-    ? { format: "markdown", body: record.body }
-    : null;
+function isReleaseVersion(value: string) {
+  return /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/u.test(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function summarizeMarkdown(body: string): string {
-  const line = body.split(/\r?\n/)
-    .map((item) => item.trim())
-    .find((item) => item !== "" && !item.startsWith("#"));
-  const summary = (line ?? body)
-    .replace(/^[-*]\s+/, "")
-    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
-    .replace(/[`*_]/g, "")
-    .trim();
-  return summary.length > 160 ? `${summary.slice(0, 157)}...` : summary;
+function attachReleaseLink(release: ServerHealthRelease | null, base: string, locale: SupportedLocale, version = release?.version) {
+  if (!release || !version || !isReleaseVersion(version)) return release;
+  const prefix = locale === "en" ? "/en" : "";
+  const suffix = `/${release.unit}/v${version}`;
+  const paths = [`${prefix}/guides/releases${suffix}/`, `${prefix}/enhanced/releases${suffix}/`];
+  // Old metadata may point at a rolling Markdown filename. Derive an exact version link instead.
+  const candidate = release.version === version ? release.docsPath?.replace(/\/?$/u, "/") : undefined;
+  const docsPath = candidate && paths.includes(candidate) ? candidate : paths[0];
+  return { ...release, docsPath, docsUrl: `${base}${docsPath}` };
 }
 
 function readDocsPath(value: unknown, locale: SupportedLocale): string | null {
-  if (!isRecord(value)) return null;
-  const candidate = readOptionalString(value[locale]);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = readOptionalString((value as Record<string, unknown>)[locale]);
   return candidate && /^\/[a-zA-Z0-9/_.-]+$/.test(candidate) && !candidate.includes("..") && !candidate.startsWith("//") ? candidate : null;
 }

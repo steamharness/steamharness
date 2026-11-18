@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promi
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { writeReleaseFixture } from "../../../docs/scripts/__tests__/release-fixture.mjs";
 import {
   assertStableTagTargets,
   createStableDeploymentId,
@@ -47,19 +48,21 @@ test("stable deployment requires both formal tags on the candidate commit", () =
   }), /must point to/u);
 });
 
-test("stable definition records localized notes and stable dependencies", async () => {
+test("stable definition records versioned links and stable dependencies without note bodies", async () => {
   const root = await createFixture();
   try {
     const definition = await createStableReleaseDefinition({
       repoRoot: root,
+      docsRoot: path.join(root, "docs"),
       version: "0.1.5",
       commitSha,
       publishedAt: "2026-08-24T12:00:00.000Z",
     });
     assert.equal(definition.releases.server.components.core, "0.1.4");
     assert.equal(definition.releases.server.components.cli, "0.1.4");
-    assert.match(definition.releases.server.releaseNotes.localizations.en.body, /Server fix/u);
-    assert.match(definition.releases["server-web"].releaseNotes.localizations["zh-CN"].body, /Web 修复/u);
+    assert.equal(definition.releases.server.docsPaths.en, "/en/guides/releases/server/v0.1.5/");
+    assert.equal(definition.releases["server-web"].docsPaths["zh-CN"], "/guides/releases/server-web/v0.1.5/");
+    assert.equal(definition.releases.server.releaseNotes, undefined);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -72,6 +75,8 @@ test("stable deployment packages, activates, writes metadata, and verifies healt
   try {
     const result = await deployStableRelease({
       repoRoot,
+      docsRoot: path.join(repoRoot, "docs"),
+      verifyDocs: async (_origin, paths) => { calls.push({ command: "docs", args: Object.values(paths) }); },
       releaseRoot,
       version: "0.1.5",
       commitSha,
@@ -104,6 +109,8 @@ test("stable deployment packages, activates, writes metadata, and verifies healt
     const webMetadata = JSON.parse(await readFile(path.join(paths.metadataRoot, "server-web", "stable", "release.json"), "utf8"));
     assert.equal(serverMetadata.deploymentId, result.deploymentId);
     assert.equal(webMetadata.tag, "server-web/v0.1.5");
+    assert.equal(serverMetadata.releaseNotes, undefined);
+    assert.deepEqual(calls.slice(0, 2).map(call => call.command), ["docs", "docs"]);
     assert.equal(calls.filter(({ args }) => args.at(-1) === "start").length, 1);
   } finally {
     await rm(repoRoot, { recursive: true, force: true });
@@ -121,10 +128,8 @@ async function createFixture() {
       devDependencies: { "@steamharness/cli": "0.1.4" },
     })}\n`, "utf8"),
     writeFile(path.join(root, "web", "package.json"), '{"version":"0.1.5"}\n', "utf8"),
-    writeFile(path.join(root, "CHANGELOG.md"), "# Changelog\n\n## 0.1.5 - 2026-08-24\n\n- 【修复】Server 修复。\n", "utf8"),
-    writeFile(path.join(root, "CHANGELOG.en.md"), "# Changelog\n\n## 0.1.5 - 2026-08-24\n\n- [Fixed] Server fix.\n", "utf8"),
-    writeFile(path.join(root, "web", "CHANGELOG.md"), "# Changelog\n\n## 0.1.5 - 2026-08-24\n\n- 【修复】Web 修复。\n", "utf8"),
-    writeFile(path.join(root, "web", "CHANGELOG.en.md"), "# Changelog\n\n## 0.1.5 - 2026-08-24\n\n- [Fixed] Web fix.\n", "utf8"),
+    writeReleaseFixture(path.join(root, "docs"), "server", "0.1.5"),
+    writeReleaseFixture(path.join(root, "docs"), "server-web", "0.1.5"),
   ]);
   return root;
 }

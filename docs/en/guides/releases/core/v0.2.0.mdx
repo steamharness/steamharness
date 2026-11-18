@@ -12,189 +12,210 @@ description: "Release notes for Core 0.2.0."
 
 #### New Features
 
-- **Bot project memory**: Bots keep project memory on by default, save lasting facts and look them up on each turn
-- **Local runtime persistence**: Run history and Agent checkpoints default to local SQLite, keeping remote reads off the reply path
-- **Cancellable sleep**: The built-in `sleep({ seconds })` stores its deadline and waits only the remaining time after recovery
+- **Bot project memory**: Bots keep project memory on by default, save lasting facts and look them up on each turn {/* note: entry-1 */}
+- **Local runtime persistence**: Run history and Agent checkpoints default to local SQLite, keeping remote reads off the reply path {/* note: entry-2 */}
+- **Cancellable sleep**: The built-in `sleep({ seconds })` stores its deadline and waits only the remaining time after recovery {/* note: entry-3 */}
 
 #### Breaking Changes
 
-- Use versioned Brotli + Base64 release structures while retaining readable project and entry summaries.
-- Use the shared SDK decoder for entries, parameters and models; reject corrupt, oversized or old-format payloads.
+- Use versioned Brotli + Base64 release structures while retaining readable project and entry summaries. {/* note: entry-4 */}
+  Migration: Apply the new contract described in this entry before upgrading.
+- Use the shared SDK decoder for entries, parameters and models; reject corrupt, oversized or old-format payloads. {/* note: entry-5 */}
   Migration: Rebuild old releases from source and use the shared structure decoder for entries, parameters and models.
-- Replace Conversation projects with Core Agent Bots declared through defineBot.
-- Standardize input, output and durable sessions, with input preparation, persistent completion receipts and tool policies requiring approval in every mode.
+- Replace Conversation projects with Core Agent Bots declared through defineBot. {/* note: entry-6 */}
+  Migration: Apply the new contract described in this entry before upgrading.
+- Standardize input, output and durable sessions, with input preparation, persistent completion receipts and tool policies requiring approval in every mode. {/* note: entry-7 */}
   Migration: Migrate Conversation declarations to defineBot and adopt the Bot input/output and durable-session contracts.
-- Remove KV, PersistentValue and local KV APIs. Conversations and run records default to local SQLite with explicit Server storage available.
+- Remove KV, PersistentValue and local KV APIs. Conversations and run records default to local SQLite with explicit Server storage available. {/* note: entry-8 */}
   Migration: Adopt runtime persistence; old KV/SQLite data is not migrated automatically, so preserve and migrate required records first.
-- Move identity, name, version and declarations to `steamharness.json`; stop reading or writing `package.json.id` and `steamHarness`.
-- Register aggregate child entries explicitly; each child configuration supplies its icons, declarations and schedules.
-- Unregistered configurations stay inactive; uploads and downloads preserve the parent/child structure.
+- Move identity, name, version and declarations to `steamharness.json`; stop reading or writing `package.json.id` and `steamHarness`. {/* note: entry-9 */}
+  Migration: Apply the new contract described in this entry before upgrading.
+- Register aggregate child entries explicitly; each child configuration supplies its icons, declarations and schedules. {/* note: entry-10 */}
+  Migration: Apply the new contract described in this entry before upgrading.
+- Unregistered configurations stay inactive; uploads and downloads preserve the parent/child structure. {/* note: entry-11 */}
   Migration: Move legacy package.json project fields to steamharness.json and register aggregate child entries explicitly.
-- Move projects to root projectId with entries/defaultEntry, allowing multiple same-type entries with isolated configuration and execution.
-- Preserve identity and cancellation across entry calls and revalidate permissions.
+- Move projects to root projectId with entries/defaultEntry, allowing multiple same-type entries with isolated configuration and execution. {/* note: entry-12 */}
+  Migration: Apply the new contract described in this entry before upgrading.
+- Preserve identity and cancellation across entry calls and revalidate permissions. {/* note: entry-13 */}
   Migration: Declare projectId, entries and defaultEntry in the root manifest and target configuration/calls by entry.
 
 #### Added
 
-- Added explicit Kanban Web application declarations to structure reports for complete local H5 host integration.
-- Added silent Bot memory maintenance: the model saves lasting facts automatically, with an input-based keyword lookup at the start of each turn.
-- Added `memory_search` with multiple keywords, relevance ranking and bounded excerpts, returning at most 5 entries by default instead of loading all memory.
-- Added default-on Bot project memory, configurable through project settings or `defineBot.memory.enabled`.
-- Added guided save/get/update/delete tools with project, Bot-entry, category and item isolation, concurrent revision checks and cross-conversation retrieval.
-- Added capture-time activity reads to local run journals.
-- Added bounded frame references, activity buckets and selected-moment details while preserving existing pagination and history.
-- Added image cropping and min/max pixel dimensions to file parameters, preserving and validating these settings in structure reports and waiting-input forms.
-- Added numeric sliders through `control: "range"` and `range: { min, max, step }`, with bounds checked during parameter parsing and resolver evaluation.
-- Added structured activity records to project generation guidance for business events, full text and managed attachments.
-- Added incremental output journals and page reads to local Workflow history; partial final snapshots preserve earlier output.
-- Added complete output journals to history deletion and backups.
-- Added nested Kanban clipboard and editing relays with sandbox/session boundaries and pending-copy cleanup on close.
-- Added `suggest: false` to custom Kanban references to preserve historical labels while hiding entries from the mention menu.
-- Added labeled actions to native Kanban conversation cards. Callbacks receive only card `id` and `requestId`, never URLs or scripts.
-- Added bounded plain-text `messageCards` to Kanban Conversation UI, linked to native replies by request ID without script or navigation access.
-- Added durable internal status inputs to resume the parent when child work drains, ending related sleep early.
-- Added outcome preservation, notification deduplication, cancellation and failure boundaries; ordinary timed waits keep their duration.
-- Added cancellable `sleep({ seconds })` with a persisted deadline and remaining-time recovery. Host-disabled built-in and custom tools are excluded from model tool lists.
-- Added explicit read-only Workflow operations for local knowledge cards and Kanban previews.
-- Added per-operation host validation that rejects writes from previews.
-- Added validation and execution of compiled releases with readable entry metadata and separate development/release sessions and configuration.
-- Added submission lifecycle events and explicit retries retaining the original identity to embedded Kanban Conversations.
-- Added immediate sending feedback and direct merging of authorized receipts to business transcripts.
-- Added project-defined @ choices, dynamic UI updates, display slots and submission callbacks to public Kanban Conversation types.
-- Added native composer reuse for multi-participant topics.
-- Added aggregate Bot entry controls and trusted call provenance that preserve the original user, permissions and cancellation signal.
-- Added durable receipts, snapshots, approvals, stop and explicit recovery to aggregate entry controls.
-- Added subagent execution spans and usage, plus conversation totals including owned subagents, to durable snapshots.
-- Added usage retention for failed, stopped and hidden children without double-counting retries, reopening or independent forks.
-- Added Agent storage through `steamharness/runtime-storage`.
-- Added PostgreSQL records isolated by account, workspace and session, with takeover leases, idempotent commits and document checkpoints.
-- Added explicit adoption of the storage by custom hosts.
-- Added explicit `null` for unlimited total or per-role subagent concurrency while preserving default FIFO limits.
-- Added business-receipt retries for proven unsent tools; access denials, cancellation and unknown side effects remain replay barriers.
-- Added project-configurable subagent attempt limits and backoff.
-- Added automatic failed-work continuation in the same task, child conversation and committed checkpoint.
-- Added completion-receipt checks, non-retryable barriers, persistent attempt counts and cancellation boundaries against false success and endless retries.
-- Added final failure reporting to the parent, including a retry-limit message when the configured limit is exhausted.
-- Added one project-configured shared subagent model or a developer-defined default.
-- Added reuse of existing model lists, main-model inheritance, separate connections/credentials, capability matching and System AI authorization.
-- Added `childConversationId` to delegation tasks in durable snapshots.
-- Added child-conversation links for named and anonymous subagents while active, settled or reopened, for conversation and Trace details.
-- Added named Agent roles, durable FIFO concurrency queues, unified management commands and safe checkpoint retries.
-- Added durable inheritance for dynamic sessions and custom executors, role revalidation on recovery and retained business task history/progress.
-- Added skills.directories declarations to Core Agent nodes/projects for runtime skill tools with access checks.
-- Added host listing of project/Core skills and read-only full SKILL.md previews by directory ID without running tool factories or tasks.
-- Added built-in assistant parameters inherited automatically by defineExecutor with model resolution.
-- Added field overrides, hiding, disabling, fixed values and groups, plus coreAgent references from business Workflows.
-- Added ExecutorContext support to the input helper, with static structure reports sharing the runtime parameter contract.
-- Added user model lists for connection-free Agent nodes and direct calls.
-- Added explicit user/legacy-project model sources with inherited, overridable parameters and enforced System AI source/authorization limits.
-- Added immutable execution-scoped snapshots through `getUserSettings`, `withUserSettings` and host validation with `parseUserSettings`.
-- Added explicit `permissionPolicy: "inherit"` to use the user policy, falling back to `auto` without a host.
-- Added unchanged default `workspace` policy, turn-input precedence and one resolved value for tool and path scopes.
+- Added explicit Kanban Web application declarations to structure reports for complete local H5 host integration. {/* note: entry-14 */}
+- Added silent Bot memory maintenance: the model saves lasting facts automatically, with an input-based keyword lookup at the start of each turn. {/* note: entry-15 */}
+- Added `memory_search` with multiple keywords, relevance ranking and bounded excerpts, returning at most 5 entries by default instead of loading all memory. {/* note: entry-16 */}
+- Added default-on Bot project memory, configurable through project settings or `defineBot.memory.enabled`. {/* note: entry-17 */}
+- Added guided save/get/update/delete tools with project, Bot-entry, category and item isolation, concurrent revision checks and cross-conversation retrieval. {/* note: entry-18 */}
+- Added capture-time activity reads to local run journals. {/* note: entry-19 */}
+- Added bounded frame references, activity buckets and selected-moment details while preserving existing pagination and history. {/* note: entry-20 */}
+- Added image cropping and min/max pixel dimensions to file parameters, preserving and validating these settings in structure reports and waiting-input forms. {/* note: entry-21 */}
+- Added numeric sliders through `control: "range"` and `range: { min, max, step }`, with bounds checked during parameter parsing and resolver evaluation. {/* note: entry-22 */}
+- Added structured activity records to project generation guidance for business events, full text and managed attachments. {/* note: entry-23 */}
+- Added incremental output journals and page reads to local Workflow history; partial final snapshots preserve earlier output. {/* note: entry-24 */}
+- Added complete output journals to history deletion and backups. {/* note: entry-25 */}
+- Added nested Kanban clipboard and editing relays with sandbox/session boundaries and pending-copy cleanup on close. {/* note: entry-26 */}
+- Added `suggest: false` to custom Kanban references to preserve historical labels while hiding entries from the mention menu. {/* note: entry-27 */}
+- Added labeled actions to native Kanban conversation cards. Callbacks receive only card `id` and `requestId`, never URLs or scripts. {/* note: entry-28 */}
+- Added bounded plain-text `messageCards` to Kanban Conversation UI, linked to native replies by request ID without script or navigation access. {/* note: entry-29 */}
+- Added durable internal status inputs to resume the parent when child work drains, ending related sleep early. {/* note: entry-30 */}
+- Added outcome preservation, notification deduplication, cancellation and failure boundaries; ordinary timed waits keep their duration. {/* note: entry-31 */}
+- Added cancellable `sleep({ seconds })` with a persisted deadline and remaining-time recovery. Host-disabled built-in and custom tools are excluded from model tool lists. {/* note: entry-32 */}
+- Added explicit read-only Workflow operations for local knowledge cards and Kanban previews. {/* note: entry-33 */}
+- Added per-operation host validation that rejects writes from previews. {/* note: entry-34 */}
+- Added validation and execution of compiled releases with readable entry metadata and separate development/release sessions and configuration. {/* note: entry-35 */}
+- Added submission lifecycle events and explicit retries retaining the original identity to embedded Kanban Conversations. {/* note: entry-36 */}
+- Added immediate sending feedback and direct merging of authorized receipts to business transcripts. {/* note: entry-37 */}
+- Added project-defined @ choices, dynamic UI updates, display slots and submission callbacks to public Kanban Conversation types. {/* note: entry-38 */}
+- Added native composer reuse for multi-participant topics. {/* note: entry-39 */}
+- Added aggregate Bot entry controls and trusted call provenance that preserve the original user, permissions and cancellation signal. {/* note: entry-40 */}
+- Added durable receipts, snapshots, approvals, stop and explicit recovery to aggregate entry controls. {/* note: entry-41 */}
+- Added subagent execution spans and usage, plus conversation totals including owned subagents, to durable snapshots. {/* note: entry-42 */}
+- Added usage retention for failed, stopped and hidden children without double-counting retries, reopening or independent forks. {/* note: entry-43 */}
+- Added Agent storage through `steamharness/runtime-storage`. {/* note: entry-44 */}
+- Added PostgreSQL records isolated by account, workspace and session, with takeover leases, idempotent commits and document checkpoints. {/* note: entry-45 */}
+- Added explicit adoption of the storage by custom hosts. {/* note: entry-46 */}
+- Added explicit `null` for unlimited total or per-role subagent concurrency while preserving default FIFO limits. {/* note: entry-47 */}
+- Added business-receipt retries for proven unsent tools; access denials, cancellation and unknown side effects remain replay barriers. {/* note: entry-48 */}
+- Added project-configurable subagent attempt limits and backoff. {/* note: entry-49 */}
+- Added automatic failed-work continuation in the same task, child conversation and committed checkpoint. {/* note: entry-50 */}
+- Added completion-receipt checks, non-retryable barriers, persistent attempt counts and cancellation boundaries against false success and endless retries. {/* note: entry-51 */}
+- Added final failure reporting to the parent, including a retry-limit message when the configured limit is exhausted. {/* note: entry-52 */}
+- Added one project-configured shared subagent model or a developer-defined default. {/* note: entry-53 */}
+- Added reuse of existing model lists, main-model inheritance, separate connections/credentials, capability matching and System AI authorization. {/* note: entry-54 */}
+- Added `childConversationId` to delegation tasks in durable snapshots. {/* note: entry-55 */}
+- Added child-conversation links for named and anonymous subagents while active, settled or reopened, for conversation and Trace details. {/* note: entry-56 */}
+- Added named Agent roles, durable FIFO concurrency queues, unified management commands and safe checkpoint retries. {/* note: entry-57 */}
+- Added durable inheritance for dynamic sessions and custom executors, role revalidation on recovery and retained business task history/progress. {/* note: entry-58 */}
+- Added skills.directories declarations to Core Agent nodes/projects for runtime skill tools with access checks. {/* note: entry-59 */}
+- Added host listing of project/Core skills and read-only full SKILL.md previews by directory ID without running tool factories or tasks. {/* note: entry-60 */}
+- Added built-in assistant parameters inherited automatically by defineExecutor with model resolution. {/* note: entry-61 */}
+- Added field overrides, hiding, disabling, fixed values and groups, plus coreAgent references from business Workflows. {/* note: entry-62 */}
+- Added ExecutorContext support to the input helper, with static structure reports sharing the runtime parameter contract. {/* note: entry-63 */}
+- Added user model lists for connection-free Agent nodes and direct calls. {/* note: entry-64 */}
+- Added explicit user/legacy-project model sources with inherited, overridable parameters and enforced System AI source/authorization limits. {/* note: entry-65 */}
+- Added immutable execution-scoped snapshots through `getUserSettings`, `withUserSettings` and host validation with `parseUserSettings`. {/* note: entry-66 */}
+- Added explicit `permissionPolicy: "inherit"` to use the user policy, falling back to `auto` without a host. {/* note: entry-67 */}
+- Added unchanged default `workspace` policy, turn-input precedence and one resolved value for tool and path scopes. {/* note: entry-68 */}
 
 #### Changed
 
-- Changed local loading to accept missing or non-UUID IDs and derive a stable identity from the canonical directory without editing source.
-- Changed only local loading; releases and distribution still validate the authored UUID.
-- Changed project generation guidance to cover Kanban background Workflow controls, output pagination and run images.
-- Changed project generation and artifact validation to keep caches, reports and release outputs under dist/steamharness/.
-- Changed sleep progress to show the expected end time and results to retain the actual completion time.
-- Changed live tool progress delivery to conversation output and durable snapshots, retaining the original deadline after recovery.
-- Changed entry builds and static assets to use build/<entryId>/ within each source root’s dist/steamharness namespace.
-- Changed build validation to reject entries occupying another entry’s output directory.
-- Changed entry validation to reject managed-directory and Windows-device-name collisions, protecting caches and reports during build cleanup.
-- Changed rebuildable outputs to use root dist and standalone SDK history to use ~/.steamharness/runtime/<projectId>/<entryId>/ outside the project.
-- Changed Conversation state, usage and default Agent sessions to persist locally, with versioned snapshots and fork, isolation and cancellation helpers.
-- Changed explicit Server storage to retain lease-loss aborts without automatically migrating legacy KV or SQLite records.
-- Changed Agent models to separate Settings and project modes: Studio hides project AI configuration, while standalone CLI Web uses project models.
-- Changed empty Settings to avoid fallback, with only System AI and Third-party AI sources retained for project models.
-- Changed the development project generation skill name to steamharness-generator and synchronized copies, checks and generator references.
-- Changed default Conversation model and effort parameters to independent Quick controls.
-- Changed user model snapshots to accept the full host built-in catalog while retaining the 100 custom-model limit and globally unique IDs.
-- Changed parameter bindings to accept `userSetting: { key: "agent.permissionPolicy", mode: "fixed" | "default" }`.
-- Changed fixed controls to show the system policy and open user settings; default controls keep the three editable permission choices.
-- Changed defaults to follow the system value again after reset, save inheritance and overrides separately, and preserve permissions for active work.
+- Changed local loading to accept missing or non-UUID IDs and derive a stable identity from the canonical directory without editing source. {/* note: entry-69 */}
+- Changed only local loading; releases and distribution still validate the authored UUID. {/* note: entry-70 */}
+- Changed project generation guidance to cover Kanban background Workflow controls, output pagination and run images. {/* note: entry-71 */}
+- Changed project generation and artifact validation to keep caches, reports and release outputs under dist/steamharness/. {/* note: entry-72 */}
+- Changed sleep progress to show the expected end time and results to retain the actual completion time. {/* note: entry-73 */}
+- Changed live tool progress delivery to conversation output and durable snapshots, retaining the original deadline after recovery. {/* note: entry-74 */}
+- Changed entry builds and static assets to use build/`<entryId>`/ within each source root’s dist/steamharness namespace. {/* note: entry-75 */}
+- Changed build validation to reject entries occupying another entry’s output directory. {/* note: entry-76 */}
+- Changed entry validation to reject managed-directory and Windows-device-name collisions, protecting caches and reports during build cleanup. {/* note: entry-77 */}
+- Changed rebuildable outputs to use root dist and standalone SDK history to use ~/.steamharness/runtime/`<projectId>`/`<entryId>`/ outside the project. {/* note: entry-78 */}
+- Changed Conversation state, usage and default Agent sessions to persist locally, with versioned snapshots and fork, isolation and cancellation helpers. {/* note: entry-79 */}
+- Changed explicit Server storage to retain lease-loss aborts without automatically migrating legacy KV or SQLite records. {/* note: entry-80 */}
+- Changed Agent models to separate Settings and project modes: Studio hides project AI configuration, while standalone CLI Web uses project models. {/* note: entry-81 */}
+- Changed empty Settings to avoid fallback, with only System AI and Third-party AI sources retained for project models. {/* note: entry-82 */}
+- Changed the development project generation skill name to steamharness-generator and synchronized copies, checks and generator references. {/* note: entry-83 */}
+- Changed default Conversation model and effort parameters to independent Quick controls. {/* note: entry-84 */}
+- Changed user model snapshots to accept the full host built-in catalog while retaining the 100 custom-model limit and globally unique IDs. {/* note: entry-85 */}
+- Changed parameter bindings to accept `userSetting: { key: "agent.permissionPolicy", mode: "fixed" | "default" }`. {/* note: entry-86 */}
+- Changed fixed controls to show the system policy and open user settings; default controls keep the three editable permission choices. {/* note: entry-87 */}
+- Changed defaults to follow the system value again after reset, save inheritance and overrides separately, and preserve permissions for active work. {/* note: entry-88 */}
 
 #### Fixed
 
-- Fixed Kanban bridge errors to include the operation and error code.
-- Fixed guidance for known resource and sign-in failures while retaining safe generic messages for unknown host exceptions.
-- Fixed default memory tools replacing `agent.extraTools`. Configured tools coexist with per-run `createTools`; both reject reserved Core memory names.
-- Fixed Bot memory defaults to follow the exported Bot, fill omitted switch values and inspect the selected release entry.
-- Fixed terminal streaming to print the initial content of output items immediately.
-- Fixed persisted input promotions that only returned receipts while idle or after a failed turn.
-- Fixed promoted input execution to retain identity/images, apply queued context writes first and keep repeated promotions idempotent.
-- Fixed unfinished-request reopening after compaction to reuse its summary and committed tool results.
-- Fixed reopening to narrow saved tools to current permissions and preserve the system prompt during partial-answer recovery.
-- Fixed host disabling for session, native and deferred tools.
-- Fixed catalog replacement between turns to release old connections and refresh callbacks while retaining history and definition checks.
-- Fixed concurrent runs on one runtime to reject them before active state can be overwritten.
-- Fixed request-time compaction to restore prepared system prompts and tools so long tasks can continue calling tools.
-- Fixed compaction to preserve current authorization and loaded deferred tools.
-- Fixed background reporting to deduplicate business events and coalesce pending progress.
-- Fixed failed or stopped parent turns to retain results for explicit continuation, preventing repeated completion notices from restarting model retries.
-- Fixed configuration denials to retain their own failure category and wording, with one authorization retry budget per input.
-- Fixed child-agent concurrency to default to three, durably queue excess work and fill released slots.
-- Fixed authorization recovery to recheck up to ten times and continue the same task as soon as access recovers.
-- Fixed the generator to read the exact adjacent CLI version without depending on bundled examples, keeping SDK and CLI versions independent.
-- Fixed Agent command receipts to avoid waiting for snapshot delivery.
-- Fixed session projections and explicitly safe tools to retry up to three times and continue with the same request identity, authorization and cancellation boundaries.
-- Fixed aggregate Workflow calls from Kanban to use a separate 120-second Bridge deadline for durable receipts.
-- Fixed durable Agent suspension to interrupt the enclosing project rather than report an unfinished reply as successful.
-- Fixed reopening to continue from the original checkpoint.
-- Fixed trace timing to retain model request spans, including first-token wait, for reasoning/text and persisted task spans for tools, including after reopening.
-- Fixed System AI catalogs to use a 30-second connection-scoped cache and shared refreshes rather than reload on every run.
-- Fixed explicit and near-expiry credential refresh while preventing reuse of old tokens after access is denied.
-- Fixed managed-file caching to validate access through online conditional requests before reusing bounded cached content.
-- Fixed runtime history and Agent checkpoints to default to local SQLite, removing per-operation network waits from the first-response path.
-- Fixed local persistence via `createLocalRuntimePersistence` and opt-in background `copyRuntimePersistence`, preserving explicit Server storage and existing data.
-- Fixed durable Agents to retain only the latest complete snapshot, coalesce pending views and serialize publishing for slow consumers.
-- Fixed stale snapshot buildup that could exhaust memory during long multi-agent runs.
-- Fixed stream collection to allow `accumulateChunk` customization while chunk hooks retain every original event.
-- Fixed independent conversation copies losing document version changes and replacement identities when JSON stayed equal, preserving checkpoints for later forks.
-- Fixed durable Agent turn snapshots to expose persisted execution timestamps for initial subagent views and history recovery.
-- Fixed branch export as an independent root conversation with truncated history, historical asOf checkpoints and renewed execution identities.
-- Fixed branch isolation to exclude tasks, approvals, queues and usage; stopping or deleting the source does not affect the new conversation.
-- Fixed offline forks of committed history to share the atomic fork operation and deduplicated receipts used by live sessions.
-- Fixed offline forks to preserve document inheritance without starting models, tools or pending tasks.
-- Fixed generator scaffolds to support names beginning with digits and multiline prompts.
-- Fixed conversation cancellation to atomically stop and join the target execution tree, preventing dispatch between individual cancellations.
-- Fixed explicit host cancellation to stop background batches and owned child tasks as well.
-- Fixed existing Agent sessions to discover and persist authorized tool additions through search without invalidating the old catalog when Studio diagnostics are added.
-- Fixed catalog updates to keep existing tool descriptions, parameters and replay policies pinned and reject incompatible changes or unauthorized tools.
-- Fixed sending to queued, settling or settled subagents to return current status and delivery receipts without restarting work or failing on normal lifecycle changes.
-- Fixed concurrent role checks to share lookups and retry transient network/service failures within the original deadline; explicit denials stop immediately.
-- Fixed all model request errors to receive up to ten fallback retries without classifying message text or HTTP status.
-- Fixed fallback retries for streams, durable sessions, deferred responses and summaries.
-- Fixed retry state to retain partial text, committed tool results and per-attempt usage while discarding unfinished calls.
-- Fixed failure handling to leave the input queue paused and honor cancellation immediately.
-- Fixed multi-agent concurrency waits to release unmatched subscriptions before checking slots again, avoiding buildup in long batches.
-- Fixed management actions to ignore model-supplied legacy result fields so listing and querying tasks are not rejected.
-- Fixed restricted configuration selection to survive outages, role downgrades, access recovery and reopening.
-- Fixed guest fallback to enforce execution limits and explicit Ask selections to remain saved.
-- Fixed Core Agent projects and coreAgent wrappers to inherit host recovery automatically.
-- Fixed crash recovery to reconnect unfinished work by original runId, preventing stale busy state from blocking later input.
-- Fixed transient request-construction, stream-read/result, summary and deferred-response exceptions to retry.
-- Fixed retry classification to recognize nested network codes and HTTP 408/409/5xx.
-- Fixed manual compaction to retry within bounds, retain text/tool results and each summary’s usage, and exclude host storage/callback failures.
-- Fixed temporary upstream unavailability, statusless in-stream upstream_error and connections such as ECONNRESET to trigger automatic retries.
-- Fixed consistent retry handling across ordinary requests, durable sessions and automatic compaction.
-- Fixed retry handling to retain original causes, partial text and committed tool results within the existing budget.
-- Fixed incomplete pagination of skill catalogs and file listings.
-- Fixed long child results with JSON byte-bounded continuation and change detection, plus bounded write acknowledgements.
-- Fixed large-file tail and read-only long-line reads, plus silent search/list omissions.
-- Fixed missing shell truncation/timeout diagnostics and commands starting after cancellation.
-- Fixed failed children reported as completed and UTF-8 MCP schema size validation.
-- Fixed skill reads with JSON byte-bounded offset/limit/nextOffset pages so durable tool output does not truncate Chinese guides.
-- Fixed subagent model overrides to expose only allowed exact values and explain default inheritance.
-- Fixed file cards to expose target schemas and actionable errors while ignoring inapplicable preview=false.
-- Fixed Core Agent input filtering to exclude disabled fields, enforce fixed settings, retain legacy model/mode options and keep message text out of option parsing.
-- Fixed static inheritance to support shorthand and namespace imports, with undefined overrides retaining existing defaults.
-- Fixed restricted role checks to allow 30 seconds, avoiding false guest downgrades for developers or owners; failed checks still revoke elevated permissions.
-- Fixed automatic user model parameters to retain inheritance and direct calls to load explicitly selected project models.
-- Fixed model connections and inherited permissions to share one host snapshot; cached connections retain developer model attributes and system search limits.
-- Fixed selection of the model ID `inherit`.
+- Fixed Kanban bridge errors to include the operation and error code. {/* note: entry-89 */}
+- Fixed guidance for known resource and sign-in failures while retaining safe generic messages for unknown host exceptions. {/* note: entry-90 */}
+- Fixed default memory tools replacing `agent.extraTools`. Configured tools coexist with per-run `createTools`; both reject reserved Core memory names. {/* note: entry-91 */}
+- Fixed Bot memory defaults to follow the exported Bot, fill omitted switch values and inspect the selected release entry. {/* note: entry-92 */}
+- Fixed terminal streaming to print the initial content of output items immediately. {/* note: entry-93 */}
+- Fixed persisted input promotions that only returned receipts while idle or after a failed turn. {/* note: entry-94 */}
+- Fixed promoted input execution to retain identity/images, apply queued context writes first and keep repeated promotions idempotent. {/* note: entry-95 */}
+- Fixed unfinished-request reopening after compaction to reuse its summary and committed tool results. {/* note: entry-96 */}
+- Fixed reopening to narrow saved tools to current permissions and preserve the system prompt during partial-answer recovery. {/* note: entry-97 */}
+- Fixed host disabling for session, native and deferred tools. {/* note: entry-98 */}
+- Fixed catalog replacement between turns to release old connections and refresh callbacks while retaining history and definition checks. {/* note: entry-99 */}
+- Fixed concurrent runs on one runtime to reject them before active state can be overwritten. {/* note: entry-100 */}
+- Fixed request-time compaction to restore prepared system prompts and tools so long tasks can continue calling tools. {/* note: entry-101 */}
+- Fixed compaction to preserve current authorization and loaded deferred tools. {/* note: entry-102 */}
+- Fixed background reporting to deduplicate business events and coalesce pending progress. {/* note: entry-103 */}
+- Fixed failed or stopped parent turns to retain results for explicit continuation, preventing repeated completion notices from restarting model retries. {/* note: entry-104 */}
+- Fixed configuration denials to retain their own failure category and wording, with one authorization retry budget per input. {/* note: entry-105 */}
+- Fixed child-agent concurrency to default to three, durably queue excess work and fill released slots. {/* note: entry-106 */}
+- Fixed authorization recovery to recheck up to ten times and continue the same task as soon as access recovers. {/* note: entry-107 */}
+- Fixed the generator to read the exact adjacent CLI version without depending on bundled examples, keeping SDK and CLI versions independent. {/* note: entry-108 */}
+- Fixed Agent command receipts to avoid waiting for snapshot delivery. {/* note: entry-109 */}
+- Fixed session projections and explicitly safe tools to retry up to three times and continue with the same request identity, authorization and cancellation boundaries. {/* note: entry-110 */}
+- Fixed aggregate Workflow calls from Kanban to use a separate 120-second Bridge deadline for durable receipts. {/* note: entry-111 */}
+- Fixed durable Agent suspension to interrupt the enclosing project rather than report an unfinished reply as successful. {/* note: entry-112 */}
+- Fixed reopening to continue from the original checkpoint. {/* note: entry-113 */}
+- Fixed trace timing to retain model request spans, including first-token wait, for reasoning/text and persisted task spans for tools, including after reopening. {/* note: entry-114 */}
+- Fixed System AI catalogs to use a 30-second connection-scoped cache and shared refreshes rather than reload on every run. {/* note: entry-115 */}
+- Fixed explicit and near-expiry credential refresh while preventing reuse of old tokens after access is denied. {/* note: entry-116 */}
+- Fixed managed-file caching to validate access through online conditional requests before reusing bounded cached content. {/* note: entry-117 */}
+- Fixed runtime history and Agent checkpoints to default to local SQLite, removing per-operation network waits from the first-response path. {/* note: entry-118 */}
+- Fixed local persistence via `createLocalRuntimePersistence` and opt-in background `copyRuntimePersistence`, preserving explicit Server storage and existing data. {/* note: entry-119 */}
+- Fixed durable Agents to retain only the latest complete snapshot, coalesce pending views and serialize publishing for slow consumers. {/* note: entry-120 */}
+- Fixed stale snapshot buildup that could exhaust memory during long multi-agent runs. {/* note: entry-121 */}
+- Fixed stream collection to allow `accumulateChunk` customization while chunk hooks retain every original event. {/* note: entry-122 */}
+- Fixed independent conversation copies losing document version changes and replacement identities when JSON stayed equal, preserving checkpoints for later forks. {/* note: entry-123 */}
+- Fixed durable Agent turn snapshots to expose persisted execution timestamps for initial subagent views and history recovery. {/* note: entry-124 */}
+- Fixed branch export as an independent root conversation with truncated history, historical asOf checkpoints and renewed execution identities. {/* note: entry-125 */}
+- Fixed branch isolation to exclude tasks, approvals, queues and usage; stopping or deleting the source does not affect the new conversation. {/* note: entry-126 */}
+- Fixed offline forks of committed history to share the atomic fork operation and deduplicated receipts used by live sessions. {/* note: entry-127 */}
+- Fixed offline forks to preserve document inheritance without starting models, tools or pending tasks. {/* note: entry-128 */}
+- Fixed generator scaffolds to support names beginning with digits and multiline prompts. {/* note: entry-129 */}
+- Fixed conversation cancellation to atomically stop and join the target execution tree, preventing dispatch between individual cancellations. {/* note: entry-130 */}
+- Fixed explicit host cancellation to stop background batches and owned child tasks as well. {/* note: entry-131 */}
+- Fixed existing Agent sessions to discover and persist authorized tool additions through search without invalidating the old catalog when Studio diagnostics are added. {/* note: entry-132 */}
+- Fixed catalog updates to keep existing tool descriptions, parameters and replay policies pinned and reject incompatible changes or unauthorized tools. {/* note: entry-133 */}
+- Fixed sending to queued, settling or settled subagents to return current status and delivery receipts without restarting work or failing on normal lifecycle changes. {/* note: entry-134 */}
+- Fixed concurrent role checks to share lookups and retry transient network/service failures within the original deadline; explicit denials stop immediately. {/* note: entry-135 */}
+- Fixed all model request errors to receive up to ten fallback retries without classifying message text or HTTP status. {/* note: entry-136 */}
+- Fixed fallback retries for streams, durable sessions, deferred responses and summaries. {/* note: entry-137 */}
+- Fixed retry state to retain partial text, committed tool results and per-attempt usage while discarding unfinished calls. {/* note: entry-138 */}
+- Fixed failure handling to leave the input queue paused and honor cancellation immediately. {/* note: entry-139 */}
+- Fixed multi-agent concurrency waits to release unmatched subscriptions before checking slots again, avoiding buildup in long batches. {/* note: entry-140 */}
+- Fixed management actions to ignore model-supplied legacy result fields so listing and querying tasks are not rejected. {/* note: entry-141 */}
+- Fixed restricted configuration selection to survive outages, role downgrades, access recovery and reopening. {/* note: entry-142 */}
+- Fixed guest fallback to enforce execution limits and explicit Ask selections to remain saved. {/* note: entry-143 */}
+- Fixed Core Agent projects and coreAgent wrappers to inherit host recovery automatically. {/* note: entry-144 */}
+- Fixed crash recovery to reconnect unfinished work by original runId, preventing stale busy state from blocking later input. {/* note: entry-145 */}
+- Fixed transient request-construction, stream-read/result, summary and deferred-response exceptions to retry. {/* note: entry-146 */}
+- Fixed retry classification to recognize nested network codes and HTTP 408/409/5xx. {/* note: entry-147 */}
+- Fixed manual compaction to retry within bounds, retain text/tool results and each summary’s usage, and exclude host storage/callback failures. {/* note: entry-148 */}
+- Fixed temporary upstream unavailability, statusless in-stream upstream_error and connections such as ECONNRESET to trigger automatic retries. {/* note: entry-149 */}
+- Fixed consistent retry handling across ordinary requests, durable sessions and automatic compaction. {/* note: entry-150 */}
+- Fixed retry handling to retain original causes, partial text and committed tool results within the existing budget. {/* note: entry-151 */}
+- Fixed incomplete pagination of skill catalogs and file listings. {/* note: entry-152 */}
+- Fixed long child results with JSON byte-bounded continuation and change detection, plus bounded write acknowledgements. {/* note: entry-153 */}
+- Fixed large-file tail and read-only long-line reads, plus silent search/list omissions. {/* note: entry-154 */}
+- Fixed missing shell truncation/timeout diagnostics and commands starting after cancellation. {/* note: entry-155 */}
+- Fixed failed children reported as completed and UTF-8 MCP schema size validation. {/* note: entry-156 */}
+- Fixed skill reads with JSON byte-bounded offset/limit/nextOffset pages so durable tool output does not truncate Chinese guides. {/* note: entry-157 */}
+- Fixed subagent model overrides to expose only allowed exact values and explain default inheritance. {/* note: entry-158 */}
+- Fixed file cards to expose target schemas and actionable errors while ignoring inapplicable preview=false. {/* note: entry-159 */}
+- Fixed Core Agent input filtering to exclude disabled fields, enforce fixed settings, retain legacy model/mode options and keep message text out of option parsing. {/* note: entry-160 */}
+- Fixed static inheritance to support shorthand and namespace imports, with undefined overrides retaining existing defaults. {/* note: entry-161 */}
+- Fixed restricted role checks to allow 30 seconds, avoiding false guest downgrades for developers or owners; failed checks still revoke elevated permissions. {/* note: entry-162 */}
+- Fixed automatic user model parameters to retain inheritance and direct calls to load explicitly selected project models. {/* note: entry-163 */}
+- Fixed model connections and inherited permissions to share one host snapshot; cached connections retain developer model attributes and system search limits. {/* note: entry-164 */}
+- Fixed selection of the model ID `inherit`. {/* note: entry-165 */}
 
 #### Removed
 
-- Removed global and account memory, including its tools, skills, authorization, service integration and settings controls.
+- Removed global and account memory, including its tools, skills, authorization, service integration and settings controls. {/* note: entry-166 */}
+
+## Legacy release (2026-08-26)
+
+#### Breaking Changes
+
+- Projects must declare `steamHarness.projectInfo.dataStorage.mode`, which constrains where KV, PersistentValue, and knowledge may live. {/* note: entry-167 */}
+  Migration: add `dataStorage.mode`; the `server` location requires sign-in and a same-UUID project binding.
+- Removed `context.kv` and `context.persistentValue` in favor of `context.storage.<location>.*`. {/* note: entry-168 */}
+  Migration: rewrite local access as `context.storage.local.*` and server access as `context.storage.server.*`; the old properties only throw a migration error at runtime.
+- Knowledge helpers now require an explicit storage-location context instead of implicitly reusing the current domain. {/* note: entry-169 */}
+  Migration: pass `context` or the target storage location explicitly when calling a knowledge helper.
+
+#### Changed
+
+- Changed projects to require an exact SemVer in `devDependencies.steamharness`, with hosts comparing only the `major.minor` line. {/* note: entry-170 */}
+- Changed any patch or dated Alpha on that line to run directly, while a major or minor change requires a host upgrade before user modules load. {/* note: entry-171 */}

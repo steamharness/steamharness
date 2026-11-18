@@ -12,22 +12,22 @@ description: "Release notes for 开发者小助手 0.1.7."
 
 #### New Features
 
-- **Generator contract alignment**: the generator skill regains entrypoint groups, audio and video, the Conversation gateway, and eight `workflow.HarnessError` types.
-- **Scaffold release metadata**: generated `package.json` files carry `steamHarness.projectCard` and `steamHarness.release`.
+- **Generator contract alignment**: the generator skill regains entrypoint groups, audio and video, the Conversation gateway, and eight `workflow.HarnessError` types. {/* note: entry-1 */}
+- **Scaffold release metadata**: generated `package.json` files carry `steamHarness.projectCard` and `steamHarness.release`. {/* note: entry-2 */}
 
 #### Added
 
-- Added generator coverage of `entrypoint.group`, audio input, video attachments and output, and `context.hostInput` for Conversation.
-- Added generator coverage of eight `workflow.HarnessError` types and `createLLMNode`.
-- Added generator coverage of `getLLMProvider` and `tokenUsage.getRunUsage()`.
-- Added `steamHarness.projectCard` and `steamHarness.release` to generated manifests, defaulting per project type.
+- Added generator coverage of `entrypoint.group`, audio input, video attachments and output, and `context.hostInput` for Conversation. {/* note: entry-3 */}
+- Added generator coverage of eight `workflow.HarnessError` types and `createLLMNode`. {/* note: entry-4 */}
+- Added generator coverage of `getLLMProvider` and `tokenUsage.getRunUsage()`. {/* note: entry-5 */}
+- Added `steamHarness.projectCard` and `steamHarness.release` to generated manifests, defaulting per project type. {/* note: entry-6 */}
 
 #### Changed
 
-- Changed the release gate to fail `steamharness-generator-contract` when Core drifts from what the generator skill documents.
-- Changed generator dependency resolution to identify the repository layout by package name and accept dated prereleases.
+- Changed the release gate to fail `steamharness-generator-contract` when Core drifts from what the generator skill documents. {/* note: entry-7 */}
+- Changed generator dependency resolution to identify the repository layout by package name and accept dated prereleases. {/* note: entry-8 */}
 
 #### Fixed
 
-- Fixed the generator skill claiming `steamHarness.release` must stay out of source and describing removed Kanban `dataSources` as usable.
-- Fixed artifacts filtering by file basename, so the skill's `scripts/create_workflow.py` now ships with the release.
+- Fixed the generator skill claiming `steamHarness.release` must stay out of source and describing removed Kanban `dataSources` as usable. {/* note: entry-9 */}
+- Fixed artifacts filtering by file basename, so the skill's `scripts/create_workflow.py` now ships with the release. {/* note: entry-10 */}

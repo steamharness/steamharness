@@ -12,20 +12,20 @@ description: "Release notes for Server 0.1.1."
 
 #### New Features
 
-- **Health check exposes versions**: `/health` returns Server, bundled Core, the current update summary, and a Docs entry.
-- **Runs record the Core version**: hosted versions and run records keep the required, built, and actually executed Core and Server versions.
+- **Health check exposes versions**: `/health` returns Server, bundled Core, the current update summary, and a Docs entry. {/* note: entry-1 */}
+- **Runs record the Core version**: hosted versions and run records keep the required, built, and actually executed Core and Server versions. {/* note: entry-2 */}
 
 #### Added
 
-- Added `/health` returning the Server version, bundled Core version, current update summary, and Docs entry.
-- Added Core and Server versions to hosted versions and run records for the required, built, and actually executed runtimes.
+- Added `/health` returning the Server version, bundled Core version, current update summary, and Docs entry. {/* note: entry-3 */}
+- Added Core and Server versions to hosted versions and run records for the required, built, and actually executed runtimes. {/* note: entry-4 */}
 
 #### Changed
 
-- Changed upload, edit, copy, preview, and run to check compatibility against each project's exact Core dependency.
+- Changed upload, edit, copy, preview, and run to check compatibility against each project's exact Core dependency. {/* note: entry-5 */}
 
 #### Fixed
 
-- Fixed hosted versions with an unknown Core version running on a guessed range; they are now marked unknown and taken down.
-- Fixed `/health` reporting the wrong Server or Core version when release metadata lags or a deployment rolls back.
-- Fixed transient object storage failures permanently taking down versions during legacy Workflow Core metadata migration.
+- Fixed hosted versions with an unknown Core version running on a guessed range; they are now marked unknown and taken down. {/* note: entry-6 */}
+- Fixed `/health` reporting the wrong Server or Core version when release metadata lags or a deployment rolls back. {/* note: entry-7 */}
+- Fixed transient object storage failures permanently taking down versions during legacy Workflow Core metadata migration. {/* note: entry-8 */}

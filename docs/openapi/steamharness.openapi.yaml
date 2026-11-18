@@ -388,9 +388,7 @@ paths:
                             properties:
                               summary:
                                 type: string
-                              body:
-                                type: string
-                                description: "所选语言的完整 Markdown 发布说明；旧元数据回退到 releaseNotes.body。"
+                                description: "兼容旧版管理端的简短链接标签。"
                               docsUrl:
                                 type: string
                                 format: uri
@@ -398,7 +396,6 @@ paths:
                                 example: https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.1.3
                             required:
                               - summary
-                              - body
                               - docsUrl
                     required:
                       - status
@@ -7210,20 +7207,14 @@ components:
               additionalProperties:
                 type: string
               description: "该版本附带的组件版本，例如 Server 内置 Core 版本。"
+            docsUrl:
+              type: string
+              format: uri
+              description: "所选语言、对应版本的发布日志地址。"
             releaseNotes:
-              oneOf:
-                - type: "null"
-                - type: object
-                  properties:
-                    format:
-                      type: string
-                      const: markdown
-                    body:
-                      type: string
-                      description: "所选语言的 Markdown 发布说明，旧元数据回退到默认正文。"
-                  required:
-                    - format
-                    - body
+              type: "null"
+              deprecated: true
+              description: "兼容字段；新版不内嵌日志正文，固定返回 null。"
             source:
               type: string
               enum:

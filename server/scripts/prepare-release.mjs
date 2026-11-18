@@ -2,13 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
-import {
-  appendHistory,
-  assertHistoryParity,
-  assertNextParity,
-  parseNext,
-  readHistoryVersions,
-} from "../vendor/shared/release-tools/release-notes.mjs";
+import { validateReleasePair } from "../../docs/scripts/release-notes.mjs";
 
 const UNIT_DEFINITIONS = Object.freeze({
   server: { directory: ".", tagPrefix: "server" },
@@ -27,56 +21,15 @@ export async function prepareRelease(options) {
   const root = path.resolve(options.root);
   const unitRoot = path.resolve(root, definition.directory);
   const manifestPath = path.join(unitRoot, "package.json");
-  const paths = [
-    manifestPath,
-    path.join(unitRoot, "CHANGELOG.md"),
-    path.join(unitRoot, "CHANGELOG.en.md"),
-    path.join(unitRoot, "CHANGELOG.next.md"),
-    path.join(unitRoot, "CHANGELOG.next.en.md"),
-  ];
-  const originals = new Map(await Promise.all(paths.map(async (filePath) => [
-    filePath,
-    await readFile(filePath, "utf8"),
-  ])));
-
-  const manifest = JSON.parse(originals.get(manifestPath));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!semver.valid(manifest.version) || semver.lt(options.version, manifest.version)) {
     throw new Error(`${options.version} must not be lower than ${manifest.version}.`);
   }
 
-  const zhHistoryPath = path.join(unitRoot, "CHANGELOG.md");
-  const enHistoryPath = path.join(unitRoot, "CHANGELOG.en.md");
-  const zhNextPath = path.join(unitRoot, "CHANGELOG.next.md");
-  const enNextPath = path.join(unitRoot, "CHANGELOG.next.en.md");
-  const zhHistory = originals.get(zhHistoryPath);
-  const enHistory = originals.get(enHistoryPath);
-  const zhNext = parseNext(originals.get(zhNextPath), "zh-CN");
-  const enNext = parseNext(originals.get(enNextPath), "en");
-  assertHistoryParity(zhHistory, enHistory);
-  assertNextParity(zhNext, enNext);
-  if (readHistoryVersions(zhHistory).some((release) => release.version === options.version)) {
-    throw new Error(`${options.unit} ${options.version} already exists in CHANGELOG.md.`);
-  }
-
-  const date = options.date ?? new Date().toISOString().slice(0, 10);
-  const nextContents = new Map([
-    [manifestPath, `${JSON.stringify({ ...manifest, version: options.version }, null, 2)}\n`],
-    [zhHistoryPath, appendHistory(zhHistory, options.version, date, zhNext.body)],
-    [enHistoryPath, appendHistory(enHistory, options.version, date, enNext.body)],
-    [zhNextPath, "# Unreleased\n"],
-    [enNextPath, "# Unreleased\n"],
-  ]);
-
-  try {
-    for (const filePath of paths) {
-      await writeFile(filePath, nextContents.get(filePath), "utf8");
-    }
-  } catch (error) {
-    await Promise.all([...originals].map(([filePath, contents]) => writeFile(filePath, contents, "utf8")));
-    throw error;
-  }
-
+  const docsPaths = validateReleasePair(options.docsRoot ?? path.join(root, "../docs"), options.unit, options.version);
+  await writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: options.version }, null, 2)}\n`);
   return {
+    docsPaths,
     unit: options.unit,
     version: options.version,
     tag: `${definition.tagPrefix}/v${options.version}`,

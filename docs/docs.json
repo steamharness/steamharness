@@ -202,110 +202,57 @@
                   {
                     "label": "Core",
                     "path": "guides/releases/core",
-                    "items": [
-                      "guides/releases/core/v0.2.4",
-                      "guides/releases/core/v0.2.3",
-                      "guides/releases/core/v0.2.0",
-                      "guides/releases/core/v0.1.5",
-                      "guides/releases/core/v0.1.4",
-                      "guides/releases/core/v0.1.3",
-                      "guides/releases/core/v0.1.2",
-                      "guides/releases/core/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "CLI",
                     "path": "guides/releases/cli",
-                    "items": [
-                      "guides/releases/cli/v0.2.4",
-                      "guides/releases/cli/v0.2.3",
-                      "guides/releases/cli/v0.2.0",
-                      "guides/releases/cli/v0.1.5",
-                      "guides/releases/cli/v0.1.4",
-                      "guides/releases/cli/v0.1.3",
-                      "guides/releases/cli/v0.1.2",
-                      "guides/releases/cli/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Server",
                     "path": "guides/releases/server",
-                    "items": [
-                      "guides/releases/server/v0.1.10",
-                      "guides/releases/server/v0.1.9",
-                      "guides/releases/server/v0.1.8",
-                      "guides/releases/server/v0.1.4",
-                      "guides/releases/server/v0.1.3",
-                      "guides/releases/server/v0.1.2",
-                      "guides/releases/server/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Server Web",
                     "path": "guides/releases/server-web",
-                    "items": [
-                      "guides/releases/server-web/v0.1.10",
-                      "guides/releases/server-web/v0.1.9",
-                      "guides/releases/server-web/v0.1.8",
-                      "guides/releases/server-web/v0.1.4",
-                      "guides/releases/server-web/v0.1.3",
-                      "guides/releases/server-web/v0.1.2",
-                      "guides/releases/server-web/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "开发者小助手",
                     "path": "guides/releases/builtin-developer-assistant",
-                    "items": [
-                      "guides/releases/builtin-developer-assistant/v0.1.9",
-                      "guides/releases/builtin-developer-assistant/v0.1.8",
-                      "guides/releases/builtin-developer-assistant/v0.1.7",
-                      "guides/releases/builtin-developer-assistant/v0.1.6",
-                      "guides/releases/builtin-developer-assistant/v0.1.5",
-                      "guides/releases/builtin-developer-assistant/v0.1.4",
-                      "guides/releases/builtin-developer-assistant/v0.1.3",
-                      "guides/releases/builtin-developer-assistant/v0.1.2",
-                      "guides/releases/builtin-developer-assistant/v0.1.1",
-                      "guides/releases/builtin-developer-assistant/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Codex",
                     "path": "guides/releases/builtin-codex",
-                    "items": [
-                      "guides/releases/builtin-codex/v0.1.2",
-                      "guides/releases/builtin-codex/v0.1.1",
-                      "guides/releases/builtin-codex/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Conversation",
                     "path": "guides/releases/builtin-conversation",
-                    "items": [
-                      "guides/releases/builtin-conversation/v0.1.4",
-                      "guides/releases/builtin-conversation/v0.1.3",
-                      "guides/releases/builtin-conversation/v0.1.2",
-                      "guides/releases/builtin-conversation/v0.1.1",
-                      "guides/releases/builtin-conversation/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "OpenCode",
                     "path": "guides/releases/builtin-opencode",
-                    "items": [
-                      "guides/releases/builtin-opencode/v0.1.4",
-                      "guides/releases/builtin-opencode/v0.1.3",
-                      "guides/releases/builtin-opencode/v0.1.2",
-                      "guides/releases/builtin-opencode/v0.1.1",
-                      "guides/releases/builtin-opencode/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Pi",
                     "path": "guides/releases/builtin-pi",
-                    "items": [
-                      "guides/releases/builtin-pi/v0.1.0"
-                    ]
+                    "items": []
+                  },
+                  {
+                    "label": "Studio",
+                    "path": "guides/releases/studio",
+                    "items": []
+                  },
+                  {
+                    "label": "分析项目",
+                    "path": "guides/releases/builtin-analysis",
+                    "items": []
                   }
                 ]
               }
@@ -488,110 +435,57 @@
                   {
                     "label": "Core",
                     "path": "en/guides/releases/core",
-                    "items": [
-                      "en/guides/releases/core/v0.2.4",
-                      "en/guides/releases/core/v0.2.3",
-                      "en/guides/releases/core/v0.2.0",
-                      "en/guides/releases/core/v0.1.5",
-                      "en/guides/releases/core/v0.1.4",
-                      "en/guides/releases/core/v0.1.3",
-                      "en/guides/releases/core/v0.1.2",
-                      "en/guides/releases/core/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "CLI",
                     "path": "en/guides/releases/cli",
-                    "items": [
-                      "en/guides/releases/cli/v0.2.4",
-                      "en/guides/releases/cli/v0.2.3",
-                      "en/guides/releases/cli/v0.2.0",
-                      "en/guides/releases/cli/v0.1.5",
-                      "en/guides/releases/cli/v0.1.4",
-                      "en/guides/releases/cli/v0.1.3",
-                      "en/guides/releases/cli/v0.1.2",
-                      "en/guides/releases/cli/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Server",
                     "path": "en/guides/releases/server",
-                    "items": [
-                      "en/guides/releases/server/v0.1.10",
-                      "en/guides/releases/server/v0.1.9",
-                      "en/guides/releases/server/v0.1.8",
-                      "en/guides/releases/server/v0.1.4",
-                      "en/guides/releases/server/v0.1.3",
-                      "en/guides/releases/server/v0.1.2",
-                      "en/guides/releases/server/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Server Web",
                     "path": "en/guides/releases/server-web",
-                    "items": [
-                      "en/guides/releases/server-web/v0.1.10",
-                      "en/guides/releases/server-web/v0.1.9",
-                      "en/guides/releases/server-web/v0.1.8",
-                      "en/guides/releases/server-web/v0.1.4",
-                      "en/guides/releases/server-web/v0.1.3",
-                      "en/guides/releases/server-web/v0.1.2",
-                      "en/guides/releases/server-web/v0.1.1"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Developer Assistant",
                     "path": "en/guides/releases/builtin-developer-assistant",
-                    "items": [
-                      "en/guides/releases/builtin-developer-assistant/v0.1.9",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.8",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.7",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.6",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.5",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.4",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.3",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.2",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.1",
-                      "en/guides/releases/builtin-developer-assistant/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Codex",
                     "path": "en/guides/releases/builtin-codex",
-                    "items": [
-                      "en/guides/releases/builtin-codex/v0.1.2",
-                      "en/guides/releases/builtin-codex/v0.1.1",
-                      "en/guides/releases/builtin-codex/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Conversation",
                     "path": "en/guides/releases/builtin-conversation",
-                    "items": [
-                      "en/guides/releases/builtin-conversation/v0.1.4",
-                      "en/guides/releases/builtin-conversation/v0.1.3",
-                      "en/guides/releases/builtin-conversation/v0.1.2",
-                      "en/guides/releases/builtin-conversation/v0.1.1",
-                      "en/guides/releases/builtin-conversation/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "OpenCode",
                     "path": "en/guides/releases/builtin-opencode",
-                    "items": [
-                      "en/guides/releases/builtin-opencode/v0.1.4",
-                      "en/guides/releases/builtin-opencode/v0.1.3",
-                      "en/guides/releases/builtin-opencode/v0.1.2",
-                      "en/guides/releases/builtin-opencode/v0.1.1",
-                      "en/guides/releases/builtin-opencode/v0.1.0"
-                    ]
+                    "items": []
                   },
                   {
                     "label": "Pi",
                     "path": "en/guides/releases/builtin-pi",
-                    "items": [
-                      "en/guides/releases/builtin-pi/v0.1.0"
-                    ]
+                    "items": []
+                  },
+                  {
+                    "label": "Studio",
+                    "path": "en/guides/releases/studio",
+                    "items": []
+                  },
+                  {
+                    "label": "Analysis",
+                    "path": "en/guides/releases/builtin-analysis",
+                    "items": []
                   }
                 ]
               }

@@ -26,6 +26,8 @@ Choose a component to inspect version changes and migration requirements. This s
 | CLI | Local execution and project transfer | [CLI](/en/guides/releases/cli) |
 | Server | Account, project, and data services | [Server](/en/guides/releases/server) |
 | Server Web | Browser management console | [Server Web](/en/guides/releases/server-web) |
+| Studio | Desktop workstation | [Studio](/en/guides/releases/studio) |
+| Analysis | Project analysis | [Analysis](/en/guides/releases/builtin-analysis) |
 | Developer Assistant | Studio development tasks | [Developer Assistant](/en/guides/releases/builtin-developer-assistant) |
 | Conversation | Conversation project | [Conversation](/en/guides/releases/builtin-conversation) |
 | Codex | Codex project | [Codex](/en/guides/releases/builtin-codex) |
@@ -46,7 +48,7 @@ Projects pin exact versions. Check [compatibility](/en/guides/releases/compatibi
 
 ## Current deployment
 
-Read the target Server's `/health` and inspect product version, `deploymentId`, and `commitSha`. A product version can be deployed more than once. The response also provides full release notes and a localized documentation link.
+Read the target Server's `/health` to check the product version, `deploymentId`, and `commitSha`. A product version can be deployed more than once. Follow `currentRelease.docsUrl` for the Server notes or `deployment.serverWeb.docsUrl` for Server Web notes.
 
 ## Public entry points
 

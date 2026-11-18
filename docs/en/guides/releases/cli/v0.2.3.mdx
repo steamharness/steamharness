@@ -12,30 +12,30 @@ description: "Release notes for CLI 0.2.3."
 
 #### New Features
 
-- **Local MCP endpoint**: `steamharness mcp <workflow-dir>` exposes every entrypoint as a standard stdio MCP tool.
-- **Related project access**: `--related-project` explicitly enables mutually confirmed related-project KV access.
-- **MCP lifecycle reporting**: hosted by the headless Desktop launcher, the CLI reports complete snapshots over dedicated IPC. See [CLI](/en/cli/steamharness).
+- **Local MCP endpoint**: `steamharness mcp <workflow-dir>` exposes every entrypoint as a standard stdio MCP tool. {/* note: entry-1 */}
+- **Related project access**: `--related-project` explicitly enables mutually confirmed related-project KV access. {/* note: entry-2 */}
+- **MCP lifecycle reporting**: hosted by the headless Desktop launcher, the CLI reports complete snapshots over dedicated IPC. See [CLI](/en/cli/steamharness). {/* note: entry-3 */}
 
 #### Breaking Changes
 
-- The `--grant-data-access` and Kanban `dataSources` grant flows are removed.
+- The `--grant-data-access` and Kanban `dataSources` grant flows are removed. {/* note: entry-4 */}
   Migration: project-group dependencies now come from mutually confirmed `steamHarness.projectInfo.relatedProjects`.
-- `workspace upload --create` requires a predeclared top-level UUID and `dataStorage.mode`.
+- `workspace upload --create` requires a predeclared top-level UUID and `dataStorage.mode`. {/* note: entry-5 */}
   Migration: Server no longer assigns or writes back project IDs.
 
 #### Added
 
-- Added `steamharness mcp <workflow-dir>`, exposing every entrypoint as a standard stdio MCP tool.
-- Added a repeatable `--related-project <alias>=<absolute-project-dir>` option for local runs.
+- Added `steamharness mcp <workflow-dir>`, exposing every entrypoint as a standard stdio MCP tool. {/* note: entry-6 */}
+- Added a repeatable `--related-project <alias>=<absolute-project-dir>` option for local runs. {/* note: entry-7 */}
 
 #### Changed
 
-- Changed local `kv.*` and `persistentValue.*` to bind directly to the current project instead of a global scope.
-- Changed headless Desktop-hosted MCP runs to report full lifecycle snapshots for one runId over dedicated IPC.
-- Changed stdio stdout to carry only JSON-RPC, keeping input, args, report, stdout, and stderr in the snapshot.
+- Changed local `kv.*` and `persistentValue.*` to bind directly to the current project instead of a global scope. {/* note: entry-8 */}
+- Changed headless Desktop-hosted MCP runs to report full lifecycle snapshots for one runId over dedicated IPC. {/* note: entry-9 */}
+- Changed stdio stdout to carry only JSON-RPC, keeping input, args, report, stdout, and stderr in the snapshot. {/* note: entry-10 */}
 
 #### Fixed
 
-- Fixed MCP form elicitation terminating the waiting run and recording a diagnostic on invalid or failed responses.
-- Fixed the OpenAI Responses internal runner no longer writing AI SDK compatibility warnings to `stderr`.
-- Fixed `steamharness structure` validating the complete `projectInfo` contract before analysis, exiting `1` on unsupported fields.
+- Fixed MCP form elicitation terminating the waiting run and recording a diagnostic on invalid or failed responses. {/* note: entry-11 */}
+- Fixed the OpenAI Responses internal runner no longer writing AI SDK compatibility warnings to `stderr`. {/* note: entry-12 */}
+- Fixed `steamharness structure` validating the complete `projectInfo` contract before analysis, exiting `1` on unsupported fields. {/* note: entry-13 */}

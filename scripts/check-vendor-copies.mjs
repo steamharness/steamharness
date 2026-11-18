@@ -38,7 +38,6 @@ export const SHARED_EXCLUDED_ENTRIES = Object.freeze([
 /** `shared` 真相源里被内置项目以单文件方式复制的脚本。 */
 export const BUILTIN_SHARED_FILES = Object.freeze([
   Object.freeze({ source: "shared/release-tools/release-gate.mjs", file: "release-gate.mjs" }),
-  Object.freeze({ source: "shared/release-tools/release-notes.mjs", file: "release-notes.mjs" }),
 ]);
 
 /** 只在内置项目之间共享、以 developer-assistant 为规范副本的脚本。 */

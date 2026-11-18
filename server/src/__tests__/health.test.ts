@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createProjectServerHealthData } from "../health";
+import { once } from "node:events";
+import express from "express";
+import { createProjectServerHealthData, registerLegacyReleaseNoteRoutes } from "../health";
 
 test("release links follow dev, alpha and main without overriding an explicit docs origin", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "steamharness-health-links-"));
@@ -19,10 +21,10 @@ test("release links follow dev, alpha and main without overriding an explicit do
       process.env.STEAMHARNESS_SERVICE_CHANNEL = channel;
       const health = await createProjectServerHealthData({ serverRoot: root, metadataRoot: root, locale: "en" });
       const origin = channel === "dev" ? "http://localhost:7135" : `https://docs${channel === "alpha" ? "-alpha" : ""}.steamharness.yuhe.space`;
-      assert.equal(health.currentRelease?.docsUrl, `${origin}/en/guides/releases/server/v0.1.0`);
+      assert.equal(health.currentRelease?.docsUrl, `${origin}/en/guides/releases/server/v0.1.0/`);
     }
     assert.equal((await createProjectServerHealthData({ serverRoot: root, metadataRoot: root, docsBaseUrl: "https://custom.example" })).currentRelease?.docsUrl,
-      "https://custom.example/en/guides/releases/server/v0.1.0");
+      "https://custom.example/en/guides/releases/server/v0.1.0/");
   } finally {
     for (const [key, value] of [["STEAMHARNESS_SERVICE_CHANNEL", saved.channel], ["STEAMHARNESS_DOCS_PUBLIC_BASE_URL", saved.docs]] as const) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -101,9 +103,8 @@ test("health payload prefers deployed release metadata for server and server-web
         coreVersion: "0.1.5",
       },
       currentRelease: {
-        summary: "新增 Core 兼容检查。",
-        body: "## Added\n\n- 新增 Core 兼容检查。",
-        docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server/v0.2.0",
+        summary: "查看 Server v0.2.0 更新日志",
+        docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server/v0.2.0/",
       },
       deployment: {
         server: {
@@ -114,10 +115,9 @@ test("health payload prefers deployed release metadata for server and server-web
           publishedAt: "2026-06-29T08:00:00Z",
           commitSha: "abcdef123456",
           components: { core: "0.1.5" },
-          releaseNotes: {
-            format: "markdown",
-            body: "## Added\n\n- 新增 Core 兼容检查。",
-          },
+          releaseNotes: null,
+          docsPath: "/guides/releases/server/v0.2.0/",
+          docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server/v0.2.0/",
           source: "release-metadata",
         },
         serverWeb: {
@@ -129,6 +129,8 @@ test("health payload prefers deployed release metadata for server and server-web
           commitSha: "fedcba654321",
           components: {},
           releaseNotes: null,
+          docsPath: "/guides/releases/server-web/v0.2.1/",
+          docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server-web/v0.2.1/",
           source: "release-metadata",
         },
       },
@@ -149,14 +151,10 @@ test("health payload prefers deployed release metadata for server and server-web
       },
     });
     assert.deepEqual(englishHealth.currentRelease, {
-      summary: "Add Core compatibility checks.",
-      body: "## Added\n\n- Add Core compatibility checks.",
-      docsUrl: "https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.2.0",
+      summary: "View Server v0.2.0 release notes",
+      docsUrl: "https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.2.0/",
     });
-    assert.equal(
-      englishHealth.deployment.server?.releaseNotes?.body,
-      "## Added\n\n- Add Core compatibility checks.",
-    );
+    assert.equal(englishHealth.deployment.server?.releaseNotes, null);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -244,12 +242,9 @@ test("health payload reports the loaded build when stable metadata points at ano
     });
 
     assert.deepEqual(health.versions, { serverVersion: "0.1.9", coreVersion: "0.1.4" });
-    assert.equal(health.currentRelease, null);
+    assert.match(health.currentRelease?.docsUrl ?? "", /\/en\/guides\/releases\/server\/v0\.1\.9\/$/u);
     assert.equal(health.deployment.server?.version, "0.2.0");
-    assert.equal(
-      health.deployment.server?.releaseNotes?.body,
-      "## Fixed\n\n- Newer deployment notes.",
-    );
+    assert.equal(health.deployment.server?.releaseNotes, null);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -268,6 +263,7 @@ test("health payload falls back to local manifests when release metadata is abse
 
     const health = await createProjectServerHealthData({
       mode: "development",
+      docsBaseUrl: "http://localhost:7135",
       startedAt: "2026-06-29T09:30:00Z",
       serverRoot,
     });
@@ -282,6 +278,8 @@ test("health payload falls back to local manifests when release metadata is abse
         commitSha: null,
         components: {},
         releaseNotes: null,
+        docsPath: "/en/guides/releases/server/v0.3.0/",
+        docsUrl: "http://localhost:7135/en/guides/releases/server/v0.3.0/",
         source: "package-manifest",
       },
       serverWeb: {
@@ -293,11 +291,13 @@ test("health payload falls back to local manifests when release metadata is abse
         commitSha: null,
         components: {},
         releaseNotes: null,
+        docsPath: "/en/guides/releases/server-web/v0.3.1/",
+        docsUrl: "http://localhost:7135/en/guides/releases/server-web/v0.3.1/",
         source: "package-manifest",
       },
     });
     assert.deepEqual(health.versions, { serverVersion: "0.3.0", coreVersion: "0.2.4" });
-    assert.equal(health.currentRelease, null);
+    assert.equal(health.currentRelease?.docsUrl, "http://localhost:7135/en/guides/releases/server/v0.3.0/");
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -311,8 +311,35 @@ test("deployment metadata identifies same-version updates and links the matching
     await writeFile(path.join(root,"server/stable/release.json"),JSON.stringify({version:"0.1.0",deploymentId:"rollout-B",docsPaths:{en:"/deployment-notes.en.md","zh-CN":"//foreign.invalid/notes"},releaseNotes:{format:"markdown",body:"Updated deployment"}}));
     const en=await createProjectServerHealthData({serverRoot:root,metadataRoot:root,locale:"en",docsBaseUrl:"https://docs.example.com"});
     assert.equal(en.deployment.server?.deploymentId,"rollout-B");
-    assert.equal(en.currentRelease?.docsUrl,"https://docs.example.com/deployment-notes.en.md");
+    assert.equal(en.currentRelease?.docsUrl,"https://docs.example.com/en/guides/releases/server/v0.1.0/");
     const zh=await createProjectServerHealthData({serverRoot:root,metadataRoot:root,locale:"zh-CN",docsBaseUrl:"https://docs.example.com"});
-    assert.equal(zh.currentRelease?.docsUrl,"https://docs.example.com/guides/releases/server/v0.1.0");
+    assert.equal(zh.currentRelease?.docsUrl,"https://docs.example.com/guides/releases/server/v0.1.0/");
   } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("legacy Markdown addresses redirect to the requested version or the component index", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "server-legacy-notes-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "web"));
+  const manifest = path.join(root, "package.json");
+  await writeFile(manifest, JSON.stringify({ version: "0.1.10" }));
+  const app = express();
+  registerLegacyReleaseNoteRoutes(app, () => ({ serverRoot: root, docsBaseUrl: "https://docs.example.test", channel: "stable" }));
+  const server = app.listen(0, "127.0.0.1");
+  t.after(() => { server.close(); });
+  await once(server, "listening");
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const expectLocation = async (oldPath: string, target: string) => {
+    const response = await fetch(`http://127.0.0.1:${address.port}${oldPath}`, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), `https://docs.example.test${target}`);
+  };
+  await expectLocation("/deployment-notes.en.md", "/en/guides/releases/server/");
+  await expectLocation("/deployment-notes.en.md?version=0.1.10", "/en/guides/releases/server/v0.1.10/");
+  await expectLocation("/deployment-notes.zh-CN.md?version=0.1.8", "/guides/releases/server/v0.1.8/");
+  await expectLocation("/server-web-notes.en.md", "/en/guides/releases/server-web/");
+  await expectLocation("/deployment-notes.en.md?version=//foreign.invalid", "/en/guides/releases/server/");
+  await writeFile(manifest, JSON.stringify({ version: "0.1.9" }));
+  await expectLocation("/deployment-notes.en.md?version=0.1.10", "/en/guides/releases/server/v0.1.10/");
 });

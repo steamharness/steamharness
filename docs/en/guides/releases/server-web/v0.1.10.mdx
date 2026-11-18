@@ -12,34 +12,34 @@ description: "Release notes for Server Web 0.1.10."
 
 #### New Features
 
-- **Run records can be renamed and deleted**: project managers or the run's initiator may act, and active runs can still be renamed.
-- **KV entries can be deleted**: the detail dialog confirms and calls `DELETE /api/projects/:name/kv/entry` for one entry.
+- **Run records can be renamed and deleted**: project managers or the run's initiator may act, and active runs can still be renamed. {/* note: entry-1 */}
+- **KV entries can be deleted**: the detail dialog confirms and calls `DELETE /api/projects/:name/kv/entry` for one entry. {/* note: entry-2 */}
 
 #### Breaking Changes
 
-- Server Web no longer hosts the public Embed; its project entries, list status, `/embed/**` pages, and hostname are gone.
+- Server Web no longer hosts the public Embed; its project entries, list status, `/embed/**` pages, and hostname are gone. {/* note: entry-3 */}
   Migration: browser runs move to the Desktop home Web build, and the console only manages cloud projects.
-- Server Web no longer has a `/web` entry page, and sign-in no longer accepts a `next=web` return trip.
+- Server Web no longer has a `/web` entry page, and sign-in no longer accepts a `next=web` return trip. {/* note: entry-4 */}
   Migration: send users straight to sign-in and land them on the project list afterwards.
 
 #### Added
 
-- Added grouped, collapsible Workflow entrypoints in public Embeds, scoped to the site's stable Workflow ID.
-- Added an admin Runner page showing node status, protocol and architecture, capacity, and heartbeat, with drain and resume.
-- Added Runner pool, CPU, memory, and timeout settings, with Core and image digests on the versions page.
-- Added Rename and Delete to execution-log rows, restricted to project managers and the run's initiator.
-- Added a confirmation naming the record before deletion, after which the row leaves the list.
-- Added a Delete entry action in the KV detail dialog that calls the delete endpoint and refreshes the page.
-- Added failed deletes keeping the dialog open with the reason in place, hidden entirely without permission.
-- Added a raw JSON escape hatch validating keys and types before applying, with parse errors shown in place.
+- Added grouped, collapsible Workflow entrypoints in public Embeds, scoped to the site's stable Workflow ID. {/* note: entry-5 */}
+- Added an admin Runner page showing node status, protocol and architecture, capacity, and heartbeat, with drain and resume. {/* note: entry-6 */}
+- Added Runner pool, CPU, memory, and timeout settings, with Core and image digests on the versions page. {/* note: entry-7 */}
+- Added Rename and Delete to execution-log rows, restricted to project managers and the run's initiator. {/* note: entry-8 */}
+- Added a confirmation naming the record before deletion, after which the row leaves the list. {/* note: entry-9 */}
+- Added a Delete entry action in the KV detail dialog that calls the delete endpoint and refreshes the page. {/* note: entry-10 */}
+- Added failed deletes keeping the dialog open with the reason in place, hidden entirely without permission. {/* note: entry-11 */}
+- Added a raw JSON escape hatch validating keys and types before applying, with parse errors shown in place. {/* note: entry-12 */}
 
 #### Changed
 
-- Changed public Embed to preview video attachments while preserving their media types.
-- Changed run-related views to offer only remote Server-runnable versions, reading task state from the Runner control plane.
-- Changed the execution-log, schedule, MCP, and webhook tabs to Server Web's own compact replay and parameter forms.
-- Changed the Knowledge tab document list to pagination, so scrolling to the end no longer loads more.
+- Changed public Embed to preview video attachments while preserving their media types. {/* note: entry-13 */}
+- Changed run-related views to offer only remote Server-runnable versions, reading task state from the Runner control plane. {/* note: entry-14 */}
+- Changed the execution-log, schedule, MCP, and webhook tabs to Server Web's own compact replay and parameter forms. {/* note: entry-15 */}
+- Changed the Knowledge tab document list to pagination, so scrolling to the end no longer loads more. {/* note: entry-16 */}
 
 #### Fixed
 
-- Fixed anonymous `/web` visits going to sign-in first and returning afterwards, with `?next=` accepting route names only.
+- Fixed anonymous `/web` visits going to sign-in first and returning afterwards, with `?next=` accepting route names only. {/* note: entry-17 */}

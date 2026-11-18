@@ -2,13 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
-import {
-  appendHistory,
-  assertHistoryParity,
-  assertNextParity,
-  parseNext,
-  readHistoryVersions,
-} from "../vendor/shared/release-tools/release-notes.mjs";
+import { validateReleasePair } from "../../docs/scripts/release-notes.mjs";
 
 export async function prepareRelease(options) {
   const root = path.resolve(options.root);
@@ -18,16 +12,7 @@ export async function prepareRelease(options) {
   }
 
   const manifestPath = path.join(root, "package.json");
-  const zhHistoryPath = path.join(root, "CHANGELOG.md");
-  const enHistoryPath = path.join(root, "CHANGELOG.en.md");
-  const zhNextPath = path.join(root, "CHANGELOG.next.md");
-  const enNextPath = path.join(root, "CHANGELOG.next.en.md");
-  const paths = [manifestPath, zhHistoryPath, enHistoryPath, zhNextPath, enNextPath];
-  const originals = new Map(await Promise.all(paths.map(async (filePath) => [
-    filePath,
-    await readFile(filePath, "utf8"),
-  ])));
-  const manifest = JSON.parse(originals.get(manifestPath));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!semver.valid(manifest.version) || semver.lt(version, manifest.version)) {
     throw new Error(`${version} must not be lower than ${manifest.version}.`);
   }
@@ -43,39 +28,9 @@ export async function prepareRelease(options) {
     throw new Error("Core and CLI versions must match; update the exact Core dependency before preparing the release.");
   }
 
-  const zhHistory = originals.get(zhHistoryPath);
-  const enHistory = originals.get(enHistoryPath);
-  assertHistoryParity(zhHistory, enHistory);
-  if (readHistoryVersions(zhHistory).some((release) => release.version === version)) {
-    throw new Error(`${version} already exists in CHANGELOG.md.`);
-  }
-  const zhNext = parseNext(originals.get(zhNextPath), "zh-CN");
-  const enNext = parseNext(originals.get(enNextPath), "en");
-  assertNextParity(zhNext, enNext);
-  const date = options.date ?? new Date().toISOString().slice(0, 10);
-  const updates = new Map([
-    [manifestPath, `${JSON.stringify({
-      ...manifest,
-      version,
-      peerDependencies: {
-        ...manifest.peerDependencies,
-        "steamharness": coreVersion,
-      },
-    }, null, 2)}\n`],
-    [zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body)],
-    [enHistoryPath, appendHistory(enHistory, version, date, enNext.body)],
-    [zhNextPath, "# Unreleased\n"],
-    [enNextPath, "# Unreleased\n"],
-  ]);
-
-  try {
-    for (const filePath of paths) await writeFile(filePath, updates.get(filePath), "utf8");
-  } catch (error) {
-    await Promise.all([...originals].map(([filePath, contents]) => writeFile(filePath, contents, "utf8")));
-    throw error;
-  }
-
-  return { unit: "steamharness-cli", version, tag: `steamharness/v${version}` };
+  const docsPaths = validateReleasePair(options.docsRoot ?? path.join(root, "../docs"), "cli", version);
+  await writeFile(manifestPath, `${JSON.stringify({ ...manifest, version, peerDependencies: { ...manifest.peerDependencies, steamharness: coreVersion } }, null, 2)}\n`);
+  return { docsPaths, unit: "steamharness-cli", version, tag: `steamharness/v${version}` };
 }
 
 function parseArgs(argv) {

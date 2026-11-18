@@ -12,10 +12,10 @@ description: "Release notes for Core 0.1.4."
 
 #### Breaking Changes
 
-- Electron local runs now use the `desktop` platform, and `workflow.isDesktop()` replaces `workflow.isApp()`.
+- Electron local runs now use the `desktop` platform, and `workflow.isDesktop()` replaces `workflow.isApp()`. {/* note: entry-1 */}
   Migration: pass `desktop` for local runs; the old `app` value is no longer accepted.
 
 #### Fixed
 
-- Fixed the CLI usage shown when standalone structure inspection is missing a project path.
-- Fixed runnable projects with a missing, dynamic, or legacy `projectType` config being blocked by static migration checks.
+- Fixed the CLI usage shown when standalone structure inspection is missing a project path. {/* note: entry-2 */}
+- Fixed runnable projects with a missing, dynamic, or legacy `projectType` config being blocked by static migration checks. {/* note: entry-3 */}

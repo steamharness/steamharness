@@ -12,32 +12,32 @@ description: "Release notes for Core 0.2.3."
 
 #### New Features
 
-- **Related project grants**: `projectInfo.relatedProjects` declares related projects and their manifests, enforced against both sides' current declarations on every call.
-- **OpenAI host adapter**: a `conversation.openai` adapter takes typed input through a separate `hostInput`, and AI SDK streams keep the finish reason, usage, and metadata.
+- **Related project grants**: `projectInfo.relatedProjects` declares related projects and their manifests, enforced against both sides' current declarations on every call. {/* note: entry-1 */}
+- **OpenAI host adapter**: a `conversation.openai` adapter takes typed input through a separate `hostInput`, and AI SDK streams keep the finish reason, usage, and metadata. {/* note: entry-2 */}
 
 #### Breaking Changes
 
-- Removed global KV, `kv.workflow`, and `persistentValue.workflow`; legacy scopes are not migrated automatically.
+- Removed global KV, `kv.workflow`, and `persistentValue.workflow`; legacy scopes are not migrated automatically. {/* note: entry-3 */}
   Migration: `kv.*` and `persistentValue.*` now address the current UUID project directly and keep only the `.conversation` child scope.
-- Kanban no longer accepts `dataSources` declarations, and the original bridge is gone.
+- Kanban no longer accepts `dataSources` declarations, and the original bridge is gone. {/* note: entry-4 */}
   Migration: rewrite `dataSources` as `projectInfo.relatedProjects` and reach KV through `relatedProjects.get(alias).kv`.
 
 #### Added
 
-- Added `projectInfo.relatedProjects` for declaring related projects and their grants, checked per call against both current declarations.
-- Added `context.storage.<location>.relatedProjects.get(alias).kv` for related-project KV, strictly isolating local and server locations.
-- Added a `conversation.openai` adapter for Conversation executors, receiving typed OpenAI Responses input through the separate `hostInput` channel.
-- Added `system` / `developer` message roles and the `verbosity` response-detail setting to OpenAI Responses `hostInput`.
+- Added `projectInfo.relatedProjects` for declaring related projects and their grants, checked per call against both current declarations. {/* note: entry-5 */}
+- Added `context.storage.<location>.relatedProjects.get(alias).kv` for related-project KV, strictly isolating local and server locations. {/* note: entry-6 */}
+- Added a `conversation.openai` adapter for Conversation executors, receiving typed OpenAI Responses input through the separate `hostInput` channel. {/* note: entry-7 */}
+- Added `system` / `developer` message roles and the `verbosity` response-detail setting to OpenAI Responses `hostInput`. {/* note: entry-8 */}
 
 #### Changed
 
-- Changed AI SDK streams to preserve the complete finish reason, usage, errors, and provider metadata.
-- Changed AI SDK providers to stop promoting SDK `unsupported` / `compatibility` warnings into run failures.
-- Changed downgrade details to remain in `providerMetadata["steamharness"].warnings`, while real call errors still fail.
-- Changed KV and PersistentValue to use separate storage domains, with knowledge on project PersistentValue and token totals kept per project and conversation only.
-- Changed the generator scaffold to emit an empty `projectInfo.relatedProjects` explicitly, with the API reference following the project and conversation token-accounting contract.
-- Changed the local and server data-hierarchy examples to expose separate `store` and `get` entrypoints, where `store` returns a random UUID and `get` needs only that id.
+- Changed AI SDK streams to preserve the complete finish reason, usage, errors, and provider metadata. {/* note: entry-9 */}
+- Changed AI SDK providers to stop promoting SDK `unsupported` / `compatibility` warnings into run failures. {/* note: entry-10 */}
+- Changed downgrade details to remain in `providerMetadata["steamharness"].warnings`, while real call errors still fail. {/* note: entry-11 */}
+- Changed KV and PersistentValue to use separate storage domains, with knowledge on project PersistentValue and token totals kept per project and conversation only. {/* note: entry-12 */}
+- Changed the generator scaffold to emit an empty `projectInfo.relatedProjects` explicitly, with the API reference following the project and conversation token-accounting contract. {/* note: entry-13 */}
+- Changed the local and server data-hierarchy examples to expose separate `store` and `get` entrypoints, where `store` returns a random UUID and `get` needs only that id. {/* note: entry-14 */}
 
 #### Removed
 
-- Removed the Kanban `dataSources` bridge in favor of general related-project KV.
+- Removed the Kanban `dataSources` bridge in favor of general related-project KV. {/* note: entry-15 */}

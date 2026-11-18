@@ -12,20 +12,20 @@ description: "Release notes for 开发者小助手 0.1.6."
 
 #### New Features
 
-- **Dock tab management**: the assistant reads, refreshes, and closes Dock tabs, and runs the Run or side-project inside them.
+- **Dock tab management**: the assistant reads, refreshes, and closes Dock tabs, and runs the Run or side-project inside them. {/* note: entry-1 */}
 
 #### Added
 
-- Added reading and managing existing Dock tabs, updating their content, closing them, and running Runs or side projects.
-- Added known URL, file, run, conversation, data-source, and side-project context to the same Dock open call.
+- Added reading and managing existing Dock tabs, updating their content, closing them, and running Runs or side projects. {/* note: entry-2 */}
+- Added known URL, file, run, conversation, data-source, and side-project context to the same Dock open call. {/* note: entry-3 */}
 
 #### Changed
 
-- Changed the assistant to select arguments by every Desktop MCP action contract and reuse IDs returned by state reads.
+- Changed the assistant to select arguments by every Desktop MCP action contract and reuse IDs returned by state reads. {/* note: entry-4 */}
 
 #### Fixed
 
-- Fixed initial loading ignoring the AI configuration's default model, which an earlier automatic fallback could override.
-- Fixed launching from the Home sidebar aborting on an invalid `primaryTarget.kind`; the Desktop Home workspace target is now accepted.
-- Fixed cloning falling back to `import_project`; create, clone, import, and new-project requests are now routed by intent.
-- Fixed local tool-approval resume not being deduplicated by project, run, and input request, so repeated clicks join the same execution.
+- Fixed initial loading ignoring the AI configuration's default model, which an earlier automatic fallback could override. {/* note: entry-5 */}
+- Fixed launching from the Home sidebar aborting on an invalid `primaryTarget.kind`; the Desktop Home workspace target is now accepted. {/* note: entry-6 */}
+- Fixed cloning falling back to `import_project`; create, clone, import, and new-project requests are now routed by intent. {/* note: entry-7 */}
+- Fixed local tool-approval resume not being deduplicated by project, run, and input request, so repeated clicks join the same execution. {/* note: entry-8 */}

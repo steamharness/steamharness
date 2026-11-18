@@ -32,7 +32,7 @@ export interface ServerHealthRelease {
   publishedAt: string | null;
   commitSha: string | null;
   components: Record<string, string>;
-  releaseNotes: { format: "markdown"; body: string } | null;
+  docsUrl?: string;
   source: "release-metadata" | "package-manifest";
 }
 
@@ -43,8 +43,6 @@ export interface ServerHealthData {
     coreVersion: string | null;
   };
   currentRelease: {
-    summary: string;
-    body: string;
     docsUrl: string;
   } | null;
   deployment: {

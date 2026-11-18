@@ -12,19 +12,19 @@ description: "Release notes for 开发者小助手 0.1.2."
 
 #### New Features
 
-- **Multilingual built-in project**: shows as 小助手 in Chinese and `Project Assistant` in English, with the README following the interface language.
-- **Generator project metadata reference**: the generator reference covers default names, localized names, manual declarations, and display platforms.
+- **Multilingual built-in project**: shows as 小助手 in Chinese and `Project Assistant` in English, with the README following the interface language. {/* note: entry-1 */}
+- **Generator project metadata reference**: the generator reference covers default names, localized names, manual declarations, and display platforms. {/* note: entry-2 */}
 
 #### Breaking Changes
 
-- Built-in project compatibility now uses `minDesktopVersion`; `minAppVersion` is no longer accepted and Desktop 0.1.20 is the minimum.
+- Built-in project compatibility now uses `minDesktopVersion`; `minAppVersion` is no longer accepted and Desktop 0.1.20 is the minimum. {/* note: entry-3 */}
   Migration: rename `minAppVersion` to `minDesktopVersion` in the project manifest and set 0.1.20 or later.
 
 #### Added
 
-- Added multilingual declarations to the built-in project so its names and README follow the Desktop interface language.
-- Added generator guidance for default names, localized names, manual declarations, and display platforms, leaving multilingual and multiplatform declarations unset for new projects.
+- Added multilingual declarations to the built-in project so its names and README follow the Desktop interface language. {/* note: entry-4 */}
+- Added generator guidance for default names, localized names, manual declarations, and display platforms, leaving multilingual and multiplatform declarations unset for new projects. {/* note: entry-5 */}
 
 #### Removed
 
-- Removed the `minAppVersion` field from built-in project manifests; compatibility reads `minDesktopVersion` only.
+- Removed the `minAppVersion` field from built-in project manifests; compatibility reads `minDesktopVersion` only. {/* note: entry-6 */}

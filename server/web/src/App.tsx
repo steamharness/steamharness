@@ -226,17 +226,10 @@ function AppContent() {
     const releaseAnnouncement = consumeUnseenServerRelease(health.data);
     if (releaseAnnouncement) {
       toast(releaseAnnouncement.title, {
-        description: releaseAnnouncement.summary,
-        action: releaseAnnouncement.docsUrl
-          ? {
-              label: t("appReleaseNotesViewFull"),
-              onClick: () => window.open(
-                releaseAnnouncement.docsUrl,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-            }
-          : undefined,
+        action: {
+          label: t("appReleaseNotesViewFull"),
+          onClick: () => window.open(releaseAnnouncement.docsUrl, "_blank", "noopener,noreferrer"),
+        },
       });
     }
   }

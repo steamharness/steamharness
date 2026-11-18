@@ -12,21 +12,21 @@ description: "Release notes for CLI 0.1.3."
 
 #### New Features
 
-- **Global `--locale` switch**: changes local and Workspace output and propagates to Server and the Workflow runtime.
-- **`--entrypoint` argument**: local and remote commands can pick an entrypoint and fall back to the default. See [CLI](/en/cli/steamharness).
+- **Global `--locale` switch**: changes local and Workspace output and propagates to Server and the Workflow runtime. {/* note: entry-1 */}
+- **`--entrypoint` argument**: local and remote commands can pick an entrypoint and fall back to the default. See [CLI](/en/cli/steamharness). {/* note: entry-2 */}
 
 #### Breaking Changes
 
-- Project-group packaging and downloads exclude PersistentValue data and CLI credentials and verify every package with SHA-256.
+- Project-group packaging and downloads exclude PersistentValue data and CLI credentials and verify every package with SHA-256. {/* note: entry-3 */}
   Migration: self-references, lock mismatches, and modified responses are rejected, so regenerate dependency locks.
 
 #### Added
 
-- Added a global `--locale <zh-CN|en>` switch, with projects reading it through `workflow.getRuntimeLocale()`.
-- Added `--entrypoint <id>` to local `run`, `json`, `resolve-params` and remote `run`, `debug-node`.
-- Added `structure` validating and reporting schedule suggestions by entrypoint, time zone, window, or Cron.
-- Added Workspace commands delivering and restoring Kanban project groups by exact dependency lock, without host data.
+- Added a global `--locale <zh-CN|en>` switch, with projects reading it through `workflow.getRuntimeLocale()`. {/* note: entry-4 */}
+- Added `--entrypoint <id>` to local `run`, `json`, `resolve-params` and remote `run`, `debug-node`. {/* note: entry-5 */}
+- Added `structure` validating and reporting schedule suggestions by entrypoint, time zone, window, or Cron. {/* note: entry-6 */}
+- Added Workspace commands delivering and restoring Kanban project groups by exact dependency lock, without host data. {/* note: entry-7 */}
 
 #### Changed
 
-- Changed release notes to be maintained in Chinese and English, with Docs showing the matching version per language.
+- Changed release notes to be maintained in Chinese and English, with Docs showing the matching version per language. {/* note: entry-8 */}

@@ -12,39 +12,39 @@ description: "Release notes for CLI 0.2.4."
 
 #### New Features
 
-- **Related project knowledge and entrypoints**: `--related-project` now reads a target's knowledge base and calls its granted entrypoints.
-- **Symlinked invocation fixed**: `steamharness structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs.
-- **Status shows the real server**: `workspace status` gains an `effective` field naming the server a command will actually use.
+- **Related project knowledge and entrypoints**: `--related-project` now reads a target's knowledge base and calls its granted entrypoints. {/* note: entry-1 */}
+- **Symlinked invocation fixed**: `steamharness structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs. {/* note: entry-2 */}
+- **Status shows the real server**: `workspace status` gains an `effective` field naming the server a command will actually use. {/* note: entry-3 */}
 
 #### Breaking Changes
 
-- The CLI no longer has `--web-runtime` / `--no-web-runtime`; the `web` target went with the relay and Web entry point.
+- The CLI no longer has `--web-runtime` / `--no-web-runtime`; the `web` target went with the relay and Web entry point. {/* note: entry-4 */}
   Migration: browser runs are now the Desktop home Web build, and passing either option reports that it was removed.
-- A server-located related project target hands over KV only; knowledge and entrypoint calls fail with a clear error.
+- A server-located related project target hands over KV only; knowledge and entrypoint calls fail with a clear error. {/* note: entry-5 */}
   Migration: move the target to a `local` location, or put the needed capability in a locally runnable entrypoint.
-- A local related project opens its knowledge base only with a persistent-value directory, shared with the child run.
+- A local related project opens its knowledge base only with a persistent-value directory, shared with the child run. {/* note: entry-6 */}
   Migration: pass `--persistent-value-store-dir` or set `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`.
 
 #### Added
 
-- Added video output item recognition, keeping readable links in text output and the structured descriptor in JSON output.
-- Added `--videos` reading video file references of the default conversation, with MIME inference for common paths.
-- Added runtime support for file parameters using the audio control and audio file references.
-- Added `effective` to `workspace status`, reporting the server, credential source, and precedence actually used.
-- Added related projects reading a target's knowledge base, authorized per key by `grantToRelatedProject`.
-- Added related projects calling granted entrypoints, taking the arguments that entrypoint's `createInput` parses.
-- Added `structure` preserving optional Workflow entrypoint `group` display metadata.
+- Added video output item recognition, keeping readable links in text output and the structured descriptor in JSON output. {/* note: entry-7 */}
+- Added `--videos` reading video file references of the default conversation, with MIME inference for common paths. {/* note: entry-8 */}
+- Added runtime support for file parameters using the audio control and audio file references. {/* note: entry-9 */}
+- Added `effective` to `workspace status`, reporting the server, credential source, and precedence actually used. {/* note: entry-10 */}
+- Added related projects reading a target's knowledge base, authorized per key by `grantToRelatedProject`. {/* note: entry-11 */}
+- Added related projects calling granted entrypoints, taking the arguments that entrypoint's `createInput` parses. {/* note: entry-12 */}
+- Added `structure` preserving optional Workflow entrypoint `group` display metadata. {/* note: entry-13 */}
 
 #### Changed
 
-- Changed project-group `workspace upload` to return `202` with a `jobId` and poll deployment status instead of waiting.
-- Changed model effort levels to converge on what the model declares, with the usage denominator taken from its real window.
-- Changed host image references to be resolved through the workflow file store before reaching the model, failing loudly.
-- Changed remote runs to use the Runner artifact and image digests captured at enqueue time, unaffected by later uploads.
+- Changed project-group `workspace upload` to return `202` with a `jobId` and poll deployment status instead of waiting. {/* note: entry-14 */}
+- Changed model effort levels to converge on what the model declares, with the usage denominator taken from its real window. {/* note: entry-15 */}
+- Changed host image references to be resolved through the workflow file store before reaching the model, failing loudly. {/* note: entry-16 */}
+- Changed remote runs to use the Runner artifact and image digests captured at enqueue time, unaffected by later uploads. {/* note: entry-17 */}
 
 #### Fixed
 
-- Fixed the CLI no longer running as a silent no-op through a symlink, comparing `process.argv[1]` in both forms.
-- Fixed a related project's storage root and its child run always landing on the same directory.
-- Fixed a failed related-entrypoint call raising that entrypoint's own error instead of reading as an empty result.
-- Fixed related-entrypoint calls no longer requiring a locally-stored target, so `server` entrypoints reach the server.
+- Fixed the CLI no longer running as a silent no-op through a symlink, comparing `process.argv[1]` in both forms. {/* note: entry-18 */}
+- Fixed a related project's storage root and its child run always landing on the same directory. {/* note: entry-19 */}
+- Fixed a failed related-entrypoint call raising that entrypoint's own error instead of reading as an empty result. {/* note: entry-20 */}
+- Fixed related-entrypoint calls no longer requiring a locally-stored target, so `server` entrypoints reach the server. {/* note: entry-21 */}

@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { validateReleasePair, verifyReleaseNoteLinks } from "../../docs/scripts/release-notes.mjs";
 import {
   assertDirectory,
   loadProductionEnv,
@@ -88,12 +89,9 @@ export async function createStableReleaseDefinition(options) {
   const publishedAt = normalizeTimestamp(options.publishedAt);
   const commitSha = normalizeCommit(options.commitSha);
   const deploymentId = createStableDeploymentId({ serverVersion, serverWebVersion, commitSha });
-  const [serverZh, serverEn, serverWebZh, serverWebEn] = await Promise.all([
-    readReleaseNotes(path.join(repoRoot, "CHANGELOG.md"), serverVersion),
-    readReleaseNotes(path.join(repoRoot, "CHANGELOG.en.md"), serverVersion),
-    readReleaseNotes(path.join(repoRoot, "web", "CHANGELOG.md"), serverWebVersion),
-    readReleaseNotes(path.join(repoRoot, "web", "CHANGELOG.en.md"), serverWebVersion),
-  ]);
+  const docsRoot = options.docsRoot ?? path.join(repoRoot, "../docs");
+  const serverPaths = validateReleasePair(docsRoot, "server", serverVersion);
+  const serverWebPaths = validateReleasePair(docsRoot, "server-web", serverWebVersion);
   const sharedComponents = { core: coreVersion, cli: cliVersion };
 
   return {
@@ -110,8 +108,7 @@ export async function createStableReleaseDefinition(options) {
         publishedAt,
         deploymentId,
         components: sharedComponents,
-        zh: serverZh,
-        en: serverEn,
+        docsPaths: serverPaths,
       }),
       "server-web": createReleaseMetadata({
         unit: "server-web",
@@ -120,8 +117,7 @@ export async function createStableReleaseDefinition(options) {
         publishedAt,
         deploymentId,
         components: { ...sharedComponents, server: serverVersion },
-        zh: serverWebZh,
-        en: serverWebEn,
+        docsPaths: serverWebPaths,
       }),
     },
   };
@@ -134,7 +130,12 @@ export async function deployStableRelease(options) {
     version: options.version,
     commitSha: options.commitSha,
     publishedAt: options.publishedAt,
+    docsRoot: options.docsRoot,
   });
+  const docsOrigin = options.env?.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? "https://docs.steamharness.yuhe.space";
+  for (const release of Object.values(definition.releases)) {
+    await (options.verifyDocs ?? verifyReleaseNoteLinks)(docsOrigin, release.docsPaths);
+  }
   if (options.verifyTags !== false) {
     const listTags = options.listRemoteTags ?? listRemoteTags;
     const targets = parseRemoteTagTargets(await listTags({
@@ -327,24 +328,8 @@ function createReleaseMetadata(options) {
     publishedAt: options.publishedAt,
     deploymentId: options.deploymentId,
     components: options.components,
-    releaseNotes: {
-      format: "markdown",
-      body: options.zh,
-      localizations: {
-        "zh-CN": { format: "markdown", body: options.zh },
-        en: { format: "markdown", body: options.en },
-      },
-    },
+    docsPaths: options.docsPaths,
   };
-}
-
-async function readReleaseNotes(filePath, version) {
-  const contents = (await readFile(filePath, "utf8")).replace(/\r\n?/gu, "\n");
-  const escaped = version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const match = contents.match(new RegExp(`^## ${escaped} - [^\\n]+\\n+([\\s\\S]*?)(?=^## |$)`, "mu"));
-  const body = match?.[1]?.trim();
-  if (!body) throw new Error(`${path.basename(filePath)} has no ${version} release notes.`);
-  return body;
 }
 
 async function assertPackagedStableRelease(root) {
