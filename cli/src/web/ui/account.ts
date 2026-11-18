@@ -34,12 +34,11 @@ export class AccountPanel {
       <header><span class="codicon codicon-account" aria-hidden="true"></span><h2 id="account-title">${t("SteamHarness Account")}</h2><button id="close-account" type="button" class="icon-button" title="${t("Close account")}" aria-label="${t("Close account")}">${iconHtml('close')}</button></header>
       <div class="dialog-body account-body">
         <div id="account-status" role="status"></div>
-        <form id="login-form">
-          <label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
-          <p>${t("Continue in your browser to sign in, register or recover your account.")}</p>
+        <div id="account-sign-in" class="account-actions">
+          <button id="login-submit" type="button" class="account-primary" disabled>${iconHtml('link-external')}<span>${t("Browser sign-in")}</span></button>
+          <button id="login-cancel" type="button" hidden>${t("Cancel sign-in")}</button>
           <a id="browser-login-link" target="_blank" rel="noopener noreferrer" hidden>${t("Open sign-in page")}</a>
-          <div class="account-actions"><button id="login-submit" type="submit" class="account-primary">${iconHtml('link-external')}<span>${t("Browser sign-in")}</span></button><button id="login-cancel" type="button" hidden>${t("Cancel sign-in")}</button></div>
-        </form>
+        </div>
         <section id="account-profile" hidden>
           <div class="account-identity"><span class="account-avatar"></span><div><h3 id="account-display-name"></h3><div id="account-email" class="account-muted"></div></div></div>
           <dl><dt>${t("Server")}</dt><dd id="account-server"></dd><dt>${t("Validity")}</dt><dd id="account-expiry"></dd></dl>
@@ -50,13 +49,13 @@ export class AccountPanel {
     document.body.append(this.dialog);
     this.element<HTMLButtonElement>('#close-account').addEventListener('click', () => this.dialog.close());
     this.dialog.addEventListener('close', () => { (this.returnFocus?.isConnected ? this.returnFocus : this.button).focus({ preventScroll: true }); });
-    this.element<HTMLFormElement>('#login-form').addEventListener('submit', event => {
-      event.preventDefault();
-      if (this.pending || !this.element<HTMLFormElement>('#login-form').reportValidity()) { return; }
-      this.loginServerUrl = this.element<HTMLInputElement>('#server-url').value;
+    this.element<HTMLButtonElement>('#login-submit').addEventListener('click', () => {
+      const serverUrl = this.state?.serverUrl;
+      if (this.pending || !serverUrl) { return; }
+      this.loginServerUrl = serverUrl;
       this.browserWindow = window.open('about:blank', '_blank');
       if (this.browserWindow) this.browserWindow.opener = null;
-      void this.perform({ type: 'login', serverUrl: this.element<HTMLInputElement>('#server-url').value });
+      void this.perform({ type: 'login', serverUrl });
     });
     this.element<HTMLButtonElement>('#login-cancel').addEventListener('click', () => void this.perform({type:'cancel-login'}));
     this.element<HTMLButtonElement>('#verify-login').addEventListener('click', () => { if (!this.pending) { void this.perform({ type: 'verify' }); } });
@@ -89,17 +88,15 @@ export class AccountPanel {
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
     for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) { updateUserAvatar(avatar, state); }
     const signingIn = !!state.signIn || !!this.loginServerUrl;
-    this.element<HTMLFormElement>('#login-form').hidden = signedIn && !signingIn;
+    this.element('#account-sign-in').hidden = signedIn && !signingIn;
     this.element<HTMLElement>('#account-profile').hidden = !signedIn;
-    const server = this.element<HTMLInputElement>('#server-url');
-    if (!server.value || signedIn && !signingIn && document.activeElement !== server) { server.value = state.serverUrl; }
-    this.dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, #login-submit, #browser-login, #verify-login, #account-logout').forEach(element => { element.disabled = this.pending; });
+    this.dialog.querySelectorAll<HTMLButtonElement>('#login-submit, #verify-login, #account-logout').forEach(element => { element.disabled = this.pending; });
     this.element('#login-submit > span:last-child').textContent = this.pending ? t("Waiting for browser sign-in...") : t("Browser sign-in");
     this.element<HTMLButtonElement>('#login-cancel').hidden = !signingIn;
     const link = this.element<HTMLAnchorElement>('#browser-login-link'); link.hidden = true;
     if (state.signIn) { try {
       const url = new URL(state.signIn.url);
-      const target = new URL(normalizeAuthServer(this.loginServerUrl || server.value));
+      const target = new URL(normalizeAuthServer(this.loginServerUrl || state.serverUrl));
       if (url.origin === target.origin && url.pathname === target.pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) {
         link.href = url.href; link.hidden = false;
         if (this.browserWindow && !this.browserWindow.closed) { this.browserWindow.location.replace(url.href); this.browserWindow = undefined; }

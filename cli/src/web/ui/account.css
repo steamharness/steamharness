@@ -9,12 +9,6 @@
 .account-body { padding: 24px; font-size: 13px; line-height: 1.6; }
 .account-body #account-status { margin-bottom: 24px; color: var(--muted); }
 .account-body #account-status.connected { color: var(--vscode-testing-iconPassed, #16825d); }
-.account-body form { display: grid; gap: 8px; }
-.account-body form > label:not(:first-child) { margin-top: 12px; }
-.account-body input { width: 100%; height: 36px; padding: 6px 10px; }
-.account-password { position: relative; }
-.account-password input { padding-right: 40px; }
-.account-password .icon-button { position: absolute; right: 2px; top: 2px; width: 32px; height: 32px; }
 .account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 .account-primary, .account-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 6px 12px; border: none; border-radius: 4px; }
 .account-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }

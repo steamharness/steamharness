@@ -1026,7 +1026,6 @@
   "Update memory": "改记忆",
   "Delete memory": "删记忆",
   "Share categorized memories across conversations in this Bot. Turning memory off preserves saved entries. Changes apply on the next execution.": "在此 Bot 的会话间共享分类记忆。关闭后保留已存条目，修改在下次执行生效。",
-  "Continue in your browser to sign in, register or recover your account.": "在浏览器中登录、注册或找回账号。",
   "Open sign-in page": "打开登录网页",
   "Cancel sign-in": "取消登录",
   "Waiting for browser sign-in...": "等待浏览器登录…",
