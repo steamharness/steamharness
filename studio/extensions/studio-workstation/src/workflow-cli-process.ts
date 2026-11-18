@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
@@ -219,7 +220,31 @@ export async function startProjectCli(options: {
     void refreshWebApps(options.connection);
     child.stdout?.resume();
     child.on('error', () => void close());
+    // The browser session URL does not grant access to private trace details.
+    const pendingTrace = new Map<string, (request?: unknown) => void>();
+    if (ready.traceModelRequestProtocolVersion === 1) {
+      const lines = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+      lines.on('line', line => {
+        if (!line.startsWith('{')) return;
+        try {
+          const reply = JSON.parse(line);
+          if (reply.type === 'trace-model-request') pendingTrace.get(reply.requestId)?.(reply.request);
+        } catch { /* Other CLI output is not a trace reply. */ }
+      });
+      child.once('close', () => {
+        lines.close();
+        for (const settle of pendingTrace.values()) settle();
+      });
+    }
     return { ready, closed, close,
+      readModelRequest: ready.traceModelRequestProtocolVersion !== 1 ? undefined : (entryId, target) => new Promise(resolve => {
+        if (closing || finished || !child.stdin?.writable) { resolve(undefined); return; }
+        const requestId = globalThis.crypto.randomUUID();
+        const settle = (request?: unknown) => { clearTimeout(timer); pendingTrace.delete(requestId); resolve(request); };
+        const timer = setTimeout(settle, 10_000);
+        pendingTrace.set(requestId, settle);
+        child.stdin.write(`${JSON.stringify({ ...target, type: 'trace-model-request', requestId, entryId })}\n`, error => { if (error) settle(); });
+      }),
       updateUserSettings: settings => {
         if (closing || finished || ready.userSettingsProtocolVersion !== 1) { return; }
         const key = JSON.stringify(settings);

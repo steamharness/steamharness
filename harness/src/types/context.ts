@@ -12,6 +12,9 @@ import type { TimerContext } from "../timer/index";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 import type { NodeMetadata } from "./node";
 import type { ParamDefinition } from "../executor/types";
+import type { LLMBotModelRequestSnapshot } from "../provider/llm/request-trace";
+
+export type { LLMBotModelRequestSnapshot } from "../provider/llm/request-trace";
 
 export interface ProviderRegistry {
   llm?: LLMProvider;
@@ -78,6 +81,8 @@ export interface UserInputContext {
 }
 
 export interface NodeExecutionHooks {
+  /** Opt-in host-only diagnostic for a dispatched LLM Bot call. Not a report event. */
+  onLLMBotModelRequest?(request: LLMBotModelRequestSnapshot): Promise<void> | void;
   onNodeStart?(
     event: NodeExecutionHookStartEvent,
   ): Promise<void> | void;

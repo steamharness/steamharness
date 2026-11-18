@@ -434,8 +434,13 @@ export class ConversationController {
     try {
       await this.persist();
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
-      const report = await this.runtime.run(request, (event) => {
+      const llmBot = this.project.conversation?.engine === 'llm';
+      let modelExecutionId: string | undefined;
+      const onEvent = (event: Record<string, unknown>) => {
         if (task.cancelled || this.disposed || this.tasks.get(answer.runId!) !== task) { return; }
+        const metadata = event.metadata as { type?: unknown; title?: unknown } | undefined;
+        if (llmBot && event.type === 'node_started' && metadata?.type === 'llm-stream' && metadata.title === 'bot-llm-answer'
+          && typeof event.executionId === 'string') { modelExecutionId = event.executionId; }
         const chunk = event.type === 'node_chunk' ? event.chunk as any : undefined;
         const sessionFrame = chunk?.item?.metadata?.kind === 'agent-session' || chunk?.itemId === 'agent-session';
         // Full session frames already live in entry.agent; retaining each frame grows every saved trace.
@@ -475,7 +480,14 @@ export class ConversationController {
           answer.timers = [...(answer.timers ?? []).filter((entry) => entry.timerId !== timer.timerId), timer];
         }
         this.changed();
-      });
+      };
+      const report = await (llmBot ? this.runtime.run(request, onEvent, snapshot => {
+        if (this.disposed || this.tasks.get(answer.runId!) !== task || !modelExecutionId) return;
+        // Only a dispatch replaces the previous attempt. Replaying an already
+        // saved answer to finish onCompleted never emits a model request.
+        answer.modelRequest = { executionId: modelExecutionId, snapshot };
+        this.changed();
+      }) : this.runtime.run(request, onEvent));
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
       if (report.status === 'waiting_for_input' && report.pendingUserInput) {
         const target = this.bindUserInput(entry, answer, report.pendingUserInput);

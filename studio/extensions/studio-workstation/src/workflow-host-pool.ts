@@ -63,6 +63,10 @@ export class AggregateWebHostPool {
         updateAuth: connection => current.updateAuth(connection),
         updateUserSettings: settings => current.updateUserSettings(settings),
         updateResourceProjects: projects => current.updateResourceProjects(projects),
+        get readModelRequest(): WebSession['readModelRequest'] {
+          const read = current.readModelRequest;
+          return released || !read ? undefined : (entryId, target) => entryId === project.entryId ? read(entryId, target) : Promise.resolve(undefined);
+        },
         onReconnect: callback => current.onReconnect(callback),
         onExit: callback => current.onExit(callback),
       };

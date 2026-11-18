@@ -4,6 +4,8 @@ import { readOpenAIConversationHostInput, type OpenAIConversationHostInput } fro
 import type { BotExecutorDefinition, BotParamDeclaration, ConversationDefinition, ExecutorContext } from "../executor/types";
 import { createOutputNode, createOutputPayload, type OutputItem } from "../node/output/index";
 import { createLLMProvider, type LLMImagePart, type LLMMessage, type LLMProvider, type LLMUsage } from "../provider/llm/index";
+import { observeLLMBotModelRequest } from "../provider/llm/request-trace";
+import type { LLMChatInput } from "../provider/llm/types";
 import type { NodeContext } from "../types/index";
 import { defineProject, runStreamNode } from "../workflow/index";
 import { HarnessError } from "../workflow/errors";
@@ -93,14 +95,21 @@ export function createLLMBot<Input extends AgentInput>(
       const host = readOpenAIConversationHostInput({ hostInput: input.hostInput });
       const messages = host ? hostHistory(host, current) : [...completedHistory(state.messages), current];
       const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions].filter(Boolean).join("\n\n") || undefined;
-      const node = createOutputNode<AgentInput, AgentOutputPayload>({ name: NODE,
+      // The ordinary node input is reported even when private model diagnostics are off.
+      const nodeInput = { errCode: finalInput.errCode, errMessage: finalInput.errMessage, prompt: finalInput.prompt, requestId,
+        provider: finalInput.provider, model: finalInput.model, images: finalInput.images?.map(({ mimeType }) => ({ mimeType })) };
+      const node = createOutputNode<typeof nodeInput, AgentOutputPayload>({ name: NODE, metadata: { type: "llm-stream" },
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
           let finished = false;
-          for await (const chunk of route.provider.stream({ messages, system,
+          const request: LLMChatInput = { messages, system,
             temperature: host?.settings.temperature ?? llm.temperature,
             maxOutputTokens: host?.settings.maxOutputTokens ?? llm.maxOutputTokens,
-            topP: host?.settings.topP, maxRetries: 0, abortSignal: nodeContext.abortSignal })) {
+            topP: host?.settings.topP, maxRetries: 0, abortSignal: nodeContext.abortSignal };
+          if (nodeContext.nodeHooks?.onLLMBotModelRequest) {
+            observeLLMBotModelRequest(request, { provider: route.id, publish: snapshot => nodeContext.nodeHooks?.onLLMBotModelRequest?.(snapshot) });
+          }
+          for await (const chunk of route.provider.stream(request)) {
             if (chunk.type === "text-delta") yield { type: "output_item_delta", itemId: AGENT_ANSWER_ITEM_ID, delta: chunk.text };
             else if (chunk.finishReason === "stop" || chunk.finishReason === "length") {
               finished = true;
@@ -114,7 +123,7 @@ export function createLLMBot<Input extends AgentInput>(
         },
         format(stream) { return makeOutput(finalInput.prompt, route.id, route.model, stream.items); },
       });
-      const result = await runStreamNode(node, finalInput, context);
+      const result = await runStreamNode(node, nodeInput, context);
       output = result.output!;
       context.abortSignal?.throwIfAborted();
       const item = output.items.find(item => item.id === AGENT_ANSWER_ITEM_ID)!;

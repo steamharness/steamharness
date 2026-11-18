@@ -16,6 +16,7 @@ it.each(['agent', 'llm'] as const)('%s Bot uses project models in standalone Web
   const directory = await mkdtemp(path.join(os.tmpdir(), 'model-source-fallback-'));
   const projectId = crypto.randomUUID(), configurationKey = createHash('sha256').update(`${projectId}:main`).digest('hex');
   const calls: { model: string; key?: string }[] = [];
+  const systemPrompt = 'Private instructions saved at dispatch';
   let app: Awaited<ReturnType<typeof startEntryWebServer>> | undefined;
   const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
@@ -37,12 +38,14 @@ it.each(['agent', 'llm'] as const)('%s Bot uses project models in standalone Web
 
       export const executor = steamharness.defineBot({
         engine: '${engine}',
-        ${engine === 'agent' ? "agent: { modelSource: 'user-settings', tools: [] }" : 'llm: {}'},
+        ${engine === 'agent' ? "agent: { modelSource: 'user-settings', tools: [] }" : `llm: { systemPrompt: ${JSON.stringify(systemPrompt)} }`},
       });
     `);
-    app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
-    const token = new URL(app.url).hash.slice('#session='.length);
+    const dataDir = testDataDirectory(directory);
+    const webHost = { surface: 'editor' as const, connection: { serverUrl: origin, accessToken: 'fixture-account' } };
+    app = await startEntryWebServer({ projectDir: directory, dataDir, host: webHost });
     const post = async (message: object) => {
+      const token = new URL(app!.url).hash.slice('#session='.length);
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
       const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
     };
@@ -87,6 +90,35 @@ it.each(['agent', 'llm'] as const)('%s Bot uses project models in standalone Web
     ]);
     expect(JSON.stringify(app.project)).not.toContain('fixture-project-key');
     expect(JSON.stringify(await post({ type: 'ready' }))).not.toContain('fixture-host-key');
+    if (engine === 'llm') {
+      await app.controller.idle();
+      const sessionId = app.controller.current.id;
+      const { id: messageId, modelRequest } = app.controller.current.messages.filter(message => message.role === 'assistant')[1]!;
+      const executionId = modelRequest!.executionId;
+      const trace = app.readModelRequest(sessionId, messageId!, executionId);
+      expect(trace).toMatchObject({ systemPrompt, provider: 'host', model: 'host-model', messages: [
+        { role: 'user', content: 'Standalone' }, { role: 'assistant', content: 'Answer project-model' }, { role: 'user', content: 'Studio' },
+      ] });
+      expect(app.readModelRequest('another-session', messageId!, executionId)).toBeUndefined();
+      expect(app.readModelRequest(sessionId, messageId!, 'another-attempt')).toBeUndefined();
+      const publicState = await post({ type: 'ready' });
+      expect(JSON.stringify(publicState)).not.toContain(systemPrompt);
+      expect(publicState[0].sessions.find((session: any) => session.id === sessionId).messages.find((message: any) => message.id === messageId).modelRequestExecutionId).toBe(executionId);
+      const exports = [await post({ type: 'session-action', action: 'export', id: sessionId }), await post({ type: 'export-message', sessionId, messageId })];
+      expect(exports.every(messages => messages.some((message: any) => message.type === 'download'))).toBe(true);
+      expect(JSON.stringify(exports)).not.toContain(systemPrompt);
+      const denied = await fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}` },
+        body: JSON.stringify({ type: 'trace-model-request', sessionId, messageId, executionId }) });
+      expect(denied.status).toBe(400);
+
+      await app.close();
+      app = await startEntryWebServer({ projectDir: directory, dataDir });
+      expect(app.readModelRequest(sessionId, messageId!, executionId)).toBeUndefined();
+      await app.close();
+      app = await startEntryWebServer({ projectDir: directory, dataDir, host: webHost });
+      expect(app.readModelRequest(sessionId, messageId!, executionId)).toEqual(trace);
+      expect(calls).toHaveLength(3);
+    }
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });

@@ -4,6 +4,7 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { HarnessError } from "../../workflow/errors";
 import type { CreateLLMProviderOptions } from "./factory";
+import { modelRequestGeneration, readModelRequestObserver, snapshotLLMBotModelRequest, type LLMBotModelRequestSnapshot } from "./request-trace";
 import type { LLMChatInput, LLMChatOutput, LLMProvider, LLMStreamChunk, LLMUsage } from "./types";
 
 const APIS = {
@@ -68,6 +69,9 @@ export class PiAiLLMProvider implements LLMProvider {
 
   private prepare(input: LLMChatInput) {
     const settings = { ...this.options.defaults, ...input };
+    const observer = readModelRequestObserver(input);
+    let recorded = false;
+    let generation: LLMBotModelRequestSnapshot["generation"] = {};
     const timestamp = Date.now();
     const context: Context = { systemPrompt: input.system ?? this.options.system, messages: [] };
     for (const message of input.messages ?? [{ role: "user" as const, content: input.prompt }]) {
@@ -88,11 +92,21 @@ export class PiAiLLMProvider implements LLMProvider {
     const options: SimpleStreamOptions = {
       signal: settings.abortSignal, temperature: settings.temperature, maxTokens: settings.maxOutputTokens,
       maxRetries: settings.maxRetries ?? 0, timeoutMs: settings.timeout, headers: settings.headers,
-      fetch: async (input, init) => {
+      fetch: async (resource, init) => {
         state.credentialError = undefined;
         state.status = undefined;
         try {
-          const response = await (this.options.fetch ?? fetch)(input, init);
+          const pending = (this.options.fetch ?? fetch)(resource, init);
+          if (observer && !recorded && !settings.abortSignal?.aborted) {
+            recorded = true;
+            try {
+              const snapshot = snapshotLLMBotModelRequest(input, {
+                provider: observer.provider, model: this.model.id, api: this.model.api, systemPrompt: context.systemPrompt, generation,
+              }, this.options.apiKey);
+              void Promise.resolve(observer.publish(snapshot)).catch(() => undefined);
+            } catch { /* A diagnostic must not change the model call. */ }
+          }
+          const response = await pending;
           state.status = response.status;
           return response;
         } catch (error) {
@@ -121,6 +135,7 @@ export class PiAiLLMProvider implements LLMProvider {
           body.tools = this.options.type === "anthropic" ? [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }]
             : [{ type: "web_search", search_context_size: "medium" }];
         }
+        if (observer) generation = modelRequestGeneration(body);
         return body;
       },
     };

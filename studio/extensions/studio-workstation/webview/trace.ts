@@ -2,7 +2,7 @@ import { t, locale } from './localization';
 import './resources.css';
 import './trace.css';
 import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, traceClock, type TraceRow, type TraceLane } from './trace-model';
-import type { TracePanelState, TraceTarget } from '../src/workflow-trace-types';
+import type { TraceModelRequestTarget, TracePanelState, TraceTarget } from '../src/workflow-trace-types';
 import { TraceAgentView, type AgentTab } from './trace-agent';
 import { agentSession } from './trace-agent-model';
 import { installContextMenu, type ContextAction } from './context-menu';
@@ -39,7 +39,8 @@ type Tab = 'trace' | AgentTab;
 let tab: Tab = tabs.some(([id]) => id === saved.tab) ? saved.tab as Tab : 'trace';
 let reveal = 0;
 let query = '', key = '', rows: TraceRow[] = [];
-const views = new Map<string, { root: HTMLDetailsElement; signature: string }>();
+interface ModelRequestView { root: HTMLDetailsElement; content: HTMLPreElement; pending?: string; loaded?: boolean }
+const views = new Map<string, { root: HTMLDetailsElement; signature: string; model?: ModelRequestView }>();
 const post = (message: Record<string, unknown>) => { if (state) { host.postMessage({ generation: state.generation, projectUri: state.selection.projectUri, ...message }); } };
 const agent = new TraceAgentView(element('trace-agent'), element('trace-actions'), action => post({ type: 'agent-action', action }), text => post({ type: 'copy', text }));
 installContextMenu(host, (target, copy) => {
@@ -144,6 +145,20 @@ function timeline(filtered: TraceRow[]): void {
   }
   if (focused) Array.from(target.querySelectorAll<HTMLButtonElement>('[data-row-id]')).find(button => button.dataset.rowId === focused)?.focus({ preventScroll: true });
 }
+function modelRequestView(target: TraceModelRequestTarget): ModelRequestView {
+  const root = document.createElement('details'); root.className = 'trace-model-request';
+  const summary = document.createElement('summary'); summary.textContent = t('Model request');
+  const content = document.createElement('pre'); root.append(summary, content);
+  const view: ModelRequestView = { root, content };
+  root.ontoggle = () => {
+    if (!root.open || !root.isConnected || view.pending || view.loaded) return;
+    view.pending = globalThis.crypto.randomUUID();
+    root.setAttribute('aria-busy', 'true');
+    content.textContent = t('Loading model request...');
+    post({ type: 'model-request', target, requestId: view.pending });
+  };
+  return view;
+}
 function renderRow(row: TraceRow): HTMLDetailsElement {
   let view = views.get(row.id);
   if (!view) { const root = document.createElement('details'); root.className = 'trace-row'; root.dataset.rowId = row.id; view = { root, signature: '' }; views.set(row.id, view); }
@@ -167,6 +182,10 @@ function renderRow(row: TraceRow): HTMLDetailsElement {
     const heading = document.createElement('h3'); heading.textContent = section.label;
     const content = document.createElement('pre'); content.textContent = section.value; if (section.error) { content.className = 'trace-error'; } detail.append(heading, content);
   }
+  if (row.modelRequest && state?.modelRequests) {
+    view.model ??= modelRequestView(row.modelRequest);
+    detail.append(view.model.root);
+  } else { view.model = undefined; }
   view.root.replaceChildren(summary, detail); if (focused) { summary.focus({ preventScroll: true }); } return view.root;
 }
 function preferences(): void {
@@ -175,7 +194,7 @@ function preferences(): void {
 }
 function renderTrace(): void {
   if (!state) { return; }
-  const nextKey = JSON.stringify(state.selection);
+  const nextKey = JSON.stringify([state.generation, state.selection, state.selection.sessionId ?? state.snapshot?.activeId, state.modelRequests]);
   if (key !== nextKey) { key = nextKey; views.clear(); element('trace-list').replaceChildren(); scroll.scrollTop = 0; }
   rows = traceRows(state.snapshot, state.selection, state.run);
   const filtered = filterTraceRows(rows, query, mode), ids = new Set(filtered.map(row => row.id));
@@ -243,6 +262,17 @@ element('trace-follow').onclick = () => { follow = !follow; render(); };
 element('trace-connect').onclick = () => post({ type: 'connect' }); element('trace-more').onclick = () => post({ type: 'more' });
 let renderFrame: number | undefined;
 addEventListener('message', event => {
+  if (event.data?.type === 'trace-model-request') {
+    if (!state?.modelRequests || event.data.generation !== state.generation || typeof event.data.requestId !== 'string') return;
+    const model = [...views.values()].find(view => view.model?.pending === event.data.requestId)?.model;
+    if (model) {
+      model.pending = undefined;
+      model.loaded = Boolean(event.data.request);
+      model.root.removeAttribute('aria-busy');
+      model.content.textContent = model.loaded ? JSON.stringify(event.data.request, null, 2) : t('Model request unavailable.');
+    }
+    return;
+  }
   if (event.data?.type !== 'trace-state' || typeof event.data.generation !== 'number' || state && event.data.generation < state.generation) return;
   state = event.data;
   if (renderFrame === undefined) renderFrame = requestAnimationFrame(() => { renderFrame = undefined; render(); });

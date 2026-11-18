@@ -1002,6 +1002,7 @@ const classifyNode = steamharness.createLLMNode<Input, JudgmentPayload>({
 Bot 用 `steamharness.defineBot()` 声明。必须显式选择 `engine: "agent"` 或 `engine: "llm"`。两者返回 `BotExecutorDefinition`（`projectType: "bot"`）、输出 `AgentOutputPayload`，最终正文项固定为 `agent-answer`。不接受自定义 `workflow`、`coreAgent`、`createInput`、`tokenUsage` 或 `outputItemId`。
 
 - `engine: "llm"` 要求 `llm: { systemPrompt?, modelSource?, model?, temperature?, maxOutputTokens? }`。使用现有的 Studio 用户模型和 CLI Web 项目模型配置；不传 `agent`、`tools` 或 `memory`。每轮只请求一次模型，不运行工具、联网搜索或加载项目记忆。
+- 本地调试宿主可给 `runLocalProjectWithReport()` 传 `nodeHooks.onLLMBotModelRequest(snapshot)`，在调用发起时读取本轮模型上下文和生成参数。它不是 Bot 项目选项；快照不含图片数据或鉴权信息，也不进入普通报告或事件。不要把系统提示词与历史直接暴露给公开客户端。
 - 两种引擎都有 `prepareInput` 和 `onCompleted`。LLM 答复先按 `requestId` 保存；重试只补跑失败的完成回调，不重调已完成的模型请求。模型断流则由用户手动重试。
 
 以下 Agent 配置只适用于 `engine: "agent"`。

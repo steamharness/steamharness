@@ -3,8 +3,9 @@ import { ConversationController } from '../web/conversation-controller';
 import { composerOutputItems } from '../web/ui/output-display';
 import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
-function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
+function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}, conversation?: Project['conversation']) {
   const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'bot', fields: [], entrypoints: [] };
+  project.conversation = conversation;
   const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
     uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(),
@@ -16,6 +17,33 @@ function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
   });
   return { controller, runtime, save };
 }
+
+it('updates an LLM Bot snapshot only when a retry dispatches another model call', async () => {
+  const { controller, runtime, save } = fixture({}, { engine: 'llm' });
+  const node = { type: 'node_started', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } };
+  const snapshot = { provider: 'test', model: 'first', api: 'openai-completions', messages: [], generation: {} };
+  vi.mocked(runtime.run).mockImplementationOnce(async (_request, emit, capture) => {
+    emit({ ...node, executionId: 'first' });
+    capture!(snapshot);
+    return { status: 'failed' }; // Stream interrupted; retry has to dispatch again.
+  }).mockImplementationOnce(async (_request, emit, capture) => {
+    emit({ ...node, executionId: 'second' });
+    capture!({ ...snapshot, model: 'second' });
+    return { status: 'failed' }; // The model answered; only onCompleted still needs to run.
+  }).mockResolvedValueOnce({ status: 'success' });
+  try {
+    await controller.send({ text: 'Run', params: {}, attachments: [] }); await controller.idle();
+    const answer = controller.current.messages.at(-1)!;
+    expect(answer.modelRequest).toEqual({ executionId: 'first', snapshot });
+    await controller.retry(answer.id!); await controller.idle();
+    const retried = { executionId: 'second', snapshot: { ...snapshot, model: 'second' } };
+    expect(answer.modelRequest).toEqual(retried);
+    await controller.retry(answer.id!); await controller.idle();
+    expect(answer).toMatchObject({ status: 'success', modelRequest: retried });
+    expect(save.mock.lastCall?.[0][0].messages.at(-1)?.modelRequest).toEqual(retried);
+    expect(controller.current.messages).toHaveLength(2);
+  } finally { controller.dispose(); }
+});
 
 it('automatically resumes the same recoverable run after project readiness is restored', async () => {
   let ready = true;

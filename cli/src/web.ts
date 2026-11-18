@@ -63,7 +63,7 @@ export async function main(argv: string[]): Promise<number> {
   const app = await startWebServer({ ...options, host }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, entriesProtocolVersion: 1, traceProtocolVersion: 1, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -77,6 +77,12 @@ export async function main(argv: string[]): Promise<number> {
           else if (message.type === 'web-apps') { await app.setHostWebApps(parseWebAppBindings(message.webApps)); }
           else if (message.type === 'resource-projects') { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); }
           else if (message.type === 'user-settings') { await app.setHostUserSettings(parseUserSettings(message.userSettings)); }
+          else if (message.type === 'trace-model-request' && host?.surface === 'editor') {
+            const { requestId, entryId, sessionId, messageId, executionId } = message;
+            if ([requestId, entryId, sessionId, messageId, executionId].every(id => typeof id === 'string' && id.length > 0 && id.length <= 256)) {
+              console.log(JSON.stringify({ type: 'trace-model-request', requestId, request: app.readModelRequest(entryId, sessionId, messageId, executionId) }));
+            }
+          }
           else if (message.type === 'close') { break; }
           else { throw new Error('Unknown web host message.'); }
         }

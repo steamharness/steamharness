@@ -3,6 +3,10 @@ import { conversationModelName, type ConversationMessage, type ConversationSessi
 type Event = Record<string, unknown>;
 interface EventSummary { count: number; events: Event[]; starts: Map<string, number>; ends: Map<string, number> }
 
+export function withoutModelRequest({ modelRequest: _private, modelRequestExecutionId: _link, ...message }: ConversationMessage): Omit<ConversationMessage, 'modelRequest' | 'modelRequestExecutionId'> {
+  return message;
+}
+
 /** The live page needs output and trace timings, not every historical output delta. */
 export class ConversationState {
   private readonly summaries = new WeakMap<Event[], EventSummary>();
@@ -59,7 +63,7 @@ export class ConversationState {
         return { ...event, ...(node.input !== undefined ? { input: undefined } : {}), ...(node.output !== undefined ? { output: undefined } : {}) };
       });
     }
-    return { ...message, events, report };
+    return { ...withoutModelRequest(message), events, report, modelRequestExecutionId: message.modelRequest?.executionId };
   }
 
   private events(source: Event[]): Event[] {

@@ -26,6 +26,8 @@ export default executor;
 
 Each turn sends the completed turns in the current conversation and the new input in one model call. The OpenAI Responses adapter uses the request's history without also adding local messages. LLM Bots stream answers, report usage, and support text, images, queues, and stopping. They do not start an Agent, execute tools, search the web, or read project memory. Plan, permission, and subagent controls are not available.
 
+Local debugging hosts can pass `nodeHooks.onLLMBotModelRequest` to `runLocalProjectWithReport()` to inspect a model call at dispatch. The `LLMBotModelRequestSnapshot` contains the provider, model, protocol, system prompt, messages, and generation parameters sent; images retain only their type. Core does not include the snapshot in ordinary run reports or events. Restrict access to debug views because the snapshot can contain private instructions and messages.
+
 | `llm` option | Type | Purpose |
 | --- | --- | --- |
 | `systemPrompt` | `string` | System prompt shared across turns. |

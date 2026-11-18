@@ -1,13 +1,14 @@
 import { t } from './localization';
 import { agentActivity, activityValueText } from './agent-activity';
 import type { ConversationMessage, OutputItem } from '../src/workflow-types';
-import type { TracePanelState, TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
+import type { TraceModelRequestTarget, TracePanelState, TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
 
 export type TraceLane = 'input' | 'model' | 'tool' | 'node' | 'output' | 'log' | 'error';
 export interface TraceRow {
   id: string; turn: number; lane: TraceLane; label: string; title: string; preview: string; status?: string;
   start?: number; end?: number; durationMs?: number;
   error?: boolean;
+  modelRequest?: TraceModelRequestTarget;
   sections: { label: string; value: string; error?: boolean }[];
 }
 const record = (value: unknown): Record<string, any> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
@@ -52,7 +53,7 @@ function terminalStatus(status: string | undefined, parent: string | undefined):
   if (!['running', 'pending', 'in_progress', 'waiting_for_input', 'waiting'].includes(status ?? '') || !parent || parent === 'running') { return status; }
   return parent === 'waiting_for_input' ? 'waiting' : ['failed', 'timed_out'].includes(parent) ? 'failed' : 'stopped';
 }
-function runRows(run: TraceRun, turn: number, conversation = false): TraceRow[] {
+function runRows(run: TraceRun, turn: number, conversation = false, modelRequest?: TraceModelRequestTarget): TraceRow[] {
   const prefix = `${run.id}:`, rows: TraceRow[] = [], nodes = new Map<string, Record<string, any>>();
   const itemTimes = new Map<string, { start?: number; end?: number }>();
   for (const event of run.events ?? []) {
@@ -77,8 +78,10 @@ function runRows(run: TraceRun, turn: number, conversation = false): TraceRow[] 
       if (node[key] !== undefined) { sections.push({ label, value: valueText(node[key]), error: key === 'error' }); }
     }
     const lane = /^(llm|llm-stream|model|agent|opencode)$/i.test(String(node.metadata?.type ?? node.kind)) ? 'model' : 'node';
+    const title = String(node.metadata?.title ?? node.name ?? node.nodeName ?? node.kind ?? id);
     rows.push({ id: `${prefix}node:${id}`, turn, lane, label: lane === 'model' ? t("Model") : t("Node"),
-      title: String(node.metadata?.title ?? node.name ?? node.nodeName ?? node.kind ?? id), preview: sections[0]?.value ?? '',
+      title, preview: sections[0]?.value ?? '',
+      ...(modelRequest?.executionId === id ? { modelRequest } : {}),
       error: !!node.error || ['failed', 'error', 'timed_out', 'faulted'].includes(node.status),
       status: terminalStatus(node.status, run.status), start, end,
       durationMs: typeof node.durationMs === 'number' ? node.durationMs : start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined, sections });
@@ -146,8 +149,10 @@ export function traceRows(snapshot: TraceSnapshot | undefined, selection: TraceS
     if ((selection.messageId || selection.runId) && input) { addInput(input); }
     const items: OutputItem[] = message.items ?? message.report?.output?.items ?? (message.content ? [{ content: message.content }] : []);
     if (message.id) turns.set(message.id, turn);
+    const executionId = message.modelRequestExecutionId;
+    const modelRequest = message.role === 'assistant' && executionId && message.id ? { sessionId: session.id, messageId: message.id, executionId } : undefined;
     rows.push(...runRows({ ...message, id: message.id ?? String(index), title: message.model ?? t("Assistant"), status: message.status ?? 'success', items,
-      resolvedInputs: message.resolvedInputs ?? message.report?.resolvedUserInputs }, turn, true));
+      resolvedInputs: message.resolvedInputs ?? message.report?.resolvedUserInputs }, turn, true, modelRequest));
   }
   appendErrors(rows, snapshot, { ...selection, sessionId: session.id }, turns, session.messages);
   return rows;

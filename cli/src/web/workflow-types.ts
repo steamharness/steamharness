@@ -1,6 +1,7 @@
 import { t } from './localization';
 import type { KanbanArtifactConfig, KanbanBridgeCall } from '@steamharness/kanban-project';
 import type { ProjectInfoContract } from '@steamharness/project-info';
+import type { LLMBotModelRequestSnapshot } from 'steamharness';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import type { PathReference } from './conversation-paths';
 
@@ -231,7 +232,7 @@ export interface Runtime {
   kanbanBridge?(project: Project, call: KanbanBridgeCall, signal?: AbortSignal): Promise<unknown>;
   inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   resolveParams(project: Project, request: ParamRequest, entrypointId?: string): Promise<{ params?: Record<string, ParamState> }>;
-  run(request: Run, onEvent: (event: Record<string, unknown>) => void): Promise<Report>;
+  run(request: Run, onEvent: (event: Record<string, unknown>) => void, onModelRequest?: (request: LLMBotModelRequestSnapshot) => void): Promise<Report>;
   uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;
   readFile(project: Project, id: string): Promise<{ reference: Attachment; path: string }>;
   deleteFiles(project: Project, conversationId: string, ids: string[]): Promise<void>;
@@ -273,6 +274,9 @@ export interface ConversationMessage {
   submittingInput?: ResolvedInput;
   tokenUsage?: Report['tokenUsage'];
   report?: Report;
+  /** Private local diagnostics. Strip from browser state and exports. */
+  modelRequest?: { executionId: string; snapshot: LLMBotModelRequestSnapshot };
+  modelRequestExecutionId?: string;
   events?: Record<string, unknown>[];
   input?: Omit<ConversationQueuedInput, 'id' | 'createdAt'>;
   files?: Attachment[];

@@ -37,7 +37,7 @@ import { ResourcePreviews } from './resource-preview';
 import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis';
 import { ConversationOwnership } from './conversation-ownership';
 import { ConversationHistory } from './conversation-history';
-import { ConversationState } from './conversation-state';
+import { ConversationState, withoutModelRequest } from './conversation-state';
 import { pathReferences } from './conversation-paths';
 import { projectMentionFiles } from './mention-files';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
@@ -84,6 +84,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
     get running() { return current.running; },
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
+    readModelRequest: (sessionId: string, messageId: string, executionId: string) => restarting ? undefined : current.readModelRequest(sessionId, messageId, executionId),
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
     openConversationView: (...args: Parameters<OpenConversationView>) => current.openConversationView(...args),
     invokeEntry: (call: AggregateEntryCall) => current.invokeEntry(call),
@@ -164,7 +165,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       }
       throw Object.assign(new Error('The requested Kanban file is unavailable.'), { code: 'KANBAN_FILE_UNAVAILABLE' });
     },
-    run: (request, emit) => executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit),
+    run: (request, emit, onModelRequest) => {
+      const input = { ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) };
+      return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
+    },
     resolveParams: (...args) => executor.resolveParams(...args),
     cancel: runId => executor.cancel(runId),
     dispose: () => executor.dispose(),
@@ -241,8 +245,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(JSON.parse(JSON.stringify(value, userSettingsJsonReplacer)), [...sensitiveTokens], false));
+  const exportData = (value: unknown) => JSON.stringify(redactProjectData(value, [...sensitiveTokens], false), userSettingsJsonReplacer, 2);
+  const exportSession = (session: ConversationSession) => exportData({ ...session, messages: session.messages.map(withoutModelRequest) });
   const sharedState = () => {
-    const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
+    // LLM Bots have no Workflow diagram. Static call definitions can contain the authored system prompt.
+    const publicProject = project.conversation?.engine === 'llm' ? { ...project, definitions: undefined } : project;
+    const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project: publicProject, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -784,7 +792,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             const name = `conversation-${current.id}.json`;
             const count = current.messages.length + 2;
             await controller.recordCommand(command.command, t("Conversation export ready: {0} ({1} messages).", name, count), current);
-            replies.push({ type: 'download', name, content: JSON.stringify(redactProjectData(current, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) },
+            replies.push({ type: 'download', name, content: exportSession(current) },
               { type: 'command-executed', command: command.command, sessionId: current.id });
             break;
           }
@@ -866,7 +874,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           await controller.remove(session.id);
           await Promise.all(previous.filter(id => !controller.sessions.some(session => session.id === id)).map(id => rm(path.join(storageDir, key, 'conversation-imports', path.basename(id)), { recursive: true, force: true })));
         }
-        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactProjectData(session, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) }); }
+        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: exportSession(session) }); }
         break;
       }
       case 'resolve-paths':
@@ -884,7 +892,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'trace': case 'logs': case 'export-message': {
         const answer = current.messages.find(entry => entry.id === message.messageId);
         if (!answer) { throw new Error('Message no longer exists.'); }
-        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: JSON.stringify(redactProjectData(answer, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
+        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: exportData(withoutModelRequest(answer)) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
         else { replies.push({ type: 'preview', title: message.type === 'logs' ? t("Run logs") : t("Trace"), content: message.type === 'logs' ? answer.report?.logs ?? '' : { report: answer.report, events: answer.events, items: answer.items } }); }
         break;
       }
@@ -1026,6 +1034,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let closing: Promise<void> | undefined;
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
+    // Only the Studio stdio control channel can call this, never a Web client.
+    readModelRequest: (sessionId: string, messageId: string, executionId: string) => {
+      if (options.host?.surface !== 'editor' || !storageReady) return;
+      const request = conversationController?.sessions.find(session => session.id === sessionId)?.messages
+        .find(message => message.role === 'assistant' && message.id === messageId)?.modelRequest;
+      if (request?.executionId === executionId) return redactProjectData(request.snapshot, [...sensitiveTokens], false);
+    },
     invokeEntry: async (call: AggregateEntryCall): Promise<unknown> => {
       call.abortSignal?.throwIfAborted();
       if (call.projectId !== project.id || call.actor.userId !== account.user?.userId) throw new Error('The entry caller identity changed.');

@@ -349,6 +349,7 @@ try {
         },
         abortSignal: controller.signal,
         onRuntimeEvent: (event) => send('event', event),
+        nodeHooks: request.captureModelRequest === true ? { onLLMBotModelRequest: snapshot => send('model-request', snapshot) } : undefined,
       }).then(report => {
         if (report.status === 'failed') runFailure = report.result?.error?.message ?? report.result?.data?.errMessage;
         return report;

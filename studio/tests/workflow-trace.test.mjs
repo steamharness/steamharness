@@ -11,6 +11,36 @@ const project = (id, projectType = 'bot') => ({ entryId: 'main', aggregateName: 
 const snapshot = (project, extra = {}) => ({ project, ...extra });
 const send = (binding, snapshot) => binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot });
 
+test('model request reads are scoped to the selected conversation and discard replies after navigation', async () => {
+  const store = new TraceStore(), bot = project('llm');
+  store.update([bot], bot);
+  const reply = { id: 'reply', role: 'assistant', modelRequestExecutionId: 'answer', events: [
+    { type: 'node_started', executionId: 'earlier', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } },
+    { type: 'node_started', executionId: 'answer', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } },
+    { type: 'node_started', executionId: 'unrelated', nodeName: 'another-node' },
+  ] };
+  const trace = snapshot(bot, { activeId: 'current', sessions: [{ id: 'current', messages: [reply] }, { id: 'other', messages: [reply] }] });
+  const rows = traceRows(trace, {});
+  const target = { sessionId: 'current', messageId: 'reply', executionId: 'answer' };
+  assert.deepEqual(rows.filter(row => row.title === 'bot-llm-answer').map(row => row.modelRequest), [undefined, target]);
+  assert.equal(rows.find(row => row.title === 'another-node')?.modelRequest, undefined);
+  let count = 0, finish;
+  const binding = store.bind(bot, 1, () => {}, () => { count++; return new Promise(resolve => { finish = resolve; }); });
+  send(binding, trace);
+  assert.equal(await store.readModelRequest(target), undefined, 'unconnected');
+  binding.receive({ type: 'workflow-trace', version: 1, kind: 'status', status: 'connected' });
+  assert.equal(await store.readModelRequest({ ...target, sessionId: 'other' }), undefined);
+  assert.equal(await store.readModelRequest({ ...target, executionId: 'earlier' }), undefined);
+  const reading = store.readModelRequest(target);
+  assert.equal(count, 1);
+  store.select(key(bot), { sessionId: 'other' });
+  finish({ systemPrompt: 'private prompt' });
+  assert.equal(await reading, undefined);
+  const other = store.readModelRequest({ ...target, sessionId: 'other' });
+  finish({ model: 'test' });
+  assert.deepEqual(await other, { model: 'test' });
+});
+
 test('trace connections reject late data, mismatched project identities and stale disposal', () => {
   const store = new TraceStore(), a = project('a'), b = project('b'); store.update([a, b], a);
   const old = store.bind(a, 1, () => {}), next = store.bind(a, 1, () => {});

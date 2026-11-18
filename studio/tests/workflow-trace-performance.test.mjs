@@ -5,11 +5,64 @@ import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
+import { readFile } from 'node:fs/promises';
 import { durableTraceState } from './fixtures/trace-agent.mjs';
 
 const require = createRequire(import.meta.url);
 const host = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-trace-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const client = await build({ entryPoints: ['extensions/studio-workstation/webview/trace.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
+
+test('model request opens lazily in both languages and survives live row refreshes', async t => {
+  const zh = JSON.parse(await readFile(new URL('../extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', import.meta.url), 'utf8'));
+  for (const [locale, bundle, label] of [['en', {}, 'Model request'], ['zh-cn', zh, '\u6a21\u578b\u8bf7\u6c42']]) {
+    const dom = new JSDOM('<script type="application/json" id="studio-localization"></script><div id="trace-app"></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    t.after(() => dom.window.close());
+    const { window } = dom, frames = [], posts = [];
+    window.document.getElementById('studio-localization').textContent = JSON.stringify({ locale, bundle });
+    window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+    window.acquireVsCodeApi = () => ({ postMessage: message => posts.push(message), getState: () => ({}), setState() {} });
+    window.eval(client.outputFiles[0].text);
+    const state = durableTraceState();
+    const answer = state.snapshot.sessions[0].messages[1];
+    state.snapshot.durable = false;
+    state.modelRequests = true;
+    answer.modelRequestExecutionId = 'llm';
+    answer.events = [{ type: 'node_started', executionId: 'llm', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } }];
+    const receive = data => {
+      window.dispatchEvent(new window.MessageEvent('message', { data }));
+      for (const callback of frames.splice(0)) callback();
+    };
+    receive(state);
+    const block = window.document.querySelector('.trace-model-request');
+    assert.equal(block.querySelector('summary').textContent, label);
+    assert.equal(block.open, false);
+    assert.equal(posts.filter(post => post.type === 'model-request').length, 0);
+    block.closest('.trace-row').open = true; block.open = true;
+    block.dispatchEvent(new window.Event('toggle'));
+    const { requestId, target } = posts.at(-1);
+    assert.equal(target.sessionId, state.snapshot.sessions[0].id);
+    assert.equal(target.messageId, answer.id);
+    assert.equal(target.executionId, 'llm');
+    receive({ type: 'trace-model-request', generation: state.generation, requestId, request: { systemPrompt: 'Prompt <em>verbatim</em>' } });
+    assert.match(block.querySelector('pre').textContent, /Prompt <em>verbatim<\/em>/);
+    assert.equal(block.querySelector('em'), null);
+    answer.events.push({ type: 'node_finished', executionId: 'llm', nodeName: 'output', output: 'Model output', status: 'success' });
+    receive(state);
+    assert.equal(window.document.querySelector('.trace-model-request'), block);
+    assert.equal(block.open, true);
+    assert.equal(posts.filter(post => post.type === 'model-request').length, 1);
+    answer.modelRequestExecutionId = 'retry';
+    answer.events.push({ type: 'node_started', executionId: 'retry', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } });
+    receive(state);
+    const retry = window.document.querySelector('.trace-model-request');
+    assert.equal(window.document.querySelectorAll('.trace-model-request').length, 1);
+    assert.notEqual(retry, block);
+    assert.equal(retry.open, false);
+    assert.doesNotMatch(window.document.body.textContent, /Prompt <em>/);
+    receive({ ...state, generation: state.generation + 1, modelRequests: false });
+    assert.equal(window.document.querySelector('.trace-model-request'), null);
+  }
+});
 
 test('hidden retained Trace views skip serialization and replay the latest snapshot on reveal', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

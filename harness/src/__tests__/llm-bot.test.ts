@@ -3,10 +3,11 @@ import test from "node:test";
 import { defineBot } from "../agent/bot";
 import { AGENT_MODELS_CONFIGURATION_KEY, withProjectConfiguration } from "../configuration";
 import { createProjectConversationContext } from "../conversation/index";
+import { combineNodeExecutionHooks, createNodeExecutionReporter } from "../executor/report";
 import { analyzeProjectScriptSource } from "../executor/rules";
 import type { ConfiguredAgentModel } from "@steamharness/project-configuration";
 import { createProjectTokenUsageContext } from "../token-usage/index";
-import type { RunContext } from "../types/index";
+import type { LLMBotModelRequestSnapshot, RunContext } from "../types/index";
 import { withUserSettings } from "../user-settings";
 import { HarnessError } from "../workflow/errors";
 import { createTestResources } from "./entry-test-resources";
@@ -39,6 +40,47 @@ test("LLM Bot has a model selector but no durable, recovery, Plan, or tool contr
   assert.ok(analyzeProjectScriptSource(`export const executor = steamharness.defineBot({});`).executorConfigurationViolations.some(error => error.name === "engine"));
   assert.throws(() => defineBot({ engine: "llm", llm: {}, agent: {} } as never), /requires engine: "agent"/);
 });
+
+for (const [apiKind, wire] of [["openai-responses", "openai-responses"], ["openai-completions", "openai-completion"], ["anthropic-messages", "anthropic"]] as const) {
+  test(`private ${apiKind} trace matches the dispatched request without secrets or image bytes`, async t => {
+    const bodies: Record<string, any>[] = [];
+    const traces: LLMBotModelRequestSnapshot[] = [];
+    const reporter = createNodeExecutionReporter();
+    const image = { mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" };
+    t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return llmSSE(wire, "Earlier reply");
+    });
+    const run = context(apiKind);
+    run.nodeHooks = combineNodeExecutionHooks(reporter.hooks, { onLLMBotModelRequest: request => {
+      assert.equal(bodies.length, traces.length + 1, "the trace is emitted at dispatch");
+      traces.push(request);
+    } });
+    const bot = defineBot({ engine: "llm", llm: { systemPrompt: "Project instructions", temperature: 0.3, maxOutputTokens: 42 } });
+    await withProjectConfiguration({ ...snapshot, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [{ ...endpoint, apiKind }] } }, async () => {
+      await bot.workflow.run({ ...input("first", "Inspect image"), images: [image], apiKey: "unused-node-credential" }, run);
+      await bot.workflow.run({ ...input("next", "Follow up"), systemPrompt: `Turn instructions ${endpoint.apiKey}` }, run);
+      await bot.workflow.run(input("next", "Duplicate request"), run);
+    });
+    assert.equal(traces.length, 2);
+    const second = traces[1]!;
+    const body = bodies[1]!;
+    assert.equal(second.model, body.model);
+    assert.equal(second.provider, "third");
+    assert.equal(second.systemPrompt, "Project instructions\n\nTurn instructions [redacted]");
+    assert.deepEqual(second.messages, [
+      { role: "user", content: [{ type: "text", text: "Inspect image" }, { type: "image", mimeType: "image/png" }] },
+      { role: "assistant", content: "Earlier reply" },
+      { role: "user", content: "Follow up" },
+    ]);
+    assert.equal(second.generation.temperature, body.temperature);
+    assert.equal(second.generation.maxOutputTokens, body.max_output_tokens ?? body.max_completion_tokens ?? body.max_tokens);
+    assert.ok(JSON.stringify(body).includes(image.data));
+    assert.doesNotMatch(JSON.stringify(traces), /fixture|aW1hZ2UtYnl0ZXM=|apiKey|authorization|model\.example/i);
+    assert.doesNotMatch(JSON.stringify(reporter.getReports()), /Project instructions|Turn instructions|aW1hZ2UtYnl0ZXM=|unused-node-credential/);
+    assert.equal(bodies.length, 2);
+  });
+}
 
 test("successful request IDs are persisted before callback, replayed, and isolated by conversation", async t => {
   const bodies: string[] = [];
@@ -87,7 +129,8 @@ test("aborted and incomplete answers never enter history and are not retried aut
     return llmSSE("openai-responses", bodies.length === 2 ? "partial chunk" : "complete", bodies.length !== 2);
   });
   const run = context("single", controller.signal);
-  run.nodeHooks = { onNodeChunk(event) {
+  const traces: LLMBotModelRequestSnapshot[] = [];
+  run.nodeHooks = { onLLMBotModelRequest: request => { traces.push(request); }, onNodeChunk(event) {
     if ((event.chunk as { delta?: string }).delta === "cancelled chunk") controller.abort();
   } };
   const bot = defineBot({ engine: "llm", llm: {} });
@@ -95,6 +138,7 @@ test("aborted and incomplete answers never enter history and are not retried aut
     await assert.rejects(async () => bot.workflow.run(input("cancel", "discard cancelled question"), run), error =>
       error instanceof HarnessError && (error.type === "execution_aborted" || error.safeCause?.name === "AbortError"));
     assert.equal(bodies.length, 1);
+    assert.deepEqual(traces[0]?.messages, [{ role: "user", content: "discard cancelled question" }]);
     assert.deepEqual((await run.conversation.getValue()).messages, []);
     const retry = { ...run, abortSignal: undefined, nodeHooks: undefined };
     await assert.rejects(async () => bot.workflow.run(input("repeat", "discard incomplete question"), retry), /stream did not complete/);
@@ -114,6 +158,8 @@ test("a system-only project rejects third-party model IDs and a failed credentia
     return Response.json({ error: { message: "provider secret" } }, { status: 403 });
   });
   const run = context("policy");
+  const traces: LLMBotModelRequestSnapshot[] = [];
+  run.nodeHooks = { onLLMBotModelRequest: request => { traces.push(request); } };
   const bot = defineBot({ engine: "llm", llm: { modelSource: "project" } });
   await withProjectConfiguration({ ...snapshot, agentModelPolicy: { allowThirdParty: false } }, async () => {
     const choices = await bot.resolveParams!({ projectName: "bot", projectDir: ".", args: [], paramValues: {}, config: snapshot.values,
@@ -122,8 +168,10 @@ test("a system-only project rejects third-party model IDs and a failed credentia
     await assert.rejects(async () => bot.workflow.run({ ...input("policy"), model: "third" }, run), /only allows system AI/);
   });
   assert.deepEqual(urls, []);
+  assert.deepEqual(traces, []);
   await withProjectConfiguration({ ...snapshot, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [endpoint, { ...endpoint, id: "backup", baseUrl: "https://backup.example.test/v1" }] } }, async () => {
     await assert.rejects(async () => bot.workflow.run(input("failure"), run), (error: Error) => /authentication failed/.test(error.message) && !error.message.includes("secret"));
   });
   assert.deepEqual(urls, ["https://model.example.test/v1/responses"]);
+  assert.equal(traces.length, 1);
 });

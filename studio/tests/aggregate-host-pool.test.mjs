@@ -41,6 +41,27 @@ test('recovery is shared, preserves the port, and notifies every entry', async (
   first.crash(); assert.deepEqual(await Promise.all([a.reconnect(),b.reconnect()]),[true,true]);
   assert.equal(starts,2); assert.equal(recovered,2); await a.close(); assert.equal(next.closes,0); await b.close(); assert.equal(next.closes,1);
 });
+
+test('private trace reads stay inside the leased entry across the shared host restart', async t => {
+  const pool = new AggregateWebHostPool(), first = session(), next = session();
+  t.after(() => pool.close());
+  const calls = [];
+  first.readModelRequest = async (entryId, target) => { calls.push(entryId); return { ...target, model: 'first' }; };
+  next.readModelRequest = async (entryId, target) => { calls.push(entryId); return { ...target, model: 'restored' }; };
+  const start = async port => port ? next : first;
+  const [a, b] = await Promise.all([pool.acquire('root', { entryId: 'agent' }, start), pool.acquire('root', { entryId: 'worker' }, start)]);
+  const target = { sessionId: 'session', messageId: 'answer', executionId: 'model-node' };
+  assert.equal(await a.readModelRequest('worker', target), undefined);
+  assert.deepEqual(await a.readModelRequest('agent', target), { ...target, model: 'first' });
+  first.crash();
+  assert.equal(a.readModelRequest, undefined);
+  assert.equal(await a.reconnect(), true);
+  assert.deepEqual(await b.readModelRequest('worker', target), { ...target, model: 'restored' });
+  assert.equal(await b.readModelRequest('agent', target), undefined);
+  await a.close();
+  assert.equal(a.readModelRequest, undefined);
+  assert.deepEqual(calls, ['agent', 'worker']);
+});
 test('failed and unknown entry leases are released and separate aggregates never share', async () => {
   const pool=new AggregateWebHostPool(); const a=session(),b=session();
   const lease=await pool.acquire('a',{entryId:'agent'},async()=>a);

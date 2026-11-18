@@ -131,6 +131,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },
     get projectController() { return current()?.projectController; }, get kanbanController() { return current()?.kanbanController; },
     entryUrl:(entryId:string) => { selectProjectEntry(manifest,entryId); return `${origin}/entries/${entryId}/#session=${credentials.capability}`; },
+    readModelRequest: (entryId: string, sessionId: string, messageId: string, executionId: string) => resetting ? undefined : entries.get(entryId)?.readModelRequest(sessionId, messageId, executionId),
     setHostUserSettings:async (value:Parameters<EntryHost['setHostUserSettings']>[0]) => { host={...host,surface:host?.surface??'editor',userSettings:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostUserSettings(value))); },
     setHostResourceProjects:(value:string[]) => { host={...host,surface:host?.surface??'editor',resourceProjects:value}; for (const entry of entries.values()) entry.setHostResourceProjects(value); },
     setHostWebApps:async (value:Parameters<EntryHost['setHostWebApps']>[0]) => { host={...host,surface:host?.surface??'editor',webApps:value}; await resetting; await Promise.all([...entries.values()].map(entry => entry.setHostWebApps(value))); },

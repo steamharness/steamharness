@@ -1,9 +1,10 @@
 import { projectWindowKey, projectDisplayName, type Project } from './workflow-types';
-import type { TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, TraceRun } from './workflow-trace-types';
+import type { TraceModelRequestTarget, TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, TraceRun } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
 interface Source {
   project: Project; token: number; ready: boolean; send?: (message: unknown) => void;
+  readModelRequest?: (target: TraceModelRequestTarget) => Promise<unknown>;
   snapshot?: TraceSnapshot; runs: Map<string, TraceRun>; requested: Set<string>; failed: Set<string>; status: string; error?: string;
   pending: Map<string, string>; actionErrors: Map<string, string>;
 }
@@ -42,10 +43,10 @@ export class TraceStore {
     this.selection = { projectUri: uri, ...target }; ++this.generation;
     const source = this.sources.get(uri ?? ''); if (source) { source.error = undefined; }
   }
-  bind(project: Project, version: number | undefined, send: (message: unknown) => void) {
+  bind(project: Project, version: number | undefined, send: (message: unknown) => void, readModelRequest?: Source['readModelRequest']) {
     const token = ++this.shared.token;
     const previous = this.sources.get(projectWindowKey(project));
-    const source: Source = { project, token, ready: false, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
+    const source: Source = { project, token, ready: false, send, readModelRequest, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
       requested: new Set(), failed: new Set(), status: version === 1 ? 'connecting' : 'unsupported' };
     this.sources.set(projectWindowKey(project), source);
     ++this.generation;
@@ -92,7 +93,7 @@ export class TraceStore {
       },
       dispose: () => {
         if (this.sources.get(projectWindowKey(project))?.token !== token) { return; }
-        source.send = undefined; source.status = 'closed';
+        source.send = undefined; source.readModelRequest = undefined; source.status = 'closed';
         source.pending.clear();
         source.requested.clear();
         if (source.snapshot) {
@@ -110,6 +111,17 @@ export class TraceStore {
         if (project.assistant) { this.assistants.delete(projectWindowKey(project)); this.sources.delete(projectWindowKey(project)); }
       },
     };
+  }
+  async readModelRequest(target: TraceModelRequestTarget): Promise<unknown> {
+    const { projectUri, sessionId, messageId, runId } = this.selection;
+    const source = this.sources.get(projectUri ?? ''), generation = this.generation;
+    const allowed = () => source?.ready && source.status === 'connected' && source.readModelRequest && source.snapshot?.project.projectType === 'bot'
+      && target.sessionId === (sessionId ?? source.snapshot.activeId) && (!messageId || target.messageId === messageId)
+      && source.snapshot.sessions?.find(session => session.id === target.sessionId)?.messages
+        .some(message => message.id === target.messageId && message.role === 'assistant' && message.modelRequestExecutionId === target.executionId && (!runId || message.runId === runId));
+    if (!allowed()) return;
+    const request = await source!.readModelRequest!(target);
+    if (generation === this.generation && this.sources.get(projectUri ?? '') === source && allowed()) return request;
   }
   request(type: 'run' | 'more', runId?: string): void {
     const source = this.sources.get(this.selection.projectUri ?? '');
@@ -143,6 +155,7 @@ export class TraceStore {
       projects: this.availableProjects().map(project => ({ uri: projectWindowKey(project), name: projectDisplayName(project), projectType: project.projectType })),
       selection: this.selection, snapshot: source?.snapshot, run: source?.runs.get(this.selection.runId ?? ''),
       status: source?.status ?? 'idle', loading: !!source?.requested.has(this.selection.runId ?? ''),
+      modelRequests: source?.ready && source.status === 'connected' && Boolean(source.readModelRequest),
       pending: [...source?.pending.values() ?? []].includes(sessionId ?? ''),
       error: source?.actionErrors.get(sessionId ?? '') ?? source?.error };
   }

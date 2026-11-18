@@ -33,11 +33,14 @@ The **Open Project Window** view lists only the current project. It survives too
 | What to inspect | Where to look |
 | --- | --- |
 | Node input, output, and logs | Select the node in the execution trace |
+| Context sent to the model by an LLM Bot | Find `bot-llm-answer` and expand **Model request** |
 | Model or tool failures | Filter **Errors** by conversation, round, or keyword |
 | Task trees and child conversations | Select a task or open its child conversation |
 | Context and usage | Open Usage or hover over the context indicator beside the input |
 
 Earlier diagnostics remain after a successful model retry. Selecting Trace history does not switch the conversation body. The eye marker follows the conversation actually open in the editor.
+
+**Model request** shows the model, system prompt, messages in order, and generation parameters sent for that call. Images are listed by MIME type without their contents, and credentials are not recorded. These details are only available in Studio's local trace and are not included in conversation exports. Older traces and turns with no model call do not show this section.
 
 Parameter, attachment, and resource errors remain beside the relevant action. Dismissing a message does not bypass parameter validation. In short windows, input text and attachments scroll while send controls stay visible.
 

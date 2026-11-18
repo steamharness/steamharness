@@ -10,7 +10,7 @@ const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('
 const { RecoverableWebSession } = await import('../extensions/studio-workstation/src/workflow-session.ts');
 import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
-async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1, systemAiProtocol = 1, userSettingsProtocol = 1) {
+async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1, systemAiProtocol = 1, userSettingsProtocol = 1, modelRequestProtocol = 0) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, 'package.json'), '{"name":"user-project"}');
@@ -52,10 +52,15 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
             }
             response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},traceModelRequestProtocolVersion:${modelRequestProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
         else if(message.type==='resource-projects') {configuration.resourceProjects=message.resourceProjects;}
         else if(message.type==='user-settings') {if(${userSettingsProtocol}!==1) process.exit(31);userSettingsMessages++;configuration.userSettings=message.userSettings;}
+        else if(message.type==='trace-model-request' && ${modelRequestProtocol}===1) {
+          const {requestId,entryId,sessionId,messageId,executionId}=message;
+          console.log(JSON.stringify({type:'trace-model-request',requestId:'unexpected',request:{unexpected:true}}));
+          console.log(JSON.stringify({type:'trace-model-request',requestId,request:entryId==='main'?{sessionId,messageId,executionId,systemPrompt:'Private prompt'}:undefined}));
+        }
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
       });
       input.on('close',()=>{process.stdin.pause();server?.close();});
@@ -75,6 +80,18 @@ test('user settings use host stdin, deduplicate updates and respect older CLI ca
     assert.deepEqual(state.configuration.userSettings, protocol === 1 ? next : initial);
     assert.equal(state.userSettingsMessages, protocol === 1 ? 1 : 0);
   }
+});
+
+test('private trace requests use the negotiated stdio channel and correlate concurrent replies', async t => {
+  const { options } = await fixture(t, '1.0.0', 1, false, 0, 1, 1, 1, 1, 1, 1);
+  const cli = await startProjectCli(options);
+  const session = new RecoverableWebSession(cli, () => assert.fail('no restart expected'));
+  t.after(() => session.close());
+  const request = { sessionId: 'conversation', messageId: 'reply', executionId: 'model-run' };
+  assert.deepEqual(await Promise.all([session.readModelRequest('main', request), session.readModelRequest('other', request)]), [
+    { ...request, systemPrompt: 'Private prompt' }, undefined,
+  ]);
+  assert.doesNotMatch(await (await fetch(session.ready.url)).text(), /Private prompt/);
 });
 
 test('each project resolves its own CLI and runs its own inspection', async t => {

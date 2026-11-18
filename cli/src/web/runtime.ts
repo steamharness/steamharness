@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { UserSettings } from 'steamharness';
+import type { LLMBotModelRequestSnapshot, UserSettings } from 'steamharness';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV, createLocalProjectConfigurationStore, type ProjectConfigurationSnapshot } from 'steamharness';
@@ -47,7 +47,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => connection() ?? null, userSettings: options.userSettings }); configurationStores.set(key, store); }
     return store;
   };
-  const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void): Promise<T> => new Promise((resolve, reject) => {
+  const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void,
+    onModelRequest?: (request: LLMBotModelRequestSnapshot) => void): Promise<T> => new Promise((resolve, reject) => {
     if (disposed) { reject(new Error('Web runtime has stopped.')); return; }
     const auth = connection();
     const actor = options.actor?.() ?? { isSystemAdmin: false };
@@ -139,6 +140,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         try {
           const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), secrets, false) as { kind: string; value: T & Record<string, unknown>; error?: string; code?: string; metadata?: Record<string, unknown> };
           if (message.kind === 'event') { onEvent?.(message.value); }
+          if (message.kind === 'model-request') { onModelRequest?.(message.value as unknown as LLMBotModelRequestSnapshot); }
           if (message.kind === 'result') { result = message.value; }
           if (message.kind === 'error') { failure = message.error; failureMetadata = message.metadata; failureCode = typeof message.code === 'string' ? message.code : undefined; }
         } catch { failure = 'Invalid workflow runtime response.'; }
@@ -160,9 +162,11 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId,
+      actor, captureModelRequest: Boolean(onModelRequest) }));
   });
-  const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal): Promise<Report> => {
+  const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal,
+    onModelRequest?: (request: LLMBotModelRequestSnapshot) => void): Promise<Report> => {
     // A replacement host can start before its orphaned worker finishes cleanup.
     // Wait only for the storage owner of the original recovering request. Never
     // retry admission conflicts or steal a live owner's lock.
@@ -170,7 +174,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     while (true) {
       signal.throwIfAborted();
       try {
-        const report = await invoke<Report>({ method: 'run', ...request }, onEvent);
+        const report = await invoke<Report>({ method: 'run', ...request }, onEvent, onModelRequest);
         if (disposed || !request.resumeConfiguration && !request.resumeAgent || !agentOwnerConflict(report) || Date.now() >= deadline) return report;
       } catch (error) {
         if (disposed || !request.resumeConfiguration && !request.resumeAgent || !agentOwnerConflict(error) || Date.now() >= deadline) throw error;
@@ -191,7 +195,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     isolateAgentConversation: (project, sourceConversationId, conversationId, targetId, retireSource, fileIds) => invoke({ method: 'isolate-conversation', project, sourceConversationId, conversationId, targetId, retireSource, fileIds }),
     inspect: (paths, entryId) => invoke({ method: 'inspect', paths, entryId }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
-    run: async (request, onEvent) => {
+    run: async (request, onEvent, onModelRequest) => {
       const runId = String(request.runId), cancellation = new AbortController();
       runCancellation.set(runId, cancellation);
       const { abortSignal, ...serializable } = request;
@@ -202,11 +206,11 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       abortSignal?.addEventListener('abort', stop, { once: true });
       try {
         abortSignal?.throwIfAborted();
-        if(!request.configurationSelection)return await invokeRun({...serializable},onEvent,cancellation.signal);
+        if(!request.configurationSelection)return await invokeRun({...serializable},onEvent,cancellation.signal,onModelRequest);
         const selection=request.configurationSelection;
         const configuration=await (await configurations(request.project.entryId)).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
         if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
-        return await invokeRun({...serializable,configuration},onEvent,cancellation.signal);
+        return await invokeRun({...serializable,configuration},onEvent,cancellation.signal,onModelRequest);
       } finally { abortSignal?.removeEventListener('abort', stop); if (runCancellation.get(runId) === cancellation) runCancellation.delete(runId); }
     },
     uploadFiles: (project, conversationId, files) => invoke({ method: 'upload', project, conversationId, files }),

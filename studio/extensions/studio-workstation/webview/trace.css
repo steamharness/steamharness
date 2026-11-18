@@ -32,11 +32,11 @@
 #trace-scroll { flex: 1; min-height: 0; overflow: auto; }
 #trace-list { padding: 0 12px 8px; }
 .trace-row { border-bottom: 1px solid var(--border); min-width: 0; }
-.trace-row summary { display: flex; align-items: center; gap: 8px; height: 36px; min-width: 0; cursor: pointer; list-style: none; border-radius: var(--control-radius); padding: 4px 6px; }
-.trace-row summary::-webkit-details-marker { display: none; }
-.trace-row summary:hover { background: var(--vscode-list-hoverBackground); }
-.trace-row summary > .codicon { flex: none; width: 12px; font-size: 12px; color: var(--muted); }
-.trace-row[open] summary > .codicon { transform: rotate(90deg); }
+.trace-row > summary { display: flex; align-items: center; gap: 8px; height: 36px; min-width: 0; cursor: pointer; list-style: none; border-radius: var(--control-radius); padding: 4px 6px; }
+.trace-row > summary::-webkit-details-marker { display: none; }
+.trace-row > summary:hover { background: var(--vscode-list-hoverBackground); }
+.trace-row > summary > .codicon { flex: none; width: 12px; font-size: 12px; color: var(--muted); }
+.trace-row[open] > summary > .codicon { transform: rotate(90deg); }
 .trace-badge { flex: none; min-width: 42px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; color: var(--vscode-foreground); background: color-mix(in srgb, var(--lane-color) 14%, var(--background)); border: 1px solid var(--vscode-contrastBorder, transparent); border-left: 2px solid var(--lane-color); border-radius: var(--control-radius); padding: 3px 6px; font-size: 11px; }
 .trace-row-title { flex: 0 1 auto; max-width: 35%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--vscode-editor-font-family, monospace); }
 .trace-preview { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -46,6 +46,10 @@
 .trace-detail-tools { display: flex; align-items: center; justify-content: space-between; min-height: 28px; color: var(--muted); font-size: 11px; }
 .trace-row-detail h3 { margin: 8px 0 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
 .trace-row-detail pre { font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.trace-model-request { margin-top: 8px; border-top: 1px solid var(--border); }
+.trace-model-request summary { cursor: pointer; padding: 6px 0; font-size: 12px; }
+.trace-model-request summary:hover { background: var(--vscode-list-hoverBackground); }
+.trace-model-request pre { margin: 4px 0; user-select: text; }
 .trace-turn { padding: 8px 6px; margin: 0; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
 #trace-count { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #trace-status { margin-left: auto; text-align: right; white-space: nowrap; }
 #trace-app footer { gap: 8px; flex-wrap: wrap; padding: 4px 12px; }

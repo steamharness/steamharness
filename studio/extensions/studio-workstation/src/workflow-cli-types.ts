@@ -5,6 +5,7 @@ import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSumma
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 import type { WebAppFailureReason } from './web-app-errors';
+import type { TraceModelRequestTarget } from './workflow-trace-types';
 
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
@@ -14,6 +15,7 @@ export interface WebReady {
   systemAiConnectionProtocolVersion?: number;
   entriesProtocolVersion: number;
   traceProtocolVersion?: number;
+  traceModelRequestProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
   runtime?: { harnessVersion: string; harnessPath: string };
@@ -26,6 +28,7 @@ export interface WebSession {
   updateAuth(connection?: Connection): void;
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
+  readModelRequest?(entryId: string, target: TraceModelRequestTarget): Promise<unknown>;
   retryWebApps?(): Promise<void>;
   onWebAppError?(callback: (reason: WebAppFailureReason) => void): { dispose(): void };
   reconnect?(): Promise<boolean>;

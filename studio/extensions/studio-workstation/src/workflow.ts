@@ -233,7 +233,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       signal?.throwIfAborted();
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
       panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(new URL(session.ready.url).port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
-      let traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
+      const bindTrace = () => trace.bind(project, session.ready.traceProtocolVersion, panel.webview,
+        session.readModelRequest ? target => session.readModelRequest!(project.entryId, target) : undefined);
+      let traceBinding = bindTrace();
       const clipboardBinding = bindProjectClipboard(panel.webview);
       const pickerBinding = bindProjectPathPicker(panel.webview, vscode.Uri.file(project.folderPath));
       const pathOpenBinding = bindProjectPathOpen(panel.webview, vscode.Uri.file(project.assistant?.workdir ?? project.folderPath));
@@ -323,7 +325,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
         if (closed) return;
-        traceBinding.dispose(); traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
+        traceBinding.dispose(); traceBinding = bindTrace();
         const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
         if (entry?.close === close) entry.running = true;
         const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');

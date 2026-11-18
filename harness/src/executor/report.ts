@@ -613,6 +613,9 @@ export function combineNodeExecutionHooks(
   }
 
   return {
+    onLLMBotModelRequest: hooks.some(hook => hook.onLLMBotModelRequest)
+      ? request => callHooks(hooks, "onLLMBotModelRequest", request)
+      : undefined,
     onNodeStart(event) {
       return callHooks(hooks, "onNodeStart", event);
     },

@@ -3,7 +3,7 @@ import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
 import { TraceStore } from './workflow-trace-store';
 import { projectWindowKey, type Project } from './workflow-types';
-import type { TraceTarget } from './workflow-trace-types';
+import type { TraceModelRequestTarget, TraceTarget } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
 export class TraceView {
@@ -21,8 +21,8 @@ export class TraceView {
     }, { webviewOptions: { retainContextWhenHidden: true } })]));
   }
   update(projects: Project[], preferred?: Project): void { this.store.update(projects, preferred); this.publish(); }
-  bind(project: Project, version: number | undefined, webview: vscode.Webview) {
-    const binding = this.store.bind(project, version, message => void webview.postMessage(message));
+  bind(project: Project, version: number | undefined, webview: vscode.Webview, readModelRequest?: (target: TraceModelRequestTarget) => Promise<unknown>) {
+    const binding = this.store.bind(project, version, message => void webview.postMessage(message), readModelRequest);
     this.publish();
     return {
       receive: (message: Record<string, any>) => {
@@ -69,7 +69,7 @@ export class TraceView {
     const dispose = view.onDidDispose(() => { receive.dispose(); visibility.dispose(); dispose.dispose(); if (this.view === view) { this.view = undefined; this.published = ''; } });
     this.publish();
   }
-  private async receive(message: { type?: string; generation?: number; projectUri?: string; target?: TraceTarget; text?: string; action?: TraceAgentAction }): Promise<void> {
+  private async receive(message: { type?: string; generation?: number; projectUri?: string; target?: TraceTarget & { executionId?: string }; requestId?: string; text?: string; action?: TraceAgentAction }): Promise<void> {
     if (message.type === 'ready') { this.publish(true); return; }
     if (message.generation !== this.store.generation) { return; }
     try {
@@ -81,6 +81,15 @@ export class TraceView {
         if (!this.store.hasConnection(projectWindowKey(project))) { await this.openProject(project); }
         if (this.store.selection === selection && message.target?.runId) { this.store.request('run', message.target.runId); this.publish(); }
       } else if (message.projectUri === this.store.selection.projectUri) {
+        const { sessionId, messageId, executionId } = message.target ?? {};
+        if (message.type === 'model-request' && typeof message.requestId === 'string' && typeof sessionId === 'string' && typeof messageId === 'string' && typeof executionId === 'string') {
+          const view = this.view;
+          const request = await this.store.readModelRequest({ sessionId, messageId, executionId }).catch(() => undefined);
+          if (view === this.view && message.generation === this.store.generation) {
+            await view?.webview.postMessage({ type: 'trace-model-request', requestId: message.requestId, generation: message.generation, request });
+          }
+          return;
+        }
         if (message.type === 'agent-action' && message.action) {
           if (this.store.action(message.action)) {
             this.publish();

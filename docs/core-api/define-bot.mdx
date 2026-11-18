@@ -26,6 +26,8 @@ export default executor;
 
 每轮把当前会话已完成的问答和本轮输入交给模型，流式返回答复并记录用量。OpenAI Responses 入口使用请求提供的历史，不额外拼接本地会话。LLM Bot 支持文本、图片、排队和停止，不启动 Agent、调用工具、联网搜索或读取项目记忆，也没有 Plan、权限或子 Agent 控件。
 
+`runLocalProjectWithReport({ nodeHooks: { onLLMBotModelRequest } })` 允许本地调试宿主在模型请求发起时读取快照。回调收到 `LLMBotModelRequestSnapshot`，包括供应商、模型、协议、系统提示词、消息和已发送的生成参数；图片只保留类型。Core 不把快照写进普通运行报告或事件。快照可能包含私密提示词和对话，只应提供给有访问权限的调试视图。
+
 | `llm` 字段 | 类型 | 用途 |
 | --- | --- | --- |
 | `systemPrompt` | `string` | 各轮共用的系统提示词。 |
