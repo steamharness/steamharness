@@ -1,7 +1,7 @@
 import { t, locale } from './localization';
 import './resources.css';
 import './trace.css';
-import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, traceClock, type TraceRow, type TraceLane } from './trace-model';
+import { traceRows, filterTraceRows, traceDuration, traceRange, traceRowEnd, traceClock, type TraceRow, type TraceLane, type TraceNodeField } from './trace-model';
 import type { TraceModelRequestTarget, TracePanelState, TraceTarget } from '../src/workflow-trace-types';
 import { TraceAgentView, type AgentTab } from './trace-agent';
 import { agentSession } from './trace-agent-model';
@@ -39,15 +39,22 @@ type Tab = 'trace' | AgentTab;
 let tab: Tab = tabs.some(([id]) => id === saved.tab) ? saved.tab as Tab : 'trace';
 let reveal = 0;
 let query = '', key = '', rows: TraceRow[] = [];
-interface ModelRequestView { root: HTMLDetailsElement; content: HTMLPreElement; pending?: string; loaded?: boolean }
-const views = new Map<string, { root: HTMLDetailsElement; signature: string; model?: ModelRequestView }>();
+interface SectionView { root: HTMLDetailsElement; content: HTMLPreElement }
+interface ModelRequestView extends SectionView { pending?: string; loaded?: boolean }
+interface RowView {
+  root: HTMLDetailsElement; signature: string; sections: Map<TraceNodeField, SectionView>; model?: ModelRequestView;
+  badge: HTMLSpanElement; title: HTMLSpanElement; preview: HTMLSpanElement; meta: HTMLSpanElement;
+  detail: HTMLDivElement; tools: HTMLDivElement; time: HTMLSpanElement; copy: HTMLButtonElement;
+}
+const views = new Map<string, RowView>();
 const post = (message: Record<string, unknown>) => { if (state) { host.postMessage({ generation: state.generation, projectUri: state.selection.projectUri, ...message }); } };
 const agent = new TraceAgentView(element('trace-agent'), element('trace-actions'), action => post({ type: 'agent-action', action }), text => post({ type: 'copy', text }));
+const traceDetails = 'details.trace-section, details.trace-row';
 installContextMenu(host, (target, copy) => {
   if (!target.closest('#trace-app')) { return []; }
   const root = target.closest<HTMLElement>('[data-row-id]');
   const row = rows.find(row => row.id === root?.dataset.rowId);
-  const details = target.closest<HTMLDetailsElement>('details.trace-row, details.trace-agent-record');
+  const details = target.closest<HTMLDetailsElement>(`${traceDetails}, details.trace-agent-record`);
   const actions: ContextAction[] = [];
   if (details) { actions.push({ id: details.open ? 'collapse' : 'expand', run: () => { details.open = !details.open; } }); }
   if (row) {
@@ -58,7 +65,7 @@ installContextMenu(host, (target, copy) => {
     if (content?.textContent) { actions.push({ id: 'copyRecord', run: () => copy(content.textContent!) }); }
   }
   return actions;
-}, () => JSON.stringify([state?.generation, state?.selection]), target => target.closest('details.trace-row') ?? target);
+}, () => JSON.stringify([state?.generation, state?.selection]), target => target.closest(traceDetails) ?? target);
 for (const [id, label, glyph] of tabs) {
   const button = document.createElement('button'); button.id = `trace-tab-${id}`; button.dataset.tab = id;
   button.setAttribute('role', 'tab'); button.setAttribute('aria-controls', id === 'trace' ? 'trace-execution' : 'trace-agent');
@@ -145,11 +152,15 @@ function timeline(filtered: TraceRow[]): void {
   }
   if (focused) Array.from(target.querySelectorAll<HTMLButtonElement>('[data-row-id]')).find(button => button.dataset.rowId === focused)?.focus({ preventScroll: true });
 }
-function modelRequestView(target: TraceModelRequestTarget): ModelRequestView {
-  const root = document.createElement('details'); root.className = 'trace-model-request';
-  const summary = document.createElement('summary'); summary.textContent = t('Model request');
+function sectionView(label: string): SectionView {
+  const root = document.createElement('details'); root.className = 'trace-section';
+  const summary = document.createElement('summary'); summary.innerHTML = icon('chevron-right'); summary.append(label);
   const content = document.createElement('pre'); root.append(summary, content);
-  const view: ModelRequestView = { root, content };
+  return { root, content };
+}
+function modelRequestView(target: TraceModelRequestTarget): ModelRequestView {
+  const view: ModelRequestView = sectionView(t('Model request'));
+  const { root, content } = view; root.classList.add('trace-model-request');
   root.ontoggle = () => {
     if (!root.open || !root.isConnected || view.pending || view.loaded) return;
     view.pending = globalThis.crypto.randomUUID();
@@ -159,34 +170,70 @@ function modelRequestView(target: TraceModelRequestTarget): ModelRequestView {
   };
   return view;
 }
-function renderRow(row: TraceRow): HTMLDetailsElement {
-  let view = views.get(row.id);
-  if (!view) { const root = document.createElement('details'); root.className = 'trace-row'; root.dataset.rowId = row.id; view = { root, signature: '' }; views.set(row.id, view); }
-  const signature = JSON.stringify(row);
-  if (view.signature === signature) { return view.root; }
-  view.signature = signature; view.root.dataset.status = row.status ?? ''; view.root.dataset.lane = row.lane;
-  const focused = document.activeElement === view.root.querySelector('summary');
+function createRowView(id: string): RowView {
+  const root = document.createElement('details'); root.className = 'trace-row'; root.dataset.rowId = id;
   const summary = document.createElement('summary');
-  const badge = document.createElement('span'); badge.className = `trace-badge lane-${row.lane}`; badge.textContent = row.label;
-  const title = document.createElement('span'); title.className = 'trace-row-title'; title.textContent = row.title;
-  const preview = document.createElement('span'); preview.className = 'trace-preview'; preview.textContent = row.preview.replace(/\s+/g, ' '); preview.title = row.preview.slice(0, 1000);
+  const badge = document.createElement('span');
+  const title = document.createElement('span'); title.className = 'trace-row-title';
+  const preview = document.createElement('span'); preview.className = 'trace-preview';
   const meta = document.createElement('span'); meta.className = 'trace-row-meta';
-  meta.textContent = [statuses[row.status ?? ''], traceDuration(row.durationMs)].filter(Boolean).join(' \u00b7 ');
   summary.innerHTML = icon('chevron-right'); summary.append(badge, title, preview, meta);
   const detail = document.createElement('div'); detail.className = 'trace-row-detail';
   const tools = document.createElement('div'); tools.className = 'trace-detail-tools';
-  const time = document.createElement('span'); time.textContent = row.start === undefined ? t("Time not recorded") : new Date(row.start).toLocaleString(locale());
+  const time = document.createElement('span');
   const copy = document.createElement('button'); copy.className = 'icon-button'; copy.title = t("Copy record"); copy.setAttribute('aria-label', copy.title); copy.innerHTML = icon('copy');
-  copy.onclick = () => post({ type: 'copy', text: [row.title, ...row.sections.map(section => `${section.label}\n${section.value}`)].join('\n\n') }); tools.append(time, copy); detail.append(tools);
+  tools.append(time, copy); detail.append(tools); root.append(summary, detail);
+  const view: RowView = { root, signature: '', sections: new Map(), badge, title, preview, meta, detail, tools, time, copy };
+  root.ontoggle = () => {
+    if (!root.open || !root.isConnected || !view.sections.size) return;
+    const panel = scroll.getBoundingClientRect(), row = root.getBoundingClientRect();
+    if (row.height <= panel.height) {
+      if (row.top < panel.top) scroll.scrollTop += row.top - panel.top;
+      else if (row.bottom > panel.bottom) scroll.scrollTop += row.bottom - panel.bottom;
+    }
+  };
+  return view;
+}
+function reconcileChildren(parent: HTMLElement, children: HTMLElement[]): void {
+  let next = parent.firstElementChild;
+  for (const child of children) {
+    if (child === next) next = child.nextElementSibling;
+    else parent.insertBefore(child, next);
+  }
+  while (next) { const sibling = next.nextElementSibling; next.remove(); next = sibling; }
+}
+function renderRow(row: TraceRow): HTMLDetailsElement {
+  let view = views.get(row.id);
+  if (!view) { view = createRowView(row.id); views.set(row.id, view); }
+  const signature = JSON.stringify(row);
+  if (view.signature === signature) { return view.root; }
+  view.signature = signature; view.root.dataset.status = row.status ?? ''; view.root.dataset.lane = row.lane;
+  const { badge, title, preview, meta, detail, tools, time, copy } = view;
+  badge.className = `trace-badge lane-${row.lane}`; badge.textContent = row.label;
+  title.textContent = row.title;
+  preview.textContent = row.preview.replace(/\s+/g, ' '); preview.title = row.preview.slice(0, 1000);
+  meta.textContent = [statuses[row.status ?? ''], traceDuration(row.durationMs)].filter(Boolean).join(' \u00b7 ');
+  time.textContent = row.start === undefined ? t("Time not recorded") : new Date(row.start).toLocaleString(locale());
+  copy.onclick = () => post({ type: 'copy', text: [row.title, ...row.sections.map(section => `${section.label}\n${section.value}`)].join('\n\n') });
+  const sections: HTMLElement[] = [];
   for (const section of row.sections) {
-    const heading = document.createElement('h3'); heading.textContent = section.label;
-    const content = document.createElement('pre'); content.textContent = section.value; if (section.error) { content.className = 'trace-error'; } detail.append(heading, content);
+    if (section.field) {
+      const block = view.sections.get(section.field) ?? sectionView(section.label);
+      view.sections.set(section.field, block);
+      block.root.classList.toggle('trace-error', Boolean(section.error));
+      if (block.content.textContent !== section.value) block.content.textContent = section.value;
+      sections.push(block.root);
+    } else {
+      const heading = document.createElement('h3'); heading.textContent = section.label;
+      const content = document.createElement('pre'); content.textContent = section.value; if (section.error) { content.className = 'trace-error'; } sections.push(heading, content);
+    }
   }
   if (row.modelRequest && state?.modelRequests) {
     view.model ??= modelRequestView(row.modelRequest);
-    detail.append(view.model.root);
+    sections.splice(row.sections[0]?.field === 'input' ? 1 : 0, 0, view.model.root);
   } else { view.model = undefined; }
-  view.root.replaceChildren(summary, detail); if (focused) { summary.focus({ preventScroll: true }); } return view.root;
+  reconcileChildren(detail, [tools, ...sections]);
+  return view.root;
 }
 function preferences(): void {
   host.setState({ mode, follow, tab, projectUri: state?.selection.projectUri ?? saved.projectUri }); element('trace-follow').setAttribute('aria-pressed', String(follow));
@@ -201,11 +248,13 @@ function renderTrace(): void {
   element('trace-count').textContent = t("{0} / {1} records \u00B7 {2} tool calls", filtered.length, rows.length, rows.filter(row => row.lane === 'tool').length);
   for (const [id, view] of views) { if (!ids.has(id)) { view.root.remove(); views.delete(id); } }
   const list = element('trace-list'); list.querySelectorAll('.trace-turn').forEach(heading => heading.remove());
+  const children: HTMLElement[] = [];
   let turn = -1;
   for (const row of filtered) {
-    if (mode === 'rounds' && turn !== row.turn) { turn = row.turn; const heading = document.createElement('h3'); heading.className = 'trace-turn'; heading.textContent = t("Turn {0}", turn); list.append(heading); }
-    list.append(renderRow(row));
+    if (mode === 'rounds' && turn !== row.turn) { turn = row.turn; const heading = document.createElement('h3'); heading.className = 'trace-turn'; heading.textContent = t("Turn {0}", turn); children.push(heading); }
+    children.push(renderRow(row));
   }
+  reconcileChildren(list, children);
   timeline(filtered);
   element('trace-empty').hidden = filtered.length > 0;
   element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Bot projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : mode === 'errors' ? t('No execution errors') : t("No execution records");

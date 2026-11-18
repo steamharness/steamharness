@@ -4,12 +4,13 @@ import type { ConversationMessage, OutputItem } from '../src/workflow-types';
 import type { TraceModelRequestTarget, TracePanelState, TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
 
 export type TraceLane = 'input' | 'model' | 'tool' | 'node' | 'output' | 'log' | 'error';
+export type TraceNodeField = 'input' | 'output' | 'executionInfo' | 'error';
 export interface TraceRow {
   id: string; turn: number; lane: TraceLane; label: string; title: string; preview: string; status?: string;
   start?: number; end?: number; durationMs?: number;
   error?: boolean;
   modelRequest?: TraceModelRequestTarget;
-  sections: { label: string; value: string; error?: boolean }[];
+  sections: { field?: TraceNodeField; label: string; value: string; error?: boolean }[];
 }
 const record = (value: unknown): Record<string, any> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
 export function traceTime(value: unknown): number | undefined {
@@ -74,17 +75,20 @@ function runRows(run: TraceRun, turn: number, conversation = false, modelRequest
   }
   for (const [id, node] of nodes) {
     const start = traceTime(node.startedAt), end = traceTime(node.endedAt), sections: TraceRow['sections'] = [];
-    for (const [key, label] of [['input', t("Input")], ['output', t("Output")], ['error', t("Error")], ['executionInfo', t("Execution information")]]) {
-      if (node[key] !== undefined) { sections.push({ label, value: valueText(node[key]), error: key === 'error' }); }
+    const status = terminalStatus(node.status, run.status);
+    const durationMs = typeof node.durationMs === 'number' ? node.durationMs : start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
+    const executionInfo = node.executionInfo ?? { executionId: node.executionId, status, startedAt: node.startedAt, endedAt: node.endedAt, durationMs };
+    for (const [field, label, value] of [['input', t("Input"), node.input], ['output', t("Output"), node.output],
+      ['executionInfo', t("Execution information"), executionInfo], ['error', t("Error"), node.error]] as const) {
+      if (value !== undefined) { sections.push({ field, label, value: valueText(value), error: field === 'error' }); }
     }
     const lane = /^(llm|llm-stream|model|agent|opencode)$/i.test(String(node.metadata?.type ?? node.kind)) ? 'model' : 'node';
     const title = String(node.metadata?.title ?? node.name ?? node.nodeName ?? node.kind ?? id);
     rows.push({ id: `${prefix}node:${id}`, turn, lane, label: lane === 'model' ? t("Model") : t("Node"),
-      title, preview: sections[0]?.value ?? '',
+      title, preview: sections.find(section => section.field !== 'executionInfo' || node.executionInfo !== undefined)?.value ?? '',
       ...(modelRequest?.executionId === id ? { modelRequest } : {}),
       error: !!node.error || ['failed', 'error', 'timed_out', 'faulted'].includes(node.status),
-      status: terminalStatus(node.status, run.status), start, end,
-      durationMs: typeof node.durationMs === 'number' ? node.durationMs : start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined, sections });
+      status, start, end, durationMs, sections });
   }
   const message: ConversationMessage = { role: 'assistant', content: '', status: run.status, pendingInput: run.pendingInput };
   for (const [index, item] of (run.items ?? run.report?.output?.items ?? []).entries()) {

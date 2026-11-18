@@ -12,9 +12,12 @@ const require = createRequire(import.meta.url);
 const host = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-trace-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const client = await build({ entryPoints: ['extensions/studio-workstation/webview/trace.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
 
-test('model request opens lazily in both languages and survives live row refreshes', async t => {
+test('node detail sections are ordered and collapsed, with model requests loaded only on demand', async t => {
   const zh = JSON.parse(await readFile(new URL('../extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', import.meta.url), 'utf8'));
-  for (const [locale, bundle, label] of [['en', {}, 'Model request'], ['zh-cn', zh, '\u6a21\u578b\u8bf7\u6c42']]) {
+  for (const [locale, bundle, labels] of [
+    ['en', {}, ['Input', 'Model request', 'Output', 'Execution information']],
+    ['zh-cn', zh, ['\u8f93\u5165', '\u6a21\u578b\u8bf7\u6c42', '\u8f93\u51fa', '\u6267\u884c\u4fe1\u606f']],
+  ]) {
     const dom = new JSDOM('<script type="application/json" id="studio-localization"></script><div id="trace-app"></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
     t.after(() => dom.window.close());
     const { window } = dom, frames = [], posts = [];
@@ -27,17 +30,25 @@ test('model request opens lazily in both languages and survives live row refresh
     state.snapshot.durable = false;
     state.modelRequests = true;
     answer.modelRequestExecutionId = 'llm';
-    answer.events = [{ type: 'node_started', executionId: 'llm', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } }];
+    answer.events = [{ type: 'node_started', executionId: 'llm', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' }, input: { prompt: 'Hello' }, startedAt: 1000 }];
     const receive = data => {
       window.dispatchEvent(new window.MessageEvent('message', { data }));
       for (const callback of frames.splice(0)) callback();
     };
     receive(state);
     const block = window.document.querySelector('.trace-model-request');
-    assert.equal(block.querySelector('summary').textContent, label);
-    assert.equal(block.open, false);
+    const row = block.closest('.trace-row');
+    const sections = () => Array.from(row.querySelectorAll('.trace-row-detail > details'));
+    const headings = () => sections().map(section => section.querySelector('summary').textContent);
+    assert.deepEqual(headings(), [labels[0], labels[1], labels[3]]);
+    row.querySelector('summary').click();
+    assert.ok(sections().every(section => !section.open));
+    const [input, , info] = sections();
+    input.querySelector('summary').click();
+    assert.equal(input.open, true);
     assert.equal(posts.filter(post => post.type === 'model-request').length, 0);
-    block.closest('.trace-row').open = true; block.open = true;
+    const modelSummary = block.querySelector('summary');
+    modelSummary.click(); modelSummary.focus();
     block.dispatchEvent(new window.Event('toggle'));
     const { requestId, target } = posts.at(-1);
     assert.equal(target.sessionId, state.snapshot.sessions[0].id);
@@ -46,11 +57,19 @@ test('model request opens lazily in both languages and survives live row refresh
     receive({ type: 'trace-model-request', generation: state.generation, requestId, request: { systemPrompt: 'Prompt <em>verbatim</em>' } });
     assert.match(block.querySelector('pre').textContent, /Prompt <em>verbatim<\/em>/);
     assert.equal(block.querySelector('em'), null);
-    answer.events.push({ type: 'node_finished', executionId: 'llm', nodeName: 'output', output: 'Model output', status: 'success' });
+    answer.events.push({ type: 'node_finished', executionId: 'llm', nodeName: 'output', output: 'Model output', status: 'success', endedAt: 1350 });
     receive(state);
-    assert.equal(window.document.querySelector('.trace-model-request'), block);
-    assert.equal(block.open, true);
+    assert.deepEqual(headings(), labels);
+    const [sameInput, sameModel, output, sameInfo] = sections();
+    assert.deepEqual([sameInput, sameModel, sameInfo], [input, block, info]);
+    assert.deepEqual(sections().map(section => section.open), [true, true, false, false]);
+    assert.equal(window.document.activeElement, modelSummary);
+    assert.equal(output.querySelector('pre').textContent, 'Model output');
+    assert.equal(JSON.parse(info.querySelector('pre').textContent).durationMs, 350);
     assert.equal(posts.filter(post => post.type === 'model-request').length, 1);
+    row.querySelector('.trace-detail-tools button').click();
+    assert.equal(posts.at(-1).type, 'copy');
+    assert.doesNotMatch(posts.at(-1).text, /Prompt <em>/);
     answer.modelRequestExecutionId = 'retry';
     answer.events.push({ type: 'node_started', executionId: 'retry', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' } });
     receive(state);

@@ -142,5 +142,37 @@ try {
   state.status = 'connected'; state.reveal++; state.selection.messageId = 'reply'; await publish(); assert.equal(await page.locator('#trace-tab-trace').getAttribute('aria-selected'), 'true');
   await selectTab('tasks'); await page.locator('#trace-tab-tasks').focus(); await page.keyboard.press('ArrowRight'); assert.equal(await page.locator('#trace-tab-plan').getAttribute('aria-selected'), 'true');
   state.snapshot.durable = false; await publish(); assert.equal(await page.locator('#trace-tabs').isVisible(), false); assert.equal(await page.locator('#trace-execution').isVisible(), true);
-  assert.deepEqual(errors, []); console.log(JSON.stringify({ headless: true, screenshots, languages: ['en', 'zh-cn'], themes: ['dark', 'light'], checks: ['all-views', 'trace-modes', 'responsive', 'equal-task-sections', 'task-timing', 'selected-context-usage', 'completed-details', 'scroll-focus-expansion', 'plan-CAS', 'handoff', 'scoped-navigation', 'current-conversation', 'scoped-cancel', 'disconnect', 'keyboard', 'original-trace'], proof }));
+  for (const [language, theme, width, height] of [['zh-cn', 'dark', 390, 560], ['en', 'light', 720, 400]]) {
+    await page.setViewportSize({ width, height }); await page.goto(`${origin}/?locale=${language}&theme=${theme}`);
+    state = durableTraceState(); state.snapshot.durable = false; state.snapshot.running = false; state.modelRequests = true;
+    const [input, answer] = state.snapshot.sessions[0].messages, startedAt = Date.now() - 2300;
+    Object.assign(input, { content: 'Hello', createdAt: startedAt });
+    state.projects[0].name = 'LLM Bot';
+    Object.assign(answer, { status: 'success', content: 'Hello, how can I help?', items: undefined, pendingInput: undefined, createdAt: startedAt, durationMs: 2300, modelRequestExecutionId: 'llm' });
+    answer.events = [{ type: 'node_finished', executionId: 'llm', nodeName: 'output', metadata: { type: 'llm-stream', title: 'bot-llm-answer' },
+      input: { prompt: 'Hello' }, output: 'Long output.\n'.repeat(100), status: 'success', startedAt, endedAt: startedAt + 2300 }];
+    await publish();
+    const row = page.locator('.trace-row').filter({ has: page.locator('.trace-model-request') });
+    await row.locator(':scope > summary').click();
+    const headings = row.locator('.trace-section > summary');
+    assert.deepEqual(await headings.allTextContents(), ['Input', 'Model request', 'Output', 'Execution information'].map(label => catalogs[language][label]));
+    assert.equal(await row.locator('.trace-section[open]').count(), 0);
+    await page.waitForFunction(() => {
+      const panel = document.getElementById('trace-scroll').getBoundingClientRect();
+      return Array.from(document.querySelectorAll('.trace-section > summary')).every(heading => {
+        const box = heading.getBoundingClientRect();
+        return box.top >= panel.top && box.bottom <= panel.bottom;
+      });
+    }, null, { timeout: 2000 });
+    const requests = () => page.evaluate(() => window.requests.filter(request => request.type === 'model-request').length);
+    assert.equal(await requests(), 0);
+    await page.screenshot({ path: path.join(proof, `${language}-${theme}-llm-node.png`) }); screenshots++;
+    const modelRequest = row.locator('.trace-model-request');
+    await modelRequest.locator('summary').press('Enter');
+    await page.waitForFunction(() => window.requests.some(request => request.type === 'model-request'));
+    assert.equal(await modelRequest.getAttribute('open'), '');
+    assert.equal(await row.locator('.trace-section[open]').count(), 1);
+    assert.equal(await requests(), 1);
+  }
+  assert.deepEqual(errors, []); console.log(JSON.stringify({ headless: true, screenshots, languages: ['en', 'zh-cn'], themes: ['dark', 'light'], checks: ['all-views', 'trace-modes', 'responsive', 'equal-task-sections', 'task-timing', 'selected-context-usage', 'completed-details', 'scroll-focus-expansion', 'plan-CAS', 'handoff', 'scoped-navigation', 'current-conversation', 'scoped-cancel', 'disconnect', 'keyboard', 'original-trace', 'llm-node-sections'], proof }));
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
