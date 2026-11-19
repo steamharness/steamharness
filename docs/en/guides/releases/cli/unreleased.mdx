@@ -8,5 +8,6 @@ draft: true
 #### Changed
 
 - Local development no longer opens a platform session. Use `--online project` or `--online ai` to connect on demand. {/* note: explicit-platform-connection */}
+- If a project entry fails to start in Studio, you can open its recovery page and retry. Cross-site API requests are still blocked. {/* note: hosted-entry-recovery-origin */}
 - CLI Web supports streaming, tool approvals, queues, stopping, and manual retries for LLM Bots. Changing the project engine starts a new conversation and preserves the old history. Bot templates explicitly declare the Agent engine. {/* note: draft-1 */}
 - When you start CLI Web with `--online project`, use **Browser sign-in** to authorize access and return to the original link and Bot conversation in the same tab. {/* note: cli-web-one-click-sign-in */}

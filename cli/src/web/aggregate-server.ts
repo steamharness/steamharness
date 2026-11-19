@@ -86,7 +86,7 @@ const prefix='/entries/${entryId}', projectId=${JSON.stringify(manifest.projectI
 if(session){history.replaceState(null,'',location.pathname);}
 const auth=session?fetch(prefix+'/api/session',{method:'POST',headers:{Authorization:'Bearer '+session}}):Promise.resolve();
 document.querySelector('select').onchange=event=>{const entryId=event.target.value;if(parent!==window)parent.postMessage({type:'workflow-open-entry',version:1,projectId,entryId},'*');else location.assign('/entries/'+entryId+'/');};
-document.querySelector('button').onclick=async event=>{event.target.disabled=true;try{await auth;const response=await fetch(prefix+'/api/retry',{method:'POST'});const result=await response.json();if(!response.ok)throw new Error(result.message);if(result.ready)location.reload();else document.querySelector('pre').textContent=result.message;}catch(error){document.querySelector('pre').textContent=String(error);}finally{event.target.disabled=false;}};
+document.querySelector('button').onclick=async event=>{event.target.disabled=true;try{await auth;const response=await fetch(prefix+'/api/retry',{method:'POST',headers:session?{Authorization:'Bearer '+session}:{}});const result=await response.json();if(!response.ok)throw new Error(result.message);if(result.ready)location.reload();else document.querySelector('pre').textContent=result.message;}catch(error){document.querySelector('pre').textContent=String(error);}finally{event.target.disabled=false;}};
 </script></body></html>`;
   };
   const server = createServer((request, response) => {
@@ -102,7 +102,8 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
       response.setHeader('X-Content-Type-Options','nosniff'); response.setHeader('Referrer-Policy','no-referrer');
       const requestOrigin = `http://${request.headers.host}`;
       const forwarded = !!host && ['127.0.0.1','localhost','[::1]'].includes(new URL(requestOrigin).hostname);
-      if (request.headers.host !== new URL(origin).host && !forwarded || request.headers.origin && request.headers.origin !== requestOrigin || request.headers['sec-fetch-site'] === 'cross-site') { response.writeHead(403); response.end(JSON.stringify({message:'Invalid request origin.'})); return; }
+      const embeddedRecovery = !!host && match[2] === '/' && request.method === 'GET' && request.headers['sec-fetch-dest'] === 'iframe' && !request.headers.origin;
+      if (request.headers.host !== new URL(origin).host && !forwarded || request.headers.origin && request.headers.origin !== requestOrigin || request.headers['sec-fetch-site'] === 'cross-site' && !embeddedRecovery) { response.writeHead(403); response.end(JSON.stringify({message:'Invalid request origin.'})); return; }
       if (match[2] === '/api/session' || match[2] === '/api/retry') {
         const cookie = String(request.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${credentials.cookie}=`))?.slice(credentials.cookie.length + 1) ?? '';
         if (!matches(String(request.headers.authorization ?? '').replace(/^Bearer /,'')) && !matches(cookie)) { response.writeHead(401); response.end(JSON.stringify({message:'Invalid session.'})); return; }
@@ -129,6 +130,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     invokeEntry,
     get manifest() { return manifest; }, get project() { return project(); },
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },
+    get webAppConfigurations() { return Object.fromEntries([...entries].filter(([, entry]) => entry.project.kanban?.webApp).map(([id, entry]) => [id, entry.kanbanController!.configuration()])); },
     get projectController() { return current()?.projectController; }, get kanbanController() { return current()?.kanbanController; },
     entryUrl:(entryId:string) => { selectProjectEntry(manifest,entryId); return `${origin}/entries/${entryId}/#session=${credentials.capability}`; },
     readModelRequest: (entryId: string, sessionId: string, messageId: string, executionId: string) => resetting ? undefined : entries.get(entryId)?.readModelRequest(sessionId, messageId, executionId),

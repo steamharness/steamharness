@@ -19,7 +19,10 @@ afterEach(async () => {
   }
 });
 
-async function fixture(options: { id?: unknown; connection?: WebConnection; platform?: boolean; savedServer?: string } = {}) {
+async function fixture(options: {
+  id?: unknown; connection?: WebConnection; platform?: boolean; savedServer?: string; fail?: boolean; webApp?: boolean;
+  configurationChanged?: Parameters<typeof startWebServer>[0]['onWebAppConfigurationChanged'];
+} = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
@@ -32,7 +35,7 @@ async function fixture(options: { id?: unknown; connection?: WebConnection; plat
     vi.stubEnv('STEAMHARNESS_AI_SERVER_URL', options.savedServer); vi.stubEnv('STEAMHARNESS_AI_API_KEY', 'env-ai-token');
   }
   const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
-    entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json',
+    entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json', ...(type === 'kanban' && options.webApp ? { webApp: { service: 'sample.app' } } : {}),
   }));
   let id: string = randomUUID();
   const pkg = { id, name: 'Aggregate test', version: "0.1.0", entries, defaultEntry: 'agent' };
@@ -54,15 +57,15 @@ async function fixture(options: { id?: unknown; connection?: WebConnection; plat
     }
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
-  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html' } } : {}) }));
+  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html', ...(options.webApp ? { webApp: { service: 'sample.app' } } : {}) } } : {}) }));
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
-  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => options.fail ? ({ projects: [], errors: ['Runtime unavailable'] }) : ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
     run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
     cancel: vi.fn(runId => { for (const operation of active.values()) if (operation.runId === runId) operation.finish({ status: 'aborted' }); }),
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, ...(options.connection || options.platform !== undefined ? { host: { surface: 'editor' as const, platform: options.platform, connection: options.connection } } : {}) }); apps.push(app); return app; };
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, onWebAppConfigurationChanged: options.configurationChanged, ...(options.connection || options.platform !== undefined ? { host: { surface: 'editor' as const, platform: options.platform, connection: options.connection } } : {}) }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const call = async (entryId: string, message: object) => {
@@ -75,6 +78,73 @@ async function fixture(options: { id?: unknown; connection?: WebConnection; plat
   };
   return { directory, entries, runtime, active, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
 }
+
+it('shows the hosted recovery document in an iframe while keeping recovery APIs and foreign origins blocked', async () => {
+  const f = await fixture({ fail: true, platform: true });
+  const url = f.app.origin + '/entries/board/';
+  const headers = { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'iframe' };
+  const response = await fetch(url, { headers });
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('This entry could not start');
+  expect((await fetch(url, { headers: { ...headers, Origin: 'https://outside.invalid' } })).status).toBe(403);
+  expect((await fetch(url + 'api/retry', { method: 'POST', headers })).status).toBe(403);
+  expect((await fetch(url, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status).toBe(403);
+  expect((await fetch(url + 'api/retry', { method: 'POST' })).status).toBe(401);
+  const session = new URL(f.app.url).hash.slice('#session='.length);
+  const retry = await fetch(url + 'api/retry', { method: 'POST', headers: { Authorization: 'Bearer ' + session } });
+  expect(retry.status).toBe(200);
+  expect(await retry.json()).toMatchObject({ ready: false, message: 'Runtime unavailable' });
+  const standalone = await fixture({ fail: true });
+  expect((await fetch(standalone.app.origin + '/entries/board/', { headers })).status).toBe(403);
+});
+
+it('invalidates the old Web application origin and publishes the selected entry configuration', async () => {
+  const changed: Array<{ entryId: string; configuration: any }> = [];
+  const f = await fixture({ webApp: true, configurationChanged: (entryId, configuration) => changed.push({ entryId, configuration }) });
+  await f.app.setHostWebApps({ board: { service: 'sample.app', apiBaseUrl: 'https://service.invalid/api', bootstrap: { token: 'old-scope' } } });
+  const before = await f.state('board'), oldUrl = before.kanban.preview.url;
+  expect(await (await fetch(oldUrl)).text()).toContain('old-scope');
+  await f.call('board', { type: 'project-configuration', call: { action: 'create', revision: before.configurations.revision, name: 'Online', values: { label: 'Online service' } } });
+  let state = (await f.state('board')).configurations;
+  const online = state.configurations.find((item: any) => item.name === 'Online');
+  await f.call('board', { type: 'project-configuration', call: { action: 'save', revision: state.revision, id: online.id, values: { label: 'Online service' } } });
+  state = (await f.state('board')).configurations;
+  await f.call('board', { type: 'project-configuration', call: { action: 'select', revision: state.revision, id: online.id } });
+  expect(f.app.webAppConfigurations.board).toMatchObject({ id: online.id, params: { label: 'Online service' } });
+  expect(changed.at(-1)).toMatchObject({ entryId: 'board', configuration: { id: online.id, params: { label: 'Online service' } } });
+  await expect(fetch(oldUrl)).rejects.toThrow();
+  const next = await f.state('board');
+  expect(await (await fetch(next.kanban.preview.url)).text()).not.toContain('old-scope');
+  const staleCatalog = await f.post('board', { type: 'kanban-method-state', nonce: before.kanban.preview.nonce,
+    clientId: 'old-client', instanceId: 'old-preview', ready: true, configurationId: before.configurations.activeConfigurationId,
+    presentation: { mode: 'fullscreen' }, methods: [] });
+  expect(staleCatalog.status).toBe(200);
+  expect((await staleCatalog.json()).messages).toEqual([]);
+  expect((await f.call('board', { type: 'kanban-methods', action: 'list' })).value).toEqual([]);
+  expect(await f.call('board', { type: 'kanban-bridge', nonce: before.kanban.preview.nonce,
+    requestId: 'stale-operation', call: { operation: 'runtime.getLocale', input: {} } })).toMatchObject({
+    ok: false, error: { code: 'KANBAN_BRIDGE_SESSION_INVALID' },
+  });
+});
+
+it('keeps the current Web application connected when another configuration is saved', async () => {
+  const changed = vi.fn();
+  const f = await fixture({ webApp: true, configurationChanged: changed });
+  const initial = (await f.state('board')).configurations;
+  await f.call('board', { type: 'project-configuration', call: { action: 'create', revision: initial.revision, name: 'Online' } });
+  let state = (await f.state('board')).configurations;
+  const online = state.configurations.find((item: any) => item.name === 'Online');
+  await f.call('board', { type: 'project-configuration', call: { action: 'select', revision: state.revision, id: initial.activeConfigurationId } });
+  await f.app.setHostWebApps({ board: { service: 'sample.app', apiBaseUrl: 'https://service.invalid/api', bootstrap: { token: 'current-scope' } } });
+  const before = await f.state('board'), url = before.kanban.preview.url;
+  changed.mockClear();
+  await f.call('board', { type: 'project-configuration', call: { action: 'save', revision: before.configurations.revision, id: online.id, values: { label: 'Updated online service' } } });
+  state = (await f.state('board')).configurations;
+  await f.call('board', { type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: state.configurations.find((item: any) => item.id === state.activeConfigurationId).values } });
+  expect(changed).not.toHaveBeenCalled();
+  expect((await f.state('board')).kanban.preview.url).toBe(url);
+  expect(await (await fetch(url)).text()).toContain('current-scope');
+});
 
 it('serves mixed and repeated entry types through one host and isolates drafts, configuration and restored sessions', async () => {
   const f = await fixture();

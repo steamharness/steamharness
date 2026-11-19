@@ -7,6 +7,7 @@ draft: true
 
 #### New Features
 
+- Hosted Web applications can connect to a service based on the selected project configuration. Switching configurations closes old connections and updates the sign-in action. This requires a compatible CLI and service provider. {/* note: web-app-selected-configuration */}
 - **Native Start workbench**: empty editor groups and a restorable Start tab share one entry offering new projects, offline examples, and system status. {/* note: draft-85 */}
 - **Built-in Studio Analysis**: summarizes imported local projects, live run states, and histories with charts, trends, filtered tables, and CSV export. {/* note: draft-86 */}
 - **Assistant slash commands**: `/plan` switches to plan mode, `/export` exports every session record, and `/compact` summarizes context immediately. {/* note: draft-87 */}
@@ -143,6 +144,7 @@ draft: true
 
 #### Fixed
 
+- Hosted Web applications provide a manual sign-in action. Opening a tab or switching project configurations checks the account scope; sign-in starts when you click the button. You can retry after cancelling, and signing out or switching accounts revokes the old session. {/* note: web-app-login-resume */}
 - Fixed recent-project avatars touching their names on Start, with consistent spacing and label alignment for project avatars and folder icons. {/* note: draft-120 */}
 - Fix profile image data URLs being discarded in Studio. Refresh avatars and names when returning to the window and periodically, preserving the active connection and ignoring stale refresh results. {/* note: draft-121 */}
 - Fixed the Start logo moving above its title in narrow editor groups; the logo stays beside the title and actions wrap based on the editor width. {/* note: draft-122 */}

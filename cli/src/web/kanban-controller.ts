@@ -15,7 +15,7 @@ import { readConfigurationFile } from './configuration-files';
 import { requestStudioAnalysis } from './local-analysis';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; webAppBinding?(): WebAppBinding | undefined }
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; webAppBinding?(): WebAppBinding | undefined; webAppLogin?(configuration: KanbanInjectedConfiguration): void }
 export class KanbanController {
   workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
@@ -44,7 +44,14 @@ export class KanbanController {
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
   }
   configuration(): KanbanInjectedConfiguration { const snapshot = configurationSnapshot(this.workspace, undefined, false); return { id: snapshot.id, name: snapshot.name, params: snapshot.values }; }
-  configurationChanged(state: ProjectConfigurationState): void { this.workspace = state; if (this.preview) { this.newPreview(); this.hooks.changed(); } }
+  configurationChanged(state: ProjectConfigurationState): void {
+    const previous = this.workspace && JSON.stringify(this.configuration());
+    this.workspace = state;
+    if (this.preview) {
+      if (!this.project.kanban?.webApp || previous !== JSON.stringify(this.configuration())) this.newPreview();
+      this.hooks.changed();
+    }
+  }
   state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.project.kanban?.webApp ? this.webApp?.url ?? "about:blank" : this.preview.url, nonce: this.preview.nonce, webApp: !!this.project.kanban?.webApp, permissions: this.project.kanban?.webApp?.permissions ?? [], accountUrl: this.binding?.accountUrl } }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
@@ -82,7 +89,8 @@ export class KanbanController {
     this.hooks.changed();
     if (binding && binding.service !== this.project.kanban.webApp.service) throw new Error('Web application service does not match its registration.');
     this.newPreview();
-    const app = new WebAppPreview(() => this.preview, binding);
+    const configuration = this.configuration();
+    const app = new WebAppPreview(() => this.preview, binding, this.hooks.webAppLogin ? () => this.hooks.webAppLogin!(configuration) : undefined);
     await app.start();
     if (this.disposed || epoch !== this.webAppEpoch) { await app.close(); return; }
     this.webApp = app; this.hooks.changed();
@@ -100,7 +108,11 @@ export class KanbanController {
         ...(message.call === undefined ? {} : { result }),
       } }];
     }
-    if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) throw new Error('Kanban preview changed.'); this.methods.publish(message); return []; }
+    if (message.type === 'kanban-method-state') {
+      // A replaced preview can still have a debounced catalog update in flight.
+      if (message.nonce !== this.preview.nonce) return [];
+      this.methods.publish(message); return [];
+    }
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
     if (message.type === 'kanban-methods') return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
     if (message.type === 'kanban-bridge') {

@@ -135,29 +135,43 @@ export async function startProjectCli(options: {
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
   let closing = false, finished = false, buffer = '', stderr = '';
   let webAppFailure: WebAppFailureReason | undefined;
+  let activeWebApp: { entryId: string; connection?: Connection; serverUrl?: string } | undefined;
+  let webAppLoginBinding: WebAppSession['binding'] | undefined;
+  let webAppConfigurations: NonNullable<WebReady['webAppConfigurations']> = {};
   let webAppEpoch = 0, webAppAbort: AbortController | undefined;
   let webAppSessions: WebAppSession[] = [];
   const clearWebApps = () => { ++webAppEpoch; webAppFailure = undefined; webAppAbort?.abort(); const sessions = webAppSessions; webAppSessions = []; for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); };
-  const refreshWebApps = async (entryId?: string, connection?: Connection) => {
+  const refreshWebApps = async (entryId?: string, connection?: Connection, interactive = false, serverUrl?: string) => {
+    const retryBinding = interactive ? webAppLoginBinding : undefined;
+    webAppLoginBinding = retryBinding;
     clearWebApps();
     if (closing || finished) return;
-    child.stdin?.write(`${JSON.stringify({ type: 'web-apps', webApps: {} })}\n`);
+    // Keep the sign-in action usable while an external authorization is pending.
+    if (!retryBinding) child.stdin?.write(`${JSON.stringify({ type: 'web-apps', webApps: {} })}\n`);
     const entry = options.webAppEntries?.find(entry => entry.entryId === entryId);
-    if (!connection || !options.expectedProjectId || !entry?.webApp) return;
+    if ((!connection && !serverUrl) || !options.expectedProjectId || !entry?.webApp) return;
     const epoch = webAppEpoch, abort = webAppAbort = new AbortController();
     const sessions: WebAppSession[] = [];
     try {
       const bindings: Record<string, unknown> = {};
-      const session = await openWebApp({ projectId: options.expectedProjectId, entryId: entry.entryId, service: entry.webApp.service, connection, signal: abort.signal });
+      const session = await openWebApp({ projectId: options.expectedProjectId, entryId: entry.entryId, service: entry.webApp.service, configuration: webAppConfigurations[entry.entryId], connection, serverUrl, interactive, signal: abort.signal });
       sessions.push(session); bindings[entry.entryId] = session.binding;
       if (closing || finished || epoch !== webAppEpoch) { for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined); return; }
+      if (session.binding.login && readyWebAppLoginVersion !== 1) throw new Error('Update the project CLI to use Web application sign-in actions.');
+      webAppLoginBinding = session.binding.login ? session.binding : undefined;
       webAppSessions = sessions;
       child.stdin?.write(`${JSON.stringify({ type: 'web-apps', webApps: bindings })}\n`);
     } catch (error) {
       for (const session of sessions) void Promise.resolve(session.dispose()).catch(() => undefined);
-      if (!abort.signal.aborted) { webAppFailure = webAppFailureReason(error); events.emit('web-app-error', webAppFailure); }
+      if (!abort.signal.aborted) {
+        if (retryBinding) {
+          webAppLoginBinding = retryBinding;
+        }
+        webAppFailure = webAppFailureReason(error); events.emit('web-app-error', webAppFailure);
+      }
     }
   };
+  let readyWebAppLoginVersion: number | undefined;
   let exit: WebSessionExit | undefined;
   const diagnostics = () => cleanError(stderr).slice(-8_000).trim();
   let resourceProjectsKey = JSON.stringify(options.resourceProjects ?? []);
@@ -214,17 +228,32 @@ export async function startProjectCli(options: {
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
       child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, resourceProjects: options.resourceProjects ?? [] })}\n`);
     });
+    webAppConfigurations = ready.webAppConfigurations ?? {};
+    readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;
     child.stdout?.resume();
     child.on('error', () => void close());
     // The browser session URL does not grant access to private trace details.
     const pendingTrace = new Map<string, (request?: unknown) => void>();
-    if (ready.traceModelRequestProtocolVersion === 1) {
+    if (ready.traceModelRequestProtocolVersion === 1 || ready.webAppConfigurationProtocolVersion === 1 || ready.webAppLoginProtocolVersion === 1) {
       const lines = createInterface({ input: child.stdout!, crlfDelay: Infinity });
       lines.on('line', line => {
         if (!line.startsWith('{')) return;
         try {
           const reply = JSON.parse(line);
           if (reply.type === 'trace-model-request') pendingTrace.get(reply.requestId)?.(reply.request);
+          if (ready.webAppLoginProtocolVersion === 1 && reply.type === 'web-app-login' && reply.entryId === activeWebApp?.entryId) {
+            const selected = JSON.stringify(webAppConfigurations[reply.entryId]);
+            if (JSON.stringify(reply.configuration) !== selected) return;
+            const active = activeWebApp;
+            events.emit('web-app-login', reply.entryId, () => !closing && !finished && active === activeWebApp && JSON.stringify(webAppConfigurations[reply.entryId]) === selected);
+          }
+          if (ready.webAppConfigurationProtocolVersion === 1 && reply.type === 'web-app-configuration' && options.webAppEntries?.some(entry => entry.entryId === reply.entryId)) {
+            if (JSON.stringify(webAppConfigurations[reply.entryId]) === JSON.stringify(reply.configuration)) return;
+            webAppConfigurations = { ...webAppConfigurations, [reply.entryId]: reply.configuration };
+            if (activeWebApp?.entryId === reply.entryId && activeWebApp) {
+              void refreshWebApps(activeWebApp.entryId, activeWebApp.connection, false, activeWebApp.serverUrl);
+            }
+          }
         } catch { /* Other CLI output is not a trace reply. */ }
       });
       child.once('close', () => {
@@ -266,11 +295,13 @@ export async function startProjectCli(options: {
         resourceProjectsKey = key;
         child.stdin?.write(`${JSON.stringify({ type: 'resource-projects', resourceProjects })}\n`);
       },
-      connectWebApp: (entryId, connection) => {
+      connectWebApp: (entryId, connection, request) => {
         if (ready.webAppProtocolVersion !== 1) throw new Error(t('Update the project CLI to open the hosted Web App.'));
         if (connection) secrets.add(connection.accessToken);
-        return refreshWebApps(entryId, connection);
+        activeWebApp = entryId ? { entryId, connection, serverUrl: request?.serverUrl ?? connection?.serverUrl } : undefined;
+        return refreshWebApps(entryId, connection, request?.interactive ?? true, activeWebApp?.serverUrl);
       },
+      onWebAppLogin: callback => { events.on('web-app-login', callback); return { dispose: () => events.off('web-app-login', callback) }; },
       onWebAppError: callback => { events.on('web-app-error', callback); if (webAppFailure) { const reason = webAppFailure, epoch = webAppEpoch; queueMicrotask(() => { if (webAppEpoch === epoch && webAppFailure === reason && events.listeners('web-app-error').includes(callback)) callback(reason); }); } return { dispose: () => events.off('web-app-error', callback) }; },
       onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(() => { if (events.listeners('exit').includes(callback)) callback(exit); }); } return { dispose: () => events.off('exit', callback) }; },
     };

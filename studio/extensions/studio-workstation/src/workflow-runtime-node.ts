@@ -246,7 +246,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     start: async (project, surface, signal, resourceProjects) => {
       const runtime = await selectedRuntime();
-      return hosts.acquire(
+      const lease = await hosts.acquire(
       JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity]), project,
       async (port, hostSignal) => {
       assertAvailable();
@@ -290,10 +290,29 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant: project.assistant,
           studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
         let projectConnection: Connection | undefined, aiConnection: Connection | undefined, webAppConnection: Connection | undefined;
-        let hostedEntry: string | undefined;
+        let hostedEntry: string | undefined, connectedWebAppEntry: string | undefined, webAppServerUrl: string | undefined;
+        let checkingWebAppAccount = 0;
+        let checkingWebAppConnection: Connection | undefined;
         const same = (left?: Connection, right?: Connection) => left?.serverUrl === right?.serverUrl && left?.accessToken === right?.accessToken;
-        if (account.platform) session.connectPlatform = async (purpose, entryId) => {
+        const syncWebApp = async (connection?: Connection, interactive = false) => {
+          const serverUrl = account.getState?.().serverUrl ?? connection?.serverUrl;
+          if (runSignal.aborted || !hostedEntry || !interactive && connectedWebAppEntry === hostedEntry && same(webAppConnection, connection) && webAppServerUrl === serverUrl) return;
+          const entryId = hostedEntry;
+          connectedWebAppEntry = entryId; webAppConnection = connection; webAppServerUrl = serverUrl;
+          try { await session.connectWebApp?.(entryId, connection, { interactive, serverUrl }); }
+          catch (error) {
+            if (connectedWebAppEntry === entryId && same(webAppConnection, connection)) {
+              connectedWebAppEntry = undefined; webAppConnection = undefined;
+            }
+            throw error;
+          }
+        };
+        const webAppFailed = () => {
+          if (!runSignal.aborted) void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'));
+        };
+        const connectPlatform = async (purpose: 'project' | 'ai' | 'web-app', entryId: string, interactive = true, isCurrent = () => true) => {
           assertAvailable(); runSignal.throwIfAborted();
+          if (!isCurrent()) return;
           if (purpose === 'ai') {
             if (session.ready.systemAiConnectionProtocolVersion !== 2) throw new Error(t('Update the project CLI to connect to System AI.'));
             const connection = await account.connectAi();
@@ -303,14 +322,24 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             }
           } else {
             if (purpose === 'web-app' && !project.entries.some(entry => entry.entryId === entryId && entry.webApp)) return;
-            const connection = await account.connect();
+            // Keep the requested entry while signed out so a later login resumes it.
+            if (purpose === 'web-app') {
+              hostedEntry = entryId;
+              if (!interactive) { await syncWebApp(account.getConnection()); return; }
+            }
+            let connection: Connection | undefined;
+            if (purpose === 'web-app') { checkingWebAppAccount++; checkingWebAppConnection = account.getConnection(); }
+            try { connection = await account.connect(); }
+            finally { if (purpose === 'web-app' && !--checkingWebAppAccount) checkingWebAppConnection = undefined; }
             runSignal.throwIfAborted();
+            if (!isCurrent()) return;
             if (!connection) { await vscode.commands.executeCommand('studio.openLogin'); return; }
             if (!same(connection, account.getConnection())) return;
             if (purpose === 'project') { session.updateAuth(connection, aiConnection); projectConnection = connection; }
-            else { hostedEntry = entryId; webAppConnection = connection; await session.connectWebApp?.(entryId, connection); }
+            else if (hostedEntry === entryId) await syncWebApp(connection, true);
           }
         };
+        if (account.platform) session.connectPlatform = connectPlatform;
         const revoke = account.onDidChange(state => {
           if (state.status !== 'checking' && projectConnection && !same(projectConnection, account.getConnection())) {
             projectConnection = undefined; session.updateAuth(undefined, aiConnection);
@@ -318,11 +347,14 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           if (aiConnection && !same(aiConnection, account.getAiConnection())) {
             aiConnection = undefined; session.updateAuth(projectConnection);
           }
-          if (state.status !== 'checking' && webAppConnection && !same(webAppConnection, account.getConnection())) {
-            webAppConnection = undefined; hostedEntry = undefined; void session.connectWebApp?.();
-          }
+          if (state.status !== 'checking' && (!checkingWebAppAccount || !same(checkingWebAppConnection, account.getConnection()))) void syncWebApp(account.getConnection()).catch(webAppFailed);
+        });
+        const webAppLogin = session.onWebAppLogin?.((entryId, isCurrent) => {
+          if (account.platform && !runSignal.aborted) void connectPlatform('web-app', entryId, true, isCurrent).catch(webAppFailed);
         });
         const webAppErrors = session.onWebAppError?.(reason => {
+          connectedWebAppEntry = undefined; webAppConnection = undefined;
+          if (reason === 'login-cancelled') return;
           const retry = t('Retry');
           const messages = {
             'server-not-configured': t('The selected Server has not configured account integration for this Web application. Configure and restart the Server, then retry.'),
@@ -338,7 +370,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             if (action === retry && !runSignal.aborted && hostedEntry) void session.connectPlatform?.('web-app', hostedEntry);
           });
         });
-        void session.closed.then(() => { revoke.dispose(); webAppErrors?.dispose(); });
+        void session.closed.then(() => { revoke.dispose(); webAppErrors?.dispose(); webAppLogin?.dispose(); });
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }
@@ -351,7 +383,15 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
-    }, signal); },
+    }, signal);
+      // Opening or recovering a tab only checks its scope; sign-in needs a click.
+      if (account.platform && project.entries.some(entry => entry.entryId === project.entryId && entry.webApp)) {
+        void lease.connectPlatform?.('web-app', project.entryId, false).catch(() => {
+          if (!signal?.aborted && !controller.signal.aborted) void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'));
+        });
+      }
+      return lease;
+    },
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
     dispose: () => { controller.abort(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
   };

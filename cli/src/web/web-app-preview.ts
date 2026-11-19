@@ -9,6 +9,7 @@ export interface WebAppBinding {
   apiBaseUrl: string;
   bootstrap: unknown;
   accountUrl?: string;
+  login?: { kind: 'studio' | 'external'; serverUrl: string; environment?: string };
 }
 export function parseWebAppBindings(value: unknown): Record<string, WebAppBinding> {
   if (value === undefined || value === null) return {};
@@ -20,7 +21,14 @@ export function parseWebAppBindings(value: unknown): Record<string, WebAppBindin
     const target = new URL(item.apiBaseUrl);
     if (!safeServiceUrl(target) || !target.pathname.endsWith('/api')) throw new Error('Invalid Web application API.');
     if (item.accountUrl !== undefined && (!safeServiceUrl(new URL(item.accountUrl)) || new URL(item.accountUrl).origin === 'null')) throw new Error('Invalid Web application account URL.');
-    result[id] = { service: item.service, apiBaseUrl: target.href.replace(/\/$/, ''), bootstrap: item.bootstrap ?? null, ...(item.accountUrl ? { accountUrl: item.accountUrl } : {}) };
+    let login: WebAppBinding['login'];
+    if (item.login !== undefined) {
+      const value = item.login, server = new URL(value.serverUrl);
+      if (!['studio', 'external'].includes(value.kind) || !safeServiceUrl(server) || server.pathname !== '/' || item.bootstrap != null ||
+        value.environment !== undefined && (typeof value.environment !== 'string' || value.environment.length > 256)) throw new Error('Invalid Web application sign-in action.');
+      login = { kind: value.kind, serverUrl: server.origin, ...(value.environment === undefined ? {} : { environment: value.environment }) };
+    }
+    result[id] = { service: item.service, apiBaseUrl: target.href.replace(/\/$/, ''), bootstrap: item.bootstrap ?? null, ...(item.accountUrl ? { accountUrl: item.accountUrl } : {}), ...(login ? { login } : {}) };
   }
   return result;
 }
@@ -37,10 +45,10 @@ export class WebAppPreview {
   private readonly server = createServer((req, res) => { void this.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); });
   private origin = '';
   private closed = false;
-  constructor(private readonly preview: () => KanbanPreview, private readonly binding: WebAppBinding | undefined) {
+  constructor(private readonly preview: () => KanbanPreview, private readonly binding: WebAppBinding | undefined, private readonly onLogin?: () => void) {
     this.server.on('connection', socket => { this.sockets.add(socket); socket.on('close', () => this.sockets.delete(socket)); });
     this.server.on('upgrade', (req, socket, head) => {
-      if (!this.authorized(req) || !this.binding || !this.apiPath(req.url)) { socket.destroy(); return; }
+      if (!this.authorized(req) || !this.binding || this.binding.login || !this.apiPath(req.url)) { socket.destroy(); return; }
       const upstream = this.proxyRequest(req);
       upstream.on('upgrade', (response, peer, upstreamHead) => {
         if (this.closed) { peer.destroy(); socket.destroy(); return; }
@@ -90,9 +98,15 @@ export class WebAppPreview {
     if (this.closed || !this.validOrigin(req)) { res.writeHead(403); res.end(); return; }
     const url = new URL(req.url ?? '/', this.origin);
     if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.headers['sec-fetch-dest'] === 'iframe' && url.pathname === `/${this.preview().nonce}/${this.preview().artifact.entry}`)) { res.writeHead(403); res.end(); return; }
+    if (url.pathname === `/${this.preview().nonce}/host/login`) {
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      if (req.headers.origin !== this.origin || req.headers['content-type'] !== 'application/json') { res.writeHead(403); res.end(); return; }
+      if (this.binding && !this.binding.login || !this.onLogin) { res.writeHead(409); res.end(); return; }
+      this.onLogin(); res.writeHead(202, { 'Content-Type': 'application/json' }); res.end('{}'); return;
+    }
     if (this.apiPath(req.url)) {
       if (!this.authorized(req)) { res.writeHead(401); res.end(); return; }
-      if (!this.binding) { res.writeHead(503); res.end(JSON.stringify({ error: { code: 'HOST_SIGNED_OUT', message: 'Sign in to the host to connect this application.' } })); return; }
+      if (!this.binding || this.binding.login) { res.writeHead(503); res.end(JSON.stringify({ error: { code: 'HOST_SIGNED_OUT', message: 'Sign in to the host to connect this application.' } })); return; }
       const upstream = this.proxyRequest(req);
       upstream.on('response', response => {
         // No redirects, cookies or CORS from the service can expand this proxy.
@@ -115,7 +129,7 @@ export class WebAppPreview {
     delete (headers as Record<string, string>)['Access-Control-Allow-Origin'];
     let content = asset.content;
     if (url.pathname === prefix + preview.artifact.entry) {
-      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze(${json({ protocolVersion: 1, managed: true, apiBase: `/${preview.nonce}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, nonce: preview.nonce })})});</script>`;
+      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze({...${json({ protocolVersion: 1, managed: true, apiBase: `/${preview.nonce}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, login: this.binding?.login, nonce: preview.nonce })},requestLogin:()=>fetch(${json(`/${preview.nonce}/host/login`)},{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(response=>{if(!response.ok)throw new Error('Sign-in is unavailable. Refresh the application and retry.');})})});</script>`;
       const html = String(content);
       content = /<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, match => match + bootstrap) : bootstrap + html;
     }

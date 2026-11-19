@@ -1,0 +1,5 @@
+# Hosted Web application login note
+
+Reviewed the Chinese and English Studio fix entries with humanize-it and humanizer-zh in one editing pass. Matched the claims to runtime regressions for direct entry opening, delayed sign-in, account changes, logout, cancelled authorization and retry. Kept the distinction between the host account and the application's scoped session. Editorial judgment: 93/100 for clarity, retained conditions and bilingual consistency; this score is not runtime verification.
+
+Reviewed the follow-up manual sign-in behavior and its English mirror with humanize-it and humanizer-zh in one pass. Updated the earlier automatic-login wording to match explicit user action, issuer comparison, cancellation and retry, and revoked sessions on account/configuration changes. The API reference describes the sign-in capability and the read-only background check; the product README names the visible buttons. Editorial judgment: 94/100 (template language 28/30, naturalness 23/25, retained information 20/20, consistency 14/15, readability 9/10). This is an editing assessment, not test evidence.

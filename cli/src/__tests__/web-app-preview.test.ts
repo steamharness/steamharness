@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { WebAppPreview, parseWebAppBindings } from '../web/web-app-preview';
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
-async function fixture(microphone = true) {
+async function fixture(microphone = true, login = false) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'web-app-'));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'build'));
@@ -34,10 +35,12 @@ async function fixture(microphone = true) {
   cleanup.push(async () => { upstream.closeAllConnections(); await new Promise<void>(resolve => upstream.close(() => resolve())); });
   const target = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
   const preview = new KanbanPreview(root, { artifactDir: 'build', entry: 'index.html', webApp: { service: 'sample.app', permissions: microphone ? ['microphone'] : [] } }, () => ({ id: 'default', name: 'Default', params: {} }));
-  const binding = { service: 'sample.app', apiBaseUrl: target + '/api', bootstrap: { token: 'scoped-token', label: '</script><script>bad()</script>' } };
-  const app = new WebAppPreview(() => preview, binding); await app.start(); cleanup.push(() => app.close());
+  const binding = { service: 'sample.app', apiBaseUrl: target + '/api', bootstrap: login ? null : { token: 'scoped-token', label: '</script><script>bad()</script>' },
+    ...(login ? { login: { kind: 'external' as const, serverUrl: 'https://accounts.invalid', environment: 'Online' } } : {}) };
+  const clicks: boolean[] = [];
+  const app = new WebAppPreview(() => preview, binding, () => { clicks.push(true); }); await app.start(); cleanup.push(() => app.close());
   const origin = new URL(app.url).origin, api = origin + '/' + preview.nonce + '/api';
-  return { app, preview, api, origin, target, requests };
+  return { app, preview, api, origin, target, requests, clicks };
 }
 
 it('serves bundled assets with a scoped bootstrap and explicitly granted microphone policy', async () => {
@@ -85,4 +88,39 @@ it('rejects remote HTTP targets, credentials, redirect queries and invalid entry
     expect(() => parseWebAppBindings({ main: { service: 'sample.app', apiBaseUrl } })).toThrow();
   }
   expect(parseWebAppBindings({ main: { service: 'sample.app', apiBaseUrl: 'https://service.invalid/api', bootstrap: { token: 'scoped' } } }).main!.bootstrap).toEqual({ token: 'scoped' });
+});
+
+it('a sign-in preview remains offline until a same-origin explicit login action', async () => {
+  const { app, preview, origin, api, clicks, requests } = await fixture(true, true);
+  const html = await (await fetch(app.url)).text();
+  const window: Record<string, any> = {}, invoked: string[] = [];
+  runInNewContext(html.match(/<script nonce="[^"]+">(.*?)<\/script>/s)![1]!, {
+    window, localStorage: { removeItem() {} }, fetch: async (url: string) => { invoked.push(url); return Response.json({}); },
+  });
+  expect(window.steamHarnessWebApp.login.kind).toBe('external');
+  expect(window.steamHarnessWebApp.session).toBeNull();
+  expect(invoked).toHaveLength(0);
+  await window.steamHarnessWebApp.requestLogin();
+  expect(invoked).toEqual([`/${preview.nonce}/host/login`]);
+  expect(clicks).toHaveLength(0);
+  expect((await fetch(api + '/im/messages')).status).toBe(503);
+  const action = origin + '/' + preview.nonce + '/host/login';
+  expect((await fetch(action)).status).toBe(405);
+  expect((await fetch(action, { method: 'POST', headers: { 'Content-Type': 'application/json' } })).status).toBe(403);
+  expect((await fetch(action, { method: 'POST', headers: { Origin: 'https://other.invalid', 'Content-Type': 'application/json' } })).status).toBe(403);
+  const click = () => fetch(action, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: '{}' });
+  expect((await click()).status).toBe(202);
+  expect((await click()).status).toBe(202);
+  expect(clicks, 'Cancellation leaves the host action available').toHaveLength(2);
+  expect(requests).toHaveLength(0);
+  await app.close();
+  await expect(click()).rejects.toThrow();
+});
+
+it('sign-in descriptors reject unsafe issuers and cannot coexist with an authenticated bootstrap', () => {
+  const base = { service: 'sample.app', apiBaseUrl: 'https://im.invalid/api', bootstrap: null };
+  for (const serverUrl of ['http://remote.invalid', 'https://user:secret@accounts.invalid', 'https://accounts.invalid/login', 'https://accounts.invalid?redirect=bad']) {
+    expect(() => parseWebAppBindings({ main: { ...base, login: { kind: 'external', serverUrl } } })).toThrow();
+  }
+  expect(() => parseWebAppBindings({ main: { ...base, bootstrap: { token: 'secret' }, login: { kind: 'studio', serverUrl: 'https://accounts.invalid' } } })).toThrow();
 });

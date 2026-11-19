@@ -12,6 +12,9 @@ export interface WebReady {
   assistantProtocolVersion?: number;
   accountProtocolVersion?: number;
   webAppProtocolVersion?: number;
+  webAppConfigurationProtocolVersion?: number;
+  webAppLoginProtocolVersion?: number;
+  webAppConfigurations?: Record<string, import('./web-app-types').WebAppRequest['configuration']>;
   systemAiConnectionProtocolVersion?: number;
   entriesProtocolVersion: number;
   traceProtocolVersion?: number;
@@ -26,8 +29,9 @@ export interface WebSession {
   closed: Promise<void>;
   close(): Promise<void>;
   updateAuth(connection?: Connection, ai?: Connection): void;
-  connectPlatform?(purpose: 'project' | 'ai' | 'web-app', entryId: string): Promise<void>;
-  connectWebApp?(entryId?: string, connection?: Connection): Promise<void>;
+  connectPlatform?(purpose: 'project' | 'ai' | 'web-app', entryId: string, interactive?: boolean): Promise<void>;
+  connectWebApp?(entryId?: string, connection?: Connection, options?: { interactive?: boolean; serverUrl?: string }): Promise<void>;
+  onWebAppLogin?(callback: (entryId: string, isCurrent: () => boolean) => void): { dispose(): void };
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
   readModelRequest?(entryId: string, target: TraceModelRequestTarget): Promise<unknown>;

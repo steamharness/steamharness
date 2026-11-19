@@ -61,7 +61,7 @@ export class AggregateWebHostPool {
         },
         closed, close: release, reconnect: () => current.reconnect(),
         updateAuth: (connection, ai) => current.updateAuth(connection, ai),
-        connectPlatform: (purpose, entryId) => current.connectPlatform?.(purpose, entryId) ?? Promise.resolve(),
+        connectPlatform: (purpose, entryId, interactive) => current.connectPlatform?.(purpose, entryId, interactive) ?? Promise.resolve(),
         updateUserSettings: settings => current.updateUserSettings(settings),
         updateResourceProjects: projects => current.updateResourceProjects(projects),
         get readModelRequest(): WebSession['readModelRequest'] {

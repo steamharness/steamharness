@@ -17,6 +17,7 @@ export class RecoverableWebSession implements WebSession {
   readonly closed = new Promise<void>(resolve => { this.finish = resolve; });
   private resources?: string[];
   private userSettings?: StudioUserSettings;
+  private hostedEntry?: string;
 
   constructor(private current: WebSession, private readonly start: (port: number, signal: AbortSignal) => Promise<WebSession>) {
     this.exitListener = this.watch(current);
@@ -50,6 +51,8 @@ export class RecoverableWebSession implements WebSession {
       try {
         if (this.resources) next.updateResourceProjects(this.resources);
         if (this.userSettings) next.updateUserSettings(this.userSettings);
+        // Revalidate the current host account; never replay a saved credential.
+        if (this.hostedEntry) await next.connectPlatform?.('web-app', this.hostedEntry, false);
       } catch (error) { await next.close(); throw error; }
       this.exitListener.dispose();
       this.current = next; this.exited = false; this.exit = undefined; this.exitListener = this.watch(next);
@@ -59,8 +62,9 @@ export class RecoverableWebSession implements WebSession {
     return this.restarting;
   }
   updateAuth(connection?: Connection, ai?: Connection): void { if (!this.exited) this.current.updateAuth(connection, ai); }
-  async connectPlatform(purpose: 'project' | 'ai' | 'web-app', entryId: string): Promise<void> {
-    if (!this.exited && !this.closing) await this.current.connectPlatform?.(purpose, entryId);
+  async connectPlatform(purpose: 'project' | 'ai' | 'web-app', entryId: string, interactive = true): Promise<void> {
+    if (purpose === 'web-app' && !this.closing) this.hostedEntry = entryId;
+    if (!this.exited && !this.closing) await this.current.connectPlatform?.(purpose, entryId, interactive);
   }
   updateUserSettings(settings: StudioUserSettings): void { this.userSettings = structuredClone(settings); if (!this.exited) this.current.updateUserSettings(this.userSettings); }
   updateResourceProjects(projects: string[]): void {

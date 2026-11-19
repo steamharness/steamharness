@@ -1574,8 +1574,12 @@ Workflow 最新页在新增输出及图片高度变化时跟随底部；用户�
 
 入口可选 `webApp: { service: string; permissions?: ["microphone"] }`，仅 Kanban 接受。service 匹配 `/^[a-z][a-z0-9.-]{0,99}$/`；拒绝其它字段、重复权限和摄像头权限。完整静态产物仍随入口打包，不使用远程 iframe。
 
-支持该协议的 CLI 在 ready 中返回 `webAppProtocolVersion: 1`。宿主扩展按 `projectId + entryId + service` 注册唯一提供器，使用当前连接和 AbortSignal 换取专用会话。可信 stdio 的 `web-apps` 消息按 entryId 传递 `{ service, apiBaseUrl, bootstrap, accountUrl? }`；来源不能是项目声明。API 目标必须是 HTTPS 或 loopback HTTP 的固定 `/api`，不携带 cookie、不跟随重定向。
+支持该协议的 CLI 在 ready 中返回 `webAppProtocolVersion: 1`。宿主扩展按 `projectId + entryId + service` 注册唯一提供器，使用当前连接和 AbortSignal 换取专用会话。可信 stdio 的 `web-apps` 消息按 entryId 传递 `{ service, apiBaseUrl, bootstrap, accountUrl?, login? }`；来源不能是项目声明。API 目标必须是 HTTPS 或 loopback HTTP 的固定 `/api`，不携带 cookie、不跟随重定向。
 
-页面获得 `window.steamHarnessWebApp = { protocolVersion: 1, managed: true, apiBase, session, accountUrl?, nonce }`。`session` 对应 scoped bootstrap，缺少提供器时为 null；宿主长期 token 不进入页面。只在内存使用会话，通过 apiBase 访问 API、上传、签名文件与 WebSocket。页面可向 parent 发送 `{ type: "steamharness:web-app-account", nonce }`，由宿主按固定 accountUrl 打开账号中心；项目不能指定目标 URL。
+支持命名配置切换的 CLI 还返回 `webAppConfigurationProtocolVersion: 1` 和按 entryId 索引的 `webAppConfigurations`。每个快照是 `{ id, name, params }`，提供器通过请求中的 `configuration` 读取；旧 CLI 可省略该字段。选中配置或有效值变化时，CLI 先关闭旧代理，再通过可信 stdout 发送 `{ type: "web-app-configuration", entryId, configuration }`。Studio 取消旧授权并以新快照调用提供器（`interactive: false`），拒绝迟到的旧会话。后台检查不得打开授权页面。提供器必须校验服务地址和账号所属的 issuer，不能把宿主凭据发送到配置指定的其他账号服务。
+
+支持手动登录的 CLI 还返回 `webAppLoginProtocolVersion: 1`。提供器可返回 `login: { kind: "studio" | "external", serverUrl, environment? }` 与 `bootstrap: null`，展示账号作用域与登录入口。此时代理不开放 API 或 WebSocket。只有用户点击后才发送带当前配置快照的 `web-app-login` 事件，宿主校验入口与配置仍有效，再以 `interactive: true` 调用提供器。未登录时请求可省略 `connection`，并以 `serverUrl` 提供宿主账号服务地址；不允许后台授权。
+
+页面获得 `window.steamHarnessWebApp = { protocolVersion: 1, managed: true, apiBase, session, accountUrl?, login?, requestLogin(), nonce }`。`session` 对应 scoped bootstrap，缺少提供器时为 null；宿主长期 token 不进入页面。只在内存使用会话，通过 apiBase 访问 API、上传、签名文件与 WebSocket。登录按钮调用 `requestLogin(): Promise<void>`，仅通知宿主发起登录，不返回长期凭据；取消后仍可重试。页面可向 parent 发送 `{ type: "steamharness:web-app-account", nonce }`，由宿主按固定 accountUrl 打开账号中心；项目不能指定目标 URL。
 
 每个 Web 应用具有独立 loopback origin；显式声明麦克风才启用浏览器 Permissions-Policy 和 iframe 权限，系统授权仍由用户完成。取消、关闭、账号或 Server 变更必须撤销专用会话并关闭旧代理和 socket，忽略迟到的授权结果。Server Web 静态预览不支持此协议，需要本地宿主及提供器。

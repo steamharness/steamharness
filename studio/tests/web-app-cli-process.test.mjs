@@ -17,7 +17,7 @@ async function fixture(t, supported = true) {
   await writeFile(path.join(root, 'package.json'), '{}');
   await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.0.0', bin: { steamharness: 'cli.cjs' } }));
   const log = path.join(root, 'messages.jsonl');
-  await writeFile(path.join(cli, 'cli.cjs'), String.raw`const fs=require('fs');require('readline').createInterface({input:process.stdin}).on('line',line=>{const value=JSON.parse(line);fs.appendFileSync(${JSON.stringify(log)},line+'\n');if(value.type==='close')process.exit(0);if(value.type==='configure')console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,webAppProtocolVersion:${supported ? '1' : 'undefined'},url:'http://127.0.0.1:34567/entries/main/#session='+'a'.repeat(64),project:{id:${JSON.stringify(projectId)},entries:${JSON.stringify(entries)},defaultEntry:'main'}}));});`);
+  await writeFile(path.join(cli, 'cli.cjs'), String.raw`const fs=require('fs');let currentConfiguration={id:'local',name:'Local',params:{api:'https://local.invalid/api'}};require('readline').createInterface({input:process.stdin}).on('line',line=>{const value=JSON.parse(line);fs.appendFileSync(${JSON.stringify(log)},line+'\n');if(value.type==='close')process.exit(0);if(value.type==='user-settings'&&value.userSettings.testLogin)console.log(JSON.stringify({type:'web-app-login',entryId:value.userSettings.testLogin,configuration:value.userSettings.staleConfiguration??currentConfiguration}));if(value.type==='user-settings'&&value.userSettings.testConfiguration){currentConfiguration=value.userSettings.testConfiguration;console.log(JSON.stringify({type:'web-app-configuration',entryId:'main',configuration:currentConfiguration}));}if(value.type==='configure')console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,webAppProtocolVersion:${supported ? '1' : 'undefined'},userSettingsProtocolVersion:1,webAppConfigurationProtocolVersion:1,webAppLoginProtocolVersion:1,webAppConfigurations:{main:{id:'local',name:'Local',params:{api:'https://local.invalid/api'}}},url:'http://127.0.0.1:34567/entries/main/#session='+'a'.repeat(64),project:{id:${JSON.stringify(projectId)},entries:${JSON.stringify(entries)},defaultEntry:'main'}}));});`);
   const options = { projectDir: root, dataDir: path.join(root, 'data'), nodePath: process.execPath, theme: 'dark', surface: 'editor', platform: true, expectedProjectId: projectId, entryId: 'main', webAppEntries: entries };
   const messages = async () => (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
   return { options, messages };
@@ -62,6 +62,34 @@ test('switching account disposes late sessions, forwards only the current scope 
   await session.close(); assert.deepEqual(disposed, ['old-scope', 'new-scope']);
 });
 
+test('configuration changes clear the old binding and ignore late environment sessions', async t => {
+  const { options, messages } = await fixture(t);
+  const pending = [], disposed = [];
+  const registration = registerWebAppProvider({ matches: () => true, open: input => new Promise(resolve => pending.push({ input, resolve })) });
+  t.after(() => registration.dispose());
+  const session = await startProjectCli(options); t.after(() => session.close());
+  const opening = session.connectWebApp('main', first);
+  await until(() => pending.length === 1);
+  assert.equal(pending[0].input.configuration.id, 'local');
+  const scope = name => ({ binding: { service: 'sample.app', apiBaseUrl: 'https://im.invalid/api', bootstrap: { token: name } }, dispose: () => disposed.push(name) });
+  pending[0].resolve(scope('local'));
+  await opening;
+  await until(async () => (await messages()).some(item => item.webApps?.main?.bootstrap.token === 'local'));
+  session.updateUserSettings({ agent: {}, testConfiguration: { id: 'online', name: 'Online', params: { api: 'https://online.invalid/api' } } });
+  await until(() => pending.length === 2);
+  assert.deepEqual(disposed, ['local']);
+  assert.equal(pending[1].input.configuration.params.api, 'https://online.invalid/api');
+  const current = (await messages()).filter(item => item.type === 'web-apps').at(-1);
+  assert.deepEqual(current.webApps, {});
+  session.updateUserSettings({ agent: {}, testConfiguration: { id: 'local', name: 'Local', params: { api: 'https://local.invalid/api' } } });
+  await until(() => pending.length === 3);
+  assert.equal(pending[1].input.signal.aborted, true);
+  pending[1].resolve(scope('late-online')); pending[2].resolve(scope('new-local'));
+  await until(async () => (await messages()).some(item => item.webApps?.main?.bootstrap.token === 'new-local'));
+  assert.equal((await messages()).some(item => item.webApps?.main?.bootstrap.token === 'late-online'), false);
+  assert.deepEqual(disposed, ['local', 'late-online']);
+});
+
 test('authorization failure is reported and retry opens a fresh scoped session', async t => {
   const { options, messages } = await fixture(t);
   let finish, opened = 0;
@@ -76,7 +104,7 @@ test('authorization failure is reported and retry opens a fresh scoped session',
   assert.deepEqual(errors, ['unknown']);
   const retry = session.connectWebApp('main', first); await until(() => opened === 2);
   finish.resolve({ binding: { service: 'sample.app', apiBaseUrl: 'https://im.invalid/api', bootstrap: {} }, dispose() {} });
-  await retry; await until(async () => (await messages()).some(item => item.type === 'web-apps'));
+  await retry; await until(async () => (await messages()).some(item => item.type === 'web-apps' && item.webApps.main));
 });
 
 test('a separately bundled provider reports a safe setup reason to existing and late subscribers', async t => {
@@ -95,4 +123,45 @@ test('a separately bundled provider reports a safe setup reason to existing and 
   await until(() => late.length === 1);
   assert.deepEqual(late, errors);
   assert.equal(new WebAppConnectionError('server-not-configured').reason, errors[0]);
+});
+
+
+test('environment changes only prepare sign-in actions and a cancelled manual login remains retryable', async t => {
+  const { options, messages } = await fixture(t);
+  const requests = [], errors = [];
+  let attempt = 0;
+  const prompt = { service: 'sample.app', apiBaseUrl: 'https://im.invalid/api', bootstrap: null,
+    login: { kind: 'external', serverUrl: 'https://online.invalid', environment: 'Online' } };
+  const registration = registerWebAppProvider({ matches: () => true, open: async input => {
+    requests.push(input);
+    if (!input.interactive) return { binding: prompt, dispose() {} };
+    if (++attempt === 1) throw Object.assign(Error('cancelled'), { reason: 'login-cancelled' });
+    return { binding: { ...prompt, login: undefined, bootstrap: { token: 'scoped' } }, dispose() {} };
+  } });
+  t.after(() => registration.dispose());
+  const session = await startProjectCli(options); t.after(() => session.close());
+  session.onWebAppError(reason => errors.push(reason));
+  session.onWebAppLogin(entryId => { void session.connectWebApp(entryId, first, { interactive: true }); });
+  await session.connectWebApp('main', first, { interactive: false });
+  assert.equal(attempt, 0);
+  session.updateUserSettings({ agent: {}, testConfiguration: { id: 'online', name: 'Online', params: {} } });
+  await until(() => requests.length === 2);
+  assert.equal(requests[1].interactive, false);
+  assert.equal(attempt, 0);
+  session.updateUserSettings({ agent: {}, testLogin: 'other' });
+  await until(async () => (await messages()).some(message => message.userSettings?.testLogin === 'other'));
+  assert.equal(attempt, 0, 'Another entry cannot request authorization');
+  session.updateUserSettings({ agent: {}, testLogin: 'main', staleConfiguration: { id: 'local', name: 'Local', params: {} } });
+  await until(async () => (await messages()).some(message => message.userSettings?.staleConfiguration));
+  assert.equal(attempt, 0, 'A click from the previous environment must not authorize the current one');
+  await until(async () => (await messages()).filter(message => message.type === 'web-apps').at(-1)?.webApps?.main?.login);
+  const beforeCancel = (await messages()).filter(message => message.type === 'web-apps').length;
+  session.updateUserSettings({ agent: {}, testLogin: 'main' });
+  await until(() => errors.includes('login-cancelled'));
+  assert.ok((await messages()).filter(message => message.type === 'web-apps').at(-1).webApps.main.login);
+  assert.equal((await messages()).filter(message => message.type === 'web-apps').length, beforeCancel, 'Cancelling must preserve the current page and its retry button');
+  session.updateUserSettings({ agent: {}, testLogin: 'main', retry: 2 });
+  await until(async () => (await messages()).some(message => message.webApps?.main?.bootstrap?.token === 'scoped'));
+  assert.equal(attempt, 2);
+  assert.ok(!JSON.stringify((await messages()).filter(message => message.webApps)).includes('host-secret'));
 });

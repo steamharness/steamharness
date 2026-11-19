@@ -3,7 +3,7 @@ export type { WebAppFailureReason } from './web-app-types';
 
 export const WEB_APP_FAILURE_REASONS = [
   'server-not-configured', 'server-unsupported', 'account-unavailable', 'server-unavailable',
-  'service-unavailable', 'invalid-response', 'provider-unavailable', 'unknown',
+  'service-unavailable', 'invalid-response', 'provider-unavailable', 'login-cancelled', 'unknown',
 ] as const;
 
 export class WebAppConnectionError extends Error {

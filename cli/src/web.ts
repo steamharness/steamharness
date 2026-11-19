@@ -66,10 +66,15 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const initialPlatform = await resolveOnlineConnections(options.online);
-  const app = await startWebServer({ ...options, initialPlatform, host }).catch(error => { input?.close(); throw error; });
+  const publishWebAppConfigurations = Boolean(input && host?.platform === true);
+  const app = await startWebServer({ ...options, initialPlatform, host, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
+    console.log(JSON.stringify({ type: 'web-app-configuration', entryId, configuration }));
+  } : undefined, onWebAppLogin: publishWebAppConfigurations ? (entryId, configuration) => {
+    console.log(JSON.stringify({ type: 'web-app-login', entryId, configuration }));
+  } : undefined }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {

@@ -55,7 +55,10 @@ export interface WebOptions { entryId?: string; mount?: { origin: string; basePa
   openConversationView?: OpenConversationView;
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
   subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
-}; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration; initialPlatform?: PlatformConnections }
+}; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration; initialPlatform?: PlatformConnections;
+  onWebAppConfigurationChanged?(entryId: string, configuration: { id: string; name: string; params: Record<string, unknown> }): void;
+  onWebAppLogin?(entryId: string, configuration: { id: string; name: string; params: Record<string, unknown> }): void;
+}
 
 export { startAggregateWebServer as startWebServer } from "./aggregate-server";
 
@@ -176,11 +179,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
-  try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { runtime.dispose(); throw error; }
+  try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
-  if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
-  if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
-  if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
+  try {
+    if (!descriptor) throw new Error(inspected.errors.join('\n') || 'No Workflow project found.');
+    if (!options.runtime) assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion);
+    if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
+  } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
   const applyUserSettings = () => {
     const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
@@ -318,7 +323,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       applyUserSettings();
       parameterRevision++;
       parameterStates.clear();
+      const previousWebAppConfiguration = project.kanban?.webApp && kanbanController ? JSON.stringify(kanbanController.configuration()) : undefined;
       kanbanController?.configurationChanged(configurations.state);
+      if (project.kanban?.webApp && kanbanController && previousWebAppConfiguration !== JSON.stringify(kanbanController.configuration())) {
+        webApps = { ...webApps }; delete webApps[project.entryId];
+        void kanbanController.setWebAppBinding(undefined);
+        options.onWebAppConfigurationChanged?.(project.entryId, kanbanController.configuration());
+      }
       conversationController?.configurationChanged();
       resources.clear();
     }
@@ -390,6 +401,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
     webAppBinding: () => webApps[project.entryId],
+    webAppLogin: options.onWebAppLogin ? configuration => options.onWebAppLogin!(project.entryId, configuration) : undefined,
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${redactProjectData(message, [...sensitiveTokens], false)}\n`),
   }) : undefined;
