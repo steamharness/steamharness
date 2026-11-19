@@ -1,6 +1,6 @@
 # Developer Assistant 内置项目规则
 
-- 任务完成后，必须将本次任务产生的全部更改提交并推送到远程。若当前位于附加 Git worktree，必须新建任务分支，并在该 worktree 后续任务中持续提交并推送到该分支；若当前分支是 `dev`，直接提交并推送到 `dev`；若仓库仅维护 `main`，直接提交并推送到 `main`。用户另有目标分支、提交或推送要求时，以用户要求为准。
+- 每轮修改验证后，按[仓库提交规则](../../AGENTS.md#提交与推送)仅提交本轮相关改动并推送。
 - monorepo 内用 `link:../../harness` / `link:../../cli` 引用源码。增强版 Studio 打包时从固定的源码提交生成 Core、CLI 归档，内置 Assistant 从同一对归档安装；这条路径不检查 npm，也不要求先独立发布 Assistant。独立构建和分发内置项目制品仍用 `scripts/builtin-release.mjs`：该脚本在发布模式下要求清单声明精确的运行时版本，其规则不适用于随 Studio 捆绑的 Assistant。
 - Issue 编号仅作为可选上下文；没有 issue 也可以直接分析、修改、测试、提交和说明，不得把创建或关联 issue 作为强制前置条件。
 - 本仓库只维护 `developer-assistant` 内置项目，项目根注册 `main` Bot 与 `studio-control` Workflow 两个入口；Studio Control 源码和专项规则位于 `studio-control/`；不得再引用旧 monorepo 内置项目目录或其它仓库内部路径。

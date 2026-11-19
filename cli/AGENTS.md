@@ -1,6 +1,6 @@
 # CLI 仓库规则
 
-- 任务完成后，必须将本次任务产生的全部更改提交并推送到远程。若当前位于附加 Git worktree，必须新建任务分支，并在该 worktree 后续任务中持续提交并推送到该分支；若当前分支是 `dev`，直接提交并推送到 `dev`；若仓库仅维护 `main`，直接提交并推送到 `main`。用户另有目标分支、提交或推送要求时，以用户要求为准。
+- 每轮修改验证后，按[仓库提交规则](../AGENTS.md#提交与推送)仅提交本轮相关改动并推送。
 - Issue 编号仅作为可选上下文；没有 issue 也可以直接分析、修改、测试、提交和说明，不得把创建或关联 issue 作为强制前置条件。
 - 本仓库维护 `@steamharness/cli`，仓库根就是 npm 包根；只暴露 `steamharness` bin，本地命令位于顶层，远程管理命令位于 `steamharness workspace`。
 - CLI 只能通过 `steamharness` 的公开 exports 使用 Core，不得相对导入同级 `../core/src/**`。Core 通过精确 devDependency 支持构建与测试，`peerDependencies.steamharness` 明确公开兼容范围。
@@ -14,4 +14,4 @@
 - `package.json` 是 CLI 版本唯一来源。先定版双语文档，再用 `pnpm release:prepare -- --version X.Y.Z` 校验版本页并更新 CLI 版本，不改写 Core 或 Workspace。
 - CLI 与 Core 版本一致。增强版产品从源码打包两者，不等待 npm。仅独立公开分发时手动运行根目录的 GitHub npm 工作流，先 Core 后 CLI。渠道、tag 与发布门禁见根目录 `AGENTS.md`。未经用户明确授权，不创建发布 tag 或发布 npm。
 - 本地模板包模式必须把 Core 和 CLI 的归档一起写入项目，使用相对 `file:` 引用；编译项目发行包时保留两个归档及精确版本。不同目录的源码链接不属于此模式。
-- `.env` 可以提交，但日志、测试输出和示例不得泄露凭据。
+- 环境文件遵守[仓库根的秘密规则](../AGENTS.md#秘密)；日志、测试输出和示例不得泄露凭据。

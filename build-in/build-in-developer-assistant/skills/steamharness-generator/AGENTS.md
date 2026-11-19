@@ -1,7 +1,6 @@
 # 内置 SteamHarness Generator 规则
 
-- 用户要求使用、切换、合并或推送 `dev` 时，仅有 `main` 分支的仓库一律按 `main` 处理；不得为此新建 `dev` 分支。
-- 任务完成后，必须将本次任务产生的全部更改提交并推送到远程。若当前位于附加 Git worktree，必须新建任务分支，并在该 worktree 后续任务中持续提交并推送到该分支；若当前分支是 `dev`，直接提交并推送到 `dev`；若仓库仅维护 `main`，直接提交并推送到 `main`。用户另有目标分支、提交或推送要求时，以用户要求为准。
+- 每轮修改验证后，按[仓库提交规则](../../../../AGENTS.md#提交与推送)仅提交本轮相关改动并推送。用本技能维护其他项目时按目标仓自己的规则操作；只有 `main` 的仓库不擅自新建 `dev`。
 - 修改本 skill 或 workflow 生成规范前必须先读取并遵循本文件。
 - 修改生成或编辑方法、Core API 约定、节点 API、executor/provider 类型时，必须同步 [steamharness-api.md](./references/steamharness-api.md)，确保生成规范与仓库当前 API 一致。
 - 如果生成规范面向用户可见，还必须同步 Docs 仓库 `../../docs/concepts/**`、`../../docs/core-api/**` 或 `../../docs/cli/**` 中对应说明。
