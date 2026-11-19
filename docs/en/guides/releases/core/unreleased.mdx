@@ -15,3 +15,7 @@ draft: true
 - Runtime-generated files stay local by default. Remote files, storage, and System AI require explicit connections. {/* note: explicit-platform-connection */}
 - `defineBot` now requires `engine: "agent"` or `engine: "llm"`. LLM Bots use the existing model settings and credentials without starting an Agent, and make additional requests only when the model calls a tool. {/* note: draft-1 */}
 - Workflow LLM providers now use pi-ai and no longer accept AI SDK-specific options. `createLLMNode` still returns the completed reply in one result, but built-in providers require SSE support. {/* note: draft-2 */}
+
+#### Fixed
+
+- Bots no longer report an engine change when calling a Workflow in the same project. {/* note: bot-nested-workflow-engine-check */}

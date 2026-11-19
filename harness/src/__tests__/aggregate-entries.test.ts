@@ -10,6 +10,7 @@ import { inspectAggregateProjectStructure, inspectLocalProjectStructure, runLoca
 import { createLocalProjectConfigurationStore } from "../configuration";
 import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { createEntriesContext } from "../entries/index";
+import { testExecutionStorage } from "./runtime-test-storage";
 
 test("a child operation signal stops only its entry call while the parent signal still fences every call", async () => {
   const parent = new AbortController(), child = new AbortController(); const signals: AbortSignal[] = [];
@@ -73,6 +74,40 @@ test("entry configuration identities differ and nested calls load target configu
     assert.deepEqual(calls, ["two:read:alice"]);
     if (report.result.ok) assert.deepEqual({ ...(report.result.data as any).output, items: undefined }, { errCode: 0, errMessage: "", entryId: "two", label: "two", actor: { userId: "alice", isSystemAdmin: false }, items: undefined });
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("a Bot's engine check does not apply to the Workflow it calls", async t => {
+  const { directory } = await fixture();
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, "chat.ts"), `
+    import { fauxProvider, createModels, fauxAssistantMessage } from ${JSON.stringify(import.meta.resolve("@earendil-works/pi-ai"))};
+    const fake = fauxProvider({ models: [{ id: "fixture", name: "Fixture", contextWindow: 8192, maxTokens: 100 }] });
+    const models = createModels(); models.setProvider(fake.provider);
+    fake.setResponses([fauxAssistantMessage("Done")]);
+    export const executor = steamharness.defineBot({
+      engine: "agent", memory: { enabled: false },
+      agent: { models, resolvedModel: models.getModel("faux", "fixture"), permissionPolicy: "read-only" },
+      async prepareInput(input, context) {
+        const result = await context.entries.get("two").runEntrypoint("read");
+        if (result.label !== "two") throw new Error("Missing Workflow output");
+        return { ...input, prompt: "Run the local Workflow" };
+      },
+    });
+  `);
+  const calls: string[] = [];
+  const options = { projectDir: directory, entryId: "chat", env: {}, storage: testExecutionStorage(),
+    actor: { userId: "alice", isSystemAdmin: false },
+    authorizeEntry(entryId: string, operation: string | undefined, actor: { userId?: string }) {
+      calls.push(`${entryId}:${operation}:${actor.userId}`);
+    } };
+  const run = await runLocalProjectWithReport({ ...options, expectedBotEngine: "agent" });
+  assert.equal(run.status, "success", JSON.stringify(run.error ?? run.result));
+  assert.deepEqual(calls, ["two:read:alice"]);
+
+  const changed = await runLocalProjectWithReport({ ...options, expectedBotEngine: "llm" });
+  assert.equal(changed.status, "failed");
+  assert.match(JSON.stringify(changed.error ?? changed.result), /The Bot engine changed/);
+  assert.deepEqual(calls, ["two:read:alice"]);
 });
 
 test('Conversation entry control preserves trusted provenance, permissions and cancellation', async () => {

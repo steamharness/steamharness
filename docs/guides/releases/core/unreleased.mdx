@@ -15,3 +15,7 @@ draft: true
 - 运行生成的文件默认保存在本机。远端文件、运行存储和系统 AI 需要显式连接。 {/* note: explicit-platform-connection */}
 - `defineBot` 必须显式声明 `engine: "agent"` 或 `engine: "llm"`。LLM Bot 使用现有模型配置及凭据，不启动 Agent；仅在模型调用工具时追加模型请求。 {/* note: draft-1 */}
 - Workflow LLM Provider 改用 pi-ai，移除 AI SDK 专用选项。`createLLMNode` 仍一次返回完整结果，但内置 Provider 要求端点支持 SSE。 {/* note: draft-2 */}
+
+#### 修复
+
+- 修复 Bot 调用同项目的 Workflow 时误报 Bot 引擎已变更的问题。 {/* note: bot-nested-workflow-engine-check */}
