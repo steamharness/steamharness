@@ -66,7 +66,7 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)（GPLv3）。在资源管理器或项目文件卡片中点击 `.sqlite`、`.sqlite3`、`.db` 文件，即可在编辑器中查看数据表、表结构和执行 SQL，无需另装 SQLite。Web 版查看的是服务器上的数据库文件。扩展版本及安装包校验值固定在 `config/default-extensions.json` 中，开发启动与发行打包共用该文件；原始许可证随扩展保留。
 
-默认打开当前源码仓库。首次运行时，需要信任该目录，才能加载位于仓库内的内置扩展并使用终端；Web 如显示 Restricted Mode，可点击横幅中的 Manage，再选择 Trust。打开其他项目时仍保留上游工作区信任检查。
+直接启动桌面版或 Web 版，默认进入未打开文件夹的工作台。打开项目后，如果 Web 工作台显示 Restricted Mode，可在横幅中选择 Manage，再选择 Trust，以启用受限的扩展和终端功能。
 
 ## 已有工作站入口
 

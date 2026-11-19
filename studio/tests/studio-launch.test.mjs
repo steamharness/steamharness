@@ -30,7 +30,7 @@ function launch(command, failure, args = []) {
     electronEnvironment: async () => ({}),
     ensureDefaultExtensions: async () => {},
     resolveDesktopUserDataDir: value => value,
-    resolveMonorepoRoot: async () => '/source',
+    resolveMonorepoRoot: async () => '/monorepo',
     hasFlag: flag => args.some(argument => argument === flag || argument.startsWith(`${flag}=`)),
     run: async (_executable, args, directory) => {
       if (args[0] !== 'run' || args[1] !== 'build-fast') return;
@@ -47,6 +47,31 @@ function launch(command, failure, args = []) {
   };
   return { run: () => vm.runInNewContext(`${functions}\nmain()`, context), events, launches };
 }
+
+test('ordinary desktop and web launches pass no workspace targets', async () => {
+  const desktop = launch('dev');
+  const web = launch('web');
+  await Promise.all([desktop.run(), web.run()]);
+  assert.deepEqual([...desktop.launches[0].args.slice(-2)], ['--disable-telemetry', '--disable-workspace-trust']);
+  assert.equal(web.launches[0].args.includes('--default-folder'), false);
+  assert.equal(web.launches[0].args.includes('--default-workspace'), false);
+});
+
+test('explicit folder and workspace arguments still reach the launcher', async () => {
+  const desktop = launch('dev', undefined, ['/my-project']);
+  const web = launch('web', undefined, ['--default-workspace', '/my-project.code-workspace']);
+  await Promise.all([desktop.run(), web.run()]);
+  assert.equal(desktop.launches[0].args.at(-1), '/my-project');
+  assert.deepEqual([...web.launches[0].args.slice(-2)], ['--default-workspace', '/my-project.code-workspace']);
+});
+
+test('workflow development shortcuts still open the monorepo by default', async () => {
+  const desktop = launch('workflow');
+  const web = launch('workflow:web');
+  await Promise.all([desktop.run(), web.run()]);
+  assert.equal(desktop.launches[0].args.at(-1), '/monorepo');
+  assert.deepEqual([...web.launches[0].args.slice(-2)], ['--default-folder', '/monorepo']);
+});
 
 for (const args of [['--user-data-dir', '/custom-profile'], ['--user-data-dir=/custom-profile']]) {
   test(`dev passes one user data directory when explicitly set as ${args[0]}`, async () => {

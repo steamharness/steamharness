@@ -204,7 +204,7 @@ async function main() {
         `--extensionDevelopmentPath=${path.join(upstream.directory, 'extensions/vscode-api-tests')}`,
         `--extensionTestsPath=${path.join(ROOT, 'tests/extension-host.cjs')}`,
         ...args, ROOT,
-      ] : args.length ? args : [command === 'workflow' ? await resolveMonorepoRoot() : ROOT];
+      ] : command === 'workflow' && !args.length ? [await resolveMonorepoRoot()] : args;
       const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture() : undefined;
       try {
         await launch(upstream, 'code', [
@@ -238,8 +238,8 @@ async function main() {
       if (!hasFlag('--port') && !hasFlag('--socket-path')) {
         defaults.push('--port', '3030-3040');
       }
-      if (!hasFlag('--default-folder') && !hasFlag('--default-workspace')) {
-        defaults.push('--default-folder', command === 'workflow:web' ? await resolveMonorepoRoot() : ROOT);
+      if (command === 'workflow:web' && !hasFlag('--default-folder') && !hasFlag('--default-workspace')) {
+        defaults.push('--default-folder', await resolveMonorepoRoot());
       }
       console.log('Studio Web URL and connection token will be printed by the server.');
       await launch(upstream, 'code-server', [...defaults, ...args]);
