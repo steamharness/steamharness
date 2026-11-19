@@ -23,7 +23,8 @@ const input = key => page.locator(`[data-setting-input="${key}"]`);
 const category = id => page.locator(`#settings-navigation [data-section="${id}"]`);
 const main = page.locator('#settings-main');
 const font = input('editor.fontSize');
-const account = { status: 'authenticated', revision: 1, serverUrl: 'https://server.example.test', user: { userId: 'user-id', email: 'user@example.test', displayName: 'User' } };
+const account = { status: 'authenticated', revision: 1, aiConfigured: true, serverUrl: 'https://server.example.test',
+  user: { userId: 'user-id', email: 'user@example.test', displayName: 'User', avatarUrl: 'https://avatars.example.test/missing.png' } };
 const avatarSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="16" fill="#0078d4"/></svg>';
 const transparentAvatar = `data:image/svg+xml;base64,${Buffer.from(avatarSvg).toString('base64')}`;
 const avatars = ['.settings-avatar', '#profile .avatar'];
@@ -34,7 +35,7 @@ const withFont = (state, value, configured = true) => ({ ...state, items: state.
 
 async function setup(language, section = 'editor', providers = []) {
   await page.goto('about:blank');
-  await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(language === 'en' ? 'light' : 'dark')}${iconCss}${css}</style></head><body><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle: language === 'en' ? {} : chinese }).replace(/</g, '\\u003c')}</script></body></html>`);
+  await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(language === 'en' ? 'light' : 'dark')}${iconCss}${css}</style></head><body data-platform="true"><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle: language === 'en' ? {} : chinese }).replace(/</g, '\\u003c')}</script></body></html>`);
   await page.evaluate(() => {
     window.messages = [];
     window.acquireVsCodeApi = () => ({ postMessage: message => window.messages.push(message), setState: state => { window.savedState = state; } });
@@ -62,6 +63,7 @@ async function waitForAvatar(url, loaded) {
 try {
   for (const language of ['en', 'zh-cn']) {
     await setup(language, 'account');
+    await waitForAvatar(account.user.avatarUrl, false);
     await assertAvatars(false);
     const withAvatar = { ...account, user: { ...account.user, avatarUrl: transparentAvatar } };
     await send('account', { state: withAvatar });
@@ -93,6 +95,7 @@ try {
     checks.push(`${language}: avatar loading, failure and cached image recovery`);
 
     await send('account', { state: { ...account, user: { ...account.user, userId: 'another-user' } } });
+    await waitForAvatar(account.user.avatarUrl, false);
     await assertAvatars(false);
     await send('account', { state: withAvatar });
     await waitForAvatar(transparentAvatar, true);
@@ -258,7 +261,7 @@ try {
     assert.equal(await page.locator('#settings-sign-in').isVisible(), true, 'A restored but unverified account needs an explanation');
     assert.equal(await page.locator('#settings-sign-in p').textContent(), language === 'en' ? 'Account verification failed.' : chinese['Account verification failed.']);
     await page.locator('#settings-provider-sign-in').click();
-    assert.equal(await category('account').getAttribute('aria-current'), 'page');
+    assert.equal(await page.evaluate(() => window.messages.at(-1)?.type), 'connect-system-ai');
     await category('general').click();
     assert.equal(await input('studio.terminal.name').isEnabled(), true);
     checks.push(`${language}: unverified account provider fallback`);

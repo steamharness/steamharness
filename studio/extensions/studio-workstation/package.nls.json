@@ -76,6 +76,7 @@
   "command.disconnectSystemAi": "Disconnect System AI",
   "command.openHostedWebApp": "Open Hosted Web App",
   "container.studio-info": "Information",
+  "container.studio-assistant": "Assistant",
   "config.studio.sidebar.entries": "Right sidebar project entries and their order. Manage these from Studio Settings → Right Sidebar.",
   "container.studio-trace": "Trace",
   "view.studio.projectInfo": "Information",

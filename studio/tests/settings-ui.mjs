@@ -24,7 +24,7 @@ const send = (type, data) => page.evaluate(message => window.dispatchEvent(new M
 const setting = key => page.locator(`[data-setting-input="${key}"]`);
 const category = id => page.locator(`#settings-navigation [data-section="${id}"]`);
 const last = type => page.evaluate(type => window.messages.filter(message => message.type === type).at(-1), type);
-const account = { status: 'authenticated', revision: 1, serverUrl: 'https://server.example.test', user: { userId: 'user-id', displayName: 'SteamHarness Admin', email: 'admin@steamharness.local' } };
+const account = { status: 'authenticated', revision: 1, aiConfigured: true, serverUrl: 'https://server.example.test', user: { userId: 'user-id', displayName: 'SteamHarness Admin', email: 'admin@steamharness.local' } };
 async function fits() {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Settings must fit the editor width');
   const overflow = await page.evaluate(() => [...document.querySelectorAll('button,input,select,h1,h2,.setting-label')].filter(node => node.getClientRects().length).filter(node => {
@@ -39,15 +39,16 @@ try {
       for (const width of theme === 'contrast' ? [640] : [1440, 960, 640, 360, 280]) {
         await page.goto('about:blank'); await page.setViewportSize({ width, height: 1000 });
         const bundle = language === 'en' ? {} : JSON.parse(chinese);
-        await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(theme)}\n${iconCss}\n${css}</style></head><body><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle }).replace(/</g, '\\u003c')}</script></body></html>`);
+        await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(theme)}\n${iconCss}\n${css}</style></head><body data-platform="true"><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle }).replace(/</g, '\\u003c')}</script></body></html>`);
         await page.evaluate(() => { window.messages = []; window.acquireVsCodeApi = () => ({ postMessage: message => window.messages.push(message), setState: state => { window.savedState = state; } }); });
         await page.addScriptTag({ content: js });
-        let state = settingsFixture(language);
+        let state = { ...settingsFixture(language), sidebar: { items: [], canAdd: true } };
         await send('settings', { state });
         await send('account', { state: { status: 'signed-out', serverUrl: account.serverUrl, revision: 0 } });
         await send('settings-navigate', { state: { section: 'general' } });
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
-        assert.equal(await page.locator('#settings-navigation button').count(), 6, 'Public settings includes models and permissions without injected categories');
+        assert.deepEqual(await page.locator('#settings-navigation button').evaluateAll(buttons => buttons.map(button => button.dataset.section)),
+          ['account', 'general', 'editor', 'sidebar', 'models', 'permissions', 'about']);
         const browserKey = 'studio.browser.linkTarget', browserChoice = setting(browserKey);
         assert.match(await browserChoice.innerText(), language === 'en' ? /Built-in browser/ : /内置浏览器/);
         await selectSettingsOption(page, browserChoice, 'external');
@@ -208,7 +209,7 @@ try {
         await category('provider:plugin').click(); assert.equal(await page.locator('.metric-value').textContent(), '42');
         await send('account', { state: { status: 'expired', serverUrl: account.serverUrl, user: account.user, revision: 2 } });
         assert.equal(await page.locator('[data-provider]').count(), 0); assert.equal(await page.locator('#settings-sign-in').isVisible(), true);
-        await page.locator('#settings-provider-sign-in').click(); assert.equal((await last('open-login')).type, 'open-login');
+        await page.locator('#settings-provider-sign-in').click(); assert.equal((await last('connect-system-ai')).type, 'connect-system-ai');
         await category('account').click();
         assert.equal(await page.locator('#login-form, #login-email, #login-password').count(), 0);
         assert.equal(await page.locator('#account-sign-in').isVisible(), true);

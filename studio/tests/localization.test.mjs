@@ -46,6 +46,15 @@ test('every translated contribution resolves in English and Chinese', async () =
   assert.equal(zh['command.openProject'], '\u8fd0\u884c\u9879\u76ee');
 });
 
+test('older Studio manifests still localize the Assistant container title', async () => {
+  const [manifest, en, zh] = await Promise.all(['package.json', 'package.nls.json', 'package.nls.zh-cn.json'].map(json));
+  // A staged development manifest can retain this key during an upgrade.
+  assert.equal(en['container.studio-assistant'], 'Assistant');
+  assert.equal(zh['container.studio-assistant'], '小助手');
+  const containers = Object.values(manifest.contributes.viewsContainers).flat();
+  assert.equal(containers.some(container => container.id === 'studio-assistant'), false);
+});
+
 for (const language of ['en', 'zh-cn']) {
   test(`${language} localizes information and traces while preserving project values and execution content`, () => {
     configureLocalization(language === 'en' ? {} : chinese, language);

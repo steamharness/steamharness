@@ -20,20 +20,23 @@ export class SettingsSidebar {
   private pendingVisibility?: { id: string; checked: boolean };
   private signature = '';
   private focus?: { id: string; action: string };
-  private readonly rows = element('ol', 'settings-sidebar-projects');
+  private readonly rows = element('ol', 'settings-card settings-sidebar-projects');
   private readonly error = element('div', 'settings-error');
-  private readonly add = element('button', 'secondary');
+  private readonly add = element('button', 'primary');
 
   constructor(private readonly root: HTMLElement, private readonly post: (message: unknown) => void) {
-    const toolbar = element('div', 'settings-sidebar-toolbar');
+    const group = element('section', 'settings-group');
+    const heading = element('div', 'section-heading settings-sidebar-heading');
     this.add.type = 'button';
-    this.add.append(icon('add'), document.createTextNode(t('Add from History')));
+    this.add.append(icon('add'), element('span', '', t('Add from History')));
     this.add.addEventListener('click', () => this.edit({ action: 'add' }));
     this.add.disabled = true;
-    toolbar.append(this.add);
+    heading.append(element('h2', '', t('Project Tabs')), this.add);
     this.error.setAttribute('role', 'alert');
     this.error.hidden = true;
-    root.append(toolbar, this.error, this.rows);
+    this.rows.setAttribute('role', 'list');
+    group.append(heading, this.error, this.rows);
+    root.append(group);
   }
 
   update(state: SettingsState['sidebar'], done = false, error = ''): void {
@@ -69,33 +72,43 @@ export class SettingsSidebar {
   }
 
   private row(item: SidebarItem, index: number, count: number): HTMLLIElement {
-    const row = element('li', 'settings-sidebar-project');
+    const row = element('li', 'setting-row');
     const kind = item.type === 'bot' ? t('Bot') : item.type === 'kanban' ? t('Kanban') : t('Workflow');
-    const information = element('div', 'settings-sidebar-project-information');
-    information.append(element('strong', '', item.title), element('span', 'muted', item.builtin ? t('{0} · Built-in', kind) : kind));
-    if (item.directory) information.append(element('span', 'muted', item.directory));
-    const controls = element('div', 'settings-sidebar-project-actions');
+    const copy = element('div', 'setting-copy');
+    copy.append(element('strong', 'setting-label', item.title), element('p', 'muted setting-description', item.builtin ? t('{0} · Built-in', kind) : kind));
+    if (item.directory) copy.append(element('p', 'muted setting-description', item.directory));
+    const controls = element('div', 'setting-controls settings-sidebar-controls');
     const button = (action: 'up' | 'down' | 'remove', label: string, symbol: string, disabled = false) => {
-      const target = element('button', 'secondary settings-sidebar-icon');
+      const target = element('button', 'icon-button');
       target.type = 'button'; target.disabled = this.busy || disabled;
       target.title = label; target.setAttribute('aria-label', t('{0}: {1}', label, item.title));
       target.dataset.sidebarId = item.id; target.dataset.sidebarAction = action;
       target.append(icon(symbol)); target.addEventListener('click', () => this.edit({ action, id: item.id }));
       return target;
     };
-    const label = element('label', 'settings-sidebar-visible');
-    const visible = element('input', '');
-    visible.type = 'checkbox';
-    visible.checked = this.pendingVisibility?.id === item.id ? this.pendingVisibility.checked : item.visible;
-    visible.disabled = item.builtin || this.busy;
-    visible.dataset.sidebarId = item.id; visible.dataset.sidebarAction = 'toggle';
-    visible.setAttribute('aria-label', t('Show {0} in the sidebar', item.title));
-    visible.addEventListener('change', () => this.edit({ action: 'toggle', id: item.id }, visible.checked));
-    if (item.builtin) label.title = t('Built-in projects cannot be hidden.');
-    label.append(visible, document.createTextNode(t('Visible')));
-    controls.append(label, button('up', t('Move up'), 'arrow-up', index === 0), button('down', t('Move down'), 'arrow-down', index === count - 1));
-    if (!item.builtin) controls.append(button('remove', t('Remove from sidebar'), 'trash'));
-    row.append(icon(item.type === 'bot' ? 'hubot' : item.type === 'kanban' ? 'layout' : 'run-all'), information, controls);
+    if (item.builtin) {
+      const pinned = element('span', 'settings-sidebar-visibility muted');
+      pinned.title = t('Built-in projects cannot be hidden.');
+      pinned.append(icon('lock'), document.createTextNode(t('Always visible')));
+      controls.append(pinned);
+    } else {
+      const label = element('label', 'settings-sidebar-visibility');
+      const visible = element('input', '');
+      visible.type = 'checkbox';
+      visible.checked = this.pendingVisibility?.id === item.id ? this.pendingVisibility.checked : item.visible;
+      visible.disabled = this.busy;
+      visible.dataset.sidebarId = item.id; visible.dataset.sidebarAction = 'toggle';
+      visible.setAttribute('role', 'switch');
+      visible.setAttribute('aria-label', t('Show {0} in the sidebar', item.title));
+      visible.addEventListener('change', () => this.edit({ action: 'toggle', id: item.id }, visible.checked));
+      label.append(visible, document.createTextNode(t('Visible')));
+      controls.append(label);
+    }
+    const actions = element('div', 'settings-sidebar-actions');
+    actions.append(button('up', t('Move up'), 'arrow-up', index === 0), button('down', t('Move down'), 'arrow-down', index === count - 1));
+    if (!item.builtin) actions.append(button('remove', t('Remove from sidebar'), 'trash'));
+    controls.append(actions);
+    row.append(copy, controls);
     return row;
   }
 }

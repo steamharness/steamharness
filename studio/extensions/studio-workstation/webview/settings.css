@@ -29,22 +29,12 @@
 .settings-page-header h1 { font-size: 26px; font-weight: 600; line-height: 1.4; }
 #settings-save-status { font-size: 11px; overflow-wrap: anywhere; }
 .settings-panel { min-width: 0; }
-.settings-sidebar-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-.settings-sidebar-toolbar button { gap: 6px; }
-.settings-sidebar-projects { list-style: none; margin: 0; padding: 0; border-block: 1px solid var(--vscode-panel-border); }
-.settings-sidebar-project { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 4px; }
-.settings-sidebar-project + .settings-sidebar-project { border-top: 1px solid var(--vscode-panel-border); }
-.settings-sidebar-project-information { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
-.settings-sidebar-project-information strong { font-size: 13px; font-weight: 500; }
-.settings-sidebar-project-information .muted { font-size: 12px; }
-.settings-sidebar-project-actions, .settings-sidebar-visible { display: flex; align-items: center; gap: 6px; }
-.settings-sidebar-visible { font-size: 12px; margin-inline-end: 6px; }
-.settings-sidebar-visible input { accent-color: var(--vscode-focusBorder); }
-.settings-sidebar-project-actions button.settings-sidebar-icon { box-sizing: border-box; display: grid; place-items: center; width: 30px; height: 30px; min-height: 0; padding: 0; }
-@media (max-width: 600px) {
-  .settings-sidebar-project { grid-template-columns: 20px minmax(0, 1fr); }
-  .settings-sidebar-project-actions { grid-column: 2; flex-wrap: wrap; }
-}
+.settings-sidebar-heading { justify-content: space-between; margin-bottom: 10px; }
+.settings-sidebar-heading .primary { margin: 0; }
+.settings-sidebar-projects { list-style: none; margin: 0; padding: 0; }
+.settings-sidebar-controls { flex-wrap: wrap; column-gap: 12px; }
+.settings-sidebar-controls .settings-sidebar-visibility { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.settings-sidebar-actions { display: flex; gap: 2px; }
 .setting-row.setting-radio-row { display: block; }
 .setting-radio-row .setting-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; width: 100%; max-width: none; margin-top: 16px; }
 .settings-radio-group { display: flex; flex-direction: column; width: 100%; gap: 8px; }
@@ -57,7 +47,8 @@
 .settings-radio-copy strong { font-weight: 500; }
 .settings-radio-copy .muted { font-size: 12px; overflow-wrap: anywhere; }
 .settings-group { margin-bottom: 28px; }
-.settings-group > h2 { margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.settings-group > h2 { margin-bottom: 10px; }
+.settings-group > h2, .settings-sidebar-heading > h2 { font-size: 13px; font-weight: 600; }
 .settings-card { min-width: 0; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); overflow: hidden; }
 .setting-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 230px); align-items: center; gap: 8px 24px; padding: 20px; min-width: 0; }
 .setting-row + .setting-row { border-top: 1px solid var(--vscode-panel-border); }
