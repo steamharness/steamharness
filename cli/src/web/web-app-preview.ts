@@ -1,7 +1,14 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { Socket } from 'node:net';
-import type { KanbanPreview } from './kanban-preview';
+
+/** The host resolves public assets; the proxy owns the isolated origin and session bootstrap. */
+export interface WebAppAssets {
+  nonce: string;
+  artifact: { entry: string; webApp?: { permissions?: readonly string[] } };
+  hostNotifications?: boolean;
+  asset(url: URL): Promise<{ content: Buffer | string; headers: Record<string, string> } | undefined>;
+}
 
 /** Supplied over trusted host stdio, never read from a project declaration. */
 export interface WebAppBinding {
@@ -45,7 +52,13 @@ export class WebAppPreview {
   private readonly server = createServer((req, res) => { void this.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); });
   private origin = '';
   private closed = false;
-  constructor(private readonly preview: () => KanbanPreview, private readonly binding: WebAppBinding | undefined, private readonly onLogin?: () => void) {
+  private readonly preview: () => WebAppAssets;
+  private readonly binding: WebAppBinding | undefined;
+  private readonly onLogin?: () => void;
+  constructor(preview: () => WebAppAssets, binding: WebAppBinding | undefined, onLogin?: () => void) {
+    this.preview = preview;
+    this.binding = binding;
+    this.onLogin = onLogin;
     this.server.on('connection', socket => { this.sockets.add(socket); socket.on('close', () => this.sockets.delete(socket)); });
     this.server.on('upgrade', (req, socket, head) => {
       if (!this.authorized(req) || !this.binding || this.binding.login || !this.apiPath(req.url)) { socket.destroy(); return; }
@@ -129,7 +142,7 @@ export class WebAppPreview {
     delete (headers as Record<string, string>)['Access-Control-Allow-Origin'];
     let content = asset.content;
     if (url.pathname === prefix + preview.artifact.entry) {
-      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze({...${json({ protocolVersion: 1, managed: true, apiBase: `/${preview.nonce}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, login: this.binding?.login, nonce: preview.nonce })},requestLogin:()=>fetch(${json(`/${preview.nonce}/host/login`)},{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(response=>{if(!response.ok)throw new Error('Sign-in is unavailable. Refresh the application and retry.');})})});</script>`;
+      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze({...${json({ protocolVersion: 1, managed: true, apiBase: `/${preview.nonce}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, login: this.binding?.login, nonce: preview.nonce, notifications: preview.hostNotifications ? 'host' : undefined })},requestLogin:()=>fetch(${json(`/${preview.nonce}/host/login`)},{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(response=>{if(!response.ok)throw new Error('Sign-in is unavailable. Refresh the application and retry.');})})});</script>`;
       const html = String(content);
       content = /<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, match => match + bootstrap) : bootstrap + html;
     }

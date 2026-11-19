@@ -98,6 +98,22 @@ function fixture() {
   };
 }
 
+test('a failed startup verification can be retried without changing or writing the stored session', async () => {
+  const f = fixture();
+  await f.account.login(serverUrl, f.authorize);
+  const restarted = new Account(serverUrl, f.secrets, () => undefined, url => new ServerClient(url, f.fetcher));
+  const writes = f.writes.length;
+  f.unavailable = true;
+  await restarted.restore();
+  assert.equal(restarted.getState().status, 'error');
+  assert.equal(restarted.getConnection(), undefined);
+  f.unavailable = false;
+  await restarted.restore();
+  assert.equal(restarted.getState().status, 'authenticated');
+  assert.deepEqual(restarted.getConnection(), { serverUrl, accessToken: token });
+  assert.equal(f.writes.length, writes);
+});
+
 test('desktop browser login verifies the issued token and keeps it out of public account state', async () => {
   const f = fixture();
   await f.account.restore();

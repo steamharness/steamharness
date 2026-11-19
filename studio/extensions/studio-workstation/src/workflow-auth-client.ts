@@ -265,7 +265,11 @@ export class Account {
     await this.writes.catch(() => undefined);
     const encoded = await this.secrets.get();
     if (readingEpoch !== this.epoch) { return; }
-    if (this.initialized && encoded === this.stored) { return; }
+    if (this.initialized && encoded === this.stored) {
+      // A transient verification failure must not strand a cached session.
+      if (this.session && this.state.status === 'error') { await this.verifySession(false); }
+      return;
+    }
     this.initialized = true;
     this.stored = encoded;
     const epoch = ++this.epoch;

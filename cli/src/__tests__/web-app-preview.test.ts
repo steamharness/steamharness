@@ -10,7 +10,7 @@ import { WebAppPreview, parseWebAppBindings } from '../web/web-app-preview';
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
-async function fixture(microphone = true, login = false) {
+async function fixture(microphone = true, login = false, hostNotifications = false) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'web-app-'));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'build'));
@@ -38,7 +38,9 @@ async function fixture(microphone = true, login = false) {
   const binding = { service: 'sample.app', apiBaseUrl: target + '/api', bootstrap: login ? null : { token: 'scoped-token', label: '</script><script>bad()</script>' },
     ...(login ? { login: { kind: 'external' as const, serverUrl: 'https://accounts.invalid', environment: 'Online' } } : {}) };
   const clicks: boolean[] = [];
-  const app = new WebAppPreview(() => preview, binding, () => { clicks.push(true); }); await app.start(); cleanup.push(() => app.close());
+  const app = new WebAppPreview(() => hostNotifications ? { nonce: preview.nonce, artifact: preview.artifact,
+    asset: url => preview.asset(url), hostNotifications } : preview, binding, () => { clicks.push(true); });
+  await app.start(); cleanup.push(() => app.close());
   const origin = new URL(app.url).origin, api = origin + '/' + preview.nonce + '/api';
   return { app, preview, api, origin, target, requests, clicks };
 }
@@ -71,6 +73,16 @@ it('proxies only nonce-scoped service API paths, preserving signed queries, uplo
   expect((await fetch(api + '/files', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status).toBe(403);
   expect((await fetch(api + '/%2fadmin')).status).toBe(404);
   expect(requests).toHaveLength(2);
+});
+
+it('delegates browser notifications only for assets from an opted-in host', async () => {
+  for (const hostNotifications of [true, false]) {
+    const { app } = await fixture(true, false, hostNotifications);
+    const html = await (await fetch(app.url)).text();
+    const window: Record<string, any> = {};
+    runInNewContext(html.match(/<script nonce="[^"]+">(.*?)<\/script>/s)![1]!, { window, localStorage: { removeItem() {} } });
+    expect(window.steamHarnessWebApp.notifications).toBe(hostNotifications ? 'host' : undefined);
+  }
 });
 
 it('forwards WebSocket upgrades and destroys active sockets and the old origin when closed', async () => {
