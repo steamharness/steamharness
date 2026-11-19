@@ -1,3 +1,5 @@
+import type { SidebarItem } from './project-sidebar-types';
+
 export type SettingsTarget = 'user' | 'workspace';
 
 export interface SettingsOpenOptions {
@@ -44,5 +46,6 @@ export interface SettingsState {
   studioVersion: string;
   vscodeVersion: string;
   providers: SettingsProvider[];
+  sidebar?: { items: SidebarItem[]; canAdd: boolean };
   nodeRuntime?: { source?: 'bundled' | 'local' | 'host'; version?: string; path?: string; error?: string };
 }

@@ -123,6 +123,6 @@ test('desktop bootstrap selects release mode before constructing the workbench',
   assert.ok(desktop.indexOf('initializeStudioReleaseProject(release)') < desktop.indexOf('new Workbench('));
   const contribution = await read('src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts');
   assert.match(contribution, /registerWorkbenchContribution2\(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.BlockRestore\)/);
-  const extension = await readFile(new URL('../extensions/studio-workstation/src/workflow.ts', import.meta.url), 'utf8');
-  assert.match(extension, /if \(!releaseWindow\) \{ void assistant.showInitially\(\)/);
+  const sidebar = await read('src/vs/workbench/browser/parts/auxiliarybar/studioSidebarTabs.ts');
+  assert.match(sidebar, /if \(layout\.isVisible\(Parts\.AUXILIARYBAR_PART\) && !panes\.getActivePaneComposite\(location\)\)/);
 });

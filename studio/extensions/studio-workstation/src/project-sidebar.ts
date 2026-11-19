@@ -1,0 +1,240 @@
+import * as vscode from 'vscode';
+import { t } from './localization';
+import { projectTypeIcons, readRecentProjects, RECENT_PROJECTS_KEY } from './projects';
+import { findProjectCandidates } from './project-candidates';
+import { editSidebarPreferences, orderedSidebarIds, readSidebarPreferences, sidebarEntryKey, sidebarEntryTitle, type SavedSidebarEntry, type SidebarPreferences } from './project-sidebar-state';
+import { bindHostedSidebar, sidebarStatusHtml } from './project-sidebar-view';
+import type { HostedSidebarProject, SidebarEdit, SidebarItem, SidebarProjectEntry } from './project-sidebar-types';
+import type { AssistantConversation } from './assistant-view';
+import type { Launcher } from './workflow-cli-types';
+import type { Project } from './workflow-types';
+
+const setting = 'sidebar.entries';
+const trustCommand = 'studio.internalSidebarProjectTrust';
+const tabId = (id: string) => id === 'assistant' ? 'studio-assistant' : `studio-sidebar.${id}`;
+const viewId = (id: string) => `studio.sidebar.${id}`;
+const localFolder = (uri: vscode.Uri) => uri.scheme === 'file' && !uri.query && !uri.fragment;
+const typeLabel = (type: SidebarProjectEntry['type']) => type === 'bot' ? t('Bot') : type === 'kanban' ? t('Kanban') : t('Workflow');
+
+export class ProjectSidebar implements vscode.Disposable {
+  private readonly change = new vscode.EventEmitter<void>();
+  readonly onDidChange = this.change.event;
+  private readonly builtin = new Map<string, { item: SidebarItem; viewId: string; provider: vscode.WebviewViewProvider }>();
+  private readonly providers = new Map<string, { dispose(): void }>();
+  private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void> }>();
+  private syncQueue = Promise.resolve();
+  private editQueue = Promise.resolve();
+  private started = false;
+  private disposed = false;
+  private visibleTabs = '';
+  private getProjects: () => Project[] = () => [];
+  private mountProject?: (project: Project, view: vscode.WebviewView, signal: AbortSignal) => Promise<AssistantConversation>;
+
+  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher, private readonly output: vscode.OutputChannel) {
+    context.subscriptions.push(this, vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration(`studio.${setting}`)) void this.sync();
+    }), vscode.commands.registerCommand('studio.internalSidebarTrustChanged', () => {
+      for (const mount of this.mounts.values()) void mount.recheck();
+    }));
+  }
+
+  registerHosted(project: HostedSidebarProject): vscode.Disposable {
+    if (this.builtin.has(project.id) || !this.launcher.openHostedSidebar) return { dispose() {} };
+    this.builtin.set(project.id, {
+      item: { id: project.id, title: project.title, type: 'kanban', builtin: true, visible: true }, viewId: project.viewId,
+      provider: { resolveWebviewView: view => bindHostedSidebar(view, project, this.launcher.openHostedSidebar!, this.output) },
+    });
+    if (this.started) void this.sync();
+    return { dispose: () => { this.builtin.delete(project.id); void this.sync(); } };
+  }
+
+  start(assistant: vscode.WebviewViewProvider, getProjects: () => Project[], mount: NonNullable<ProjectSidebar['mountProject']>): Promise<void> {
+    this.getProjects = getProjects;
+    this.mountProject = mount;
+    this.builtin.set('assistant', { item: { id: 'assistant', title: t('Project Assistant'), type: 'bot', builtin: true, visible: true }, viewId: 'studio.developerAssistant', provider: assistant });
+    this.started = true;
+    if (this.launcher.readSidebarEntries) void vscode.commands.executeCommand('studio.internalWatchSidebarTrust').then(undefined, () => undefined);
+    return this.sync();
+  }
+
+  private preferences(): SidebarPreferences {
+    // Project-supplied workspace settings cannot select executable sidebars.
+    return readSidebarPreferences(vscode.workspace.getConfiguration('studio').inspect(setting)?.globalValue);
+  }
+
+  get canAdd(): boolean { return this.started && !!this.launcher.readSidebarEntries && vscode.workspace.isTrusted; }
+
+  items(preferences = this.preferences()): SidebarItem[] {
+    const builtins = ['assistant', ...[...this.builtin.keys()].filter(id => id !== 'assistant')].filter(id => this.builtin.has(id));
+    const projects = this.launcher.readSidebarEntries ? preferences.projects : [];
+    const items = new Map<string, SidebarItem>(projects.map(entry => [entry.id, { id: entry.id, directory: entry.directory, title: sidebarEntryTitle(entry, vscode.env.language),
+      visible: entry.visible, type: entry.type, builtin: false }]));
+    for (const [id, { item }] of this.builtin) items.set(id, item);
+    return orderedSidebarIds({ ...preferences, projects }, builtins).map(id => items.get(id)!);
+  }
+
+  private sync(): Promise<void> {
+    const run = this.syncQueue.then(async () => {
+      if (!this.started || this.disposed) return;
+      const preferences = this.preferences();
+      const items = this.items(preferences).filter(item => item.visible);
+      const retained = new Set(items.map(item => item.id));
+      for (const [id, provider] of this.providers) {
+        if (!retained.has(id)) { this.mounts.get(id)?.close(); this.providers.delete(id); provider.dispose(); }
+      }
+      for (const item of items) {
+        if (this.providers.has(item.id)) continue;
+        const builtin = this.builtin.get(item.id);
+        const saved = preferences.projects.find(entry => entry.id === item.id);
+        if (!builtin && !saved) continue;
+        this.providers.set(item.id, vscode.window.registerWebviewViewProvider(builtin?.viewId ?? viewId(item.id), builtin?.provider ?? {
+          resolveWebviewView: view => this.bindProject(view, saved!),
+        }, { webviewOptions: { retainContextWhenHidden: true } }));
+      }
+      const tabs = items.map(item => ({ id: tabId(item.id), viewId: this.builtin.get(item.id)?.viewId ?? viewId(item.id), title: item.title,
+        icon: item.id === 'assistant' ? 'hubot' : item.builtin ? 'comment-discussion' : projectTypeIcons[item.type] }));
+      const signature = JSON.stringify(tabs);
+      if (signature !== this.visibleTabs) {
+        await vscode.commands.executeCommand('studio.internalSyncSidebarTabs', tabs);
+        this.visibleTabs = signature;
+      }
+      this.change.fire();
+    });
+    this.syncQueue = run.catch(error => this.output.appendLine(`[sidebar] ${String(error)}`));
+    return this.syncQueue;
+  }
+
+  edit(edit: SidebarEdit): Promise<void> {
+    const run = this.editQueue.then(async () => {
+      if (!this.started || this.disposed) return;
+      let preferences = this.preferences();
+      const previous = preferences;
+      if (edit.action === 'add') {
+        const added = await this.selectProjects(preferences);
+        if (!added.length || this.disposed) return;
+        preferences = this.preferences();
+        const existing = new Set(preferences.projects.map(sidebarEntryKey));
+        preferences = { ...preferences, projects: [...preferences.projects, ...added.filter(item => !existing.has(sidebarEntryKey(item)))] };
+      } else {
+        preferences = editSidebarPreferences(preferences, this.items(preferences).filter(item => item.builtin).map(item => item.id), edit);
+        if (preferences === previous) return;
+      }
+      await vscode.workspace.getConfiguration('studio').update(setting, preferences, vscode.ConfigurationTarget.Global);
+      await this.sync();
+    });
+    this.editQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async selectProjects(preferences: SidebarPreferences): Promise<SavedSidebarEntry[]> {
+    const read = this.launcher.readSidebarEntries;
+    if (!read || !vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
+    const added = new Set(preferences.projects.map(sidebarEntryKey));
+    const options = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Reading project history...'), cancellable: true }, async (_, token) => {
+      const history = await vscode.commands.executeCommand<string[]>('studio.internalSidebarHistory');
+      const uris = [...new Set([
+        ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.toString()), ...this.getProjects().map(project => project.uri),
+        ...(history ?? []), ...readRecentProjects(this.context.globalState.get(RECENT_PROJECTS_KEY)).filter(item => item.kind === 'folder').map(item => item.uri),
+      ])].map(value => vscode.Uri.parse(value)).filter(localFolder);
+      const cancelled = () => token.isCancellationRequested || this.disposed;
+      const projects = await findProjectCandidates(uris, cancelled);
+      const candidates = new Map<string, SidebarProjectEntry>();
+      for (let index = 0; index < projects.length && !cancelled(); index += 12) {
+        const batch = await Promise.all(projects.slice(index, index + 12).map(uri => read(uri.fsPath).catch(() => [])));
+        for (const entry of batch.flat()) {
+          const key = sidebarEntryKey(entry);
+          if (!added.has(key)) candidates.set(key, entry);
+        }
+      }
+      if (cancelled()) return;
+      return [...candidates.values()].map(entry => ({ label: sidebarEntryTitle(entry, vscode.env.language), description: `${typeLabel(entry.type)} · ${entry.entryId}`, detail: entry.directory, entry }));
+    });
+    if (!options) return [];
+    if (!options.length) { void vscode.window.showInformationMessage(t('No more runnable entries in your project history.')); return []; }
+    const picks = await vscode.window.showQuickPick(options, { title: t('Add projects from history'), canPickMany: true, matchOnDescription: true, matchOnDetail: true });
+    if (!picks?.length || this.disposed) return [];
+    const confirm = t('Add and Allow Running');
+    if (await vscode.window.showWarningMessage(t('Allow Studio to run the selected project entries when opened in the right sidebar?'),
+      { modal: true, detail: picks.map(pick => `${pick.label} — ${pick.detail} (${pick.entry.entryId})`).join('\n') }, confirm) !== confirm) return [];
+    const approved: SavedSidebarEntry[] = [];
+    for (const { entry } of picks) {
+      if (this.disposed || !vscode.workspace.isTrusted) break;
+      try {
+        const checked = await this.validate(entry, true);
+        approved.push({ ...checked, id: globalThis.crypto.randomUUID(), visible: true });
+      } catch (error) { void vscode.window.showWarningMessage(t('{0}: {1}', sidebarEntryTitle(entry, vscode.env.language), error instanceof Error ? error.message : String(error))); }
+    }
+    return approved;
+  }
+
+  private async validate(entry: SidebarProjectEntry, interactive = false): Promise<SidebarProjectEntry> {
+    if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
+    const checked = (await this.launcher.readSidebarEntries!(entry.directory).catch(() => [])).find(item => sidebarEntryKey(item) === sidebarEntryKey(entry) && item.type === entry.type);
+    if (!checked) throw new Error(t('The project entry has changed or is no longer available.'));
+    if (!await vscode.commands.executeCommand<boolean>(trustCommand, vscode.Uri.file(checked.directory).toString(), interactive)) {
+      throw new Error(t('Trust this project folder before running it.'));
+    }
+    return checked;
+  }
+
+  private bindProject(view: vscode.WebviewView, saved: SavedSidebarEntry): void {
+    this.mounts.get(saved.id)?.close();
+    let closed = false, opening: AbortController | undefined, conversation: AssistantConversation | undefined;
+    const lifecycle: vscode.Disposable[] = [];
+    const status = (message: string, retry = false) => {
+      if (!closed) view.webview.html = sidebarStatusHtml(message, retry ? t('Retry') : undefined);
+    };
+    const stop = () => { opening?.abort(); opening = undefined; const previous = conversation; conversation = undefined; void previous?.dispose(); };
+    const mount = async () => {
+      if (closed || opening || conversation || !view.visible) return;
+      const attempt = opening = new AbortController();
+      status(t('Opening project entry...'));
+      try {
+        const entry = await this.validate(saved);
+        attempt.signal.throwIfAborted();
+        const result = await this.launcher.inspect([entry.directory], { signal: attempt.signal });
+        const project = result.projects.find(candidate => candidate.id === entry.projectId && candidate.entryId === entry.entryId && candidate.projectType === entry.type && candidate.folderPath === entry.directory);
+        if (!project) throw new Error(result.errors[0] || t('The project entry could not be opened.'));
+        await this.validate(entry);
+        attempt.signal.throwIfAborted();
+        const running = await this.mountProject!({ ...project, uri: vscode.Uri.file(entry.directory).toString() }, view, attempt.signal);
+        if (closed || attempt.signal.aborted || opening !== attempt) { await running.dispose(); return; }
+        conversation = running;
+        void running.closed.then(() => {
+          if (!closed && conversation === running) { conversation = undefined; void running.dispose(); status(t('The project stopped.'), true); }
+        });
+      } catch (error) {
+        if (!attempt.signal.aborted && !closed) {
+          this.output.appendLine(`[sidebar] ${saved.title}: ${String(error)}`);
+          status(error instanceof Error ? error.message : t('The project entry could not be opened.'), true);
+        }
+      } finally { if (opening === attempt) opening = undefined; }
+    };
+    const current = {
+      close: () => {
+        if (closed) return;
+        closed = true; stop();
+        for (const listener of lifecycle) listener.dispose();
+        if (this.mounts.get(saved.id) === current) this.mounts.delete(saved.id);
+      },
+      recheck: async () => {
+        if (!opening && !conversation) return;
+        try {
+          if (!vscode.workspace.isTrusted || !await vscode.commands.executeCommand<boolean>(trustCommand, vscode.Uri.file(saved.directory).toString())) throw new Error();
+        } catch { if (!closed) { stop(); status(t('Trust this project folder before running it.'), true); } }
+      },
+    };
+    this.mounts.set(saved.id, current);
+    view.webview.options = { enableScripts: true, localResourceRoots: [] };
+    lifecycle.push(view.onDidDispose(current.close), view.onDidChangeVisibility(() => { if (view.visible) void mount(); }),
+      view.webview.onDidReceiveMessage(value => { if (value?.type === 'studio-sidebar-action') void mount(); }));
+    void mount();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    for (const mount of this.mounts.values()) mount.close();
+    for (const provider of this.providers.values()) provider.dispose();
+    this.providers.clear(); this.change.dispose();
+  }
+}

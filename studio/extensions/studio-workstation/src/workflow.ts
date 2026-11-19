@@ -27,24 +27,8 @@ import { StudioModeController } from './studio-mode';
 import { chooseProjectTab } from './project-tabs';
 import { ProjectWindowsProvider } from './project-windows-view';
 import { SideResourcePreview } from './workflow-resource-preview';
-
-const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
-const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
-const utf8 = new TextDecoder();
-
-export async function findProjectCandidates(root: vscode.Uri, depth = 0): Promise<vscode.Uri[]> {
-  if (depth > 4) { return []; }
-  try {
-    const pkg = JSON.parse(utf8.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, 'steamharness.json'))));
-    if (typeof pkg.id === 'string' && /^[0-9a-f-]{36}$/i.test(pkg.id)) { return [root]; }
-  } catch { /* A workspace folder need not be a Workflow package. */ }
-  let children: [string, vscode.FileType][];
-  try { children = await vscode.workspace.fs.readDirectory(root); } catch { return []; }
-  const nested = await Promise.all(children
-    .filter(([name, type]) => type === vscode.FileType.Directory && !name.startsWith('.') && !ignored.has(name) && (depth === 0 || containers.has(name) || containers.has(root.path.split('/').at(-1) ?? '')))
-    .map(([name]) => findProjectCandidates(vscode.Uri.joinPath(root, name), depth + 1)));
-  return nested.flat();
-}
+import type { ProjectSidebar } from './project-sidebar';
+import { findProjectCandidates, ignoredProjectDirectories } from './project-candidates';
 
 class ProjectCatalog {
   private readonly change = new vscode.EventEmitter<void>();
@@ -60,7 +44,7 @@ class ProjectCatalog {
   dispose(): void { this.change.dispose(); }
 }
 
-export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, _projectIcons?: ProjectIcons): Promise<{
+export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, _projectIcons: ProjectIcons, sidebar: ProjectSidebar): Promise<{
   getProjects(): Project[]; onDidChangeProjects: vscode.Event<void>;
   getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
 }> {
@@ -122,6 +106,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if ([...upgrading].some(uri => usesProject(sources, uri))) { throw new Error(t('This project is being upgraded. Wait for the upgrade to finish.')); }
   };
   const externalProjects = new Map<string, Project>();
+  const sidebarProjects = new WeakSet<Project>();
   const findProject = (uri: string, entryId?: string): Project | undefined => {
     const candidates = [...provider.projects, ...externalProjects.values()].filter(project => project.uri === uri);
     return candidates.find(project => project.entryId === (entryId ?? project.defaultEntry));
@@ -140,7 +125,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const roots = vscode.workspace.workspaceFolders ?? [];
     return !disposed && vscode.workspace.isTrusted && (project.assistant
       ? assistantWorkspaceAvailable(project.assistant, roots.filter(folder => folder.uri.scheme === 'file').map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name })))
-      : project.builtin === 'analysis' || externalProjects.get(projectWindowKey(project)) === project || roots.some(root => project.uri === root.uri.toString() || project.uri.startsWith(`${root.uri.toString()}/`)));
+      : project.builtin === 'analysis' || sidebarProjects.has(project) || externalProjects.get(projectWindowKey(project)) === project || roots.some(root => project.uri === root.uri.toString() || project.uri.startsWith(`${root.uri.toString()}/`)));
   };
   const updateEntry = (): void => {
     clearTimeout(entryTimer); entryTimer = undefined;
@@ -437,7 +422,18 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     preview.webview.html = projectFrameHtml(url.href, card.title, owner.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
   };
   const assistant = new AssistantViewProvider(context, launcher, output,
-    (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
+    (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'), true, context.subscriptions, false);
+  void sidebar.start(assistant, () => provider.projects, async (project, view, signal) => {
+    sidebarProjects.add(project);
+    try {
+      const running = await createWorkspace(project, undefined, view, undefined, signal, false, project.projectType === 'bot' ? 'restore' : undefined);
+      void running.closed.then(() => sidebarProjects.delete(project));
+      return running;
+    } catch (error) {
+      sidebarProjects.delete(project);
+      throw error;
+    }
+  });
   const mode = new StudioModeController(context, output, account.platform);
   const trace = new TraceView(context, openProject, output);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
@@ -503,7 +499,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const inspectProjects = async (epoch: number): Promise<void> => {
     if (upgrading.size) { return; }
     if (!launcher.available || !vscode.workspace.isTrusted) { provider.projects = []; launcher.updateAnalysisProjects?.([]); provider.refresh(); updateEntry(); return; }
-    const candidates = (await Promise.all((vscode.workspace.workspaceFolders ?? []).map(folder => findProjectCandidates(folder.uri)))).flat();
+    const candidates = await findProjectCandidates((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri), () => disposed || epoch !== scanEpoch);
     if (disposed || epoch !== scanEpoch || upgrading.size) { return; }
     const byPath = new Map(candidates.map(uri => [uri.fsPath, uri]));
     const result = await launcher.inspect([...byPath.keys()]);
@@ -544,7 +540,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   };
   const changedFile = (uri: vscode.Uri): void => {
     const folder = vscode.workspace.getWorkspaceFolder(uri);
-    if (!folder || uri.path.slice(folder.uri.path.length).split('/').some(part => ignored.has(part))) { return; }
+    if (!folder || uri.path.slice(folder.uri.path.length).split('/').some(part => ignoredProjectDirectories.has(part))) { return; }
     scheduleRefresh();
   };
   const closeTerminals = (): void => { for (const terminal of terminals.keys()) { terminal.dispose(); } terminals.clear(); };
@@ -705,9 +701,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   await initialScan;
   projectScanReady = true;
   updateEntry();
-  let releaseWindow = provider.projects.some(project => project.distribution === 'release' && project.uri === vscode.workspace.workspaceFolders?.[0]?.uri.toString());
-  if (!releaseWindow) { releaseWindow = await vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow') === true; }
-  if (!releaseWindow) { void assistant.showInitially().catch(error => output.appendLine(`Project Assistant: ${String(error)}`)); }
   return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChange,
     getVersionStatus: project => versions.getVersionStatus(project), onDidChangeVersions: versions.onDidChangeVersions };
 }

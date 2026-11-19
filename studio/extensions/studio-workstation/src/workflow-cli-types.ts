@@ -6,6 +6,7 @@ import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 import type { WebAppFailureReason } from './web-app-errors';
 import type { TraceModelRequestTarget } from './workflow-trace-types';
+import type { OpenHostedSidebar, SidebarProjectEntry } from './project-sidebar-types';
 
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
@@ -61,7 +62,9 @@ export interface Launcher {
   nodeRuntime?(): Promise<{ nodePath: string; env: Record<string, string | null | undefined>; electron: boolean }>;
   analysisSummary?(): Promise<StartSummary>;
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
-  inspect(paths: string[], options?: { validationDetails?: boolean }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
+  openHostedSidebar?: OpenHostedSidebar;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;

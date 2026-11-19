@@ -76,7 +76,7 @@
   "command.disconnectSystemAi": "断开系统 AI",
   "command.openHostedWebApp": "打开托管 Web App",
   "container.studio-info": "信息",
-  "container.studio-assistant": "小助手",
+  "config.studio.sidebar.entries": "右侧栏的项目入口和顺序。请在 Studio 设置的「右侧栏」中管理。",
   "container.studio-trace": "轨迹",
   "view.studio.projectInfo": "信息",
   "view.studio.developerAssistant": "小助手",

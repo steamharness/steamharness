@@ -12,6 +12,7 @@ import type { AccountSectionProvider } from './account-section-types';
 import { accountMenuState } from './account-menu-state';
 import { settingsState, settingsViewState, updateSetting } from './settings';
 import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
+import type { ProjectSidebar } from './project-sidebar';
 import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
@@ -39,6 +40,7 @@ export class AccountController implements vscode.Disposable {
   private pendingLogin?: { state: string; client: ServerAuthClient; started: DeviceStart };
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
+  private sidebar?: ProjectSidebar;
   private settingWrites: Promise<void> = Promise.resolve();
   private languagePreference = 'system';
   private languageWrites: Promise<void> = Promise.resolve();
@@ -416,7 +418,19 @@ export class AccountController implements vscode.Disposable {
     const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference);
     this.viewState.target = state.target;
     state.nodeRuntime = this.runtimeStatus;
+    state.sidebar = this.sidebarSnapshot();
     return state;
+  }
+
+  private sidebarSnapshot(): SettingsState['sidebar'] {
+    return this.sidebar ? { items: this.sidebar.items(), canAdd: this.sidebar.canAdd } : undefined;
+  }
+
+  setProjectSidebar(sidebar: ProjectSidebar): void {
+    this.sidebar = sidebar;
+    const publish = () => { if (this.panel?.visible) void this.panel.webview.postMessage({ type: 'settings-sidebar-state', state: this.sidebarSnapshot() }); };
+    this.disposables.push(sidebar.onDidChange(publish), vscode.workspace.onDidGrantWorkspaceTrust(publish));
+    publish();
   }
 
   private async readLanguagePreference(): Promise<void> {
@@ -436,6 +450,7 @@ export class AccountController implements vscode.Disposable {
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.webview.html = this.html(panel);
     let busy = false;
+    let sidebarBusy = false;
     let pageGeneration = 0;
     let modelsAbort = new AbortController();
     const listeners: vscode.Disposable[] = [];
@@ -462,6 +477,20 @@ export class AccountController implements vscode.Disposable {
         const previous = this.viewState.section;
         this.viewState = settingsViewState(message.state);
         if (this.platform && previous !== 'account' && this.viewState.section === 'account') void this.connect();
+        return;
+      }
+      if (this.sidebar && message.type === 'settings-sidebar' && !sidebarBusy) {
+        const { action, id } = message;
+        if (action !== 'add' && (!['up', 'down', 'toggle', 'remove'].includes(action) || typeof id !== 'string' || id.length > 80)) return;
+        const generation = pageGeneration;
+        sidebarBusy = true;
+        let failure: string | undefined;
+        try { await this.sidebar.edit(action === 'add' ? { action } : { action, id }); }
+        catch (error) { failure = error instanceof Error ? error.message : t('Unable to save setting.'); }
+        finally {
+          sidebarBusy = false;
+          if (this.panel === panel) await panel.webview.postMessage({ type: 'settings-sidebar-state', state: this.sidebarSnapshot(), done: true, error: generation === pageGeneration ? failure : undefined });
+        }
         return;
       }
       if (this.platform && (message.type === 'settings-models-account' || message.type === 'connect-system-ai')) {

@@ -28,6 +28,7 @@ import { uploadServerProject, downloadServerProject } from './steamharness-serve
 import { ProjectServerClient } from './steamharness-server-projects';
 import { readStudioKanbanDiagnostics, type StudioKanbanHost } from './studio-kanban';
 import type { Connection } from './workflow-auth-client';
+import { readSidebarProjectEntries } from './project-sidebar-node';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -213,10 +214,14 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       if (!project) { throw new Error(result.errors.join('\n') || 'Studio Analysis project is unavailable.'); }
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
+    readSidebarEntries: vscode.env.remoteName ? undefined : readSidebarProjectEntries,
+    openHostedSidebar: async (...args) => (await import('./hosted-sidebar-preview')).openHostedSidebar(...args),
     inspect: async (paths, options) => {
       assertAvailable();
       const runtime = await selectedRuntime();
-      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, runtime.nodePath, controller.signal, undefined, undefined, vscode.env.language, options?.validationDetails, runtime, authRoot)));
+      const signal = options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
+      signal.throwIfAborted();
+      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, runtime.nodePath, signal, undefined, undefined, vscode.env.language, options?.validationDetails, runtime, authRoot)));
       const projects = [], errors: string[] = [];
       for (let index = 0; index < results.length; index++) {
         const result = results[index];

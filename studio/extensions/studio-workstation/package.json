@@ -455,13 +455,6 @@
           "icon": "$(package)"
         }
       ],
-      "secondarySidebar": [
-        {
-          "id": "studio-assistant",
-          "title": "%container.studio-assistant%",
-          "icon": "$(hubot)"
-        }
-      ],
       "panel": [
         {
           "id": "studio-trace",
@@ -484,13 +477,6 @@
           "name": "%container.studio-info%",
           "type": "webview",
           "when": "studio.projectInfoAvailable"
-        }
-      ],
-      "studio-assistant": [
-        {
-          "id": "studio.developerAssistant",
-          "name": "%container.studio-assistant%",
-          "type": "webview"
         }
       ],
       "studio-trace": [
@@ -806,6 +792,12 @@
     "configuration": {
       "title": "Studio",
       "properties": {
+        "studio.sidebar.entries": {
+          "type": "object",
+          "default": { "order": [], "projects": [] },
+          "scope": "machine",
+          "description": "%config.studio.sidebar.entries%"
+        },
         "studio.browser.linkTarget": {
           "type": "string",
           "default": "internal",

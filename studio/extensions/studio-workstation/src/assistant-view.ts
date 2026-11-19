@@ -26,9 +26,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     private readonly output: vscode.OutputChannel,
     private readonly openConversation: (project: Project, view: vscode.WebviewView) => Promise<AssistantConversation>,
     private readonly register = true, subscriptions: vscode.Disposable[] = context.subscriptions,
+    registerView = register,
   ) {
     subscriptions.push(this,
-      ...(register ? [vscode.window.registerWebviewViewProvider('studio.developerAssistant', this, { webviewOptions: { retainContextWhenHidden: true } })] : []),
+      ...(registerView ? [vscode.window.registerWebviewViewProvider('studio.developerAssistant', this, { webviewOptions: { retainContextWhenHidden: true } })] : []),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.bind()),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.bind()),
       vscode.window.onDidChangeActiveTextEditor(() => { if (this.register) { this.scheduleBind(); } }),
@@ -54,13 +55,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       if (this.view === view) { this.view = undefined; ++this.epoch; this.key = ''; void this.closeConversation(); }
     });
     await this.bind();
-  }
-
-  async showInitially(): Promise<void> {
-    if (!this.context.workspaceState.get<boolean>('studio.assistant.initialized')) {
-      await vscode.commands.executeCommand('workbench.view.extension.studio-assistant');
-      await this.context.workspaceState.update('studio.assistant.initialized', true);
-    }
   }
 
   private async show(): Promise<void> {

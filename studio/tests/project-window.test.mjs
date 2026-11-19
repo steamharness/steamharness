@@ -10,7 +10,7 @@ const mocks = {
   'localization-host': '',
   'project-icons': 'export class ProjectIcons { onDidChange() { return { dispose() {} }; } get() {} getAvatarUrl() {} getVersion() {} dispose() {} }',
   workflow: 'export async function activateProject() { return {}; }',
-  'workflow-auth': 'export async function activateProjectAccount() { return {}; }',
+  'workflow-auth': 'export async function activateProjectAccount() { return { setProjectSidebar() {} }; }',
   'document-preview': 'export function activateDocumentPreviews() {}',
   'start-page': 'export class StudioStartController { dispose() {} }',
   'internal-layer': 'export async function activateInternalLayer() {}',
@@ -56,7 +56,7 @@ async function fixture(t, language = 'en') {
   module.exports.configureLocalization(language === 'zh-cn' ? chinese : {}, language);
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [],
     globalState: { get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } };
-  await module.exports.activate(context, {}, {});
+  await module.exports.activate(context, {});
   t.after(() => context.subscriptions.forEach(item => item.dispose()));
   return Object.assign(f, { execute: vscode.commands.executeCommand, open: module.exports.openProjectFolder });
 }

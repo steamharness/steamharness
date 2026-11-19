@@ -11,6 +11,7 @@ import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
 import { openProjectFolder } from './project-window';
 import { isMissingProject, pruneMissingProjectHistory, updateProjectHistory } from './project-history';
+import { ProjectSidebar } from './project-sidebar';
 
 class RecentProjectsProvider {
   private readonly change = new vscode.EventEmitter<void>();
@@ -168,8 +169,10 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   );
   await recent.reconcile();
   await rememberCurrentWorkspace();
-  await activateInternalLayer(context, output, account);
-  const workflows = await activateProject(context, launcher, output, account, icons);
+  const sidebar = new ProjectSidebar(context, launcher, output);
+  account.setProjectSidebar(sidebar);
+  await activateInternalLayer(context, output, account, sidebar);
+  const workflows = await activateProject(context, launcher, output, account, icons, sidebar);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],
       vscode.workspace.getConfiguration('studio').get<number>('recentProjects.limit', 12))), output));
