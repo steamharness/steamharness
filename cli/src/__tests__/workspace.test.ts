@@ -332,7 +332,7 @@ describe("server workspace CLI helpers", () => {
     try {
       // A host that spawns this CLI passes its own session through the
       // environment; status has to say so instead of echoing the login file.
-      process.env.STEAMHARNESS_SERVER_URL = "https://alpha.steamharness.yuhe.space";
+      process.env.STEAMHARNESS_SERVER_URL = "https://server.steamharness.yuhe.space";
       process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "desktop-session-key";
       const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
       try {
@@ -342,7 +342,7 @@ describe("server workspace CLI helpers", () => {
         };
         expect(payload.data.serverUrl).toBe("http://localhost:7126");
         expect(payload.data.effective).toEqual({
-          serverUrl: "https://alpha.steamharness.yuhe.space",
+          serverUrl: "https://server.steamharness.yuhe.space",
           serverSource: "env",
           tokenSource: "env",
         });

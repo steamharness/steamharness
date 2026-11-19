@@ -440,7 +440,7 @@ export function assertLocalCliCoreCompatible(
     && path.basename(projectDirectory).startsWith("build-in-")
     ? path.dirname(parentDirectory) : parentDirectory;
   // 项目在 dev 和功能分支上引用本地 Core，所以这里要解析相对路径；
-  // Alpha/正式版本里不存在这种引用，走不到这条分支。
+  // 正式版本里不存在这种引用，走不到这条分支。
   const projectRequiredCoreVersion = resolveRequiredCoreVersion(projectManifest, {
     mode: options.mode ?? resolveReleaseMode(),
     repositoryDirectory: path.relative(workspaceRoot, projectDirectory).split(path.sep).join("/"),

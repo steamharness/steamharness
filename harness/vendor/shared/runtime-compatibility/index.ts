@@ -5,7 +5,7 @@ export const STEAMHARNESS_CLI_PACKAGE_NAME = "@steamharness/cli";
 
 export type PackageManifest = Record<string, unknown>;
 
-/** `dev`/功能分支用本地相对路径引用同级仓库；`main`/`alpha` 必须写精确的已发布版本。 */
+/** `dev`/功能分支用本地相对路径引用同级仓库；`main` 必须写精确的已发布版本。 */
 export type RepositoryMode = "dev" | "main";
 
 export type PackageVersionReference =
@@ -22,7 +22,7 @@ export interface CoreCompatibilityResult {
 /**
  * 发布态引用：只接受精确 SemVer。
  *
- * 这是下载/发布制品的契约，走这条路的清单（内置项目发布产物、Alpha/正式版本）
+ * 这是下载/发布制品的契约，走这条路的清单（内置项目发布产物、正式版本）
  * 永远不应该出现相对路径，所以这里的错误信息保持不变，由 `resolveRequiredCoreVersion`
  * 负责开发分支上的本地引用。
  */
@@ -108,8 +108,8 @@ export function classifyVersionReference(
 /**
  * 当前处于开发模式还是发布模式。
  *
- * 与各仓 `scripts/repository-mode.mjs` 的区别：那里的 `alpha` 算"非 main"，这里
- * `alpha` 是发布通道。只读环境变量，不读 git，因此不引入 node:child_process。
+ * 与各仓 `scripts/repository-mode.mjs` 的区别：那里的 `main` 算正式，这里
+ * 只读环境变量，不读 git，因此不引入 node:child_process。
  */
 export function resolveReleaseMode(env: Record<string, string | undefined> = process.env): RepositoryMode {
   const override = String(env.STEAMHARNESS_REPOSITORY_MODE ?? "").trim();
@@ -119,7 +119,7 @@ export function resolveReleaseMode(env: Record<string, string | undefined> = pro
   if (override === "main") return "main";
   if (String(env.CI_COMMIT_TAG ?? "").trim() !== "") return "main";
   const branch = String(env.CI_COMMIT_BRANCH ?? env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME ?? "").trim();
-  return branch === "main" || branch === "alpha" ? "main" : "dev";
+  return branch === "main" ? "main" : "dev";
 }
 
 /**
@@ -173,7 +173,7 @@ export function resolveRequiredCoreVersion(
   if (reference.kind === "exact") return normalizeExactVersion(reference.version, "Workflow Core requirement");
   if (options.mode === "main") {
     throw new Error(
-      `devDependencies.${STEAMHARNESS_HARNESS_PACKAGE_NAME} must declare an exact published version on main and alpha; `
+      `devDependencies.${STEAMHARNESS_HARNESS_PACKAGE_NAME} must declare an exact published version on main; `
       + `${reference.specifier} is only allowed on dev and feature branches.`,
     );
   }

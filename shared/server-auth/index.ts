@@ -8,7 +8,7 @@ export interface DeviceContext {
 }
 
 export const studioProtocols: Record<ServiceChannel, string> = {
-  dev: "steamharness-studio-dev", alpha: "steamharness-studio-alpha", main: "steamharness-studio",
+  dev: "steamharness-studio-dev", main: "steamharness-studio",
 };
 
 export function parseDeviceContext(value: unknown): DeviceContext | undefined {
@@ -16,7 +16,7 @@ export function parseDeviceContext(value: unknown): DeviceContext | undefined {
   if (typeof value !== "object") throw new Error("Invalid sign-in context.");
   const input = value as Record<string, unknown>;
   if (!["studio", "cli-web", "cli"].includes(String(input.clientKind)) ||
-      !["dev", "alpha", "main"].includes(String(input.channel)) ||
+      !["dev", "main"].includes(String(input.channel)) ||
       typeof input.state !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(input.state)) {
     throw new Error("Invalid sign-in context.");
   }

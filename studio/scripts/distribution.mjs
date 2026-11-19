@@ -142,10 +142,10 @@ export function mergeProduct(base, overrides) {
 
 /** Each installed channel owns its protocol, data directory and operating-system identity. */
 export function channelProductIdentity(channel, branding = {}) {
-  if (!["dev", "alpha", "main"].includes(channel)) throw new Error("Invalid Studio channel.");
+  if (!["dev", "main"].includes(channel)) throw new Error("Invalid Studio channel.");
   const suffix = channel === "main" ? "" : `-${channel}`;
   const baseLabel = branding.nameShort || "SteamHarness";
-  const label = channel === "main" ? baseLabel : `${baseLabel} ${channel === "dev" ? "Dev" : "Alpha"}`;
+  const label = channel === "main" ? baseLabel : `${baseLabel} Dev`;
   const identity = {
     nameShort: label, nameLong: label, urlProtocol: studioProtocols[channel],
     dataFolderName: `.steamharness-studio${suffix}`, sharedDataFolderName: `.steamharness-studio${suffix}-shared`,

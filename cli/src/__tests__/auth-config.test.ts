@@ -9,7 +9,7 @@ it('isolates channels and Servers, writes private files atomically, and never re
  try {
   await writeFile(path.join(directory,'workflow-auth.json'),JSON.stringify({serverUrl:'https://dev.example.test',apiKey:'legacy'}));
   expect((await readCliAuthConfig(env)).apiKey).toBe('legacy');
-  expect((await readCliAuthConfig({...env,STEAMHARNESS_SERVICE_CHANNEL:'alpha',STEAMHARNESS_SERVER_URL:'https://alpha.example.test'})).apiKey).toBe('');
+  expect((await readCliAuthConfig({...env,STEAMHARNESS_SERVICE_CHANNEL:'main',STEAMHARNESS_SERVER_URL:'https://main.example.test'})).apiKey).toBe('');
   await writeCliAuthConfig({serverUrl:'https://dev.example.test',apiKey:'dev-key'},env);
   await writeCliAuthConfig({serverUrl:'https://other.example.test',apiKey:'other-key'},env);
   expect(readCliAuthConfigSync(env,'https://dev.example.test').apiKey).toBe('dev-key');

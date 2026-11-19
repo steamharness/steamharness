@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { deviceReturnUrl, normalizeAuthServer, parseDeviceContext, ServerAuthClient } from '../index';
 const state='A'.repeat(43);
 describe('browser authorization context',()=>{
- it.each([['dev','steamharness-studio-dev'],['alpha','steamharness-studio-alpha'],['main','steamharness-studio']])('routes %s to its application', (channel,scheme)=>{
+ it.each([['dev','steamharness-studio-dev'],['main','steamharness-studio']])('routes %s to its application', (channel,scheme)=>{
   expect(deviceReturnUrl({clientKind:'studio',channel:channel as 'dev',state})).toBe(`${scheme}://studio.studio-workstation/auth/callback?state=${state}`);
  });
  it('permits only loopback HTTP return addresses and carries no credential',()=>{

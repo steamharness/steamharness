@@ -84,11 +84,11 @@ describe("workflow Core compatibility", () => {
     }
   });
 
-  it("treats main, alpha and tagged pipelines as release mode", () => {
+  it("treats main and tagged pipelines as release mode", () => {
     expect(resolveReleaseMode({})).toBe("dev");
     expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "codex/pi-agent" })).toBe("dev");
-    // alpha publishes, so it must not be classified as a development branch.
-    expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "alpha" })).toBe("main");
+    // Historical alpha pipelines no longer publish; only main and tags are release mode.
+    expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "alpha" })).toBe("dev");
     expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "main" })).toBe("main");
     expect(resolveReleaseMode({ CI_COMMIT_TAG: "steamharness/v0.2.4" })).toBe("main");
     expect(() => resolveReleaseMode({ STEAMHARNESS_REPOSITORY_MODE: "dev" })).toThrow(/fail-closed override/);
@@ -120,7 +120,7 @@ describe("workflow Core compatibility", () => {
       mode: "main",
       repositoryDirectory: "build-in-codex",
       readSiblingManifest,
-    })).toThrow(/must declare an exact published version on main and alpha/);
+    })).toThrow(/must declare an exact published version on main/);
 
     // An exact declaration never consults the sibling.
     expect(resolveRequiredCoreVersion({ devDependencies: { "steamharness": "0.2.4" } }, {
