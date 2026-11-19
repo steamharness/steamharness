@@ -2,7 +2,9 @@ import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
+import { once } from 'node:events';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -46,7 +48,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'studio-mode-ui-')));
   const folder = path.join(directory, 'workspace'), extension = path.join(directory, 'extensions/mode-test'), home = path.join(directory, 'home');
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
-  let child, browser, page, log = '';
+  let child, browser, page, model, log = '';
   const consoleMessages = [];
   try {
     await mkdir(folder); await mkdir(home); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
@@ -198,11 +200,25 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       continue;
     }
 
+    model = createServer(async (request, response) => {
+      let body = ''; for await (const chunk of request) body += chunk;
+      const input = JSON.parse(body).messages.findLast(message => message.role === 'user')?.content;
+      const text = typeof input === 'string' ? input : (input ?? []).map(part => part.text ?? '').join(' ');
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (const [delta, finish_reason] of [[{ role: 'assistant', content: text }, null], [{}, 'stop']]) {
+        response.write(`data: ${JSON.stringify({ id: 'mode-fixture', choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
+      }
+      response.end('data: [DONE]\n\n');
+    });
+    model.listen(0, '127.0.0.1'); await once(model, 'listening');
     const project = path.join(folder, 'conversation'); await mkdir(project);
     await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
     await symlink(path.join(sourceRoot, 'harness'), path.join(project, 'node_modules/steamharness'), 'dir');
     await symlink(path.join(sourceRoot, 'cli'), path.join(project, 'node_modules/@steamharness/cli'), 'dir');
-    await copyFile(path.join(ROOT, 'examples/bot/index.ts'), path.join(project, 'index.ts'));
+    await writeFile(path.join(project, 'index.ts'), `import type { RuntimeApi } from 'steamharness/runtime-api';
+declare const steamharness: RuntimeApi;
+export const executor = steamharness.defineBot({ engine: 'agent', agent: { modelSource: 'project', model: 'mode-fixture', tools: [] } });
+export default executor;`);
     const manifest = {
       ...JSON.parse(await readFile(path.join(ROOT, 'examples/bot/package.json'), 'utf8')),
       ...JSON.parse(await readFile(path.join(ROOT, 'examples/bot/steamharness.json'), 'utf8')),
@@ -213,10 +229,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       '@steamharness/cli': JSON.parse(await readFile(path.join(sourceRoot, 'cli/package.json'), 'utf8')).version,
     };
     await writeProjectFixture(path.join(project, 'package.json'), JSON.stringify(manifest));
-    await writeFile(path.join(project, 'configuration.json'), JSON.stringify({ version: 1,
-      fields: Array.from({ length: 17 }, (_, index) => ({ name: `field_${index}`, type: 'string',
-        description: 'A project configuration field used to verify scrolling in a short window.', defaultValue: `Value ${index}` })),
-    }));
+    const scrollFixtureFields = Array.from({ length: 17 }, (_, index) => ({ name: `field_${index}`, type: 'string',
+      description: 'A project configuration field used to verify scrolling in a short window.', defaultValue: `Value ${index}` }));
+    const configurationFields = [...scrollFixtureFields, { name: 'STEAMHARNESS_AGENT_MODELS', type: 'json', control: 'ai-models', secret: true,
+      defaultValue: [{ id: 'mode-fixture', name: 'Local model', source: 'third-party', apiKind: 'openai-completions', model: 'mode-fixture',
+        apiKey: 'mode-fixture-key', baseUrl: `http://127.0.0.1:${model.address().port}/v1` }] }];
+    await writeFile(path.join(project, 'configuration.json'), JSON.stringify({ version: 1, fields: configurationFields }));
     await command('studio.refreshProjectView');
     await until(() => steam.isEnabled(), Boolean, 'Project mode did not become available');
     const documentUri = await call({ action: 'untitled', text: 'Preserve this unsaved document during mode switches.' });
@@ -311,12 +329,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         return animate.call(this, frames, options);
       };
     });
-    await steam.click(); await page.locator('.studio-steam-tools').waitFor({ state: 'attached', timeout: 90_000 });
+    await steam.click();
+    await until(() => steam.getAttribute('aria-pressed'), value => value === 'true', 'Steam mode did not activate');
     await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
-    assert.equal(await page.locator('.studio-steam-tool').count(), platform ? 10 : 8);
-    for (const tool of ['login', 'versions']) {
-      assert.equal(await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).count(), Number(platform), tool);
-    }
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, false);
@@ -328,6 +343,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await toggleTools.getAttribute('aria-expanded'), 'false');
     await toggleTools.click();
     await until(partState, state => state.auxiliarybar.visible, 'Tools did not open on request');
+    const toolsGrid = page.locator('.studio-steam-tools:visible');
+    await toolsGrid.locator('.studio-steam-tool[data-tool="info"]').waitFor();
+    assert.equal(await toolsGrid.locator('.studio-steam-tool').count(), platform ? 10 : 8);
+    for (const tool of ['login', 'versions']) {
+      assert.equal(await toolsGrid.locator(`.studio-steam-tool[data-tool="${tool}"]`).count(), Number(platform), tool);
+    }
     assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Hide Tools' : '隐藏工具区');
     assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
     const trailingControl = await toggleTools.evaluate(toggle => {
@@ -834,14 +855,15 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(header.y >= bounds.y && header.y + header.height <= bounds.y + bounds.height);
       assert.equal(await dialog.evaluate(element => element.scrollTop), 0, 'The dialog header must stay fixed while its body scrolls');
       await dialog.locator(':scope > header > button').last().click({ trial: true });
-      const footer = dialog.locator('.configuration-footer').last();
+      const footer = dialog.locator('.configuration-footer:visible').last();
       if (await footer.count()) {
         const rect = await footer.boundingBox();
         assert.ok(rect.y >= bounds.y + header.height && rect.y + rect.height <= bounds.y + bounds.height, JSON.stringify({ rect, bounds }));
         await footer.locator('button:enabled').first().click({ trial: true });
       }
     };
-    const configurations = frame.locator('dialog.project-configurations:not(.configuration-field-editor)');
+    const projectInformation = frame.locator('dialog.project-information-dialog');
+    const configurations = projectInformation.locator('#project-configurations-dialog');
     const closeDialog = async dialog => { await dialog.locator(':scope > header > button').last().click(); await dialog.waitFor({ state: 'hidden' }); };
     for (const viewport of [{ width: 1440, height: 960 }, { width: 1100, height: 600 }, { width: 800, height: 360 }, { width: 1440, height: 320 }]) {
       await page.setViewportSize(viewport);
@@ -849,13 +871,16 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         if ((await toggleTools.getAttribute('aria-expanded') === 'true') !== toolsVisible) { await toggleTools.click(); }
         for (const menuOpen of [false, true]) {
           if ((await frame.locator('#hide-menu').isVisible()) !== menuOpen) { await frame.locator(menuOpen ? '#menu-toggle' : '#hide-menu').click(); }
-          await frame.locator('#project-configurations').click();
-          await until(() => configurations.locator('.configuration-field').count(), count => count === 17, 'Project configuration fields did not load');
-          await assertDialogFits(configurations);
+          await frame.locator('#project-info').click();
+          await projectInformation.getByRole('tab', { name: language === 'en' ? 'Project configurations' : '项目配置', exact: true }).click();
+          await configurations.locator('li[data-active="true"] .configuration-profile-link').click();
+          await until(() => configurations.locator('label[for^="configuration-field-field_"]').count(),
+            count => count === scrollFixtureFields.length, 'Project configuration fields did not load');
+          await assertDialogFits(projectInformation);
           const body = configurations.locator(':scope > .dialog-body:visible');
           assert.ok(await body.evaluate(element => element.scrollHeight > element.clientHeight));
           await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
-          await assertDialogFits(configurations);
+          await assertDialogFits(projectInformation);
           if (viewport.height === 320 && toolsVisible && !menuOpen) { await page.screenshot({ path: path.join(proof, `${language}-steam-dialog-safe-area.png`) }); }
           const lastField = await configurations.locator('.configuration-field').last().boundingBox(), bodyRect = await body.boundingBox();
           assert.ok(lastField.y + lastField.height <= bodyRect.y + bodyRect.height + 1);
@@ -868,7 +893,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
           await configurations.getByRole('button', { name: language === 'en' ? 'Configuration actions' : '配置操作', exact: true }).click();
           await configurations.getByRole('menuitem', { name: language === 'en' ? 'Rename' : '重命名', exact: true }).click();
           const rename = frame.locator('.action-dialog'); await assertDialogFits(rename); await closeDialog(rename);
-          await closeDialog(configurations);
+          await closeDialog(projectInformation);
         }
       }
       for (const selector of ['#project-info', '#tools']) {
@@ -1483,6 +1508,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await writeFile(path.join(proof, `${language}-console.json`), JSON.stringify({ consoleMessages }, null, 2));
     await browser?.close();
     if (child?.pid) { try { process.kill(-child.pid, 'SIGTERM'); } catch {} }
+    if (model) { model.closeAllConnections(); await new Promise(resolve => model.close(resolve)); }
     await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
