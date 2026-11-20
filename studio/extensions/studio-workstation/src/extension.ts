@@ -1,7 +1,7 @@
 import './localization-host';
 import { t } from './localization';
 import * as vscode from 'vscode';
-import { projectTypeIcons, RECENT_PROJECTS_KEY, readRecentProjects, rememberProjects, type RecentProject } from './projects';
+import { applyRecentMetadata, projectTypeIcons, RECENT_PROJECTS_KEY, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
 import { activateProject } from './workflow';
 import type { Launcher } from './workflow-cli-types';
@@ -52,9 +52,13 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     cliEntry: async () => { throw new Error('Workflow requires a Node extension host.'); },
     dispose: () => undefined,
   };
-  const icons = new ProjectIcons(launcher, message => output.appendLine(message));
+  const icons = new ProjectIcons(launcher, message => output.appendLine(message), readRecentProjects(context.globalState.get(RECENT_PROJECTS_KEY)));
   const recent = new RecentProjectsProvider(context, icons);
-  context.subscriptions.push(output, recent, icons, icons.onDidChange(() => { recent.refresh(); }));
+  context.subscriptions.push(output, recent, icons, icons.onDidChange(updates => {
+    recent.refresh();
+    void updateProjectHistory(context, history => ({ ...history, recent: applyRecentMetadata(history.recent, updates) }))
+      .catch(error => output.appendLine(`Recent project icons: ${String(error)}`));
+  }));
 
   const register = <Args extends unknown[]>(id: string, callback: (...args: Args) => unknown): void => {
     context.subscriptions.push(vscode.commands.registerCommand(id, async (...args: Args) => {
@@ -167,11 +171,9 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       }
     }),
   );
-  await recent.reconcile();
-  await rememberCurrentWorkspace();
   const sidebar = new ProjectSidebar(context, launcher, output);
   account.setProjectSidebar(sidebar);
-  await activateInternalLayer(context, output, account, sidebar);
+  await Promise.all([activateInternalLayer(context, output, account, sidebar), recent.reconcile().then(rememberCurrentWorkspace)]);
   const workflows = await activateProject(context, launcher, output, account, icons, sidebar);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],

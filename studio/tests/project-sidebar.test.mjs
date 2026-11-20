@@ -64,7 +64,7 @@ function fixture(t, initial, options = {}) {
     commands: {
       registerCommand: (id, run) => { commands.set(id, run); return disposable; },
       executeCommand: async (id, ...args) => {
-        if (id === 'studio.internalShowLaunchpadApp' || id === 'studio.internalCloseLaunchpadApp') return options.launchpad(id, ...args);
+        if (/^studio\.internal(?:Show|Close|Prepare)LaunchpadApp$/.test(id)) return options.launchpad(id, ...args);
         if (id === 'studio.internalSyncSidebarTabs') tabs.push(clone(args[0]));
         if (id === 'studio.internalSidebarHistory') return ['file:///history/board', 'file:///history', 'vscode-remote://remote/path'];
         if (id === 'studio.internalSidebarProjectTrust') { calls.push(['trust', ...args]); return trusted && !String(args[0]).endsWith('/other'); }
@@ -101,31 +101,32 @@ function fixture(t, initial, options = {}) {
   return { ...module.exports, sidebar, start, output, calls, tabs, commands, views, sessions, revoke: () => { trusted = false; commands.get('studio.internalSidebarTrustChanged')(); }, prefs: () => prefs };
 }
 
-test('launchpad leases the registered hosted preview until close and revokes it on account change', async t => {
-  for (const revoke of [false, true]) {
-    const shown = deferred(), dismissed = deferred(), abort = new AbortController();
-    let closed = 0;
-    const f = fixture(t, {}, {
-      openHostedSidebar: async (project, binding, signal) => {
-        assert.equal(project.id, 'hosted'); assert.equal(signal, abort.signal);
-        assert.equal(binding.bootstrap.secret, 'host-only');
-        return { url: 'http://127.0.0.1:1234/nonce/index.html', nonce: 'nonce', close: async () => { closed++; } };
-      },
-      async launchpad(cmd, id, app) {
-        assert.equal(id, 'request');
-        if (cmd === 'studio.internalCloseLaunchpadApp') { dismissed.resolve(); return; }
-        assert.equal(app.port, 1234); assert.match(app.html, /id="project-frame"/);
-        assert.ok(app.html.includes(`src="http://127.0.0.1:1234/nonce/index.html${revoke ? '#/?thread=a%26b' : ''}"`));
-        assert.doesNotMatch(JSON.stringify(app), /host-only/);
-        shown.resolve(); await dismissed.promise;
-      },
-    });
-    f.sidebar.registerHosted({ id: 'hosted', title: 'Chat', viewId: 'studio.hosted', getState: () => ({ binding: { bootstrap: { secret: 'host-only' } } }) });
-    const pending = f.sidebar.showHostedInLaunchpad('hosted', 'request', abort.signal, revoke ? '/?thread=a%26b' : undefined);
-    await shown.promise; assert.equal(closed, 0);
-    if (revoke) abort.abort(); else dismissed.resolve();
-    await pending; assert.equal(closed, 1);
-  }
+test('launchpad shares a warming preview across clicks, and replaces it on account change', async t => {
+  const auth = new AbortController(), ready = deferred();
+  let created = 0, closed = 0;
+  const mounted = [], opened = [], revoked = [];
+  const f = fixture(t, {}, {
+    openHostedSidebar: async (_project, binding) => {
+      created++; assert.equal(binding.bootstrap.secret, 'host-only');
+      return { url: 'http://127.0.0.1:1234/nonce/index.html', nonce: 'nonce', close: async () => { closed++; } };
+    },
+    async launchpad(cmd, key, arg, conversation) {
+      if (cmd === 'studio.internalCloseLaunchpadApp') { revoked.push(key); return; }
+      if (cmd === 'studio.internalShowLaunchpadApp') { opened.push([key,arg,conversation]); return true; }
+      mounted.push(key); assert.equal(arg.port,1234); assert.match(arg.html,/id="project-frame"/);
+      assert.doesNotMatch(JSON.stringify(arg), /host-only/); await ready.promise; return true;
+    },
+  });
+  f.sidebar.registerHosted({ id:'hosted',title:'Chat',getState:()=>({binding:{bootstrap:{secret:'host-only'}}}) });
+  const warm = f.sidebar.prepareHostedInLaunchpad('hosted',auth.signal);
+  const first = f.sidebar.showHostedInLaunchpad('hosted','r1',auth.signal,'a&b');
+  ready.resolve(); const key = await warm; await first;
+  await f.sidebar.showHostedInLaunchpad('hosted','r2',auth.signal,'other');
+  assert.deepEqual([created,closed,mounted,opened],[1,0,[key],[[key,'r1','a&b'],[key,'r2','other']]]);
+  auth.abort(); assert.deepEqual([closed,revoked],[1,[key]]);
+  const second = await f.sidebar.prepareHostedInLaunchpad('hosted',new AbortController().signal);
+  assert.notEqual(second,key); await f.commands.get('studio.internalReleaseHostedLaunchpadApp')(key);
+  assert.equal(closed,1); f.sidebar.dispose(); assert.equal(closed,2);
 });
 
 test('restores the order without inspecting or starting anything and locks built-ins', async t => {

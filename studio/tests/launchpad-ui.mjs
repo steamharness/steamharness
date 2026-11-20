@@ -17,6 +17,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { CommandsRegistry } from './src/vs/platform/commands/common/commands.ts';
   import { FileOperationError, FileOperationResult } from './src/vs/platform/files/common/files.ts';
   import { hostedSidebarHtml } from '../../extensions/studio-workstation/src/project-sidebar-html.ts';
+  import { applyRecentMetadata, RECENT_PROJECTS_KEY } from '../../extensions/studio-workstation/src/projects.ts';
   const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items: [{ id:'checklist', name:'Checklist', description:'Verify a release' }] } : undefined };
   const root = document.querySelector('.monaco-workbench');
   const [outer, inner] = root.querySelectorAll('.sash-container');
@@ -29,7 +30,9 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const chats = { connection:'connected', items:[{id:'group-team',group:true,time:Date.now(),name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{id:'solo',name:'Solo',preview:'Hi',unread:0,avatarUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="#345" d="M0 0h32v32H0z"/></svg>')}] };
   const account = { status:'authenticated', name:'My account', avatarUrl:chatAvatar };
   const commandEvent = new Emitter();
-  window.signOut = () => commandEvent.fire({commandId:'studio.internalUpdateAccountMenuState', args:[{status:'signed-out',name:'Signed out'}]});
+  const kernelCommand = (id,...args) => CommandsRegistry.getCommand('studio.internal'+id).handler(undefined,...args);
+  window.signOut = () => { kernelCommand('CloseLaunchpadApp','account-key'); commandEvent.fire({commandId:'studio.internalUpdateAccountMenuState', args:[{status:'signed-out',name:'Signed out'}]}); };
+  window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml('en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
@@ -37,10 +40,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     if (id === 'studio.openLaunchpadInbox') {
       if (window.imError) return window.imError;
       if (window.delayOpen) await new Promise(resolve => window.finishOpening = resolve);
-      const preview = { url:'http://127.0.0.1:4321/app' + (args[1] ? '#/?conversation_id='+encodeURIComponent(args[1]) : ''), nonce:'fixture', microphone:false };
-      await CommandsRegistry.getCommand('studio.internalShowLaunchpadApp').handler(undefined, args[0],
-        { title:'IM', port:4321, html:hostedSidebarHtml('en','IM',preview) });
-      window.actions.push(['released', args[0]]);
+      await kernelCommand('ShowLaunchpadApp','account-key',...args);
+      window.actions.push(['opened', args[0]]);
     }
     if (id === 'studio.createProject') {
       const dialog = new StudioProjectCreateDialog({ labels:{create:'Create',cancel:'Cancel',confirmCreate:'Create project'},
@@ -54,7 +55,17 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const workspace = URI.file('/projects/Sample.code-workspace');
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
-  state.recent = folders.map((uri,i)=>({uri:uri.toString(),lastOpened:1700000000000,...(i===0?{projectType:'workflow',avatarUrl:avatar}:i===2?{projectType:'bot'}:{})}));
+  const history = folders.map(uri => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000}));
+  const detected = new Map([[history[0].uri,{projectType:'workflow',avatarUrl:avatar}],[history[2].uri,{projectType:'bot'}]]);
+  const startEvent = new Emitter();
+  const start = { state:undefined, onDidChange:startEvent.event, setVisible(){} };
+  const storage = { getExtensionState:(id,global)=>global && JSON.parse(localStorage.getItem(id)) };
+  window.activateProjects = () => {
+    state.recent=applyRecentMetadata(history,detected);
+    localStorage.setItem('studio.studio-workstation',JSON.stringify({[RECENT_PROJECTS_KEY]:state.recent}));
+    start.state=state; startEvent.fire();
+  };
+  window.delayProjects = () => {start.state=undefined; startEvent.fire();};
   const windows = [{ id:23, workspace:{id:'folder',uri:folders[0]} },{id:24,workspace:{id:'bot',uri:folders[2]}},{id:25,workspace:{id:'third',uri:folders[3]}}];
   const native = {getWindows:async()=>windows, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
     async showMessageBox({message,detail,buttons}) {
@@ -65,27 +76,29 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       }); dialog.remove(); return {response};
     },
     openWindow:async ([open],opts)=>window.actions.push(['open',Object.keys(open)[0],opts.forceNewWindow])};
-  const start = { state, onDidChange: Event.None, setVisible(){} };
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['relocate',opts.canSelectFolders]); return window.newLocation && [URI.file(window.newLocation)]; } };
   const files = { stat: async uri=>{ if(uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND); return {isFile:uri.path===workspace.path,isDirectory:uri.path!==workspace.path}; } };
   const webviews = { createWebviewElement({title}) {
     const frame = document.createElement('iframe'); frame.title = title; frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
-    return { onMessage:Event.None, onFatalError:Event.None, mountTo:parent=>parent.append(frame), setHtml:html=>frame.srcdoc=html,
-      focus:()=>frame.focus(), dispose:()=>frame.remove() };
+    const messages = new Emitter(); const receive=e=>{if(e.source===frame.contentWindow && e.data.fixtureHost) messages.fire({message:e.data.fixtureHost});};
+    window.addEventListener('message',receive);
+    return { onMessage:messages.event, onFatalError:Event.None, mountTo:parent=>parent.append(frame), setHtml:html=>{window.actions.push(['setHtml']);frame.srcdoc=html;},
+      async postMessage(msg){frame.contentWindow.postMessage(msg,window.origin);return true;}, focus:()=>frame.focus(), dispose:()=>{window.removeEventListener('message',receive);messages.dispose();frame.remove();} };
   } };
   const changed = () => window.events['vscode:studioProjectWindowsChanged']();
   window.startLaunchpad = () => {
     root.classList.add('studio-launchpad-window');
     const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>recent,onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files);
+    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage);
     window.clearHistory=()=>{recent.workspaces=[];changed();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.closeProject=()=>{ windows.length=0; window.events['vscode:studioProjectWindowsChanged'](); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
-    window.cleanup=()=>{ controller.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); };
+    window.stopLaunchpad=()=>controller.dispose();
+    window.cleanup=()=>{ controller.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
   loader: { '.svg':'dataurl', '.ttf':'dataurl', '.png':'dataurl' } });
@@ -116,8 +129,9 @@ try {
   for (const [language, enhanced, light] of [['zh-cn',true,true],['en',true,false],['en',false,true]]) {
     const page = await browser.newPage({viewport:{width:1120,height:680}});
     const errors=[]; page.on('pageerror', e=>errors.push(e.message));
-    await page.addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage() {} }); });
-    await page.route('http://127.0.0.1:4321/**', route => route.fulfill({contentType:'text/html',body:'<main>Inbox fixture</main>'}));
+    await page.addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage:fixtureHost=>parent.postMessage({fixtureHost},window.origin) }); });
+    let loads=0;
+    await page.route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main>Inbox fixture</main><output></output><input aria-label="draft"><script>window.addEventListener('message',e=>{if(e.source===parent && e.data?.nonce==='fixture' && e.data.visible && e.data.conversation) document.querySelector('output').textContent=e.data.conversation;});parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
     await page.goto('http://127.0.0.1:4321/');
     await page.setContent(`<style>
       :root{--vscode-foreground:#d4d4d4;--vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#252526;--vscode-panel-border:#3a3a3a;--vscode-textLink-foreground:#68b6ed;--vscode-button-background:#007acc;--vscode-button-foreground:white;--vscode-descriptionForeground:#aaa;--vscode-focusBorder:#007acc;--vscode-badge-background:#38383c;--vscode-badge-foreground:#eee;--vscode-list-hoverBackground:#303030;--vscode-input-background:#272727;--vscode-input-foreground:#ddd;--vscode-charts-yellow:#dcbd85;}
@@ -134,6 +148,13 @@ try {
     assert.equal(await page.evaluate(()=>new Set(window.sashDrags).size),2,'both resize directions still work in a project window');
     await page.evaluate(()=>window.startLaunchpad());
     const rows=page.locator('.lp-project-row'); await rows.first().waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
+    assert.equal(await rows.locator('.lp-project-type').count(),0,'first run has not inspected these folders yet');
+    await page.evaluate(()=>window.activateProjects());
+    await rows.locator('.lp-project-avatar').first().waitFor();
+    await page.evaluate(()=>{window.stopLaunchpad();window.delayProjects();window.startLaunchpad();});
+    await rows.locator('.lp-project-avatar').first().waitFor();
+    assert.equal(await rows.locator('.lp-project-type').count(),2,'second launch paints types and avatar before extension activation');
+    await page.evaluate(()=>window.activateProjects());
     await checkEditorSashes(page, false);
     assert.equal(await rows.count(),5); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
     assert.equal(await rows.locator('.lp-project-avatar').count(),1,`${language}: recent project avatar`);
@@ -180,23 +201,26 @@ try {
     assert.equal(await page.locator('.studio-launchpad-back').count(), 0);
     if (enhanced) {
       const home = page.locator('.studio-launchpad'), open = page.locator('.lp-inbox header .lp-link'), editor = page.locator('.part.editor');
+      assert.equal(await page.evaluate(()=>window.prewarm()),true);
+      assert.equal(await home.isVisible(),true); assert.equal(await page.locator('.studio-launchpad-app').isVisible(),false);
       await page.evaluate(() => window.imError = 'Service offline');
       await open.click(); const warning = page.locator('.native-message'); await warning.waitFor();
       assert.ok((await warning.textContent()).includes(language === 'zh-cn' ? '无法打开 IM' : 'Could not open IM'));
       assert.ok((await warning.textContent()).includes('Service offline'));
       assert.equal(await home.isVisible(), true); assert.equal(await editor.isVisible(), false);
-      assert.equal(await page.locator('.studio-launchpad-app').count(), 0);
+      assert.equal(await page.locator('.studio-launchpad-app').isVisible(), false);
       await warning.getByRole('button').click(); await warning.waitFor({state:'detached'});
       // Cancelling a pending open (e.g. from the tray) must not let a late preview replace home.
       await page.evaluate(() => { window.imError = ''; window.delayOpen = true; });
       await open.click(); await page.waitForFunction(() => !!window.finishOpening);
       await page.evaluate(() => { window.showHome(); window.finishOpening(); window.delayOpen = false; });
-      await page.waitForFunction(() => window.actions.some(([id])=>id==='released'));
+      await page.waitForFunction(() => window.actions.some(([id])=>id==='opened'));
       assert.equal(await home.isVisible(), true); assert.equal(await warning.count(), 0);
       await page.locator('.lp-chat').first().click();
       const frame = page.frameLocator('.studio-launchpad-app iframe').frameLocator('#project-frame');
       await frame.getByText('Inbox fixture').waitFor();
-      assert.ok((await page.frameLocator('.studio-launchpad-app iframe').locator('#project-frame').getAttribute('src')).endsWith('#/?conversation_id=group-team'));
+      await frame.getByText('group-team',{exact:true}).waitFor();
+      await frame.getByLabel('draft').fill('keep draft');
       assert.equal(await home.isVisible(), false); assert.equal(await editor.isVisible(), false);
       assert.equal(await editor.evaluate(el=>el.inert), true);
       await page.evaluate(() => window.openInbox());
@@ -212,8 +236,16 @@ try {
       await checkEditorSashes(page, false);
       assert.equal(await home.isVisible(), true); assert.equal(await editor.isVisible(), false);
       assert.equal(await open.evaluate(el=>el===document.activeElement), true);
+      for(const [index,id] of [[1,'solo'],[0,'group-team']]) {
+        await page.locator('.lp-chat').nth(index).click(); await frame.getByText(id,{exact:true}).waitFor();
+        assert.equal(await frame.getByLabel('draft').inputValue(),'keep draft');
+        await page.getByRole('button',{name: language==='zh-cn'?'关闭 IM':'Close IM'}).click();
+      }
+      assert.equal(loads,1,'prewarm, A, B and A use the same document');
+      assert.equal(await page.evaluate(()=>window.actions.filter(([id])=>id==='setHtml').length),1);
       await page.evaluate(()=>{window.signOut();window.guest=true;window.refreshInbox();}); await page.locator('.lp-chat-list > button').click(); assert.equal(await page.locator('.lp-connection').getAttribute('data-state'),'guest');
       assert.equal(await page.locator('.lp-account img').count(),0,'sign out clears the titlebar avatar');
+      assert.equal(await page.locator('.studio-launchpad-app').count(),0,'sign out destroys the hidden view');
     } else {
       assert.equal(await page.locator('.lp-account').isVisible(),false); assert.equal(await page.locator('.lp-side').isVisible(),false);
     }

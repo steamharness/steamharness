@@ -14,6 +14,11 @@ export interface RecentProject {
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
 export const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
+export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version'>;
+export function applyRecentMetadata(rows: RecentProject[], updates: ReadonlyMap<string, RecentMetadata>): RecentProject[] {
+  return rows.map(row => row.kind === 'folder' && updates.has(row.uri) ? { ...row, ...updates.get(row.uri) } : row);
+}
+
 export interface ImportedProject {
   id: string;
   uri: string;
@@ -73,9 +78,10 @@ export function rememberProjects(
   limit: number,
 ): RecentProject[] {
   const projects = new Map<string, RecentProject>();
+  const known = new Map(previous.map(row => [row.uri, row]));
   for (const project of [...opened, ...previous].sort((a, b) => b.lastOpened - a.lastOpened)) {
     if (!projects.has(project.uri)) {
-      projects.set(project.uri, project);
+      projects.set(project.uri, { ...known.get(project.uri), ...project });
     }
   }
   return [...projects.values()].slice(0, Math.min(50, Math.max(1, limit)));

@@ -5,7 +5,7 @@ import { findProjectCandidates } from './project-candidates';
 import { editSidebarPreferences, orderedSidebarIds, readSidebarPreferences, sidebarEntryKey, sidebarEntryTitle, type SavedSidebarEntry, type SidebarPreferences } from './project-sidebar-state';
 import { bindHostedSidebar, sidebarStatusHtml } from './project-sidebar-view';
 import { hostedSidebarHtml } from './project-sidebar-html';
-import type { HostedSidebarProject, SidebarEdit, SidebarItem, SidebarProjectEntry } from './project-sidebar-types';
+import type { HostedSidebarPreview, HostedSidebarProject, SidebarEdit, SidebarItem, SidebarProjectEntry } from './project-sidebar-types';
 import type { AssistantConversation } from './assistant-view';
 import type { Launcher } from './workflow-cli-types';
 import type { Project } from './workflow-types';
@@ -23,6 +23,7 @@ export class ProjectSidebar implements vscode.Disposable {
   private readonly builtin = new Map<string, { item: SidebarItem; viewId: string; provider: vscode.WebviewViewProvider; hosted?: HostedSidebarProject }>();
   private readonly providers = new Map<string, { dispose(): void }>();
   private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void> }>();
+  private resident?: { id: string; key: string; signal: AbortSignal; ready: Promise<string>; close(): void };
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
@@ -36,6 +37,8 @@ export class ProjectSidebar implements vscode.Disposable {
       if (event.affectsConfiguration(`studio.${setting}`)) void this.sync();
     }), vscode.commands.registerCommand('studio.internalSidebarTrustChanged', () => {
       for (const mount of this.mounts.values()) void mount.recheck();
+    }), vscode.commands.registerCommand('studio.internalReleaseHostedLaunchpadApp', key => {
+      if (typeof key === 'string' && this.resident?.key === key) this.resident.close();
     }));
   }
 
@@ -46,38 +49,54 @@ export class ProjectSidebar implements vscode.Disposable {
       provider: { resolveWebviewView: view => bindHostedSidebar(view, project, this.launcher.openHostedSidebar!, this.output) },
     });
     if (this.started) void this.sync();
-    return { dispose: () => { this.builtin.delete(project.id); void this.sync(); } };
+    return { dispose: () => { if (this.resident?.id === project.id) this.resident.close(); this.builtin.delete(project.id); void this.sync(); } };
   }
 
-  /** The preview is leased to one launchpad request, never to the editor or sidebar layout. */
-  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal, initialFragment?: string): Promise<void> {
+  /** One in-flight or ready preview per account scope, not per navigation. */
+  async prepareHostedInLaunchpad(id: string, signal: AbortSignal): Promise<string> {
+    signal.throwIfAborted();
+    if (this.resident?.id === id && this.resident.signal === signal) return this.resident.ready;
     const project = this.builtin.get(id)?.hosted;
-    if (!project || !this.launcher.openHostedSidebar) throw new Error(t('The built-in project files are unavailable.'));
+    const open = this.launcher.openHostedSidebar;
+    if (this.disposed || !project || !open) throw new Error(t('The built-in project files are unavailable.'));
     const state = project.getState();
     if (!('binding' in state)) throw new Error(state.message);
-    signal.throwIfAborted();
-    const preview = await this.launcher.openHostedSidebar(project, state.binding, signal).catch(error => {
-      this.output.appendLine(`[launchpad] ${project.title}: ${String(error)}`);
-      throw new Error(t('The built-in project files are unavailable.'));
-    });
-    let closing: Promise<void> | undefined;
-    const close = () => closing ??= preview.close();
-    const revoked = () => {
-      void close();
-      void Promise.resolve(vscode.commands.executeCommand('studio.internalCloseLaunchpadApp', requestId)).catch(() => undefined);
+    this.resident?.close();
+    const key = globalThis.crypto.randomUUID();
+    let preview: HostedSidebarPreview | undefined, closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      signal.removeEventListener('abort', close);
+      if (this.resident?.key === key) this.resident = undefined;
+      if (preview) void preview.close().catch(() => undefined);
+      void Promise.resolve(vscode.commands.executeCommand('studio.internalCloseLaunchpadApp', key)).catch(() => undefined);
     };
-    try {
+    signal.addEventListener('abort', close, { once: true });
+    const ready = Promise.resolve().then(async () => {
       signal.throwIfAborted();
-      signal.addEventListener('abort', revoked, { once: true });
-      const url = new URL(preview.url);
-      if (initialFragment) url.hash = initialFragment;
-      await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', requestId, {
-        title: project.title, html: hostedSidebarHtml(vscode.env.language, project.title, { ...preview, url: url.href }),
-        port: Number(url.port), accountUrl: state.binding.accountUrl,
+      if (closed) throw new Error('Preview revoked');
+      preview = await open(project, state.binding, signal);
+      if (closed) { await preview.close(); throw new Error('Preview revoked'); }
+      const mounted = await vscode.commands.executeCommand<boolean>('studio.internalPrepareLaunchpadApp', key, {
+        title: project.title, html: hostedSidebarHtml(vscode.env.language, project.title, preview, true),
+        port: Number(new URL(preview.url).port), accountUrl: state.binding.accountUrl,
       });
-    } finally {
-      signal.removeEventListener('abort', revoked);
-      await close();
+      if (!mounted || closed) throw new Error('Preview unavailable');
+      return key;
+    }).catch(error => {
+      if (!closed) this.output.appendLine(`[launchpad] ${project.title}: ${String(error)}`);
+      close(); throw new Error(t('The built-in project files are unavailable.'));
+    });
+    this.resident = { id, key, signal, ready, close };
+    return ready;
+  }
+
+  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal, conversation?: string): Promise<void> {
+    const key = await this.prepareHostedInLaunchpad(id, signal);
+    signal.throwIfAborted();
+    if (!await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', key, requestId, conversation)) {
+      throw new Error(t('The built-in project files are unavailable.'));
     }
   }
 
@@ -266,6 +285,7 @@ export class ProjectSidebar implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    this.resident?.close();
     for (const mount of this.mounts.values()) mount.close();
     for (const provider of this.providers.values()) provider.dispose();
     this.providers.clear(); this.change.dispose();

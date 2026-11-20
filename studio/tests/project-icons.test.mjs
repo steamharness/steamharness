@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
-import { projectTypeIcons } from '../extensions/studio-workstation/src/projects.ts';
+import { applyRecentMetadata, projectTypeIcons, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
 import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
@@ -17,7 +17,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-function fixture(t) {
+function fixture(t, history = []) {
   const files = new Map(), failures = new Map(), reads = [], changed = new Emitter(), focus = new Emitter();
   const uri = value => ({ toString: () => value, scheme: new URL(value).protocol.slice(0, -1), path: new URL(value).pathname });
   const vscode = {
@@ -50,7 +50,7 @@ function fixture(t) {
     return types.size === 1 ? [...types][0] : undefined;
   } };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: () => vscode, TextDecoder, URL, Date, SyntaxError, setTimeout, clearTimeout });
-  const icons = new module.exports.ProjectIcons(launcher);
+  const icons = new module.exports.ProjectIcons(launcher, undefined, history);
   t.after(() => icons.dispose());
   const types = async (...uris) => Object.fromEntries((await icons.resolveMany(uris)).map(result => [result.uri, result.projectType]));
   return { files, failures, reads, icons, types, launcher, vscode, change: name => changed.fire(uri(name)), focus: () => focus.fire({ focused: true }) };
@@ -115,6 +115,21 @@ test('ordinary folders, broken and old declarations, invalid entries and unsuppo
   f.files.set('file:///conflict/b.ts', executor('bot'));
   const uris = ['file:///ordinary', 'file:///broken', 'file:///text', 'file:///conflict', 'file:///missing', 'file:///test.code-workspace', 'https://example.com', 'command:run'];
   assert.deepEqual(await f.types(...uris), Object.fromEntries(uris.map(uri => [uri, undefined])));
+});
+
+test('persist detected metadata, paint it synchronously on restart, and clear it after a confirmed removal', async t => {
+  const uri='file:///bot', row={uri,kind:'folder',label:'Bot',lastOpened:1};
+  const first=fixture(t), detection=new Promise(resolve=>first.icons.onDidChange(resolve));
+  first.files.set(`${uri}/steamharness.json`,manifest('bot'));
+  await first.icons.resolveMany([uri]);
+  const saved=JSON.parse(JSON.stringify(applyRecentMetadata([row],await detection)));
+  const reopened=rememberProjects(saved,[{...row,lastOpened:2}],12);
+  const second=fixture(t,reopened), removed=new Promise(resolve=>second.icons.onDidChange(resolve));
+  assert.equal(second.icons.get(uri),'bot'); assert.match(second.icons.getAvatarUrl(uri),/^data:image\/svg\+xml,/);
+  await second.icons.resolveMany([uri]);
+  const latest=applyRecentMetadata(reopened,await removed);
+  assert.equal(latest[0].projectType,undefined); assert.equal(latest[0].avatarUrl,undefined); assert.equal(latest[0].lastOpened,2);
+  assert.deepEqual(applyRecentMetadata([],new Map([[uri,saved[0]]])),[],'never resurrect removed history');
 });
 
 test('project avatars refresh when only projectCard colors change and ignore image URLs', async t => {

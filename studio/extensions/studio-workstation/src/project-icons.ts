@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { readProjectDeclarationWithReader, selectProjectEntry } from '@steamharness/project-manifest';
-import type { ProjectType } from './projects';
+import type { ProjectType, RecentMetadata, RecentProject } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
 interface Detection { type?: ProjectType; version?: string; avatarUrl?: string; checked: number; pending?: Promise<ProjectType | undefined> }
@@ -11,7 +11,8 @@ const ignored = new Set(['node_modules', 'dist', 'out', 'build', 'vendor', 'upst
 /** Reads declarations only. Recent folders must never supply executable inspection code. */
 export class ProjectIcons implements vscode.Disposable {
   private readonly cache = new Map<string, Detection>();
-  private readonly changes = new vscode.EventEmitter<void>();
+  private readonly updates = new Map<string, RecentMetadata>();
+  private readonly changes = new vscode.EventEmitter<ReadonlyMap<string, RecentMetadata>>();
   readonly onDidChange = this.changes.event;
   private readonly subscriptions: vscode.Disposable[] = [];
   private timer?: ReturnType<typeof setTimeout>;
@@ -19,7 +20,10 @@ export class ProjectIcons implements vscode.Disposable {
   private generation = 0;
   private disposed = false;
 
-  constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined) {
+  constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined, history: RecentProject[] = []) {
+    for (const { uri, kind, projectType, avatarUrl, version } of history) {
+      if (kind === 'folder' && projectType) this.cache.set(uri, { type: projectType, avatarUrl, version, checked: 0 });
+    }
     const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,*.ts}');
     this.subscriptions.push(watcher, watcher.onDidChange(uri => this.invalidate(uri)), watcher.onDidCreate(uri => this.invalidate(uri)),
       watcher.onDidDelete(uri => this.invalidate(uri)), vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.refresh(); } }));
@@ -73,7 +77,7 @@ export class ProjectIcons implements vscode.Disposable {
       entry.type = type;
       entry.version = version;
       entry.avatarUrl = avatarUrl;
-      if (changed) { this.publish(); }
+      if (changed) { this.updates.set(uri, { projectType: type, version, avatarUrl }); this.publish(); }
       return type;
     }).catch(error => { this.log(`Project icon ${uri}: ${String(error)}`); return entry.type; }).finally(() => {
       if (entry.pending === pending) { entry.pending = undefined; entry.checked = Date.now(); }
@@ -84,7 +88,9 @@ export class ProjectIcons implements vscode.Disposable {
 
   private publish(): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => { if (!this.disposed) { this.changes.fire(); } }, 100);
+    this.timer = setTimeout(() => {
+      if (!this.disposed) { const updates = new Map(this.updates); this.updates.clear(); this.changes.fire(updates); }
+    }, 100);
   }
 
   private async detect(root: vscode.Uri, setManifest: (manifest: Record<string, unknown>) => void): Promise<ProjectType | undefined> {
