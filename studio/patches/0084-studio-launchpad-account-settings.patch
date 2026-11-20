@@ -1,0 +1,430 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 2a54b591a81546de3a3bad55f33cc7ee63a5099f..0f6b32b61ede15266a16d21da61df021bc53d3c5 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -29,7 +29,7 @@
+ .studio-launchpad button:disabled { opacity: .55; cursor: default; }
+ .monaco-workbench .studio-launchpad[tabindex]:focus, .monaco-workbench .studio-launchpad :focus:not(:focus-visible), .monaco-workbench .studio-launchpad-app-close:focus:not(:focus-visible) { outline: none; }
+ .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible, .monaco-workbench .studio-launchpad-app-close:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
++.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus, .monaco-workbench .studio-launchpad-app-close.lp-pointer:focus { outline: none; }
+ .studio-launchpad .codicon { flex: none; }
+ .lp-titlebar { display: grid; grid-template-columns: minmax(0,1fr) min(39%,464px) minmax(0,1fr); align-items: center; padding-inline: 12px; gap: 6px; border-bottom: 1px solid var(--lp-line); }
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+@@ -45,7 +45,8 @@
+ .lp-links button:hover, .lp-compact-resources:hover, .lp-tool:hover, .lp-command-center:hover { background: var(--lp-hover); color: var(--lp-strong); }
+ .lp-utilities:has(.lp-account:not([hidden])) .lp-links { padding-inline-end: 7px; border-inline-end: 1px solid var(--lp-edge); }
+ .studio-launchpad .lp-compact-resources, .lp-compact-label { display: none; }
+-.lp-account img { width: 24px; height: 24px; object-fit: cover; border-radius: 50%; }
++.lp-account .lp-avatar { width: 24px; height: 24px; }
++.lp-account .lp-avatar img, .lp-account-identity .lp-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+ .lp-home, .lp-statusbar, .lp-dialog { pointer-events: auto; }
+ .lp-home { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--lp-bg); }
+ .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+@@ -130,6 +131,14 @@
+ .lp-dialog { width: min(400px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 8px; box-shadow: 0 12px 38px #0005; }
+ .lp-dialog::backdrop { background: #0006; } .lp-dialog.lp-quick::backdrop { background: transparent; }
+ .lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); font-size: 12px; padding-block: 6px; }
++.lp-account-profile { padding-block: 12px; margin-block-end: 5px; border-bottom: 1px solid var(--lp-line); overflow-wrap: anywhere; }
++.lp-account-identity { display: flex; align-items: center; gap: 10px; }
++.lp-account-identity .lp-avatar { width: 40px; height: 40px; }
++.lp-account-identity .lp-avatar .codicon { font-size: 21px; }
++.lp-account-identity > div { min-width: 0; }
++.lp-account-email, .lp-account-details dt { color: var(--lp-muted); }
++.lp-account-details { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 12px; margin: 10px 0 0; font-size: 12px; }
++.lp-account-details dd { margin: 0; }
+ .lp-dialog .lp-choice { display: flex; width: 100%; justify-content: flex-start; gap: 10px; min-height: 34px; padding-inline: 8px; border-radius: 4px; }
+ .lp-choice:hover, .lp-dismiss:hover { background: var(--lp-hover); } .lp-dialog .lp-dismiss { margin-block-start: 7px; padding: 4px 8px; color: var(--lp-muted); }
+ .lp-dialog.lp-quick { width: min(560px,calc(100% - 16px)); max-height: calc(100% - 52px); margin: 0 auto; top: calc(var(--studio-launchpad-bar,44px) / 2 + 17px); padding: 0; }
+@@ -140,7 +149,7 @@
+ .lp-option { display: grid; grid-template-columns: 16px fit-content(60%) minmax(0,1fr); align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+ .lp-option strong { font-weight: 550; } .lp-option small { color: var(--lp-muted); font: 11px var(--lp-mono); } .lp-option:hover { background: var(--lp-hover); } .lp-option[aria-selected=true] { background: var(--lp-selection); }
+ .lp-quick-foot { margin-top: 4px; border-top: 1px solid var(--lp-edge); padding-block: 3px; }
+-.studio-launchpad-app { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
++.studio-launchpad-app, .studio-launchpad-settings { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
+ .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); display: flex; align-items: center; gap: 4px; height: 26px; border: 0; border-radius: 4px; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
+ .studio-launchpad-app-close:hover { background: var(--lp-hover); }
+ .studio-launchpad-app[inert] { visibility: hidden; pointer-events: none; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 702c074132b9f31ecf570d60a2cf5da75d8c7cc9..d2cfe4325a54cb6b63d66fae5b7d7faa22142fc1 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -6,6 +6,8 @@
+ import { addDisposableListener } from '../../base/browser/dom.js';
+ import { mainWindow } from '../../base/browser/window.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
++import { CancellationTokenSource } from '../../base/common/cancellation.js';
++import { Event } from '../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { basenameOrAuthority } from '../../base/common/resources.js';
+ import { URI } from '../../base/common/uri.js';
+@@ -22,18 +24,21 @@ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
+-import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
++import { IOverlayWebview, IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
++import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
+ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
+-import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
++import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import './media/studioLaunchpad.css';
+ 
+ interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
+ interface ResidentApp { key: string; surface: HTMLElement; back: HTMLButtonElement; webview: IWebviewElement; ready: DeferredPromise<boolean>; dispose(): void }
+-interface LaunchpadMenuAccount { status: string; name: string; avatarUrl?: string }
++type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
++const launchpadSettingsViewType = 'studio.launchpadSettings';
+ 
+ export class StudioLaunchpad extends Disposable {
+ 	private readonly view: StudioLaunchpadView;
+ 	private readonly app = this._register(new MutableDisposable<ResidentApp>());
++	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
+ 	private requestId?: string;
+ 	private windows: LaunchpadProject[] = [];
+ 	private recent: LaunchpadProject[] = [];
+@@ -59,6 +64,7 @@ export class StudioLaunchpad extends Disposable {
+ 		@IWebviewService private readonly webviews: IWebviewService,
+ 		@IFileService private readonly files: IFileService,
+ 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
++		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
+ 	) {
+ 		super();
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+@@ -80,6 +86,7 @@ export class StudioLaunchpad extends Disposable {
+ 			project: project => run(this.openProject(project)),
+ 			remove: project => run(this.removeProject(project)),
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
++			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: conversation => run(this.openInbox(conversation)),
+ 			store: id => run(commands.executeCommand('studio.openStartRecommendation', id)),
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+@@ -101,11 +108,14 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(layout.onDidLayoutMainContainer(resize));
+ 		this._register(addDisposableListener(mainWindow, 'keydown', event => this.view.shortcut(event), true));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
++		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.prepareApp(key, app)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.showApp(key, requestId, conversation)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => {
+-			if (key === this.app.value?.key) { if (this.view.element.hidden) { this.showHome(); } this.app.clear(); }
++			const app = this.app.value;
++			if (app?.key === key) { if (!app.surface.inert) { this.showHome(); } this.app.clear(); }
+ 		}));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+ 			++this.inboxRevision;
+@@ -117,7 +127,8 @@ export class StudioLaunchpad extends Disposable {
+ 		}));
+ 		let platform = false, accountRevision = 0;
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
+-			this.account = state && { name: state.name, avatarUrl: state.avatarUrl, signedIn: state.status === 'authenticated' };
++			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
++				serverUrl: state.serverUrl, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
+@@ -158,7 +169,8 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+ 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+-			if (this.view.element.hidden) { void this.app.value?.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
++			const app = this.app.value;
++			if (app && !app.surface.inert) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
+ 			if (!document.hidden) { changed(); this.refreshInbox.schedule(); }
+ 		}));
+ 		// The resident window never becomes an editor, including while an app is opening or closing.
+@@ -177,23 +189,91 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private showHome(): void {
+-		const fromApp = this.view.element.hidden;
++		const fromSettings = !!this.settings.value;
++		this.settings.clear();
+ 		this.view.closePicker();
+ 		this.requestId = undefined;
+ 		const app = this.app.value;
+-		if (app && fromApp) {
++		const fromApp = !!app && !app.surface.inert;
++		if (fromApp) {
+ 			app.surface.inert = app.back.hidden = true;
+ 			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
+ 		}
+ 		this.view.element.hidden = false;
+ 		this.view.setInboxBusy(false);
+ 		this.start.setVisible('launchpad', !document.hidden);
+-		if (fromApp) { this.view.focusInbox(); } else { this.view.element.focus({ preventScroll: true }); }
++		if (fromSettings) { this.view.focusAccount(); }
++		else if (fromApp) { this.view.focusInbox(); }
++		else { this.view.element.focus({ preventScroll: true }); }
+ 		this.refreshInbox.schedule();
+ 	}
+ 
++	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
++		const close = document.createElement('button');
++		close.type = 'button';
++		close.className = 'studio-launchpad-app-close';
++		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left'; arrow.setAttribute('aria-hidden', 'true');
++		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
++		close.title = this.language.startsWith('zh') ? `关闭 ${title}` : `Close ${title}`;
++		close.setAttribute('aria-label', close.title);
++		lifetime.add(addDisposableListener(close, 'click', () => this.showHome()));
++		return close;
++	}
++
++	/** Mount the extension's Settings view without opening an editor or evicting the resident IM. */
++	private async showSettings(title: string): Promise<void> {
++		if (this.settings.value) { this.settings.value.webview.focus(); return; }
++		this.showHome();
++		const lifetime = new DisposableStore();
++		const source = new CancellationTokenSource();
++		lifetime.add(toDisposable(() => source.dispose(true)));
++		const surface = document.createElement('div');
++		surface.className = 'studio-launchpad-settings';
++		surface.setAttribute('role', 'document');
++		surface.setAttribute('aria-label', title);
++		surface.tabIndex = 0;
++		const back = this.createBackButton(title, lifetime);
++		if (this.view.element.classList.contains('lp-pointer')) {
++			back.classList.add('lp-pointer');
++			const reset = () => back.classList.remove('lp-pointer');
++			lifetime.add(addDisposableListener(back, 'blur', reset));
++			lifetime.add(addDisposableListener(back, 'keydown', reset));
++		}
++		const failed = () => {
++			if (lifetime.isDisposed) { return; }
++			this.showHome();
++			const zh = this.language.startsWith('zh');
++			void this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 Studio 设置' : 'Could not open Studio Settings',
++				buttons: [zh ? '确定' : 'OK'], noLink: true });
++		};
++		try {
++			const webview = lifetime.add(this.webviews.createWebviewOverlay({ providedViewType: launchpadSettingsViewType, title, options: {}, contentOptions: {}, extension: undefined }));
++			this.settings.value = { webview, dispose: () => lifetime.dispose() };
++			this.layout.mainContainer.append(back, surface);
++			lifetime.add(toDisposable(() => { surface.remove(); back.remove(); }));
++			const deadline = lifetime.add(new RunOnceScheduler(failed, 15_000));
++			lifetime.add(webview.onMessage(({ message }) => { if (message?.type === 'ready') { deadline.cancel(); } }));
++			lifetime.add(webview.onFatalError(failed));
++			lifetime.add(addDisposableListener(surface, 'focus', () => webview.focus()));
++			this.view.element.hidden = true;
++			this.start.setVisible('launchpad', false);
++			webview.claim(surface, mainWindow, undefined);
++			webview.setAnchorElement(surface);
++			back.focus({ preventScroll: true });
++			deadline.schedule();
++			await this.webviewViews.resolve(launchpadSettingsViewType, {
++				title, webview, onDidChangeVisibility: Event.None, onDispose: webview.onDidDispose,
++				dispose: () => { if (!lifetime.isDisposed) { this.showHome(); } },
++				show: preserveFocus => { if (!preserveFocus && !lifetime.isDisposed) { webview.focus(); } },
++			}, source.token);
++		} catch {
++			failed();
++			lifetime.dispose();
++		}
++	}
++
+ 	private async openInbox(conversation?: string): Promise<void> {
+-		if (this.requestId) { return; }
++		if (this.requestId || this.settings.value) { return; }
+ 		const id = this.requestId = generateUuid();
+ 		this.view.closePicker();
+ 		this.view.setInboxBusy(true);
+@@ -215,7 +295,7 @@ export class StudioLaunchpad extends Disposable {
+ 	/** A hidden, full-size surface can initialize without stealing focus or mounting the editor. */
+ 	private async prepareApp(key: string, app: LaunchpadApp): Promise<boolean> {
+ 		if (this.app.value?.key === key) { return this.app.value.ready.p; }
+-		if (this.view.element.hidden) { this.showHome(); }
++		if (this.app.value && !this.app.value.surface.inert) { this.showHome(); }
+ 		this.app.clear();
+ 		const lifetime = new DisposableStore();
+ 		const ready = new DeferredPromise<boolean>();
+@@ -223,15 +303,8 @@ export class StudioLaunchpad extends Disposable {
+ 		const surface = document.createElement('div');
+ 		surface.className = 'studio-launchpad-app';
+ 		surface.inert = true;
+-		const close = document.createElement('button');
+-		close.type = 'button';
++		const close = this.createBackButton(app.title, lifetime);
+ 		close.hidden = true;
+-		close.className = 'studio-launchpad-app-close';
+-		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left';
+-		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
+-		close.title = this.language.startsWith('zh') ? `关闭 ${app.title}` : `Close ${app.title}`;
+-		close.setAttribute('aria-label', close.title);
+-		lifetime.add(addDisposableListener(close, 'click', () => this.showHome()));
+ 		this.layout.mainContainer.append(surface, close);
+ 		lifetime.add(toDisposable(() => { surface.remove(); close.remove(); }));
+ 		try {
+@@ -251,7 +324,7 @@ export class StudioLaunchpad extends Disposable {
+ 				}
+ 			}));
+ 			lifetime.add(webview.onFatalError(() => {
+-				if (this.view.element.hidden) { this.showHome(); }
++				if (!surface.inert) { this.showHome(); }
+ 				this.app.clear();
+ 				void this.commands.executeCommand('studio.internalReleaseHostedLaunchpadApp', key).catch(() => undefined);
+ 			}));
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts b/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
+index 78cc25c4ee33832321f3523abf61a6877cda6878..c79b945b9578404ef21eb58e11d4061bd378bb4e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
+@@ -25,12 +25,12 @@ export function button(text: string, glyph: string, action: () => void, classNam
+ 	return node;
+ }
+ 
+-export interface LaunchpadOption { label: string; glyph: string; detail?: string; run(): void }
++export interface LaunchpadOption { label: string; glyph: string; detail?: string; visible?(): boolean; run(): void }
+ export type LaunchpadLabel = (en: string, zh: string) => string;
+ 
+ /** Only launchpad actions are offered here; the workbench command palette belongs to project windows. */
+ export class LaunchpadPicker {
+-	readonly dialog = element('dialog', 'lp-dialog');
++	readonly dialog = element('dialog', 'lp-dialog lp-scroll');
+ 	private origin?: HTMLElement;
+ 	private refresh?: () => void;
+ 	private toggleMode?: (commands: boolean) => void;
+@@ -64,16 +64,24 @@ export class LaunchpadPicker {
+ 		this.dialog.showModal();
+ 	}
+ 
+-	choices(title: string, options: LaunchpadOption[], origin: HTMLElement, detail?: string): void {
++	choices(title: string, options: LaunchpadOption[], origin: HTMLElement, detail?: string | HTMLElement): void {
+ 		this.open(title, origin, false);
+ 		this.dialog.append(element('h2', '', title));
+-		if (detail) { this.dialog.append(element('p', 'lp-dialog-detail', detail)); }
+-		for (const item of options) {
+-			this.dialog.append(button(item.label, item.glyph, () => { this.close(); item.run(); }, 'lp-choice'));
+-		}
++		if (detail) { this.dialog.append(typeof detail === 'string' ? element('p', 'lp-dialog-detail', detail) : detail); }
++		const choices = options.map(item => button(item.label, item.glyph, () => { this.close(); item.run(); }, 'lp-choice'));
++		this.dialog.append(...choices);
+ 		const close = button(this.t('Close', '关闭'), 'close', () => this.close(), 'lp-dismiss');
+ 		this.dialog.append(close);
+-		(this.dialog.querySelector('button') ?? close).focus();
++		const first = () => choices.find(choice => !choice.hidden) ?? close;
++		this.refresh = () => {
++			const active = document.activeElement;
++			for (const [index, choice] of choices.entries()) {
++				choice.hidden = options[index].visible?.() === false;
++			}
++			if (choices.some(choice => choice === active && choice.hidden)) { first().focus({ preventScroll: true }); }
++		};
++		this.refresh();
++		first().focus({ preventScroll: true });
+ 	}
+ 
+ 	search(commands: boolean, origin: HTMLElement, options: (commands: boolean) => LaunchpadOption[]): void {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index ec4f328e77acfdae4c5d5a82ca2e9bcf8750801b..00f9289ee3412d69c8a4d50470ee0d6442262fc5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -15,9 +15,13 @@ export interface LaunchpadInbox {
+ 	connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string;
+ 	items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[];
+ }
++export interface LaunchpadAccount {
++	name: string; email?: string | null; avatarUrl?: string; serverUrl?: string; statusLabel?: string;
++	hasAccount: boolean; signedIn: boolean;
++}
+ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+-	account?: { name: string; avatarUrl?: string; signedIn: boolean };
++	account?: LaunchpadAccount;
+ 	inbox?: LaunchpadInbox;
+ 	store?: { message?: string; items: { id: string; name: string; description?: string; projectType?: string; avatarUrl?: string }[] };
+ }
+@@ -25,13 +29,24 @@ export interface LaunchpadActions {
+ 	open(): void; workspace(): void; create(): void;
+ 	project(project: LaunchpadProject): void; remove(project: LaunchpadProject): void;
+ 	resource(resource: 'docs' | 'github' | 'server'): void;
+-	signIn(): void; inbox(id?: string): void; store(id?: string): void;
++	signIn(): void; settings(): void; inbox(id?: string): void; store(id?: string): void;
+ }
+ 
+ function image(src: string, className = ''): HTMLImageElement {
+ 	const img = element('img', className); img.alt = ''; img.draggable = false; img.src = src; img.referrerPolicy = 'no-referrer'; return img;
+ }
+ 
++function accountAvatar(src?: string): HTMLElement {
++	const avatar = element('span', 'lp-avatar'); avatar.setAttribute('aria-hidden', 'true');
++	const fallback = icon('account'); avatar.append(fallback);
++	if (src && /^(https?:\/\/|data:image\/)/i.test(src)) {
++		const img = image(src);
++		img.addEventListener('error', () => { img.remove(); fallback.hidden = false; }, { once: true });
++		fallback.hidden = true; avatar.append(img);
++	}
++	return avatar;
++}
++
+ function sectionHead(title: HTMLElement, ...tools: HTMLElement[]): HTMLElement {
+ 	const head = element('header', 'lp-section-head'); head.append(title, ...tools); return head;
+ }
+@@ -47,6 +62,7 @@ export class StudioLaunchpadView {
+ 	private readonly commandCenter: HTMLButtonElement;
+ 	private readonly picker: LaunchpadPicker;
+ 	private readonly accountButton: HTMLButtonElement;
++	private readonly accountProfile = element('div', 'lp-account-profile');
+ 	private readonly openButton: HTMLButtonElement;
+ 	private readonly createButton: HTMLButtonElement;
+ 	private readonly serverButton: HTMLButtonElement;
+@@ -101,6 +117,7 @@ export class StudioLaunchpadView {
+ 		this.serverButton = resourceButtons[2]; links.append(...resourceButtons);
+ 		const compact = button(t('Resources', '资源'), 'chevron-down', () => this.picker.choices(t('Online resources', '在线资源'), this.state?.platform ? resources : resources.slice(0, 2), compact), 'lp-compact-resources');
+ 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.account()); this.accountButton.classList.add('lp-account');
++		this.accountButton.setAttribute('aria-haspopup', 'dialog');
+ 		utilities.append(links, compact, this.accountButton); chrome.append(brand, this.commandCenter, utilities);
+ 		const main = element('main', 'lp-home lp-scroll');
+ 		const header = element('header', 'lp-header');
+@@ -148,11 +165,27 @@ export class StudioLaunchpadView {
+ 			{ label: this.label('Open workspace file…', '打开工作区文件…'), glyph: 'project', run: this.actions.workspace }];
+ 	}
+ 	private account(): void {
++		const t = this.label;
++		this.renderAccountProfile();
++		this.picker.choices(t('Studio account', 'Studio 账号'), [
++			{ label: t('Open Studio Settings', '打开 Studio 设置'), glyph: 'settings-gear', run: this.actions.settings },
++			{ label: t('Open Web console', '打开 Web 控制台'), glyph: 'link-external', visible: () => !!this.state?.account?.signedIn, run: () => this.actions.resource('server') },
++			{ label: t('Sign in with browser', '在浏览器中登录'), glyph: 'sign-in', visible: () => !this.state?.account?.signedIn, run: this.actions.signIn },
++		], this.accountButton, this.accountProfile);
++	}
++	private renderAccountProfile(): void {
+ 		const t = this.label;
+ 		const account = this.state?.account;
+-		this.picker.choices(t('Studio account', 'Studio 账号'), account?.signedIn ? [
+-			{ label: t('Open Web console', '打开 Web 控制台'), glyph: 'link-external', run: () => this.actions.resource('server') },
+-		] : [{ label: t('Sign in with browser', '在浏览器中登录'), glyph: 'sign-in', run: this.actions.signIn }], this.accountButton, account?.signedIn ? account.name : t('Not signed in', '尚未登录'));
++		const identity = element('div', 'lp-account-identity');
++		const name = account?.hasAccount ? account.name : t('Not signed in', '尚未登录');
++		const text = element('div'); text.append(element('strong', '', name));
++		if (account?.hasAccount && account.email && account.email !== name) { text.append(element('p', 'lp-account-email', account.email)); }
++		identity.append(accountAvatar(account?.hasAccount ? account.avatarUrl : undefined), text);
++		this.accountProfile.replaceChildren(identity);
++		const details = element('dl', 'lp-account-details');
++		if (account?.serverUrl) { details.append(element('dt', '', t('Server', '服务器')), element('dd', '', account.serverUrl)); }
++		if (account?.statusLabel) { details.append(element('dt', '', t('Status', '状态')), element('dd', '', account.statusLabel)); }
++		if (details.childElementCount) { this.accountProfile.append(details); }
+ 	}
+ 	private search(commands: boolean, origin: HTMLElement): void {
+ 		const t = this.label;
+@@ -304,15 +337,16 @@ export class StudioLaunchpadView {
+ 
+ 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
+ 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
++	focusAccount(): void { (this.state?.platform ? this.accountButton : this.element).focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
+ 
+ 	update(state: LaunchpadState): void {
+ 		const previous = this.state; this.state = state; const t = this.label;
+ 		this.createButton.disabled = !state.canCreate; this.serverButton.hidden = this.accountButton.hidden = this.connection.hidden = this.side.hidden = !state.platform;
+ 		if (JSON.stringify(state.account) !== JSON.stringify(previous?.account)) {
+-			const src = state.account?.avatarUrl;
+-			this.accountButton.replaceChildren(src && /^(https:\/\/|data:image\/)/.test(src) ? image(src) : icon('account'));
+-			this.accountButton.title = state.account?.name || t('Studio account', 'Studio 账号');
++			this.accountButton.replaceChildren(accountAvatar(state.account?.hasAccount ? state.account.avatarUrl : undefined));
++			this.accountButton.title = state.account?.hasAccount ? state.account.name : t('Studio account', 'Studio 账号');
++			if (this.accountProfile.isConnected) { this.renderAccountProfile(); }
+ 		}
+ 		this.liveCount.textContent = String(state.windows.length);
+ 		this.list(this.live, state.windows, t('No project windows are open.', '当前没有打开的项目窗口。'), p => {

@@ -30,6 +30,7 @@ function icon(name: string): HTMLElement {
 
 export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { accountRoot: HTMLElement; setAccount(state: AccountState): void } {
   const platform = document.body.dataset.platform === 'true';
+  const launchpad = document.body.dataset.launchpad === 'true';
   root.classList.add('settings-root');
   root.innerHTML = `
     <div class="settings-layout">
@@ -54,7 +55,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
-        <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p><p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-current">${t('Open settings JSON')}</button></div>
+        <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p>${launchpad ? '' : `<p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-current">${t('Open settings JSON')}</button>`}</div>
       </section>
     </div>`;
   const find = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#${id}`)!;
@@ -321,7 +322,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       language.setAttribute('aria-invalid', String(!!languageError));
       const error = find('settings-language-error'); error.textContent = languageError; error.hidden = !languageError;
     }
-    if (!root.querySelector('#settings-editor-actions')) {
+    if (!launchpad && !root.querySelector('#settings-editor-actions')) {
       const group = element('section', 'settings-group'); group.id = 'settings-editor-actions';
       group.append(element('h2', '', t('Advanced configuration')));
       const card = element('div', 'settings-card settings-action-card');

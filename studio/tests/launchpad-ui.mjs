@@ -3,14 +3,18 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
+import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
 
-// Render the desktop controller and its actual project-creation dialog with isolated host services.
+// Render the desktop controller, creation dialog and Settings UI with isolated host services.
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
 const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { StudioLaunchpad } from './src/vs/workbench/electron-browser/studioLaunchpad.ts';
   import { StudioProjectCreateDialog } from './src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts';
   import { URI } from './src/vs/base/common/uri.ts';
   import { Emitter, Event } from './src/vs/base/common/event.ts';
+  import { observableValue } from './src/vs/base/common/observable.ts';
+  import { OverlayWebview } from './src/vs/workbench/contrib/webview/browser/overlayWebview.ts';
+  import { WebviewViewService } from './src/vs/workbench/contrib/webviewView/browser/webviewViewService.ts';
   import { Sash, Orientation } from './src/vs/base/browser/ui/sash/sash.ts';
   import './src/vs/base/browser/ui/splitview/splitview.css';
   import './src/vs/workbench/contrib/modernUI/browser/media/sashHandles.css';
@@ -25,17 +29,29 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     new Sash(inner, {getVerticalSashLeft:()=>400}, {orientation:Orientation.VERTICAL})];
   window.sashDrags = [];
   sashes.forEach(sash=>sash.onDidStart(()=>window.sashDrags.push(sash.orientation)));
-  const layout = { mainContainer:root, activeContainer:root, getContainer:()=>root.querySelector('.titlebar'), mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
-  const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#16a34a"/></svg>');
+  const layout = { mainContainer:root, activeContainer:root, getContainer:(_window,part)=>part ? root.querySelector('.titlebar') : root, mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
+  const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#3063af"/></svg>');
   const chats = { connection:'connected', items:[{id:'group-team',group:true,time:Date.now(),name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{id:'solo',name:'Solo',preview:'Hi',unread:0,avatarUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="#345" d="M0 0h32v32H0z"/></svg>')}] };
-  const account = { status:'authenticated', name:'My account', avatarUrl:chatAvatar };
+  const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
+  const serverUrl = 'https://studio.example.test';
+  let account = { status:'authenticated', statusLabel:zh?'服务器已连接':'Server Connected', hasAccount:true, name:'My account', email:'me@example.test', avatarUrl:chatAvatar, serverUrl };
   const commandEvent = new Emitter();
   const kernelCommand = (id,...args) => CommandsRegistry.getCommand('studio.internal'+id).handler(undefined,...args);
-  window.signOut = () => { kernelCommand('CloseLaunchpadApp','account-key'); commandEvent.fire({commandId:'studio.internalUpdateAccountMenuState', args:[{status:'signed-out',name:'Signed out'}]}); };
+  const publishAccount = () => commandEvent.fire({commandId:'studio.internalUpdateAccountMenuState', args:[account]});
+  window.updateAccount = changes => { account = {...account,...changes}; publishAccount(); };
+  window.signOut = () => {
+    kernelCommand('CloseLaunchpadApp','account-key');
+    account = {status:'signed-out',hasAccount:false,name:'',serverUrl,statusLabel:zh?'未登录':'Signed Out'};
+    publishAccount();
+  };
   window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml('en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
+    if (id === 'studio.openSettings') {
+      window.settingsDestination = args[0];
+      await kernelCommand('ShowLaunchpadSettings',zh?'设置':'Settings');
+    }
     if (id === 'studio.getLaunchpadInbox') return window.guest ? {items:[],message:'Signed out',connection:'guest'} : chats;
     if (id === 'studio.openLaunchpadInbox') {
       if (window.imError) return window.imError;
@@ -82,13 +98,30 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['relocate',opts.canSelectFolders]); return window.newLocation && [URI.file(window.newLocation)]; } };
   const files = { stat: async uri=>{ window.projectReads.stats++; if(uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND); return {isFile:uri.path===workspace.path,isDirectory:uri.path!==workspace.path}; } };
-  const webviews = { createWebviewElement({title}) {
+  const contextKeys = { createScoped:()=>contextKeys, createKey:()=>({set(){},reset(){},get(){}}), dispose(){} };
+  const webviews = { createWebviewOverlay(init) { return new OverlayWebview(init,layout,this,contextKeys); }, createWebviewElement({title}) {
     const frame = document.createElement('iframe'); frame.title = title; frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
     const messages = new Emitter(); const receive=e=>{if(e.source===frame.contentWindow && e.data.fixtureHost) messages.fire({message:e.data.fixtureHost});};
     window.addEventListener('message',receive);
-    return { onMessage:messages.event, onFatalError:Event.None, mountTo:parent=>parent.append(frame), setHtml:html=>{window.actions.push(['setHtml']);frame.srcdoc=html;},
+    return { onMessage:messages.event, onFatalError:Event.None, onDidFocus:Event.None, onDidBlur:Event.None, onDidClickLink:Event.None,
+      onMissingCsp:Event.None, onDidWheel:Event.None, onDidScroll:Event.None, onDidUpdateState:Event.None,
+      intrinsicContentSize:observableValue('fixture',undefined), setContextKeyService(){},
+      mountTo:parent=>parent.append(frame), setHtml:html=>{window.actions.push(['setHtml',title]);frame.srcdoc=html;},
       async postMessage(msg){frame.contentWindow.postMessage(msg,window.origin);return true;}, focus:()=>frame.focus(), dispose:()=>{window.removeEventListener('message',receive);messages.dispose();frame.remove();} };
   } };
+  const webviewViews = new WebviewViewService();
+  const settingsResolver = webviewViews.register('studio.launchpadSettings', { async resolve({webview}) {
+    if (window.settingsError) throw new Error('Settings fixture failure');
+    const ready = webview.onMessage(({message}) => {
+      if (message?.type !== 'ready') return;
+      const { name:displayName, email, avatarUrl, status, hasAccount } = account;
+      void webview.postMessage({type:'settings',state:window.settingsSnapshot});
+      void webview.postMessage({type:'account',state:{status,serverUrl,user:hasAccount?{displayName,email,avatarUrl,userId:'fixture'}:undefined}});
+      void webview.postMessage({type:'settings-navigate',state:window.settingsDestination});
+    });
+    webview.onDidDispose(() => ready.dispose());
+    webview.setHtml(window.settingsHtml);
+  } });
   const changed = () => window.events['vscode:studioProjectWindowsChanged']();
   window.startLaunchpad = () => {
     root.classList.add('studio-launchpad-window');
@@ -98,7 +131,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       return recent;
     },onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage);
+    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage,webviewViews);
     window.clearHistory=()=>{recent.workspaces=[];changed();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.closeProject=id=>{ if (id===undefined) windows.length=0; else windows.splice(windows.findIndex(w=>w.id===id),1); changed(); };
@@ -106,12 +139,17 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
     window.stopLaunchpad=()=>controller.dispose();
-    window.cleanup=()=>{ controller.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
+    window.cleanup=()=>{ controller.dispose(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
   loader: { '.svg':'dataurl', '.ttf':'dataurl', '.png':'dataurl' } });
 const js = bundle.outputFiles.find(file=>file.path.endsWith('.js')).text;
 const css = bundle.outputFiles.find(file=>file.path.endsWith('.css')).text;
+const settingsBundle = await build({ entryPoints:[fileURLToPath(new URL('../extensions/studio-workstation/webview/account.ts',import.meta.url))],
+  bundle:true, write:false, outdir:'out', target:'es2022', loader:{'.svg':'dataurl'} });
+const settingsJs = settingsBundle.outputFiles.find(file=>file.path.endsWith('.js')).text;
+const settingsCss = settingsBundle.outputFiles.find(file=>file.path.endsWith('.css')).text;
+const chinese = JSON.parse(await readFile(new URL('../extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json',import.meta.url),'utf8'));
 const proof = new URL('../.studio/launchpad-ui/', import.meta.url);
 await mkdir(proof, {recursive:true});
 const hostFocusCss = '.monaco-workbench [tabindex=\"-1\"]:focus, .monaco-workbench button:focus { outline: 2px solid #007acc; outline-offset: -1px; }';
@@ -150,6 +188,7 @@ try {
     await page.addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage:fixtureHost=>parent.postMessage({fixtureHost},window.origin) }); });
     let loads=0;
     await page.route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main>Inbox fixture</main><output></output><input aria-label="draft"><script>window.addEventListener('message',e=>{if(e.source===parent && e.data?.nonce==='fixture' && e.data.visible && e.data.conversation) document.querySelector('output').textContent=e.data.conversation;});parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
+    await page.route('http://127.0.0.1:4321/settings-fixture.js',route=>route.fulfill({contentType:'text/javascript',body:settingsJs}));
     await page.goto('http://127.0.0.1:4321/');
     await page.setContent(`<style>
       :root{--vscode-foreground:#d4d4d4;--vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#252526;--vscode-panel-border:#3a3a3a;--vscode-textLink-foreground:#68b6ed;--vscode-button-background:#007acc;--vscode-button-foreground:white;--vscode-descriptionForeground:#aaa;--vscode-focusBorder:#007acc;--vscode-badge-background:#38383c;--vscode-badge-foreground:#eee;--vscode-list-hoverBackground:#303030;--vscode-input-background:#272727;--vscode-input-foreground:#ddd;--vscode-charts-yellow:#dcbd85;}
@@ -161,6 +200,13 @@ try {
     if (light) await page.addStyleTag({content:':root{--vscode-foreground:#262626;--vscode-editor-background:#fff;--vscode-sideBar-background:#f6f6f6;--vscode-panel-border:#d9d9d9;--vscode-descriptionForeground:#565656;--vscode-input-background:#fafafa;--vscode-input-foreground:#333;--vscode-textLink-foreground:#005fb8;--vscode-list-hoverBackground:#ededed;--vscode-badge-background:#dedede;--vscode-badge-foreground:#333}'});
     await page.addStyleTag({content:'.vs{--vscode-list-warningForeground:#855f00}.vs-dark{--vscode-list-warningForeground:#cca700}.hc-black,.hc-light{--vscode-contrastBorder:currentColor}'});
     await page.evaluate(({language,enhanced})=>{ window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={}; window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]}}; },{language,enhanced});
+    if (enhanced) {
+      const localization = JSON.stringify({locale:language,bundle:language==='zh-cn'?chinese:{}}).replace(/</g,'\\u003c');
+      const html = `<!doctype html><html lang="${language}"><head><style>${settingsThemeCss(light?'light':'dark')}\n${settingsCss}\n${iconCss}</style></head>
+        <body data-platform="true" data-launchpad="true"><main id="account-app"></main><script id="studio-localization" type="application/json">${localization}</script><script src="/settings-fixture.js"></script></body></html>`;
+      const snapshot = {...settingsFixture(language),workspaceAvailable:false};
+      await page.evaluate(({html,snapshot})=>{window.settingsHtml=html;window.settingsSnapshot=snapshot;},{html,snapshot});
+    }
     await page.addStyleTag({content:hostFocusCss}); await page.addStyleTag({content:css+'\n'+iconCss}); await page.addScriptTag({content:js});
     await checkEditorSashes(page, true);
     for (const [x,y] of sashPoints) { await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+10,y+10); await page.mouse.up(); }
@@ -301,14 +347,80 @@ try {
       await checkEditorSashes(page, false);
       assert.equal(await home.isVisible(), true); assert.equal(await editor.isVisible(), false);
       assert.equal(await open.evaluate(el=>el===document.activeElement), true);
+      const accountButton = page.getByRole('button',{name:zh?'Studio 账号':'Studio account',exact:true});
+      const accountDialog = page.getByRole('dialog',{name:zh?'Studio 账号':'Studio account'});
+      const profile = accountDialog.locator('.lp-account-profile');
+      const settings = accountDialog.getByRole('button',{name:zh?'打开 Studio 设置':'Open Studio Settings'});
+      const closeSettings = page.getByRole('button',{name:zh?'关闭 设置':'Close Settings'});
+      await accountButton.click();
+      assert.equal(await profile.getByText('My account',{exact:true}).count(),1);
+      assert.equal(await profile.getByText('me@example.test',{exact:true}).count(),1);
+      assert.equal(await profile.getByText('https://studio.example.test',{exact:true}).count(),1);
+      assert.equal(await profile.getByText(zh?'服务器已连接':'Server Connected',{exact:true}).count(),1);
+      await profile.locator('img').evaluate(img=>img.decode());
+      const avatarUrl = await profile.locator('img').getAttribute('src');
+      assert.equal(await settings.evaluate(el=>getComputedStyle(el).outlineStyle),'none','pointer-open does not highlight the first action');
+      await accountDialog.screenshot({path:fileURLToPath(new URL(`${stem}-account.png`,proof))});
+      await page.setViewportSize({width:360,height:640});
+      await page.evaluate(()=>window.updateAccount({email:'a'.repeat(80)+'@example.test',avatarUrl:'data:image/png;base64,invalid'}));
+      await profile.locator('.codicon-account').waitFor();
+      assert.equal(await profile.locator('.lp-account-email').textContent(),'a'.repeat(80)+'@example.test');
+      assert.equal(await profile.evaluate(el=>el.scrollWidth<=el.clientWidth),true,'long account information wraps inside the dialog');
+      await page.evaluate(avatarUrl=>window.updateAccount({email:'me@example.test',avatarUrl}),avatarUrl);
+      await page.keyboard.press('Escape');
+      assert.equal(await accountButton.evaluate(el=>el===document.activeElement),true);
+      await accountButton.press('Enter');
+      assert.notEqual(await settings.evaluate(el=>getComputedStyle(el).outlineStyle),'none','keyboard-open retains focus feedback');
+      await page.setViewportSize({width:1120,height:680});
+      await settings.click();
+      assert.deepEqual(await page.evaluate(()=>window.settingsDestination),{section:'account',target:'user'});
+      const settingsFrame = page.frameLocator('.webview-overlay-content iframe');
+      await settingsFrame.locator('#profile #display-name').waitFor();
+      assert.equal(await settingsFrame.locator('#profile #display-name').textContent(),'My account');
+      assert.equal(await settingsFrame.locator('#settings-navigation [data-section=account]').getAttribute('aria-current'),'page');
+      assert.equal(await home.isVisible(),false);
+      assert.equal(await editor.isVisible(),false);
+      assert.equal(await editor.evaluate(el=>el.inert),true);
+      assert.equal(await page.locator('.studio-launchpad-app').isVisible(),false,'settings does not reveal the resident IM');
+      assert.equal(await closeSettings.evaluate(el=>getComputedStyle(el).outlineStyle),'none','pointer-open does not draw a focus border around Back');
+      await checkEditorSashes(page,false);
+      await page.screenshot({path:fileURLToPath(new URL(`${stem}-account-settings.png`,proof))});
+      await settingsFrame.locator('#settings-navigation [data-section=editor]').click();
+      assert.equal(await settingsFrame.locator('#settings-editor').isVisible(),true);
+      assert.equal(await settingsFrame.locator('[data-settings-action=json-current]').count(),0,'launchpad settings have no editor-only command');
+      await closeSettings.click();
+      assert.equal(await page.locator('.studio-launchpad-settings').count(),0);
+      assert.equal(await page.locator('.webview-overlay-content').count(),0);
+      assert.equal(await home.isVisible(),true);
+      assert.equal(await accountButton.evaluate(el=>el===document.activeElement),true);
+      await accountButton.click();
+      await accountDialog.getByRole('button',{name:zh?'打开 Web 控制台':'Open Web console'}).click();
+      assert.deepEqual(await page.evaluate(()=>window.actions.at(-1)),['studio.openLaunchpadResource','server']);
       for(const [index,id] of [[1,'solo'],[0,'group-team']]) {
         await page.locator('.lp-chat').nth(index).click(); await frame.getByText(id,{exact:true}).waitFor();
         assert.equal(await frame.getByLabel('draft').inputValue(),'keep draft');
         await page.getByRole('button',{name: language==='zh-cn'?'关闭 IM':'Close IM'}).click();
       }
       assert.equal(loads,1,'prewarm, A, B and A use the same document');
-      assert.equal(await page.evaluate(()=>window.actions.filter(([id])=>id==='setHtml').length),1);
-      await page.evaluate(()=>{window.signOut();window.guest=true;window.refreshInbox();}); await page.locator('.lp-chat-list > button').click(); assert.equal(await page.locator('.lp-connection').getAttribute('data-state'),'guest');
+      assert.equal(await page.evaluate(()=>window.actions.filter(([id,title])=>id==='setHtml' && title==='IM').length),1);
+      await page.evaluate(()=>window.settingsError=true);
+      await accountButton.click(); await settings.click();
+      await warning.waitFor();
+      assert.ok((await warning.textContent()).includes(zh?'无法打开 Studio 设置':'Could not open Studio Settings'));
+      assert.equal(await home.isVisible(),true); assert.equal(await editor.isVisible(),false);
+      await warning.getByRole('button').click(); await warning.waitFor({state:'detached'});
+      await page.evaluate(()=>window.settingsError=false);
+      await accountButton.click();
+      await page.evaluate(()=>{window.signOut();window.guest=true;window.refreshInbox();});
+      await profile.getByText(zh?'尚未登录':'Not signed in',{exact:true}).waitFor();
+      assert.equal(await profile.locator('.lp-account-email').count(),0,'sign out clears account details in the open dialog');
+      assert.equal(await accountDialog.getByRole('button',{name:zh?'打开 Web 控制台':'Open Web console'}).count(),0);
+      await accountDialog.getByRole('button',{name:zh?'在浏览器中登录':'Sign in with browser'}).click();
+      await accountButton.press('Enter'); await settings.press('Enter');
+      await settingsFrame.locator('#account-sign-in').waitFor();
+      assert.notEqual(await closeSettings.evaluate(el=>getComputedStyle(el).outlineStyle),'none','keyboard-open shows the Back button focus');
+      await closeSettings.press('Enter');
+      await page.locator('.lp-connection[data-state=guest]').waitFor();
       assert.equal(await page.locator('.lp-account img').count(),0,'sign out clears the titlebar avatar');
       assert.equal(await page.locator('.studio-launchpad-app').count(),0,'sign out destroys the hidden view');
     } else {
@@ -322,6 +434,6 @@ try {
       if(width===360){await page.screenshot({path:fileURLToPath(new URL(`${stem}-narrow.png`,proof))});}}
     await page.evaluate(()=>{window.closeProject();window.clearHistory();}); await page.locator('.lp-live-project').first().waitFor({state:'detached'}); await rows.first().waitFor({state:'detached'});
     assert.ok(await page.locator('.lp-history-list .lp-empty').isVisible());
-    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad layout, keyboard actions, window changes and create dialog passed`);
+    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad layout, keyboard actions, window changes, creation${enhanced?', account and settings':''} passed`);
   }
 } finally { await browser.close(); }

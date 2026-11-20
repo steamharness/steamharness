@@ -14,7 +14,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
@@ -36,6 +36,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
       registerCommand: (id, callback) => { f.commands.set(id, callback); return disposable; },
       executeCommand: async (id, ...args) => {
         f.executed.push({ id, args });
+        if (id === 'studio.internalIsLaunchpad') { return launchpad; }
         if (id === 'studio.internalGetDisplayLanguage') { return f.languagePreference; }
         if (id === 'studio.internalSetDisplayLanguage') {
           await f.beforeLanguage?.(args[0]);
@@ -66,6 +67,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
         return run({}, { onCancellationRequested: cancel.event, isCancellationRequested: false });
       },
       registerWebviewPanelSerializer: (type, serializer) => { f.serializers.set(type, serializer); if (type === 'studio.settings') { f.serializer = serializer; } return disposable; },
+      registerWebviewViewProvider: (id, provider) => { assert.equal(id, 'studio.launchpadSettings'); f.settingsProvider = provider; return disposable; },
       createStatusBarItem: () => ({ show() {}, dispose() {} }),
       createWebviewPanel: (type, title, _column, options) => {
         const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
@@ -151,6 +153,49 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.equal(f.panel, panel);
   assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('launchpad settings reuse the account page without creating an editor or login panel', async t => {
+  const f = await fixture(t, { launchpad: true, signedIn: false });
+  const execute = f.vscode.commands.executeCommand;
+  let current, opens = 0;
+  f.vscode.commands.executeCommand = async (id, ...args) => {
+    if (id === 'studio.internalCloseLaunchpadSettings') { current?.dispose(); current = undefined; return; }
+    if (id !== 'studio.internalShowLaunchpadSettings') return execute(id, ...args);
+    assert.deepEqual(args, ['Settings']);
+    if (current) return;
+    ++opens;
+    const received = new Emitter(), disposed = new Emitter(), messages = [];
+    current = {
+      visible: true, onDidChangeVisibility: () => ({ dispose() {} }), onDidDispose: disposed.event,
+      dispose: () => disposed.fire(), messages,
+      send: message => Promise.all([...received.listeners].map(listener => listener(message))),
+      webview: { cspSource: 'test-source', asWebviewUri: value => value, onDidReceiveMessage: received.event,
+        postMessage: async message => { messages.push(message); return true; } },
+    };
+    await f.settingsProvider.resolveWebviewView(current, {}, { isCancellationRequested: false });
+  };
+  await f.commands.get('studio.openSettings')({ section: 'account', target: 'user' });
+  const first = current;
+  assert.match(first.webview.html, /data-launchpad="true"/);
+  assert.match(first.webview.html, /account-ui\.js/);
+  await first.send({ type: 'ready' });
+  const section = view => view.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section;
+  assert.equal(section(first), 'account');
+  await first.send({ type: 'open-login' });
+  assert.ok(f.executed.some(({ id }) => id === 'studio.launchpadSignIn'));
+  for (const action of ['json-user', 'keybindings']) await first.send({ type: 'settings-action', action });
+  assert.ok(!f.executed.some(({ id }) => id.startsWith('workbench.action.')));
+  await f.commands.get('studio.openSettings')({ section: 'general' });
+  assert.equal(current, first);
+  assert.equal(section(first), 'general');
+  await f.vscode.commands.executeCommand('studio.internalCloseLaunchpadSettings');
+  await f.commands.get('studio.openSettings')({ section: 'account' });
+  await current.send({ type: 'ready' });
+  assert.notEqual(current, first);
+  assert.equal(section(current), 'account');
+  assert.equal(opens, 2);
+  assert.equal(f.panels.length, 0);
 });
 
 for (const signedIn of [true, false]) {

@@ -24,6 +24,8 @@ import {
 const SECRET_KEY = `studio.project.account.${studioAuthChannel}`;
 const LEGACY_SECRET_KEY = 'studio.project.account';
 const PROVIDER_ID = 'studio-steamharness';
+const LAUNCHPAD_SETTINGS_VIEW = 'studio.launchpadSettings';
+type SettingsSurface = vscode.WebviewPanel | vscode.WebviewView;
 
 export class AccountController implements vscode.Disposable {
   private readonly modelChanges = new vscode.EventEmitter<void>();
@@ -33,7 +35,8 @@ export class AccountController implements vscode.Disposable {
   readonly onDidChange = this.change.event;
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
   private previousSession?: vscode.AuthenticationSession;
-  private panel?: vscode.WebviewPanel;
+  private panel?: SettingsSurface;
+  private launchpad = false;
   private loginPanel?: vscode.WebviewPanel;
   private loginBusy = false;
   private loginAbort?: AbortController;
@@ -159,7 +162,12 @@ export class AccountController implements vscode.Disposable {
       vscode.commands.registerCommand('studio.openSettings', (options?: SettingsOpenOptions) => this.open(settingsViewState(options))),
       vscode.window.registerWebviewPanelSerializer('studio.settings', {
         deserializeWebviewPanel: async (panel, state) => {
-          if (this.panel && this.panel !== panel) { panel.dispose(); this.panel.reveal(); return; }
+          if (this.launchpad) { panel.dispose(); return; }
+          if (this.panel && this.panel !== panel) {
+            panel.dispose();
+            if ('reveal' in this.panel) this.panel.reveal();
+            return;
+          }
           this.viewState = settingsViewState(state);
           this.attachPanel(panel);
         },
@@ -196,6 +204,14 @@ export class AccountController implements vscode.Disposable {
   }
 
   async initialize(): Promise<void> {
+    this.launchpad = await vscode.commands.executeCommand<boolean>('studio.internalIsLaunchpad').then(value => value === true, () => false);
+    if (this.launchpad) {
+      this.disposables.push(vscode.window.registerWebviewViewProvider(LAUNCHPAD_SETTINGS_VIEW, {
+        resolveWebviewView: (view, _context, token) => {
+          if (!token.isCancellationRequested) this.attachPanel(view);
+        },
+      }));
+    }
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', this.platform);
     await vscode.commands.executeCommand('setContext', 'studio.platformAvailable', this.platform);
     await this.readLanguagePreference();
@@ -320,15 +336,21 @@ export class AccountController implements vscode.Disposable {
     if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) { await this.account.verify(); }
   }
 
-  open(options?: SettingsOpenOptions, verifyAccount = true): void {
+  open(options?: SettingsOpenOptions, verifyAccount = true): void | Thenable<void> {
     const target = settingsViewState(options ?? { section: this.platform ? 'account' : 'general' });
     const online = target.section === 'account' || target.section?.startsWith('provider:');
     this.viewState = online && !this.platform ? { section: 'general', target: 'user' } : target;
     if (target.section === 'account' && this.platform && verifyAccount) void this.connect().catch(() => undefined);
-    if (this.panel) {
-      this.panel.reveal();
-      this.publishSettings();
-      void this.panel.webview.postMessage({ type: 'settings-navigate', state: this.viewState });
+    const existing = this.panel;
+    if (this.launchpad) {
+      return vscode.commands.executeCommand('studio.internalShowLaunchpadSettings', t('Settings')).then(() => {
+        // A newly mounted view receives its initial navigation in the ready handshake.
+        if (existing && this.panel === existing) this.navigateSettings(existing);
+      }, () => { void vscode.window.showErrorMessage(t('Unable to complete settings action.')); });
+    }
+    if (existing && 'reveal' in existing) {
+      existing.reveal();
+      this.navigateSettings(existing);
       return;
     }
     const panel = vscode.window.createWebviewPanel('studio.settings', t('Settings'), vscode.ViewColumn.Active, {
@@ -336,6 +358,11 @@ export class AccountController implements vscode.Disposable {
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
     });
     this.attachPanel(panel);
+  }
+
+  private navigateSettings(panel: SettingsSurface): void {
+    this.publishSettings();
+    void panel.webview.postMessage({ type: 'settings-navigate', state: this.viewState });
   }
 
   private openLogin(): void {
@@ -459,10 +486,10 @@ export class AccountController implements vscode.Disposable {
     if (this.panel?.visible) { this.settingsTimer = setTimeout(() => this.publishSettings(), 100); }
   }
 
-  private attachPanel(panel: vscode.WebviewPanel): void {
+  private attachPanel(panel: SettingsSurface): void {
     this.panel = panel;
     panel.title = t('Settings');
-    panel.iconPath = new vscode.ThemeIcon('settings-gear');
+    if ('reveal' in panel) panel.iconPath = new vscode.ThemeIcon('settings-gear');
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.webview.html = this.html(panel);
     let busy = false;
@@ -470,12 +497,12 @@ export class AccountController implements vscode.Disposable {
     let pageGeneration = 0;
     let modelsAbort = new AbortController();
     const listeners: vscode.Disposable[] = [];
+    const onVisible = (): void => { if (panel.visible) this.publishSettings(); };
+    listeners.push('reveal' in panel ? panel.onDidChangeViewState(onVisible) : panel.onDidChangeVisibility(onVisible));
     listeners.push(panel.onDidDispose(() => {
       modelsAbort.abort();
       if (this.panel === panel) { this.panel = undefined; }
       for (const listener of listeners) { listener.dispose(); }
-    }), panel.onDidChangeViewState(({ webviewPanel }) => {
-      if (webviewPanel.visible) this.publishSettings();
     }), panel.webview.onDidReceiveMessage(async (message) => {
       if (this.panel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') {
@@ -580,14 +607,20 @@ export class AccountController implements vscode.Disposable {
           'json-user': 'workbench.action.openSettingsJson', 'json-workspace': 'workbench.action.openWorkspaceSettingsFile',
         };
         try {
-          if (Object.hasOwn(commands, message.action)) { await vscode.commands.executeCommand(commands[message.action]); }
+          if (!this.launchpad && Object.hasOwn(commands, message.action)) { await vscode.commands.executeCommand(commands[message.action]); }
           else if (message.action === 'documentation') {
             await vscode.env.openExternal(vscode.Uri.parse(publicServiceUrls(serviceChannelFromServerUrl(this.getState().serverUrl) ?? 'main').docs));
           }
         } catch { await panel.webview.postMessage({ type: 'settings-error', message: t('Unable to complete settings action.') }); }
         return;
       }
-      if (message.type === 'open-login') { this.openLogin(); return; }
+      if (message.type === 'open-login') {
+        if (this.launchpad) {
+          try { await vscode.commands.executeCommand('studio.launchpadSignIn'); }
+          catch (error) { if (this.panel === panel) await panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : t('Sign-in failed.') }); }
+        } else { this.openLogin(); }
+        return;
+      }
       if (!this.platform) return;
       const exclusive = ['verify', 'logout'].includes(message.type);
       if (exclusive && busy) { return; }
@@ -621,7 +654,7 @@ export class AccountController implements vscode.Disposable {
     }));
   }
 
-  private html(panel: vscode.WebviewPanel, login = false): string {
+  private html(panel: SettingsSurface, login = false): string {
     const webview = panel.webview;
     const asset = (name: string): string => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
@@ -630,7 +663,7 @@ export class AccountController implements vscode.Disposable {
     return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, panel)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: http: data:; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset(`${entry}-ui.css`)}"><title>${title}</title></head>
-      <body data-platform="${this.platform}"><main id="${entry}-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset(`${entry}-ui.js`)}"></script></body></html>`;
+      <body data-platform="${this.platform}"${this.launchpad ? ' data-launchpad="true"' : ''}><main id="${entry}-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset(`${entry}-ui.js`)}"></script></body></html>`;
   }
 
   dispose(): void {
@@ -639,7 +672,10 @@ export class AccountController implements vscode.Disposable {
     clearTimeout(this.settingsTimer);
     void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     void vscode.commands.executeCommand('setContext', 'studio.platformAvailable', false);
-    this.panel?.dispose();
+    if (this.panel) {
+      if ('dispose' in this.panel) this.panel.dispose();
+      else void vscode.commands.executeCommand('studio.internalCloseLaunchpadSettings').then(undefined, () => undefined);
+    }
     this.loginPanel?.dispose();
     this.sections.dispose();
     for (const disposable of this.disposables) { disposable.dispose(); }
