@@ -66,8 +66,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     start.state=state; startEvent.fire();
   };
   window.delayProjects = () => {start.state=undefined; startEvent.fire();};
-  const windows = [{ id:23, workspace:{id:'folder',uri:folders[0]} },{id:24,workspace:{id:'bot',uri:folders[2]}},{id:25,workspace:{id:'third',uri:folders[3]}}];
-  const native = {getWindows:async()=>windows, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
+  const windows = [{ id:23, dirty:false, workspace:{id:'folder',uri:folders[0]} },{id:24,dirty:true,workspace:{id:'bot',uri:folders[2]}},{id:25,dirty:false,workspace:{id:'third',uri:folders[3]}}];
+  const edits = new Emitter();
+  window.projectReads = { windows:0, history:0, stats:0 };
+  window.editProject = (id, dirty) => { windows.find(w=>w.id===id).dirty=dirty; edits.fire({windowId:id,dirty}); };
+  const native = {onDidChangeWindowDirty:edits.event, getWindows:async()=>{window.projectReads.windows++; return windows.map(w=>({...w}));}, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
     async showMessageBox({message,detail,buttons}) {
       const dialog = document.createElement('dialog'); dialog.className = 'native-message';
       dialog.append(message, detail ?? ''); document.body.append(dialog);
@@ -78,7 +81,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     openWindow:async ([open],opts)=>window.actions.push(['open',Object.keys(open)[0],opts.forceNewWindow])};
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['relocate',opts.canSelectFolders]); return window.newLocation && [URI.file(window.newLocation)]; } };
-  const files = { stat: async uri=>{ if(uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND); return {isFile:uri.path===workspace.path,isDirectory:uri.path!==workspace.path}; } };
+  const files = { stat: async uri=>{ window.projectReads.stats++; if(uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND); return {isFile:uri.path===workspace.path,isDirectory:uri.path!==workspace.path}; } };
   const webviews = { createWebviewElement({title}) {
     const frame = document.createElement('iframe'); frame.title = title; frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
     const messages = new Emitter(); const receive=e=>{if(e.source===frame.contentWindow && e.data.fixtureHost) messages.fire({message:e.data.fixtureHost});};
@@ -89,16 +92,21 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const changed = () => window.events['vscode:studioProjectWindowsChanged']();
   window.startLaunchpad = () => {
     root.classList.add('studio-launchpad-window');
-    const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>recent,onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
+    const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>{
+      window.projectReads.history++;
+      if (window.delayHistory) { window.delayHistory=false; await new Promise(resolve=>window.resumeHistory=resolve); }
+      return recent;
+    },onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
     }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage);
     window.clearHistory=()=>{recent.workspaces=[];changed();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
-    window.closeProject=()=>{ windows.length=0; window.events['vscode:studioProjectWindowsChanged'](); };
+    window.closeProject=id=>{ if (id===undefined) windows.length=0; else windows.splice(windows.findIndex(w=>w.id===id),1); changed(); };
+    window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
     window.stopLaunchpad=()=>controller.dispose();
-    window.cleanup=()=>{ controller.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); };
+    window.cleanup=()=>{ controller.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
   loader: { '.svg':'dataurl', '.ttf':'dataurl', '.png':'dataurl' } });
@@ -109,6 +117,16 @@ await mkdir(proof, {recursive:true});
 const hostFocusCss = '.monaco-workbench [tabindex=\"-1\"]:focus, .monaco-workbench button:focus { outline: 2px solid #007acc; outline-offset: -1px; }';
 const codicons = new URL('../node_modules/@vscode/codicons/dist/', import.meta.url);
 const iconCss = (await readFile(new URL('codicon.css',codicons),'utf8')).replace(/url\([^)]+\)/,`url(data:font/ttf;base64,${(await readFile(new URL('codicon.ttf',codicons))).toString('base64')})`);
+async function checkStatusLayout(page) {
+  const overflow = await page.locator('.lp-project-row').evaluateAll(rows => rows.filter(row => {
+    const [name,status,time,actions] = row.children;
+    const box = status.getBoundingClientRect(), next = (time.offsetWidth ? time : actions).getBoundingClientRect();
+    return name.getBoundingClientRect().right > box.left || box.right > next.left || [...status.children].some(el => {
+      const r = el.getBoundingClientRect(); return r.left < box.left || r.right > box.right || r.top < row.getBoundingClientRect().top || r.bottom > row.getBoundingClientRect().bottom;
+    });
+  }).map(row => row.dataset.key));
+  assert.deepEqual(overflow, [], `status text and icons fit between columns at ${page.viewportSize().width}px`);
+}
 // Sample each editor sash away from the intersection, including its actual pointer target.
 const sashPoints = [[400,160], [160,365]];
 async function checkEditorSashes(page, visible) {
@@ -141,6 +159,7 @@ try {
       </style><div class="monaco-workbench modern-ui ${light?'vs':'vs-dark'}"><div class="monaco-grid-view"><div class="monaco-split-view2 vertical"><div class="sash-container"></div><div class="monaco-split-view2 horizontal"><div class="sash-container"></div>
       <div class="part titlebar"><div class="titlebar-container"><div class="titlebar-drag-region"></div><div class="titlebar-left"><button>IDE</button><button class="window-controls-container" style="width:66px">×</button></div><div class="titlebar-right"><div class="action-toolbar-container"><button>Layout</button></div></div></div></div><div class="part editor"><button>Editor</button></div><div class="part statusbar"></div></div></div></div></div>`);
     if (light) await page.addStyleTag({content:':root{--vscode-foreground:#262626;--vscode-editor-background:#fff;--vscode-sideBar-background:#f6f6f6;--vscode-panel-border:#d9d9d9;--vscode-descriptionForeground:#565656;--vscode-input-background:#fafafa;--vscode-input-foreground:#333;--vscode-textLink-foreground:#005fb8;--vscode-list-hoverBackground:#ededed;--vscode-badge-background:#dedede;--vscode-badge-foreground:#333}'});
+    await page.addStyleTag({content:'.vs{--vscode-list-warningForeground:#855f00}.vs-dark{--vscode-list-warningForeground:#cca700}.hc-black,.hc-light{--vscode-contrastBorder:currentColor}'});
     await page.evaluate(({language,enhanced})=>{ window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={}; window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]}}; },{language,enhanced});
     await page.addStyleTag({content:hostFocusCss}); await page.addStyleTag({content:css+'\n'+iconCss}); await page.addScriptTag({content:js});
     await checkEditorSashes(page, true);
@@ -162,6 +181,11 @@ try {
     assert.deepEqual(await page.locator('.lp-project-type').allTextContents(),[language==='zh-cn'?'工作流':'Workflow', 'Bot'],`${language}: recent project types`);
     assert.deepEqual(await page.locator('.lp-plate-kind').allTextContents(), [language==='zh-cn'?'工作流':'Workflow', 'Bot', language==='zh-cn'?'文件夹':'Folder']);
     assert.equal(await page.locator('.lp-plate-kind .codicon-hubot').count(),1,'the Bot label uses its project glyph');
+    const zh = language === 'zh-cn';
+    const labels = zh ? ['未打开','已打开','未打开','已打开','已打开'] : ['Not open','Open','Not open','Open','Open'];
+    assert.deepEqual(await rows.locator('.lp-state-label').allTextContents(), labels);
+    assert.equal(await rows.getByRole('gridcell').locator('.lp-state-detail').textContent(), zh ? '未保存' : 'Unsaved');
+    assert.equal(await page.evaluate(()=>window.projectReads.stats),0,'initial statuses need no per-project filesystem check');
     assert.equal(await page.locator('.studio-launchpad').evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: launchpad container must not draw a focus outline`);
     if (enhanced) {
       await page.getByText('Review',{exact:true}).waitFor();
@@ -188,11 +212,42 @@ try {
     await search.press('ArrowDown'); assert.equal(await search.getAttribute('aria-activedescendant'),'lp-option-1'); await page.keyboard.press('Escape');
     await rows.nth(1).click(); await rows.nth(1).press('ArrowDown'); assert.equal(await rows.nth(2).getAttribute('aria-selected'),'true');
     assert.notEqual(await rows.nth(2).evaluate(el=>getComputedStyle(el).outlineStyle),'none','keyboard navigation keeps focus visible');
-    await page.locator('.lp-history-tools .lp-tool').click(); await page.locator('.lp-choice').nth(1).click();
-    const missing=rows.filter({hasText:'Project 1'}); await page.evaluate(()=>window.missingPath='/projects/Project 1'); await missing.dblclick();
-    const msg=page.locator('.native-message'); await msg.getByRole('button').first().click(); assert.ok(await missing.locator('.lp-missing').isVisible(),'cancelled relocation keeps history');
-    await missing.locator('.lp-row-more').click(); await page.locator('.lp-choice').last().click(); await msg.getByRole('button').last().click(); assert.ok(await missing.isVisible());
+    // An older window snapshot (waiting on history) must not undo a live edit. Edits and saves do not reread projects.
+    const workflow=rows.filter({hasText:'Project 8'}), third=rows.filter({hasText:'Project 5'});
+    await page.evaluate(()=>{window.delayHistory=true; window.closeProject(25);}); await page.waitForFunction(()=>!!window.resumeHistory);
+    const reads=await page.evaluate(()=>window.projectReads);
+    await page.evaluate(()=>window.editProject(23,true)); await workflow.locator('.lp-state-detail').waitFor();
+    await page.evaluate(()=>window.resumeHistory()); await third.locator('[data-state=closed]').waitFor();
+    assert.ok(await workflow.locator('.lp-state-detail').isVisible());
+    await page.evaluate(()=>window.editProject(23,false)); await workflow.locator('.lp-state-detail').waitFor({state:'detached'});
+    assert.deepEqual(await page.evaluate(()=>window.projectReads),reads);
+    await page.evaluate(()=>window.duplicateProject(23,26)); await workflow.locator('.lp-state-detail').waitFor();
+    await workflow.press('Enter'); assert.deepEqual(await page.evaluate(()=>window.actions.at(-1)),['focus',26],'switch to the window with unsaved work');
+    await page.evaluate(()=>window.closeProject(26)); await workflow.locator('.lp-state-detail').waitFor({state:'detached'});
+    const missing=rows.filter({hasText:'folder.code-workspace'}), lastOpened=await missing.locator('time').textContent();
+    assert.notEqual(lastOpened,'—');
+    await page.evaluate(()=>window.missingPath='/projects/folder.code-workspace'); await missing.dblclick();
+    const msg=page.locator('.native-message'); await msg.getByRole('button').last().click();
+    const missingCell=missing.getByRole('gridcell').nth(1);
+    assert.equal(await missingCell.textContent(),zh?'路径失效':'Not found');
+    assert.equal(await missing.locator('time').textContent(),lastOpened,'cancelled relocation keeps both the history and its timestamp');
+    await foot.click();
+    const section=page.locator('.lp-history');
+    for (const width of [1120,768,480,360]) {
+      await page.setViewportSize({width,height:680}); await checkStatusLayout(page);
+      assert.deepEqual(await section.locator('.lp-state-label > .codicon').evaluateAll(icons=>icons.map(el=>el.className.split(' ').at(-1))), ['codicon-history','codicon-window','codicon-warning','codicon-window','codicon-history']);
+      if (width===1120 || width===360) await section.screenshot({path:fileURLToPath(new URL(`${stem}-history-${width}.png`,proof))});
+    }
+    await page.setViewportSize({width:1120,height:680});
+    const hc=light?'hc-light':'hc-black', host=page.locator('.monaco-workbench');
+    await host.evaluate((el,hc)=>el.classList.add(hc),hc);
+    assert.ok(await section.locator('.lp-state-label').evaluateAll(labels=>labels.every(el=>getComputedStyle(el).borderTopColor===getComputedStyle(el).color)),'honor the high-contrast theme border');
+    await host.evaluate((el,hc)=>el.classList.remove(hc),hc);
+    await missing.locator('.lp-row-more').click();
+    assert.equal(await page.locator('.lp-choice').first().textContent(),zh?'打开或重新定位…':'Open or locate project…');
+    await page.locator('.lp-choice').last().click(); await msg.getByRole('button').last().click(); assert.ok(await missing.isVisible());
     await page.evaluate(()=>window.newLocation='/projects/relocated'); await missing.press('Enter'); await msg.getByRole('button').first().click(); await missing.waitFor({state:'detached'});
+    await page.locator('.lp-history-tools .lp-tool').click(); await page.locator('.lp-choice').nth(1).click();
     await page.locator('.lp-primary').click(); const modal=page.locator('.studio-create-dialog'); await modal.waitFor({timeout:5000});
     assert.equal(await modal.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}),true);
     await page.keyboard.press('Escape'); await modal.waitFor({state:'detached'});
