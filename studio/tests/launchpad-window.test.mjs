@@ -61,6 +61,19 @@ test('second launch without paths reveals the console and an explicit path takes
   assert.deepEqual(calls, ['console', ['/example/project']]);
 });
 
+test('an inbox request shows only the launchpad and dispatches when ready, even on cold creation', async () => {
+  const project = mockWindow(false), resident = mockWindow(true), live = [project];
+  const windows = Object.assign(Object.create(WindowsMainService.prototype), {
+    lifecycleMainService: {}, getWindows: () => live,
+    openInBrowserWindow: async () => { live.push(resident); return resident; },
+  });
+  for (let i = 0; i < 2; ++i) {
+    await windows.openStudioLaunchpad(false, 'inbox');
+    assert.deepEqual(resident.calls.splice(0), ['show', 'focus', 'studio.internalOpenLaunchpadInbox']);
+    assert.deepEqual(project.calls, []);
+  }
+});
+
 test('close hides only the console while explicit quit unloads both windows', async () => {
   const lifecycle = Object.assign(Object.create(LifecycleMainService.prototype), {
     trace() {}, windowCounter: 0, windowToCloseRequest: new Set(), _onBeforeCloseWindow: { fire() {} }, unload: async () => false,

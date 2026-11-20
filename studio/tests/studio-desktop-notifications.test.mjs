@@ -13,7 +13,7 @@ const script = (await build({ entryPoints: [source], bundle: true, platform: 'no
 })).outputFiles[0].text;
 
 function fixture() {
-  const registry = new Map(), center = [], native = [], cleared = [], focused = [], actions = [];
+  const registry = new Map(), center = [], native = [], cleared = [], focused = [], actions = [], launchpad = [];
   const filters = new Set();
   const mainWindow = {};
   let owner = true, focusedWindow = false, muted = false, sourceMuted = false, actionValid = true, ownership;
@@ -21,7 +21,7 @@ function fixture() {
   const services = {
     host: { hadLastFocus: async () => ownership ? ownership.promise : owner, get hasFocus() { return focusedWindow; },
       focus: async (window, options) => focused.push({ window, options }) },
-    native: { showToast: options => { native.push(options); return nativeResult.promise; },
+    native: { openStudioLaunchpadInbox: async () => { launchpad.push('inbox'); return true; }, showToast: options => { native.push(options); return nativeResult.promise; },
       clearToast: async id => { cleared.push(id); } },
     notifications: { getFilter: source => (source ? sourceMuted : muted) ? 1 : 0,
       onDidChangeFilter(listener) { filters.add(listener); return { dispose() { filters.delete(listener); } }; },
@@ -44,12 +44,13 @@ function fixture() {
   const accessor = { get: id => services[id] };
   const notice = { id: 'notice-1', source: { id: 'example.source', label: 'Example' }, title: 'Example', message: '2 unread items', actionLabel: 'Open' };
   return {
-    center, native, cleared, focused, actions, nativeResult, notice,
+    center, native, cleared, focused, actions, nativeResult, notice, launchpad,
     post: () => registry.get('studio.internalPostDesktopNotification')(accessor, notice),
     dismiss: () => registry.get('studio.internalDismissDesktopNotification')(accessor, notice.id),
     setFocused: () => { focusedWindow = true; },
     switchWindow: () => { owner = false; },
     invalidate: () => { actionValid = false; },
+    targetInbox: () => { actionValid = 'launchpadInbox'; },
     deferOwner: () => ownership = Promise.withResolvers(),
     disturb: (value, bySource = false) => { if (bySource) sourceMuted = value; else muted = value; for (const listener of filters) listener(); },
   };
@@ -79,6 +80,18 @@ test('focused windows and Do Not Disturb only use the notification center', asyn
   assert.deepEqual(f.cleared, [f.notice.id]);
   f.nativeResult.resolve({ clicked: true }); await setImmediate();
   assert.equal(f.actions.length, 0);
+});
+
+test('IM notification clicks open the resident launchpad without refocusing the posting project', async () => {
+  for (const background of [true, false]) {
+    const f = fixture(); f.targetInbox();
+    if (!background) f.setFocused();
+    await f.post();
+    if (background) { f.nativeResult.resolve({ clicked: true }); await setImmediate(); }
+    else await f.center[0].actions.primary[0].run();
+    assert.deepEqual(f.launchpad, ['inbox']); assert.deepEqual(f.focused, []);
+    assert.equal(f.center[0].closed, true);
+  }
 });
 
 test('ownership races, dismissal during posting and invalidated actions are ignored', async () => {

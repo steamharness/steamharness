@@ -12,14 +12,23 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { URI } from './src/vs/base/common/uri.ts';
   import { Event } from './src/vs/base/common/event.ts';
   import { CommandsRegistry } from './src/vs/platform/commands/common/commands.ts';
+  import { hostedSidebarHtml } from '../../extensions/studio-workstation/src/project-sidebar-html.ts';
   const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items: [{ id:'checklist', name:'Checklist', description:'Verify a release' }] } : undefined };
   const root = document.querySelector('.monaco-workbench');
-  const layout = { mainContainer:root, activeContainer:root, getContainer:()=>root.querySelector('.statusbar'), mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
+  const layout = { mainContainer:root, activeContainer:root, getContainer:()=>root.querySelector('.titlebar'), mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
   const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#16a34a"/></svg>');
   const chats = { items:[{name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{name:'Solo',preview:'Hi',unread:0}] };
   const commands = { async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.getLaunchpadInbox') return chats;
+    if (id === 'studio.openLaunchpadInbox') {
+      if (window.imError) return window.imError;
+      if (window.delayOpen) await new Promise(resolve => window.finishOpening = resolve);
+      const preview = { url:'http://127.0.0.1:4321/app', nonce:'fixture', microphone:false };
+      await CommandsRegistry.getCommand('studio.internalShowLaunchpadApp').handler(undefined, args[0],
+        { title:'IM', port:4321, html:hostedSidebarHtml('en','IM',preview) });
+      window.actions.push(['released', args[0]]);
+    }
     if (id === 'studio.createProject') {
       const dialog = new StudioProjectCreateDialog({ labels:{create:'Create',cancel:'Cancel',confirmCreate:'Create project'},
         templates:[{id:'starter',name:'Starter',projectType:'workflow',kind:'starter'}],parentDirectory:'/projects' }, commands,
@@ -35,12 +44,23 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   state.recent = folders.map((uri,i)=>({uri:uri.toString(),lastOpened:1700000000000,...(i===0?{projectType:'workflow',avatarUrl:avatar}:i===2?{projectType:'bot'}:{})}));
   const windows = [{ id:23, workspace:{id:'folder',uri:folders[0]} }];
   const native = {getWindows:async()=>windows, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
+    async showMessageBox({message,detail,buttons}) {
+      const dialog = document.createElement('dialog'), ok = document.createElement('button');
+      dialog.append(message, detail ?? '', ok); ok.textContent = buttons[0]; document.body.append(dialog); dialog.showModal();
+      await new Promise(resolve => ok.onclick = resolve); dialog.remove();
+    },
     openWindow:async ([open],opts)=>window.actions.push(['open',Object.keys(open)[0],opts.forceNewWindow])};
   const start = { state, onDidChange: Event.None, setVisible(){} };
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]) };
-  const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>recent,onDidChangeRecentlyOpened:Event.None},layout,commands,dialogs,{error:e=>{throw e;}},{});
+  const webviews = { createWebviewElement({title}) {
+    const frame = document.createElement('iframe'); frame.title = title; frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
+    return { onMessage:Event.None, onFatalError:Event.None, mountTo:parent=>parent.append(frame), setHtml:html=>frame.srcdoc=html,
+      focus:()=>frame.focus(), dispose:()=>frame.remove() };
+  } };
+  const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>recent,onDidChangeRecentlyOpened:Event.None},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews);
   window.closeProject=()=>{ windows.length=0; window.events['vscode:studioProjectWindowsChanged'](); };
   window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
+  window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
   window.cleanup=()=>controller.dispose();
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
   loader: { '.svg':'dataurl', '.ttf':'dataurl', '.png':'dataurl' } });
@@ -53,13 +73,16 @@ const codicons = new URL('../node_modules/@vscode/codicons/dist/', import.meta.u
 const iconCss = (await readFile(new URL('codicon.css',codicons),'utf8')).replace(/url\([^)]+\)/,`url(data:font/ttf;base64,${(await readFile(new URL('codicon.ttf',codicons))).toString('base64')})`);
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 try {
-  for (const [language, enhanced] of [['zh-cn',true],['en',false]]) {
+  for (const [language, enhanced] of [['zh-cn',true],['en',true],['en',false]]) {
     const page = await browser.newPage({viewport:{width:1120,height:680}});
     const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+    await page.addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage() {} }); });
+    await page.route('http://127.0.0.1:4321/**', route => route.fulfill({contentType:'text/html',body:'<main>Inbox fixture</main>'}));
+    await page.goto('http://127.0.0.1:4321/');
     await page.setContent(`<style>
       :root{--vscode-foreground:#d4d4d4;--vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#252526;--vscode-panel-border:#3a3a3a;--vscode-textLink-foreground:#68b6ed;--vscode-button-background:#007acc;--vscode-button-foreground:white;--vscode-descriptionForeground:#aaa;--vscode-focusBorder:#007acc;--vscode-badge-background:#38383c;--vscode-badge-foreground:#eee;--vscode-list-hoverBackground:#303030;--vscode-input-background:#272727;--vscode-input-foreground:#ddd;--vscode-charts-yellow:#dcbd85;}
       main,body{margin:0}.monaco-workbench{position:fixed;inset:0;background:var(--vscode-editor-background);color:var(--vscode-foreground);font:13px system-ui}.part.statusbar{height:22px}.part.titlebar{padding:8px;height:20px;background:var(--vscode-sideBar-background)}
-      </style><div class="monaco-workbench"><div class="part titlebar">SteamHarness Studio</div><div class="part editor"><button>Editor</button></div><div class="part statusbar"></div></div>`);
+      </style><div class="monaco-workbench studio-launchpad-window"><div class="part titlebar"><div class="titlebar-container"><div class="titlebar-left"><button>IDE</button></div><div class="titlebar-right"><button class="window-controls-container">×</button></div></div></div><div class="part editor"><button>Editor</button></div><div class="part statusbar"></div></div>`);
     if (!enhanced) await page.addStyleTag({content:':root{--vscode-foreground:#262626;--vscode-editor-background:#fff;--vscode-sideBar-background:#f6f6f6;--vscode-panel-border:#ccc;--vscode-descriptionForeground:#565656;--vscode-input-background:#fafafa;--vscode-input-foreground:#333}'});
     await page.evaluate(({language,enhanced})=>{ window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={}; window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]}}; },{language,enhanced});
     await page.addStyleTag({content:hostFocusCss}); await page.addStyleTag({content:css+'\n'+iconCss}); await page.addScriptTag({content:js});
@@ -84,8 +107,43 @@ try {
     await page.locator('.lp-primary').click(); const modal=page.locator('.studio-create-dialog'); await modal.waitFor({timeout:5000});
     assert.equal(await modal.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}),true);
     await page.keyboard.press('Escape'); await modal.waitFor({state:'detached'});
-    if(enhanced){ await page.locator('.lp-inbox .lp-link').click(); assert.equal(await page.locator('.studio-launchpad').isVisible(),false); await page.locator('.studio-launchpad-back').click(); }
+    assert.equal(await page.getByRole('button', {name:'IDE'}).count(), 0);
+    assert.equal(await page.locator('.window-controls-container').isVisible(), true);
+    assert.equal(await page.locator('.studio-launchpad-back').count(), 0);
+    if (enhanced) {
+      const home = page.locator('.studio-launchpad'), open = page.locator('.lp-inbox .lp-link'), editor = page.locator('.part.editor');
+      await page.evaluate(() => window.imError = 'Service offline');
+      await open.click(); const warning = page.getByRole('dialog'); await warning.waitFor();
+      assert.ok((await warning.textContent()).includes(language === 'zh-cn' ? '无法打开 IM' : 'Could not open IM'));
+      assert.ok((await warning.textContent()).includes('Service offline'));
+      assert.equal(await home.isVisible(), true); assert.equal(await editor.isVisible(), false);
+      assert.equal(await page.locator('.studio-launchpad-app').count(), 0);
+      await warning.getByRole('button').click(); await warning.waitFor({state:'detached'});
+      // Cancelling a pending open (e.g. from the tray) must not let a late preview replace home.
+      await page.evaluate(() => { window.imError = ''; window.delayOpen = true; });
+      await open.click(); await page.waitForFunction(() => !!window.finishOpening);
+      await page.evaluate(() => { window.showHome(); window.finishOpening(); window.delayOpen = false; });
+      await page.waitForFunction(() => window.actions.some(([id])=>id==='released'));
+      assert.equal(await home.isVisible(), true); assert.equal(await warning.count(), 0);
+      await open.click();
+      const frame = page.frameLocator('.studio-launchpad-app iframe').frameLocator('#project-frame');
+      await frame.getByText('Inbox fixture').waitFor();
+      assert.equal(await home.isVisible(), false); assert.equal(await editor.isVisible(), false);
+      assert.equal(await editor.evaluate(el=>el.inert), true);
+      await page.evaluate(() => window.openInbox());
+      assert.equal(await page.locator('.studio-launchpad-app').count(), 1);
+      for (const [width, height] of [[1120,680],[640,820]]) {
+        await page.setViewportSize({width,height});
+        const title = await page.locator('.part.titlebar').boundingBox();
+        assert.deepEqual(await page.frameLocator('.studio-launchpad-app iframe').locator('#project-frame').boundingBox(),
+          { x:0, y:title.height, width, height:height-title.height });
+      }
+      await page.getByRole('button',{name: language==='zh-cn'?'关闭 IM':'Close IM'}).click();
+      assert.equal(await home.isVisible(), true); assert.equal(await editor.isVisible(), false);
+      assert.equal(await open.evaluate(el=>el===document.activeElement), true);
+    }
     const actions=await page.evaluate(()=>window.actions);
+    assert.ok(!actions.some(([id])=>id==='studio.internalEnterIdeMode'||id==='studio.builtinIm.focus'));
     for(const expected of [['open','folderUri',true],['open','workspaceUri',true],['focus',23],['pickFolder',true],['pickWorkspace',true]]) assert.ok(actions.some(a=>JSON.stringify(a)===JSON.stringify(expected)),JSON.stringify(expected));
     await page.evaluate(()=>window.closeProject()); await page.locator('.lp-live-project').waitFor({state:'detached'});
     for(const width of [768,480,360]){await page.setViewportSize({width,height:640});assert.ok(await page.locator('.studio-launchpad').evaluate(el=>el.scrollWidth<=el.clientWidth),`${language} at ${width}`);}

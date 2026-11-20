@@ -30,6 +30,8 @@ test('native macOS controls use the embedded header height at every zoom and res
     mode.steam = false; native.layout(1400, 35);
     assert.equal(updates.at(-1).height, Math.round(35 * scale));
   }
+  native.isStudioLaunchpad = true;
+  assert.equal(native.hasStudioModeSwitcher, false, 'the resident launchpad must not create the floating IDE mode switcher');
 });
 
 const dragSource = await readFile(new URL('../upstream/vscode/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts', import.meta.url), 'utf8');

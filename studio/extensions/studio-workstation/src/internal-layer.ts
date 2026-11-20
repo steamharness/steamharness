@@ -26,7 +26,7 @@ interface InternalLayer {
     uploads: { registerProvider: typeof registerProjectUploadProvider };
     webApps: { registerProvider: typeof registerWebAppProvider };
     startPage: { registerRecommendationsProvider: typeof registerStartRecommendationsProvider };
-    sidebar: Pick<ProjectSidebar, 'registerHosted'>;
+    sidebar: Pick<ProjectSidebar, 'registerHosted' | 'showHostedInLaunchpad'>;
   }) => Promise<void> | void;
 }
 
@@ -62,7 +62,7 @@ export async function activateInternalLayer(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
   account: LayerAccount,
-  sidebar: Pick<ProjectSidebar, 'registerHosted'>,
+  sidebar: Pick<ProjectSidebar, 'registerHosted' | 'showHostedInLaunchpad'>,
 ): Promise<void> {
   try {
     const layer = await loadInternalLayer();
