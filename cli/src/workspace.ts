@@ -453,7 +453,12 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
       const attachments = (template.attachments ?? []).map(asset => { const file = download.files.find(file => file.path === asset.path); if (!file) throw new Error("Downloaded configuration attachment is missing."); return { id: asset.id, bytes: Buffer.from(decodeProjectFileContent(file)) }; });
       await cacheVerifiedConfigurationTemplate(template, attachments);
     }
-    if (!readProjectReleaseSync(stage)) await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
+    if (!readProjectReleaseSync(stage)) {
+      await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
+      // Local provenance stays outside uploaded source and sealed release inventories.
+      await mkdir(path.join(stage, '.steamharness'), { recursive: true });
+      await writeFile(path.join(stage, '.steamharness', 'download.json'), JSON.stringify({ kind: 'steamharness.download', version: 1, projectId: manifest.projectId, projectVersion: manifest.version }), { flag: 'wx' });
+    }
     await rename(stage, targetDir);
   } finally { await rm(stage, { recursive: true, force: true }); }
 }

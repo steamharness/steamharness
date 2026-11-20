@@ -54,6 +54,7 @@ it("checks a child Kanban's required HTML and preserves its complete asset set",
   files.push({ path: "dist/steamharness/entries/apps%2Fboard/build/board/index.html", content: '<link rel="stylesheet" href="board.css"><script src="Board.js"></script>' });
   const target = path.join(root, "complete");
   await materializeAggregateDownload({ projectId, files }, target);
+  expect(JSON.parse(await readFile(path.join(target, '.steamharness/download.json'), 'utf8'))).toEqual({kind:'steamharness.download',version:1,projectId,projectVersion:declaration.version});
   for (const file of files) {
     const content = await readFile(path.join(target, file.path), "utf8");
     if (file.path === "steamharness.json") expect(JSON.parse(content)).toEqual(JSON.parse(file.content));
