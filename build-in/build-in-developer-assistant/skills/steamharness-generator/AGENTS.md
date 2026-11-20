@@ -8,5 +8,5 @@
 ## 发版与日志规则
 
 - 本目录是 Developer Assistant 发布资源中的 generator 唯一来源，不再与 Desktop 或 Core 仓库中的副本做隐式同步。
-- 生成结果、模板依赖或 Core API 用法发生用户可见变化时，在仓库根的 `docs/guides/releases/builtin-developer-assistant/unreleased.mdx` 及对应 `docs/en/` 草稿记录。若主要影响 Core 或 CLI，改相应组件草稿，不抄第二份；定版遵守 `docs/AGENTS.md`。
+- 仅在用户明确要求编写、更新或定版发布日志时，将生成结果、模板依赖或 Core API 用法的用户可见变化记入仓库根的 `docs/guides/releases/builtin-developer-assistant/unreleased.mdx` 及对应 `docs/en/` 草稿。若主要影响 Core 或 CLI，改相应组件草稿，不抄第二份；定版遵守 `docs/AGENTS.md`。
 - Core 或 CLI 版本变化时，模板中的依赖仍分别使用精确版本；不得把 Core 与 CLI 版本绑在一起，也不得改成非精确 range。

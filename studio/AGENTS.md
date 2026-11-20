@@ -4,7 +4,7 @@
 - 需要遵循 DESIGN.md 中的设计
 - 高频事件触发的界面刷新必须防抖，保留已有内容并忽略过期结果，避免重复加载和闪烁。
 - 底层支持优先, 优先从 cli , core 这些底层中处理 , 而不是在界面上进行特殊处理
-- Studio 的公开用户可见变更写入 `../docs/guides/releases/studio/unreleased.mdx` 及其英文镜像；发布时按运行或打包使用的产品版本定版，不使用扩展的包版本，具体见 `../docs/AGENTS.md`。
+- 仅在用户明确要求编写、更新或定版发布日志时，将 Studio 的公开用户可见变更写入 `../docs/guides/releases/studio/unreleased.mdx` 及其英文镜像；日志按运行或打包使用的产品版本定版，不使用扩展的包版本，具体见 `../docs/AGENTS.md`。
 - 公开版模板保留精确 npm 版本。宿主若配置 `STEAMHARNESS_PROJECT_PACKAGE_DIR`，新建项目从该目录复制本地 Core/CLI 归档；缺失或损坏不能回退到 npm。改动 CLI 模板后执行 `node studio/scripts/sync-project-templates.mjs` 更新快照。
 
 ## 自动化测试规则:

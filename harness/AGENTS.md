@@ -18,14 +18,14 @@
 ## 文档、日志与测试
 
 - 公开 API、行为、参数、错误或 runtime 语义变化必须同步同级 Docs 仓库的 `../docs/concepts/**`、`../docs/core-api/**` 或 `../docs/cli/**`。
-- 用户可见变化写入 `../docs/guides/releases/core/unreleased.mdx` 与对应英文镜像；纯重构、测试和 CI 调整不写公开日志。
+- 仅在用户明确要求编写、更新或定版发布日志时，将用户可见变化写入 `../docs/guides/releases/core/unreleased.mdx` 与对应英文镜像；纯重构、测试和 CI 调整不写公开日志。
 - 代码变更必须补邻近 `src/__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm test:scripts`、`pnpm coverage`、`pnpm build`、`pnpm test:agent-dist` 和 `git diff --check`。CLI 命令兼容测试在同级 `../cli` 的测试体系运行。
 - 默认测试必须离线可复现，不依赖真实 GitLab、LLM、Server 或数据库。
 
 ## 发版与 Git
 
 - `package.json` 是 Core 版本唯一来源，正式 tag 固定为 `steamharness/vX.Y.Z`。
-- Core 先人工更新 `package.json` 并定版双语文档，再执行 `pnpm release:prepare -- --version X.Y.Z`。该命令校验版本源与对应版本页，不改写日志、消费者版本和 lockfile，也不安装依赖。
+- Core 人工更新 `package.json`；双语发布日志仅在用户明确要求时定版。`pnpm release:prepare -- --version X.Y.Z` 校验版本源与对应版本页，不改写日志、消费者版本和 lockfile，也不安装依赖。
 - Core 和 CLI 使用同一包版本。增强版产品可直接打包构建产物，无须等待 npm、打 tag 或单独抬版本。需要独立公开分发时才手动运行 GitHub npm 工作流；校验两个组件的双语定版页后先发 SDK，再发 CLI。渠道和 tag 见根目录 `AGENTS.md`。
 - 未经用户明确授权，不创建 tag、不发布 npm、不配置虚假 remote。GitLab 暂不可用时只维护本地分支与提交。
 - 只允许提交不含凭据的 `*.env.example`。真实开发 `.env` 保留在本机并由 Git 忽略；正式发布凭据必须使用作用域为 `production` 的受保护 GitLab CI/CD Variables，日志和测试输出不得泄露变量值。

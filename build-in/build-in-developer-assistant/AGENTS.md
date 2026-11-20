@@ -7,7 +7,7 @@
 - `skills/steamharness-generator/AGENTS.md` 是 generator 专项规则入口；修改该目录前必须同时读取它。
 - 节点 payload 必须继承 `RunPayload`，成功时使用 `errCode: 0, errMessage: ""`。
 - Studio 开发态从同级 `build-in/build-in-developer-assistant` 获取本项目依赖；VS Code 宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode` 使用已有适配。宿主注入 `STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER` 时通过本项目的 `mcp --entry studio-control` 连接内置控制入口，使用现有工具权限和审批；不读取旧 Desktop Control 配置。原始控制凭据只传给 MCP 子进程，不进入编码工具 shell。
-- 用户可见变化写入 `../../docs/guides/releases/builtin-developer-assistant/unreleased.mdx` 和对应英文镜像；发版前按产品版本定版。
+- 仅在用户明确要求编写、更新或定版发布日志时，将用户可见变化写入 `../../docs/guides/releases/builtin-developer-assistant/unreleased.mdx` 和对应英文镜像；明确要求日志定版时按产品版本定版。
 - 代码变更必须补邻近 `__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。
 - 独立制品保留两条通道：正式通道的 tag 是 `builtin-developer-assistant/vX.Y.Z`、索引与资源在 `builtin-projects/developer-assistant/…`；Alpha 通道的 tag 是 `builtin-developer-assistant/alpha/vX.Y.Z`、索引与资源在 `builtin-projects/developer-assistant/alpha/…`。构建时显式指定通道，不按分支推断。转正时要重新构建正式通道制品，因为 `builtinRelease` 写入产物；版本号与双语定版页不需要再次定版。
 - 项目版本唯一来源是 `steamharness.json`；`release:prepare` 校验对应双语定版页并更新项目版本。`release:build` 和 `release:assemble` 生成 schema v2 索引和 `all/all` 通用资源。现有 monorepo GitHub 工作流不会因为创建内置项目 tag 自动发布独立制品。
