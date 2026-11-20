@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -87,15 +88,25 @@ test('close hides only the console while explicit quit unloads both windows', as
   assert.deepEqual(consoleWindow.calls, ['hide', 'close']);
 });
 
-test('tray click and menu actions reveal the launchpad and quit explicitly', () => {
+test('the branded tray icon preserves launchpad and quit actions', async () => {
   const calls = []; let statusIcon, items;
+  const isMacintosh = process.platform === 'darwin';
+  const asset = isMacintosh ? 'steamharness-tray-template-36.png' : 'steamharness-icon-32.png';
+  const expected = await readFile(new URL(`../../docs/assets/brand/${asset}`, import.meta.url));
+  let templateImage = false;
+  const image = { setTemplateImage(value) { templateImage = value; } };
   Object.assign(electron, { Menu: { buildFromTemplate: template => (items = template) },
-    nativeImage: { createFromBuffer: () => ({ setTemplateImage() {} }) },
+    nativeImage: { createFromBuffer: (bytes, options) => {
+      assert.ok(bytes.equals(expected), `the tray uses the SteamHarness brand asset ${asset}`);
+      assert.equal(options.scaleFactor, 2);
+      return image;
+    } },
     Tray: class extends EventEmitter {
-      constructor() { super(); statusIcon = this; }
+      constructor(icon) { super(); assert.equal(icon, image); statusIcon = this; }
       setToolTip() {} setContextMenu() {} popUpContextMenu() {} destroy() { calls.push('destroy'); }
     } });
   const tray = createStudioTray(() => calls.push('show'), () => calls.push('quit'));
+  assert.equal(templateImage, isMacintosh);
   statusIcon.emit('click'); items[0].click(); items.at(-1).click(); tray.dispose();
   assert.deepEqual(calls, ['show', 'show', 'quit', 'destroy']);
 });

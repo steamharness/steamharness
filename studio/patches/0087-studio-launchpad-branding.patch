@@ -1,0 +1,49 @@
+diff --git a/src/vs/platform/windows/electron-main/studioTray.ts b/src/vs/platform/windows/electron-main/studioTray.ts
+index d7bdc8bc6415d172e493a6f73237e4cbeeae94a8..bad6f81ca4caeb94c797d480de7f96fa90c50174 100644
+--- a/src/vs/platform/windows/electron-main/studioTray.ts
++++ b/src/vs/platform/windows/electron-main/studioTray.ts
+@@ -8,9 +8,9 @@ import { isLinux, isMacintosh } from '../../../base/common/platform.js';
+ import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+ import { getNLSLanguage } from '../../../nls.js';
+ 
+-// Four launchpad tiles, with a transparent template for the macOS menu bar.
+-const templatePng = 'iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAVUlEQVR42u3WMQ4AEBBEUUdy/8bRUIgokS1I3k+mNPmVnZTwObmn9NTNlPEmumNyUrQWRndM6mWiOwgRIkSI0Den47njCgPNQPNTEyJEiJCBZqA9TgOdQPgfhQ16EgAAAABJRU5ErkJggg==';
+-const colorPng = 'iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAnklEQVR42u3VwQmAMAyF4Q7isQNkDbfx7gyu4QjepLN4d4eYXooWA0lPLbzAfwvlgx4SAmbkidtFUpLYWN6l9xvTcpCUJDaWd0kDeTAFVYE8mILSQNxSBeKWAAIIIIAAMoK6Ox19HVfMcDPvN0lJYmN59/P/cT1JShIby7ukgTyYgqpAHkxBaSBuqQJxSwABBBBAABlB3Z2Ovo4r5mcejsiY1iXUlYUAAAAASUVORK5CYII=';
++// 2x SteamHarness brand assets from docs/assets/brand, embedded for packaged builds.
++const templatePng = 'iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABmJLR0QA/wD/AP+gvaeTAAABPklEQVRYhe3VvytGURjA8c+bV0wGymBiVjIoUgZZJFkMZn+AP8AiBguL7CZZLTZlMbBIMcuiKAY/J7wvwx3c93Xf97039w7qfOvUPad7zvM95zydh0AgEAjUUMphjTJ60Vk3/oDXHNZPRReWcYYKvhJaBReYKlpmFvcNJJJaFdNFySxqfCLN2lXaAFlyaAzHaI+NnWAP1/is+38CK7F+H+5aBSmnlClhKyZTxRJ2MIT+hDk9df164T8xqvYK1jEvfS5d5ikDa7HF3zAjfS69Yzxvod1YgCNR7rQSecEhhrMESptDHbHvGyzE+qvYTpjzLMq1TKQV2hDt9AObmPPzMg9iRHQqSVRxjqesclnYl+0dukV3kUL9oh1nkZosUggGcCAqoK1kTv0uvonkUe3bRMW2GY85xAkEAoFA4F/wDTTsiwRH4i2kAAAAAElFTkSuQmCC';
++const colorPng = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAE40lEQVRYhe2XS2yUVRTHf/d79DEdoJ2W8k5LoKgkBBDUpKRaCcZIV4LFjQYXhqUmujPEaEK6NTFs0JUSN1ZdqhGIhgRFQROJgjSgBBX7mjKdzvv77jkuZjrMq62yYcOZnJw797vf/f/Puefeez64L/dYzFLPVbUlD3sF2YhYB8AuMFhK1nFcEZw/lsMZY0we0P9NbFY1lpPwTKgShCraSIMltKASzElwKqHasZCzjTpNSrW7WeWyMSZmVSkgKKBolSsKqNb8L0+stBgX3ziEaDyJs3W1MVO10XDq4AcHXR85bYyJZdWS1JCcCjm1JVvUrJRULVm1ZEpabIek1DIlBZIS4mE62zQ8xeCgu1QETEH1MUf1uwAhpbZEV6u8U6UckUrPG44FYo5PCw5zxj7aZZouVkahOgLDw44VOYyBnErdhAr4OCx3PKRgmZpLMZ6cY2I2yeRskunZJK3WsMx4mIp3UhpiDHjCSwwPV2F6dSExug4MtsZDB0OzGD64McbJG79xfTaBioAV1AqIoNbiqHKwdwsj/YOkveIMYclfNWZDLV4dAS31VYK7GGayWV78/muuJRNFMJEGVrHW8vHYrwRBwDv7nmFGg3IkTAO8ug6paM8vVLYQ8Oy3XzGeSZfBoo5HbzSKq4qKggjWCr9MTWBF+PzqJUb6n4BWvyLthVqpI1C75lHj8eqlc4xnMiBCxHEZ2dHP871baHKqU0hUGRj9kCuTf9MZZJiejRNpXb3oKdSAQLX7Y3MJTo//CSJ4Yvho4Cl+mp5g7xejXJ2JE4QhiEVtMTLGCt1Bhq4wx/pYN/GKs6Pe/0UIKOAbw5f/3Cwn2cENmzh5/Qqf/H61mHzl9S8uAVaIBWliQYaXd+8haPZRDe8uAori4jCWTNDV1MTrD+3AV4fXzn8DotXJZ4skOsIcO6MRXtg2wN5HBpnUwpKXQKNdUGWtCD2RZWzv6GKylAcqwqGND3B8YB9eRR4oEKiS0pB4RfbfXQ4AWRXe2PowI5cucDkeZ4XfVPb44uQtjv98EQN4YmmzARHJE7EBEVugd9V62vu2c1uD8h3SiMiiORCiLG9r5d3+JwlQwnxAu+dzO8hy/fYMb50/i28Dugupks6V7bVCiudeOQ49m1HMgmGov4zKBIo/i5LUkIxaaPY48fjTrPB81ApGLLEgU9I0nUGGzpKNBWncIF+8LRdZg4YRqF27+XZeLdvWreHcocOcvXmDW/EJImGOqM0TtQWiYZ42WyBq86xZu4mgbycihYW9bERAjUnCnWvyDpkinawK2uyyp28z3pa+8phq8kpShIIUd4FjzPzD2Vq8OnKh6A8ATcapA6+MTICQUUu6VAek1ZJSS0pD0mIpVBxArSWYAHN+SQJ5xzshqrmo8XC4UwUtdOdXa7FQqOxzgQ7HxxrNiuO/vySBB4eGunIqb7rG6EqniRbjVnlfCz7fo2hFoVKUNuOwwW3FM0ZThEe3Dg2trMWrlyO7/PYD+3sSNn8sJzYsqNWcWE1LWNZUA52r0YwU38tIGE7Y/NvtB/b3cGSXXwvXuCw/sstvn161duzTz/wmcY45xtltoLXR0EY7TFFENRPChYwjR7cfPGATXRO3eO/H4L8RmCfx16q16rqL7aIlxVgrifWNwRcnADA8XFfF3pWMji70LXNf7r38C9J6fq1Ajt2mAAAAAElFTkSuQmCC';
+ 
+ export function createStudioTray(show: () => void, quit: () => void): IDisposable {
+ 	const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 56c282f82370644c45270d13c6cdfd25514359de..982d6bbef895e16cdcb4e91cc000b75c5a81bf24 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -55,8 +55,8 @@
+ .lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
+ .lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }
+ .lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
+-.lp-identity { gap: 13px; } .lp-app-mark { flex: none; display: grid; place-items: center; width: 44px; height: 44px; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 8px; }
+-.lp-app-mark img { width: 32px; height: 32px; object-fit: contain; }
++.lp-identity { gap: 13px; } .lp-app-mark { --lp-mark-size: 60px; flex: none; display: grid; place-items: center; width: var(--lp-mark-size); height: var(--lp-mark-size); background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 8px; }
++.lp-app-mark img { width: calc(var(--lp-mark-size) - 8px); height: calc(var(--lp-mark-size) - 8px); object-fit: contain; }
+ .lp-identity h1 { font-size: 25px; line-height: 1.17; font-weight: 650; color: var(--lp-strong); }
+ .lp-local { margin-block-start: 4px; gap: 5px; font-size: 11.5px; color: var(--lp-muted); }
+ .lp-local .codicon, .lp-link .codicon { font-size: 13px; }
+@@ -164,7 +164,7 @@
+ 	.studio-launchpad { --lp-pad: 13px; grid-template-rows: var(--studio-launchpad-bar,44px) minmax(0,1fr) 32px; }
+ 	.lp-window-name, .lp-wide-label { display: none; } .lp-compact-label { display: inline; } .lp-command-center { grid-column: 2; }
+ 	.lp-titlebar { padding-inline: 6px; grid-template-columns: minmax(var(--lp-controls-left,0px),1fr) minmax(70px,35%) minmax(max-content,1fr); }
+-	.lp-header { min-height: 67px; } .lp-app-mark { width: 34px; height: 34px; } .lp-app-mark img { width: 26px; height: 26px; } .lp-identity { gap: 7px; } .lp-identity h1 { font-size: 19px; }
++	.lp-header { min-height: 67px; } .lp-app-mark { --lp-mark-size: 44px; } .lp-identity { gap: 7px; } .lp-identity h1 { font-size: 19px; }
+ 	.lp-side { grid-template-columns: minmax(0,1fr); } .lp-section-head { gap: 5px; } .lp-section-head h2 { font-size: 16px; } .lp-table-head, .lp-project-row { padding-inline: 4px; }
+ }
+ @media (max-width: 540px) {
+@@ -173,5 +173,5 @@
+ 	.lp-table-head, .lp-project-row { grid-template-columns: minmax(0,1fr) var(--lp-state-width) 23px; } .lp-table-head > :nth-child(3), .lp-project-row time { display: none; }
+ 	.lp-actions { gap: 4px; } .studio-launchpad :is(.lp-primary,.lp-outline) { padding-inline: 6px; font-size: 11.5px; } .lp-option { grid-template-columns: 16px minmax(0,1fr); gap: 0 6px; } .lp-option small { grid-column: 2; }
+ }
+-@media (max-width: 425px) { .lp-header { flex-wrap: wrap; gap: 5px; } .lp-identity h1 { font-size: 17px; } .lp-local { font-size: 10.5px; } .lp-app-mark { width: 30px; height: 30px; } }
+-@media (min-width: 861px) and (max-height: 700px) { .lp-header { min-height: 67px; } .lp-projects,.lp-side { padding-block: 13px; gap: 16px; } .lp-section-head { margin-bottom: 6px; } .lp-plate { height: 54px; } .lp-window-body { padding-block: 6px; } .studio-launchpad :is(.lp-chat,.lp-card) { min-height: 47px; } }
++@media (max-width: 425px) { .lp-header { flex-wrap: wrap; gap: 5px; } .lp-identity h1 { font-size: 17px; } .lp-local { font-size: 10.5px; } .lp-app-mark { --lp-mark-size: 40px; } }
++@media (min-width: 861px) and (max-height: 700px) { .lp-header { min-height: 67px; padding-block: 7px; } .lp-projects,.lp-side { padding-block: 13px; gap: 16px; } .lp-section-head { margin-bottom: 6px; } .lp-plate { height: 54px; } .lp-window-body { padding-block: 6px; } .studio-launchpad :is(.lp-chat,.lp-card) { min-height: 47px; } }

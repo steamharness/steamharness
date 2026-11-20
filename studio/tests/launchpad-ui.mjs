@@ -165,6 +165,19 @@ await mkdir(proof, {recursive:true});
 const hostFocusCss = '.monaco-workbench [tabindex=\"-1\"]:focus, .monaco-workbench button:focus { outline: 2px solid #007acc; outline-offset: -1px; }';
 const codicons = new URL('../node_modules/@vscode/codicons/dist/', import.meta.url);
 const iconCss = (await readFile(new URL('codicon.css',codicons),'utf8')).replace(/url\([^)]+\)/,`url(data:font/ttf;base64,${(await readFile(new URL('codicon.ttf',codicons))).toString('base64')})`);
+async function checkHeaderLayout(page, size) {
+  const logo = page.locator('.lp-app-mark img');
+  await logo.evaluate(img => img.decode());
+  const { width, height } = await logo.boundingBox();
+  assert.deepEqual({ width, height }, { width:size, height:size }, 'render the logo at the responsive size');
+  assert.ok(await page.locator('.lp-header').evaluate(header => {
+    const identity = header.querySelector('.lp-identity').getBoundingClientRect();
+    const actions = header.querySelector('.lp-actions').getBoundingClientRect();
+    const title = header.querySelector('h1');
+    return header.scrollWidth <= header.clientWidth && title.scrollWidth <= title.clientWidth &&
+      (identity.right <= actions.left || identity.bottom <= actions.top);
+  }), `the enlarged logo, title, and project actions fit at ${page.viewportSize().width}px`);
+}
 async function checkStatusLayout(page) {
   const overflow = await page.locator('.lp-project-row').evaluateAll(rows => rows.filter(row => {
     const [name,status,time,actions] = row.children;
@@ -352,8 +365,9 @@ try {
     assert.equal(await missing.locator('time').textContent(),lastOpened,'cancelled relocation keeps both the history and its timestamp');
     await foot.click();
     assert.deepEqual(await historyNames.allTextContents(),historyOrder.slice(0,5),'returning to recent keeps the same most-recent-first order');
-    for (const width of [1120,768,480,360]) {
+    for (const [width, logoSize] of [[1120,52],[768,52],[480,36],[360,32]]) {
       await page.setViewportSize({width,height:680}); await checkStatusLayout(page);
+      await checkHeaderLayout(page, logoSize);
       assert.deepEqual(await section.locator('.lp-state-label > .codicon').evaluateAll(icons=>icons.map(el=>el.className.split(' ').at(-1))), ['codicon-history','codicon-window','codicon-warning','codicon-window','codicon-history']);
       if (width===1120 || width===360) await section.screenshot({path:fileURLToPath(new URL(`${stem}-history-${width}.png`,proof))});
     }
