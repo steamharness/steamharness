@@ -85,6 +85,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const windows = [{ id:23, dirty:false, workspace:{id:'folder',uri:folders[0]} },{id:24,dirty:true,workspace:{id:'bot',uri:folders[2]}},{id:25,dirty:false,workspace:{id:'third',uri:folders[3]}}];
   const edits = new Emitter();
   window.projectReads = { windows:0, history:0, stats:0 };
+  window.openRequests = [];
   window.editProject = (id, dirty) => { windows.find(w=>w.id===id).dirty=dirty; edits.fire({windowId:id,dirty}); };
   const native = {onDidChangeWindowDirty:edits.event, getWindows:async()=>{window.projectReads.windows++; return windows.map(w=>({...w}));}, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
     async showMessageBox({message,detail,buttons}) {
@@ -94,10 +95,19 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
         buttons.forEach((label, i) => { const b=document.createElement('button'); b.textContent=label; b.onclick=()=>resolve(i); dialog.append(b); }); dialog.showModal();
       }); dialog.remove(); return {response};
     },
-    openWindow:async ([open],opts)=>window.actions.push(['open',Object.keys(open)[0],opts.forceNewWindow])};
+    openWindow:async (entries,opts)=>{
+      const openables=entries.map(entry=>{const kind=Object.keys(entry)[0]; return {kind,path:entry[kind].path};});
+      window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow});
+      window.actions.push(['open',openables[0].kind,opts.forceNewWindow]);
+    }};
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['relocate',opts.canSelectFolders]); return window.newLocation && [URI.file(window.newLocation)]; } };
-  const files = { stat: async uri=>{ window.projectReads.stats++; if(uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND); return {isFile:uri.path===workspace.path,isDirectory:uri.path!==workspace.path}; } };
+  const files = { stat: async uri=>{
+    window.projectReads.stats++;
+    if (uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND);
+    const isFile=uri.path===workspace.path||uri.path==='/projects/notes.txt';
+    return {isFile,isDirectory:!isFile};
+  } };
   const contextKeys = { createScoped:()=>contextKeys, createKey:()=>({set(){},reset(){},get(){}}), dispose(){} };
   const webviews = { createWebviewOverlay(init) { return new OverlayWebview(init,layout,this,contextKeys); }, createWebviewElement({title}) {
     const frame = document.createElement('iframe'); frame.title = title; frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
@@ -180,6 +190,49 @@ async function checkEditorSashes(page, visible) {
     return false;
   }), 'the native titlebar still has reachable drag space outside its action buttons');
 }
+async function checkProjectDrop(page, language) {
+  const home=page.locator('.lp-home'), title=home.getByRole('heading',{level:1}), hint=page.locator('.lp-project-drop');
+  const warning=page.locator('.native-message');
+  const count=await page.evaluate(()=>window.openRequests.length);
+  const fileTransfer=names=>page.evaluateHandle(names=>{
+    const transfer=new DataTransfer();
+    for (const name of names) transfer.items.add(new File([],name));
+    return transfer;
+  },names);
+  const dataTransfer=await fileTransfer(['拖入 project']);
+  await home.dispatchEvent('dragenter',{dataTransfer});
+  await home.dispatchEvent('dragover',{dataTransfer});
+  assert.ok(await hint.isVisible());
+  assert.equal(await hint.textContent(),language==='zh-cn'?'打开项目文件夹':'Open project folder');
+  assert.deepEqual(await hint.boundingBox(),await home.boundingBox(),'the target covers the content without overlapping window controls');
+  assert.equal(await hint.evaluate(el=>getComputedStyle(el).pointerEvents),'none');
+  await title.dispatchEvent('dragenter',{dataTransfer});
+  await home.dispatchEvent('dragleave',{dataTransfer});
+  assert.ok(await hint.isVisible(),'crossing launchpad children does not clear the drop target');
+  await title.dispatchEvent('dragleave',{dataTransfer});
+  assert.equal(await hint.isVisible(),false,'leaving without dropping cancels the hint');
+  assert.equal(await page.evaluate(()=>window.openRequests.length),count);
+
+  await title.dispatchEvent('dragenter',{dataTransfer});
+  await title.dispatchEvent('dragover',{dataTransfer});
+  await title.dispatchEvent('drop',{dataTransfer});
+  await page.waitForFunction(count=>window.openRequests.length===count+1,count);
+  assert.deepEqual(await page.evaluate(()=>window.openRequests.at(-1)),{openables:[{kind:'folderUri',path:'/projects/拖入 project'}],forceNewWindow:true});
+  assert.equal(await hint.isVisible(),false);
+  assert.ok(await home.isVisible(),'opening a dropped folder leaves the launchpad resident');
+
+  const link=await page.evaluateHandle(()=>{const transfer=new DataTransfer(); transfer.setData('text/uri-list','file:///projects/untrusted-link'); return transfer;});
+  await home.dispatchEvent('dragover',{dataTransfer:link});
+  assert.equal(await hint.isVisible(),false,'links cannot activate folder import');
+  await home.dispatchEvent('drop',{dataTransfer:link});
+  const file=await fileTransfer(['notes.txt']);
+  await home.dispatchEvent('drop',{dataTransfer:file});
+  await warning.waitFor();
+  assert.ok((await warning.textContent()).includes(language==='zh-cn'?'没有可打开的项目文件夹':'No project folders could be opened'));
+  await warning.getByRole('button').click();
+  assert.equal(await page.evaluate(()=>window.openRequests.length),count+1,'dropping a link or regular file never opens an editor');
+}
+
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 try {
   for (const [language, enhanced, light] of [['zh-cn',true,true],['en',true,false],['en',false,true]]) {
@@ -199,7 +252,11 @@ try {
       <div class="part titlebar"><div class="titlebar-container"><div class="titlebar-drag-region"></div><div class="titlebar-left"><button>IDE</button><button class="window-controls-container" style="width:66px">×</button></div><div class="titlebar-right"><div class="action-toolbar-container"><button>Layout</button></div></div></div></div><div class="part editor"><button>Editor</button></div><div class="part statusbar"></div></div></div></div></div>`);
     if (light) await page.addStyleTag({content:':root{--vscode-foreground:#262626;--vscode-editor-background:#fff;--vscode-sideBar-background:#f6f6f6;--vscode-panel-border:#d9d9d9;--vscode-descriptionForeground:#565656;--vscode-input-background:#fafafa;--vscode-input-foreground:#333;--vscode-textLink-foreground:#005fb8;--vscode-list-hoverBackground:#ededed;--vscode-badge-background:#dedede;--vscode-badge-foreground:#333}'});
     await page.addStyleTag({content:'.vs{--vscode-list-warningForeground:#855f00}.vs-dark{--vscode-list-warningForeground:#cca700}.hc-black,.hc-light{--vscode-contrastBorder:currentColor}'});
-    await page.evaluate(({language,enhanced})=>{ window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={}; window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]}}; },{language,enhanced});
+    await page.evaluate(({language,enhanced})=>{
+      window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={};
+      window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]},
+        webUtils:{getPathForFile:file=>'/projects/'+file.name}};
+    },{language,enhanced});
     if (enhanced) {
       const localization = JSON.stringify({locale:language,bundle:language==='zh-cn'?chinese:{}}).replace(/</g,'\\u003c');
       const html = `<!doctype html><html lang="${language}"><head><style>${settingsThemeCss(light?'light':'dark')}\n${settingsCss}\n${iconCss}</style></head>
@@ -440,6 +497,7 @@ try {
       if(width===360){await page.screenshot({path:fileURLToPath(new URL(`${stem}-narrow.png`,proof))});}}
     await page.evaluate(()=>{window.closeProject();window.clearHistory();}); await page.locator('.lp-live-project').first().waitFor({state:'detached'}); await rows.first().waitFor({state:'detached'});
     assert.ok(await page.locator('.lp-history-list .lp-empty').isVisible());
-    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad layout, keyboard actions, window changes, creation${enhanced?', account and settings':''} passed`);
+    await checkProjectDrop(page,language);
+    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad layout, keyboard actions, window changes, drag and drop, creation${enhanced?', account and settings':''} passed`);
   }
 } finally { await browser.close(); }

@@ -1,0 +1,161 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 294ee05e1b361e1cd8ebe0c13bc4745cb5464b71..56c282f82370644c45270d13c6cdfd25514359de 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -49,6 +49,8 @@
+ .lp-account .lp-avatar img, .lp-account-identity .lp-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+ .lp-home, .lp-statusbar, .lp-dialog { pointer-events: auto; }
+ .lp-home { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--lp-bg); }
++.lp-project-drop { position: absolute; grid-row: 2 / 3; inset: 0; z-index: 1; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; background: color-mix(in srgb,var(--lp-bg) 88%,transparent); color: var(--lp-strong); font-weight: 600; }
++.lp-project-drop .codicon { font-size: 24px; }
+ .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+ .lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
+ .lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index d2cfe4325a54cb6b63d66fae5b7d7faa22142fc1..3f7ba8b788af218494d6bc8995cc60d464b148a5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -3,7 +3,8 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { addDisposableListener } from '../../base/browser/dom.js';
++import { DataTransfers } from '../../base/browser/dnd.js';
++import { addDisposableListener, DragAndDropObserver } from '../../base/browser/dom.js';
+ import { mainWindow } from '../../base/browser/window.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+ import { CancellationTokenSource } from '../../base/common/cancellation.js';
+@@ -12,10 +13,11 @@ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '..
+ import { basenameOrAuthority } from '../../base/common/resources.js';
+ import { URI } from '../../base/common/uri.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+-import { ipcRenderer } from '../../base/parts/sandbox/electron-browser/globals.js';
++import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
+ import { getNLSLanguage } from '../../nls.js';
+ import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
+ import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
++import { containsDragType } from '../../platform/dnd/browser/dnd.js';
+ import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
+ import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
+ import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
+@@ -92,6 +94,26 @@ export class StudioLaunchpad extends Disposable {
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+ 		});
+ 		layout.mainContainer.append(this.view.element);
++		const clearProjectDrop = () => this.view.setProjectDropActive(false);
++		this._register(new DragAndDropObserver(this.view.element, {
++			onDragOver: event => {
++				const data = event.dataTransfer;
++				if (!this.view.canDropProject || !data || !containsDragType(event, DataTransfers.FILES)) { return; }
++				data.dropEffect = 'copy';
++				this.view.setProjectDropActive(true);
++			},
++			onDragLeave: clearProjectDrop,
++			onDragEnd: clearProjectDrop,
++			onDrop: event => {
++				clearProjectDrop();
++				const data = event.dataTransfer;
++				if (!this.view.canDropProject || !data || !containsDragType(event, DataTransfers.FILES)) { return; }
++				event.preventDefault();
++				event.stopPropagation();
++				const paths = new Set(Array.from(data.files, file => webUtils.getPathForFile(file)).filter(Boolean));
++				if (paths.size) { run(this.openDroppedFolders(Array.from(paths, path => URI.file(path)))); }
++			},
++		}));
+ 		const resize = () => {
+ 			const titlebar = layout.getContainer(mainWindow, Parts.TITLEBAR_PART);
+ 			const root = layout.mainContainer;
+@@ -168,6 +190,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
+ 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
++			if (document.hidden) { clearProjectDrop(); }
+ 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+ 			const app = this.app.value;
+ 			if (app && !app.surface.inert) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
+@@ -199,7 +222,7 @@ export class StudioLaunchpad extends Disposable {
+ 			app.surface.inert = app.back.hidden = true;
+ 			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
+ 		}
+-		this.view.element.hidden = false;
++		this.view.setVisible(true);
+ 		this.view.setInboxBusy(false);
+ 		this.start.setVisible('launchpad', !document.hidden);
+ 		if (fromSettings) { this.view.focusAccount(); }
+@@ -255,7 +278,7 @@ export class StudioLaunchpad extends Disposable {
+ 			lifetime.add(webview.onMessage(({ message }) => { if (message?.type === 'ready') { deadline.cancel(); } }));
+ 			lifetime.add(webview.onFatalError(failed));
+ 			lifetime.add(addDisposableListener(surface, 'focus', () => webview.focus()));
+-			this.view.element.hidden = true;
++			this.view.setVisible(false);
+ 			this.start.setVisible('launchpad', false);
+ 			webview.claim(surface, mainWindow, undefined);
+ 			webview.setAnchorElement(surface);
+@@ -348,12 +371,30 @@ export class StudioLaunchpad extends Disposable {
+ 			return false;
+ 		}
+ 		app.surface.inert = app.back.hidden = false;
+-		this.view.element.hidden = true;
++		this.view.setVisible(false);
+ 		this.start.setVisible('launchpad', false);
+ 		app.webview.focus();
+ 		return true;
+ 	}
+ 
++	private async openDroppedFolders(uris: URI[]): Promise<void> {
++		const folders = (await Promise.all(uris.map(async uri => {
++			try {
++				return (await this.files.stat(uri)).isDirectory ? { folderUri: uri } : undefined;
++			} catch {
++				return undefined; // A dropped path can disappear before it is opened.
++			}
++		}))).filter(folder => folder !== undefined);
++		if (this._store.isDisposed) { return; }
++		if (folders.length) {
++			await this.native.openWindow(folders, { forceNewWindow: true });
++		} else {
++			const zh = this.language.startsWith('zh');
++			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可打开的项目文件夹' : 'No project folders could be opened',
++				buttons: [zh ? '确定' : 'OK'], noLink: true });
++		}
++	}
++
+ 	private async openProject(project: LaunchpadProject): Promise<void> {
+ 		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
+ 		if (live?.windowId !== undefined) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index ad12eee730a9274f8e7f73400ce48ea4e58b4612..74f388960bb35734afe9f05fa6b02545858afcaa 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -59,6 +59,7 @@ function tool(label: string, glyph: string, action: () => void): HTMLButtonEleme
+ export class StudioLaunchpadView {
+ 	readonly element = element('div', 'studio-launchpad');
+ 	private readonly stateBar = element('footer', 'lp-statusbar');
++	private readonly projectDrop = element('div', 'lp-project-drop');
+ 	private readonly commandCenter: HTMLButtonElement;
+ 	private readonly picker: LaunchpadPicker;
+ 	private readonly accountButton: HTMLButtonElement;
+@@ -150,7 +151,9 @@ export class StudioLaunchpadView {
+ 		const device = element('span', 'lp-device'); device.append(icon('device-desktop'), t('Local', '本机'));
+ 		const commands = button(t('Command palette', '命令面板'), 'terminal', () => this.search(true, commands));
+ 		this.stateBar.append(device, commands, this.connection);
+-		this.element.append(chrome, main, this.stateBar, this.picker.dialog);
++		this.projectDrop.hidden = true;
++		this.projectDrop.append(icon('folder-opened'), element('span', '', t('Open project folder', '打开项目文件夹')));
++		this.element.append(chrome, main, this.stateBar, this.projectDrop, this.picker.dialog);
+ 	}
+ 
+ 	private openOptions(): void {
+@@ -323,6 +326,12 @@ export class StudioLaunchpadView {
+ 		this.select(rows.find(p => p.uri === this.selection)?.uri);
+ 	}
+ 
++	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
++	setProjectDropActive(active: boolean): void { this.projectDrop.toggleAttribute('hidden', !active); }
++	setVisible(visible: boolean): void {
++		this.element.hidden = !visible;
++		this.setProjectDropActive(false);
++	}
+ 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
+ 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
+ 	focusAccount(): void { (this.state?.platform ? this.accountButton : this.element).focus({ preventScroll: true }); }
