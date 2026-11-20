@@ -15,7 +15,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items: [{ id:'checklist', name:'Checklist', description:'Verify a release' }] } : undefined };
   const root = document.querySelector('.monaco-workbench');
   const layout = { mainContainer:root, activeContainer:root, getContainer:()=>root.querySelector('.statusbar'), mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
-  const chats = { items:[{name:'Team',preview:'Review',unread:2}] };
+  const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#16a34a"/></svg>');
+  const chats = { items:[{name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{name:'Solo',preview:'Hi',unread:0}] };
   const commands = { async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.getLaunchpadInbox') return chats;
@@ -68,7 +69,12 @@ try {
     assert.ok((await page.locator('.lp-project-avatar').getAttribute('src'))?.startsWith('data:image/svg+xml,'),`${language}: avatar data URL is preserved`);
     assert.deepEqual(await page.locator('.lp-project-type').allTextContents(),[language==='zh-cn'?'工作流':'Workflow', 'Bot'],`${language}: recent project types`);
     assert.equal(await page.locator('.studio-launchpad').evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: launchpad container must not draw a focus outline`);
-    if (enhanced) await page.getByText('Review',{exact:true}).waitFor();
+    if (enhanced) {
+      await page.getByText('Review',{exact:true}).waitFor();
+      assert.equal(await page.locator('.lp-chat-avatar').count(),1,`${language}: recent chat avatar`);
+      assert.ok((await page.locator('.lp-chat-avatar').getAttribute('src'))?.startsWith('data:image/svg+xml,'),`${language}: chat avatar data URL`);
+      assert.equal(await page.locator('.lp-chat .lp-avatar:not(.lp-chat-avatar)').count(),1,`${language}: fallback initial avatar`);
+    }
     assert.equal(await page.locator('.lp-store').isVisible(),enhanced);
     await page.screenshot({path:fileURLToPath(new URL(`${language}.png`,proof))});
     const foot=page.locator('.lp-foot button'); await foot.click(); assert.equal(await foot.evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: pointer focus must not draw a blue outline`); assert.equal(await rows.count(),9);
