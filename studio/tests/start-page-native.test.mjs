@@ -104,7 +104,7 @@ for (const [patchNames, files] of [
   const sequence = patchNames.includes(overviewPatch) ? patchNames : patchNames.includes('0067-studio-start-recent-projects.patch')
     ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch]
     : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch];
-  for (const patchName of sequence) {
+  for (const patchName of [...sequence, '0093-studio-agent-library.patch']) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');
     if (relevant) await writeFile(path.join(directory, 'patches', patchName), relevant);

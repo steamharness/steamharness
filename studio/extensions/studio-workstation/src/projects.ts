@@ -1,6 +1,13 @@
 export type ProjectType = 'workflow' | 'bot' | 'kanban';
 export const projectTypeIcons: Record<ProjectType, string> = { workflow: 'run-all', bot: 'hubot', kanban: 'layout' };
 
+/** Keep only the cover filename and version in history, never the image bytes. */
+export interface LibraryArtwork {
+  cover?: { name: string; mtime: number };
+  entries?: string[];
+  files?: string[];
+}
+
 export interface RecentProject {
   uri: string;
   label: string;
@@ -9,12 +16,15 @@ export interface RecentProject {
   projectType?: ProjectType;
   version?: string;
   avatarUrl?: string;
+  projectId?: string;
+  distribution?: 'source' | 'release' | 'download';
+  artwork?: LibraryArtwork;
 }
 
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
 export const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
-export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version'>;
+export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version' | 'projectId' | 'distribution' | 'artwork'>;
 export function applyRecentMetadata(rows: RecentProject[], updates: ReadonlyMap<string, RecentMetadata>): RecentProject[] {
   return rows.map(row => row.kind === 'folder' && updates.has(row.uri) ? { ...row, ...updates.get(row.uri) } : row);
 }

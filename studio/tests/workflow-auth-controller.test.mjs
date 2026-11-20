@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
@@ -99,7 +100,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: {
     get: async key => { secretReads.push(key); return saved.has(key) ? saved.get(key) : key.startsWith('studio.project') ? stored : undefined; },
     store: async (key, value) => { saved.set(key, value); }, delete: async key => { saved.set(key, undefined); }, onDidChange: secretsChanged.event } };
-  const controller = new module.exports.AccountController(context, undefined, platform, serverUrl);
+  const controller = new module.exports.AccountController(context, undefined, platform, serverUrl, value => createHash('sha256').update(value).digest('hex'));
   await controller.initialize();
   t.after(() => controller.dispose());
   if (connect) await controller.connect();
@@ -600,7 +601,13 @@ test('the avatar menu exposes only public profile data and refreshes both the me
   f.controller.registerSectionProvider({ id: 'optional', title: 'Optional', load: async () => { sectionLoads++; return []; } });
   const read = f.commands.get('studio.internalGetAccountMenuState');
   const initial = read();
+  const local = await fixture(t, { platform: false, connect: false });
+  assert.equal(local.commands.get('studio.internalGetAccountMenuState')().localProfile, true);
+  assert.equal(local.requests, 0, 'reading local notification scope must not connect to the Server');
   assert.equal(initial.name, 'User');
+  assert.match(initial.scopeKey, /^[a-f\d]{64}$/);
+  const other = await fixture(t, {serverUrl: 'https://second.example.test'});
+  assert.notEqual(other.commands.get('studio.internalGetAccountMenuState')().scopeKey, initial.scopeKey);
   assert.equal(initial.labels.profile, 'Personal Information');
   assert.doesNotMatch(JSON.stringify(initial), /test-token|test-key|private-token|private\.example|aiConfigured|serverUrl|aiServerUrl|127\.0\.0\.1/);
   for (const status of f.statuses) {
@@ -610,10 +617,12 @@ test('the avatar menu exposes only public profile data and refreshes both the me
   await f.commands.get('studio.refreshAccount')();
   assert.equal(sectionLoads, 0, 'Refreshing the avatar menu must not load optional account sections');
   assert.equal(read().name, 'Updated User');
+  assert.equal(read().scopeKey, initial.scopeKey);
   assert.equal((await f.provider.getSessions([], {}))[0].account.icon.toString(), f.profile.avatarUrl);
   assert.deepEqual(f.executed.filter(command => command.id === 'studio.internalUpdateAccountMenuState').at(-1).args[0], read());
   await f.commands.get('studio.logout')();
   assert.equal(read().hasAccount, false);
+  assert.equal(read().scopeKey, undefined);
   assert.equal(read().email, undefined);
   assert.equal(read().avatarUrl, undefined);
 });

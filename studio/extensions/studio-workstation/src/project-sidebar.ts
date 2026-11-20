@@ -117,7 +117,7 @@ export class ProjectSidebar implements vscode.Disposable {
   get canAdd(): boolean { return this.started && !!this.launcher.readSidebarEntries && vscode.workspace.isTrusted; }
 
   items(preferences = this.preferences()): SidebarItem[] {
-    const builtins = ['assistant', ...[...this.builtin.keys()].filter(id => id !== 'assistant')].filter(id => this.builtin.has(id));
+    const builtins = ['assistant', ...[...this.builtin.keys()].filter(id => id !== 'assistant')].filter(id => this.builtin.has(id) && !this.builtin.get(id)?.hosted?.standalone);
     const projects = this.launcher.readSidebarEntries ? preferences.projects : [];
     const items = new Map<string, SidebarItem>(projects.map(entry => [entry.id, { id: entry.id, directory: entry.directory, title: sidebarEntryTitle(entry, vscode.env.language),
       visible: entry.visible, type: entry.type, builtin: false }]));

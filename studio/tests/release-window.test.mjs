@@ -24,6 +24,7 @@ const actionCode = ts.transpileModule(`globalThis.action = ${releaseAction.getTe
 test('release run opens only the prepared directory in a separate window', async () => {
   const calls = [], source = { uri: 'file:///source', folderPath: '/source', entryId: 'map', aggregateName: 'Demo' };
   const context = {
+    projectScanReady: true, lockedWindow: false,
     currentProject: () => source,
     launcher: {
       prepareDistribution: async (project, snapshot) => { assert.equal(project, source); assert.equal(snapshot, true); return { mode: 'release', directory: '/source/dist/steamharness/release/snapshots/build/map', entries: ['agent', 'map'] }; },
@@ -38,6 +39,9 @@ test('release run opens only the prepared directory in a separate window', async
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], '/source/dist/steamharness/release/snapshots/build/map');
   assert.equal(calls[0][1], source.uri);
+  context.lockedWindow = true; await context.action();
+  context.lockedWindow = false; context.projectScanReady = false; await context.action();
+  assert.equal(calls.length, 1, 'neither a downloaded root nor a pending root may start a release build');
 });
 
 const folderCode = await build({ entryPoints: ['extensions/studio-workstation/src/project-window.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
@@ -107,17 +111,18 @@ test('release chrome displays project identity and filters authoring tools', asy
 });
 
 
-test('release window identity and tool policy follow its root when another project tab is active', () => {
-  const root = { uri: 'file:///release', entryId: 'agent', defaultEntry: 'agent', distribution: 'release', aggregateName: 'Release App', projectType: 'bot', aggregateProjectCard: { icon: 'boxes' } };
+for (const distribution of ['release', 'download']) test(`${distribution} window identity and tool policy follow its root when another project tab is active`, () => {
+  const root = { uri: 'file:///release', entryId: 'agent', defaultEntry: 'agent', distribution: distribution === 'download' ? 'source' : 'release', aggregateName: 'Release App', projectType: 'bot', aggregateProjectCard: { icon: 'boxes' } };
   const target = { uri: 'file:///other-source', distribution: 'source', name: 'Other' };
-  const calls = [], noop = () => {};
-  const context = { launcher: { prepareDistribution() {} }, disposed: false, entryTimer: undefined, clearTimeout: noop, provider: { projects: [root] }, currentProject: () => target, activeProject: () => target,
+  const calls = [], flags = new Map(), noop = () => {};
+  const context = { lockedWindow: distribution === 'download', launcher: { prepareDistribution() {} }, disposed: false, entryTimer: undefined, clearTimeout: noop, provider: { projects: [root] }, currentProject: () => target, activeProject: () => target,
     projectWindows: { update: noop }, trace: { update: noop }, versions: { update: noop }, info: { update: noop }, toolInstances: { update: noop }, updateVersionEntry: noop,
     findWorkspace: () => ({ running: true, loaded: true }), projectScanReady: true, mode: { update: (...args) => calls.push(args) },
     projectAvatarDataUrl: card => card.icon, status: { show: noop, hide: noop }, projectDisplayName: project => project.name, t: value => value,
-    vscode: { workspace: { isTrusted: true, workspaceFolders: [{ uri: { toString: () => root.uri } }] }, commands: { executeCommand: noop } } };
+    vscode: { workspace: { isTrusted: true, workspaceFolders: [{ uri: { toString: () => root.uri } }] }, commands: { executeCommand: (_cmd, key, value) => flags.set(key, value) } } };
   const code = ts.transpileModule(`globalThis.update = ${updateEntry.getText(parsed)}`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, context); context.update();
   assert.equal(calls[0][1], root.uri); assert.equal(calls[0][3], true);
   assert.equal(calls[0][4].name, 'Release App'); assert.equal(calls[0][4].avatarUrl, 'boxes');
+  assert.equal(flags.get('studio.projectReleaseAvailable'), false);
 });

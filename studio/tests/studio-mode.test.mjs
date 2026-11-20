@@ -36,10 +36,10 @@ class Sequencer {
 const parts = { ACTIVITYBAR_PART: 'activity', SIDEBAR_PART: 'sidebar', PANEL_PART: 'panel', AUXILIARYBAR_PART: 'auxiliary', EDITOR_PART: 'editor', TITLEBAR_PART: 'titlebar', STATUSBAR_PART: 'statusbar' };
 const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 
-function fixture(t, saved = new Map(), initialState = {}, initiallyRendered = true) {
+function fixture(t, saved = new Map(), initialState = {}, initiallyRendered = true, openedFromLibrary = false) {
   const commands = new Map(), stateChange = new Emitter(), calls = [], settings = new Map(), errors = [];
   const resized = new Emitter(), visibilityChanged = new Emitter(), windowResized = new Emitter();
-  const state = { state: { available: false, labels: {}, ...initialState }, steam: !!initialState.releaseOnly, busy: false, onDidChangeState: stateChange.event,
+  const state = { openedFromLibrary, state: { available: false, labels: {}, ...initialState }, steam: !!initialState.releaseOnly, busy: false, onDidChangeState: stateChange.event,
     setMode(steam, busy, targetSteam = steam) { this.steam = steam; this.busy = busy; this.targetSteam = targetSteam; } };
   const register = (id, handler) => { commands.set(id, handler); return { dispose: () => commands.delete(id) }; };
   const containers = new Map([
@@ -202,6 +202,13 @@ test('a window closed before the first render does not create Steam UI or start 
   f.controller.dispose();
   f.render(); f.publish(true);
   assert.deepEqual({ workspaces: f.workspaceCreations, starts: f.calls.filter(call => call === 'prepare').length }, { workspaces: 0, starts: 0 });
+});
+
+test('opening source from the library starts in IDE even after a previous Steam session', async t => {
+  const f = fixture(t, new Map([['studio.workbenchMode','steam']]), {}, false, true);
+  f.render(); f.publish(true); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.state.steam,false); assert.equal(f.projectOpen,false);
+  await f.run('EnterSteamMode'); assert.equal(f.projectOpen,true);
 });
 
 for (const mode of ['ide', 'steam']) {

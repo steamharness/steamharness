@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -42,6 +42,15 @@ test('the initial release title uses the host display language before extension 
   assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'zh-cn')).name, '三角洲');
   assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'en-US')).name, 'Deltaforce');
   assert.equal((await metadata.exports.readStudioReleaseProject(f.uri, 'fr')).name, 'Deltaforce');
+});
+
+test('a downloaded source folder selects its own Steam shell before opening; an unrelated receipt never does', async t => {
+  const f = await fixture(t, {...project, distribution:undefined, entries:[{entryId:'agent'}]});
+  await rm(path.join(f.directory,'steamharness.release.json')); await mkdir(path.join(f.directory,'.steamharness'));
+  const receipt = {kind:'steamharness.download', version:1, projectId:id, projectVersion:project.version};
+  const write = r => writeFile(path.join(f.directory,'.steamharness/download.json'),JSON.stringify(r));
+  await write(receipt); assert.equal((await metadata.exports.readStudioReleaseProject(f.uri)).projectUri,f.uri.toString());
+  await write({...receipt,projectVersion:'0.0.1'}); assert.equal(await metadata.exports.readStudioReleaseProject(f.uri),undefined);
 });
 
 test('source declarations, incomplete releases and unsupported formats cannot select the release shell', async t => {

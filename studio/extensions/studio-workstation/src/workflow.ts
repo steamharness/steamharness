@@ -78,6 +78,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   let disposed = false, scanEpoch = 0;
   let initialScan = Promise.resolve();
   let projectScanReady = false;
+  let lockedWindow = false;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let entryTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshing: Promise<void> | undefined;
@@ -138,10 +139,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     toolInstances.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
-    void vscode.commands.executeCommand('setContext', 'studio.projectReleaseAvailable', !!target && target.distribution !== 'release' && !!launcher.prepareDistribution);
     const workspace = target ? findWorkspace(target) : undefined;
     const windowRoot = vscode.workspace.workspaceFolders?.[0]?.uri.toString();
-    const releaseProject = provider.projects.find(project => project.uri === windowRoot && project.distribution === 'release' && project.entryId === project.defaultEntry);
+    const releaseProject = provider.projects.find(project => project.uri === windowRoot && (lockedWindow || project.distribution === 'release') && project.entryId === project.defaultEntry);
+    void vscode.commands.executeCommand('setContext', 'studio.projectReleaseAvailable', projectScanReady && !lockedWindow && !releaseProject && !!target && target.distribution !== 'release' && !!launcher.prepareDistribution);
     const headerProject = releaseProject ?? target;
     const headerWorkspace = releaseProject ? findWorkspace(releaseProject) : workspace;
     if (projectScanReady) { mode.update(!!headerProject && vscode.workspace.isTrusted, headerProject?.uri, !!headerWorkspace?.running && headerWorkspace.loaded, !!releaseProject,
@@ -600,7 +601,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }),
     register('studio.openProjectRelease', async () => {
       const source = currentProject();
-      if (!source || !launcher.prepareDistribution || !vscode.workspace.isTrusted) return;
+      if (!projectScanReady || lockedWindow || !source || source.distribution === 'release' || !launcher.prepareDistribution || !vscode.workspace.isTrusted) return;
       for (const document of vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.toString().startsWith(`${source.uri}/`))) {
         if (!await document.save()) throw new Error(t('Save the project files before building a release.'));
       }
@@ -698,7 +699,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     await findWorkspace(selected, true)?.session.connectPlatform?.(purpose, selected.entryId);
   }));
   initialScan = refresh().catch(error => output.appendLine(`Workflow: ${String(error)}`));
-  await initialScan;
+  const [, locked] = await Promise.all([initialScan, Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow')).catch(() => false)]);
+  lockedWindow = locked === true;
   projectScanReady = true;
   updateEntry();
   return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChange,

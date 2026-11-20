@@ -61,7 +61,7 @@ export class AccountController implements vscode.Disposable {
   private readonly lifetime = new AbortController();
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
-    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL) {
+    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, digest?: (value: string) => string) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
@@ -77,7 +77,7 @@ export class AccountController implements vscode.Disposable {
     }, (state) => {
       this.change.fire(state);
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
-      void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state)).then(undefined, () => undefined);
+      void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state, platform, digest)).then(undefined, () => undefined);
       void this.panel?.webview.postMessage({ type: 'account', state });
       this.publishLogin();
       const session = this.authenticationSession();
@@ -145,12 +145,12 @@ export class AccountController implements vscode.Disposable {
           this.attachLoginPanel(panel);
         },
       }),
-      vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState())),
       vscode.commands.registerCommand('studio.refreshAccount', () => this.connect()),
       vscode.commands.registerCommand('studio.validateLogin', () => this.connect()),
       vscode.commands.registerCommand('studio.logout', async () => { await this.connect(); this.cancelLogin(); return this.account.logout(); }),
       vscode.commands.registerCommand('studio.disconnectSystemAi', () => this.disconnectAi()),
       ] : []),
+      vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState(), platform, digest)),
       vscode.commands.registerCommand('studio.openLaunchpadResource', async (resource: string) => {
         const server = this.getState().serverUrl;
         if (resource === 'docs') {
@@ -672,8 +672,8 @@ export class AccountController implements vscode.Disposable {
 }
 
 export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false,
-  serverUrl?: string): Promise<AccountController> {
-  const account = new AccountController(context, modelWriteLock, platform, serverUrl);
+  serverUrl?: string, digest?: (value: string) => string): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

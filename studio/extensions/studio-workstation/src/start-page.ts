@@ -119,6 +119,12 @@ export class StudioStartController implements vscode.Disposable {
     };
     register('studio.internalStartPageVisibility', (launchpadVisible: boolean) => { ++this.visibilityRevision; this.setLaunchpadVisible(launchpadVisible === true); });
     register('studio.internalGetStartState', () => structuredClone(this.state));
+    register('studio.getLocalCatalog', async (request: { query?: string; type?: string; page?: number } = {}) => {
+      const pageSize = 24, page = Math.max(1, Math.trunc(request.page || 1));
+      const term = request.query?.trim().toLocaleLowerCase() ?? '';
+      const rows = (await this.launcher.templates?.() ?? []).filter(p => p.kind === 'example' && (!request.type || p.projectType === request.type) && `${p.name} ${p.description}`.toLocaleLowerCase().includes(term));
+      return { items: rows.slice((page - 1) * pageSize, page * pageSize).map(p => ({ ...p, avatarUrl: projectAvatarDataUrl(undefined, p.projectType) })), total: rows.length, pageSize };
+    });
     register('studio.refreshStart', async () => {
       await vscode.commands.executeCommand('studio.refreshProjectView');
       this.forceRecommendations = true;

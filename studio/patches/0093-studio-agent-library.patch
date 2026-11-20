@@ -1,0 +1,1964 @@
+diff --git a/src/vs/platform/native/common/native.ts b/src/vs/platform/native/common/native.ts
+index 057c7b962396b4c019861dd5b4e717c0b2b66611..5874bb9af67fded3400e6ed6719d4832e4579434 100644
+--- a/src/vs/platform/native/common/native.ts
++++ b/src/vs/platform/native/common/native.ts
+@@ -280,6 +280,7 @@ export interface ICommonNativeHostService {
+ 	openWindow(options?: IOpenEmptyWindowOptions): Promise<void>;
+ 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
+ 	openStudioLaunchpadInbox(): Promise<boolean>;
++	openStudioLaunchpadStore(): Promise<boolean>;
+ 
+ 	openAgentsWindow(options?: IOpenAgentsWindowOptions): Promise<void>;
+ 
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index fd9fab63b9c957981875758f22ff6812f88a67da..543bbddc64a673fef57243e7891de57116725bdc 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -284,6 +284,12 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 		return true;
+ 	}
+ 
++	async openStudioLaunchpadStore(): Promise<boolean> {
++		if (!this.windowsMainService.hasStudioLaunchpad) { return false; }
++		await this.windowsMainService.openStudioLaunchpad(false, 'store');
++		return true;
++	}
++
+ 	openWindow(windowId: number | undefined, options?: IOpenEmptyWindowOptions): Promise<void>;
+ 	openWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
+ 	openWindow(windowId: number | undefined, arg1?: IOpenEmptyWindowOptions | IWindowOpenable[], arg2?: IOpenWindowOptions): Promise<void> {
+diff --git a/src/vs/platform/window/common/studioReleaseProject.ts b/src/vs/platform/window/common/studioReleaseProject.ts
+index 7aee5120e53ec1976fd321a7448e2345802de97c..6f425e1581e2fc6bc91a225d809e434095088ab8 100644
+--- a/src/vs/platform/window/common/studioReleaseProject.ts
++++ b/src/vs/platform/window/common/studioReleaseProject.ts
+@@ -9,6 +9,17 @@ export interface IStudioReleaseProject {
+ 	readonly avatarUrl: string;
+ }
+ 
++/** A downloaded source snapshot has normal source bytes. Match the installation record to the current folder and identity. */
++export function downloadedStudioProject(uri: string, document: string, imports: unknown, receipt?: string): IStudioReleaseProject | undefined {
++	try {
++		const project = JSON.parse(document);
++		if (typeof project?.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id) || typeof project.name !== 'string' || !project.name.trim() || !Array.isArray(project.entries) || !project.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) { return undefined; }
++		const saved = Array.isArray(imports) && imports.some(row => row?.uri === uri && row.id === project.id.toLowerCase());
++		const mark = !saved && receipt && JSON.parse(receipt);
++		return saved || (mark?.kind === 'steamharness.download' && mark.version === 1 && mark.projectId === project.id.toLowerCase() && typeof project.version === 'string' && mark.projectVersion === project.version) ? { projectUri: uri, name: project.name, avatarUrl: '' } : undefined;
++	} catch { return undefined; }
++}
++
+ /** Read only the release identity needed before the workbench restores any views. */
+ export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string, locale = 'en'): IStudioReleaseProject | undefined {
+ 	try {
+diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
+index 20f30ca000609f7c31409295d3b075842e74147c..84d9a9f2903a6c5b5fae95a18effc63e7829069f 100644
+--- a/src/vs/platform/window/common/window.ts
++++ b/src/vs/platform/window/common/window.ts
+@@ -516,6 +516,7 @@ export interface IOSConfiguration {
+ 
+ export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
+ 	readonly isStudioLaunchpad?: boolean;
++	studioOpenedFromLibrary?: boolean;
+ 	studioLaunchpadReduceMotion?: boolean;
+ 	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
+ 	studioReleasePending?: boolean;
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index 644dc5b81beaf79d20cc4c41a5a5138dca8c1e42..d59e9c0d8fc1ce08e45907b496f088434dfdec94 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -1545,6 +1545,7 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
+ 
+ 		configuration.accessibilitySupport = electron.app.isAccessibilitySupportEnabled();
+ 		configuration.isInitialStartup = false; // since this is a reload
++		configuration.studioOpenedFromLibrary = false; // reload preserves the user's current mode
+ 		configuration.policiesData = this.policyService.serialize(); // set policies data again
+ 		configuration.continueOn = this.environmentMainService.continueOn;
+ 		configuration.profiles = {
+diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
+index e571aa2fd433ae1589a3900ed77576486ee61a58..419348274339fadb8cf526b6f96e027c8acc1acd 100644
+--- a/src/vs/platform/windows/electron-main/windows.ts
++++ b/src/vs/platform/windows/electron-main/windows.ts
+@@ -38,7 +38,7 @@ export interface IWindowsMainService {
+ 
+ 	readonly hasStudioLaunchpad: boolean;
+ 	enableStudioLaunchpad(): void;
+-	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox'): Promise<ICodeWindow>;
++	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
+ 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
+ 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;
+ 	openExtensionDevelopmentHostWindow(extensionDevelopmentPath: string[], openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
+diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
+index 43a02c00a41dc4d6306791c4a6b70ccdd9e0578f..55465afd180d76eedb11d99d2375c1d02229a1d4 100644
+--- a/src/vs/platform/windows/electron-main/windowsMainService.ts
++++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
+@@ -66,6 +66,7 @@ import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
+ //#region Helper Interfaces
+ 
+ interface IOpenBrowserWindowOptions {
++	readonly studioOpenedFromLibrary?: boolean;
+ 	readonly studioLaunchpad?: { background: boolean };
+ 	readonly userEnv?: IProcessEnvironment;
+ 	readonly cli?: NativeParsedArgs;
+@@ -297,7 +298,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 		}
+ 	}
+ 
+-	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' = 'home'): Promise<ICodeWindow> {
++	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' | 'store' = 'home'): Promise<ICodeWindow> {
+ 		const existing = this.getWindows().find(window => window.isStudioLaunchpad && window.win && !window.win.isDestroyed());
+ 		const window = existing ?? await (this.launchpadOpening ??= this.openInBrowserWindow({
+ 			forceNewWindow: true,
+@@ -306,8 +307,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 		}).finally(() => this.launchpadOpening = undefined));
+ 		if (!background && !this.lifecycleMainService.quitRequested && window.win) {
+ 			window.showStudioLaunchpad();
+-			if (existing || page === 'inbox') {
+-				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
++			if (existing || page !== 'home') {
++				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'store' ? 'studio.internalOpenStoreTab' : page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
+ 			}
+ 		}
+ 		return window;
+@@ -857,6 +858,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 
+ 		return this.openInBrowserWindow({
+ 			workspace: folderOrWorkspace.workspace,
++			studioOpenedFromLibrary: typeof openConfig.contextWindowId === 'number' && this.getWindowById(openConfig.contextWindowId)?.isStudioLaunchpad,
+ 			userEnv: openConfig.userEnv,
+ 			cli: openConfig.cli,
+ 			initialStartup: openConfig.initialStartup,
+@@ -1610,6 +1612,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 			remoteAuthority: options.remoteAuthority,
+ 			workspace: options.workspace,
+ 			isStudioLaunchpad: !!options.studioLaunchpad,
++			studioOpenedFromLibrary: options.studioOpenedFromLibrary,
+ 			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
+ 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
+ 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
+diff --git a/src/vs/platform/windows/node/studioReleaseProject.ts b/src/vs/platform/windows/node/studioReleaseProject.ts
+index 2489ca203891e3b36b88f6c45d8ba265199f36fd..944279c9096c31561b1e7515599eeb332c647b7c 100644
+--- a/src/vs/platform/windows/node/studioReleaseProject.ts
++++ b/src/vs/platform/windows/node/studioReleaseProject.ts
+@@ -3,20 +3,24 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { readFile, stat } from 'fs/promises';
++import { lstat, readFile } from 'fs/promises';
+ import { join } from '../../../base/common/path.js';
+ import { Schemas } from '../../../base/common/network.js';
+ import { URI } from '../../../base/common/uri.js';
+-import { IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
++import { downloadedStudioProject, IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
+ 
+ /** Detect local release folders before creating their window; never execute project code. */
+ export async function readStudioReleaseProject(folder: URI | undefined, locale = 'en'): Promise<IStudioReleaseProject | undefined> {
+ 	if (folder?.scheme !== Schemas.file) { return undefined; }
+ 	try {
+-		const files = ['steamharness.json', 'steamharness.release.json'].map(name => join(folder.fsPath, name));
+-		const stats = await Promise.all(files.map(file => stat(file)));
+-		if (stats.some(value => !value.isFile() || value.size > 2_000_000)) { return undefined; }
+-		const [project, release] = await Promise.all(files.map(file => readFile(file, 'utf8')));
+-		return parseStudioReleaseProject(folder.toString(), project, release, locale);
++		const read = async (name: string, limit: number) => {
++			const file = join(folder.fsPath, name);
++			const stat = await lstat(file).catch(() => undefined);
++			return stat?.isFile() && stat.size <= limit ? readFile(file, 'utf8') : undefined;
++		};
++		const [release, receipt] = await Promise.all([read('steamharness.release.json', 2_000_000), read('.steamharness/download.json', 2048)]);
++		if (!release && !receipt) { return undefined; }
++		const project = await read('steamharness.json', 2_000_000);
++		return project ? (release && parseStudioReleaseProject(folder.toString(), project, release, locale)) || downloadedStudioProject(folder.toString(), project, undefined, receipt) : undefined;
+ 	} catch { return undefined; }
+ }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 86304e2b91b314c9b3bc516ff4c8e950f8248326..0c00935e710c0a0faacee414e8f72c0810001c86 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -34,7 +34,8 @@ export interface StudioStartState {
+ 	hasWorkspace: boolean;
+ 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
+ 	projects: StudioOverviewProject[];
+-	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
++	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string;
++		distribution?: 'source' | 'release' | 'download'; artwork?: { cover?: { name: string; mtime: number }; entries?: string[]; files?: string[] } }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+ 	busy: boolean;
+ 	installing?: string;
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 568e3f3a5f9484e3b2b6d5608faf345c06c2a62d..a75ed855917c945b86592606b39ee5c70b661dc0 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -68,6 +68,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
+ const stateChange = new Emitter<StudioModeState>();
+ const modeChange = new Emitter<void>();
+ export const studioModeState = {
++	openedFromLibrary: false,
+ 	releaseProject: undefined as IStudioReleaseProject | undefined,
+ 	state: { available: false, labels: {} } as StudioModeState,
+ 	steam: false,
+@@ -84,7 +85,8 @@ export const studioModeState = {
+ };
+ 
+ /** Establish the release shell before layout, title controls, or editor restoration. */
+-export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined): void {
++export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {
++	studioModeState.openedFromLibrary = openedFromLibrary;
+ 	if (!project) { return; }
+ 	studioModeState.releaseProject = project;
+ 	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index c1546da5382b0af6c36870f137c2cfa836e20484..4336e4e29fb060425d4c8dbd218bd7bb1ad66d28 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -130,7 +130,7 @@ export class StudioModeContribution extends Disposable {
+ 		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, tools));
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+ 		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+-		this.requested = !!studioModeState.state.releaseOnly || storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		this.requested = !!studioModeState.state.releaseOnly || !studioModeState.openedFromLibrary && storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+ 		if (studioModeState.state.releaseOnly) {
+ 			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+ 			this.layout.mainContainer.classList.add('studio-steam-mode');
+diff --git a/src/vs/workbench/electron-browser/desktop.main.ts b/src/vs/workbench/electron-browser/desktop.main.ts
+index 0646dde8b43c284300ea4b56cbcde51263c7b371..1b536efdab7f34c399fb4c0f30c62aa06645553f 100644
+--- a/src/vs/workbench/electron-browser/desktop.main.ts
++++ b/src/vs/workbench/electron-browser/desktop.main.ts
+@@ -8,10 +8,12 @@ import product from '../../platform/product/common/product.js';
+ import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
+ import { Workbench } from '../browser/workbench.js';
+ import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
+-import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
++import { downloadedStudioProject, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+ import { joinPath } from '../../base/common/resources.js';
+ import { CommandsRegistry } from '../../platform/commands/common/commands.js';
+ import { StudioLaunchpad } from './studioLaunchpad.js';
++import { StudioNotificationInbox } from './studioNotificationInbox.js';
++import { INativeHostService } from '../../platform/native/common/native.js';
+ import { NativeWindow } from './window.js';
+ import { setFullscreen } from '../../base/browser/browser.js';
+ import { domContentLoaded } from '../../base/browser/dom.js';
+@@ -24,7 +26,7 @@ import { ILoggerService, ILogService, LogLevel } from '../../platform/log/common
+ import { NativeWorkbenchStorageService } from '../services/storage/electron-browser/storageService.js';
+ import { IWorkspaceContextService, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier, IAnyWorkspaceIdentifier, reviveIdentifier, toWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+ import { IWorkbenchConfigurationService } from '../services/configuration/common/configuration.js';
+-import { IStorageService } from '../../platform/storage/common/storage.js';
++import { IStorageService, StorageScope } from '../../platform/storage/common/storage.js';
+ import { Disposable } from '../../base/common/lifecycle.js';
+ import { ISharedProcessService } from '../../platform/ipc/electron-browser/services.js';
+ import { IMainProcessService } from '../../platform/ipc/common/mainProcessService.js';
+@@ -136,12 +138,19 @@ export class DesktopMain extends Disposable {
+ 		if (!release && isSingleFolderWorkspaceIdentifier(this.configuration.workspace)) {
+ 			const folder = this.configuration.workspace.uri;
+ 			const fileService = services.serviceCollection.get(IFileService) as IFileService;
++			const state = services.storageService.getObject('studio.studio-workstation', StorageScope.PROFILE) as Record<string, unknown> | undefined;
++			const imports = state?.['studio.importedProjects'];
++			// Main already checked local marker files. Re-read only a legacy installation or a remote folder.
++			const legacy = Array.isArray(imports) && imports.some(row => row?.uri === folder.toString());
+ 			try {
+-				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
+-				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString(), this.configuration.nls.language);
++				if (legacy || folder.scheme !== Schemas.file) {
++					const read = (name: string, size: number) => fileService.readFile(joinPath(folder, name), { limits: { size } }).then(file => file.value.toString(), () => undefined);
++					const [project, manifest, receipt] = await Promise.all([read('steamharness.json', 2_000_000), folder.scheme !== Schemas.file && read('steamharness.release.json', 2_000_000), folder.scheme !== Schemas.file ? read('.steamharness/download.json', 2048) : undefined]);
++					if (project) { release = (manifest && parseStudioReleaseProject(folder.toString(), project, manifest, this.configuration.nls.language)) || downloadedStudioProject(folder.toString(), project, imports, receipt); }
++				}
+ 			} catch { /* Ordinary folders have no release identity. */ }
+ 		}
+-		initializeStudioReleaseProject(release);
++		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary);
+ 
+ 		// Create Workbench
+ 		const workbench = new Workbench(mainWindow.document.body, {
+@@ -158,8 +167,11 @@ export class DesktopMain extends Disposable {
+ 		// Window
+ 		this._register(instantiationService.createInstance(NativeWindow));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalIsLaunchpad', () => !!this.configuration.isStudioLaunchpad));
++		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', accessor => accessor.get(INativeHostService).openStudioLaunchpadStore()));
++		this._register(CommandsRegistry.registerCommand('studio.internalRevealChat', accessor => accessor.get(INativeHostService).openStudioLaunchpadInbox()));
++		const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
+ 		if (this.configuration.isStudioLaunchpad) {
+-			this._register(instantiationService.createInstance(StudioLaunchpad));
++			this._register(instantiationService.createInstance(StudioLaunchpad, inbox));
+ 		}
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 982d6bbef895e16cdcb4e91cc000b75c5a81bf24..3e16431bbd138dc9fcfdfe3d8e10f9fa8664b8c3 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -2,176 +2,128 @@
+  *  Copyright (c) Microsoft Corporation. All rights reserved.
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+-
+ .studio-launchpad-window {
+ 	--lp-bg: var(--vscode-editor-background); --lp-side: var(--vscode-sideBar-background,var(--lp-bg));
+-	--lp-head: var(--lp-bg); --lp-chrome: var(--vscode-titleBar-activeBackground,var(--lp-side)); --lp-panel: var(--vscode-editorWidget-background,var(--lp-side));
+-	--lp-line: var(--vscode-panel-border,color-mix(in srgb,var(--lp-text) 14%,var(--lp-bg))); --lp-edge: var(--vscode-widget-border,color-mix(in srgb,var(--lp-text) 26%,var(--lp-bg)));
++	--lp-chrome: var(--vscode-titleBar-activeBackground,var(--lp-side)); --lp-panel: var(--vscode-editorWidget-background,var(--lp-side));
+ 	--lp-text: var(--vscode-foreground); --lp-strong: var(--vscode-editor-foreground,var(--lp-text)); --lp-muted: var(--vscode-descriptionForeground);
+-	--lp-accent: var(--vscode-textLink-foreground); --lp-selection: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover));
+-	--lp-hover: var(--vscode-list-hoverBackground,var(--lp-panel)); --lp-warn: var(--vscode-editorWarning-foreground,var(--lp-muted));
+-	--lp-mono: var(--monaco-monospace-font, ui-monospace, monospace); --lp-pad: clamp(18px, 2.1vw, 40px);
++	--lp-line: var(--vscode-panel-border,color-mix(in srgb,var(--lp-text) 15%,var(--lp-bg))); --lp-edge: var(--vscode-widget-border,color-mix(in srgb,var(--lp-text) 25%,var(--lp-bg)));
++	--lp-hover: var(--vscode-list-hoverBackground,var(--lp-panel)); --lp-accent: var(--vscode-textLink-foreground); --lp-pad: clamp(16px,2.5vw,40px);
+ }
+-.hc-black.studio-launchpad-window, .hc-light.studio-launchpad-window {
+-	--lp-line: var(--vscode-contrastBorder); --lp-edge: var(--lp-line);
+-}
+-/* Leave real traffic lights, caption buttons and the native drag region uncovered. */
++.hc-black.studio-launchpad-window,.hc-light.studio-launchpad-window { --lp-line: var(--vscode-contrastBorder); --lp-edge: var(--lp-line); }
+ .monaco-workbench.studio-launchpad-window .part:not(.titlebar) { visibility: hidden; }
+-/* Grid sashes are siblings of the hidden parts. Remove their grips and hit targets on both axes. */
+ .monaco-workbench.studio-launchpad-window > .monaco-grid-view .monaco-split-view2 > .sash-container { display: none; }
+ .monaco-workbench.studio-launchpad-window .part.titlebar { background-color: var(--lp-chrome) !important; }
+ .monaco-workbench.studio-launchpad-window .part.titlebar .titlebar-container > :is(.titlebar-left,.titlebar-center,.titlebar-right) > :not(.window-controls-container) { display: none !important; }
+-.studio-launchpad { position: absolute; inset: 0; z-index: 24; display: grid; grid-template-rows: var(--studio-launchpad-bar,44px) minmax(0,1fr) 34px; pointer-events: none; color: var(--lp-text); font: 13px/1.45 var(--vscode-font-family,system-ui); user-select: text; -webkit-user-select: text; }
++.studio-launchpad { position: absolute; inset: 0; z-index: 24; display: grid; grid-template-rows: var(--studio-launchpad-bar,44px) 56px minmax(0,1fr) 38px; pointer-events: none; color: var(--lp-text); font: 13px/1.45 var(--vscode-font-family,system-ui); user-select: text; -webkit-user-select: text; }
+ .studio-launchpad *, .studio-launchpad { box-sizing: border-box; }
+-.studio-launchpad [hidden], .studio-launchpad[hidden] { display: none !important; }
++.studio-launchpad { grid-template-columns: minmax(0,1fr); }
++.studio-launchpad [hidden],.studio-launchpad[hidden] { display: none !important; }
+ .studio-launchpad :is(h1,h2,p) { margin: 0; }
+-.studio-launchpad button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; user-select: text; }
++.studio-launchpad h1 { font-size: 24px; font-weight: 600; line-height: 1.22; color: var(--lp-strong); }
++.studio-launchpad h2 { font-size: 17px; font-weight: 600; line-height: 1.35; }
++.studio-launchpad small { color: var(--lp-muted); }
++.studio-launchpad button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text; padding: 4px 7px; border-radius: 4px; }
+ .studio-launchpad button:disabled { opacity: .55; cursor: default; }
+-.monaco-workbench .studio-launchpad[tabindex]:focus, .monaco-workbench .studio-launchpad :focus:not(:focus-visible), .monaco-workbench .studio-launchpad-app-close:focus:not(:focus-visible) { outline: none; }
+-.monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible, .monaco-workbench .studio-launchpad-app-close:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus, .monaco-workbench .studio-launchpad-app-close.lp-pointer:focus { outline: none; }
+-.studio-launchpad .codicon { flex: none; }
+-.lp-titlebar { display: grid; grid-template-columns: minmax(0,1fr) min(39%,464px) minmax(0,1fr); align-items: center; padding-inline: 12px; gap: 6px; border-bottom: 1px solid var(--lp-line); }
++.studio-launchpad button:hover:not(:disabled) { background: var(--lp-hover); }
++.monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
++.monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
++.lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager,.lp-profile-nav { display: flex; align-items: center; gap: 8px; }
++.lp-titlebar { padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+ .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
+-.lp-window-name { margin-inline-start: var(--lp-controls-left,0px); font-size: 12px; color: var(--lp-muted); white-space: nowrap; }
+-.lp-window-name strong { color: var(--lp-text); font-weight: 600; }
+-.studio-launchpad .lp-command-center { width: 100%; height: 27px; background: var(--lp-hover); border: 1px solid var(--lp-edge); border-radius: 6px; color: var(--lp-text); font-size: 12px; }
+-.lp-command-center .codicon { font-size: 14px; }
+-.lp-utilities { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-inline-end: var(--lp-controls-right,0px); }
+-.lp-links { display: flex; align-items: center; }
+-.lp-links button, .studio-launchpad .lp-compact-resources { height: 28px; padding: 0 5px; font-size: 12px; color: var(--lp-muted); white-space: nowrap; border-radius: 4px; }
+-.lp-links .codicon { font-size: 13px; }
+-.lp-links button:hover, .lp-compact-resources:hover, .lp-tool:hover, .lp-command-center:hover { background: var(--lp-hover); color: var(--lp-strong); }
+-.lp-utilities:has(.lp-account:not([hidden])) .lp-links { padding-inline-end: 7px; border-inline-end: 1px solid var(--lp-edge); }
+-.studio-launchpad .lp-compact-resources, .lp-compact-label { display: none; }
+-.lp-account .lp-avatar { width: 24px; height: 24px; }
+-.lp-account .lp-avatar img, .lp-account-identity .lp-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+-.lp-home, .lp-statusbar, .lp-dialog { pointer-events: auto; }
+-.lp-home { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--lp-bg); }
+-.lp-project-drop { position: absolute; grid-row: 2 / 3; inset: 0; z-index: 1; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; background: color-mix(in srgb,var(--lp-bg) 88%,transparent); color: var(--lp-strong); font-weight: 600; }
+-.lp-project-drop .codicon { font-size: 24px; }
++.lp-brand { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
++.lp-brand img { height: 42px; width: 42px; object-fit: contain; }
++.lp-utilities .lp-tool,.studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
++.lp-has-unread::after { content: ''; position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent); }
++.lp-avatar { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; overflow: hidden; border-radius: 5px; background: var(--lp-panel); }
++.lp-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
++.lp-utilities .lp-avatar { width: 24px; height: 24px; }
++.lp-navigation,.lp-statusbar,.lp-panels,.lp-dialog,.lp-project-drop { pointer-events: auto; }
++.lp-navigation { justify-content: space-between; padding-inline: var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-chrome); }
++.lp-tabs { display: flex; align-items: stretch; height: 100%; gap: clamp(6px,2vw,26px); }
++.studio-launchpad .lp-tabs button { border-radius: 0; padding: 0 2px; border-bottom: 3px solid transparent; font-size: 18px; font-weight: 550; color: var(--lp-muted); white-space: nowrap; }
++.studio-launchpad .lp-tabs [aria-selected=true] { color: var(--lp-accent); border-color: currentColor; }
++.lp-panels { position: relative; min-height: 0; min-width: 0; background: var(--lp-bg); overflow: hidden; }
++.lp-panels > * { height: 100%; min-width: 0; }
+ .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+-.lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
+-.lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }
+-.lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
+-.lp-identity { gap: 13px; } .lp-app-mark { --lp-mark-size: 60px; flex: none; display: grid; place-items: center; width: var(--lp-mark-size); height: var(--lp-mark-size); background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 8px; }
+-.lp-app-mark img { width: calc(var(--lp-mark-size) - 8px); height: calc(var(--lp-mark-size) - 8px); object-fit: contain; }
+-.lp-identity h1 { font-size: 25px; line-height: 1.17; font-weight: 650; color: var(--lp-strong); }
+-.lp-local { margin-block-start: 4px; gap: 5px; font-size: 11.5px; color: var(--lp-muted); }
+-.lp-local .codicon, .lp-link .codicon { font-size: 13px; }
+-.lp-actions { gap: 8px; } .studio-launchpad :is(.lp-outline,.lp-primary) { min-height: 31px; padding: 4px 12px; border: 1px solid var(--lp-edge); border-radius: 5px; white-space: nowrap; font-weight: 550; font-size: 12.5px; background: var(--lp-panel); }
+-.studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-border,transparent); }
+-.studio-launchpad .lp-primary:hover { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); } .studio-launchpad .lp-outline:hover { background: var(--lp-hover); }
+-.lp-primary .codicon { color: inherit; }
+-.lp-columns { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0,1.94fr) minmax(248px,1fr); }
+-.lp-columns:has(.lp-side[hidden]) { grid-template-columns: minmax(0,1fr); }
+-.lp-projects, .lp-side { display: flex; flex-direction: column; min-width: 0; padding: clamp(18px,2.7vh,30px) var(--lp-pad) 18px; gap: clamp(21px,3.4vh,34px); }
+-.lp-side { padding-inline: clamp(13px,1.55vw,30px); border-inline-start: 1px solid var(--lp-line); background: var(--lp-side); }
+-.lp-section-head { gap: 8px; min-height: 27px; margin-block-end: 10px; }
+-.lp-section-head h2, .lp-dialog h2 { font-size: 17px; font-weight: 610; line-height: 1.4; color: var(--lp-strong); }
+-.lp-count { min-width: 19px; padding: 0 4px; text-align: center; border: 1px solid var(--lp-edge); border-radius: 5px; color: var(--lp-muted); font: 11px/17px var(--lp-mono); }
+-.lp-section-head > :is(.lp-find,.lp-link) { margin-inline-start: auto; }
+-.studio-launchpad .lp-link { min-height: 26px; color: var(--lp-accent); font-size: 12px; }
+-.lp-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+-.lp-tool { flex: none; width: 26px; height: 26px; border-radius: 4px; }
+-.studio-launchpad .lp-find { height: 26px; border: 1px solid var(--lp-edge); border-radius: 4px; padding-inline: 7px; color: var(--lp-muted); font-size: 11.5px; }
+-.lp-find .codicon { font-size: 13px; }
+-.lp-live-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; max-height: 320px; }
+-.studio-launchpad .lp-live-project { flex-direction: column; align-items: stretch; gap: 0; overflow: hidden; min-width: 0; text-align: start; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 7px; }
+-.studio-launchpad .lp-live-project:hover { border-color: var(--lp-muted); }
+-.lp-plate { --plate-ink: var(--lp-muted); --plate-right: color-mix(in srgb,var(--plate-ink) 18%,var(--lp-panel)); position: relative; display: block; overflow: hidden; height: clamp(58px,8.4vh,91px); color: var(--plate-ink); background: radial-gradient(circle at 1px 1px,color-mix(in srgb,currentColor 22%,transparent) .7px,transparent 1px) 0 0/10px 10px,linear-gradient(110deg,var(--lp-panel),var(--plate-right)); }
+-.lp-plate:is([data-tone=workspace],[data-tone=workflow]) { --plate-ink: var(--vscode-symbolIcon-classForeground,var(--lp-accent)); }
+-.lp-plate[data-tone=bot] { --plate-ink: var(--vscode-symbolIcon-methodForeground,var(--lp-muted)); }
+-.lp-plate[data-tone=kanban], .lp-plate[data-tone=aggregate] { --plate-ink: var(--vscode-symbolIcon-enumeratorForeground,var(--lp-muted)); }
+-.lp-plate-kind { position: absolute; inset: 6px auto auto 8px; display: flex; align-items: center; gap: 4px; font-size: 10.5px; } .lp-plate-kind .codicon { font-size: 12px; }
+-.lp-plate-art { position: absolute; inset: 0 6% 0 auto; width: 50%; display: grid; place-items: center; }
+-.lp-plate-art > .codicon { font-size: 41px; transform: skewY(-12deg); text-shadow: -2px 2px var(--plate-right),-4px 4px currentColor; }
+-.lp-plate-art img { width: 44px; height: 44px; object-fit: contain; border-radius: 5px; }
+-.lp-window-body { display: grid; gap: 5px; min-width: 0; padding: 8px 10px; } .lp-window-body strong { font-size: 14px; font-weight: 600; }
+-.lp-window-status, .lp-foot, .lp-spread { justify-content: space-between; gap: 6px; }
+-.lp-window-status > .codicon, .lp-card > .codicon { color: var(--lp-muted); font-size: 13px; }
+-.lp-open { font-size: 11px; white-space: nowrap; color: var(--lp-accent); }
+-.lp-open::before { content: ''; display: inline-block; vertical-align: .08em; width: 5px; height: 5px; margin-inline-end: 5px; border: 1px solid currentColor; border-radius: 2px; }
+-.lp-history { --lp-state-width: 96px; }
+-.lp-table-head, .lp-project-row { display: grid; grid-template-columns: minmax(0,1fr) var(--lp-state-width) 80px 24px; align-items: center; gap: 6px; padding-inline: 8px; }
+-.lp-table-head { min-height: 25px; border-bottom: 1px solid var(--lp-edge); font-size: 10.8px; color: var(--lp-muted); } .lp-table-head > :last-child { clip-path: inset(50%); }
+-.lp-history-list { max-height: clamp(210px,34vh,410px); }
+-.lp-project-row { min-height: clamp(41px,5.6vh,58px); border-bottom: 1px solid var(--lp-line); }
+-.lp-project-row:hover, .lp-chat:hover, .lp-card:hover { background: var(--lp-hover); }
+-.lp-project-row[aria-selected=true] { background: var(--lp-selection); box-shadow: inset 2px 0 var(--lp-accent); }
+-.lp-project-name { gap: 9px; } .lp-tile { flex: none; display: grid; place-items: center; width: 29px; height: 29px; border-radius: 5px; color: var(--lp-warn); background: color-mix(in srgb,currentColor 10%,var(--lp-bg)); }
+-.lp-tile.lp-workspace { color: var(--lp-accent); } .lp-tile img { width: 100%; height: 100%; border-radius: inherit; object-fit: contain; }
+-.lp-pair { display: grid; min-width: 0; text-align: start; } .lp-pair strong { font-weight: 560; }
+-.lp-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+-.lp-project-heading { gap: 5px; } .lp-project-type { flex: none; color: var(--lp-muted); font-size: 10px; padding-inline: 4px; line-height: 15px; border: 1px solid var(--lp-edge); border-radius: 4px; }
+-.lp-path { color: var(--lp-muted); font: 10.8px/1.55 var(--lp-mono); }
+-.lp-project-row time, .lp-foot { color: var(--lp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+-.lp-history-status { display: grid; justify-items: start; align-content: center; gap: 1px; white-space: nowrap; }
+-.lp-state-label { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border: 1px solid var(--vscode-contrastBorder,transparent); border-radius: 5px; font-size: 11.5px; line-height: 17px; font-weight: 550; color: var(--lp-muted); background: color-mix(in srgb,currentColor 6%,transparent); }
+-.lp-state-label .codicon { font-size: 13px; }
+-.lp-history-status[data-state=open] .lp-state-label { color: var(--lp-accent); background: color-mix(in srgb,currentColor 11%,transparent); }
+-.lp-history-status[data-state=missing] .lp-state-label { color: var(--vscode-list-warningForeground,var(--lp-warn)); background: color-mix(in srgb,currentColor 10%,transparent); }
+-.lp-state-detail { display: inline-flex; align-items: center; gap: 5px; padding-inline-start: 8px; font-size: 10.5px; line-height: 14px; color: var(--lp-muted); }
+-.lp-state-detail .codicon { width: 13px; font-size: 11px; }
+-.lp-row-more { opacity: 0; } .lp-project-row:is(:hover,:focus-within,[aria-selected=true]) .lp-row-more { opacity: 1; } .lp-foot { min-height: 33px; }
+-.lp-empty { grid-column: 1/-1; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 65px; padding: 10px; color: var(--lp-muted); font-size: 12px; text-align: center; border: 1px dashed var(--lp-edge); border-radius: 5px; }
+-.lp-unread, .lp-badge { flex: none; font-size: 10.5px; padding: 1px 5px; border-radius: 4px; }
+-.lp-unread { color: var(--lp-warn); background: color-mix(in srgb,var(--lp-warn) 10%,var(--lp-side)); }
+-.lp-badge { color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); }
+-.studio-launchpad :is(.lp-chat,.lp-card) { width: 100%; min-width: 0; min-height: 57px; justify-content: flex-start; text-align: start; padding: 6px 2px; gap: 10px; border-bottom: 1px solid var(--lp-line); }
+-.lp-chat .lp-pair, .lp-card .lp-pair { flex: 1; gap: 3px; } .lp-pair small:not(.lp-path) { color: var(--lp-muted); font-size: 11.5px; }
+-.lp-chat time { flex: none; font: 10.5px var(--lp-mono); color: var(--lp-muted); }
+-.lp-avatar, .lp-store-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--lp-hover); color: var(--lp-text); object-fit: cover; }
+-.lp-group, .lp-store-mark { border-radius: 7px; } .lp-store-mark { width: 33px; height: 33px; background: #3063af; color: white; overflow: hidden; }
+-.lp-store-mark[data-type=kanban] { background: #a85416; } .lp-store-mark[data-type=bot] { background: #67558b; } .lp-store-mark img { width: 100%; height: 100%; }
+-.lp-card .lp-pair { overflow-wrap: anywhere; } .lp-chat-list > .lp-link { display: flex; margin: 4px auto; }
+-.lp-statusbar { display: flex; align-items: center; gap: 9px; padding: 0 16px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); color: var(--lp-muted); font-size: 11px; }
+-.lp-device { display: flex; align-items: center; gap: 5px; margin-inline-end: auto; } .lp-statusbar .codicon { font-size: 13px; }
+-.lp-statusbar button { height: 100%; padding-inline: 6px; } .lp-statusbar button:hover { background: var(--lp-hover); }
+-.lp-connection::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-inline-end: 6px; border-radius: 50%; background: var(--lp-muted); } .lp-connection[data-state=connected]::before { background: var(--lp-accent); }
+-.lp-dialog { width: min(400px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 8px; box-shadow: 0 12px 38px #0005; }
++.lp-scroll:hover,.lp-scroll:focus-within { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
++.lp-library { display: grid; grid-template-columns: clamp(168px,21%,270px) minmax(0,1fr); }
++.lp-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 12px; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); }
++.lp-index { display: flex; flex-direction: column; gap: 2px; }
++.studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
++.lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
++.lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
++.lp-shelf,.lp-profile,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
++.lp-library-title,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
++.lp-shelf-head { justify-content: flex-start; margin-bottom: 10px; }
++.lp-collection { margin-top: 24px; }
++.lp-library-grid,.lp-store-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(156px,100%),1fr)); gap: 14px; }
++.lp-recent .lp-library-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(178px,32%); grid-template-columns: none; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
++.lp-recent .lp-library-grid:hover { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
++.lp-library-item { position: relative; min-width: 0; }
++.studio-launchpad .lp-library-card { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; background: var(--lp-side); border: 1px solid var(--lp-line); border-radius: 5px; }
++.studio-launchpad .lp-library-card:hover { border-color: var(--lp-edge); }
++.lp-caption { display: flex; flex-direction: column; min-width: 0; gap: 6px; padding: 9px; }
++.lp-card-tags,.lp-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
++.lp-edition { color: var(--lp-muted); font-size: 11px; }
++.lp-card-tags small { font-size: 10px; } .lp-card-tags .lp-state { color: var(--lp-accent); }
++.studio-launchpad .lp-card-more { position: absolute; top: 5px; right: 5px; width: 25px; height: 24px; background: var(--lp-panel); opacity: 0; }
++.lp-library-item:is(:hover,:focus-within) .lp-card-more { opacity: 1; }
++.lp-artwork { --ink: #5483b6; display: grid; place-items: center; position: relative; isolation: isolate; overflow: hidden; width: 100%; aspect-ratio: 16/9; background-color: color-mix(in srgb,var(--ink) 30%,var(--lp-side)); background-image: repeating-linear-gradient(128deg,transparent 0 30px,color-mix(in srgb,var(--ink) 12%,transparent) 30px 31px); }
++.lp-artwork[data-ink="1"] { --ink: #9f657e; } .lp-artwork[data-ink="2"] { --ink: #a78251; } .lp-artwork[data-ink="3"] { --ink: #8778ae; } .lp-artwork[data-ink="4"] { --ink: #66829b; }
++.lp-art-stack { width: 43%; height: 58%; position: relative; display: grid; place-items: center; container-type: size; }
++.lp-art-stack > * { grid-area: 1/1; width: min(54cqw,78cqh); height: min(54cqw,78cqh); border-radius: 12%; object-fit: contain; box-shadow: 0 2px 6px #0003; }
++.lp-art-stack > .codicon { display: grid; place-items: center; box-shadow: none; font-size: min(50cqw,64cqh); color: color-mix(in srgb,var(--lp-strong) 78%,var(--ink)); }
++.lp-art-stack:has(>:nth-child(2)) > :first-child { transform: translate(-32%,-8%) rotate(-12deg); }
++.lp-art-stack:has(>:nth-child(2)) > :last-child { transform: translate(32%,7%) rotate(9deg); }
++.lp-art-stack:has(>:nth-child(3)) > :nth-child(2) { transform: translateY(-5%); }
++.lp-art-file { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; background: color-mix(in srgb,var(--ink) 25%,#fff); color: #263242; }
++.lp-art-file small { font: 600 min(16cqw,19cqh)/1 monospace; color: inherit; text-transform: uppercase; }
++.lp-file-lines { width: 58%; height: 12%; border-block: 1px solid currentColor; opacity: .3; }
++.lp-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
++.lp-search-field { display: flex; align-items: center; gap: 6px; padding-inline: 7px; border: 1px solid var(--lp-edge); background: var(--vscode-input-background,var(--lp-panel)); border-radius: 4px; }
++.lp-query { min-width: 0; width: 100%; height: 30px; font: inherit; padding-inline: 6px; background: var(--vscode-input-background,var(--lp-panel)); border: 1px solid var(--lp-edge); color: var(--vscode-input-foreground,var(--lp-text)); border-radius: 4px; }
++.lp-search-field .lp-query { border: 0; }
++.studio-launchpad :is(.lp-filters,.lp-profile-nav) [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
++.studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
++.studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
++.lp-store-page { padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
++.lp-store-toolbar { margin-bottom: 19px; }
++.lp-store-feature { margin-block: 15px 20px; display: grid; grid-template-columns: minmax(0,1.65fr) minmax(180px,1fr); background: var(--lp-side); }
++.lp-feature-info { padding: clamp(12px,2vw,26px); display: grid; align-content: center; gap: 9px; overflow-wrap: anywhere; }
++.lp-feature-info h2 { font-size: 23px; } .lp-feature-info p { max-height: 9em; overflow: auto; }
++.lp-section-kicker,.lp-feature-meta,.lp-message,.lp-store-status { color: var(--lp-muted); font-size: 12px; }
++.lp-store-status { margin-block: 16px 8px; } .lp-pager { justify-content: center; margin-block: 14px; }
++.lp-community { display: grid; justify-items: center; align-content: center; gap: 12px; } .lp-community > .codicon { font-size: 34px; color: var(--lp-muted); }
++.lp-profile-header { justify-content: flex-start; padding-block: 12px 25px; border-bottom: 1px solid var(--lp-line); } .lp-profile-header > div { margin-inline-end: auto; }
++.lp-profile-header .lp-avatar { width: 54px; height: 54px; font-size: 22px; }
++.lp-profile-nav { padding-block: 12px; flex-wrap: wrap; } .lp-profile > .lp-query { max-width: 350px; margin-bottom: 8px; }
++.lp-social-row { display: flex; align-items: center; flex-wrap: wrap; min-height: 58px; gap: 9px; border-bottom: 1px solid var(--lp-line); }
++.lp-social-text { flex: 1; min-width: 60px; display: grid; overflow-wrap: anywhere; }
++.lp-empty { padding: 30px 0; color: var(--lp-muted); display: flex; align-items: center; gap: 8px; }
++.lp-statusbar { padding-inline: 12px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); }
++.lp-chat-launch { margin-inline-start: auto; } .lp-chat-launch:not([data-count=""])::after { content: attr(data-count); color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); padding: 0 5px; border-radius: 4px; }
++.lp-dialog { width: min(420px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 6px; box-shadow: 0 12px 38px #0005; }
+ .lp-dialog::backdrop { background: #0006; } .lp-dialog.lp-quick::backdrop { background: transparent; }
+-.lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); font-size: 12px; padding-block: 6px; }
+-.lp-account-profile { padding-block: 12px; margin-block-end: 5px; border-bottom: 1px solid var(--lp-line); overflow-wrap: anywhere; }
+-.lp-account-identity { display: flex; align-items: center; gap: 10px; }
+-.lp-account-identity .lp-avatar { width: 40px; height: 40px; }
+-.lp-account-identity .lp-avatar .codicon { font-size: 21px; }
+-.lp-account-identity > div { min-width: 0; }
+-.lp-account-email, .lp-account-details dt { color: var(--lp-muted); }
+-.lp-account-details { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 12px; margin: 10px 0 0; font-size: 12px; }
+-.lp-account-details dd { margin: 0; }
+-.lp-dialog .lp-choice { display: flex; width: 100%; justify-content: flex-start; gap: 10px; min-height: 34px; padding-inline: 8px; border-radius: 4px; }
+-.lp-choice:hover, .lp-dismiss:hover { background: var(--lp-hover); } .lp-dialog .lp-dismiss { margin-block-start: 7px; padding: 4px 8px; color: var(--lp-muted); }
+-.lp-dialog.lp-quick { width: min(560px,calc(100% - 16px)); max-height: calc(100% - 52px); margin: 0 auto; top: calc(var(--studio-launchpad-bar,44px) / 2 + 17px); padding: 0; }
+-.lp-filter, .lp-quick-foot { display: flex; align-items: center; padding: 6px 8px; gap: 6px; }
+-.lp-query { flex: 1; min-width: 0; height: 30px; border-radius: 4px; border: 1px solid var(--lp-edge); background: var(--vscode-input-background,var(--lp-bg)); color: var(--vscode-input-foreground,var(--lp-text)); font: inherit; padding-inline: 7px; }
+-.lp-quick-heading, .lp-quick-empty { color: var(--lp-muted); padding: 3px 13px; font-size: 11.5px; }
+-.lp-results { max-height: min(44vh,330px); padding: 0 4px; }
+-.lp-option { display: grid; grid-template-columns: 16px fit-content(60%) minmax(0,1fr); align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+-.lp-option strong { font-weight: 550; } .lp-option small { color: var(--lp-muted); font: 11px var(--lp-mono); } .lp-option:hover { background: var(--lp-hover); } .lp-option[aria-selected=true] { background: var(--lp-selection); }
+-.lp-quick-foot { margin-top: 4px; border-top: 1px solid var(--lp-edge); padding-block: 3px; }
+-.studio-launchpad-app, .studio-launchpad-settings { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
+-.studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); display: flex; align-items: center; gap: 4px; height: 26px; border: 0; border-radius: 4px; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
+-.studio-launchpad-app-close:hover { background: var(--lp-hover); }
+-.studio-launchpad-app[inert] { visibility: hidden; pointer-events: none; }
+-.studio-launchpad-app-close[hidden] { display: none; }
+-@media (max-width: 1250px) { .lp-columns { grid-template-columns: minmax(0,1.85fr) minmax(248px,1fr); } .lp-table-head,.lp-project-row { grid-template-columns: minmax(0,1fr) var(--lp-state-width) 74px 24px; gap: 4px; } }
+-.lp-titlebar.lp-tight .lp-links { display: none; } .lp-titlebar.lp-tight .lp-compact-resources { display: inline-flex; }
+-@media (max-width: 1000px) { .lp-links { display: none; } .studio-launchpad .lp-compact-resources { display: inline-flex; } }
+-@media (max-width: 860px) { .lp-columns { grid-template-columns: minmax(0,1fr); } .lp-side { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; border-inline-start: 0; border-top: 1px solid var(--lp-line); } .lp-history-list { max-height: 258px; } }
+-@media (max-width: 650px) {
+-	.studio-launchpad { --lp-pad: 13px; grid-template-rows: var(--studio-launchpad-bar,44px) minmax(0,1fr) 32px; }
+-	.lp-window-name, .lp-wide-label { display: none; } .lp-compact-label { display: inline; } .lp-command-center { grid-column: 2; }
+-	.lp-titlebar { padding-inline: 6px; grid-template-columns: minmax(var(--lp-controls-left,0px),1fr) minmax(70px,35%) minmax(max-content,1fr); }
+-	.lp-header { min-height: 67px; } .lp-app-mark { --lp-mark-size: 44px; } .lp-identity { gap: 7px; } .lp-identity h1 { font-size: 19px; }
+-	.lp-side { grid-template-columns: minmax(0,1fr); } .lp-section-head { gap: 5px; } .lp-section-head h2 { font-size: 16px; } .lp-table-head, .lp-project-row { padding-inline: 4px; }
++.lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); padding-block: 7px; }
++.lp-dialog .lp-choice { display: flex; width: 100%; justify-content: flex-start; gap: 10px; min-height: 34px; }
++.lp-dialog.lp-quick { width: min(560px,calc(100% - 16px)); margin: 0 auto; top: max(8px,var(--studio-launchpad-bar)); padding: 8px; }
++.lp-filter,.lp-option { display: flex; align-items: center; gap: 8px; } .lp-results { max-height: 45vh; } .lp-option { min-height: 30px; cursor: pointer; } .lp-option[aria-selected=true] { background: var(--lp-hover); }
++.lp-project-drop { position: absolute; inset: var(--studio-launchpad-bar) 0 0; display: grid; align-content: center; justify-items: center; background: color-mix(in srgb,var(--lp-bg) 94%,transparent); border: 2px dashed var(--lp-edge); pointer-events: none; }
++.studio-launchpad-settings { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
++.studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); height: 26px; border: 0; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
++.studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
++.studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
++@media (max-width: 700px) {
++	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
++	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
++	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
+ }
+-@media (max-width: 540px) {
+-	.lp-live-list { grid-template-columns: 1fr; gap: 6px; max-height: 180px; } .studio-launchpad .lp-live-project { flex-direction: row; } .lp-plate { width: 55px; height: 45px; flex: none; } .lp-plate-kind { display: none; } .lp-plate-art { inset: 0; width: 100%; } .lp-plate-art img { width: 28px; height: 28px; } .lp-plate-art > .codicon { font-size: 23px; }
+-	.lp-window-body { flex: 1; display: flex; justify-content: space-between; align-items: center; } .lp-window-body strong { font-size: 12.5px; }
+-	.lp-table-head, .lp-project-row { grid-template-columns: minmax(0,1fr) var(--lp-state-width) 23px; } .lp-table-head > :nth-child(3), .lp-project-row time { display: none; }
+-	.lp-actions { gap: 4px; } .studio-launchpad :is(.lp-primary,.lp-outline) { padding-inline: 6px; font-size: 11.5px; } .lp-option { grid-template-columns: 16px minmax(0,1fr); gap: 0 6px; } .lp-option small { grid-column: 2; }
++@media (max-width: 480px) {
++	.lp-create-label { display: none; } .studio-launchpad .lp-create { flex: 0 0 28px; height: 28px; }
++	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); } .lp-brand { min-width: 0; overflow: hidden; } .lp-utilities { flex: none; }
++	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
++	.lp-store-feature > .lp-artwork { max-height: 165px; } .lp-utilities { gap: 3px; } .lp-brand img { width: 33px; }
++	.lp-profile-nav { gap: 2px; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ }
+-@media (max-width: 425px) { .lp-header { flex-wrap: wrap; gap: 5px; } .lp-identity h1 { font-size: 17px; } .lp-local { font-size: 10.5px; } .lp-app-mark { --lp-mark-size: 40px; } }
+-@media (min-width: 861px) and (max-height: 700px) { .lp-header { min-height: 67px; padding-block: 7px; } .lp-projects,.lp-side { padding-block: 13px; gap: 16px; } .lp-section-head { margin-bottom: 6px; } .lp-plate { height: 54px; } .lp-window-body { padding-block: 6px; } .studio-launchpad :is(.lp-chat,.lp-card) { min-height: 47px; } }
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d59a16267f0981785b8a7a8b339bd490e51ed38
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -0,0 +1,66 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { addDisposableListener } from '../../base/browser/dom.js';
++import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
++import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { URI } from '../../base/common/uri.js';
++import { IOpenerService } from '../../platform/opener/common/opener.js';
++import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
++import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
++
++export interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
++interface MountedChat { window: IAuxiliaryWindow; webview: IWebviewElement; ready: Promise<boolean>; dispose(): void }
++
++/** The runtime belongs to the resident host, but the chat document only ever lives in its own window. */
++export class StudioChatWindow extends Disposable {
++	private prepared?: { key: string; app: LaunchpadApp };
++	private readonly chat = this._register(new MutableDisposable<MountedChat>());
++	private opening?: Promise<MountedChat | undefined>;
++
++	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService, private readonly social: (section: 'people' | 'favorites') => void) { super(); }
++
++	prepare(key: string, app: LaunchpadApp): boolean {
++		if (this.prepared?.key !== key) { this.chat.clear(); this.opening = undefined; this.prepared = { key, app }; }
++		return true;
++	}
++	clear(key: string): void { if (this.prepared?.key === key) { this.prepared = undefined; this.opening = undefined; this.chat.clear(); } }
++	async show(key: string, conversation?: string): Promise<boolean> {
++		const prepared = this.prepared;
++		if (!prepared || prepared.key !== key || this._store.isDisposed) { return false; }
++		if (!this.chat.value && !this.opening) {
++			const pending = this.mount(prepared); this.opening = pending;
++			try { await pending; } finally { if (this.opening === pending) { this.opening = undefined; } }
++		} else if (this.opening) { await this.opening; }
++		const chat = this.chat.value;
++		if (!chat || !await chat.ready || this.chat.value !== chat || this.prepared !== prepared) { return false; }
++		chat.window.window.focus(); chat.webview.focus(); return chat.webview.postMessage({ type: 'studio-launchpad-view', visible: true, conversation });
++	}
++	private async mount(prepared: { key: string; app: LaunchpadApp }): Promise<MountedChat | undefined> {
++		const window = await this.windows.open({ bounds: { width: 920, height: 680 }, nativeTitlebar: true });
++		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
++		const life = new DisposableStore(); life.add(window);
++		try {
++			const app = prepared.app, ready = new DeferredPromise<boolean>(); life.add(toDisposable(() => { void ready.complete(false); }));
++			const doc = window.window.document; doc.title = app.title;
++			const host = doc.createElement('div'); host.className = 'studio-chat-window'; window.container.append(host);
++			const webview = life.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
++				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
++			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
++			const close = () => { if (this.chat.value === chat) { this.chat.clear(); } };
++			this.chat.value = chat; life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
++			const deadline = life.add(new RunOnceScheduler(close, 20_000));
++			life.add(webview.onMessage(({ message }) => {
++				if (message?.type === 'studio-launchpad-social' && (message.section === 'people' || message.section === 'favorites')) { this.social(message.section); }
++				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
++				if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
++					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
++				}
++			}));
++			life.add(addDisposableListener(doc, 'visibilitychange', () => { void webview.postMessage({ type: 'studio-launchpad-view', visible: !doc.hidden }); }));
++			webview.mountTo(host, window.window); webview.setHtml(app.html); deadline.schedule(); return chat;
++		} catch (e) { if (this.chat.value?.window === window) { this.chat.clear(); } life.dispose(); throw e; }
++	}
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 282bef4bb36e2fbb1d225b553a65fb1967cee24d..b580c85069479578eb7201c6a22ba177f13b794d 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -6,7 +6,8 @@
+ import { DataTransfers } from '../../base/browser/dnd.js';
+ import { addDisposableListener, DragAndDropObserver } from '../../base/browser/dom.js';
+ import { mainWindow } from '../../base/browser/window.js';
+-import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
++import { RunOnceScheduler } from '../../base/common/async.js';
++import { encodeBase64 } from '../../base/common/buffer.js';
+ import { CancellationTokenSource } from '../../base/common/cancellation.js';
+ import { Event } from '../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+@@ -26,36 +27,45 @@ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
+-import { IOverlayWebview, IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
++import { IOverlayWebview, IWebviewService } from '../contrib/webview/browser/webview.js';
++import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
++import type { StudioNotificationInbox } from './studioNotificationInbox.js';
+ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
+ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
+ import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
++import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
++import { SocialSnapshot } from './studioLaunchpadProfile.js';
++import { CatalogPage } from './studioLaunchpadStore.js';
+ import './media/studioLaunchpad.css';
+ 
+-interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
+-interface ResidentApp { key: string; surface: HTMLElement; back: HTMLButtonElement; webview: IWebviewElement; ready: DeferredPromise<boolean>; dispose(): void }
++type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version'>;
+ type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
+ const launchpadSettingsViewType = 'studio.launchpadSettings';
+ 
+ export class StudioLaunchpad extends Disposable {
+ 	private readonly view: StudioLaunchpadView;
+-	private readonly app = this._register(new MutableDisposable<ResidentApp>());
++	private readonly chat: StudioChatWindow;
++	private readonly covers = new Map<string, Promise<string | undefined>>();
+ 	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
+ 	private requestId?: string;
+ 	private windows: LaunchpadProject[] = [];
+ 	private recent: LaunchpadProject[] = [];
+-	private readonly savedProjects = new Map<string, Pick<LaunchpadProject, 'name' | 'projectType' | 'avatarUrl' | 'lastOpened'>>();
++	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
+ 	private readonly missing = new Set<string>();
+ 	private readonly editsSinceSnapshot = new Map<number, boolean>();
+ 	private inbox?: LaunchpadInbox;
+ 	private account?: LaunchpadState['account'];
+ 	private windowRevision = 0;
+ 	private inboxRevision = 0;
++	private noticeRevision = 0;
++	private socialUnread = false;
++	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
+ 	private readonly language = getNLSLanguage() ?? 'en';
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+ 
+ 	constructor(
++		private readonly notices: StudioNotificationInbox,
+ 		@IStudioStartService private readonly start: IStudioStartService,
+ 		@INativeHostService private readonly native: INativeHostService,
+ 		@IWorkspacesService private readonly workspaces: IWorkspacesService,
+@@ -63,26 +73,31 @@ export class StudioLaunchpad extends Disposable {
+ 		@ICommandService private readonly commands: ICommandService,
+ 		@IFileDialogService private readonly dialogs: IFileDialogService,
+ 		@INotificationService notifications: INotificationService,
+-		@IOpenerService private readonly opener: IOpenerService,
++		@IOpenerService opener: IOpenerService,
+ 		@IWebviewService private readonly webviews: IWebviewService,
+ 		@IFileService private readonly files: IFileService,
+ 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
+ 		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
++		@IAuxiliaryWindowService auxiliaryWindows: IAuxiliaryWindowService,
+ 	) {
+ 		super();
++		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, section => {
++			this.showHome(); this.view.showSocial(section); void this.native.focusWindow({ mode: FocusMode.Force });
++		}));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+ 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+ 		if (Array.isArray(saved)) {
+ 			for (const row of saved.slice(0, 50)) {
+ 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
+ 					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
++						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version,
+ 						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
+ 						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
+ 				}
+ 			}
+ 		}
+ 		const run = (action: Promise<unknown>) => { void action.catch(error => notifications.error(error)); };
+-		this.view = new StudioLaunchpadView(this.language, {
++		this.view = this._register(new StudioLaunchpadView(this.language, {
+ 			open: () => run(dialogs.pickFolderAndOpen({ forceNewWindow: true })),
+ 			workspace: () => run(dialogs.pickWorkspaceAndOpen({ forceNewWindow: true })),
+ 			create: () => run(commands.executeCommand('studio.createProject')),
+@@ -91,9 +106,17 @@ export class StudioLaunchpad extends Disposable {
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: conversation => run(this.openInbox(conversation)),
+-			store: id => run(commands.executeCommand('studio.openStartRecommendation', id)),
++			cover: project => this.cover(project),
++			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
++			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
++			social: async query => { const snapshot = await commands.executeCommand<SocialSnapshot>('studio.getSocialSnapshot', query); if (!snapshot) { throw new Error('Social data unavailable'); } return snapshot; },
++			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
++			chatUser: user => run(this.openInbox(undefined, user)),
++			readNotice: id => this.notices.read(id),
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+-		});
++		}));
++		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
++		this._register(notices.onDidChange(() => repaintNotices.schedule()));
+ 		layout.mainContainer.append(this.view.element);
+ 		const clearProjectDrop = () => this.view.setProjectDropActive(false);
+ 		this._register(new DragAndDropObserver(this.view.element, {
+@@ -124,7 +147,6 @@ export class StudioLaunchpad extends Disposable {
+ 			const macInset = root.classList.contains('mac') && !root.classList.contains('fullscreen') && titlebar?.offsetHeight && !right ? 76 : 0;
+ 			root.style.setProperty('--lp-controls-left', `${width('left') || macInset}px`);
+ 			root.style.setProperty('--lp-controls-right', `${right}px`);
+-			this.view.element.querySelector('.lp-titlebar')?.classList.toggle('lp-tight', (root.clientWidth - Math.min(root.clientWidth * 0.39, 464)) / 2 - right < 280);
+ 			root.classList.toggle('lp-no-native-bar', !titlebar?.offsetHeight);
+ 		};
+ 		resize();
+@@ -134,15 +156,14 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
+-		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.prepareApp(key, app)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.showApp(key, requestId, conversation)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => {
+-			const app = this.app.value;
+-			if (app?.key === key) { if (!app.surface.inert) { this.showHome(); } this.app.clear(); }
+-		}));
++		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.chat.prepare(key, app)));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.requestId === requestId && this.chat.show(key, conversation)));
++		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
++		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
++		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => { this.refreshNotices.schedule(); this.view.refreshSocial(); }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+ 			++this.inboxRevision;
+-			if (reset) {
++			if (reset && !this.account?.hasAccount) {
+ 				this.inbox = undefined;
+ 				this.paint();
+ 			}
+@@ -150,8 +171,10 @@ export class StudioLaunchpad extends Disposable {
+ 		}));
+ 		let platform = false, accountRevision = 0;
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
++			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule(); }
++			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule(); }
+ 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+-				serverUrl: state.serverUrl, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
++				scopeKey: state.scopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
+@@ -189,12 +212,12 @@ export class StudioLaunchpad extends Disposable {
+ 		ipcRenderer.on('vscode:studioProjectWindowsChanged', changed);
+ 		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioProjectWindowsChanged', changed)));
+ 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
+-		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
++		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); this.refreshNotices.schedule(); }));
++		const poll = mainWindow.setInterval(() => { if (this.account?.signedIn && !document.hidden && !this.view.element.hidden) { this.refreshNotices.schedule(); this.view.refreshSocial(); } }, 60_000);
++		this._register(toDisposable(() => { ++this.noticeRevision; mainWindow.clearInterval(poll); }));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+ 			if (document.hidden) { clearProjectDrop(); }
+ 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+-			const app = this.app.value;
+-			if (app && !app.surface.inert) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
+ 			if (!document.hidden) { changed(); this.refreshInbox.schedule(); }
+ 		}));
+ 		// The resident window never becomes an editor, including while an app is opening or closing.
+@@ -218,17 +241,10 @@ export class StudioLaunchpad extends Disposable {
+ 		this.settings.clear();
+ 		this.view.closePicker();
+ 		this.requestId = undefined;
+-		const app = this.app.value;
+-		const fromApp = !!app && !app.surface.inert;
+-		if (fromApp) {
+-			app.surface.inert = app.back.hidden = true;
+-			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
+-		}
+ 		this.view.setVisible(true);
+ 		this.view.setInboxBusy(false);
+ 		this.start.setVisible('launchpad', !document.hidden);
+ 		if (fromSettings) { this.view.focusAccount(); }
+-		else if (fromApp) { this.view.focusInbox(); }
+ 		else { this.view.element.focus({ preventScroll: true }); }
+ 		this.refreshInbox.schedule();
+ 	}
+@@ -297,86 +313,44 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private async openInbox(conversation?: string): Promise<void> {
+-		if (this.requestId || this.settings.value) { return; }
++	private async openInbox(conversation?: string, user?: string): Promise<void> {
++		if (this.requestId) { return; }
+ 		const id = this.requestId = generateUuid();
+ 		this.view.closePicker();
+ 		this.view.setInboxBusy(true);
+ 		const zh = this.language.startsWith('zh');
+ 		try {
+-			let reason: string | undefined;
++			let reason: string | undefined; let opened = false;
+ 			try {
+-				reason = await this.commands.executeCommand<string | undefined>('studio.openLaunchpadInbox', id, conversation);
++				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user);
++				opened = result === true; reason = typeof result === 'string' ? result : undefined;
+ 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
+-			if (id === this.requestId && !this.view.element.hidden) {
++			if (!opened && id === this.requestId) {
+ 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
+ 					buttons: [zh ? '确定' : 'OK'], noLink: true });
+ 			}
+ 		} finally {
+-			if (id === this.requestId && !this.view.element.hidden) { this.showHome(); this.view.focusInbox(); }
++			if (id === this.requestId) { this.requestId = undefined; this.view.setInboxBusy(false); }
+ 		}
+ 	}
+ 
+-	/** A hidden, full-size surface can initialize without stealing focus or mounting the editor. */
+-	private async prepareApp(key: string, app: LaunchpadApp): Promise<boolean> {
+-		if (this.app.value?.key === key) { return this.app.value.ready.p; }
+-		if (this.app.value && !this.app.value.surface.inert) { this.showHome(); }
+-		this.app.clear();
+-		const lifetime = new DisposableStore();
+-		const ready = new DeferredPromise<boolean>();
+-		lifetime.add(toDisposable(() => { void ready.complete(false); }));
+-		const surface = document.createElement('div');
+-		surface.className = 'studio-launchpad-app';
+-		surface.inert = true;
+-		const close = this.createBackButton(app.title, lifetime);
+-		close.hidden = true;
+-		this.layout.mainContainer.append(surface, close);
+-		lifetime.add(toDisposable(() => { surface.remove(); close.remove(); }));
+-		try {
+-			const webview = lifetime.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
+-				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+-			this.app.value = { key, surface, back: close, webview, ready, dispose: () => lifetime.dispose() };
+-			const deadline = lifetime.add(new RunOnceScheduler(() => { void ready.complete(false); }, 20_000));
+-			lifetime.add(webview.onMessage(({ message }) => {
+-				if (message?.type === 'studio-launchpad-ready') {
+-					deadline.cancel();
+-					void webview.postMessage({ type: 'studio-launchpad-view', visible: !surface.inert && !document.hidden });
+-					void ready.complete(true);
+-				}
+-				if (message?.type === 'studio-sidebar-account' && !surface.inert && app.accountUrl) {
+-					const uri = URI.parse(app.accountUrl);
+-					if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
+-				}
+-			}));
+-			lifetime.add(webview.onFatalError(() => {
+-				if (!surface.inert) { this.showHome(); }
+-				this.app.clear();
+-				void this.commands.executeCommand('studio.internalReleaseHostedLaunchpadApp', key).catch(() => undefined);
+-			}));
+-			webview.mountTo(surface, mainWindow);
+-			webview.setHtml(app.html);
+-			deadline.schedule();
+-			return await ready.p;
+-		} finally {
+-			if (!ready.value) {
+-				if (this.app.value?.key === key) { this.app.clear(); } else { lifetime.dispose(); }
+-			}
++	private async cover(project: LaunchpadProject): Promise<string | undefined> {
++		const cover = project.artwork?.cover;
++		if (!cover || !/^studio-cover\.(webp|jpg|png)$/.test(cover.name)) { return undefined; }
++		const key = JSON.stringify([project.uri, cover.name, cover.mtime]);
++		let data = this.covers.get(key);
++		if (!data) {
++			const file = URI.joinPath(URI.parse(project.uri), cover.name);
++			data = (async () => {
++				const stat = await this.files.stat(file);
++				if (!stat.isFile || stat.isSymbolicLink || stat.size > 2_000_000) { return undefined; }
++				const bytes = await this.files.readFile(file, { limits: { size: 2_000_000 } });
++				return `data:image/${cover.name.endsWith('.jpg') ? 'jpeg' : cover.name.split('.').pop()};base64,${encodeBase64(bytes.value)}`;
++			})().catch(() => undefined);
++			if (this.covers.size >= 24) { this.covers.delete(this.covers.keys().next().value!); }
++			this.covers.set(key, data);
+ 		}
+-	}
+-
+-	private async showApp(key: string, requestId: string, conversation?: string): Promise<boolean> {
+-		const app = this.app.value;
+-		if (!app || !app.ready.value || app.key !== key || this.requestId !== requestId) { return false; }
+-		if (!await app.webview.postMessage({ type: 'studio-launchpad-view', visible: true, conversation })) { return false; }
+-		if (this.app.value !== app || this.requestId !== requestId) {
+-			if (this.app.value === app && !this.requestId) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false }); }
+-			return false;
+-		}
+-		app.surface.inert = app.back.hidden = false;
+-		this.view.setVisible(false);
+-		this.start.setVisible('launchpad', false);
+-		app.webview.focus();
+-		return true;
++		return data;
+ 	}
+ 
+ 	private async openDroppedFolders(uris: URI[]): Promise<void> {
+@@ -459,21 +433,35 @@ export class StudioLaunchpad extends Disposable {
+ 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
+ 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
+ 		this.paint();
++		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
++		const others = this.recent.filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri);
++		if (others.length) {
++			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
++			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
++		}
+ 	}
+ 
+ 	private async readInbox(): Promise<void> {
+-		if (document.hidden || this.view.element.hidden || !this.start.state?.platform) { return; }
++		if (document.hidden || this.view.element.hidden || !this.start.state?.platform || !this.account?.signedIn) { return; }
+ 		const revision = ++this.inboxRevision;
+ 		try {
+ 			const inbox = await this.commands.executeCommand<LaunchpadInbox>('studio.getLaunchpadInbox');
+-			if (revision === this.inboxRevision) { this.inbox = inbox; this.paint(); }
++			if (revision === this.inboxRevision && inbox) { this.inbox = (inbox.connection === 'offline' || inbox.connection === 'connecting') && this.account?.hasAccount && this.inbox?.items.length ? { ...inbox, items: this.inbox.items } : inbox; this.paint(); }
+ 		} catch {
+ 			if (revision === this.inboxRevision) {
+-				this.inbox = { connection: 'offline', message: this.language.startsWith('zh') ? '暂时无法读取最近会话。' : 'Recent chats are unavailable.', items: [] };
++				this.inbox = { connection: 'offline', message: this.language.startsWith('zh') ? '暂时无法读取最近会话。' : 'Recent chats are unavailable.', items: this.account?.hasAccount ? this.inbox?.items ?? [] : [] };
+ 				this.paint();
+ 			}
+ 		}
+ 	}
++	private async readNotices(): Promise<void> {
++		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
++		const revision = ++this.noticeRevision;
++		try {
++			const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices');
++			if (revision === this.noticeRevision && typeof unread === 'boolean' && unread !== this.socialUnread) { this.socialUnread = unread; this.paint(); }
++		} catch { /* Keep the last known badge while the same account is offline. */ }
++	}
+ 
+ 	private paint(): void {
+ 		const state = this.start.state;
+@@ -484,10 +472,11 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 		const enrich = (row: LaunchpadProject, window?: LaunchpadProject): LaunchpadProject => {
+ 			const info = metadata.get(row.uri);
+-			const details = info ? { name: info.label || row.name, projectType: info.projectType, avatarUrl: info.avatarUrl, lastOpened: info.lastOpened } : this.savedProjects.get(row.uri);
+-			return { ...row, ...details, windowId: row.windowId ?? window?.windowId, dirty: window?.dirty, missing: !window && this.missing.has(row.uri) };
++			const saved = this.savedProjects.get(row.uri);
++			const details = info ? { name: info.label || row.name, projectType: info.projectType ?? saved?.projectType, avatarUrl: info.avatarUrl ?? saved?.avatarUrl, lastOpened: info.lastOpened, artwork: info.artwork ?? saved?.artwork, distribution: info.distribution ?? saved?.distribution, version: info.version ?? saved?.version } : saved;
++			return { ...row, ...details, windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+ 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+-			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox });
++			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread });
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b31016c860cbdb88cb9fb676114b56ca32a8a490
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -0,0 +1,68 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { studioProjectIcon } from '../common/studioProjectIcons.js';
++import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++
++export interface LibraryArtwork {
++	cover?: { name: string; mtime: number };
++	entries?: string[];
++	files?: string[];
++	entryTypes?: string[];
++}
++
++export interface LaunchpadProject {
++	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
++	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
++	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
++}
++
++export interface StoreListing {
++	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
++}
++
++export function picture(src: string, className = ''): HTMLImageElement {
++	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
++}
++
++export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
++export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
++export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
++	switch (type) {
++		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
++	}
++}
++export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
++	switch (p.distribution) {
++		case 'download': return t('Downloaded · Steam', '已下载 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
++		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
++	}
++}
++
++/** Use real entry identities or file names; never fetch a URL supplied by a local manifest. */
++export function artwork(key: string, art: LibraryArtwork | undefined, fallback: HTMLElement, cover?: string | Promise<string | undefined>): HTMLElement {
++	const surface = element('span', 'lp-artwork'); surface.setAttribute('aria-hidden', 'true');
++	let hash = 0; for (const ch of key) { hash = (31 * hash + ch.charCodeAt(0)) | 0; }
++	surface.dataset.ink = String(Math.abs(hash) % 5);
++	const stack = element('span', 'lp-art-stack');
++	const marks = art?.entries?.filter(src => src.startsWith('data:image/')).slice(0, 3).map(src => picture(src));
++	if (marks?.length) { stack.append(...marks); }
++	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => icon(studioProjectIcon(type) ?? 'extensions'))); }
++	else if (art?.files?.length) {
++		for (const filename of art.files.slice(0, 3)) {
++			const sheet = element('span', 'lp-art-file'); sheet.title = filename;
++			sheet.append(icon('file'), element('small', '', (filename.split('.').pop() || filename).slice(0, 6)), element('span', 'lp-file-lines')); stack.append(sheet);
++		}
++	} else { stack.append(fallback); }
++	surface.append(stack);
++	if (cover) {
++		void Promise.resolve(cover).then(src => {
++			if (!src) { return; }
++			const img = picture(src, 'lp-cover'); img.addEventListener('load', () => { stack.hidden = true; }, { once: true });
++			img.addEventListener('error', () => img.remove(), { once: true }); surface.append(img);
++		}, () => undefined);
++	}
++	return surface;
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..882d231cde5e56a2b52991ad0f975c5914bf00a2
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -0,0 +1,79 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { artwork, edition, LaunchpadProject, projectMark, typeLabel } from './studioLaunchpadCards.js';
++import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++
++interface LibraryActions {
++	project(p: LaunchpadProject): void;
++	manage(p: LaunchpadProject, origin: HTMLElement): void;
++	cover(p: LaunchpadProject): Promise<string | undefined>;
++}
++
++export class LaunchpadLibrary {
++	readonly element = element('div', 'lp-library');
++	private readonly index = element('div', 'lp-index lp-scroll');
++	private readonly shelf = element('div', 'lp-shelf lp-scroll');
++	private readonly search = element('input', 'lp-query');
++	private readonly filters = element('div', 'lp-filters');
++	private filter = 'all';
++	private signature?: string;
++	private recent: LaunchpadProject[] = [];
++	private windows: LaunchpadProject[] = [];
++
++	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
++		const rail = element('aside', 'lp-rail');
++		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
++		this.search.addEventListener('input', () => this.render());
++		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
++		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
++		for (const [id, label] of [['all', t('All', '全部')], ['source', t('Source', '源码')], ['installed', t('Installed', '已安装')], ['folder', t('Folders', '文件夹')]]) {
++			const b = button(label, '', () => { this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
++		}
++		this.element.append(rail, this.shelf);
++	}
++
++	update(recent: LaunchpadProject[], windows: LaunchpadProject[]): void {
++		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
++		this.signature = signature; this.recent = recent; this.windows = windows; this.render();
++	}
++
++	private render(): void {
++		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
++		const rows = [...this.recent, ...this.windows.filter(p => !this.recent.some(r => r.uri === p.uri))].filter(p => (!query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) &&
++			(this.filter === 'all' || (this.filter === 'installed' ? p.distribution === 'release' || p.distribution === 'download' : this.filter === 'source' ? p.distribution === 'source' : !p.projectType)));
++		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
++		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
++		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
++		this.index.replaceChildren(...rows.map(p => {
++			const b = button('', '', () => this.actions.project(p), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri; return b;
++		}));
++		const toolbar = element('header', 'lp-library-title'); toolbar.append(element('h1', '', t('Project library', '项目仓库')), this.filters);
++		this.shelf.replaceChildren(toolbar);
++		if (!rows.length) {
++			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.shelf.append(empty); return;
++		}
++		const gallery = (title: string, group: string, projects: LaunchpadProject[]) => {
++			const section = element('section', `lp-collection lp-${group}`), grid = element('div', 'lp-library-grid');
++			for (const p of projects) {
++				const item = element('article', 'lp-library-item');
++				const b = button('', '', () => this.actions.project(p), 'lp-library-card'); b.dataset.key = group + ':' + p.uri; b.title = p.path;
++				const art = artwork(p.uri, p.artwork, projectMark(p), p.artwork?.cover && this.actions.cover(p));
++				const meta = element('span', 'lp-caption'); meta.append(element('strong', 'lp-ellipsis', p.name));
++				const tags = element('span', 'lp-card-tags'); tags.append(element('span', 'lp-edition', edition(p, t)));
++				if (p.projectType) { tags.append(element('small', '', typeLabel(p.projectType, t))); }
++				if (p.windowId !== undefined || p.missing) { tags.append(element('small', 'lp-state', p.missing ? t('Not found', '路径失效') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'))); }
++				meta.append(tags); b.append(art, meta);
++				const more = button('', 'ellipsis', () => this.actions.manage(p, more), 'lp-card-more'); more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', `${more.title}: ${p.name}`);
++				b.addEventListener('contextmenu', e => { e.preventDefault(); this.actions.manage(p, b); });
++				item.append(b, more); grid.append(item);
++			}
++			section.append(heading(title, projects.length), grid); this.shelf.append(section);
++		};
++		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
++		gallery(t('All projects', '所有项目'), 'all', rows);
++		if (focus) { Array.from(this.element.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); }
++	}
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4aae5e1fc592246be5095b0059092355a81c84ae
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -0,0 +1,121 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { RunOnceScheduler } from '../../base/common/async.js';
++import { Disposable } from '../../base/common/lifecycle.js';
++import { picture } from './studioLaunchpadCards.js';
++import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++
++export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
++export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
++export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
++export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
++export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string }
++export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
++export interface SocialAction { action: 'request' | 'accept' | 'remove' | 'unfavorite' | 'read'; id: string }
++export interface ProfileActions {
++	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
++	social(query: string): Promise<SocialSnapshot>; change(action: SocialAction): Promise<void>;
++}
++export function avatar(name: string, src?: string): HTMLElement {
++	const mark = element('span', 'lp-avatar', Array.from(name)[0] ?? '');
++	if (src && /^(?:https?:\/\/|data:image\/)/i.test(src)) {
++		const img = picture(src); img.addEventListener('error', () => img.remove(), { once: true }); mark.append(img);
++	} else if (!name) { mark.append(icon('account')); }
++	return mark;
++}
++
++type Section = 'activity' | 'people' | 'favorites' | 'notifications';
++
++export class LaunchpadProfile extends Disposable {
++	readonly element = element('div', 'lp-profile lp-scroll');
++	private readonly header = element('header', 'lp-profile-header');
++	private readonly nav = element('nav', 'lp-profile-nav');
++	private readonly rows = element('div', 'lp-profile-rows');
++	private readonly filter = element('input', 'lp-query');
++	private readonly error = element('div', 'lp-message');
++	private readonly debounce = this._register(new RunOnceScheduler(() => void this.refresh(), 280));
++	private data?: SocialSnapshot;
++	private scope?: string;
++	private revision = 0;
++	private active = false;
++	private section: Section = 'activity';
++	private inbox?: LaunchpadInbox;
++	private nativeNotices: StudioNotice[] = [];
++	private platform = false;
++	private account?: LaunchpadAccount;
++
++	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void) {
++		super();
++		this.error.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.placeholder = t('Find a Studio user', '查找 Studio 用户'); this.filter.setAttribute('aria-label', this.filter.placeholder);
++		this.filter.addEventListener('input', () => { ++this.revision; this.debounce.schedule(); });
++		for (const [id, title, glyph] of [['activity', t('Recent chats', '最近会话'), 'comment-discussion'], ['people', t('Contacts & friends', '通讯录与好友'), 'organization'], ['favorites', t('Favorites', '收藏'), 'star-empty'], ['notifications', t('Notifications', '通知'), 'bell']] as const) {
++			const b = button(title, glyph, () => this.select(id)); b.dataset.id = id; this.nav.append(b);
++		}
++		this.element.append(this.header, this.nav, this.filter, this.error, this.rows);
++	}
++
++	select(section: Section): void { this.section = section; this.filter.value = ''; this.render(); if (this.active) { void this.refresh(); } }
++	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[]): void {
++		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey]);
++		const changed = this.scope !== scope, enter = active && !this.active;
++		const repaint = changed || enter || JSON.stringify([this.account, this.inbox, this.nativeNotices]) !== JSON.stringify([account, inbox, notices]);
++		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices;
++		if (changed) { ++this.revision; this.debounce.cancel(); this.data = undefined; this.scope = scope; this.filter.value = ''; this.error.replaceChildren(); }
++		if (!platform) { this.section = 'notifications'; }
++		if (active && repaint) { this.render(); }
++		if (active && (enter || changed)) { void this.refresh(); }
++	}
++
++	async refresh(): Promise<void> {
++		const rev = ++this.revision; if (!this.account?.signedIn || !this.active) { return; }
++		try {
++			const data = await this.actions.social(this.section === 'people' ? this.filter.value.trim() : '');
++			if (rev !== this.revision) { return; }
++			if (!data) { throw new Error(); }
++			this.data = data; this.error.replaceChildren(); this.render();
++		} catch { if (rev === this.revision) { this.error.replaceChildren(this.t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。'), button(this.t('Retry', '重试'), 'refresh', () => void this.refresh())); } }
++	}
++
++	private mutate(action: SocialAction, b: HTMLButtonElement): void {
++		b.disabled = true; const scope = this.scope;
++		void this.actions.change(action).then(async () => { if (scope === this.scope) { await this.refresh(); } }, () => { if (scope === this.scope) { this.error.textContent = this.t('Change could not be saved.', '更改未能保存。'); } }).finally(() => b.disabled = false);
++	}
++
++	private render(): void {
++		const t = this.t, a = this.account;
++		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
++		const identity = element('div'); identity.append(element('h1', '', name), element('small', '', [a?.email, a?.statusLabel].filter(Boolean).join(' · ')));
++		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, button(t('Settings', '设置'), 'settings-gear', this.actions.settings, 'lp-outline'));
++		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
++		for (const b of this.nav.querySelectorAll('button')) { b.hidden = !this.platform && b.dataset.id !== 'notifications'; b.setAttribute('aria-pressed', String(this.section === b.dataset.id)); }
++		this.filter.hidden = this.section !== 'people' || !a?.signedIn;
++		const row = (name: string, detail: string, mark: HTMLElement, ...commands: HTMLButtonElement[]) => {
++			const r = element('div', 'lp-social-row'), text = element('div', 'lp-social-text'); text.append(element('strong', '', name), element('small', '', detail)); r.append(mark, text, ...commands); return r;
++		};
++		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => this.mutate(action, b), 'lp-outline'); return b; };
++		this.rows.replaceChildren();
++		if (this.section === 'activity') {
++			for (const c of this.inbox?.items ?? []) { this.rows.append(row(c.name, c.preview, avatar(c.name, c.avatarUrl), button(c.unread ? String(c.unread) : t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'))); }
++		} else if (this.section === 'people') {
++			for (const p of this.data?.people ?? []) {
++				const controls = p.relation === 'friend' ? [button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), change(t('Remove', '移除'), 'remove', { action: 'remove', id: p.id })] : p.relation === 'incoming' ? [change(t('Accept', '接受'), 'check', { action: 'accept', id: p.id }), change(t('Decline', '拒绝'), 'close', { action: 'remove', id: p.id })] : p.relation === 'outgoing' ? [change(t('Cancel request', '撤回申请'), 'close', { action: 'remove', id: p.id })] : [change(t('Add friend', '添加好友'), 'person-add', { action: 'request', id: p.id })];
++				this.rows.append(row(p.name, p.relation === 'incoming' ? t('Friend request', '好友申请') : p.relation === 'friend' ? t('Friend', '好友') : p.relation === 'outgoing' ? t('Request sent', '已发出申请') : '', avatar(p.name, p.avatarUrl), ...controls));
++			}
++		} else if (this.section === 'favorites') {
++			for (const f of this.data?.favorites ?? []) { this.rows.append(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation))] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
++		} else {
++			for (const n of [...this.nativeNotices, ...this.data?.notices ?? []]) {
++				const controls = n.conversation || n.source === 'im' ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(n.conversation), 'lp-outline')] : [];
++				if (n.id.startsWith('request:') || n.id.startsWith('friend:')) { controls.push(button(t('View contacts', '查看联系人'), 'organization', () => this.select('people'), 'lp-outline')); }
++				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
++				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : n.id.startsWith('request:') ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
++				this.rows.append(row(title, n.source === 'im' ? 'IM' : 'Studio', icon(n.read ? 'mail-read' : 'mail'), ...controls));
++			}
++		}
++		if (!this.rows.childElementCount) { this.rows.append(element('p', 'lp-empty', this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : this.section === 'people' ? t('No contacts found.', '暂无联系人。') : this.section === 'favorites' ? t('No favorites yet.', '暂无收藏。') : t('No notifications.', '暂无通知。'))); }
++	}
++	override dispose(): void { ++this.revision; super.dispose(); }
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadStore.ts b/src/vs/workbench/electron-browser/studioLaunchpadStore.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed74bbd903cff75388c1351a2edc8851f0ac4a25
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadStore.ts
+@@ -0,0 +1,117 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { RunOnceScheduler } from '../../base/common/async.js';
++import { Disposable } from '../../base/common/lifecycle.js';
++import { artwork, StoreListing, typeLabel } from './studioLaunchpadCards.js';
++import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++
++export interface CatalogRequest { query: string; type: string; page: number }
++export interface CatalogPage { items: StoreListing[]; total: number; pageSize: number }
++
++export class LaunchpadStore extends Disposable {
++	readonly element = element('div', 'lp-store-page lp-scroll');
++	private readonly gallery = element('section', 'lp-store-feature');
++	private readonly results = element('div', 'lp-store-grid');
++	private readonly status = element('div', 'lp-store-status');
++	private readonly pager = element('div', 'lp-pager');
++	private readonly search = element('input', 'lp-query');
++	private readonly categories = element('div', 'lp-filters');
++	private readonly heading = element('h1');
++	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
++	private type = '';
++	private page = 1;
++	private generation = 0;
++	private scope?: string;
++	private platform = false;
++	private loaded = false;
++	private featured = 0;
++	private data?: CatalogPage;
++	private recommendations: StoreListing[] = [];
++	private detail?: StoreListing;
++
++	constructor(private readonly t: LaunchpadLabel, private readonly fetchPage: (request: CatalogRequest, platform: boolean) => Promise<CatalogPage>, private readonly open: (id: string, platform: boolean) => void) {
++		super();
++		this.search.type = 'search'; this.search.placeholder = t('Search agents', '搜索 Agent'); this.search.setAttribute('aria-label', this.search.placeholder);
++		this.search.addEventListener('input', () => { ++this.generation; this.page = 1; this.detail = undefined; this.debounce.schedule(); });
++		for (const [id, label] of [['', t('All items', '全部')], ['bot', 'Bot'], ['workflow', t('Workflows', '工作流')], ['kanban', t('Kanban', '看板')]]) {
++			const b = button(label, '', () => { this.type = id; this.page = 1; this.detail = undefined; void this.load(); }, 'lp-filter-btn'); b.dataset.id = id; this.categories.append(b);
++		}
++		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
++		const bar = element('header', 'lp-store-toolbar'); bar.append(this.categories, field);
++		this.status.setAttribute('role', 'status');
++		this.element.append(bar, this.heading, this.gallery, this.status, this.results, this.pager);
++	}
++
++	update(visible: boolean, platform: boolean, server: string | undefined, recommendations: StoreListing[]): void {
++		const key = `${platform}:${server ?? ''}`;
++		if (this.scope !== key) {
++			++this.generation; this.scope = key; this.platform = platform; this.loaded = false; this.data = this.detail = undefined; this.page = 1; this.featured = 0;
++			this.results.replaceChildren(); this.gallery.replaceChildren(); this.pager.replaceChildren();
++		}
++		if (JSON.stringify(recommendations) !== JSON.stringify(this.recommendations)) { this.recommendations = recommendations; this.renderFeature(); }
++		if (visible && !this.loaded) { void this.load(); }
++	}
++
++	private async load(): Promise<void> {
++		this.debounce.cancel(); const generation = ++this.generation; this.loaded = true;
++		const t = this.t;
++		this.heading.textContent = this.platform ? t('Agent Store', 'Agent 商店') : t('Built-in catalog', '内置目录');
++		for (const b of this.categories.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.type)); }
++		this.element.setAttribute('aria-busy', 'true'); this.status.textContent = this.data ? '' : t('Loading catalog…', '正在读取目录…');
++		try {
++			const data = await this.fetchPage({ query: this.search.value.trim(), type: this.type, page: this.page }, this.platform);
++			if (generation !== this.generation) { return; }
++			if (!data || !Array.isArray(data.items) || !(data.pageSize > 0)) { throw new Error(); }
++			this.data = data; this.render();
++		} catch {
++			if (generation !== this.generation) { return; }
++			this.status.replaceChildren(t('Catalog unavailable.', '暂时无法读取目录。'), button(t('Retry', '重试'), 'refresh', () => void this.load(), 'lp-link'));
++		} finally { if (generation === this.generation) { this.element.setAttribute('aria-busy', 'false'); } }
++	}
++
++	private cover(p: StoreListing, index = 0): HTMLElement {
++		return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon('extensions'), p.images?.[index]);
++	}
++
++	private renderFeature(): void {
++		const t = this.t;
++		const offers = this.recommendations.length ? this.recommendations.map(item => this.data?.items.find(p => p.id === item.id) ?? item) : this.data?.items ?? [];
++		const p = this.detail ?? offers[this.featured % (offers.length || 1)];
++		this.gallery.hidden = !p || !this.detail && (!!this.search.value || !!this.type || this.page !== 1);
++		if (!p || this.gallery.hidden) { this.gallery.replaceChildren(); return; }
++		const art = this.cover(p), body = element('div', 'lp-feature-info');
++		body.append(element('small', 'lp-section-kicker', this.detail ? t('Project details', '项目详情') : t('Featured selection', '精选推荐')), element('h2', '', p.name),
++			element('span', 'lp-feature-meta', [typeLabel(p.projectType, t), p.version].filter(Boolean).join(' · ')), element('p', '', p.description ?? ''));
++		const controls = element('div', 'lp-feature-controls');
++		controls.append(button(this.platform ? t('Get agent', '获取 Agent') : t('Create from example', '从示例创建'), this.platform ? 'cloud-download' : 'add', () => this.open(p.id, this.platform), 'lp-primary'));
++		if (this.detail) { controls.append(button(t('Back to catalog', '返回目录'), 'arrow-left', () => { this.detail = undefined; this.renderFeature(); }, 'lp-link')); }
++		else if (offers.length > 1) {
++			for (const step of [-1, 1]) {
++				const b = button('', step < 0 ? 'chevron-left' : 'chevron-right', () => { this.featured = (this.featured + step + offers.length) % offers.length; this.renderFeature(); }, 'lp-tool');
++				b.title = step < 0 ? t('Previous item', '上一个') : t('Next item', '下一个'); b.setAttribute('aria-label', b.title); controls.append(b);
++			}
++		}
++		body.append(controls); this.gallery.replaceChildren(art, body);
++	}
++
++	private render(): void {
++		const t = this.t, data = this.data!; this.renderFeature();
++		this.status.textContent = data.items.length ? t(`Catalog · ${data.total}`, `目录 · ${data.total}`) : t('No matching items.', '没有匹配的内容。');
++		this.results.replaceChildren(...data.items.map(p => {
++			const b = button('', '', () => { this.detail = p; this.renderFeature(); this.element.scrollTop = 0; this.gallery.querySelector('button')?.focus({ preventScroll: true }); }, 'lp-library-card');
++			const caption = element('span', 'lp-caption'); caption.append(element('strong', '', p.name), element('small', '', [typeLabel(p.projectType, t), p.version].filter(Boolean).join(' · ')));
++			b.append(this.cover(p), caption); return b;
++		}));
++		const pages = Math.ceil(data.total / data.pageSize); this.pager.replaceChildren();
++		if (pages > 1) {
++			const prev = button(t('Previous', '上一页'), 'chevron-left', () => { --this.page; void this.load(); }); prev.disabled = this.page <= 1;
++			const next = button(t('Next', '下一页'), 'chevron-right', () => { ++this.page; void this.load(); }); next.disabled = this.page >= pages;
++			this.pager.append(prev, `${this.page} / ${pages}`, next);
++		}
++	}
++
++	override dispose(): void { ++this.generation; super.dispose(); }
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 74f388960bb35734afe9f05fa6b02545858afcaa..cdcb7679ce88de29d93b659f7515b0c3b1d21e4f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -3,382 +3,130 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { Disposable } from '../../base/common/lifecycle.js';
+ import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
+-import { studioProjectIcon } from '../common/studioProjectIcons.js';
++import { edition, glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
++import { LaunchpadLibrary } from './studioLaunchpadLibrary.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
++import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
++import { CatalogPage, CatalogRequest, LaunchpadStore } from './studioLaunchpadStore.js';
+ 
+-export interface LaunchpadProject {
+-	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
+-	projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
+-}
+-export interface LaunchpadInbox {
+-	connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string;
+-	items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[];
+-}
+-export interface LaunchpadAccount {
+-	name: string; email?: string | null; avatarUrl?: string; serverUrl?: string; statusLabel?: string;
+-	hasAccount: boolean; signedIn: boolean;
+-}
++export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
+ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+-	account?: LaunchpadAccount;
+-	inbox?: LaunchpadInbox;
+-	store?: { message?: string; items: { id: string; name: string; description?: string; projectType?: string; avatarUrl?: string }[] };
+-}
+-export interface LaunchpadActions {
+-	open(): void; workspace(): void; create(): void;
+-	project(project: LaunchpadProject): void; remove(project: LaunchpadProject): void;
+-	resource(resource: 'docs' | 'github' | 'server'): void;
+-	signIn(): void; settings(): void; inbox(id?: string): void; store(id?: string): void;
+-}
+-
+-function image(src: string, className = ''): HTMLImageElement {
+-	const img = element('img', className); img.alt = ''; img.draggable = false; img.src = src; img.referrerPolicy = 'no-referrer'; return img;
++	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+ }
+-
+-function accountAvatar(src?: string): HTMLElement {
+-	const avatar = element('span', 'lp-avatar'); avatar.setAttribute('aria-hidden', 'true');
+-	const fallback = icon('account'); avatar.append(fallback);
+-	if (src && /^(https?:\/\/|data:image\/)/i.test(src)) {
+-		const img = image(src);
+-		img.addEventListener('error', () => { img.remove(); fallback.hidden = false; }, { once: true });
+-		fallback.hidden = true; avatar.append(img);
+-	}
+-	return avatar;
+-}
+-
+-function sectionHead(title: HTMLElement, ...tools: HTMLElement[]): HTMLElement {
+-	const head = element('header', 'lp-section-head'); head.append(title, ...tools); return head;
+-}
+-
+-function tool(label: string, glyph: string, action: () => void): HTMLButtonElement {
+-	const b = button('', glyph, action, 'lp-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
++interface LaunchpadActions extends ProfileActions {
++	open(): void; workspace(): void; create(): void; project(p: LaunchpadProject): void; remove(p: LaunchpadProject): void;
++	cover(p: LaunchpadProject): Promise<string | undefined>; catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
++	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
++	resource(id: 'docs' | 'github' | 'server'): void;
+ }
++type Tab = 'store' | 'library' | 'community' | 'profile';
+ 
+-/** The desktop controller supplies the same view with local or account-backed data. */
+-export class StudioLaunchpadView {
++export class StudioLaunchpadView extends Disposable {
+ 	readonly element = element('div', 'studio-launchpad');
+-	private readonly stateBar = element('footer', 'lp-statusbar');
+-	private readonly projectDrop = element('div', 'lp-project-drop');
++	private readonly drop = element('div', 'lp-project-drop');
++	private readonly tabs = element('nav', 'lp-tabs');
++	private readonly panels = element('main', 'lp-panels');
+ 	private readonly commandCenter: HTMLButtonElement;
+-	private readonly picker: LaunchpadPicker;
+ 	private readonly accountButton: HTMLButtonElement;
+-	private readonly accountProfile = element('div', 'lp-account-profile');
+-	private readonly openButton: HTMLButtonElement;
+-	private readonly createButton: HTMLButtonElement;
+-	private readonly serverButton: HTMLButtonElement;
+-	private readonly live = element('div', 'lp-live-list lp-scroll');
+-	private readonly liveCount = element('span', 'lp-count');
+-	private readonly history = element('div', 'lp-history-list lp-scroll');
+-	private readonly historyTitle = element('h2');
+-	private readonly recentCount = element('span', 'lp-count');
+-	private readonly tableHead = element('div', 'lp-table-head');
+-	private readonly shown = element('span');
+-	private readonly more: HTMLButtonElement;
+-	private readonly side = element('aside', 'lp-side');
+-	private readonly chats = element('div', 'lp-chat-list');
+-	private readonly cards = element('div', 'lp-store-list');
+-	private readonly storeSection = element('section', 'lp-store');
+ 	private readonly inboxButton: HTMLButtonElement;
+-	private readonly unread = element('span', 'lp-unread');
+-	private readonly connection = element('span', 'lp-connection');
+-	private readonly signatures = new Map<HTMLElement, string>();
+-	private readonly label: LaunchpadLabel;
+-	private readonly date: Intl.DateTimeFormat;
+-	private readonly clock: Intl.DateTimeFormat;
+-	private expanded = false;
+-	private selection?: string;
++	private readonly bell: HTMLButtonElement;
++	private readonly createButton: HTMLButtonElement;
++	private readonly picker: LaunchpadPicker;
++	private readonly store: LaunchpadStore;
++	private readonly library: LaunchpadLibrary;
++	private readonly profile: LaunchpadProfile;
++	private readonly t: LaunchpadLabel;
++	private active: Tab = 'library';
+ 	private state?: LaunchpadState;
+ 
+ 	constructor(language: string, private readonly actions: LaunchpadActions) {
+-		const zh = language.toLowerCase().startsWith('zh');
+-		const t = this.label = (en, cn) => zh ? cn : en;
+-		this.date = new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en', { month: 'short', day: 'numeric' });
+-		this.clock = new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
++		super();
++		const zh = language.toLowerCase().startsWith('zh'), t = this.t = (en, cn) => zh ? cn : en;
+ 		this.picker = new LaunchpadPicker(t);
+ 		this.element.tabIndex = -1; this.element.setAttribute('aria-label', t('Studio Launchpad', 'Studio 启动台'));
+ 		this.element.addEventListener('pointerdown', () => this.element.classList.add('lp-pointer'), true);
+ 		this.element.addEventListener('keydown', () => this.element.classList.remove('lp-pointer'), true);
+ 		const chrome = element('header', 'lp-titlebar');
+-		const brand = element('span', 'lp-window-name'); brand.append(element('strong', '', 'SteamHarness'), ' Studio');
+-		this.commandCenter = button('', 'search', () => this.search(false, this.commandCenter), 'lp-command-center');
+-		const centerTitle = t('Search projects or run a command', '搜索项目或运行命令');
+-		this.commandCenter.append(element('span', 'lp-wide-label', centerTitle), element('span', 'lp-compact-label', t('Commands', '命令中心')));
+-		this.commandCenter.title = centerTitle; this.commandCenter.setAttribute('aria-haspopup', 'dialog');
+-		const resources: LaunchpadOption[] = [
+-			{ label: 'GitHub', glyph: 'github', run: () => actions.resource('github') },
+-			{ label: t('Docs', '文档'), glyph: 'book', run: () => actions.resource('docs') },
+-			{ label: t('Web console', 'Web 控制台'), glyph: 'link-external', run: () => actions.resource('server') },
+-		];
+-		const utilities = element('nav', 'lp-utilities');
+-		const links = element('div', 'lp-links');
+-		const resourceButtons = resources.map(r => button(r.label, r.glyph, r.run));
+-		this.serverButton = resourceButtons[2]; links.append(...resourceButtons);
+-		const compact = button(t('Resources', '资源'), 'chevron-down', () => this.picker.choices(t('Online resources', '在线资源'), this.state?.platform ? resources : resources.slice(0, 2), compact), 'lp-compact-resources');
+-		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.account()); this.accountButton.classList.add('lp-account');
+-		this.accountButton.setAttribute('aria-haspopup', 'dialog');
+-		utilities.append(links, compact, this.accountButton); chrome.append(brand, this.commandCenter, utilities);
+-		const main = element('main', 'lp-home lp-scroll');
+-		const header = element('header', 'lp-header');
+-		const identity = element('div', 'lp-identity');
+-		const mark = element('span', 'lp-app-mark'); mark.append(image(STEAMHARNESS_ICON_DATA_URI));
+-		const titles = element('div'); const local = element('small', 'lp-local'); local.append(icon('device-desktop'), t('Local workspace', '本机工作区'));
+-		titles.append(element('h1', '', t('Studio Launchpad', 'Studio 启动台')), local); identity.append(mark, titles);
+-		const buttons = element('div', 'lp-actions');
+-		this.openButton = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(), 'lp-outline');
+-		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary');
+-		buttons.append(this.openButton, this.createButton); header.append(identity, buttons);
+-		const columns = element('div', 'lp-columns');
+-		const projects = element('div', 'lp-projects');
+-		const live = element('section', 'lp-live'); live.append(sectionHead(element('h2', '', t('Open projects', '已打开的项目')), this.liveCount), this.live);
+-		const recent = element('section', 'lp-history');
+-		const search = button(t('Search projects', '搜索项目'), 'search', () => this.search(false, search), 'lp-find');
+-		const grid = element('div'); grid.setAttribute('role', 'grid'); grid.setAttribute('aria-label', t('Project history', '项目打开记录'));
+-		this.tableHead.setAttribute('role', 'row');
+-		for (const label of [t('Name and local path', '名称与本地路径'), t('Status', '状态'), t('Last opened', '最后打开'), t('Actions', '操作')]) {
+-			const cell = element('span', '', label); cell.setAttribute('role', 'columnheader'); this.tableHead.append(cell);
++		const brand = element('span', 'lp-brand'); brand.append(picture(STEAMHARNESS_ICON_DATA_URI), element('strong', '', 'SteamHarness'), ' Studio');
++		const tool = (name: string, glyph: string, run: () => void) => { const b = button('', glyph, run, 'lp-tool'); b.title = name; b.setAttribute('aria-label', name); return b; };
++		this.commandCenter = tool(t('Search projects or commands', '搜索项目或命令'), 'search', () => this.search(false));
++		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
++		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
++		const utilities = element('div', 'lp-utilities'); utilities.append(this.commandCenter, this.bell, this.accountButton);
++		chrome.append(brand, utilities);
++		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
++		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
++			const b = button(name, '', () => this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);
+ 		}
+-		this.history.setAttribute('role', 'rowgroup'); grid.append(this.tableHead, this.history);
+-		this.more = button('', '', () => this.setScope(!this.expanded), 'lp-link');
+-		const foot = element('footer', 'lp-foot'); this.shown.setAttribute('role', 'status'); foot.append(this.shown, this.more);
+-		recent.append(sectionHead(this.historyTitle, this.recentCount, search), grid, foot); projects.append(live, recent);
+-		const inbox = element('section', 'lp-inbox');
+-		this.inboxButton = button(t('Open IM', '打开 IM'), '', () => actions.inbox(), 'lp-link'); this.inboxButton.append(icon('chevron-right'));
+-		inbox.append(sectionHead(element('h2', '', t('Recent chats', '最近会话')), this.unread, this.inboxButton), this.chats);
+-		const browse = button(t('Browse Store', '浏览商店'), '', () => actions.store(), 'lp-link'); browse.append(icon('link-external'));
+-		this.storeSection.append(sectionHead(element('h2', '', t('Store recommendations', '商店推荐')), browse), this.cards);
+-		this.side.append(inbox, this.storeSection); columns.append(projects, this.side); main.append(header, columns);
+-		const device = element('span', 'lp-device'); device.append(icon('device-desktop'), t('Local', '本机'));
+-		const commands = button(t('Command palette', '命令面板'), 'terminal', () => this.search(true, commands));
+-		this.stateBar.append(device, commands, this.connection);
+-		this.projectDrop.hidden = true;
+-		this.projectDrop.append(icon('folder-opened'), element('span', '', t('Open project folder', '打开项目文件夹')));
+-		this.element.append(chrome, main, this.stateBar, this.projectDrop, this.picker.dialog);
+-	}
+-
+-	private openOptions(): void {
+-		this.picker.choices(this.label('Open project', '打开项目'), this.fileOptions(), this.openButton);
+-	}
+-	private fileOptions(): LaunchpadOption[] {
+-		return [{ label: this.label('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open },
+-			{ label: this.label('Open workspace file…', '打开工作区文件…'), glyph: 'project', run: this.actions.workspace }];
+-	}
+-	private account(): void {
+-		const t = this.label;
+-		this.renderAccountProfile();
+-		this.picker.choices(t('Studio account', 'Studio 账号'), [
+-			{ label: t('Open Studio Settings', '打开 Studio 设置'), glyph: 'settings-gear', run: this.actions.settings },
+-			{ label: t('Open Web console', '打开 Web 控制台'), glyph: 'link-external', visible: () => !!this.state?.account?.signedIn, run: () => this.actions.resource('server') },
+-			{ label: t('Sign in with browser', '在浏览器中登录'), glyph: 'sign-in', visible: () => !this.state?.account?.signedIn, run: this.actions.signIn },
+-		], this.accountButton, this.accountProfile);
+-	}
+-	private renderAccountProfile(): void {
+-		const t = this.label;
+-		const account = this.state?.account;
+-		const identity = element('div', 'lp-account-identity');
+-		const name = account?.hasAccount ? account.name : t('Not signed in', '尚未登录');
+-		const text = element('div'); text.append(element('strong', '', name));
+-		if (account?.hasAccount && account.email && account.email !== name) { text.append(element('p', 'lp-account-email', account.email)); }
+-		identity.append(accountAvatar(account?.hasAccount ? account.avatarUrl : undefined), text);
+-		this.accountProfile.replaceChildren(identity);
+-		const details = element('dl', 'lp-account-details');
+-		if (account?.serverUrl) { details.append(element('dt', '', t('Server', '服务器')), element('dd', '', account.serverUrl)); }
+-		if (account?.statusLabel) { details.append(element('dt', '', t('Status', '状态')), element('dd', '', account.statusLabel)); }
+-		if (details.childElementCount) { this.accountProfile.append(details); }
+-	}
+-	private search(commands: boolean, origin: HTMLElement): void {
+-		const t = this.label;
+-		this.picker.search(commands, origin, mode => {
+-			if (!mode) { return (this.state?.recent ?? []).map(p => ({ label: p.name, detail: p.path, glyph: this.glyph(p), run: () => this.actions.project(p) })); }
+-			const options = this.fileOptions();
+-			if (this.state?.canCreate) { options.unshift({ label: t('New project…', '新建项目…'), glyph: 'add', run: this.actions.create }); }
+-			options.push({ label: t('Show recently opened', '显示最近打开'), glyph: 'history', run: () => this.setScope(false) },
+-				{ label: t('Show all open history', '显示全部打开记录'), glyph: 'library', run: () => this.setScope(true) });
+-			if (this.state?.platform) { options.push({ label: t('Open IM', '打开 IM'), glyph: 'comment-discussion', run: () => this.actions.inbox() }); }
+-			return options;
++		this.tabs.addEventListener('keydown', e => {
++			const buttons = Array.from(this.tabs.querySelectorAll('button')), i = buttons.indexOf(document.activeElement as HTMLButtonElement);
++			if (i < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { return; }
++			e.preventDefault(); const next = buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length]; this.select(next.dataset.tab as Tab); next.focus();
++		});
++		const createLabel = t('New project', '新建项目');
++		this.createButton = button('', 'add', actions.create, 'lp-outline lp-create');
++		this.createButton.title = createLabel; this.createButton.setAttribute('aria-label', createLabel);
++		this.createButton.append(element('span', 'lp-create-label', createLabel)); navigation.append(this.tabs, this.createButton);
++		this.library = new LaunchpadLibrary(t, { ...actions, manage: (p, b) => this.manage(p, b) });
++		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
++		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
++		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
++			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
++		}
++		const foot = element('footer', 'lp-statusbar'); const open = button(t('Add project', '添加项目'), 'folder-opened', () => this.openOptions(open));
++		const links = tool(t('Resources', '资源'), 'book', () => {
++			const options: LaunchpadOption[] = [{ label: t('Documentation', '文档'), glyph: 'book', run: () => actions.resource('docs') }, { label: 'GitHub', glyph: 'github', run: () => actions.resource('github') }];
++			if (this.state?.platform) { options.push({ label: t('Web console', 'Web 控制台'), glyph: 'link-external', run: () => actions.resource('server') }); }
++			this.picker.choices(t('Resources', '资源'), options, links);
+ 		});
++		this.inboxButton = button(t('Friends & chat', '好友与聊天'), 'comment-discussion', () => actions.inbox(), 'lp-chat-launch');
++		foot.append(open, links, this.inboxButton); this.drop.append(icon('folder-opened'), t('Drop folders to open projects', '松开以导入项目文件夹')); this.drop.hidden = true;
++		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
+ 	}
+ 
+-	/** Capture only our shortcuts, never editor shortcuts in the create dialog or hosted app. */
+-	shortcut(event: KeyboardEvent): void {
+-		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.altKey || !(event.target instanceof Node)
+-			|| (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
+-		const key = event.key.toLowerCase(); const mod = event.ctrlKey || event.metaKey;
+-		if (key !== 'f1' && (!mod || !['p', 'f', 'o'].includes(key) || (event.shiftKey && key !== 'p'))) { return; }
+-		event.preventDefault(); event.stopImmediatePropagation();
+-		this.element.classList.remove('lp-pointer');
+-		if (key === 'o') { this.openOptions(); }
+-		else { this.search(key === 'f1' || (key === 'p' && event.shiftKey), document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement : this.commandCenter); }
++	select(id: Tab): void {
++		this.active = id;
++		for (const b of this.tabs.querySelectorAll('button')) { const selected = b.dataset.tab === id; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1; }
++		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
++		if (this.state) { this.update(this.state); }
+ 	}
+ 
+-	private setScope(all: boolean): void { this.expanded = all; this.renderHistory(); this.history.scrollTop = 0; }
+-	private kind(p: LaunchpadProject): string { return p.kind === 'workspace' ? this.label('Workspace', '工作区') : this.label('Folder', '文件夹'); }
+-	private projectLabel(p: LaunchpadProject): string { return (p.kind === 'folder' ? this.typeLabel(p.projectType) : undefined) ?? this.kind(p); }
+-	private glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
+-	private typeLabel(type?: string): string | undefined {
+-		switch (type) {
+-			case 'workflow': return this.label('Workflow', '工作流'); case 'bot': return 'Bot'; case 'kanban': return this.label('Kanban', '看板');
+-			case 'aggregate': return this.label('Aggregate project', '聚合项目'); case 'conversation': return this.label('Conversation', '对话');
+-			case 'link': return this.label('Import from link', '链接导入'); default: return undefined;
+-		}
+-	}
+-	private projectIcon(p: LaunchpadProject): HTMLElement {
+-		return p.kind === 'folder' && p.avatarUrl?.startsWith('data:image/') ? image(p.avatarUrl, 'lp-project-avatar') : icon(this.glyph(p));
+-	}
+-	private historyStatus(p: LaunchpadProject) {
+-		const t = this.label;
+-		if (p.windowId !== undefined) {
+-			return { state: 'open', glyph: 'window', label: t('Open', '已打开'), action: t('Switch to window', '切换到项目窗口'), actionGlyph: 'window' };
+-		}
+-		if (p.missing) {
+-			return { state: 'missing', glyph: 'warning', label: t('Not found', '路径失效'), action: t('Open or locate project…', '打开或重新定位…'), actionGlyph: 'search' };
+-		}
+-		return { state: 'closed', glyph: 'history', label: t('Not open', '未打开'), action: t('Open in new window', '在新窗口打开'), actionGlyph: 'open-in-window' };
+-	}
+-	private historyStatusCell(p: LaunchpadProject): HTMLElement {
+-		const t = this.label, status = this.historyStatus(p);
+-		const cell = element('span', 'lp-history-status'); cell.dataset.state = status.state;
+-		const badge = element('span', 'lp-state-label'); badge.append(icon(status.glyph), status.label); cell.append(badge);
+-		if (status.state === 'open' && p.dirty) {
+-			const detail = element('small', 'lp-state-detail'); detail.append(icon('edit'), t('Unsaved', '未保存')); cell.append(detail);
+-		}
+-		cell.title = t(`Double-click or press Enter: ${status.action}`, `双击或按 Enter：${status.action}`);
+-		return cell;
+-	}
+-	private stamp(time?: number, compact = false): string {
+-		if (!time || !Number.isFinite(new Date(time).valueOf())) { return compact ? '' : '—'; }
+-		const day = new Date(time).toDateString(), now = new Date();
+-		if (day === now.toDateString()) { return (compact ? '' : this.label('Today ', '今天 ')) + this.clock.format(time); }
+-		now.setDate(now.getDate() - 1);
+-		if (day === now.toDateString()) { return this.label('Yesterday', '昨天') + (compact ? '' : ` ${this.clock.format(time)}`); }
+-		return this.date.format(time);
+-	}
+-	private manage(p: LaunchpadProject, origin: HTMLElement): void {
+-		const t = this.label, status = this.historyStatus(p);
+-		this.picker.choices(p.name, [
+-			{ label: status.action, glyph: status.actionGlyph, run: () => this.actions.project(p) },
+-			{ label: t('Project information', '显示项目信息'), glyph: 'info', run: () => this.picker.choices(p.name, [], origin, [p.path, this.projectLabel(p), this.stamp(p.lastOpened)].join('\n')) },
++	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
++	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Add project', '添加项目'), this.fileOptions(), origin); }
++	private manage(p: LaunchpadProject, b: HTMLElement): void {
++		const t = this.t; this.picker.choices(p.name, [
++			{ label: p.windowId !== undefined ? t('Switch to window', '切换到项目窗口') : t('Open in new window', '在新窗口打开'), glyph: 'open-in-window', run: () => this.actions.project(p) },
+ 			{ label: t('Remove from history…', '移除打开记录…'), glyph: 'trash', run: () => this.actions.remove(p) },
+-		], origin, p.path);
++		], b, [p.path, edition(p, t), p.version].filter(Boolean).join('\n'));
+ 	}
+-
+-	private list<T>(root: HTMLElement, rows: T[], empty: string, render: (row: T) => HTMLElement, emptyGlyph: string): void {
+-		const signature = JSON.stringify([rows, empty]);
+-		if (this.signatures.get(root) === signature) { return; }
+-		this.signatures.set(root, signature);
+-		const active = document.activeElement;
+-		const key = active instanceof HTMLElement && root.contains(active) ? active.closest<HTMLElement>('[data-key]')?.dataset.key : undefined;
+-		if (rows.length) { root.replaceChildren(...rows.map(render)); }
+-		else { const msg = element('p', 'lp-empty'); msg.append(icon(emptyGlyph), empty); root.replaceChildren(msg); }
+-		if (key) {
+-			const row = Array.from(root.children).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.key === key);
+-			(active?.classList.contains('lp-row-more') ? row?.querySelector('button') : row)?.focus({ preventScroll: true });
+-		}
+-	}
+-	private select(uri: string | undefined, focus = false): void {
+-		this.selection = uri;
+-		for (const row of this.history.querySelectorAll<HTMLElement>('.lp-project-row')) {
+-			const selected = row.dataset.key === uri;
+-			row.setAttribute('aria-selected', String(selected));
+-			row.tabIndex = selected || (uri === undefined && row === this.history.firstElementChild) ? 0 : -1;
+-			row.querySelector('button')!.tabIndex = row.tabIndex;
+-			if (selected && focus) { row.focus({ preventScroll: true }); row.scrollIntoView({ block: 'nearest' }); }
+-		}
++	private search(commands: boolean): void {
++		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.actions.project(p) })));
+ 	}
+-	private historyRow(p: LaunchpadProject): HTMLElement {
+-		const t = this.label;
+-		const row = element('div', 'lp-project-row'); row.dataset.key = p.uri; row.setAttribute('role', 'row'); row.title = p.path;
+-		row.tabIndex = -1;
+-		const name = element('span', 'lp-project-name'); const tile = element('span', `lp-tile lp-${p.kind}`); tile.title = this.projectLabel(p); tile.append(this.projectIcon(p));
+-		const pair = element('span', 'lp-pair'); const heading = element('span', 'lp-project-heading'); heading.append(element('strong', 'lp-ellipsis', p.name));
+-		const type = p.kind === 'folder' ? this.typeLabel(p.projectType) : undefined; if (type) { heading.append(element('span', 'lp-project-type', type)); }
+-		pair.append(heading, element('small', 'lp-path lp-ellipsis', p.path)); name.append(tile, pair);
+-		const more = tool(t(`Manage ${p.name}`, `管理「${p.name}」的打开记录`), 'ellipsis', () => { this.select(p.uri); this.manage(p, more); });
+-		more.classList.add('lp-row-more'); more.setAttribute('aria-haspopup', 'dialog');
+-		const actions = element('span'); actions.append(more);
+-		const cells = [name, this.historyStatusCell(p), element('time', '', this.stamp(p.lastOpened)), actions];
+-		for (const cell of cells) { cell.setAttribute('role', 'gridcell'); } row.append(...cells);
+-		row.addEventListener('click', e => { if (!(e.target instanceof Element && e.target.closest('button'))) { this.select(p.uri, true); } });
+-		row.addEventListener('dblclick', e => { if (!(e.target instanceof Element && e.target.closest('button'))) { this.actions.project(p); } });
+-		row.addEventListener('contextmenu', e => { e.preventDefault(); this.select(p.uri); this.manage(p, row); });
+-		row.addEventListener('keydown', e => {
+-			if (e.target !== row) { return; }
+-			if (e.key === 'Enter') { e.preventDefault(); this.actions.project(p); }
+-			else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); this.manage(p, row); }
+-			else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+-				e.preventDefault(); const rows = Array.from(this.history.children) as HTMLElement[];
+-				const i = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)));
+-				this.select(rows[i].dataset.key!, true);
+-			}
+-		});
+-		return row;
+-	}
+-	private renderHistory(): void {
+-		const t = this.label; const records = this.state?.recent ?? [];
+-		// Native history is already most-recent-first, even for entries without a cached timestamp.
+-		const rows = this.expanded ? records : records.slice(0, 5);
+-		this.historyTitle.textContent = this.expanded ? t('All open history', '全部打开记录') : t('Recently opened', '最近打开');
+-		this.recentCount.textContent = String(rows.length); this.tableHead.hidden = !rows.length;
+-		this.shown.textContent = rows.length ? t(`Showing ${rows.length} of ${records.length}`, `显示 ${rows.length} 条，共 ${records.length} 条`) : '';
+-		this.more.hidden = !this.expanded && records.length <= 5; this.more.setAttribute('aria-expanded', String(this.expanded));
+-		this.more.replaceChildren(...(this.expanded ? [icon('chevron-left'), t('Back to recent', '返回最近打开')] : [t(`All ${records.length} records`, `全部 ${records.length} 条记录`), icon('chevron-right')]));
+-		this.list(this.history, rows, t('No open history yet.', '还没有打开记录。'), p => this.historyRow(p), 'folder-opened');
+-		this.select(rows.find(p => p.uri === this.selection)?.uri);
++	shortcut(event: KeyboardEvent): void {
++		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
++		const key = event.key.toLowerCase(); if (key !== 'f1' && (!(event.ctrlKey || event.metaKey) || !['p', 'f', 'o'].includes(key) || (event.shiftKey && key !== 'p'))) { return; }
++		event.preventDefault(); event.stopImmediatePropagation(); if (key === 'o') { this.openOptions(this.commandCenter); } else { this.search(key === 'f1' || event.shiftKey); }
+ 	}
+-
+ 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+-	setProjectDropActive(active: boolean): void { this.projectDrop.toggleAttribute('hidden', !active); }
+-	setVisible(visible: boolean): void {
+-		this.element.hidden = !visible;
+-		this.setProjectDropActive(false);
+-	}
++	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
++	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+ 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
+ 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
+-	focusAccount(): void { (this.state?.platform ? this.accountButton : this.element).focus({ preventScroll: true }); }
++	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
+-
++	refreshSocial(): void { void this.profile.refresh(); }
++	showSocial(section: 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
+ 	update(state: LaunchpadState): void {
+-		const previous = this.state; this.state = state; const t = this.label;
+-		this.createButton.disabled = !state.canCreate; this.serverButton.hidden = this.accountButton.hidden = this.connection.hidden = this.side.hidden = !state.platform;
+-		if (JSON.stringify(state.account) !== JSON.stringify(previous?.account)) {
+-			this.accountButton.replaceChildren(accountAvatar(state.account?.hasAccount ? state.account.avatarUrl : undefined));
+-			this.accountButton.title = state.account?.hasAccount ? state.account.name : t('Studio account', 'Studio 账号');
+-			if (this.accountProfile.isConnected) { this.renderAccountProfile(); }
+-		}
+-		this.liveCount.textContent = String(state.windows.length);
+-		this.list(this.live, state.windows, t('No project windows are open.', '当前没有打开的项目窗口。'), p => {
+-			const item = button('', '', () => this.actions.project(p), 'lp-live-project'); item.title = p.path; item.dataset.key = p.uri;
+-			const plate = element('span', 'lp-plate'); plate.dataset.tone = p.kind === 'workspace' ? 'workspace' : p.projectType ?? 'folder';
+-			const kind = element('small', 'lp-plate-kind'); kind.append(icon(this.glyph(p)), this.projectLabel(p));
+-			const art = element('span', 'lp-plate-art'); art.append(this.projectIcon(p)); plate.append(kind, art);
+-			const body = element('span', 'lp-window-body'); const status = element('span', 'lp-window-status'); status.append(element('span', 'lp-open', t('Open', '已打开')), icon('arrow-right'));
+-			body.append(element('strong', 'lp-ellipsis', p.name), status); item.append(plate, body); return item;
+-		}, 'window');
+-		this.renderHistory();
+-		const inbox = state.inbox;
+-		const unread = inbox?.items.reduce((sum, row) => sum + row.unread, 0) ?? 0;
+-		this.unread.hidden = !unread; this.unread.textContent = t(`${unread} unread`, `${unread} 条未读`);
+-		const connection = inbox?.connection ?? 'connecting'; this.connection.dataset.state = connection;
+-		this.connection.textContent = connection === 'connected' ? t('IM connected', 'IM 已连接') : connection === 'connecting' ? t('Connecting to IM…', '正在连接 IM…') : t('IM offline', 'IM 未连接');
+-		this.list(this.chats, inbox?.items ?? [], inbox?.message ?? t('Loading recent chats…', '正在读取最近会话…'), chat => {
+-			const item = button('', '', () => this.actions.inbox(chat.id), 'lp-chat'); item.dataset.key = chat.id ?? chat.name;
+-			const avatar = chat.avatarUrl?.startsWith('data:image/') ? image(chat.avatarUrl, 'lp-avatar lp-chat-avatar') : element('span', 'lp-avatar', chat.group ? '' : Array.from(chat.name)[0]);
+-			if (chat.group) { avatar.classList.add('lp-group'); if (!chat.avatarUrl) { avatar.append(icon('comment-discussion')); } }
+-			const pair = element('span', 'lp-pair'); const heading = element('span', 'lp-spread'); heading.append(element('strong', 'lp-ellipsis', chat.name), element('time', '', this.stamp(chat.time, true)));
+-			const line = element('span', 'lp-spread'); line.append(element('small', 'lp-ellipsis', chat.preview)); if (chat.unread) { line.append(element('span', 'lp-badge', String(chat.unread))); }
+-			pair.append(heading, line); item.append(avatar, pair); return item;
+-		}, 'comment-discussion');
+-		if (connection === 'guest' && !this.chats.querySelector('button')) { this.chats.append(button(t('Connect account', '连接账号'), 'sign-in', this.actions.signIn, 'lp-link')); }
+-		else if (connection !== 'guest') { this.chats.querySelector(':scope > .lp-link')?.remove(); }
+-		this.storeSection.hidden = !state.store;
+-		if (state.store) {
+-			this.list(this.cards, state.store.items, state.store.message ?? t('No recommendations yet.', '暂无推荐。'), p => {
+-				const card = button('', '', () => this.actions.store(p.id), 'lp-card'); card.dataset.key = p.id;
+-				const mark = element('span', 'lp-store-mark'); mark.dataset.type = p.projectType; mark.append(p.avatarUrl?.startsWith('data:image/') ? image(p.avatarUrl) : icon(studioProjectIcon(p.projectType) ?? 'extensions'));
+-				const pair = element('span', 'lp-pair'); pair.append(element('strong', '', p.name), element('small', '', p.description ?? this.typeLabel(p.projectType) ?? ''));
+-				card.append(mark, pair, icon('link-external')); return card;
+-			}, 'extensions');
+-		}
+-		if (previous?.recent !== state.recent || previous?.canCreate !== state.canCreate || previous?.platform !== state.platform) { this.picker.update(); }
++		const previous = this.state; this.state = state;
++		this.createButton.disabled = !state.canCreate; this.inboxButton.hidden = !state.platform;
++		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
++		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
++		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
++		this.library.update(state.recent, state.windows); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey, state.store?.items ?? []);
++		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
++		if (this.picker.dialog.open) { this.picker.update(); }
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioNotificationInbox.ts b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0276fe8c33f038f7ea81a86389b02a2099c22194
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+@@ -0,0 +1,56 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { Emitter } from '../../base/common/event.js';
++import { Disposable } from '../../base/common/lifecycle.js';
++import { generateUuid } from '../../base/common/uuid.js';
++import { ICommandService } from '../../platform/commands/common/commands.js';
++import { INotificationService } from '../../platform/notification/common/notification.js';
++import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
++import { NotificationChangeType } from '../common/notifications.js';
++import { NotificationService } from '../services/notification/common/notificationService.js';
++import type { StudioNotice } from './studioLaunchpadProfile.js';
++
++const prefix = 'studio.notificationInbox.';
++const scope = StorageScope.PROFILE, target = StorageTarget.MACHINE;
++interface Notice extends StudioNotice { owner: string }
++
++/** One key per event: simultaneous project windows cannot overwrite each other's notifications. */
++export class StudioNotificationInbox extends Disposable {
++	private owner?: string;
++	private visible?: StudioNotice[];
++	private revision = 0;
++	private readonly change = this._register(new Emitter<void>());
++	readonly onDidChange = this.change.event;
++
++	constructor(@IStorageService private readonly storage: IStorageService, @INotificationService notifications: INotificationService, @ICommandService commands: ICommandService) {
++		super();
++		const update = (value: unknown) => {
++			const account = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
++			const owner = account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined;
++			if (owner !== this.owner) { this.owner = owner; this.visible = undefined; this.change.fire(); }
++		};
++		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
++			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
++		}));
++		const model = (notifications as NotificationService).model;
++		this._register(model.onDidChangeNotification(e => {
++			if (!this.owner || e.kind !== NotificationChangeType.ADD || e.item.hasActiveProgress || e.item.sourceId === 'studio.builtinIm') { return; }
++			const id = `${Date.now()}-${generateUuid()}`;
++			this.storage.store(prefix + id, { owner: this.owner, id, title: e.item.message.raw.slice(0, 500), source: 'studio', read: false }, scope, target);
++			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
++		}));
++		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.visible = undefined; this.change.fire(); } }));
++		// Until the profile is known, do not persist potentially account-specific text.
++		const rev = this.revision;
++		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
++	}
++	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
++	list(): StudioNotice[] { return this.visible ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner).slice(0, 100) : []; }
++	read(id: string): void {
++		const item = this.storage.getObject(prefix + id, scope) as Notice | undefined;
++		if (this.owner && item?.owner === this.owner && item.id === id) { this.storage.store(prefix + id, { ...item, read: true }, scope, target); }
++	}
++}
+diff --git a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+index 8c12312ade1953e4cd25be32b98d00e0c109475c..9277de661b76ac232ec136be01a007c22763a4bd 100644
+--- a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -99,6 +99,7 @@ export class TestNativeHostService implements INativeHostService {
+ 	async getActiveWindowPosition(): Promise<IRectangle | undefined> { return undefined; }
+ 	async getNativeWindowHandle(windowId: number): Promise<VSBuffer | undefined> { return undefined; }
+ 	async openStudioLaunchpadInbox(): Promise<boolean> { return false; }
++	async openStudioLaunchpadStore(): Promise<boolean> { return false; }
+ 
+ 	openWindow(options?: IOpenEmptyWindowOptions): Promise<void>;
+ 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;

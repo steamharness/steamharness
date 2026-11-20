@@ -307,11 +307,12 @@ test('a spawned child never sees npm prefix configuration', async (t) => {
 });
 
 test('Studio channels have distinct protocols, installation identities and data directories', () => {
-  const identities = ['dev','alpha','main'].map(channel => channelProductIdentity(channel));
+  const identities = ['dev','main'].map(channel => channelProductIdentity(channel));
+  assert.throws(() => channelProductIdentity('alpha'), /Invalid Studio channel/);
   for (const field of ['urlProtocol','nameShort','darwinBundleIdentifier','applicationName','dataFolderName','win32DirName','win32AppUserModelId','win32MutexName']) {
-    assert.equal(new Set(identities.map(identity => identity[field])).size, 3, field);
+    assert.equal(new Set(identities.map(identity => identity[field])).size, identities.length, field);
   }
-  assert.equal(identities[2].urlProtocol, 'steamharness-studio');
+  assert.equal(identities[1].urlProtocol, 'steamharness-studio');
   assert.notEqual(identities[0].win32x64AppId, identities[1].win32x64AppId);
   assert.equal(channelProductIdentity('dev').win32x64AppId, identities[0].win32x64AppId);
 });

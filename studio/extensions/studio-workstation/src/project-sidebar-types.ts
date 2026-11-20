@@ -30,6 +30,7 @@ export interface HostedSidebarProject {
   projectId: string;
   entryId: string;
   hostNotifications?: boolean;
+  standalone?: boolean;
   getState(): HostedSidebarState;
   onDidChange(listener: () => void): { dispose(): unknown };
 }

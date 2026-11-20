@@ -22,7 +22,8 @@ window.addEventListener('message',event=>{
   if(event.source===frame.contentWindow){
     if(event.origin!==origin||event.data?.nonce!==nonce)return;
     if(event.data.type==='steamharness:web-app-account')host.postMessage({type:'studio-sidebar-account'});
-    ${resident ? `if(event.data.type==='steamharness:web-app-ready')host.postMessage({type:'studio-launchpad-ready'});` : ''}
+    ${resident ? `if(event.data.type==='steamharness:web-app-ready')host.postMessage({type:'studio-launchpad-ready'});
+    if(event.data.type==='steamharness:web-app-social'&&['people','favorites'].includes(event.data.section))host.postMessage({type:'studio-launchpad-social',section:event.data.section});` : ''}
   }${resident ? `else if(event.origin===window.origin&&event.data?.type==='studio-launchpad-view'&&typeof event.data.visible==='boolean'){
     frame.contentWindow.postMessage({type:'steamharness:web-app-view',nonce,visible:event.data.visible,conversation:event.data.conversation},origin);
   }` : ''}
