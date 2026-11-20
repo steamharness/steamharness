@@ -30,7 +30,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   folders[1] = URI.file('/projects/folder.code-workspace');
   const workspace = URI.file('/projects/Sample.code-workspace');
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
-  state.recent = folders.map(uri=>({uri:uri.toString(),lastOpened:1700000000000}));
+  const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
+  state.recent = folders.map((uri,i)=>({uri:uri.toString(),lastOpened:1700000000000,...(i===0?{projectType:'workflow',avatarUrl:avatar}:i===2?{projectType:'bot'}:{})}));
   const windows = [{ id:23, workspace:{id:'folder',uri:folders[0]} }];
   const native = {getWindows:async()=>windows, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
     openWindow:async ([open],opts)=>window.actions.push(['open',Object.keys(open)[0],opts.forceNewWindow])};
@@ -63,6 +64,9 @@ try {
     await page.addStyleTag({content:hostFocusCss}); await page.addStyleTag({content:css+'\n'+iconCss}); await page.addScriptTag({content:js});
     const rows=page.locator('.lp-project-row'); await rows.first().waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
     assert.equal(await rows.count(),5); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
+    assert.equal(await page.locator('.lp-project-avatar').count(),1,`${language}: recent project avatar`);
+    assert.ok((await page.locator('.lp-project-avatar').getAttribute('src'))?.startsWith('data:image/svg+xml,'),`${language}: avatar data URL is preserved`);
+    assert.deepEqual(await page.locator('.lp-project-type').allTextContents(),[language==='zh-cn'?'工作流':'Workflow', 'Bot'],`${language}: recent project types`);
     assert.equal(await page.locator('.studio-launchpad').evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: launchpad container must not draw a focus outline`);
     if (enhanced) await page.getByText('Review',{exact:true}).waitFor();
     assert.equal(await page.locator('.lp-store').isVisible(),enhanced);
