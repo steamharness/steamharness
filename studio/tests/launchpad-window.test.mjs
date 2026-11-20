@@ -225,6 +225,10 @@ test('the branded tray icon preserves launchpad and quit actions', async () => {
     nativeImage: { createFromBuffer: (bytes, options) => {
       assert.ok(bytes.equals(expected), `the tray uses the SteamHarness brand asset ${asset}`);
       assert.equal(options.scaleFactor, 2);
+      if (isMacintosh) {
+        const dimensions = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)]; // PNG IHDR width and height
+        assert.deepEqual(dimensions, [36, 36], 'the macOS template keeps its 18-point canvas at 2x');
+      }
       return image;
     } },
     Tray: class extends EventEmitter {
