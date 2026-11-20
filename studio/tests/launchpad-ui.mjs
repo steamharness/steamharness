@@ -9,6 +9,9 @@ import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
 const bootstrap = await build({ entryPoints: [`${kernel}/src/vs/code/electron-browser/workbench/workbench.ts`],
   bundle: true, write: false, format: 'esm', target: 'es2022' });
+const origin = 'http://127.0.0.1:4321';
+const workbenchPath = `${origin}/out/vs/code/electron-browser/workbench`;
+const workbenchMain = `${origin}/out/vs/workbench/workbench.desktop.main.js`;
 const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { StudioLaunchpad } from './src/vs/workbench/electron-browser/studioLaunchpad.ts';
   import { StudioProjectCreateDialog } from './src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts';
@@ -184,34 +187,94 @@ async function checkHeaderLayout(page, size) {
   }), `the enlarged logo, title, and project actions fit at ${page.viewportSize().width}px`);
 }
 
-async function startWorkbench(page, { isStudioLaunchpad, language, light, reduceMotion = false, cached = true }, loadWorkbench) {
-  const origin = 'http://127.0.0.1:4321';
-  const entry = `${origin}/out/vs/code/electron-browser/workbench/workbench.js`;
-  await page.route(entry, route => route.fulfill({ contentType: 'text/javascript', body: bootstrap.outputFiles[0].text }));
-  await page.route(`${origin}/out/vs/workbench/workbench.desktop.main.js`, async route => {
-    await loadWorkbench;
-    return route.fulfill({ contentType: 'text/javascript', body: `export function main(config) {
-      if (config.isStudioLaunchpad) { window.delayHistory = true; window.startLaunchpad(); }
-    }` });
-  });
-  await page.evaluate(config => {
-    window._VSCODE_USE_RELATIVE_IMPORTS = true;
-    window.vscode = {
-      ...window.vscode,
-      process: { platform: 'darwin', env: { VSCODE_DEV: '1' } },
-      context: { resolveConfiguration: async () => config },
-    };
-  }, {
+function workbenchConfig({ isStudioLaunchpad, language, light, reduceMotion, cached = true, highContrast = false }) {
+  return {
     windowId: 1, isStudioLaunchpad, nls: { language, messages: [] }, studioLaunchpadReduceMotion: reduceMotion, appRoot: '/studio',
-    autoDetectColorScheme: true, colorScheme: { dark: !light, highContrast: false },
+    autoDetectHighContrast: true, autoDetectColorScheme: true, colorScheme: { dark: !light, highContrast },
     partsSplash: cached ? {
       baseTheme: light ? 'vs' : 'vs-dark',
       colorInfo: { background: light ? '#fafafa' : '#191b1e', foreground: light ? '#202020' : '#eeeeee',
         editorBackground: '#191b1e', titleBarBackground: '#292929', activityBarBackground: '#292929', statusBarNoFolderBackground: '#292929' },
       layoutInfo: { modernUI: true, sideBarSide: 'left', titleBarHeight: 44, statusBarHeight: 22, activityBarWidth: 48, sideBarWidth: 0, auxiliaryBarWidth: 0 },
     } : undefined,
+  };
+}
+
+function installBootstrapFixture(config) {
+  window._VSCODE_USE_RELATIVE_IMPORTS = true;
+  window.startupIpc = [];
+  window.vscode = {
+    ...window.vscode,
+    process: { platform: 'darwin', env: { VSCODE_DEV: '1' } },
+    context: { resolveConfiguration: async () => config },
+    ipcRenderer: { ...window.vscode?.ipcRenderer, send(channel) { window.startupIpc.push(channel); } },
+  };
+}
+
+async function routeBootstrap(page) {
+  await page.route(`${workbenchPath}/workbench.js`, route => route.fulfill({ contentType: 'text/javascript', body: bootstrap.outputFiles[0].text }));
+}
+
+async function startWorkbench(page, options, loadWorkbench) {
+  await routeBootstrap(page);
+  await page.route(workbenchMain, async route => {
+    await loadWorkbench;
+    return route.fulfill({ contentType: 'text/javascript', body: `export async function main(config) {
+      if (config.isStudioLaunchpad) { window.delayHistory = true; window.startLaunchpad(); }
+    }` });
   });
-  await page.addScriptTag({ type: 'module', url: entry });
+  await page.evaluate(installBootstrapFixture, workbenchConfig(options));
+  await page.addScriptTag({ type: 'module', url: `${workbenchPath}/workbench.js` });
+}
+
+async function checkStartupRecovery(browser, cause, language) {
+  const page = await browser.newPage({ reducedMotion: 'reduce' });
+  try {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.cspViolations = [];
+      document.addEventListener('securitypolicyviolation', event => window.cspViolations.push(event.violatedDirective));
+    });
+    await page.addInitScript(installBootstrapFixture, workbenchConfig({
+      isStudioLaunchpad: true, language, light: true, reduceMotion: false, highContrast: cause === 'slow',
+    }));
+    if (cause === 'slow') await page.clock.install();
+    const html = await readFile(new URL('../upstream/vscode/src/vs/code/electron-browser/workbench/workbench.html', import.meta.url), 'utf8');
+    await page.route(`${workbenchPath}/workbench.html`, route => route.fulfill({ contentType: 'text/html', body: html }));
+    await page.route(`${origin}/out/vs/workbench/workbench.desktop.main.css`, route => route.fulfill({ contentType: 'text/css', body: '' }));
+    await routeBootstrap(page);
+    await page.route(workbenchMain, route => cause === 'import' ? route.abort() : route.fulfill({ contentType: 'text/javascript', body: `
+      export async function main() {
+        ${cause === 'slow' ? 'await new Promise(() => {});' : `
+          const workbench = document.createElement('div'); workbench.className = 'monaco-workbench studio-launchpad-window';
+          document.body.append(workbench);
+          throw new Error('workbench initialization failed');`}
+      }` }));
+    await page.goto(`${workbenchPath}/workbench.html`);
+    await page.waitForFunction(() => window.startupIpc.includes('vscode:studioLaunchpadPainted'));
+    const splash = page.locator('#studio-launchpad-splash');
+    await splash.locator('img').evaluate(img => img.decode());
+    if (cause === 'slow') {
+      assert.equal(await splash.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)', 'stale cache is ignored for a high contrast switch');
+      assert.equal(await splash.locator('.studio-splash-progress').evaluate(el => getComputedStyle(el, '::after').animationName),
+        'studio-splash-progress', 'explicit Studio motion setting overrides the OS preference');
+      await page.clock.fastForward(30000);
+    }
+    const retry = splash.getByRole('button', { name: language === 'zh-cn' ? '重试' : 'Retry' });
+    await retry.waitFor();
+    assert.equal(await splash.getByRole('alert').textContent(), cause === 'slow' ? 'Launchpad is taking longer than expected' :
+      (language === 'zh-cn' ? '无法打开启动台' : 'Could not open Launchpad'));
+    assert.equal(await splash.locator('.studio-splash-progress').isVisible(), false);
+    assert.equal(await page.locator('.monaco-workbench:not([inert]), #monaco-parts-splash').count(), 0);
+    assert.equal(await retry.evaluate(el => el === document.activeElement), true);
+    await retry.press('Enter');
+    assert.deepEqual(await page.evaluate(() => window.startupIpc), ['vscode:studioLaunchpadPainted', 'vscode:reloadWindow']);
+    assert.deepEqual(await page.evaluate(() => window.cspViolations), []);
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
 }
 
 async function checkStatusLayout(page) {
@@ -291,7 +354,13 @@ try {
   await project.locator('#monaco-parts-splash').waitFor({ state: 'attached' });
   assert.ok(await project.locator('#monaco-parts-splash > div').count() > 1, 'project startup retains its editor layout preview');
   assert.equal(await project.locator('#studio-launchpad-splash').count(), 0, 'the branded splash is exclusive to launchpad windows');
+  assert.deepEqual(await project.evaluate(() => window.startupIpc), []);
   await project.close();
+
+  await checkStartupRecovery(browser, 'import', 'en');
+  await checkStartupRecovery(browser, 'initialization', 'zh-cn');
+  await checkStartupRecovery(browser, 'slow', 'en');
+  console.log('launchpad import rejection, initialization rejection and stalled startup recovery passed');
 
   for (const [language, enhanced, light] of [['zh-cn',true,true],['en',true,false],['en',false,true]]) {
     const page = await browser.newPage({viewport:{width:1120,height:680}, reducedMotion:language==='zh-cn'?'reduce':'no-preference'});
@@ -331,7 +400,7 @@ try {
     await page.mouse.move(0,0);
     const workbench = Promise.withResolvers();
     try {
-      await startWorkbench(page, { isStudioLaunchpad: true, language, light, reduceMotion: !enhanced, cached: enhanced }, workbench.promise);
+      await startWorkbench(page, { isStudioLaunchpad: true, language, light, reduceMotion: enhanced ? undefined : true, cached: enhanced }, workbench.promise);
       const splash = page.locator('#studio-launchpad-splash');
       await splash.waitFor();
       await splash.locator('img').evaluate(img => img.decode());
@@ -341,6 +410,7 @@ try {
       assert.equal(await splash.locator('.studio-splash-progress').evaluate(el => getComputedStyle(el, '::after').animationName),
         language==='en' && enhanced ? 'studio-splash-progress' : 'none');
       assert.equal(await page.locator('#monaco-parts-splash, .studio-launchpad').count(), 0, 'the splash paints before the workbench without IDE placeholders');
+      await page.waitForFunction(() => window.startupIpc.includes('vscode:studioLaunchpadPainted'));
       await page.screenshot({path:fileURLToPath(new URL(`${stem}-startup.png`,proof))});
     } finally {
       workbench.resolve();
