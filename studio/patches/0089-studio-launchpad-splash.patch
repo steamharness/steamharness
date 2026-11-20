@@ -1,0 +1,209 @@
+diff --git a/src/vs/code/electron-browser/workbench/workbench.ts b/src/vs/code/electron-browser/workbench/workbench.ts
+index 8c18705d719bf532c4065844f2e1231d256c42f6..8c5b0f47d3b6b6af1e668774c2d053c9dab229c1 100644
+--- a/src/vs/code/electron-browser/workbench/workbench.ts
++++ b/src/vs/code/electron-browser/workbench/workbench.ts
+@@ -6,6 +6,7 @@
+ /* eslint-disable no-restricted-globals */
+ 
+ import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash.js';
++import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/studioLaunchpadSplash.js';
+ 
+ (async function () {
+ 
+@@ -91,6 +92,18 @@ import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash
+ 			preloadGlobals.webFrame.setZoomLevel(data.zoomLevel);
+ 		}
+ 
++		// The launchpad owns its first paint instead of restoring editor chrome.
++		if (configuration.isStudioLaunchpad) {
++			showStudioLaunchpadSplash(window.document, {
++				baseTheme,
++				background: data?.colorInfo.background ?? shellBackground,
++				foreground: shellForeground,
++				language: configuration.nls.language,
++				reduceMotion: configuration.studioLaunchpadReduceMotion,
++			});
++			return;
++		}
++
+ 		// restore parts if possible (we might not always store layout info)
+ 		if (data?.layoutInfo) {
+ 			const { layoutInfo, colorInfo } = data;
+diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
+index 0c15fdd3f80288bc80e27ff112c1706c981cff1e..20f30ca000609f7c31409295d3b075842e74147c 100644
+--- a/src/vs/platform/window/common/window.ts
++++ b/src/vs/platform/window/common/window.ts
+@@ -516,6 +516,7 @@ export interface IOSConfiguration {
+ 
+ export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
+ 	readonly isStudioLaunchpad?: boolean;
++	studioLaunchpadReduceMotion?: boolean;
+ 	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
+ 	studioReleasePending?: boolean;
+ 	mainPid: number;
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index a9a0c8e2ee852d27964aabe96b0ea0a7d601b818..db5ed19325ae7ad1f13ece2dcbc4f040cf034ac8 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -1368,6 +1368,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
+ 		configuration.fullscreen = this.isFullScreen;
+ 		configuration.maximized = this._win.isMaximized();
+ 		configuration.partsSplash = this.themeMainService.getWindowSplash(configuration.workspace);
++		if (this.isStudioLaunchpad) {
++			configuration.studioLaunchpadReduceMotion = this.configurationService.getValue('workbench.reduceMotion') === 'on';
++		}
+ 		configuration.zoomLevel = this.getZoomLevel();
+ 		configuration.isCustomZoomLevel = typeof this.customZoomLevel === 'number';
+ 		if (configuration.isCustomZoomLevel && configuration.partsSplash) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 3f7ba8b788af218494d6bc8995cc60d464b148a5..282bef4bb36e2fbb1d225b553a65fb1967cee24d 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -29,6 +29,7 @@ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
+ import { IOverlayWebview, IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
+ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
++import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import './media/studioLaunchpad.css';
+ 
+@@ -208,6 +209,7 @@ export class StudioLaunchpad extends Disposable {
+ 		}));
+ 		this.showHome();
+ 		updateStart();
++		removeStudioLaunchpadSplash(mainWindow.document);
+ 		run(this.readProjects());
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadSplash.ts b/src/vs/workbench/electron-browser/studioLaunchpadSplash.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..da4b7632e8732732f89a2c983bf7843acec6b1a7
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadSplash.ts
+@@ -0,0 +1,126 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
++
++const splashId = 'studio-launchpad-splash';
++
++// Inline styles and the embedded logo are available before the workbench bundle loads.
++const splashStyles = `
++	#${splashId} {
++		position: fixed;
++		inset: 0;
++		z-index: 2;
++		isolation: isolate;
++		display: grid;
++		place-items: center;
++		box-sizing: border-box;
++		padding: 20px;
++		background: var(--studio-splash-background);
++		color: var(--studio-splash-foreground);
++		font: 13px/1.5 system-ui, sans-serif;
++		user-select: text;
++	}
++	#${splashId}:not(.high-contrast)::before {
++		content: '';
++		position: absolute;
++		inset: 0;
++		z-index: -1;
++		background: radial-gradient(circle, currentColor 1px, transparent 1px) center / 20px 20px;
++		mask-image: radial-gradient(ellipse closest-side, #000, transparent);
++		opacity: .16;
++		pointer-events: none;
++	}
++	#${splashId} .studio-splash-identity {
++		display: grid;
++		justify-items: center;
++		min-width: 0;
++		text-align: center;
++	}
++	#${splashId} h1 {
++		margin: 14px 0 4px;
++		font-size: 22px;
++		font-weight: 600;
++		overflow-wrap: anywhere;
++	}
++	#${splashId} p { margin: 0; }
++	#${splashId}:not(.high-contrast) p {
++		color: color-mix(in srgb, currentColor 78%, var(--studio-splash-background));
++	}
++	#${splashId} .studio-splash-progress {
++		width: 92px;
++		height: 3px;
++		margin-top: 20px;
++		border-radius: 2px;
++		overflow: hidden;
++		background: color-mix(in srgb, currentColor 18%, transparent);
++	}
++	#${splashId} .studio-splash-progress::after {
++		content: '';
++		display: block;
++		width: 32px;
++		height: 100%;
++		margin-inline: auto;
++		border-radius: inherit;
++		background: currentColor;
++		forced-color-adjust: none;
++	}
++	@media (forced-colors: active) {
++		#${splashId}::before { display: none; }
++		#${splashId} .studio-splash-progress::after { background: CanvasText; }
++	}
++	@media (prefers-reduced-motion: no-preference) {
++		#${splashId}:not(.reduce-motion) .studio-splash-progress::after {
++			animation: studio-splash-progress 1.2s ease-in-out infinite alternate;
++		}
++	}
++	@keyframes studio-splash-progress {
++		from { transform: translateX(-30px); }
++		to { transform: translateX(30px); }
++	}
++`;
++
++export function showStudioLaunchpadSplash(targetDocument: Document, options: {
++	baseTheme?: string;
++	background?: string;
++	foreground?: string;
++	language?: string;
++	reduceMotion?: boolean;
++}): void {
++	const splash = targetDocument.createElement('div');
++	splash.id = splashId;
++	const light = options.baseTheme === 'vs' || options.baseTheme === 'hc-light';
++	const highContrast = options.baseTheme === 'hc-light' || options.baseTheme === 'hc-black';
++	splash.classList.toggle('high-contrast', highContrast);
++	splash.classList.toggle('reduce-motion', !!options.reduceMotion);
++	splash.style.setProperty('--studio-splash-background', options.background ?? (light ? '#ffffff' : '#181818'));
++	splash.style.setProperty('--studio-splash-foreground', options.foreground ?? (light ? '#202020' : '#eeeeee'));
++
++	const style = targetDocument.createElement('style');
++	style.textContent = splashStyles;
++	const identity = targetDocument.createElement('div');
++	identity.className = 'studio-splash-identity';
++	const logo = targetDocument.createElement('img');
++	logo.alt = '';
++	logo.width = logo.height = 80;
++	logo.src = STEAMHARNESS_ICON_DATA_URI;
++	const name = targetDocument.createElement('h1');
++	name.textContent = 'SteamHarness Studio';
++	const status = targetDocument.createElement('p');
++	status.setAttribute('role', 'status');
++	status.textContent = options.language?.toLowerCase() === 'zh-cn' ? '正在打开启动台…' : 'Opening Launchpad…';
++	const progress = targetDocument.createElement('div');
++	progress.className = 'studio-splash-progress';
++	progress.setAttribute('aria-hidden', 'true');
++	identity.append(logo, name, status, progress);
++	splash.append(style, identity);
++	targetDocument.body.append(splash);
++}
++
++export function removeStudioLaunchpadSplash(targetDocument: Document): void {
++	// Bootstrap and workbench load independently, so hand off via the splash's DOM ID.
++	// eslint-disable-next-line no-restricted-syntax
++	targetDocument.getElementById(splashId)?.remove();
++}

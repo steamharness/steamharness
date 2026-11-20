@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "70242cc7d246b62787fb46d63dab9928b39458b3",
+  "commit": "9a0d451763a0d9755c0d187084c0e7e77046ce6c",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -85,6 +85,7 @@
     "0085-studio-launchpad-recent-order.patch": "dfcb5ea7a1b04e2af506686fa9c25b59f86c7ac3037b06ea5a7f092f68d23caa",
     "0086-studio-launchpad-folder-drop.patch": "c8d30bc71e5067776103e53ccd41914853689561df469b8398a0865fb4326fa0",
     "0087-studio-launchpad-branding.patch": "ab18d8a3fab8472cea279337d3c3a76da7531a89806b5e45a459e3dd759eb99c",
-    "0088-studio-project-overview.patch": "76839defd7daf22dc0cf542e1badcd98619b7315cc5f8258283b473bdc95cb11"
+    "0088-studio-project-overview.patch": "76839defd7daf22dc0cf542e1badcd98619b7315cc5f8258283b473bdc95cb11",
+    "0089-studio-launchpad-splash.patch": "b4937fbe759bff63a3709ee404de02d61ed7d42931517e23c5a30ffffe0d5f78"
   }
 }

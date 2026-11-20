@@ -7,6 +7,8 @@ import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
 
 // Render the desktop controller, creation dialog and Settings UI with isolated host services.
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
+const bootstrap = await build({ entryPoints: [`${kernel}/src/vs/code/electron-browser/workbench/workbench.ts`],
+  bundle: true, write: false, format: 'esm', target: 'es2022' });
 const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { StudioLaunchpad } from './src/vs/workbench/electron-browser/studioLaunchpad.ts';
   import { StudioProjectCreateDialog } from './src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts';
@@ -137,7 +139,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     root.classList.add('studio-launchpad-window');
     const controller = new StudioLaunchpad(start,native,{getRecentlyOpened:async()=>{
       window.projectReads.history++;
-      if (window.delayHistory) { window.delayHistory=false; await new Promise(resolve=>window.resumeHistory=resolve); }
+      if (window.delayHistory) {
+        window.delayHistory=false;
+        await new Promise(resolve=>window.resumeHistory=()=>{delete window.resumeHistory;resolve();});
+      }
       return recent;
     },onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
@@ -178,6 +183,37 @@ async function checkHeaderLayout(page, size) {
       (identity.right <= actions.left || identity.bottom <= actions.top);
   }), `the enlarged logo, title, and project actions fit at ${page.viewportSize().width}px`);
 }
+
+async function startWorkbench(page, { isStudioLaunchpad, language, light, reduceMotion = false, cached = true }, loadWorkbench) {
+  const origin = 'http://127.0.0.1:4321';
+  const entry = `${origin}/out/vs/code/electron-browser/workbench/workbench.js`;
+  await page.route(entry, route => route.fulfill({ contentType: 'text/javascript', body: bootstrap.outputFiles[0].text }));
+  await page.route(`${origin}/out/vs/workbench/workbench.desktop.main.js`, async route => {
+    await loadWorkbench;
+    return route.fulfill({ contentType: 'text/javascript', body: `export function main(config) {
+      if (config.isStudioLaunchpad) { window.delayHistory = true; window.startLaunchpad(); }
+    }` });
+  });
+  await page.evaluate(config => {
+    window._VSCODE_USE_RELATIVE_IMPORTS = true;
+    window.vscode = {
+      ...window.vscode,
+      process: { platform: 'darwin', env: { VSCODE_DEV: '1' } },
+      context: { resolveConfiguration: async () => config },
+    };
+  }, {
+    windowId: 1, isStudioLaunchpad, nls: { language, messages: [] }, studioLaunchpadReduceMotion: reduceMotion, appRoot: '/studio',
+    autoDetectColorScheme: true, colorScheme: { dark: !light, highContrast: false },
+    partsSplash: cached ? {
+      baseTheme: light ? 'vs' : 'vs-dark',
+      colorInfo: { background: light ? '#fafafa' : '#191b1e', foreground: light ? '#202020' : '#eeeeee',
+        editorBackground: '#191b1e', titleBarBackground: '#292929', activityBarBackground: '#292929', statusBarNoFolderBackground: '#292929' },
+      layoutInfo: { modernUI: true, sideBarSide: 'left', titleBarHeight: 44, statusBarHeight: 22, activityBarWidth: 48, sideBarWidth: 0, auxiliaryBarWidth: 0 },
+    } : undefined,
+  });
+  await page.addScriptTag({ type: 'module', url: entry });
+}
+
 async function checkStatusLayout(page) {
   const overflow = await page.locator('.lp-project-row').evaluateAll(rows => rows.filter(row => {
     const [name,status,time,actions] = row.children;
@@ -248,8 +284,18 @@ async function checkProjectDrop(page, language) {
 
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 try {
+  const project = await browser.newPage();
+  await project.route('http://127.0.0.1:4321/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+  await project.goto('http://127.0.0.1:4321/');
+  await startWorkbench(project, { isStudioLaunchpad: false, language: 'en', light: false }, Promise.resolve());
+  await project.locator('#monaco-parts-splash').waitFor({ state: 'attached' });
+  assert.ok(await project.locator('#monaco-parts-splash > div').count() > 1, 'project startup retains its editor layout preview');
+  assert.equal(await project.locator('#studio-launchpad-splash').count(), 0, 'the branded splash is exclusive to launchpad windows');
+  await project.close();
+
   for (const [language, enhanced, light] of [['zh-cn',true,true],['en',true,false],['en',false,true]]) {
-    const page = await browser.newPage({viewport:{width:1120,height:680}});
+    const page = await browser.newPage({viewport:{width:1120,height:680}, reducedMotion:language==='zh-cn'?'reduce':'no-preference'});
+    const stem = `${language}-${enhanced?'enhanced':'local'}-${light?'light':'dark'}`;
     const errors=[]; page.on('pageerror', e=>errors.push(e.message));
     await page.addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage:fixtureHost=>parent.postMessage({fixtureHost},window.origin) }); });
     let loads=0;
@@ -267,6 +313,7 @@ try {
     await page.addStyleTag({content:'.vs{--vscode-list-warningForeground:#855f00}.vs-dark{--vscode-list-warningForeground:#cca700}.hc-black,.hc-light{--vscode-contrastBorder:currentColor}'});
     await page.evaluate(({language,enhanced})=>{
       window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={};
+      window.vscodeWindowId=1; // The UI fixture loads before the bootstrap replaces this with the real window ID.
       window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]},
         webUtils:{getPathForFile:file=>'/projects/'+file.name}};
     },{language,enhanced});
@@ -282,7 +329,27 @@ try {
     for (const [x,y] of sashPoints) { await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+10,y+10); await page.mouse.up(); }
     assert.equal(await page.evaluate(()=>new Set(window.sashDrags).size),2,'both resize directions still work in a project window');
     await page.mouse.move(0,0);
-    await page.evaluate(()=>window.startLaunchpad());
+    const workbench = Promise.withResolvers();
+    try {
+      await startWorkbench(page, { isStudioLaunchpad: true, language, light, reduceMotion: !enhanced, cached: enhanced }, workbench.promise);
+      const splash = page.locator('#studio-launchpad-splash');
+      await splash.waitFor();
+      await splash.locator('img').evaluate(img => img.decode());
+      assert.equal(await splash.getByRole('status').textContent(), language==='zh-cn'?'正在打开启动台…':'Opening Launchpad…');
+      assert.deepEqual(await splash.boundingBox(), { x:0, y:0, width:1120, height:680 });
+      assert.equal(await splash.evaluate(el => getComputedStyle(el).backgroundColor), light ? (enhanced ? 'rgb(250, 250, 250)' : 'rgb(255, 255, 255)') : 'rgb(25, 27, 30)');
+      assert.equal(await splash.locator('.studio-splash-progress').evaluate(el => getComputedStyle(el, '::after').animationName),
+        language==='en' && enhanced ? 'studio-splash-progress' : 'none');
+      assert.equal(await page.locator('#monaco-parts-splash, .studio-launchpad').count(), 0, 'the splash paints before the workbench without IDE placeholders');
+      await page.screenshot({path:fileURLToPath(new URL(`${stem}-startup.png`,proof))});
+    } finally {
+      workbench.resolve();
+    }
+    await page.locator('.studio-launchpad').waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
+    assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'the splash leaves as soon as the launchpad renders');
+    assert.equal(await page.evaluate(() => typeof window.resumeHistory), 'function', 'history has not returned at handoff');
+    await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
+    assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
     const rows=page.locator('.lp-project-row'); await rows.first().waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
     const selected=page.locator('.lp-project-row[aria-selected=true]');
     assert.equal(await selected.count(),0,'no project is selected when history first renders');
@@ -316,7 +383,6 @@ try {
       assert.equal(await page.locator('.lp-account').getAttribute('title'),'My account');
     }
     assert.equal(await page.locator('.lp-store').isVisible(),enhanced);
-    const stem = `${language}-${enhanced?'enhanced':'local'}-${light?'light':'dark'}`;
     assert.equal(await rows.first().evaluate(el=>getComputedStyle(el).boxShadow),'none','the first row has no selection highlight');
     await page.screenshot({path:fileURLToPath(new URL(`${stem}.png`,proof))});
     assert.equal(await page.locator('.lp-primary').evaluate(el=>getComputedStyle(el).backgroundColor), 'rgb(0, 122, 204)', 'primary action inherits the Studio theme');
