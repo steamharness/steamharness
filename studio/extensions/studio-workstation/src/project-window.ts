@@ -7,6 +7,10 @@ export interface ProjectWindowOptions {
 }
 
 export async function chooseProjectWindow(message = t('Where would you like to open the project?')): Promise<ProjectWindowOptions | undefined> {
+  // The resident launchpad always keeps its own window.
+  if (await vscode.commands.executeCommand<boolean>('studio.internalIsLaunchpad').then(value => value === true, () => false)) {
+    return { forceNewWindow: true, forceReuseWindow: false };
+  }
   const newWindow = t('Open in New Window'), currentWindow = t('Open in Current Window');
   const target = await vscode.window.showInformationMessage(message, { modal: true }, newWindow, currentWindow);
   if (target !== newWindow && target !== currentWindow) { return; }

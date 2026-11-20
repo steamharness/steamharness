@@ -49,7 +49,7 @@ async function fixture(t, language = 'en') {
         return f.select ? f.select(buttons) : f.choice === 'new' ? buttons[0] : f.choice === 'current' ? buttons[1] : undefined;
       } },
     commands: { registerCommand: (name, callback) => { callbacks.set(name, callback); return disposable; },
-      executeCommand: async (name, ...args) => name === 'vscode.openFolder' ? f.opens.push({ uri: args[0].toString(), options: { ...args[1] } }) : callbacks.get(name)?.(...args) },
+      executeCommand: async (name, ...args) => name === 'studio.internalIsLaunchpad' ? f.launchpad === true : name === 'vscode.openFolder' ? f.opens.push({ uri: args[0].toString(), options: { ...args[1] } }) : callbacks.get(name)?.(...args) },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), URL });
@@ -150,9 +150,19 @@ test('clearing recent projects also removes their imported registrations', async
 
 test('a disposed project view cannot open a window after the dialog resolves', async t => {
   const f = await fixture(t);
-  let resolve, active = true;
-  f.select = buttons => new Promise(done => { resolve = () => done(buttons[0]); });
+  const dialog = Promise.withResolvers(), selection = Promise.withResolvers();
+  let active = true;
+  f.select = buttons => { dialog.resolve(buttons); return selection.promise; };
   const opening = f.open(uri('file:///projects/demo'), () => active);
-  active = false; resolve(); await opening;
+  const [newWindow] = await dialog.promise;
+  active = false; selection.resolve(newWindow); await opening;
   assert.deepEqual(f.opens, []);
+});
+
+test('the launchpad opens projects in a separate window without prompting', async t => {
+  const f = await fixture(t);
+  f.launchpad = true;
+  await f.open(uri('file:///projects/demo'));
+  assert.deepEqual(f.dialogs, []);
+  assert.deepEqual(f.opens, [{ uri: 'file:///projects/demo', options: { forceNewWindow: true, forceReuseWindow: false } }]);
 });

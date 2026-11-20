@@ -127,6 +127,15 @@ export class AccountController implements vscode.Disposable {
         },
       }, { supportsMultipleAccounts: false }),
       vscode.commands.registerCommand('studio.openAccount', () => this.open()),
+      vscode.commands.registerCommand('studio.openLaunchpadResource', async (resource: string) => {
+        const server = this.getState().serverUrl;
+        if (resource === 'docs') {
+          const { docs } = publicServiceUrls(serviceChannelFromServerUrl(server) ?? studioAuthChannel);
+          await vscode.env.openExternal(vscode.Uri.parse(docs));
+        } else if (resource === 'server' && this.platform) {
+          await vscode.env.openExternal(vscode.Uri.parse(normalizeProjectServerUrl(server)));
+        }
+      }),
       vscode.commands.registerCommand('studio.openLogin', async () => { await this.connect(); this.openLogin(); }),
       vscode.window.registerWebviewPanelSerializer('studio.login', {
         deserializeWebviewPanel: async panel => {
