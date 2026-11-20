@@ -71,7 +71,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const workspace = URI.file('/projects/Sample.code-workspace');
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
-  const history = folders.map(uri => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000}));
+  const history = folders.map((uri,i) => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000-i*86400000}));
   const detected = new Map([[history[0].uri,{projectType:'workflow',avatarUrl:avatar}],[history[2].uri,{projectType:'bot'}]]);
   const startEvent = new Emitter();
   const start = { state:undefined, onDidChange:startEvent.event, setVisible(){} };
@@ -224,7 +224,10 @@ try {
     assert.equal(await rows.locator('.lp-project-type').count(),2,'second launch paints types and avatar before extension activation');
     await page.evaluate(()=>window.activateProjects());
     await checkEditorSashes(page, false);
-    assert.equal(await rows.count(),5); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
+    const historyOrder=['Sample.code-workspace','Project 8','folder.code-workspace','Project 6','Project 5','Project 4','Project 3','Project 2','Project 1'];
+    const historyNames=rows.locator('.lp-project-heading strong');
+    assert.deepEqual(await historyNames.allTextContents(),historyOrder.slice(0,5),'collapsed history follows native recency, including entries without a timestamp');
+    assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
     assert.equal(await rows.locator('.lp-project-avatar').count(),1,`${language}: recent project avatar`);
     assert.ok((await rows.locator('.lp-project-avatar').getAttribute('src'))?.startsWith('data:image/svg+xml,'),`${language}: avatar data URL is preserved`);
     assert.deepEqual(await page.locator('.lp-project-type').allTextContents(),[language==='zh-cn'?'工作流':'Workflow', 'Bot'],`${language}: recent project types`);
@@ -251,12 +254,16 @@ try {
     const bounds=async selector=>page.locator(selector).first().boundingBox();
     if(enhanced){assert.ok((await bounds('.lp-inbox')).x>(await bounds('.lp-projects')).x);assert.equal((await bounds('.lp-inbox')).x,(await bounds('.lp-store')).x);}
     const status=await bounds('.lp-statusbar');assert.equal(status.y+status.height,680);
-    await page.locator('.lp-history-tools .lp-tool').focus(); await page.keyboard.press('Tab');
+    const section=page.locator('.lp-history'), searchLabel=zh?'搜索项目':'Search projects';
+    assert.deepEqual(await section.locator('header button').allTextContents(),[searchLabel],'search is the only history header action');
+    const find=section.getByRole('button',{name:searchLabel,exact:true}), search=page.getByRole('combobox');
+    await find.focus(); await page.keyboard.press('Tab');
     assert.equal(await rows.first().evaluate(el=>el===document.activeElement),true,'history remains reachable by keyboard');
     assert.equal(await selected.count(),0,'tab focus does not select a project');
-    const foot=page.locator('.lp-foot button'); await foot.click(); assert.equal(await foot.evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: pointer focus must not draw a blue outline`); assert.equal(await rows.count(),9);
+    const foot=page.locator('.lp-foot button'); await foot.click(); assert.equal(await foot.evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: pointer focus must not draw a blue outline`);
+    assert.deepEqual(await historyNames.allTextContents(),historyOrder,'expanded history keeps the same most-recent-first order');
     assert.equal(await selected.count(),0,'expanding history does not select a project');
-    const find=page.locator('.lp-find'), search=page.getByRole('combobox'); await find.click(); await search.fill('no-match'); assert.ok(await page.locator('.lp-quick-empty').isVisible());
+    await find.click(); await search.fill('no-match'); assert.ok(await page.locator('.lp-quick-empty').isVisible());
     await search.press('Escape'); assert.ok(await find.evaluate(el=>el===document.activeElement));
     await page.keyboard.press('Control+p'); await search.fill('projects folder.code'); assert.equal(await page.getByRole('option').count(),1); await search.press('Enter');
     await page.locator('.lp-command-center').click(); await search.fill('sample.code'); await page.getByRole('option').click();
@@ -287,7 +294,7 @@ try {
     assert.equal(await missingCell.textContent(),zh?'路径失效':'Not found');
     assert.equal(await missing.locator('time').textContent(),lastOpened,'cancelled relocation keeps both the history and its timestamp');
     await foot.click();
-    const section=page.locator('.lp-history');
+    assert.deepEqual(await historyNames.allTextContents(),historyOrder.slice(0,5),'returning to recent keeps the same most-recent-first order');
     for (const width of [1120,768,480,360]) {
       await page.setViewportSize({width,height:680}); await checkStatusLayout(page);
       assert.deepEqual(await section.locator('.lp-state-label > .codicon').evaluateAll(icons=>icons.map(el=>el.className.split(' ').at(-1))), ['codicon-history','codicon-window','codicon-warning','codicon-window','codicon-history']);
@@ -303,7 +310,6 @@ try {
     await page.locator('.lp-choice').last().click(); await msg.getByRole('button').last().click(); assert.ok(await missing.isVisible());
     await page.evaluate(()=>window.newLocation='/projects/relocated'); await missing.press('Enter'); await msg.getByRole('button').first().click(); await missing.waitFor({state:'detached'});
     assert.equal(await selected.count(),0,'when the selected row disappears, no other project is selected automatically');
-    await page.locator('.lp-history-tools .lp-tool').click(); await page.locator('.lp-choice').nth(1).click();
     await page.locator('.lp-primary').click(); const modal=page.locator('.studio-create-dialog'); await modal.waitFor({timeout:5000});
     assert.equal(await modal.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}),true);
     await page.keyboard.press('Escape'); await modal.waitFor({state:'detached'});

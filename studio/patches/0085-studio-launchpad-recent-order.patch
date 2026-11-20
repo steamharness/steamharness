@@ -1,0 +1,97 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 0f6b32b61ede15266a16d21da61df021bc53d3c5..294ee05e1b361e1cd8ebe0c13bc4745cb5464b71 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -52,7 +52,7 @@
+ .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+ .lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
+ .lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }
+-.lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-history-tools, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
++.lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
+ .lp-identity { gap: 13px; } .lp-app-mark { flex: none; display: grid; place-items: center; width: 44px; height: 44px; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 8px; }
+ .lp-app-mark img { width: 32px; height: 32px; object-fit: contain; }
+ .lp-identity h1 { font-size: 25px; line-height: 1.17; font-weight: 650; color: var(--lp-strong); }
+@@ -69,11 +69,11 @@
+ .lp-section-head { gap: 8px; min-height: 27px; margin-block-end: 10px; }
+ .lp-section-head h2, .lp-dialog h2 { font-size: 17px; font-weight: 610; line-height: 1.4; color: var(--lp-strong); }
+ .lp-count { min-width: 19px; padding: 0 4px; text-align: center; border: 1px solid var(--lp-edge); border-radius: 5px; color: var(--lp-muted); font: 11px/17px var(--lp-mono); }
+-.lp-history-tools, .lp-section-head > .lp-link { margin-inline-start: auto; }
++.lp-section-head > :is(.lp-find,.lp-link) { margin-inline-start: auto; }
+ .studio-launchpad .lp-link { min-height: 26px; color: var(--lp-accent); font-size: 12px; }
+ .lp-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+ .lp-tool { flex: none; width: 26px; height: 26px; border-radius: 4px; }
+-.lp-history-tools { gap: 4px; } .studio-launchpad .lp-find { height: 26px; border: 1px solid var(--lp-edge); border-radius: 4px; padding-inline: 7px; color: var(--lp-muted); font-size: 11.5px; }
++.studio-launchpad .lp-find { height: 26px; border: 1px solid var(--lp-edge); border-radius: 4px; padding-inline: 7px; color: var(--lp-muted); font-size: 11.5px; }
+ .lp-find .codicon { font-size: 13px; }
+ .lp-live-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; max-height: 320px; }
+ .studio-launchpad .lp-live-project { flex-direction: column; align-items: stretch; gap: 0; overflow: hidden; min-width: 0; text-align: start; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 7px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 00f9289ee3412d69c8a4d50470ee0d6442262fc5..ad12eee730a9274f8e7f73400ce48ea4e58b4612 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -73,7 +73,6 @@ export class StudioLaunchpadView {
+ 	private readonly recentCount = element('span', 'lp-count');
+ 	private readonly tableHead = element('div', 'lp-table-head');
+ 	private readonly shown = element('span');
+-	private readonly sort: HTMLButtonElement;
+ 	private readonly more: HTMLButtonElement;
+ 	private readonly side = element('aside', 'lp-side');
+ 	private readonly chats = element('div', 'lp-chat-list');
+@@ -86,7 +85,6 @@ export class StudioLaunchpadView {
+ 	private readonly label: LaunchpadLabel;
+ 	private readonly date: Intl.DateTimeFormat;
+ 	private readonly clock: Intl.DateTimeFormat;
+-	private alphabetical = false;
+ 	private expanded = false;
+ 	private selection?: string;
+ 	private state?: LaunchpadState;
+@@ -133,9 +131,7 @@ export class StudioLaunchpadView {
+ 		const projects = element('div', 'lp-projects');
+ 		const live = element('section', 'lp-live'); live.append(sectionHead(element('h2', '', t('Open projects', '已打开的项目')), this.liveCount), this.live);
+ 		const recent = element('section', 'lp-history');
+-		const tools = element('div', 'lp-history-tools');
+ 		const search = button(t('Search projects', '搜索项目'), 'search', () => this.search(false, search), 'lp-find');
+-		this.sort = tool(t('Sort open history', '打开记录排序'), 'list-ordered', () => this.sortOptions()); tools.append(search, this.sort);
+ 		const grid = element('div'); grid.setAttribute('role', 'grid'); grid.setAttribute('aria-label', t('Project history', '项目打开记录'));
+ 		this.tableHead.setAttribute('role', 'row');
+ 		for (const label of [t('Name and local path', '名称与本地路径'), t('Status', '状态'), t('Last opened', '最后打开'), t('Actions', '操作')]) {
+@@ -144,7 +140,7 @@ export class StudioLaunchpadView {
+ 		this.history.setAttribute('role', 'rowgroup'); grid.append(this.tableHead, this.history);
+ 		this.more = button('', '', () => this.setScope(!this.expanded), 'lp-link');
+ 		const foot = element('footer', 'lp-foot'); this.shown.setAttribute('role', 'status'); foot.append(this.shown, this.more);
+-		recent.append(sectionHead(this.historyTitle, this.recentCount, tools), grid, foot); projects.append(live, recent);
++		recent.append(sectionHead(this.historyTitle, this.recentCount, search), grid, foot); projects.append(live, recent);
+ 		const inbox = element('section', 'lp-inbox');
+ 		this.inboxButton = button(t('Open IM', '打开 IM'), '', () => actions.inbox(), 'lp-link'); this.inboxButton.append(icon('chevron-right'));
+ 		inbox.append(sectionHead(element('h2', '', t('Recent chats', '最近会话')), this.unread, this.inboxButton), this.chats);
+@@ -213,13 +209,6 @@ export class StudioLaunchpadView {
+ 	}
+ 
+ 	private setScope(all: boolean): void { this.expanded = all; this.renderHistory(); this.history.scrollTop = 0; }
+-	private sortOptions(): void {
+-		const name = this.label('Project name', '按项目名称'), time = this.label('Most recent first', '最近打开优先');
+-		this.picker.choices(this.label('Sort open history', '打开记录排序'), [false, true].map(byName => ({
+-			label: byName ? name : time, glyph: this.alphabetical === byName ? 'check' : byName ? 'case-sensitive' : 'clock',
+-			run: () => { this.alphabetical = byName; this.renderHistory(); },
+-		})), this.sort);
+-	}
+ 	private kind(p: LaunchpadProject): string { return p.kind === 'workspace' ? this.label('Workspace', '工作区') : this.label('Folder', '文件夹'); }
+ 	private projectLabel(p: LaunchpadProject): string { return (p.kind === 'folder' ? this.typeLabel(p.projectType) : undefined) ?? this.kind(p); }
+ 	private glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
+@@ -323,14 +312,13 @@ export class StudioLaunchpadView {
+ 	}
+ 	private renderHistory(): void {
+ 		const t = this.label; const records = this.state?.recent ?? [];
+-		const rows = records.slice(0, this.expanded ? undefined : 5);
+-		if (this.alphabetical) { rows.sort((a, b) => a.name.localeCompare(b.name, this.date.resolvedOptions().locale, { numeric: true })); }
++		// Native history is already most-recent-first, even for entries without a cached timestamp.
++		const rows = this.expanded ? records : records.slice(0, 5);
+ 		this.historyTitle.textContent = this.expanded ? t('All open history', '全部打开记录') : t('Recently opened', '最近打开');
+ 		this.recentCount.textContent = String(rows.length); this.tableHead.hidden = !rows.length;
+ 		this.shown.textContent = rows.length ? t(`Showing ${rows.length} of ${records.length}`, `显示 ${rows.length} 条，共 ${records.length} 条`) : '';
+ 		this.more.hidden = !this.expanded && records.length <= 5; this.more.setAttribute('aria-expanded', String(this.expanded));
+ 		this.more.replaceChildren(...(this.expanded ? [icon('chevron-left'), t('Back to recent', '返回最近打开')] : [t(`All ${records.length} records`, `全部 ${records.length} 条记录`), icon('chevron-right')]));
+-		this.sort.title = this.alphabetical ? t('Sort: project name', '排序：项目名称') : t('Sort: most recent first', '排序：最近打开优先');
+ 		this.list(this.history, rows, t('No open history yet.', '还没有打开记录。'), p => this.historyRow(p), 'folder-opened');
+ 		this.select(rows.find(p => p.uri === this.selection)?.uri);
+ 	}
