@@ -115,12 +115,13 @@ test('launchpad leases the registered hosted preview until close and revokes it 
         assert.equal(id, 'request');
         if (cmd === 'studio.internalCloseLaunchpadApp') { dismissed.resolve(); return; }
         assert.equal(app.port, 1234); assert.match(app.html, /id="project-frame"/);
+        assert.ok(app.html.includes(`src="http://127.0.0.1:1234/nonce/index.html${revoke ? '#/?thread=a%26b' : ''}"`));
         assert.doesNotMatch(JSON.stringify(app), /host-only/);
         shown.resolve(); await dismissed.promise;
       },
     });
     f.sidebar.registerHosted({ id: 'hosted', title: 'Chat', viewId: 'studio.hosted', getState: () => ({ binding: { bootstrap: { secret: 'host-only' } } }) });
-    const pending = f.sidebar.showHostedInLaunchpad('hosted', 'request', abort.signal);
+    const pending = f.sidebar.showHostedInLaunchpad('hosted', 'request', abort.signal, revoke ? '/?thread=a%26b' : undefined);
     await shown.promise; assert.equal(closed, 0);
     if (revoke) abort.abort(); else dismissed.resolve();
     await pending; assert.equal(closed, 1);

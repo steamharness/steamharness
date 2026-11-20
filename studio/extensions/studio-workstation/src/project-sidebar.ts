@@ -50,7 +50,7 @@ export class ProjectSidebar implements vscode.Disposable {
   }
 
   /** The preview is leased to one launchpad request, never to the editor or sidebar layout. */
-  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal): Promise<void> {
+  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal, initialFragment?: string): Promise<void> {
     const project = this.builtin.get(id)?.hosted;
     if (!project || !this.launcher.openHostedSidebar) throw new Error(t('The built-in project files are unavailable.'));
     const state = project.getState();
@@ -69,9 +69,11 @@ export class ProjectSidebar implements vscode.Disposable {
     try {
       signal.throwIfAborted();
       signal.addEventListener('abort', revoked, { once: true });
+      const url = new URL(preview.url);
+      if (initialFragment) url.hash = initialFragment;
       await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', requestId, {
-        title: project.title, html: hostedSidebarHtml(vscode.env.language, project.title, preview),
-        port: Number(new URL(preview.url).port), accountUrl: state.binding.accountUrl,
+        title: project.title, html: hostedSidebarHtml(vscode.env.language, project.title, { ...preview, url: url.href }),
+        port: Number(url.port), accountUrl: state.binding.accountUrl,
       });
     } finally {
       signal.removeEventListener('abort', revoked);

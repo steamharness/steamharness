@@ -127,14 +127,12 @@ export class AccountController implements vscode.Disposable {
         },
       }, { supportsMultipleAccounts: false }),
       vscode.commands.registerCommand('studio.openAccount', () => this.open()),
-      vscode.commands.registerCommand('studio.openLaunchpadResource', async (resource: string) => {
-        const server = this.getState().serverUrl;
-        if (resource === 'docs') {
-          const { docs } = publicServiceUrls(serviceChannelFromServerUrl(server) ?? studioAuthChannel);
-          await vscode.env.openExternal(vscode.Uri.parse(docs));
-        } else if (resource === 'server' && this.platform) {
-          await vscode.env.openExternal(vscode.Uri.parse(normalizeProjectServerUrl(server)));
-        }
+      vscode.commands.registerCommand('studio.launchpadSignIn', async () => {
+        if (this.loginBusy || await this.connect() || this.loginBusy) return;
+        this.loginBusy = true;
+        const abort = this.loginAbort = new AbortController();
+        try { await this.signInWithBrowser(this.configuredServer(), abort.signal); }
+        finally { this.loginBusy = false; this.loginAbort = undefined; this.pendingLogin = undefined; this.publishLogin(); }
       }),
       vscode.commands.registerCommand('studio.openLogin', async () => { await this.connect(); this.openLogin(); }),
       vscode.window.registerWebviewPanelSerializer('studio.login', {
@@ -149,6 +147,15 @@ export class AccountController implements vscode.Disposable {
       vscode.commands.registerCommand('studio.logout', async () => { await this.connect(); this.cancelLogin(); return this.account.logout(); }),
       vscode.commands.registerCommand('studio.disconnectSystemAi', () => this.disconnectAi()),
       ] : []),
+      vscode.commands.registerCommand('studio.openLaunchpadResource', async (resource: string) => {
+        const server = this.getState().serverUrl;
+        if (resource === 'docs') {
+          const { docs } = publicServiceUrls(this.platform ? serviceChannelFromServerUrl(server) ?? studioAuthChannel : studioAuthChannel);
+          await vscode.env.openExternal(vscode.Uri.parse(docs));
+        } else if (resource === 'server' && this.platform) {
+          await vscode.env.openExternal(vscode.Uri.parse(normalizeProjectServerUrl(server)));
+        }
+      }),
       vscode.commands.registerCommand('studio.openSettings', (options?: SettingsOpenOptions) => this.open(settingsViewState(options))),
       vscode.window.registerWebviewPanelSerializer('studio.settings', {
         deserializeWebviewPanel: async (panel, state) => {
@@ -375,27 +382,9 @@ export class AccountController implements vscode.Disposable {
       let failure: string | undefined;
       const abort = new AbortController(); this.loginAbort = abort;
       try {
-        const client = new ServerAuthClient(message.serverUrl, fetch, locale());
-        const state = base64State();
-        await this.account.login(message.serverUrl, async () => {
-          const started = await client.start({ clientName: 'SteamHarness Studio', source: 'desktop', context: { clientKind: 'studio', channel: studioAuthChannel, state } }, abort.signal);
-          this.pendingLogin = { client, started, state };
-          this.publishLogin();
-          try {
-            if (abort.signal.aborted) throw new Error(t('Sign-in cancelled.'));
-            await vscode.env.openExternal(vscode.Uri.parse(started.verificationUriComplete));
-            const token = await client.poll(started, abort.signal);
-            const connection = { serverUrl: client.serverUrl, accessToken: token.accessToken };
-            try {
-              const session = await new ServerClient(client.serverUrl).verify(connection, abort.signal);
-              abort.signal.throwIfAborted();
-              return session;
-            } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
-          } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
-        }, abort.signal);
+        await this.signInWithBrowser(message.serverUrl, abort.signal);
         this.pendingLogin = undefined;
         if (this.getState().status === 'authenticated') {
-          await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
           if (current()) { this.open({ section: 'account' }, false); panel.dispose(); }
         }
       } catch (error) {
@@ -407,6 +396,24 @@ export class AccountController implements vscode.Disposable {
         } else { this.publishLogin(); }
       }
     }));
+  }
+
+  private async signInWithBrowser(serverUrl: string, signal: AbortSignal): Promise<void> {
+    const client = new ServerAuthClient(serverUrl, fetch, locale()), state = base64State();
+    await this.account.login(serverUrl, async () => {
+      const started = await client.start({ clientName: 'SteamHarness Studio', source: 'desktop', context: { clientKind: 'studio', channel: studioAuthChannel, state } }, signal);
+      this.pendingLogin = { client, started, state }; this.publishLogin();
+      try {
+        signal.throwIfAborted();
+        if (!await vscode.env.openExternal(vscode.Uri.parse(started.verificationUriComplete))) throw new Error(t('Sign-in cancelled.'));
+        const token = await client.poll(started, signal);
+        const session = await new ServerClient(client.serverUrl).verify({ serverUrl: client.serverUrl, accessToken: token.accessToken }, signal);
+        signal.throwIfAborted(); return session;
+      } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
+    }, signal);
+    if (this.getState().status === 'authenticated') {
+      await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
+    }
   }
 
   private runtimeStatus?: SettingsState['nodeRuntime'];
