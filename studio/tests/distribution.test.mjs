@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -90,6 +91,30 @@ test('prepare is repeatable and links the desktop and web extension', async (t) 
   await prepareDistribution(root);
   assert.equal(await fs.readFile(path.join(upstream, 'product.json'), 'utf8'), first);
   assert.equal(await fs.realpath(path.join(upstream, 'extensions/studio-workstation')), await fs.realpath(source));
+});
+
+test('overlay entrypoints retain the registered extension identity when Node resolves their files', async t => {
+  const { root, upstream, source } = await fixture(t);
+  const manifest = { name: 'studio-workstation', publisher: 'studio', version: '0.1.0', engines: { vscode: '^1.140.0' },
+    main: './dist/extension.js', browser: './dist/extension-web.js', activationEvents: [],
+    contributes: { commands: [], menus: {}, views: {}, viewsContainers: {}, configuration: { properties: {} } } };
+  await fs.writeFile(path.join(source, 'package.json'), JSON.stringify(manifest));
+  await fs.mkdir(path.join(source, 'node_modules/vscode'), { recursive: true });
+  await fs.writeFile(path.join(source, 'node_modules/vscode/index.js'), 'module.exports = { owner: module.parent.filename };');
+  await fs.writeFile(path.join(source, 'dist/extension.js'), 'module.exports = require("vscode");');
+  const overlay = path.join(root, 'config/overlay.json');
+  await fs.writeFile(overlay, '{}');
+  const previous = process.env;
+  process.env = { ...previous, STEAMHARNESS_STUDIO_INTERNAL: '1', STEAMHARNESS_STUDIO_MANIFEST_OVERLAY: overlay };
+  t.after(() => { process.env = previous; });
+  await prepareDistribution(root);
+  const registered = await fs.realpath(path.join(upstream, 'extensions/studio-workstation'));
+  const owner = execFileSync(process.execPath, ['-e', 'process.stdout.write(require(process.argv[1]).owner)',
+    path.join(registered, manifest.main)], { encoding: 'utf8' });
+  assert.equal(path.relative(registered, owner), path.join('dist', 'extension.js'),
+    'A real entrypoint outside the registered extension makes vscode use its anonymous API and JSON-only Webview messages.');
+  await prepareDistribution(root);
+  assert.equal(await fs.realpath(path.join(registered, manifest.main)), owner);
 });
 
 test('bundled default extensions use verified local VSIX files in desktop and web products', async t => {

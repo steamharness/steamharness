@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyPatches } from './patches.mjs';
 import { ensureExtensionVsix } from './extension-artifacts.mjs';
+import { stageOverlayExtension } from './extension-overlay.mjs';
 
 export { applyPatches };
 
@@ -250,13 +251,7 @@ export async function prepareDistribution(root = ROOT) {
 
   await applyPatches(root, upstream.directory);
   if (overlay) {
-    await fs.mkdir(privateStage, { recursive: true });
-    // Link the dist directory so watch mode continues updating the staged extension.
-    for (const entry of await fs.readdir(source, { withFileTypes: true })) {
-      if (entry.name === 'package.json') continue;
-      const staged = path.join(privateStage, entry.name);
-      if (!await exists(staged)) await fs.symlink(path.join(source, entry.name), staged, entry.isDirectory() ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file');
-    }
+    await stageOverlayExtension(source, privateStage);
     const manifest = mergeExtensionManifest(await readJSON(path.join(source, 'package.json')), await readJSON(overlay));
     await fs.writeFile(path.join(privateStage, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   }

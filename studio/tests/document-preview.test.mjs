@@ -11,6 +11,12 @@ const require = createRequire(import.meta.url);
 const { documentPreviewKind, documentPreviewView, samePreviewBytes } = await import('../extensions/studio-workstation/src/document-preview-types.ts');
 const { parseSpreadsheet } = await import('../extensions/studio-workstation/webview/document-preview/spreadsheet-model.ts');
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/document-preview.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const messaging = await build({ entryPoints: ['upstream/vscode/src/vs/workbench/api/common/extHostWebviewMessaging.ts'],
+  bundle: true, platform: 'node', format: 'cjs', write: false });
+const transport = { exports: {} };
+runInNewContext(messaging.outputFiles[0].text, { module: transport, exports: transport.exports, require,
+  process, Buffer, ArrayBuffer, Uint8Array, TextEncoder, TextDecoder, console });
+const { serializeWebviewMessage, deserializeWebviewMessage } = transport.exports;
 
 class Emitter {
   listeners = new Set();
@@ -56,7 +62,10 @@ function fixture(t, language = 'en') {
   const attach = document => {
     const messages = [], changed = new Emitter(), closed = new Emitter(); let receive;
     const panel = { visible: true, active: true, messages, changed, closed,
-      webview: { cspSource: 'vscode-resource:', asWebviewUri: uri => uri, postMessage: async message => { messages.push(message); return true; },
+      webview: { cspSource: 'vscode-resource:', asWebviewUri: uri => uri, postMessage: async message => {
+        const serialized = serializeWebviewMessage(message, { serializeBuffersForPostMessage: true });
+        messages.push(deserializeWebviewMessage(serialized.message, serialized.buffers).message); return true;
+      },
         onDidReceiveMessage: fn => { receive = fn; return { dispose() { receive = undefined; } }; } },
       onDidChangeViewState: changed.event, onDidDispose: closed.event, send: message => receive?.(message) };
     provider.resolveCustomEditor(document, panel, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) });
@@ -82,7 +91,8 @@ test('preview formats are case insensitive and LaTeX routes to its formula edito
 test('the host reads only its document URI through workspace.fs and watches atomic saves in the parent', async t => {
   const f = fixture(t), { document, panel } = await f.open('/work with spaces/a[1].PDF', 'vscode-remote');
   assert.equal(f.latest(panel).type, 'document'); assert.equal(f.latest(panel).kind, 'pdf');
-  assert.equal(f.latest(panel).bytes.constructor.name, 'Uint8Array', 'Node Buffers must not serialize as a JSON object');
+  assert.equal(f.latest(panel).bytes.constructor.name, 'Uint8Array', 'Binary data must survive the real VS Code message codec');
+  assert.deepEqual(Array.from(f.latest(panel).bytes), [1, 2, 3]);
   assert.equal(f.watchers[0].pattern.base.path, '/work with spaces'); assert.equal(f.watchers[0].pattern.pattern, '*');
   f.update(new Uint8Array([9])); f.watchers[0].change.fire(new Uri('/work with spaces/other.PDF', 'vscode-remote'));
   await f.debounce(); assert.equal(f.reads(), 1);

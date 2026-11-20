@@ -10,6 +10,7 @@ import { buildDocumentPreviews } from './document-preview.mjs';
 import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
 import { publicServiceUrls } from '../../shared/service-urls/index.ts';
 import { copyAssistantTemplate } from './assistant-template.mjs';
+import { overlayExtensionBuildPlugin } from './extension-overlay.mjs';
 
 export async function buildExtension({ watch = false } = {}) {
   const directory = path.join(ROOT, 'extensions/studio-workstation');
@@ -36,6 +37,7 @@ export async function buildExtension({ watch = false } = {}) {
     { ...shared, platform: 'browser', target: 'es2022', outfile: 'dist/extension-web.js' },
   ];
   for (const option of options) {
+    option.plugins = [overlayExtensionBuildPlugin(directory, path.join(ROOT, '.studio/extension-with-overlay'), path.basename(option.outfile))];
     if (watch) {
       await (await esbuild.context(option)).watch();
     } else {
