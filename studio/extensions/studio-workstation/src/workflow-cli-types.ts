@@ -1,7 +1,7 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { StudioUserSettings } from './user-settings';
 import type { Connection } from './workflow-auth-client';
-import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
+import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 import type { WebAppFailureReason } from './web-app-errors';
@@ -58,9 +58,7 @@ export interface Launcher {
   downloadProject?(projectId: string, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<DownloadedServerProject[]>;
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
     beforeReplace: () => Promise<void>, afterReplace: (projects: DownloadedServerProject[]) => Promise<void>): Promise<UpdatedServerProject>;
-  environmentStatus?(): Promise<StartEnvironment>;
   nodeRuntime?(): Promise<{ nodePath: string; env: Record<string, string | null | undefined>; electron: boolean }>;
-  analysisSummary?(): Promise<StartSummary>;
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
   inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;

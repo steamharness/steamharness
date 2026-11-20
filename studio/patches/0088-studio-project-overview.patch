@@ -1,0 +1,672 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 1b16947c078e77456be0723c61fc568f74ebf301..862eec87d7f127f40415c765854366c1d33f8c59 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -4,98 +4,87 @@
+  *--------------------------------------------------------------------------------------------*/
+ .studio-start-watermark { position:absolute; inset:0; z-index:1; }
+ .editor-group-container:not(.empty) > .studio-start-watermark, .studio-start-watermark[hidden] { display:none; }
+-.studio-start { height:100%; width:100%; box-sizing:border-box; container-type:inline-size; overflow:auto; color:var(--vscode-editor-foreground); background:var(--vscode-editor-background); font:13px var(--vscode-font-family); user-select:text; letter-spacing:0; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+-.studio-start:hover, .studio-start:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+-.studio-start::-webkit-scrollbar { width:8px; height:8px; }
+-.studio-start::-webkit-scrollbar-thumb { background:transparent; }
+-.studio-start:hover::-webkit-scrollbar-thumb, .studio-start:focus-within::-webkit-scrollbar-thumb { background:var(--vscode-scrollbarSlider-background); }
+-.studio-start-inner { max-width:1040px; padding:32px; margin:0 auto; }
+-.studio-start-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:12px; margin-bottom:28px; }
+-.studio-start .studio-start-logo { display:block; grid-column:1; grid-row:1; width:28px; height:28px; object-fit:contain; }
+-.studio-start-brand { display:flex; align-items:center; grid-column:2; grid-row:1; min-width:0; gap:12px; }
+-.studio-start h1 { min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+-.studio-start-toolbar { display:flex; flex-wrap:nowrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
+-.studio-start-badge { display:inline-flex; align-items:center; flex:none; height:20px; padding:0 8px; border:1px solid var(--vscode-textLink-foreground); border-radius:999px; color:var(--vscode-textLink-foreground); font-size:10px; font-weight:600; letter-spacing:.04em; line-height:1; white-space:nowrap; }
+-.studio-start-badge[hidden] { display:none; }
+-.studio-start-grid, .studio-start-loading-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
+-.studio-start.loading .studio-start-toolbar, .studio-start.loading .studio-start-grid, .studio-start:not(.loading) .studio-start-loading, .studio-start:not(.loading) .studio-start-loading-indicator { display:none; }
+-.studio-start-loading-indicator { grid-column:3; grid-row:1; justify-self:end; color:var(--vscode-descriptionForeground); }
+-.studio-start-loading-projects { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; margin-bottom:28px; }
+-.studio-start-skeleton { height:12px; max-width:100%; border-radius:3px; background:var(--vscode-descriptionForeground); opacity:.12; animation:studio-start-pulse 1.6s ease-in-out infinite; }
+-.studio-start-skeleton-heading { width:112px; height:14px; margin:3px 0 15px; }
+-.studio-start-skeleton-type { width:64px; margin-bottom:12px; }
+-.studio-start-skeleton-path { width:85%; margin-bottom:24px; }
+-.studio-start-skeleton-button { width:96px; height:32px; margin-top:auto; }
+-.studio-start-loading-row { display:flex; align-items:center; gap:16px; height:32px; }
+-.studio-start-skeleton-key { flex:0 0 90px; }
+-.studio-start-skeleton-value { width:62%; }
+-.studio-start-loading-row:nth-child(odd) .studio-start-skeleton-value { width:48%; }
+-.studio-start-loading-quick .studio-start-skeleton-key { flex-basis:16px; height:16px; }
+-.studio-start-loading-quick .studio-start-loading-row { gap:8px; }
+-@keyframes studio-start-pulse { 50% { opacity:.06; } }
+-.monaco-reduce-motion .studio-start-skeleton, .monaco-reduce-motion .studio-start .studio-start-loading-indicator { animation:none; }
+-@media (prefers-reduced-motion:reduce) { .studio-start-skeleton, .studio-start .studio-start-loading-indicator.codicon-modifier-spin { animation:none; } }
+-.studio-start section { min-width:0; }
+-.studio-start h2 { font-size:14px; font-weight:600; line-height:20px; margin:0 0 12px; }
+-.studio-start-action { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; box-sizing:border-box; width:100%; min-width:0; min-height:32px; padding:6px 8px; border:0; border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-textLink-foreground); background:transparent; font:inherit; line-height:20px; text-align:left; cursor:pointer; max-width:100%; user-select:text; }
+-.studio-start-action:hover { background:var(--vscode-list-hoverBackground); color:var(--vscode-textLink-activeForeground); }
+-.studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
++.studio-start {
++	--studio-start-border:var(--vscode-widget-border,var(--vscode-panel-border,transparent));
++	height:100%; width:100%; box-sizing:border-box; container-type:inline-size; overflow:auto;
++	color:var(--vscode-editor-foreground); background:var(--vscode-editor-background);
++	font:13px/1.5 var(--vscode-font-family); letter-spacing:0; user-select:text; overflow-wrap:anywhere;
++}
++.studio-start, .studio-start-setup-error pre { scrollbar-width:thin; scrollbar-color:transparent transparent; }
++.studio-start:hover, .studio-start-setup-error pre:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
++.monaco-workbench .studio-start[tabindex]:focus { outline:none; }
++.studio-start-inner { box-sizing:border-box; max-width:1000px; padding:28px 36px 36px; margin:0 auto; }
++.studio-start h1 { margin:0 0 24px; color:var(--vscode-descriptionForeground); font-size:13px; font-weight:600; }
++.studio-start h2 { margin:0; font-size:25px; line-height:1.24; font-weight:600; }
++.studio-start h3 { margin:0; font-size:14px; font-weight:600; }
++.studio-start .studio-start-loading, .studio-start.loading .studio-start-content { display:none; }
++.studio-start.loading .studio-start-loading { display:block; }
++.studio-start-skeleton { border-radius:4px; background:currentColor; opacity:.1; }
++.studio-start-skeleton-label { width:90px; height:12px; }
++.studio-start-skeleton-heading { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:14px; margin:24px 0 16px; }
++.studio-start-skeleton-avatar { height:48px; }
++.studio-start-skeleton-name { width:min(62%,240px); height:18px; margin-bottom:8px; }
++.studio-start-skeleton-path { width:min(80%,500px); height:12px; margin-bottom:42px; }
++.studio-start-skeleton-row { display:flex; align-items:center; min-height:60px; border-top:1px solid var(--studio-start-border); }
++.studio-start-skeleton-row > .studio-start-skeleton { width:min(48%,190px); height:12px; }
++.studio-start-project-card + .studio-start-project-card { border-top:1px solid var(--studio-start-border); margin-top:32px; padding-top:28px; }
++.studio-start-project-heading { display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:start; gap:14px; }
++.studio-start-project-identity, .studio-start-entry-description { min-width:0; }
++.studio-start-avatar {
++	display:grid; place-items:center; overflow:hidden; border-radius:6px; color:var(--vscode-icon-foreground);
++	background:var(--vscode-toolbar-hoverBackground);
++}
++.studio-start-avatar-project { width:48px; height:48px; }
++.studio-start-avatar-project > .codicon { font-size:22px; }
++.studio-start-avatar-entry { width:32px; height:32px; border-radius:4px; }
++.studio-start-avatar > img { display:block; width:100%; height:100%; object-fit:contain; }
++.studio-start-project-meta, .studio-start-entry-meta {
++	display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; color:var(--vscode-descriptionForeground); font-size:12px;
++}
++.studio-start-project-meta { margin-top:4px; }
++.studio-start-project-description { white-space:pre-wrap; margin:14px 0 0; }
++.studio-start-project-details {
++	display:grid; grid-template-columns:auto minmax(0,1fr); gap:3px 12px; margin:14px 0 24px; font-size:12px;
++}
++.studio-start-project-details dt { color:var(--vscode-descriptionForeground); }
++.studio-start-project-details dd, .studio-start-empty p { margin:0; }
++.studio-start code { font-family:var(--monaco-monospace-font); }
++.studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-width:0; }
++.studio-start-action {
++	display:inline-flex; align-items:center; gap:6px; min-height:30px; min-width:0; max-width:100%; padding:4px 8px;
++	border:1px solid var(--vscode-contrastBorder,transparent); border-radius:4px; background:transparent;
++	color:var(--vscode-textLink-foreground); font:inherit; text-align:left; cursor:pointer; user-select:text;
++}
++.studio-start-action > .codicon { flex:none; color:inherit; }
++.studio-start-action:hover:not(:disabled) { background:var(--vscode-toolbar-hoverBackground); color:var(--vscode-textLink-activeForeground); }
++.monaco-workbench .studio-start-action:focus:not(:focus-visible) { outline:none; }
++.monaco-workbench .studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
+ .studio-start-action:disabled { opacity:.5; cursor:default; }
+-.studio-start :is(.studio-start-action, dt, dd)[hidden] { display:none; }
+-.studio-start-action > .codicon { display:flex; align-items:center; justify-content:center; width:16px; height:20px; font-size:16px; line-height:16px; }
+-.studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
+-.studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }
+-.studio-start-action-icon > .codicon { height:16px; }
+-.studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
+-.studio-start-primary { width:auto; color:var(--vscode-button-foreground); background:var(--vscode-button-background); }
+-.studio-start-primary:hover { color:var(--vscode-button-foreground); background:var(--vscode-button-hoverBackground); }
+-.studio-start .studio-start-primary > .codicon { color:#fff; }
+-.studio-start-current { grid-column:1 / -1; }
+-.studio-start-current .studio-start-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); align-items:stretch; gap:12px; }
+-.studio-start-project-card, .studio-start-loading-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
+-.studio-start-project-heading { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:12px; }
+-.studio-start-project-avatar { width:48px; height:48px; border-radius:6px; }
+-.studio-start-project-avatar-button { width:48px; height:48px; padding:0; border:0; border-radius:6px; background:transparent; }
+-.studio-start-recent-avatar { width:24px; height:24px; flex:0 0 24px; border-radius:4px; }
+-.studio-start-project-heading > .codicon { line-height:20px; color:var(--vscode-descriptionForeground); }
+-.studio-start-project-heading h3 { margin:0; font-size:14px; font-weight:600; line-height:20px; overflow-wrap:anywhere; }
+-.studio-start-project-type { margin:8px 0 4px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); }
+-.studio-start-project-update { border-color:var(--vscode-textLink-foreground); }
+-.studio-start-project-versions { display:flex; flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; font-size:12px; line-height:18px; overflow-wrap:anywhere; }
+-.studio-start-project-server-version { color:var(--vscode-descriptionForeground); }
+-.studio-start-project-version-state { display:flex; align-items:center; gap:6px; margin:0 0 8px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
+-.studio-start-project-update .studio-start-project-version-state { color:var(--vscode-textLink-foreground); font-weight:600; }
+-.studio-start-project-path { margin:0; min-height:36px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
+-.studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:auto; padding-top:14px; }
+-.studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
+-.studio-start-recent [data-action="studio.openRecentProject"] { grid-template-columns:24px minmax(0,1fr); align-items:center; gap:12px; }
+-.studio-start-recent-current { display:inline-block; margin-inline-start:8px; padding:0 6px; border:1px solid var(--vscode-contrastBorder,transparent); border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-badge-foreground); background:var(--vscode-badge-background); font-size:11px; line-height:18px; white-space:nowrap; }
+-.studio-start-recent [data-action="studio.openRecentProject"] > .codicon { justify-self:center; }
+-.studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
+-.studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
+-.studio-start-stats { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:0 16px; margin:0 0 12px; line-height:20px; }
+-.studio-start-stats dt, .studio-start-stats dd { padding:6px 0; }
+-.studio-start-stats dt { color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
+-.studio-start-stats dd { margin:0; overflow-wrap:anywhere; }
+-.studio-start-muted { color:var(--vscode-descriptionForeground); line-height:1.5; margin:0; }
+-.studio-start-error { color:var(--vscode-errorForeground); white-space:pre-wrap; overflow-wrap:anywhere; margin:24px 0 0; line-height:1.5; }
+-.studio-start-pending { display:flex; flex-wrap:wrap; grid-column:1 / -1; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
+-.studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
+-.studio-start-pending small { color:var(--vscode-descriptionForeground); }
+-.studio-start-setup-error { flex-basis:100%; }
++.studio-start-primary { background:var(--vscode-button-background); color:var(--vscode-button-foreground); }
++.studio-start-primary:hover:not(:disabled) { background:var(--vscode-button-hoverBackground); color:var(--vscode-button-foreground); }
++.studio-start-entries { margin:8px 0 0; padding:0; list-style:none; border-top:1px solid var(--studio-start-border); }
++.studio-start-entry {
++	display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:center; gap:10px;
++	min-height:60px; padding:6px 8px; box-sizing:border-box; border-bottom:1px solid var(--studio-start-border);
++}
++.studio-start-entry-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 8px; }
++.studio-start-entry-name { font-weight:600; }
++.studio-start-entry-default { font-size:11px; color:var(--vscode-descriptionForeground); }
++.studio-start-entry-meta, .studio-start-entry-unavailable { color:var(--vscode-descriptionForeground); font-size:12px; }
++.studio-start-setup { padding:10px 12px; margin-bottom:16px; border:1px solid var(--studio-start-border); border-radius:6px; }
++.studio-start-setup-status { display:flex; align-items:center; gap:8px; margin:0 0 4px; }
++.studio-start-setup-error { margin:4px 0; }
+ .studio-start-setup-error summary { cursor:pointer; }
+-.studio-start-setup-error pre { max-height:160px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+-.studio-start-setup-error pre:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+-.studio-start-setup-error pre::-webkit-scrollbar { width:8px; height:8px; }
+-.studio-start-setup-error pre::-webkit-scrollbar-thumb { background:transparent; }
+-.studio-start-setup-error pre:hover::-webkit-scrollbar-thumb { background:var(--vscode-scrollbarSlider-background); }
++.studio-start-setup-error pre { max-height:160px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
++.studio-start-empty { display:flex; align-items:center; gap:10px; color:var(--vscode-descriptionForeground); }
+ @container (max-width:600px) {
+-  .studio-start-inner { padding:20px; }
+-  .studio-start-toolbar { grid-column:1 / -1; grid-row:2; justify-self:start; }
+-  .studio-start-badge { display:none; }
++	.studio-start-inner { padding:20px; }
++	.studio-start-project-heading { grid-template-columns:48px minmax(0,1fr); gap:8px 12px; }
++	.studio-start-project-heading > .studio-start-project-actions { grid-column:1 / -1; }
++}
++@container (max-width:360px) {
++	.studio-start-inner { padding:16px; }
++	.studio-start h2 { font-size:19px; }
++	.studio-start-project-details { grid-template-columns:minmax(0,1fr); }
++	.studio-start-entry { gap:8px; padding-inline:4px; }
+ }
+-@container (max-width:360px) { .studio-start h1 { font-size:20px; } }
+-
+-.studio-start-recommendation-description { color:var(--vscode-descriptionForeground); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
+-.studio-start-recommendation-links { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px; }
+-.studio-start-recommendation-message { grid-column:1 / -1; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 3cf21da4a0fb3d87b51e70d93d98202bde84dff1..86304e2b91b314c9b3bc516ff4c8e950f8248326 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -11,24 +11,31 @@ import { CommandsRegistry, ICommandService } from '../../../../platform/commands
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+ import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+-import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
+ import './media/studioStart.css';
+ 
++interface StudioOverviewProject {
++	uri: string;
++	defaultEntry: string;
++	name: string;
++	description?: string;
++	version?: string;
++	projectType: string;
++	folderPath: string;
++	avatarUrl?: string;
++	entries: { entryId: string; name: string; projectType: string; avatarUrl?: string; available: boolean }[];
++	update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean };
++}
+ 
+ /** Versioned, credential-free state supplied by the Studio extension host. */
+ export interface StudioStartState {
+ 	version: 1;
+ 	platform?: boolean;
+ 	labels: Record<string, string>;
+-	badge?: string;
+-	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
++	hasWorkspace: boolean;
+ 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
+-	projects: { uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
++	projects: StudioOverviewProject[];
+ 	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+-	environment: { studio: string; vscode: string; node?: string; harness?: string; cli?: string; account: string; server: string; error?: string };
+-	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
+-	error?: string;
+ 	busy: boolean;
+ 	installing?: string;
+ 	canCreate: boolean;
+@@ -52,36 +59,36 @@ class StudioStartService extends Disposable implements IStudioStartService {
+ 	constructor(@ICommandService private readonly commands: ICommandService) {
+ 		super();
+ 		this._register(CommandsRegistry.registerCommand('studio.internalUpdateStartState', (_accessor, state: StudioStartState) => {
+-			if (state?.version !== 1 || !state.labels || !Array.isArray(state.templates) || !Array.isArray(state.projects)
+-				|| !Array.isArray(state.recent) || !Array.isArray(state.pending) || !state.environment) {
++			if (state?.version !== 1 || !state.labels || typeof state.hasWorkspace !== 'boolean' || !Array.isArray(state.projects)
++				|| !Array.isArray(state.recent) || !Array.isArray(state.pending)) {
+ 				return;
+ 			}
+ 			this.state = state;
+ 			this.change.fire();
+ 		}));
+-		this._register(CommandsRegistry.registerCommand('studio.internalGetStartVisibility', () => this.visible.size > 0));
++		this._register(CommandsRegistry.registerCommand('studio.internalGetStartVisibility', () => this.visible.has('launchpad')));
+ 	}
+ 
+ 	setVisible(id: string, visible: boolean): void {
+-		const previous = this.visible.size > 0;
++		const wasVisible = this.visible.size > 0;
++		const wasLaunchpadVisible = this.visible.has('launchpad');
+ 		if (visible) { this.visible.add(id); } else { this.visible.delete(id); }
+-		if (previous !== (this.visible.size > 0)) {
+-			void this.commands.executeCommand('studio.internalStartPageVisibility', this.visible.size > 0).catch(() => undefined);
++		const launchpadVisible = this.visible.has('launchpad');
++		// The overview still activates the extension, but only the launchpad needs periodic refreshes.
++		if (wasVisible !== (this.visible.size > 0) || wasLaunchpadVisible !== launchpadVisible) {
++			void this.commands.executeCommand('studio.internalStartPageVisibility', launchpadVisible).catch(() => undefined);
+ 		}
+ 	}
+ }
+ registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
+ 
+-/** Shared native view for empty groups and the Start editor. */
++/** Project overview shared by empty editor groups and the Start editor. */
+ export class StudioStartView extends Disposable {
+ 	readonly element: HTMLElement;
+ 	private readonly id = generateUuid();
+-	private readonly lists = new Map<string, { element: HTMLElement; key: string; disposables: DisposableStore }>();
+-	private readonly labels = new Map<string, HTMLElement>();
+-	private readonly badge: HTMLElement;
+-	private readonly stats = new Map<string, HTMLElement>();
+-	private readonly actions: { button: HTMLButtonElement; label: string; creation: boolean; iconOnly: boolean }[] = [];
+-	private readonly error: HTMLElement;
++	private readonly content: HTMLElement;
++	private readonly contentDisposables = this._register(new DisposableStore());
++	private renderKey = '';
+ 	private intersecting = false;
+ 	private enabled = true;
+ 
+@@ -93,38 +100,10 @@ export class StudioStartView extends Disposable {
+ 		super();
+ 		this.element = append(container, $('main.studio-start.loading'));
+ 		this.element.tabIndex = -1;
+-		this.element.setAttribute('aria-label', 'SteamHarness Studio');
++		this.element.setAttribute('aria-label', 'SteamHarness');
+ 		const inner = append(this.element, $('.studio-start-inner'));
+-		const header = append(inner, $('header.studio-start-header'));
+-		const logo = append(header, $('img.studio-start-logo', { alt: '', 'aria-hidden': 'true' })) as HTMLImageElement;
+-		logo.src = STEAMHARNESS_ICON_DATA_URI;
+-		const brand = append(header, $('.studio-start-brand'));
+-		append(brand, $('h1', undefined, 'SteamHarness Studio'));
+-		this.badge = append(brand, $('span.studio-start-badge'));
+-		this.badge.hidden = true;
+-		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
+-		const top = append(header, $('.studio-start-toolbar'));
+-		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
+ 		this.createLoadingPlaceholder(inner);
+-		const grid = append(inner, $('.studio-start-grid'));
+-		this.section(grid, 'current');
+-		this.section(grid, 'recent');
+-		const system = this.section(grid, 'system');
+-		const details = append(system, $('dl.studio-start-stats'));
+-		for (const key of ['studio', 'vscode', 'node', 'harness', 'cli', 'account', 'server', 'projects', 'running', 'waiting']) {
+-			this.labels.set(`stat.${key}`, append(details, $('dt')));
+-			this.stats.set(key, append(details, $('dd')));
+-		}
+-		this.button(system, 'analysis', 'graph', 'studio.openAnalysis');
+-		const quick = this.section(grid, 'quick');
+-		for (const [label, icon, command] of [
+-			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
+-			['download', 'cloud-download', 'studio.downloadProject'], ['versions', 'versions', 'studio.versions.focus'],
+-			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
+-		]) { this.button(quick, label, icon, command); }
+-		this.error = append(inner, $('p.studio-start-error'));
+-		this.error.setAttribute('role', 'status');
+-		this.error.hidden = true;
++		this.content = append(inner, $('.studio-start-content'));
+ 		const observer = new (getWindow(this.element).IntersectionObserver)(entries => {
+ 			this.intersecting = entries.some(entry => entry.isIntersecting);
+ 			this.publishVisibility();
+@@ -148,196 +127,136 @@ export class StudioStartView extends Disposable {
+ 	focus(): void { (this.element.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? this.element).focus(); }
+ 
+ 	private createLoadingPlaceholder(parent: HTMLElement): void {
+-		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'SteamHarness Studio' }));
+-		const content = append(loading, $('div', { 'aria-hidden': 'true' }));
+-		append(content, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+-		const projects = append(content, $('.studio-start-loading-projects'));
++		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'SteamHarness' }));
++		const skeleton = append(loading, $('div', { 'aria-hidden': 'true' }));
++		append(skeleton, $('.studio-start-skeleton.studio-start-skeleton-label'));
++		const heading = append(skeleton, $('.studio-start-skeleton-heading'));
++		append(heading, $('.studio-start-skeleton.studio-start-skeleton-avatar'));
++		const identity = append(heading, $('div'));
++		append(identity, $('.studio-start-skeleton.studio-start-skeleton-name'));
++		append(identity, $('.studio-start-skeleton.studio-start-skeleton-label'));
++		append(skeleton, $('.studio-start-skeleton.studio-start-skeleton-path'));
+ 		for (let index = 0; index < 3; index++) {
+-			const card = append(projects, $('.studio-start-loading-card'));
+-			append(card, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+-			append(card, $('.studio-start-skeleton.studio-start-skeleton-type'));
+-			append(card, $('.studio-start-skeleton.studio-start-skeleton-path'));
+-			append(card, $('.studio-start-skeleton.studio-start-skeleton-button'));
+-		}
+-		const grid = append(content, $('.studio-start-loading-grid'));
+-		for (const [key, count] of [['recent', 4], ['system', 10], ['quick', 5]] as const) {
+-			const section = append(grid, $(`div.studio-start-loading-${key}`));
+-			append(section, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+-			for (let index = 0; index < count; index++) {
+-				const row = append(section, $('.studio-start-loading-row'));
+-				if (key !== 'recent') { append(row, $('.studio-start-skeleton.studio-start-skeleton-key')); }
+-				append(row, $('.studio-start-skeleton.studio-start-skeleton-value'));
+-			}
++			const row = append(skeleton, $('.studio-start-skeleton-row'));
++			append(row, $('.studio-start-skeleton'));
+ 		}
+ 	}
+ 
+-	private section(parent: HTMLElement, key: string): HTMLElement {
+-		const section = append(parent, $(`section.studio-start-${key}`));
+-		this.labels.set(key, append(section, $('h2')));
+-		if (['current', 'recent'].includes(key)) {
+-			this.lists.set(key, { element: append(section, $('.studio-start-list')), key: '', disposables: this._register(new DisposableStore()) });
+-		}
+-		return section;
+-	}
+-
+-	private button(parent: HTMLElement, label: string, icon: string, command: string, arg?: object | string, creation = false, iconOnly = false, store?: DisposableStore): HTMLButtonElement {
+-		const button = append(parent, $('button.studio-start-action', { type: 'button' })) as HTMLButtonElement;
+-		button.classList.toggle('studio-start-action-icon', iconOnly);
+-		append(button, $(`span.codicon.codicon-${icon}`)).setAttribute('aria-hidden', 'true');
+-		if (!iconOnly) { append(button, $('span.studio-start-action-label')); }
++	private button(parent: HTMLElement, label: string, icon: string, command: string, arg: { uri: string; entryId?: string } | string): HTMLButtonElement {
++		const button = append(parent, $<HTMLButtonElement>('button.studio-start-action', { type: 'button' }));
++		append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
++		append(button, $('span.studio-start-action-label', undefined, label));
+ 		button.dataset.action = command;
+-		if (arg && typeof arg === 'object' && 'uri' in arg) { button.dataset.uri = String(arg.uri); }
+-		const disposable = addDisposableListener(button, 'click', event => {
++		if (typeof arg !== 'string') { button.dataset.uri = arg.uri; }
++		this.contentDisposables.add(addDisposableListener(button, 'click', event => {
+ 			event.stopPropagation();
+ 			void this.commands.executeCommand(command, arg).catch(() => undefined);
+-		});
+-		(store ?? this._store).add(disposable);
+-		if (!store) { this.actions.push({ button, label, creation, iconOnly }); }
+-		else { button.title = label; button.setAttribute('aria-label', label); if (!iconOnly) { button.lastElementChild!.textContent = label; } }
++		}));
+ 		return button;
+ 	}
+ 
+-	private list(key: string, value: object, render: (root: HTMLElement, store: DisposableStore) => void): void {
+-		const list = this.lists.get(key)!;
+-		const signature = JSON.stringify(value);
+-		if (list.key === signature) { return; }
+-		list.key = signature;
+-		list.disposables.clear();
+-		clearNode(list.element);
+-		render(list.element, list.disposables);
++	private avatar(parent: HTMLElement, size: 'project' | 'entry', projectType: string, avatarUrl: string | undefined): void {
++		const icon = append(parent, $(`span.studio-start-avatar.studio-start-avatar-${size}`, { 'aria-hidden': 'true' }));
++		if (avatarUrl?.startsWith('data:image/svg+xml,')) {
++			append(icon, $('img', { alt: '', src: avatarUrl }));
++		} else {
++			append(icon, $(`span.codicon.codicon-${studioProjectIcon(projectType) ?? 'root-folder'}`));
++		}
+ 	}
+ 
+ 	private render(): void {
+ 		const state = this.service.state;
+ 		this.element.classList.toggle('loading', !state);
+ 		this.element.setAttribute('aria-busy', String(!state));
+-		if (!state) {
+-			for (const action of this.actions) { action.button.disabled = true; action.button.hidden = ['download', 'versions', 'account'].includes(action.label); }
+-			for (const key of ['account', 'server']) { this.stats.get(key)!.hidden = true; this.labels.get(`stat.${key}`)!.hidden = true; }
++		if (!state) { return; }
++		const { hasWorkspace, projects, pending, platform, installing, busy, labels } = state;
++		const key = JSON.stringify({ hasWorkspace, projects, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
++		if (key === this.renderKey) { return; }
++		this.renderKey = key;
++		this.contentDisposables.clear();
++		clearNode(this.content);
++		const text = (key: string): string => labels[key] ?? key;
++		this.element.setAttribute('aria-label', text('overview'));
++		append(this.content, $('h1', undefined, text('overview')));
++		for (const project of pending) {
++			const setup = append(this.content, $('.studio-start-setup'));
++			const active = installing === project.id;
++			const status = active ? project.stage === 'registration' ? 'registering' : project.stage === 'validation' ? 'validating' : 'installing'
++				: project.status === 'cancelled' ? 'cancelled' : project.stage === 'registration' ? 'registrationFailed' : project.stage === 'validation' ? 'validationFailed' : 'installFailed';
++			const statusLine = append(setup, $('p.studio-start-setup-status', { role: 'status' }));
++			append(statusLine, $(active ? 'span.codicon.codicon-loading.codicon-modifier-spin' : 'span.codicon.codicon-warning', { 'aria-hidden': 'true' }));
++			append(statusLine, $('span', undefined, `${project.name} · ${text(status)}`));
++			if (project.error && !active) {
++				const details = append(setup, $('details.studio-start-setup-error'));
++				append(details, $('summary', undefined, text('details')));
++				append(details, $('pre', undefined, project.error));
++			}
++			const actions = append(setup, $('.studio-start-project-actions'));
++			if (!active) { this.button(actions, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id).disabled = busy; }
++			this.button(actions, text('installationLog'), 'output', 'studio.showProjectSetupLog', project.id);
++		}
++		if (!projects.length && !pending.length) {
++			const empty = append(this.content, $('.studio-start-empty'));
++			append(empty, $('span.codicon.codicon-folder', { 'aria-hidden': 'true' }));
++			append(empty, $('p', undefined, text(hasWorkspace ? 'noCurrent' : 'noWorkspace')));
+ 			return;
+ 		}
+-		const badge = state.badge?.trim();
+-		this.badge.textContent = badge ?? '';
+-		this.badge.hidden = !badge;
+-		const text = (key: string): string => key === 'current' && state.recommendations ? state.recommendations.title : state.labels[key] ?? key;
+-		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
+-		for (const action of this.actions) {
+-			action.button.hidden = !state.platform && ['download', 'versions', 'account'].includes(action.label);
+-			action.button.title = text(action.label);
+-			action.button.setAttribute('aria-label', text(action.label));
+-			if (!action.iconOnly && action.button.lastElementChild!.textContent !== text(action.label)) { action.button.lastElementChild!.textContent = text(action.label); }
+-			action.button.disabled = action.creation && (!state.canCreate || state.busy);
++		const root = append(this.content, $('.studio-start-current'));
++		for (const project of projects) { this.renderProject(root, project, !!platform, text); }
++	}
++
++	private renderProject(root: HTMLElement, project: StudioOverviewProject, platform: boolean, text: (key: string) => string): void {
++		const section = append(root, $('section.studio-start-project-card'));
++		const header = append(section, $('header.studio-start-project-heading'));
++		this.avatar(header, 'project', project.projectType, project.avatarUrl);
++		const identity = append(header, $('.studio-start-project-identity'));
++		append(identity, $('h2', undefined, project.name));
++		const meta = append(identity, $('.studio-start-project-meta'));
++		append(meta, $('span.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
++		if (project.version) { append(meta, $('span', undefined, `${text('localVersion')} ${project.version}`)); }
++		if (project.update?.serverVersion && project.update.status !== 'unavailable') {
++			append(meta, $('span', undefined, `${text('serverVersion')} ${project.update.serverVersion}`));
+ 		}
+-		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate, platform: state.platform };
+-		this.list('current', { recommendations: state.recommendations, projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
+-			if (!state.recommendations && !state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
+-			if (state.recommendations) {
+-				const recommendations = state.recommendations;
+-				if (recommendations.message) {
+-					append(root, $('p.studio-start-muted.studio-start-recommendation-message', { role: 'status' }, recommendations.message));
+-				}
+-				for (const item of recommendations.items) {
+-					const card = append(root, $('article.studio-start-project-card.studio-start-recommendation'));
+-					const heading = append(card, $('.studio-start-project-heading'));
+-					const avatar = this.button(heading, item.name, studioProjectIcon(item.projectType) ?? 'extensions', 'studio.openStartRecommendation', item.id, false, true, store);
+-					avatar.classList.add('studio-start-project-avatar-button');
+-					if (item.avatarUrl?.startsWith('data:image/svg+xml,')) {
+-						avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: item.avatarUrl, alt: '' }));
+-					}
+-					append(heading, $('h3', undefined, item.name));
+-					append(card, $('p.studio-start-project-type', undefined, [item.projectType ? text(`type.${item.projectType}`) : '', item.version ? `v${item.version}` : ''].filter(Boolean).join(' · ')));
+-					if (item.description) { append(card, $('p.studio-start-recommendation-description', undefined, item.description)); }
+-					const actions = append(card, $('.studio-start-project-actions'));
+-					this.button(actions, recommendations.openLabel, 'link-external', 'studio.openStartRecommendation', item.id, false, false, store);
+-				}
+-				const links = append(root, $('.studio-start-recommendation-links'));
+-				this.button(links, recommendations.browseLabel, 'extensions', 'studio.openStartRecommendation', undefined, false, false, store);
+-				this.button(links, text('refresh'), 'refresh', 'studio.refreshStart', undefined, false, false, store);
+-			}
+-			for (const project of state.projects) {
+-				const target = { uri: project.uri, entryId: project.entryId };
+-				const card = append(root, $('article.studio-start-project-card'));
+-				const updateAvailable = project.update?.status === 'upgrade';
+-				card.classList.toggle('studio-start-project-update', updateAvailable);
+-				const heading = append(card, $('.studio-start-project-heading'));
+-				const avatar = this.button(heading, `${text('run')} \u00b7 ${project.name}`, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', target, false, true, store);
+-				avatar.classList.add('studio-start-project-avatar-button');
+-				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+-					avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: project.avatarUrl, alt: '' }));
+-				}
+-				append(heading, $('h3', undefined, project.name));
+-				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
+-				const versions = append(card, $('.studio-start-project-versions'));
+-				append(versions, $('span', undefined, `${text('localVersion')} ${project.version ?? '\u2014'}`));
+-				if (project.update?.serverVersion && project.update.status !== 'unavailable') {
+-					append(versions, $('span.studio-start-project-server-version', undefined, `${text('serverVersion')} ${project.update.serverVersion}`));
+-				}
+-				if (updateAvailable) {
+-					const badge = append(card, $('.studio-start-project-version-state'));
+-					append(badge, $('span.codicon.codicon-arrow-circle-up')).setAttribute('aria-hidden', 'true');
+-					append(badge, $('span', undefined, text('updateAvailable')));
+-				} else if (project.update?.status === 'current' || project.update?.status === 'ahead') {
+-					append(card, $('p.studio-start-project-version-state', undefined, text(project.update.status === 'current' ? 'upToDate' : 'localNewer')));
+-				}
+-				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
+-				const actions = append(card, $('.studio-start-project-actions'));
+-				if (updateAvailable) {
+-					const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri }, false, false, store);
+-					upgrade.classList.add('studio-start-primary');
+-					upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
+-					if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
+-				}
+-				const run = this.button(actions, text('run'), 'play', 'studio.openProject', target, false, updateAvailable, store);
+-				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
+-				if (state.platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store); }
+-				this.button(actions, text('source'), 'code', 'studio.openProjectSource', target, false, true, store);
+-			}
+-			for (const project of state.pending) {
+-				const row = append(root, $('.studio-start-pending'));
+-				append(row, $('span', undefined, project.name));
+-				const active = state.installing === project.id;
+-				const status = active ? project.stage === 'registration' ? 'registering' : project.stage === 'validation' ? 'validating' : 'installing'
+-					: project.status === 'cancelled' ? 'cancelled' : project.stage === 'registration' ? 'registrationFailed' : project.stage === 'validation' ? 'validationFailed' : 'installFailed';
+-				append(row, $('small', undefined, text(status)));
+-				const retry = this.button(row, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id, false, false, store);
+-				retry.disabled = state.busy;
+-				this.button(row, text('openSource'), 'folder-opened', 'studio.openCreatedProject', project.id, false, true, store);
+-				if (project.error && !active) {
+-					const details = append(row, $('details.studio-start-setup-error'));
+-					append(details, $('summary', undefined, text('details')));
+-					append(details, $('pre', undefined, project.error));
+-				}
+-			}
+-			if (state.pending.length) { this.button(root, text('installationLog'), 'output', 'studio.showProjectSetupLog', undefined, false, false, store); }
+-		});
+-		this.list('recent', { recent: state.recent, labels: state.labels }, (root, store) => {
+-			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
+-			for (const project of state.recent) {
+-				const row = append(root, $('.studio-start-project'));
+-				const label = [project.label, project.version].filter(Boolean).join(' \u00b7 ');
+-				const button = this.button(row, label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
+-				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+-					button.firstElementChild?.replaceWith($('img.studio-start-recent-avatar', { src: project.avatarUrl, alt: '' }));
+-				}
+-				button.title = project.uri;
+-				if (project.current) {
+-					button.setAttribute('aria-current', 'true');
+-					append(button.lastElementChild as HTMLElement, $('span.studio-start-recent-current', undefined, text('currentProject')));
+-				}
+-				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
++		const updateAvailable = project.update?.status === 'upgrade';
++		if (updateAvailable || project.update?.status === 'current' || project.update?.status === 'ahead') {
++			append(meta, $('span', undefined, text(updateAvailable ? 'updateAvailable' : project.update?.status === 'current' ? 'upToDate' : 'localNewer')));
++		}
++		const actions = append(header, $('.studio-start-project-actions'));
++		const sourceEntry = project.entries.find(entry => entry.available && entry.entryId === project.defaultEntry) ?? project.entries.find(entry => entry.available);
++		if (sourceEntry) {
++			this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri, entryId: sourceEntry.entryId });
++		}
++		if (platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }); }
++		if (updateAvailable) {
++			const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri });
++			upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
++			if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
++		}
++		if (project.description?.trim()) { append(section, $('p.studio-start-project-description', undefined, project.description)); }
++		const details = append(section, $('dl.studio-start-project-details'));
++		append(details, $('dt', undefined, text('projectFolder')));
++		append(append(details, $('dd')), $('code.studio-start-project-path', undefined, project.folderPath));
++		append(section, $('h3.studio-start-entries-title', undefined, text('entries')));
++		const entries = append(section, $('ul.studio-start-entries'));
++		for (const entry of project.entries) {
++			const row = append(entries, $('li.studio-start-entry', { 'data-entry-id': entry.entryId }));
++			const primary = entry.entryId === project.defaultEntry;
++			this.avatar(row, 'entry', entry.projectType, entry.avatarUrl);
++			const description = append(row, $('.studio-start-entry-description'));
++			const title = append(description, $('.studio-start-entry-title'));
++			append(title, $('span.studio-start-entry-name', undefined, entry.name));
++			if (primary) { append(title, $('span.studio-start-entry-default', undefined, text('defaultEntry'))); }
++			const entryMeta = append(description, $('.studio-start-entry-meta'));
++			append(entryMeta, $('span', undefined, text(`type.${entry.projectType}`)));
++			append(entryMeta, $('code', undefined, entry.entryId));
++			if (entry.available) {
++				const open = this.button(row, text('openEntry'), 'play', 'studio.openProject', { uri: project.uri, entryId: entry.entryId });
++				open.setAttribute('aria-label', `${text('openEntry')}: ${entry.name}`);
++				open.classList.toggle('studio-start-primary', primary);
++			} else {
++				append(row, $('span.studio-start-entry-unavailable', undefined, text('unavailable')));
+ 			}
+-		});
+-		const environment = state.environment;
+-		for (const [key, element] of this.stats) {
+-			if (key === 'account' || key === 'server') { element.hidden = !state.platform; this.labels.get(`stat.${key}`)!.hidden = !state.platform; }
+-			const value = key === 'studio' ? environment.studio : key === 'vscode' ? environment.vscode
+-				: ['projects', 'running', 'waiting'].includes(key) ? state.summary ? String(state.summary[key as 'projects']) : text('unavailable')
+-					: environment[key as 'node'] || text('unavailable');
+-			if (element.textContent !== value) { element.textContent = value; }
+ 		}
+-		const error = [state.error, environment.error].filter(Boolean).join('\n');
+-		if (this.error.textContent !== error) { this.error.textContent = error; }
+-		this.error.hidden = !error;
+ 	}
+ 
+ 	override dispose(): void {
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+index 5972919af376c23bce88991dce6641932281f62a..e448e94a53fe1ae9d22e7e03e734c3349145205c 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -14,7 +14,6 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
+ import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
+ import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+ import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
+-import { StudioStartState } from '../../../browser/parts/editor/studioStart.js';
+ import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import './media/studioProjectCreateDialog.css';
+@@ -22,14 +21,14 @@ import './media/studioProjectCreateDialog.css';
+ type ProjectCreationInput = { templateId: string; name: string; parentDirectory: string } | { shareUrl: string };
+ export interface ProjectCreationDialogRequest {
+ 	platform?: boolean;
+-	templates: StudioStartState['templates'];
++	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+ 	labels: Record<string, string>;
+ 	parentDirectory: string;
+ 	templateId?: string;
+ 	projectType?: string;
+ }
+ 
+-/** Native form shared by the Start action and project creation commands. */
++/** Native form used by project creation commands. */
+ export class StudioProjectCreateDialog extends Disposable {
+ 	private readonly dialog: Dialog;
+ 	private readonly choices = this._register(new DisposableStore());
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+index 683958573d057e2d6b46ab2a85dc18482ea03622..4476724450bcb6b72fb6638b0310a07ec79f36e0 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+@@ -28,9 +28,13 @@ class StudioStartInput extends EditorInput {
+ 	get resource(): URI { return URI.from({ scheme: 'studio-start', path: '/start' }); }
+ 	constructor(@IStudioStartService private readonly start: IStudioStartService) {
+ 		super();
+-		this._register(start.onDidChange(() => this._onDidChangeLabel.fire()));
++		let label = this.getName();
++		this._register(start.onDidChange(() => {
++			const next = this.getName();
++			if (next !== label) { label = next; this._onDidChangeLabel.fire(); }
++		}));
+ 	}
+-	override getName(): string { return this.start.state?.labels.start ?? 'Start'; }
++	override getName(): string { return this.start.state?.labels.overview ?? 'SteamHarness'; }
+ 	override matches(other: EditorInput | IUntypedEditorInput): boolean { return other instanceof StudioStartInput || super.matches(other); }
+ }
+ 

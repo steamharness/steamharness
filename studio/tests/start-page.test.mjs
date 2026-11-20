@@ -23,13 +23,12 @@ function fixture(t, options = {}) {
   const commands = new Map(), storage = options.storage ?? new Map(), calls = [], intervals = new Map(), projectsChanged = new Emitter(), accountChanged = new Emitter(), trustChanged = new Emitter(), windowChanged = new Emitter(), workspaceChanged = new Emitter();
   const files = storage.get('test.files') ?? new Map(); storage.set('test.files', files);
   const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [],
-    name: 'New project', parent: path.resolve('/projects'), newWindow: true, summary: { projects: 2, running: 1, waiting: 1, unavailable: 0, generatedAt: 1 },
-    environment: { node: 'v24.18.0', core: '0.2.4', cli: '0.2.4' }, inspectedId: id, manifestId: options.manifestId ?? id,
+    name: 'New project', parent: path.resolve('/projects'), newWindow: true, inspectedId: id, manifestId: options.manifestId ?? id,
     files, install: options.install, inspect: options.inspect, create: options.create, register: options.register,
     projectId: options.projectId ?? id, idAllocationError: options.idAllocationError,
     account: options.account ?? { status: 'signed-out', serverUrl: 'http://localhost:7126' } };
   const vscode = {
-    EventEmitter: Emitter, version: '1.141.0', ProgressLocation: { Notification: 15 },
+    EventEmitter: Emitter, env: { language: options.language ?? 'en' }, ProgressLocation: { Notification: 15 },
     ThemeIcon: class { constructor(id) { this.id = id; } },
     Uri: { file: uri, parse: value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value) : value, toString: () => value }),
       joinPath: (parent, ...parts) => uri(path.join(parent.fsPath, ...parts)) },
@@ -71,8 +70,6 @@ function fixture(t, options = {}) {
     hasProjectDependencies: async () => f.dependenciesPresent !== false,
     prepareProjectTemplate: async () => { f.prepares = (f.prepares ?? 0) + 1; return false; },
     inspect: async () => { await f.inspect?.(); return { projects: [{ id: f.inspectedId }], errors: f.inspectionErrors ?? [] }; },
-    environmentStatus: async () => { if (f.environmentError) { throw f.environmentError; } return f.environment; },
-    analysisSummary: async () => { f.summaryReads = (f.summaryReads ?? 0) + 1; if (f.readSummary) { return f.readSummary(); } return f.summary; },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
@@ -84,13 +81,14 @@ function fixture(t, options = {}) {
   }
   const controller = new module.exports.StudioStartController({ globalStorageUri: uri(path.resolve('/studio-storage')), extension: { packageJSON: { version: '0.1.0' } }, globalState: {
     get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } }, launcher,
-  { getState: () => f.account, onDidChange: accountChanged.event }, {
+  { platform: options.platform, getState: () => f.account, onDidChange: accountChanged.event }, {
     getProjects: () => f.projects, onDidChangeProjects: projectsChanged.event,
     getVersionStatus: () => ({ status: 'unpublished', canDownload: false }), onDidChangeVersions: new Emitter().event,
   },
   { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event, reconcile: async () => { await f.reconcile?.(); } }, async project => { f.remembered = project; }, { appendLine() {}, append() {} });
   t.after(() => controller.dispose());
   return Object.assign(f, { controller, execute: vscode.commands.executeCommand, state: async () => commands.get('studio.internalGetStartState')(),
+    savedSetups: () => storage.get('studio.pendingProjectSetups') ?? [],
     setWorkspace: (folders, workspaceFile) => {
       vscode.workspace.workspaceFolders = folders.map(value => ({ uri: vscode.Uri.parse(value) }));
       vscode.workspace.workspaceFile = workspaceFile ? vscode.Uri.parse(workspaceFile) : undefined;
@@ -104,57 +102,47 @@ async function until(read, message) {
   assert.fail(message);
 }
 
-test('start status polls only while visible and preserves last good counts after refresh failures', async t => {
-  const f = fixture(t); await f.execute('studio.refreshStart'); assert.equal(f.summaryReads, undefined); assert.equal(f.intervals.size, 0);
-  await f.execute('studio.internalStartPageVisibility', true); await f.execute('studio.refreshStart');
-  assert.equal(f.intervals.size, 1); assert.equal([...f.intervals.values()][0].ms, 5000); assert.equal((await f.state()).summary.running, 1);
-  f.readSummary = () => { throw new Error('history unavailable'); };
-  await f.execute('studio.refreshStart'); assert.equal((await f.state()).summary.running, 1); assert.match((await f.state()).error, /history unavailable/);
-  f.readSummary = () => ({ ...f.summary, running: 0, unavailable: 1 }); await f.execute('studio.refreshStart');
-  assert.equal((await f.state()).summary.running, 0); assert.equal((await f.state()).error, undefined);
-  f.readSummary = undefined; await f.execute('studio.refreshStart'); assert.equal((await f.state()).error, undefined);
-  await f.execute('studio.internalStartPageVisibility', false); assert.equal(f.intervals.size, 0);
-  const reads = f.summaryReads; await f.execute('studio.refreshStart'); assert.equal(f.summaryReads, reads);
-});
-
-test('refresh reconciles deleted recent records before reading counts and partial data does not become a global error', async t => {
-  const f = fixture(t); await f.execute('studio.refreshStart');
+test('only the visible launchpad polls, and its refresh still reconciles removed recents', async t => {
+  const f = fixture(t, { platform: true });
+  await f.execute('studio.internalStartPageVisibility', false); await f.execute('studio.refreshStart');
+  assert.equal(f.intervals.size, 0);
   f.recent = [{ uri: 'file:///deleted', label: 'Deleted', kind: 'folder', lastOpened: 1 }];
-  f.reconcile = async () => { f.recent = []; };
-  f.readSummary = async () => {
-    assert.deepEqual(f.recent, []);
-    return { projects: 1, running: 0, waiting: 1, unavailable: 1, generatedAt: 2 };
-  };
-  await f.execute('studio.internalStartPageVisibility', true); await f.execute('studio.refreshStart');
-  const state = await f.state();
-  assert.deepEqual({ recent: state.recent, summary: state.summary, error: state.error },
-    { recent: [], summary: { projects: 1, running: 0, waiting: 1, unavailable: 1, generatedAt: 2 }, error: undefined });
-});
-
-test('project and account changes debounce, invalidate old summaries and preserve current state', async t => {
-  const f = fixture(t); await f.execute('studio.refreshStart');
-  let release, started;
-  const ready = new Promise(resolve => { started = resolve; });
-  f.readSummary = () => { f.readSummary = undefined; started(); return new Promise(resolve => { release = resolve; }); };
-  await f.execute('studio.internalStartPageVisibility', true); await ready;
-  f.projects = [{ id, aggregateName: 'Aggregate', name: 'Current', uri: 'file:///current', entryId: 'main', defaultEntry: 'main', entries: [{entryId:'main',type:'workflow'}], projectType: 'workflow' }];
-  for (let i = 0; i < 10; i++) { f.projectsChanged.fire(); }
-  f.account = { status: 'authenticated', serverUrl: 'http://localhost:7126', user: { displayName: 'Local User' } }; f.accountChanged.fire();
-  release({ ...f.summary, projects: 99 }); await f.execute('studio.refreshStart');
-  assert.equal((await f.state()).summary.projects, 2); assert.equal((await f.state()).projects[0].name, 'Aggregate'); assert.equal((await f.state()).environment.account, 'Local User');
-  assert.equal(f.summaryReads, 2);
-});
-
-test('Start shows one aggregate card and opens the default entry even if it is not first', async t => {
-  const f = fixture(t);
-  const entries = [['agent', 'conversation'], ['database', 'workflow'], ['map-2d', 'kanban'], ['minimax', 'workflow'], ['tikhub', 'workflow']];
-  f.projects = entries.map(([entryId, projectType]) => ({ id, aggregateName: 'Aggregate', name: entryId,
-    uri: 'file:///aggregate', folderPath: '/aggregate', entryId, projectType, defaultEntry: 'database',
-    entries: entries.map(([entryId,type])=>({entryId,type})), manifest: {version:'1.2.3'} }));
   await f.execute('studio.refreshStart');
-  assert.deepEqual((await f.state()).projects.map(({ uri, entryId, name, projectType }) => ({ uri, entryId, name, projectType })),
-    [{ uri: 'file:///aggregate', entryId: 'database', name: 'Aggregate', projectType: 'aggregate' }]);
-  assert.equal((await f.state()).projects[0].version, '1.2.3');
+  assert.equal((await f.state()).recent.length, 1);
+  f.reconcile = async () => { f.recent = []; };
+  await f.execute('studio.internalStartPageVisibility', true); await f.execute('studio.refreshStart');
+  assert.equal(f.intervals.size, 1); assert.equal([...f.intervals.values()][0].ms, 5000);
+  const state = await f.state();
+  assert.deepEqual({ recent: state.recent, canCreate: state.canCreate, platform: state.platform }, { recent: [], canCreate: true, platform: true });
+  assert.ok(!('summary' in state) && !('environment' in state));
+  await f.execute('studio.internalStartPageVisibility', false); assert.equal(f.intervals.size, 0);
+});
+
+test('overview groups current workspace projects and keeps entries in declaration order, including unavailable entries', async t => {
+  const f = fixture(t, { language: 'zh-cn' });
+  f.setWorkspace(['file:///workspace']);
+  const entries = [{ entryId: 'agent', type: 'bot', name: 'Agent' }, { entryId: 'database', type: 'workflow', name: 'Database' },
+    { entryId: 'map-2d', type: 'kanban', name: 'Map 2D', projectInfo: { localizedNames: { 'zh-CN': '地图' } } }];
+  f.projects = entries.slice(0, 2).reverse().map(({ entryId, type }) => ({ id, aggregateName: 'Aggregate', name: `Resolved ${entryId}`,
+    uri: 'file:///workspace/aggregate', folderPath: '/workspace/aggregate', entryId, projectType: type, defaultEntry: 'database',
+    entries, manifest: { version: '1.2.3', description: 'Project description' } }));
+  f.projects.push({ ...f.projects[0], uri: 'file:///workspace-other/same-name' }, { ...f.projects[0], uri: 'file:///workspace/assistant', assistant: {} },
+    { ...f.projects[0], uri: 'file:///workspace/analysis', builtin: 'analysis' });
+  await f.execute('studio.refreshStart');
+  const { projects, hasWorkspace } = await f.state();
+  assert.equal(hasWorkspace, true);
+  assert.deepEqual(projects.map(({ uri, defaultEntry, name, projectType, version, description }) => ({ uri, defaultEntry, name, projectType, version, description })),
+    [{ uri: 'file:///workspace/aggregate', defaultEntry: 'database', name: 'Aggregate', projectType: 'aggregate', version: '1.2.3', description: 'Project description' }]);
+  assert.deepEqual(projects[0].entries.map(({ entryId, name, projectType, available }) => ({ entryId, name, projectType, available })), [
+    { entryId: 'agent', name: 'Resolved agent', projectType: 'bot', available: true },
+    { entryId: 'database', name: 'Resolved database', projectType: 'workflow', available: true },
+    { entryId: 'map-2d', name: '地图', projectType: 'kanban', available: false },
+  ]);
+  assert.ok(projects[0].entries.every(entry => entry.avatarUrl.startsWith('data:image/svg+xml,')));
+  f.setWorkspace([]);
+  await f.execute('studio.refreshStart');
+  assert.deepEqual((await f.state()).projects, []);
+  assert.equal((await f.state()).hasWorkspace, false);
 });
 
 test('recent projects identify current folders and workspace files by URI and refresh when the workspace changes', async t => {
@@ -182,16 +170,17 @@ test('creation opens the project before installation and hands progress, logs an
   finishCreate(); await creating;
   const opened = f.calls.find(([name]) => name === 'vscode.openFolder'); assert.equal(opened[2].forceNewWindow, true);
   assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Creating Project');
-  assert.equal((await f.state()).pending[0].installOnOpen, true);
+  assert.equal(f.savedSetups()[0].installOnOpen, true);
+  assert.deepEqual((await f.state()).pending, []);
   const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath],
     install: () => new Promise((_resolve, reject) => { failInstall = () => reject(new Error('offline registry')); }) });
   await until(() => failInstall, 'The new project window did not start installation');
-  assert.equal((await target.state()).installing, id); assert.equal((await target.state()).pending[0].installOnOpen, false);
+  assert.equal((await target.state()).installing, id); assert.equal(target.savedSetups()[0].installOnOpen, false);
   assert.equal(target.progress.length, 1); assert.equal(target.installs[0], opened[1].fsPath);
   assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Creating Project');
   failInstall(); await until(async () => !(await target.state()).busy, 'Installation did not finish');
   assert.equal((await target.state()).pending[0].status, 'failed');
-  await target.execute('studio.showProjectSetupLog'); assert.match(target.logDocument.getText(), /install log/);
+  await target.execute('studio.showProjectSetupLog', id); assert.match(target.logDocument.getText(), /install log/);
   assert.equal(target.logDocument.uri.scheme, 'file'); assert.equal(path.basename(target.logDocument.uri.fsPath), 'installation.log');
   target.manifestId = 'changed'; await target.execute('studio.retryProjectSetup', id); assert.match(target.errors.at(-1), /identity changed/);
   target.manifestId = id; target.install = undefined; await target.execute('studio.retryProjectSetup', id);
@@ -204,7 +193,7 @@ test('validation errors remain separate from dependency installation and retries
   const f = fixture(t); await f.execute('studio.createProject', 'workflow');
   const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], inspect: async () => { target.inspectionErrors = ['specific script violation']; } });
   await until(async () => !(await target.state()).busy, 'Validation did not settle');
-  const pending = (await target.state()).pending[0];
+  const pending = target.savedSetups()[0];
   assert.equal(pending.stage, 'validation'); assert.equal(pending.dependenciesInstalled, true);
   assert.equal(f.created, 1);
   await target.execute('studio.showProjectSetupLog');
@@ -231,7 +220,7 @@ for (const newWindow of [true, false]) test(`creation opens the ${newWindow ? 'n
   const opened = f.calls.find(([name]) => name === 'vscode.openFolder');
   assert.ok(opened); assert.equal(opened[2].forceNewWindow, newWindow);
   assert.deepEqual(f.installs, []); assert.equal(f.registrations, undefined);
-  assert.equal((await f.state()).pending[0].projectId, '');
+  assert.equal(f.savedSetups()[0].projectId, '');
   f.controller.dispose();
   const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
   await until(() => target.remembered, 'Setup did not complete in the selected window');
@@ -249,7 +238,7 @@ for (const template of templateCatalog) for (const newWindow of [true, false]) {
     const opened = f.calls.find(([name]) => name === 'vscode.openFolder');
     assert.ok(opened); assert.equal(opened[2].forceNewWindow, newWindow);
     assert.equal(f.registrations, undefined); assert.deepEqual(f.installs, []);
-    assert.equal((await f.state()).pending[0].entryFile, template.entryFile);
+    assert.equal(f.savedSetups()[0].entryFile, template.entryFile);
     f.controller.dispose();
     const target = fixture(t, { templates, projectType: template.projectType, storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
     await until(() => target.remembered, 'Template setup did not complete in its project window');
@@ -262,10 +251,10 @@ for (const template of templateCatalog) for (const newWindow of [true, false]) {
 test('ID allocation errors in the opened project window retain its files and can be retried', async t => {
   const f = fixture(t, { projectId: '', manifestId: '' });
   await f.execute('studio.createProject');
-  const pending = (await f.state()).pending[0];
+  const pending = f.savedSetups()[0];
   const target = fixture(t, { storage: f.storage, folders: [pending.directory], manifestId: '', register: async () => { throw new Error('Server offline'); } });
   await until(async () => !(await target.state()).busy, 'Registration failure did not settle');
-  assert.equal(target.registrations, 1); assert.equal((await target.state()).pending[0].projectId, '');
+  assert.equal(target.registrations, 1); assert.equal(target.savedSetups()[0].projectId, '');
   assert.equal((await target.state()).pending[0].stage, 'registration');
   assert.match(target.warnings[0], /Project files were created.*Server offline/);
   target.register = undefined;
@@ -279,7 +268,7 @@ test('an empty-ID project installs dependencies and generates a local ID in plac
   await f.execute('studio.createProject', 'workflow');
   const opened = f.calls.find(([name]) => name === 'vscode.openFolder');
   assert.ok(opened); assert.equal(f.remembered.id, ''); assert.deepEqual(f.errors, []);
-  const pending = (await f.state()).pending[0];
+  const pending = f.savedSetups()[0];
   assert.equal(pending.projectId, ''); assert.match(pending.id, /^[a-f0-9-]{36}$/i);
   const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
   await until(async () => !(await target.state()).busy, 'Unregistered setup did not settle');
@@ -292,19 +281,23 @@ test('an empty-ID project installs dependencies and generates a local ID in plac
 test('multiple projects without IDs keep separate setup records and logs across reloads', async t => {
   const f = fixture(t, { projectId: '', manifestId: '', idAllocationError: 'Local Node runtime unavailable' });
   await f.execute('studio.createProject'); f.name = 'Second project'; await f.execute('studio.createProject');
-  const pending = (await f.state()).pending;
+  const pending = f.savedSetups();
   assert.equal(pending.length, 2); assert.notEqual(pending[0].id, pending[1].id);
   const targets = pending.map(project => fixture(t, { storage: f.storage, folders: [project.directory], manifestId: '', register: async () => { throw new Error('Local Node runtime unavailable'); } }));
   for (const target of targets) await until(async () => !(await target.state()).busy, 'Setup did not settle');
   const logPaths = [];
-  for (const target of targets) {
-    await target.execute('studio.showProjectSetupLog');
+  for (const [index, target] of targets.entries()) {
+    assert.deepEqual((await target.state()).pending.map(project => project.id), [pending[index].id]);
+    await target.execute('studio.showProjectSetupLog', pending[1 - index].id);
+    assert.equal(target.logDocument, undefined);
+    await target.execute('studio.showProjectSetupLog', pending[index].id);
     logPaths.push(target.logDocument.uri.fsPath);
     assert.match(target.logDocument.getText(), /Local Node runtime unavailable/);
   }
   assert.notEqual(logPaths[0], logPaths[1]);
   const restored = fixture(t, { storage: f.storage });
-  assert.equal((await restored.state()).pending.length, 2);
+  assert.deepEqual((await restored.state()).pending, []);
+  assert.equal(restored.savedSetups().length, 2);
 });
 
 test('a retry reinstalls dependencies if a successful installation was subsequently removed', async t => {
@@ -330,7 +323,7 @@ test('form and window-choice cancellation create nothing, while install cancella
   assert.equal(f.dialog.templateId, 'workflow-hello');
   const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], install: async signal => { target.cancel(); signal.throwIfAborted(); } });
   await until(async () => !(await target.state()).busy, 'Cancellation did not settle');
-  assert.equal((await target.state()).pending[0].status, 'cancelled'); assert.equal((await target.state()).pending[0].installOnOpen, false);
+  assert.equal((await target.state()).pending[0].status, 'cancelled'); assert.equal(target.savedSetups()[0].installOnOpen, false);
   const restored = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)] });
   await restored.execute('studio.refreshStart'); assert.deepEqual(restored.installs, []);
   assert.equal(f.calls.filter(([name]) => name === 'vscode.openFolder').length, 1);
@@ -368,6 +361,7 @@ test('retrying setup from another workspace asks for a window before changing th
 
 test('form validation returns inline errors and current-project cards receive paths and types', async t => {
   const f = fixture(t);
+  f.setWorkspace(['file:///board']);
   f.validate = () => { throw Object.assign(new Error('conflict'), { code: 'directory-exists' }); };
   const validation = await f.execute('studio.internalValidateProjectCreation', { name: 'Existing', templateId: 'workflow-starter', parentDirectory: f.parent });
   assert.match(validation.error, /already exists/);
@@ -376,11 +370,10 @@ test('form validation returns inline errors and current-project cards receive pa
     { id, name: 'Assistant', uri: 'file:///assistant', projectType: 'bot', assistant: {} },
   ];
   await f.execute('studio.refreshStart');
-  const [{ avatarUrl, ...project }] = (await f.state()).projects;
+  const [{ avatarUrl, uri, defaultEntry, folderPath, name, projectType }] = (await f.state()).projects;
   assert.match(decodeURIComponent(avatarUrl), /stroke="#112233"/);
   assert.match(decodeURIComponent(avatarUrl), /fill="#aabbcc"/);
-  assert.deepEqual([project], [{ uri: 'file:///board', entryId: 'board', folderPath: '/board', name: 'Aggregate', projectType: 'kanban',
-    update: { status: 'unpublished', canDownload: false } }]);
+  assert.deepEqual({ uri, defaultEntry, folderPath, name, projectType }, { uri: 'file:///board', defaultEntry: 'board', folderPath: '/board', name: 'Aggregate', projectType: 'kanban' });
 });
 
 test('cancellation during final inspection retains the project in its new window', async t => {
@@ -423,17 +416,17 @@ test('retrying in the source window hands installation back to an existing proje
 test('a changed project identity and a failed window open never install in the source window', async t => {
   const f = fixture(t); f.open = async () => { throw new Error('window unavailable'); };
   await f.execute('studio.createProject', 'workflow'); assert.match(f.errors.at(-1), /window unavailable/);
-  assert.equal((await f.state()).pending[0].installOnOpen, true); assert.deepEqual(f.installs, []);
+  assert.equal(f.savedSetups()[0].installOnOpen, true); assert.deepEqual(f.installs, []);
   f.open = undefined; await f.execute('studio.retryProjectSetup', id);
   const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], manifestId: 'changed' });
   await until(() => target.errors.length, 'A changed identity was not reported');
   assert.match(target.errors[0], /identity changed/); assert.deepEqual(target.installs, []);
   await target.execute('studio.refreshStart'); target.focus();
-  assert.equal(target.errors.length, 1); assert.equal((await target.state()).pending[0].installOnOpen, false);
+  assert.equal(target.errors.length, 1); assert.equal(target.savedSetups()[0].installOnOpen, false);
 });
 
 
-test('empty-folder start pages show host recommendations and reject unknown app actions', async t => {
+test('the launchpad retains recommendations and rejects unknown app actions', async t => {
   const opened = [];
   const provider = { id: 'catalog', title: 'Recommended apps', openLabel: 'View app', browseLabel: 'Browse apps', loadingMessage: 'Loading', emptyMessage: 'No recommendations', unavailableMessage: 'Unavailable', contextKey: () => 'server-a',
     load: async () => ({ items: [{ id: 'app-one', name: '<App>', description: 'Plain text', projectType: 'bot', projectCard: { icon: 'bot' } }] }), open: value => opened.push(value) };
@@ -460,5 +453,5 @@ test('recommendations ignore responses from previous servers and preserve the la
   assert.deepEqual((await f.state()).recommendations.items.map(item => item.id), ['new']);
   fail = true; await f.execute('studio.refreshStart');
   const state = await f.state(); assert.deepEqual(state.recommendations.items.map(item => item.id), ['new']);
-  assert.equal(state.recommendations.message, 'Unavailable'); assert.equal(state.error, undefined);
+  assert.equal(state.recommendations.message, 'Unavailable');
 });

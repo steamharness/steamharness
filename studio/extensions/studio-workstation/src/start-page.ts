@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
+import { readProjectInfo, resolveProjectName } from '@steamharness/project-info';
 import { t } from './localization';
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { projectVersion, type Project } from './workflow-types';
-import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StudioStartState } from './start-page-types';
+import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StartProject, StudioStartState } from './start-page-types';
 import { parseServerProjectShareLink, type ProjectVersionStatus } from './steamharness-server-projects';
 import { rememberImportedProjects, type RecentProject } from './projects';
 import { updateProjectHistory } from './project-history';
@@ -17,26 +18,23 @@ const LAST_SETUP_KEY = 'studio.lastProjectSetupId';
 
 export function startPageLabels(): Record<string, string> {
   return {
-    start: t('Start'), create: t('New Project'), current: t('Current Projects'), examples: t('Examples'), recent: t('Recent Projects'), upload: t('Upload Project'), download: t('Download Project'), versions: t('Versions'),
+    overview: t('Project Overview'), create: t('New Project'), examples: t('Examples'), upload: t('Upload Project'),
     importLink: t('Import from Link'), shareUrl: t('Project Share Link'), confirmImport: t('Import'), requiredShareUrl: t('Enter a project share link.'),
-    system: t('System Status'), quick: t('Quick Access'), refresh: t('Refresh Status'), analysis: t('Open Studio Analysis'),
-    openFolder: t('Open Folder'), openWorkspace: t('Open Workspace'), assistant: t('Open Project Assistant'), account: t('SteamHarness Account'), settings: t('Settings'),
-    source: t('Open Project Source'), noCurrent: t('No SteamHarness projects in this workspace.'), noRecent: t('No recent projects.'),
+    source: t('Open Project Source'), noCurrent: t('No SteamHarness projects in this workspace.'), noWorkspace: t('No project is open.'),
+    projectFolder: t('Project Folder'), entries: t('Project Entries'), defaultEntry: t('Default Entry'), openEntry: t('Open Entry'),
     localVersion: t('Local Version'), serverVersion: t('Server Version'), upgrade: t('Upgrade...'), updateAvailable: t('Update Available'),
     upToDate: t('Up to Date'), localNewer: t('Local Version Is Newer'), downloadUnavailable: t('Source download is unavailable.'),
-    currentProject: t('Current Project'), removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Project Setup'), openSource: t('Open Project Folder'),
+    unavailable: t('Unavailable'), retry: t('Retry Project Setup'),
     installFailed: t('Dependency installation failed'), cancelled: t('Project setup cancelled'), installing: t('Installing Dependencies'),
     validating: t('Validating Project'), registering: t('Registering Project'),
     validationFailed: t('Project validation failed'), registrationFailed: t('Server registration needs attention'), details: t('Details'),
     installationLog: t('Show Installation Log'),
-    run: t('Run Project'), projectType: t('Project Type'), template: t('Project Template'), starter: t('Minimal Project'),
+    projectType: t('Project Type'), template: t('Project Template'), starter: t('Minimal Project'),
     projectName: t('Project Name'), parentDirectory: t('Project Parent Folder'), browse: t('Choose Folder'),
     confirmCreate: t('Create'), cancel: t('Cancel'), requiredName: t('Enter a project name.'),
     requiredParent: t('Choose an existing parent folder.'),
     'type.workflow': t('Workflow'), 'type.bot': t('Bot'), 'type.conversation': t('Conversation'), 'type.kanban': t('Kanban'),
     'type.link': t('Import from Link'), 'type.aggregate': t('Aggregate Project'),
-    'stat.studio': 'Studio', 'stat.vscode': 'VS Code', 'stat.node': 'Node.js', 'stat.harness': 'Harness', 'stat.cli': 'CLI',
-    'stat.account': t('Account'), 'stat.server': t('Server'), 'stat.projects': t('Local Projects'), 'stat.running': t('Running'), 'stat.waiting': t('Waiting for Input'),
   };
 }
 
@@ -55,14 +53,40 @@ interface ProjectSource {
   onDidChangeVersions: vscode.Event<void>;
 }
 
+function summarizeProjects(source: ProjectSource, roots: Set<string>): StartProject[] {
+  const prefixes = [...roots].map(root => root.endsWith('/') ? root : `${root}/`);
+  const aggregates = new Map<string, Map<string, Project>>();
+  for (const project of source.getProjects()) {
+    if (project.assistant || project.builtin || (!roots.has(project.uri) && !prefixes.some(prefix => project.uri.startsWith(prefix)))) { continue; }
+    const key = `${project.id}:${project.uri}`;
+    let aggregate = aggregates.get(key);
+    if (!aggregate) { aggregates.set(key, aggregate = new Map()); }
+    aggregate.set(project.entryId, project);
+  }
+  return [...aggregates.values()].map(discovered => {
+    const first = discovered.values().next().value!;
+    const project = discovered.get(first.defaultEntry) ?? first;
+    const defaultType = project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType;
+    const entries = project.entries.map(entry => {
+      const resolved = discovered.get(entry.entryId);
+      const projectType = resolved?.projectType ?? entry.type;
+      return { entryId: entry.entryId, name: resolved?.name ?? resolveProjectName(entry.name, readProjectInfo(entry), vscode.env.language), projectType,
+        avatarUrl: projectAvatarDataUrl(resolved?.projectCard ?? entry.projectCard, projectType), available: !!resolved };
+    });
+    return { uri: project.uri, defaultEntry: project.defaultEntry, name: project.aggregateName, description: project.manifest?.description,
+      version: projectVersion(project), projectType: entries.length > 1 ? 'aggregate' : defaultType, folderPath: project.folderPath,
+      avatarUrl: projectAvatarDataUrl(project.aggregateProjectCard, defaultType), entries, update: source.getVersionStatus(project) };
+  });
+}
+
 export class StudioStartController implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly state: StudioStartState;
-  private visible = false;
+  private launchpadVisible = false;
   private disposed = false;
   private revision = 0;
   private requested = false;
-  private environmentNeeded = true;
+  private forceRecommendations = false;
   private refreshing?: Promise<void>;
   private recommendationsKey?: string;
   private recommendationsAbort?: AbortController;
@@ -81,12 +105,8 @@ export class StudioStartController implements vscode.Disposable {
     private readonly account: AccountController, private readonly projects: ProjectSource,
     private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void>; reconcile?(): Promise<void> },
     private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
-    this.state = { version: 1, platform: account.platform, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,
-      badge: process.env.STEAMHARNESS_STUDIO_INTERNAL === '1'
-        ? (vscode.env.language.toLowerCase().startsWith('zh') ? '增强版' : 'Enhanced')
-        : undefined,
-      canCreate: !!launcher.templates && !!launcher.createProject && !!launcher.installDependencies,
-      environment: { studio: context.extension.packageJSON.version, vscode: vscode.version, account: '', server: '' } };
+    this.state = { version: 1, platform: account.platform, labels: startPageLabels(), hasWorkspace: false, projects: [], recent: [], pending: [], busy: false,
+      canCreate: !!launcher.templates && !!launcher.createProject && !!launcher.installDependencies };
     const register = <Args extends unknown[]>(command: string, callback: (...args: Args) => unknown): void => {
       this.subscriptions.push(vscode.commands.registerCommand(command, async (...args: Args) => {
         try { return await callback(...args); }
@@ -97,9 +117,13 @@ export class StudioStartController implements vscode.Disposable {
         }
       }));
     };
-    register('studio.internalStartPageVisibility', (visible: boolean) => { ++this.visibilityRevision; this.setVisible(visible === true); });
+    register('studio.internalStartPageVisibility', (launchpadVisible: boolean) => { ++this.visibilityRevision; this.setLaunchpadVisible(launchpadVisible === true); });
     register('studio.internalGetStartState', () => structuredClone(this.state));
-    register('studio.refreshStart', async () => { this.environmentNeeded = true; await this.refresh(); });
+    register('studio.refreshStart', async () => {
+      await vscode.commands.executeCommand('studio.refreshProjectView');
+      this.forceRecommendations = true;
+      await this.refresh();
+    });
     register('studio.openStartRecommendation', (id?: string) => {
       const active = this.recommendationsContext();
       if (!active || active.key !== this.recommendationsKey) return;
@@ -121,9 +145,11 @@ export class StudioStartController implements vscode.Disposable {
       }
       catch (error) { return { error: this.errorMessage(error) }; }
     });
-    register('studio.showProjectSetupLog', async () => {
+    register('studio.showProjectSetupLog', async (setupId?: string) => {
       await this.flushInstallationLog();
-      const id = this.pending().find(project => this.isProjectWindow(project))?.id ?? this.context.globalState.get<string>(LAST_SETUP_KEY);
+      const id = setupId === undefined
+        ? this.pending().find(project => this.isProjectWindow(project))?.id ?? this.context.globalState.get<string>(LAST_SETUP_KEY)
+        : this.state.pending.find(project => project.id === setupId)?.id;
       if (!id || !/^[a-f0-9-]{36}$/i.test(id)) { throw new Error(t('No project setup log is available yet.')); }
       const uri = vscode.Uri.joinPath(this.context.globalStorageUri, 'project-setup', id, 'installation.log');
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: true, preserveFocus: true });
@@ -139,23 +165,18 @@ export class StudioStartController implements vscode.Disposable {
     const schedule = (): void => {
       ++this.revision;
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => { this.publish(); if (this.visible) { void this.refresh(); } }, 350);
+      this.timer = setTimeout(() => { this.publish(); if (this.launchpadVisible) { void this.refresh(); } }, 350);
     };
     this.subscriptions.push(projects.onDidChangeProjects(schedule), recent.onDidChangeTreeData(schedule), account.onDidChange(schedule),
       onDidChangeStartRecommendations(schedule),
       vscode.workspace.onDidChangeWorkspaceFolders(schedule),
       projects.onDidChangeVersions(() => { clearTimeout(this.versionTimer); this.versionTimer = setTimeout(() => this.publish(), 150); }),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.resumeProjectSetup()),
-      vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.resumeProjectSetup(); } }),
-      vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('studio.project.nodePath') || event.affectsConfiguration('studio.project.nodeSource') || event.affectsConfiguration('studio.project.serverUrl')) {
-          this.environmentNeeded = true; schedule();
-        }
-      }));
+      vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.resumeProjectSetup(); } }));
     this.publish();
     const visibilityRevision = this.visibilityRevision;
     void vscode.commands.executeCommand<boolean>('studio.internalGetStartVisibility').then(visible => {
-      if (visibilityRevision === this.visibilityRevision) this.setVisible(visible);
+      if (visibilityRevision === this.visibilityRevision) this.setLaunchpadVisible(visible === true);
     }, () => undefined);
     void this.refresh();
     this.resumeProjectSetup();
@@ -210,30 +231,21 @@ export class StudioStartController implements vscode.Disposable {
       const { provider } = recommendations;
       this.state.recommendations = { title: provider.title, openLabel: provider.openLabel, browseLabel: provider.browseLabel, items: [], message: provider.loadingMessage };
     }
-    const aggregates = new Map<string, Project>();
-    for (const project of this.projects.getProjects().filter(project => !project.assistant && !project.builtin)) {
-      const key = `${project.id}:${project.uri}`;
-      if (!aggregates.has(key) || project.entryId === project.defaultEntry) aggregates.set(key, project);
-    }
-    this.state.projects = [...aggregates.values()]
-      .map(project => ({ uri: project.uri, entryId: project.defaultEntry, name: project.aggregateName, projectType: project.entries.length > 1 ? 'aggregate' : project.projectType, folderPath: project.folderPath,
-        avatarUrl: projectAvatarDataUrl(project.aggregateProjectCard, project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType),
-        update: this.projects.getVersionStatus(project),
-        ...(projectVersion(project) ? { version: projectVersion(project) } : {}) }));
-    const currentUris = new Set([vscode.workspace.workspaceFile, ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri)]
-      .flatMap(uri => uri ? [uri.toString()] : []));
+    const roots = new Set(vscode.workspace.workspaceFolders?.map(folder => folder.uri.toString()));
+    this.state.hasWorkspace = roots.size > 0;
+    this.state.projects = summarizeProjects(this.projects, roots);
+    const currentUris = new Set(roots);
+    if (vscode.workspace.workspaceFile) { currentUris.add(vscode.workspace.workspaceFile.toString()); }
     this.state.recent = this.recent.getChildren().map(project => ({ ...project, current: currentUris.has(project.uri) }));
-    this.state.pending = this.pending();
-    const account = this.account.getState();
-    const labels = { 'signed-out': t('Signed Out'), checking: t('Connecting to Server'), authenticated: t('Server Connected'), expired: t('Server Sign-in Expired'), error: t('Server Connection Error') };
-    this.state.environment.account = account.user?.displayName || account.user?.email || t('Signed Out');
-    this.state.environment.server = `${labels[account.status]} · ${account.serverUrl}`;
+    const projectUris = new Set([...roots, ...this.state.projects.map(project => project.uri)]);
+    this.state.pending = this.pending().filter(project => projectUris.has(vscode.Uri.file(project.directory).toString()))
+      .map(({ id, name, directory, status, stage, error }) => ({ id, name, directory, status, stage, error }));
     void vscode.commands.executeCommand('studio.internalUpdateStartState', structuredClone(this.state)).then(undefined, error => this.output.appendLine(`Start page: ${String(error)}`));
   }
 
-  private setVisible(visible: boolean): void {
-    if (this.disposed || this.visible === visible) { return; }
-    this.visible = visible;
+  private setLaunchpadVisible(visible: boolean): void {
+    if (this.disposed || this.launchpadVisible === visible) { return; }
+    this.launchpadVisible = visible;
     clearInterval(this.interval);
     if (visible) {
       void this.refresh();
@@ -252,38 +264,23 @@ export class StudioStartController implements vscode.Disposable {
         if (this.disposed) { return; }
         const revision = this.revision;
         this.publish();
-        const recommendations = this.visible ? this.recommendationsContext() : undefined;
-        const abort = new AbortController(); this.recommendationsAbort = abort;
-        const environment = this.environmentNeeded;
-        const [templates, runtime, summary, suggested] = await Promise.allSettled([
-          this.state.templates.length ? Promise.resolve(this.state.templates) : this.launcher.templates?.() ?? Promise.resolve([]),
-          environment ? this.launcher.environmentStatus?.() : undefined,
-          this.visible && vscode.workspace.isTrusted ? this.launcher.analysisSummary?.() : undefined,
-          recommendations?.provider.load(abort.signal, { force: environment }),
-        ]);
-        if (this.disposed) { return; }
-        if (revision !== this.revision) { this.requested = true; continue; }
-        if (recommendations && this.recommendationsContext()?.key === recommendations.key && this.state.recommendations) {
-          if (suggested.status === 'fulfilled' && suggested.value) {
-            try {
-              this.state.recommendations.items = normalizeStartRecommendations(suggested.value.items);
-              this.state.recommendations.message = this.state.recommendations.items.length ? undefined : recommendations.provider.emptyMessage;
-            } catch { this.state.recommendations.message = recommendations.provider.unavailableMessage; }
-          } else if (suggested.status === 'rejected') this.state.recommendations.message = recommendations.provider.unavailableMessage;
+        const recommendations = this.launchpadVisible ? this.recommendationsContext() : undefined;
+        if (recommendations) {
+          const abort = new AbortController(); this.recommendationsAbort = abort;
+          const force = this.forceRecommendations;
+          this.forceRecommendations = false;
+          const provider = recommendations.provider;
+          let items: ReturnType<typeof normalizeStartRecommendations> | undefined;
+          try { items = normalizeStartRecommendations((await provider.load(abort.signal, { force })).items); }
+          catch { /* Keep the last successful list. */ }
+          if (this.disposed) { return; }
+          if (revision !== this.revision) { this.requested = true; continue; }
+          if (this.launchpadVisible && this.recommendationsContext()?.key === recommendations.key && this.state.recommendations) {
+            if (items) { this.state.recommendations.items = items; }
+            this.state.recommendations.message = !items ? provider.unavailableMessage : items.length ? undefined : provider.emptyMessage;
+            this.publish();
+          }
         }
-        const errors: string[] = [];
-        if (templates.status === 'fulfilled') { this.state.templates = templates.value; }
-        else { errors.push(this.errorMessage(templates.reason)); }
-        if (runtime.status === 'fulfilled' && runtime.value) {
-          Object.assign(this.state.environment, runtime.value);
-          this.state.environment.error = runtime.value.error;
-          this.environmentNeeded = false;
-        } else if (runtime.status === 'rejected') { errors.push(this.errorMessage(runtime.reason)); }
-        if (summary.status === 'fulfilled' && summary.value) {
-          this.state.summary = summary.value;
-        } else if (summary.status === 'rejected') { errors.push(this.errorMessage(summary.reason)); }
-        this.state.error = errors.length ? t('Status refresh failed: {0}', errors.join('\n')) : undefined;
-        this.publish();
         this.resumeProjectSetup();
       }
     })().catch(error => { this.output.appendLine(`Start page: ${String(error)}`); }).finally(() => { this.refreshing = undefined; });

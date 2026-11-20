@@ -4,104 +4,89 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runInNewContext } from 'node:vm';
+import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
-import ts from 'typescript';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { pinnedKernel } from './helpers/pinned-kernel.mjs';
 import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const file = 'src/vs/workbench/browser/parts/editor/studioStart.ts';
 const css = 'src/vs/workbench/browser/parts/editor/media/studioStart.css';
+const overviewPatch = '0088-studio-project-overview.patch';
 const source = await readFile(path.join(ROOT, 'upstream/vscode', file), 'utf8');
-const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-const view = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'StudioStartView');
-const methods = view.members.filter(node => ts.isMethodDeclaration(node) && ['render', 'list'].includes(node.name.getText(ast)));
-const javascript = ts.transpileModule(`class StartView { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-}).outputText;
+const compiled = await build({ entryPoints: [path.join(ROOT, 'upstream/vscode', file)], bundle: true, platform: 'browser', format: 'iife',
+  globalName: 'studioStart', loader: { '.css': 'empty' }, write: false });
 
-for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targets and distinguishes project setup failures in ${language}`, async t => {
+for (const language of ['en', 'zh-cn']) test(`native overview renders only current projects and opens every available entry in ${language}`, async t => {
   const bundle = JSON.parse(await readFile(path.join(ROOT, `extensions/studio-workstation/l10n/bundle.l10n${language === 'en' ? '' : '.zh-cn'}.json`), 'utf8'));
-  const dom = new JSDOM('<main></main>'); t.after(() => dom.window.close());
-  const { document } = dom.window;
-  const $ = (selector, attributes, text) => {
-    const [tag, ...classes] = selector.split('.'), element = document.createElement(tag || 'div');
-    element.className = classes.join(' ');
-    for (const [name, value] of Object.entries(attributes ?? {})) { element.setAttribute(name, value); }
-    if (text !== undefined) { element.textContent = text; }
-    return element;
-  };
-  const module = { exports: {} };
-  runInNewContext(`${javascript}\nmodule.exports = StartView;`, { module, $, studioProjectIcon: type => type,
-    append: (parent, child) => parent.appendChild(child), clearNode: node => node.replaceChildren() });
-  const instance = new module.exports();
-  instance.element = document.querySelector('main'); instance.badge = document.createElement('span');
-  instance.labels = new Map(); instance.actions = []; instance.error = document.createElement('div');
-  instance.stats = new Map(['harness', 'projects', 'running', 'waiting'].map(key => [key, document.createElement('span')]));
-  instance.lists = new Map(['current', 'recent'].map(key => [key, { element: document.createElement('div'), key: '', disposables: { clear() {} } }]));
-  const calls = [];
-  instance.button = (parent, label, _icon, command, target) => {
-    const button = parent.appendChild($('button'));
-    button.appendChild($('span.studio-start-action-label', undefined, label));
-    button.addEventListener('click', () => calls.push([command, target]));
-    return button;
-  };
-  const labels = Object.fromEntries(Object.entries({ installFailed: 'Dependency installation failed', validationFailed: 'Project validation failed',
-    registrationFailed: 'Server registration needs attention', cancelled: 'Project setup cancelled', registering: 'Registering Project', details: 'Details', currentProject: 'Current Project' })
-    .map(([key, message]) => [key, bundle[message]]));
-  instance.service = { state: { labels, projects: [], recent: [], pending: ['dependencies', 'validation', 'registration'].map(stage => ({ id: stage, name: stage, stage, status: 'failed', error: '<specific error>' })),
-    environment: { harness: '0.1.1' }, canCreate: true, busy: false } };
-  instance.render();
-  const current = instance.lists.get('current').element;
-  instance.service.state.summary = { projects: 2, running: 1, waiting: 0, unavailable: 1, generatedAt: 42 };
-  instance.render();
-  assert.deepEqual(['projects', 'running', 'waiting'].map(key => instance.stats.get(key).textContent), ['2', '1', '0']);
-  assert.equal(instance.error.hidden, true);
-  instance.service.state.recent = [true, false].map((current, index) => ({ uri: `file:///project-${index}`, label: 'Same name', kind: 'folder', lastOpened: 1, current }));
-  instance.render();
-  const recent = instance.lists.get('recent').element;
-  const recentRows = () => [...recent.querySelectorAll('.studio-start-project')].map(row => ({
-    current: row.firstElementChild.getAttribute('aria-current'), badge: row.querySelector('.studio-start-recent-current')?.textContent }));
-  assert.deepEqual(recentRows(), [{ current: 'true', badge: labels.currentProject }, { current: null, badge: undefined }]);
-  instance.service.state.recent.forEach(project => { project.current = !project.current; }); instance.render();
-  assert.deepEqual(recentRows(), [{ current: null, badge: undefined }, { current: 'true', badge: labels.currentProject }]);
-  assert.deepEqual([...current.querySelectorAll('small')].map(node => node.textContent), [labels.installFailed, labels.validationFailed, labels.registrationFailed]);
-  assert.equal(instance.stats.get('harness').textContent, '0.1.1');
-  const details = current.querySelector('details'); details.open = true;
-  assert.equal(details.querySelector('pre').textContent, '<specific error>'); assert.equal(details.querySelector('specific'), null);
-  instance.render(); assert.equal(current.querySelector('details'), details); assert.equal(details.open, true);
-  instance.service.state.installing = 'registration'; instance.render();
-  assert.equal([...current.querySelectorAll('small')].at(-1).textContent, labels.registering);
-  assert.equal(current.querySelectorAll('details').length, 2);
-  const entries = [['agent', 'conversation'], ['database', 'workflow'], ['map-2d', 'kanban'], ['minimax', 'workflow'], ['tikhub', 'workflow']];
-  instance.service.state.projects = entries.map(([entryId, projectType]) => ({ uri: 'file:///aggregate', entryId,
-    name: `Aggregate / ${entryId}`, projectType, folderPath: '/aggregate' }));
-  instance.service.state.pending = []; instance.render();
-  const cards = [...current.querySelectorAll('.studio-start-project-card')];
-  assert.deepEqual(cards.map(card => card.querySelector('h3').textContent), entries.map(([entryId]) => `Aggregate / ${entryId}`));
-  for (const card of cards) { for (const button of card.querySelectorAll('button')) { button.click(); } }
-  assert.deepEqual(calls.filter(([command]) => ['studio.openProject', 'studio.openProjectSource'].includes(command))
-    .map(([command, target]) => [command, { ...target }]), entries.flatMap(([entryId]) =>
-      ['studio.openProject', 'studio.openProject', 'studio.openProjectSource'].map(command => [command, { uri: 'file:///aggregate', entryId }])));
-  const recommendation = { id: 'approved-app', name: '<Recommended app>', description: '<script>plain text</script>', projectType: 'bot', version: '1.0.0', avatarUrl: 'data:image/svg+xml,%3Csvg%3E%3C/svg%3E' };
-  instance.labels.set('current', document.createElement('h2'));
-  instance.service.state.projects = [];
-  instance.service.state.recommendations = { title: language === 'en' ? 'Recommended apps' : '推荐应用', openLabel: language === 'en' ? 'View app' : '查看应用', browseLabel: 'Browse', items: [recommendation] };
-  instance.render();
-  const recommendedCard = current.querySelector('.studio-start-recommendation');
-  assert.equal(recommendedCard.querySelector('h3').textContent, recommendation.name);
-  assert.equal(recommendedCard.querySelector('script'), null);
-  assert.equal(instance.labels.get('current').textContent, instance.service.state.recommendations.title);
-  recommendedCard.querySelector('.studio-start-project-actions button').click();
-  assert.deepEqual(calls.at(-1), ['studio.openStartRecommendation', 'approved-app']);
-  instance.render(); assert.equal(current.querySelector('.studio-start-recommendation'), recommendedCard);
-  instance.service.state.recommendations = undefined; instance.service.state.projects = [{ uri: 'file:///local', entryId: 'main', name: 'Local project', projectType: 'workflow', folderPath: '/local' }];
-  instance.render(); assert.equal(current.querySelectorAll('.studio-start-recommendation').length, 0);
+  const labels = Object.fromEntries(Object.entries({ overview: 'Project Overview', entries: 'Project Entries', defaultEntry: 'Default Entry',
+    openEntry: 'Open Entry', source: 'Open Project Source', localVersion: 'Local Version', projectFolder: 'Project Folder',
+    noWorkspace: 'No project is open.', noCurrent: 'No SteamHarness projects in this workspace.', retry: 'Retry Project Setup', installationLog: 'Show Installation Log',
+    unavailable: 'Unavailable', details: 'Details', installFailed: 'Dependency installation failed', validationFailed: 'Project validation failed',
+    registrationFailed: 'Server registration needs attention', registering: 'Registering Project', 'type.aggregate': 'Aggregate Project',
+    'type.bot': 'Bot', 'type.workflow': 'Workflow', 'type.kanban': 'Kanban' }).map(([key, message]) => [key, bundle[message]]));
+  const dom = new JSDOM('<div id="host"></div>', { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const { window } = dom, { document } = window;
+  window.IntersectionObserver = class { observe() {} disconnect() {} };
+  const { StudioStartView } = window.eval(`${compiled.outputFiles[0].text}\nstudioStart;`);
+  const calls = [], service = { state: undefined, onDidChange: callback => { service.change = callback; return { dispose() {} }; }, setVisible() {} };
+  const view = new StudioStartView(document.getElementById('host'), service, { executeCommand: async (...args) => calls.push(JSON.parse(JSON.stringify(args))) });
+  const { element } = view;
+  assert.equal(element.getAttribute('aria-busy'), 'true');
+  assert.equal(element.querySelectorAll('button').length, 0);
+  const uri = 'file:///aggregate', avatarUrl = 'data:image/svg+xml,%3Csvg%2F%3E';
+  const state = { labels, hasWorkspace: true, pending: [], recent: [{ label: 'Recent record' }], recommendations: { title: 'Store recommendation' },
+    projects: [{ uri, name: 'Aggregate', description: '<script>Plain text</script>', folderPath: '/aggregate', projectType: 'aggregate', version: '1.2.3', avatarUrl,
+      defaultEntry: 'database', entries: [
+        { entryId: 'agent', name: 'Agent', projectType: 'bot', avatarUrl, available: true },
+        { entryId: 'database', name: 'Database', projectType: 'workflow', available: true },
+        { entryId: 'board', name: 'Board', projectType: 'kanban', avatarUrl: 'https://example.invalid/external.svg', available: false },
+      ] }] };
+  service.state = state; service.change();
+  assert.equal(element.getAttribute('aria-busy'), 'false');
+  assert.equal(element.querySelector('h1').textContent, labels.overview);
+  assert.equal(element.querySelector('h2').textContent, 'Aggregate');
+  assert.equal(element.querySelector('h3').textContent, labels.entries);
+  assert.equal(element.querySelector('.studio-start-project-path').textContent, '/aggregate');
+  assert.equal(element.querySelector('.studio-start-project-description').textContent, state.projects[0].description);
+  assert.equal(element.querySelector('script'), null);
+  assert.ok(!element.textContent.includes('Recent record') && !element.textContent.includes('Store recommendation'));
+  const rows = [...element.querySelectorAll('.studio-start-entry')];
+  assert.deepEqual(rows.map(row => [row.dataset.entryId, row.querySelector('.studio-start-entry-default')?.textContent, !!row.querySelector('button')]),
+    [['agent', undefined, true], ['database', labels.defaultEntry, true], ['board', undefined, false]]);
+  assert.equal(rows[2].querySelector('img'), null);
+  assert.equal(rows[1].querySelector('button').getAttribute('aria-label'), `${labels.openEntry}: Database`);
+  for (const button of element.querySelectorAll('button')) { button.click(); }
+  assert.deepEqual(calls, [['studio.openProjectSource', { uri, entryId: 'database' }],
+    ['studio.openProject', { uri, entryId: 'agent' }], ['studio.openProject', { uri, entryId: 'database' }]]);
+  const focused = rows[1].querySelector('button'); focused.focus();
+  state.recent = []; state.recommendations = undefined; state.busy = true; service.change();
+  assert.equal(document.activeElement, focused, 'Launchpad state must not replace or refocus current entries');
+  state.projects = []; service.change();
+  assert.equal(element.querySelector('.studio-start-empty p').textContent, labels.noCurrent);
+  state.hasWorkspace = false; service.change();
+  assert.equal(element.querySelector('.studio-start-empty p').textContent, labels.noWorkspace);
+  assert.equal(element.querySelectorAll('button').length, 0);
 
+  state.hasWorkspace = true; state.busy = false;
+  state.pending = ['dependencies', 'validation', 'registration'].map(stage => ({ id: stage, name: 'Aggregate', stage, status: 'failed', error: '<specific error>' }));
+  service.change();
+  const statusLines = () => [...element.querySelectorAll('.studio-start-setup-status')].map(node => node.lastElementChild.textContent);
+  assert.deepEqual(statusLines(), [labels.installFailed, labels.validationFailed, labels.registrationFailed].map(label => `Aggregate · ${label}`));
+  const details = element.querySelector('details'); details.open = true;
+  assert.equal(details.querySelector('pre').textContent, '<specific error>');
+  service.change(); assert.equal(element.querySelector('details'), details); assert.equal(details.open, true);
+  const log = [...element.querySelectorAll('[data-action="studio.showProjectSetupLog"]')].at(-1); log.click();
+  assert.deepEqual(calls.at(-1), ['studio.showProjectSetupLog', 'registration']);
+  state.installing = 'registration'; service.change();
+  assert.equal(statusLines().at(-1), `Aggregate · ${labels.registering}`);
+  assert.equal(element.querySelectorAll('details').length, 2);
+  view.dispose();
 });
 
 for (const [patchNames, files] of [
+  [[overviewPatch], [file, css, 'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts']],
   [['0070-studio-start-partial-status.patch'], [file]],
   [['0069-studio-editor-group-close.patch'], ['src/vs/workbench/browser/parts/editor/editor.contribution.ts', 'src/vs/workbench/browser/parts/editor/media/editorgroupview.css', 'src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css']],
   [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
@@ -115,10 +100,10 @@ for (const [patchNames, files] of [
     await copyFile(path.join(ROOT, 'upstream/vscode', name), path.join(kernel, name));
   }
   await mkdir(path.join(directory, 'patches'));
-  // Replay the later DOM typing refinement too, restricted to this fixture's files.
-  const sequence = patchNames.includes('0067-studio-start-recent-projects.patch')
-    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch']
-    : [...patchNames, '0083-studio-explicit-platform-tools.patch'];
+  // Replay later refinements too, restricted to this fixture's files.
+  const sequence = patchNames.includes(overviewPatch) ? patchNames : patchNames.includes('0067-studio-start-recent-projects.patch')
+    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch]
+    : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch];
   for (const patchName of sequence) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');

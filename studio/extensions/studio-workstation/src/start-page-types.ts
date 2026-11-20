@@ -25,11 +25,24 @@ export interface ProjectCreationDialog {
   templateId?: string;
   projectType?: string;
 }
-export interface StartEnvironment {
-  node?: string; harness?: string; cli?: string; error?: string;
+export interface StartProjectEntry {
+  entryId: string;
+  name: string;
+  projectType: string;
+  avatarUrl: string;
+  available: boolean;
 }
-export interface StartSummary {
-  projects: number; running: number; waiting: number; unavailable: number; generatedAt: number;
+export interface StartProject {
+  uri: string;
+  defaultEntry: string;
+  name: string;
+  description?: string;
+  version?: string;
+  projectType: string;
+  folderPath: string;
+  avatarUrl: string;
+  entries: StartProjectEntry[];
+  update: ProjectVersionStatus;
 }
 export interface PendingProjectSetup extends CreatedProject {
   /** When present, id is the setup key and projectId is the manifest ID, which can be empty. */
@@ -44,16 +57,11 @@ export interface StudioStartState {
   version: 1;
   platform?: boolean;
   labels: Record<string, string>;
-  /** Present only in the internal launcher; the public Studio leaves it empty. */
-  badge?: string;
-  templates: StartTemplate[];
-  projects: Array<{ uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
+  hasWorkspace: boolean;
+  projects: StartProject[];
   recommendations?: StartRecommendationsState;
   recent: Array<RecentProject & { current: boolean }>;
-  pending: PendingProjectSetup[];
-  environment: StartEnvironment & { studio: string; vscode: string; account: string; server: string };
-  summary?: StartSummary;
-  error?: string;
+  pending: Array<Pick<PendingProjectSetup, 'id' | 'name' | 'directory' | 'status' | 'stage' | 'error'>>;
   busy: boolean;
   installing?: string;
   canCreate: boolean;

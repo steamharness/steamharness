@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +16,8 @@ const layoutOnly = process.argv.includes('--layout-only');
 const groupsOnly = process.argv.includes('--groups-only');
 const proof = path.join(ROOT, groupsOnly ? '.studio/editor-group-close-ui' : layoutOnly ? '.studio/start-page-layout-ui' : '.studio/start-page-ui'); await mkdir(proof, { recursive: true });
 const { createProjectFromTemplate, listProjectTemplates } = await import('../extensions/studio-workstation/dist/project-templates.mjs');
+const templates = await listProjectTemplates();
+const fixtureModules = process.env.STUDIO_START_TEST_NODE_MODULES || path.join(ROOT, 'examples/bot/node_modules');
 const versions = JSON.parse(await readFile(path.join(ROOT, 'extensions/studio-workstation/dist/project-template-versions.json'), 'utf8'));
 const checks = [], errors = [];
 const check = message => { checks.push(message); console.log(`[OK] ${message}`); };
@@ -28,10 +30,11 @@ async function until(read, accept, message, timeout = 60_000) {
 for (const language of ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'studio-start-ui-')));
   const workdir = path.join(directory, 'projects'), extension = path.join(directory, 'extensions/start-test');
+  const creationParent = path.join(directory, 'created-projects');
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
   let browser, child, page, sourceMessages, log = '';
   try {
-    await mkdir(workdir, { recursive: true }); await mkdir(extension, { recursive: true });
+    await mkdir(workdir, { recursive: true }); await mkdir(extension, { recursive: true }); await mkdir(creationParent);
     if (language === 'zh-cn' && process.env.STEAMHARNESS_UI_LANGUAGE_PACK) {
       const location = await realpath(process.env.STEAMHARNESS_UI_LANGUAGE_PACK);
       const contents = await readFile(path.join(location, 'package.json'), 'utf8'), manifest = JSON.parse(contents);
@@ -49,15 +52,43 @@ for (const language of ['en', 'zh-cn']) {
       } }));
     }
     const bin = path.join(directory, 'bin'); await mkdir(bin);
-    const installer = path.join(ROOT, 'tests/start-page-ui-install.cjs');
-    await writeFile(path.join(bin, process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'), process.platform === 'win32'
-      ? `@"${process.execPath}" "${installer}" %*\r\n` : `#!${process.execPath}\nrequire(${JSON.stringify(installer)});\n`, { mode: 0o755 });
+    const node = process.platform === 'win32' ? 'node.exe' : 'node';
+    const installer = 'install.cjs', runtimeManifest = path.join(directory, 'runtime.json');
+    await copyFile(process.execPath, path.join(bin, node));
+    await copyFile(path.join(ROOT, 'tests/start-page-ui-install.cjs'), path.join(directory, installer));
+    await writeFile(runtimeManifest, JSON.stringify({ schemaVersion: 1, nodeVersion: process.versions.node,
+      node: `bin/${node}`, bin: 'bin', npm: installer, pnpm: installer }));
     const projects = [];
-    for (const template of await listProjectTemplates()) {
+    for (const template of templates) {
       const project = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory: workdir, versions });
-      await symlink(path.join(ROOT, 'examples/bot/node_modules'), path.join(project.directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+      await symlink(fixtureModules, path.join(project.directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
       projects.push(project);
     }
+    const aggregate = path.join(workdir, 'overview-sample');
+    await mkdir(aggregate);
+    const entryNames = { chat: ['Project Bot', '项目 Bot'], api: ['Data Workflow', '数据工作流'], board: ['Project Board', '项目看板'] };
+    const registrations = [];
+    for (const [entryId, templateId] of [['chat', 'bot-starter'], ['api', 'workflow-starter'], ['board', 'kanban-starter']]) {
+      const template = projects.find(project => project.name === templateId);
+      const entryRoot = path.join(aggregate, entryId);
+      await mkdir(entryRoot);
+      if (entryId === 'board') {
+        await writeFile(path.join(entryRoot, template.entryFile), '<!doctype html><html><body><main id="overview-board">Overview Board</main></body></html>');
+      } else {
+        await copyFile(path.join(template.directory, template.entryFile), path.join(entryRoot, template.entryFile));
+      }
+      await copyFile(path.join(template.directory, 'configuration.json'), path.join(entryRoot, 'configuration.json'));
+      const entry = template.projectType === 'kanban' ? path.posix.join(entryId, template.entryFile) : template.entryFile;
+      await writeFile(path.join(entryRoot, 'steamharness.json'), JSON.stringify({ name: entryNames[entryId][0], type: template.projectType,
+        entry, configuration: 'configuration.json', projectInfo: { localizedNames: { 'zh-CN': entryNames[entryId][1] } } }));
+      registrations.push({ entryId, root: entryId });
+    }
+    await writeFile(path.join(aggregate, 'package.json'), JSON.stringify({ name: 'overview-sample', version: '1.2.3', private: true, type: 'module',
+      devDependencies: { steamharness: versions.harness, '@steamharness/cli': versions.cli } }));
+    await writeFile(path.join(aggregate, 'steamharness.json'), JSON.stringify({ id: randomUUID(), name: 'Overview Sample', version: '1.2.3',
+      description: 'An aggregate with Bot, Workflow, and Kanban entries.', defaultEntry: 'api', entries: registrations,
+      projectInfo: { localizedNames: { 'zh-CN': '项目概览示例' } } }));
+    await symlink(fixtureModules, path.join(aggregate, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
     const emptyFile = path.join(workdir, 'empty.txt'); await writeFile(emptyFile, '');
     await mkdir(path.join(workdir, '.vscode'));
     await writeFile(path.join(workdir, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false, 'window.autoDetectColorScheme': false,
@@ -70,8 +101,8 @@ for (const language of ['en', 'zh-cn']) {
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
       '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--force-disable-user-env', '--telemetry-level', 'off', '--default-folder', workdir],
     { cwd: upstream.directory, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
-      PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`, STUDIO_START_TEST_NODE_MODULES: path.join(ROOT, 'examples/bot/node_modules'),
-      STUDIO_START_TEST_PROJECT_DIRECTORIES: JSON.stringify([path.join(workdir, `new-window-${language}`), path.join(workdir, `same-window-${language}`)]),
+      STEAMHARNESS_STUDIO_NODE_RUNTIME: runtimeManifest, STUDIO_START_TEST_NODE_MODULES: fixtureModules,
+      STUDIO_START_TEST_PROJECT_DIRECTORIES: JSON.stringify([path.join(creationParent, `new-window-${language}`), path.join(creationParent, `same-window-${language}`)]),
       NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: path.resolve(ROOT, '..'), STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'),
       STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
       VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat' } });
@@ -112,7 +143,7 @@ for (const language of ['en', 'zh-cn']) {
       }
     };
     await command('workbench.action.closeAllEditors');
-    const initial = await until(() => call({ action: 'state' }), state => state.start.templates.length === 7 && (layoutOnly || groupsOnly || state.start.projects.length === 7), 'Current projects were not scanned');
+    const initial = await until(() => call({ action: 'state' }), state => state.start?.labels.overview && (layoutOnly || groupsOnly || state.start.projects.length === projects.length + 1), 'Current projects were not scanned');
     assert.equal(initial.language, language);
     await command('workbench.action.closeSidebar'); await command('workbench.action.closeAuxiliaryBar');
     const settingsAction = page.locator('.activitybar').getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true });
@@ -192,116 +223,98 @@ for (const language of ['en', 'zh-cn']) {
     });
     try {
       const loading = page.locator('.studio-start-loading-test > .studio-start');
-      const checkHeaderLayouts = async phase => {
+      const checkLayouts = async phase => {
         await page.setViewportSize({ width: 1440, height: 1000 });
         for (const theme of ['Default Light Modern', 'Default Dark Modern']) {
           await call({ action: 'theme', theme });
           await page.waitForFunction(dark => document.querySelector('.monaco-workbench')?.classList.contains('vs-dark') === dark, theme.includes('Dark'));
           for (const width of [1200, 600, 420, 360, 320, 280, 240]) {
             await page.evaluate(width => { globalThis.studioStartLoadingTest.host.style.width = `${width}px`; }, width);
-            const bounds = await loading.evaluate(element => {
-              const header = element.querySelector('.studio-start-header');
-              const badge = header.querySelector('.studio-start-badge');
-              return { client: element.clientWidth, scroll: element.scrollWidth,
-                header: header.getBoundingClientRect().toJSON(),
-                logo: header.querySelector('.studio-start-logo').getBoundingClientRect().toJSON(),
-                title: header.querySelector('h1').getBoundingClientRect().toJSON(),
-                badge: { visible: badge.checkVisibility(), ...badge.getBoundingClientRect().toJSON() },
-                refresh: header.querySelectorAll('[data-action="studio.refreshStart"]').length,
-                actions: [...header.querySelectorAll('button')].filter(button => button.checkVisibility()).map(button => button.getBoundingClientRect().toJSON()) };
-            });
+            const bounds = await loading.evaluate((element, phase) => {
+              const loading = phase === 'loading';
+              const avatar = element.querySelector(loading ? '.studio-start-skeleton-avatar' : '.studio-start-avatar-project').getBoundingClientRect();
+              const title = element.querySelector(loading ? '.studio-start-skeleton-name' : '.studio-start-project-identity').getBoundingClientRect();
+              const layout = element.querySelector('.studio-start-inner').getBoundingClientRect();
+              return { client: element.clientWidth, scroll: element.scrollWidth, avatarAligned: avatar.right <= title.left && avatar.top < title.bottom && avatar.bottom > title.top,
+                outside: [...element.querySelectorAll('button, .studio-start-project-path, .studio-start-entry-name')].some(item => {
+                  const rect = item.getBoundingClientRect();
+                  return rect.left < layout.left - 1 || rect.right > layout.right + 1;
+                }), placeholders: [...element.querySelectorAll('.studio-start-skeleton')].every(item => item.offsetWidth > 0 && item.offsetHeight > 0) };
+            }, phase);
             const context = `${language} ${theme} ${phase} ${width}: ${JSON.stringify(bounds)}`;
             assert.ok(bounds.scroll <= bounds.client + 1, `The view must fit its editor group: ${context}`);
-            assert.ok(Math.abs((bounds.logo.top + bounds.logo.bottom) / 2 - (bounds.title.top + bounds.title.bottom) / 2) <= 1,
-              `The logo must remain beside the title: ${context}`);
-            assert.ok(bounds.logo.left >= bounds.header.left && bounds.logo.right <= bounds.title.left && bounds.title.right <= bounds.header.right + 1,
-              `Brand elements must fit without overlapping: ${context}`);
-            assert.equal(bounds.refresh, 0, 'The start header must not expose a refresh button');
-            if (phase === 'loaded' && width > 600) {
-              assert.ok(bounds.badge.visible && bounds.badge.left >= bounds.title.right && bounds.badge.right <= bounds.header.right,
-                `The enhanced badge must follow the title: ${context}`);
-              assert.ok(Math.abs((bounds.badge.top + bounds.badge.bottom) / 2 - (bounds.title.top + bounds.title.bottom) / 2) <= 1,
-                `The enhanced badge must align with the title: ${context}`);
-              assert.ok(bounds.actions.every(action => action.left >= bounds.badge.right), `Header actions must follow the brand: ${context}`);
-            }
-            for (const action of bounds.actions) {
-              assert.ok(action.left >= bounds.header.left && action.right <= bounds.header.right + 1,
-                `Header actions must fit the editor group: ${context}`);
-              if (width <= 600) {
-                assert.ok(action.top >= Math.max(bounds.logo.bottom, bounds.title.bottom), `Narrow actions must follow the brand: ${context}`);
-              }
-            }
+            assert.ok(bounds.avatarAligned && !bounds.outside, `Project identity and actions must fit without overlapping: ${context}`);
+            if (phase === 'loading') { assert.ok(bounds.placeholders, context); }
             if (width === 280 || width === 1200) {
-              await loading.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-${phase}-header-${width}.png`) });
+              await loading.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-${phase}-overview-${width}.png`) });
             }
           }
         }
         await page.evaluate(() => { globalThis.studioStartLoadingTest.host.style.width = ''; });
-        check(`${language}: ${phase} header keeps the logo beside the title and actions in bounds across 240-1200px editor groups in both themes`);
+        check(`${language}: ${phase} project overview fits 240-1200px editor groups in both themes`);
       };
-      for (const theme of ['Default Light Modern', 'Default Dark Modern']) {
-        await call({ action: 'theme', theme });
-        await page.waitForFunction(dark => document.querySelector('.monaco-workbench')?.classList.contains('vs-dark') === dark, theme.includes('Dark'));
-        for (const width of [1440, 420]) {
-          await page.setViewportSize({ width, height: width === 420 ? 780 : 1000 });
-          assert.equal(await loading.getAttribute('aria-busy'), 'true');
-          assert.equal(await loading.locator('[role="progressbar"]').isVisible(), true);
-          assert.equal(await loading.locator('button:visible').count(), 0, 'Loading must not expose unlabeled actions');
-          assert.equal(await loading.locator('h2:visible').count(), 0, 'Loading must not expose empty section headings');
-          const bounds = await loading.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth,
-            placeholders: [...element.querySelectorAll('.studio-start-skeleton')].every(item => item.offsetWidth > 0 && item.offsetHeight > 0) }));
-          assert.ok(bounds.scroll <= bounds.client + 1 && bounds.placeholders, JSON.stringify(bounds));
-          await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-loading-${width}.png`) });
-        }
-      }
-      await checkHeaderLayouts('loading');
+      assert.equal(await loading.getAttribute('aria-busy'), 'true');
+      assert.equal(await loading.locator('[role="progressbar"]').isVisible(), true);
+      assert.equal(await loading.locator('button:visible, h1:visible').count(), 0, 'Loading must not expose empty headings or controls');
+      await checkLayouts('loading');
       await page.evaluate(() => globalThis.studioStartLoadingTest.view.focus());
       assert.equal(await loading.evaluate(element => document.activeElement === element), true);
+      assert.equal(await loading.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      assert.equal(await loading.locator('.studio-start-skeleton, .studio-start-loading-indicator').evaluateAll(elements =>
+      assert.equal(await loading.locator('.studio-start-skeleton').evaluateAll(elements =>
         elements.every(element => getComputedStyle(element).animationName === 'none')), true);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.setViewportSize({ width: 1440, height: 1000 });
-      check(`${language}: delayed first load shows themed skeletons, hides unlabeled controls and supports narrow layouts and reduced motion`);
+      const samples = language === 'en' ? ['Project Assistant', 'Data API', 'Map 2D'] : ['项目助手', '数据接口', '地图看板'];
       await page.evaluate(state => {
         const fixture = globalThis.studioStartLoadingTest;
         fixture.service.state = state; fixture.change.fire();
         fixture.card = fixture.host.querySelector('.studio-start-current .studio-start-project-card');
-      }, { ...initial.start, badge: language === 'en' ? 'Enhanced' : '增强版',
-        projects: layoutOnly ? projects.map(project => ({ uri: pathToFileURL(project.directory).href, name: project.name,
-          projectType: project.projectType, folderPath: project.directory })) : initial.start.projects });
+      }, { ...initial.start, hasWorkspace: true, pending: [], platform: true,
+        projects: [{ uri: pathToFileURL(workdir).href, name: language === 'en' ? 'Workspace Data Assistant' : '工作区数据助手',
+          description: language === 'en' ? 'Chat, query project data, and review it on the map.' : '用于项目对话、查询数据和查看地图。',
+          projectType: 'aggregate', version: '0.1.0', folderPath: path.join(workdir, 'a-very-long-and-uninterrupted-project-folder-name'), defaultEntry: 'api',
+          entries: [['chat', 'bot'], ['api', 'workflow'], ['map', 'kanban']].map(([entryId, projectType], index) => ({ entryId, projectType, name: samples[index], available: true })) }] });
       assert.equal(await loading.getAttribute('aria-busy'), 'false');
       assert.equal(await loading.locator('[role="progressbar"]').isVisible(), false);
-      assert.equal(await loading.locator('.studio-start-project-card:visible').count(), 7);
-      assert.equal(await loading.locator('[data-action="studio.createProject"]').isEnabled(), true);
-      await checkHeaderLayouts('loaded');
+      assert.equal(await loading.locator('.studio-start-entry').count(), 3);
+      assert.equal(await loading.locator('[data-entry-id="api"] .studio-start-entry-default').textContent(), initial.start.labels.defaultEntry);
+      assert.equal(await loading.locator('[data-action="studio.createProject"], .studio-start-recent, .studio-start-system, .studio-start-quick').count(), 0);
+      await checkLayouts('loaded');
       await page.evaluate(() => {
         const fixture = globalThis.studioStartLoadingTest;
-        fixture.service.state = { ...fixture.service.state, badge: undefined }; fixture.change.fire();
+        fixture.service.state = { ...fixture.service.state, recent: [] }; fixture.change.fire();
       });
-      assert.equal(await loading.locator('.studio-start-badge').evaluate(element => getComputedStyle(element).display === 'none' && element.getBoundingClientRect().width === 0), true,
-        'An empty badge must not leave a border or layout space');
-      await page.evaluate(error => {
-        const fixture = globalThis.studioStartLoadingTest;
-        fixture.service.state = { ...fixture.service.state, error }; fixture.change.fire();
-      }, initial.start.labels.unavailable);
-      assert.equal(await loading.locator('.studio-start-error').textContent(), initial.start.labels.unavailable);
-      assert.equal(await loading.locator('[role="progressbar"]').isVisible(), false);
       assert.equal(await page.evaluate(() => globalThis.studioStartLoadingTest.card === globalThis.studioStartLoadingTest.host.querySelector('.studio-start-current .studio-start-project-card')), true);
-      check(`${language}: first data replaces skeletons, enables labeled actions and preserves content after a refresh error`);
+      check(`${language}: initialization shows the project and its entries; refreshing recents leaves the overview unchanged`);
     } finally {
       await page.evaluate(() => {
         const fixture = globalThis.studioStartLoadingTest;
         fixture.view.dispose(); fixture.change.dispose(); fixture.host.remove(); delete globalThis.studioStartLoadingTest;
       });
     }
+    await start().locator('h1').waitFor();
+    assert.equal(await start().locator('h1').textContent(), language === 'en' ? 'Project Overview' : '项目概览');
+    assert.equal(await start().locator('[data-action="studio.createProject"], .studio-start-recent, .studio-start-system, .studio-start-quick').count(), 0);
+    if (await exists(fixtureModules)) {
+      const title = language === 'en' ? 'Overview Sample' : '项目概览示例';
+      const current = start().locator('.studio-start-project-card').filter({ has: page.getByRole('heading', { name: title, exact: true, level: 2 }) });
+      await current.waitFor();
+      assert.equal(await current.locator('.studio-start-project-path').textContent(), aggregate);
+      assert.deepEqual(await current.locator('.studio-start-entry-name').allTextContents(), registrations.map(({ entryId }) => entryNames[entryId][language === 'en' ? 0 : 1]));
+      assert.equal(await current.locator('[data-entry-id="api"] .studio-start-entry-default').textContent(), initial.start.labels.defaultEntry);
+      assert.equal(await current.locator('.studio-start-avatar img').count(), 4);
+      await current.screenshot({ path: path.join(proof, `${language}-workspace-project.png`) });
+      if (layoutOnly) {
+        await current.locator('[data-entry-id="board"] [data-action="studio.openProject"]').click();
+        await until(() => findFrame('#overview-board'), Boolean, 'The non-default Kanban entry did not open from the overview');
+      }
+      check(`${language}: the empty editor renders the inspected aggregate and its localized entries`);
+    }
+    if (layoutOnly) { assert.deepEqual(errors, []); continue; }
     const recentBefore = await call({ action: 'state' });
-    const currentRecent = start().locator('.studio-start-recent [data-action="studio.openRecentProject"][aria-current="true"]');
-    assert.equal(await currentRecent.count(), recentBefore.start.recent.filter(project => project.current).length);
-    assert.equal(await currentRecent.first().locator('.studio-start-recent-current').textContent(), language === 'en' ? 'Current Project' : '当前项目');
-    const recentProject = start().locator('.studio-start-recent .studio-start-project').first();
-    await recentProject.hover();
-    await recentProject.locator('[data-action="studio.removeRecentProject"]').click();
+    const removeRecent = () => { void command('studio.removeRecentProject', recentBefore.start.recent[0]).catch(error => errors.push(error.message)); };
+    removeRecent();
     const removeDialog = page.locator('.monaco-dialog-box:visible');
     await removeDialog.waitFor();
     await removeDialog.getByRole('button', { name: language === 'en' ? 'Cancel' : '取消', exact: true }).waitFor();
@@ -311,31 +324,30 @@ for (const language of ['en', 'zh-cn']) {
     await page.screenshot({ path: path.join(proof, `${language}-remove-recent-confirmation.png`) });
     await page.keyboard.press('Escape'); await removeDialog.waitFor({ state: 'hidden' });
     assert.deepEqual((await call({ action: 'state' })).start.recent, recentBefore.start.recent);
-    await recentProject.locator('[data-action="studio.removeRecentProject"]').click();
-    await removeDialog.getByRole('button', { name: recentBefore.start.labels.removeRecent, exact: true }).click();
+    removeRecent();
+    await removeDialog.getByRole('button', { name: language === 'en' ? 'Remove from Recent Projects' : '从最近项目中移除', exact: true }).click();
     await until(() => call({ action: 'state' }), state => state.start.recent.length === recentBefore.start.recent.length - 1, 'Recent projects did not update after confirmation');
     assert.deepEqual((await call({ action: 'state' })).folders, recentBefore.folders);
-    check(`${language}: current-project badge and recent removal confirmation preserve cancelled entries and the current workspace`);
-    if (layoutOnly) { assert.deepEqual(errors, []); continue; }
-    await start().locator('[data-action="studio.createProject"]').first().waitFor();
+    check(`${language}: the global recent removal command preserves cancelled entries and the current workspace`);
     assert.equal(await page.locator('.tabs-container .tab').count(), 0, 'The empty-group start must not create a tab');
     await start().locator('h1').dblclick();
     await pause(300);
     assert.equal(await page.locator('.tabs-container .tab').count(), 0, 'Double-clicking the empty background must not create Untitled');
-    assert.equal(await start().locator('[data-action="studio.createProject"]').count(), 1);
-    assert.equal(await start().locator('[data-action="studio.createExample"]').count(), 0);
-    assert.equal(await start().locator('h2').first().textContent(), language === 'en' ? 'Current Projects' : '当前项目');
-    assert.equal(await start().locator('.studio-start-project-card').count(), 7);
+    assert.equal(await start().locator('.studio-start-project-card').count(), initial.start.projects.length);
     for (const project of initial.start.projects) {
-      const card = start().locator('.studio-start-project-card').filter({ has: page.locator('h3', { hasText: project.name }) });
+      const card = start().locator('.studio-start-project-card').filter({ has: page.getByRole('heading', { name: project.name, exact: true, level: 2 }) });
       assert.equal(await card.locator('.studio-start-project-path').textContent(), project.folderPath);
-      assert.equal(await card.locator('[data-action="studio.openProject"] .studio-start-action-label').textContent(), initial.start.labels.run);
+      assert.deepEqual(await card.locator('.studio-start-entry').evaluateAll(rows => rows.map(row => row.dataset.entryId)), project.entries.map(entry => entry.entryId));
+      assert.equal(await card.locator(`[data-entry-id="${project.defaultEntry}"] .studio-start-entry-default`).textContent(), initial.start.labels.defaultEntry);
       assert.equal(await card.locator('.studio-start-project-type').textContent(), initial.start.labels[`type.${project.projectType}`]);
     }
-    check(`${language}: single creation entry and current-project cards with name, type, path and Run`);
+    check(`${language}: editor overview lists only current projects, paths, types and their declared entries`);
     const modal = () => page.locator('.studio-create-dialog');
     const submit = () => modal().locator('.dialog-buttons .monaco-button').filter({ hasText: language === 'en' ? /^Create$/ : /^创建$/ });
-    const openCreation = async () => { await start().locator('[data-action="studio.createProject"]').click(); await modal().waitFor(); };
+    const openCreation = async (target = page, port = bridge.port) => {
+      void call({ action: 'command', command: 'studio.createProject' }, port).catch(error => errors.push(error.message));
+      await target.locator('.studio-create-dialog').waitFor();
+    };
     await openCreation();
     assert.match(await modal().locator('[data-field="parentDirectory"]').inputValue(), /Documents[\\/]steamharness-projects$/);
     assert.equal(await submit().getAttribute('aria-disabled'), 'true');
@@ -344,11 +356,10 @@ for (const language of ['en', 'zh-cn']) {
     await page.keyboard.press('Tab');
     assert.equal(await modal().locator('input[name="projectType"][value="workflow"]').evaluate(input => input === document.activeElement), true);
     await modal().locator('input[name="projectType"][value="workflow"]').focus(); await page.keyboard.press('ArrowRight');
-    await modal().locator('input[name="projectType"][value="conversation"]:checked').waitFor({ state: 'attached' });
-    for (const [type, count] of [['conversation', 2], ['kanban', 3], ['workflow', 2]]) {
+    await modal().locator('input[name="projectType"][value="bot"]:checked').waitFor({ state: 'attached' });
+    for (const type of ['bot', 'kanban', 'workflow']) {
       await modal().locator(`input[name="projectType"][value="${type}"]`).locator('..').click();
-      assert.equal(await modal().locator('input[name="templateId"]').count(), count);
-      const allowed = initial.start.templates.filter(template => template.projectType === type).map(template => template.id);
+      const allowed = templates.filter(template => template.projectType === type).map(template => template.id);
       assert.deepEqual(await modal().locator('input[name="templateId"]').evaluateAll(inputs => inputs.map(input => input.value)), allowed);
     }
     await modal().locator('[data-field="projectName"]').fill('../invalid');
@@ -371,7 +382,7 @@ for (const language of ['en', 'zh-cn']) {
     await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' });
     assert.equal(await exists(path.join(workdir, "新项目 & ' $()")), false);
     check(`${language}: creation modal filters templates, defaults location, browses, validates names and conflicts, tabs and cancels`);
-    const iconProjects = ['workflow-starter', 'conversation-starter', 'kanban-starter'].map(name => projects.find(project => project.name === name));
+    const iconProjects = ['workflow-starter', 'bot-starter', 'kanban-starter'].map(name => projects.find(project => project.name === name));
     const ordinary = path.join(directory, 'ordinary-folder'); await mkdir(ordinary);
     const workspaceFile = path.join(directory, 'icons.code-workspace'); await writeFile(workspaceFile, JSON.stringify({ folders: [{ path: ordinary }] }));
     const recentUris = new Map(iconProjects.map(project => [pathToFileURL(project.directory).href, project.projectType]));
@@ -383,39 +394,32 @@ for (const language of ['en', 'zh-cn']) {
     await until(() => call({ action: 'state' }), state => [...recentUris].every(([uri, type]) => state.start.recent.some(project => project.uri === uri && project.projectType === type)), 'Recent project types were not detected');
     await call({ action: 'removeFolders' });
     await call({ action: 'nativeRecent', paths: [...iconProjects.map(project => project.directory), ordinary], workspace: workspaceFile });
-    const expectedIcons = { workflow: 'run-all', conversation: 'comment-discussion', kanban: 'layout' };
-    const assertRecentIcons = async () => {
-      for (const [uri, type] of recentUris) {
-        await start().locator(`[data-action="studio.openRecentProject"][data-uri="${uri}"] .codicon-${expectedIcons[type]}`).waitFor();
-      }
-      await start().locator(`[data-action="studio.openRecentProject"][data-uri="${pathToFileURL(ordinary).href}"] .codicon-folder`).waitFor();
-    };
+    const projectAvatar = '.quick-input-list-icon[style*="data:image/svg+xml"]';
     for (const theme of ['Default Light Modern', 'Default Dark Modern']) {
       await call({ action: 'theme', theme });
       await page.waitForFunction(dark => document.querySelector('.monaco-workbench')?.classList.contains('vs-dark') === dark, theme.includes('Dark'));
-      await assertRecentIcons();
       await command('workbench.action.closeAuxiliaryBar');
       void command('workbench.action.openRecent').catch(error => errors.push(error.message));
       const quick = page.locator('.quick-input-widget:visible'); await quick.waitFor();
       await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-recent-open.png`) });
       for (const project of iconProjects) {
         const row = quick.locator('.monaco-list-row').filter({ has: page.locator('.quick-input-list-label', { hasText: project.name }) });
-        await row.locator(`.quick-input-list-icon.codicon-${expectedIcons[project.projectType]}`).waitFor();
+        await row.locator(projectAvatar).waitFor();
       }
-      const input = quick.locator('input'); await input.fill('conversation-starter');
-      await quick.locator('.monaco-list-row.focused .codicon-comment-discussion').waitFor();
+      const input = quick.locator('input'); await input.fill('bot-starter');
+      await quick.locator('.monaco-list-row.focused').locator(projectAvatar).waitFor();
       await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-recent-icons.png`) });
       if (theme.includes('Light')) {
         await input.fill('ordinary-folder');
         const ordinaryRow = quick.locator('.monaco-list-row').filter({ hasText: 'ordinary-folder' });
-        assert.equal(await ordinaryRow.locator('.quick-input-list-icon.codicon').count(), 0, 'Ordinary folders keep their file-theme icon');
+        assert.equal(await ordinaryRow.locator(`${projectAvatar}, .quick-input-list-icon.codicon`).count(), 0, 'Ordinary folders keep their file-theme icon');
         await ordinaryRow.hover();
         await ordinaryRow.locator('.action-label').click();
         await ordinaryRow.waitFor({ state: 'hidden' });
         assert.equal(await quick.isVisible(), true);
         await input.fill('icons');
         const workspaceRow = quick.locator('.monaco-list-row').filter({ hasText: 'icons' }); await workspaceRow.waitFor();
-        assert.equal(await workspaceRow.locator('.quick-input-list-icon.codicon').count(), 0, 'Saved workspaces keep their file-theme icon');
+        assert.equal(await workspaceRow.locator(`${projectAvatar}, .quick-input-list-icon.codicon`).count(), 0, 'Saved workspaces keep their file-theme icon');
       }
       await page.keyboard.press('Escape'); await quick.waitFor({ state: 'hidden' });
       await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}.png`) });
@@ -423,7 +427,7 @@ for (const language of ['en', 'zh-cn']) {
       await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-create-dialog.png`) });
       await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' });
     }
-    check(`${language}: project type icons in Recent Projects and Open Recent, both themes, filtering and dismissal`);
+    check(`${language}: project type icons in Open Recent, both themes, filtering and dismissal`);
     await command('workbench.action.files.newUntitledFile');
     const untitled = (await call({ action: 'state' })).active;
     assert.ok(untitled?.startsWith('untitled:'));
@@ -475,7 +479,7 @@ for (const language of ['en', 'zh-cn']) {
     await call({ action: 'replace', text: '' }); await assertPlainUntitled();
     check(`${language}: native blank Untitled in both themes, typing, DOM paste, undo and clear`);
     await command('workbench.action.closeActiveEditor');
-    await start().locator('[data-action="studio.createProject"]').waitFor();
+    await start().locator('h1').waitFor();
     assert.equal(await page.locator('.tabs-container .tab').count(), 0);
     check(`${language}: closing the empty file returns to the background Start workbench`);
     await call({ action: 'file', path: emptyFile }); assert.equal(await page.locator('.studio-start-overlay .studio-start:visible').count(), 0);
@@ -487,13 +491,11 @@ for (const language of ['en', 'zh-cn']) {
     await command('workbench.action.splitEditorRight');
     await page.setViewportSize({ width: 900, height: 900 });
     await start().locator('h2').first().waitFor();
-    const bounds = await page.locator('.studio-start:visible').evaluateAll(elements => elements.map(element => {
-      const brand = document.createRange(), title = element.querySelector('h1').firstChild;
-      brand.setStart(title, 0); brand.setEnd(title, 'Workflow'.length);
-      return { client: element.clientWidth, scroll: element.scrollWidth, brandLines: brand.getClientRects().length,
-        overflow: [...element.querySelectorAll('button,h1,h2,dd,p')].some(item => item.scrollWidth > item.clientWidth + 1) };
-    }));
-    assert.ok(bounds.every(bound => bound.scroll <= bound.client + 1 && !bound.overflow && bound.brandLines === 1), JSON.stringify(bounds));
+    const bounds = await page.locator('.studio-start:visible').evaluateAll(elements => elements.map(element => ({
+      client: element.clientWidth, scroll: element.scrollWidth,
+      overflow: [...element.querySelectorAll('button,h1,h2,dd,p')].some(item => item.scrollWidth > item.clientWidth + 1),
+    })));
+    assert.ok(bounds.every(bound => bound.scroll <= bound.client + 1 && !bound.overflow), JSON.stringify(bounds));
     await page.screenshot({ path: path.join(proof, `${language}-split.png`) });
     await openCreation();
     await page.setViewportSize({ width: 420, height: 780 });
@@ -506,55 +508,22 @@ for (const language of ['en', 'zh-cn']) {
     await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' });
     await command('workbench.action.joinAllGroups'); await page.setViewportSize({ width: 1440, height: 1000 });
     check(`${language}: saved empty file and diff excluded, narrow split layout`);
-    const conversation = projects.find(project => project.name === 'conversation-round-output');
-    await start().locator(`.studio-start-current [data-action="studio.openProject"][data-uri="${pathToFileURL(conversation.directory).href}"]`).click();
-    const frame = await until(() => findFrame('#message', pathToFileURL(conversation.directory).href), Boolean, 'Conversation runtime did not open');
-    await frame.locator('#parameters[aria-busy=false]').waitFor({ state: 'attached' });
-    await frame.locator('#message').fill('Offline'); await frame.locator('#message').press('Enter');
-    await frame.waitForFunction(() => document.querySelector('#message').value === '');
-    await frame.locator('.message.assistant .message-content').filter({ hasText: 'Round 1: Offline' }).waitFor();
-    assert.equal(await frame.locator('.message.assistant .message-content details').count(), 0, 'The main answer must be in the conversation body');
-    const draftSaved = page.waitForResponse(response => response.url().endsWith('/api/message') && response.request().postDataJSON()?.type === 'draft');
-    await frame.locator('#message').fill('Click'); await draftSaved;
-    await frame.locator('#send').click();
-    await frame.locator('.message.assistant .message-content').filter({ hasText: 'Round 2: Click' }).waitFor();
-    check(`${language}: current-project runtime and Conversation answer in body`);
-    if (language === 'en') {
-      for (const name of ['kanban-default', 'kanban-parameters']) {
-        const board = projects.find(project => project.name === name);
-        await command('studio.openProject', { uri: pathToFileURL(board.directory).href });
-        const boardFrame = await until(() => findFrame('#task-title'), Boolean, `${name} did not load`);
-        await boardFrame.locator('#add-task:not(:disabled)').waitFor();
-        await boardFrame.locator('#task-title').fill('Offline task'); await boardFrame.locator('#add-task').click();
-        await boardFrame.locator('.todo article').filter({ hasText: 'Offline task' }).waitFor();
-        await boardFrame.locator('.todo article').filter({ hasText: 'Offline task' }).getByRole('button', { name: 'Move to Next Column' }).click();
-        await boardFrame.locator('.doing article').filter({ hasText: 'Offline task' }).waitFor();
-        await boardFrame.locator('#add-task:not(:disabled)').waitFor();
-        await boardFrame.evaluate(() => location.reload()); await boardFrame.locator('.doing article').filter({ hasText: 'Offline task' }).waitFor();
-        assert.equal(await boardFrame.locator('h2').first().textContent(), 'To Do');
-        if (name === 'kanban-parameters') {
-          const configuration = await until(() => findFrame('#kanban-fields'), Boolean, 'Kanban parameters did not load');
-          await configuration.getByLabel('Board Title', { exact: true }).fill('Configured Board');
-          await boardFrame.locator('#title').filter({ hasText: 'Configured Board' }).waitFor();
-          await configuration.getByLabel('Show Completed Tasks', { exact: true }).uncheck();
-          await boardFrame.locator('.done').waitFor({ state: 'hidden' });
-        }
-      }
-      check('en: both offline task boards create, move and persist tasks');
-    }
+    const aggregateUri = pathToFileURL(aggregate).href;
+    await start().locator(`[data-entry-id="board"] [data-action="studio.openProject"][data-uri="${aggregateUri}"]`).click();
+    await until(() => findFrame('#overview-board'), Boolean, 'The non-default Kanban entry did not open');
+    check(`${language}: the overview opens the selected child entry`);
     await command('studio.openStart');
     await start().locator('.studio-start-current [data-action="studio.openProjectSource"]').first().click();
-    await until(() => call({ action: 'state' }), state => state.active?.endsWith('/package.json'), 'Source entry did not open');
-    await command('studio.openStart'); await start().locator('[data-action="studio.openAnalysis"]').click();
+    await until(() => call({ action: 'state' }), state => state.active?.endsWith('/steamharness.json'), 'Source entry did not open');
+    await command('studio.openAnalysis');
     await until(() => findFrame('#content .stats'), Boolean, 'Built-in Analysis did not load');
     check(`${language}: source and real built-in Analysis`);
-    await command('studio.openStart'); await start().locator('[data-action="studio.openAssistant"]').click();
+    await command('studio.openAssistant');
     await page.locator('.webview').first().waitFor({ state: 'attached' });
-    assert.equal(await start().locator('[data-action="studio.openAccount"]:visible').count(), initial.start.platform ? 1 : 0);
-    await command('studio.openStart'); await start().locator('[data-action="studio.openSettings"]').click();
+    await command('studio.openSettings');
     await until(() => findFrame('#settings-navigation'), Boolean, 'Studio settings did not open');
     await command('studio.openStart');
-    check(`${language}: assistant, settings and edition-specific account entry`);
+    check(`${language}: assistant and settings remain available from their commands`);
     const dirtyUntitled = await call({ action: 'untitled', text: 'unsaved stays here' }); await command('studio.openStart');
     // Web hot-exit backups are debounced and cannot finish during unload.
     await pause(2_000);
@@ -570,12 +539,12 @@ for (const language of ['en', 'zh-cn']) {
     await until(() => call({ action: 'state' }), state => state.documents.some(document => document.text === 'unsaved stays here'), 'Dirty Untitled was not restored');
     await command('studio.openStart');
     check(`${language}: Start tab and dirty Untitled survive window reload`);
-    const projectName = `new-window-${language}`, projectDirectory = path.join(workdir, projectName);
+    const projectName = `new-window-${language}`, projectDirectory = path.join(creationParent, projectName);
     const popup = page.waitForEvent('popup', { timeout: 60_000 });
     void popup.catch(() => undefined);
-    await start().locator('[data-action="studio.createProject"]').first().click();
+    await openCreation();
     await modal().locator('[data-field="projectName"]').fill(projectName);
-    await modal().locator('[data-field="parentDirectory"]').fill(workdir);
+    await modal().locator('[data-field="parentDirectory"]').fill(creationParent);
     await until(() => submit().getAttribute('aria-disabled'), value => value !== 'true', 'Creation form remained invalid');
     await submit().click();
     await page.locator('.monaco-dialog-box .monaco-button').filter({ hasText: language === 'en' ? 'Open in New Window' : '在新窗口打开' }).click();
@@ -590,7 +559,8 @@ for (const language of ['en', 'zh-cn']) {
     const source = await call({ action: 'state' });
     assert.deepEqual(source.folders, [workdir]); assert.equal(source.start.installing, undefined);
     assert.ok(source.documents.some(document => document.text === 'unsaved stays here' && document.dirty));
-    assert.equal(await call({ action: 'installationLog' }), '');
+    assert.ok(!source.start.projects.some(project => project.folderPath === projectDirectory));
+    assert.ok(!source.start.pending.some(project => project.directory === projectDirectory));
     await targetPage.screenshot({ path: path.join(proof, `${language}-new-window-install.png`) });
     await until(() => targetCall({ action: 'state' }), state => !state.start.busy && state.start.pending.length === 0
       && state.start.projects.some(project => project.name === projectName), 'The new project did not finish installation and refresh');
@@ -600,14 +570,14 @@ for (const language of ['en', 'zh-cn']) {
     assert.ok(installationLog.includes('Fixture dependencies ready'));
     assert.equal(context.pages().length, 2, 'Successful installation must keep the existing project window');
     check(`${language}: project opens a second window, installs there and preserves the source workspace and unsaved file`);
-    const sameName = `same-window-${language}`, sameDirectory = path.join(workdir, sameName);
+    const sameName = `same-window-${language}`, sameDirectory = path.join(creationParent, sameName);
     await targetCall({ action: 'command', command: 'studio.openStart' });
-    await targetPage.locator('.studio-start:visible [data-action="studio.createProject"]').click();
+    await openCreation(targetPage, targetBridge.port);
     const sameModal = targetPage.locator('.studio-create-dialog');
-    await sameModal.locator('input[name="projectType"][value="conversation"]').locator('..').click();
-    await sameModal.locator('input[name="templateId"][value="conversation-round-output"]').locator('..').click();
+    await sameModal.locator('input[name="projectType"][value="bot"]').locator('..').click();
+    await sameModal.locator('input[name="templateId"][value="bot-starter"]').locator('..').click();
     await sameModal.locator('[data-field="projectName"]').fill(sameName);
-    await sameModal.locator('[data-field="parentDirectory"]').fill(workdir);
+    await sameModal.locator('[data-field="parentDirectory"]').fill(creationParent);
     const sameSubmit = sameModal.locator('.dialog-buttons .monaco-button').filter({ hasText: language === 'en' ? /^Create$/ : /^创建$/ });
     await until(() => sameSubmit.getAttribute('aria-disabled'), value => value !== 'true', 'Current-window form remained invalid');
     await sameSubmit.click();
@@ -625,7 +595,7 @@ for (const language of ['en', 'zh-cn']) {
     void command('workbench.action.openRecent');
     const recentPicker = page.locator('.quick-input-widget:visible'), recentInput = recentPicker.locator('input');
     await recentInput.fill('workflow-starter');
-    await recentPicker.locator('.monaco-list-row.focused .codicon-run-all').waitFor();
+    await recentPicker.locator('.monaco-list-row.focused').locator(projectAvatar).waitFor();
     const recentPopup = context.waitForEvent('page');
     const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
     if (language === 'en') { await recentInput.press(`${modifier}+Enter`); }

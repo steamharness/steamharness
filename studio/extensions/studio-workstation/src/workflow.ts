@@ -36,7 +36,7 @@ class ProjectCatalog {
   private published = '';
   projects: Project[] = [];
   refresh(): void {
-    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, manifest, distribution }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, distribution, version: manifest?.version })));
+    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, manifest, distribution }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, distribution, version: manifest?.version, description: manifest?.description })));
     if (signature === this.published) { return; }
     this.published = signature;
     this.change.fire();

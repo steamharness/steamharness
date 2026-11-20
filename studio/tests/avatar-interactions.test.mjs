@@ -24,9 +24,7 @@ test('project avatar patches apply repeatedly to the pinned kernel without chang
   await applyPatches(fixture, kernel);
   assert.deepEqual(await Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8'))), first);
   assert.equal(git(['write-tree']), index);
-  assert.match(first[1], /const avatar = this\.button\(heading,.*'studio\.openProject'/);
-  assert.match(first[1], /avatar\.firstElementChild\?\.replaceWith/);
-  assert.match(first[2], /\.studio-start-project-avatar-button/);
+  assert.match(first[0], /item\.iconPath = \{ dark: URI\.parse\(project\.avatarUrl\) \}/);
 });
 
 for (const language of ['en', 'zh-cn']) test(`information avatar opens and closes its local preview in ${language}`, async t => {

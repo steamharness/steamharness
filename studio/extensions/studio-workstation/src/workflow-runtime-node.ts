@@ -18,11 +18,10 @@ import { assistantWorkspaceAvailable, createAssistantProject, DEVELOPER_ASSISTAN
 import type { Project } from './workflow-types';
 import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorkspaceAvailable } from './studio-control';
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
-import { createStudioAnalysisHandler, studioAnalysisProjects, studioAnalysisSummary } from './studio-analysis';
+import { createStudioAnalysisHandler, studioAnalysisProjects } from './studio-analysis';
 import { projectTemplatesRuntime, installProjectDependencies, defaultProjectParentDirectory } from './project-create-node';
 import { configuredNodeRuntime } from './node-runtime-configuration';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
-import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject } from './steamharness-server-projects-node';
 import { ProjectServerClient } from './steamharness-server-projects';
@@ -188,21 +187,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       assertAvailable();
       return transfer(signal, options => upgradeServerProject({ ...options, projectId: project.id, version,
         directory: project.folderPath, expectedVersion: project.manifest?.version ?? '', parentDirectory: defaultProjectParentDirectory(), progress, beforeReplace, afterReplace }));
-    },
-    environmentStatus: async () => {
-      const result: { node?: string; harness?: string; cli?: string; error?: string } = {};
-      try { result.node = (await selectedRuntime()).version; }
-      catch (error) { result.error = String(error); }
-      try {
-        const directory = await assistantDirectory();
-        result.cli = (await resolveProjectCli(directory)).version;
-        result.harness = JSON.parse(await readFile(path.join(directory, 'node_modules/steamharness/package.json'), 'utf8')).version;
-      } catch (error) { result.error = [result.error, String(error)].filter(Boolean).join('\n'); }
-      return result;
-    },
-    analysisSummary: async () => {
-      const result = await readAnalysis() as { generatedAt: number; projects: Array<{ availability: string; runs: Array<{ status: string }> }> };
-      return studioAnalysisSummary(result);
     },
     updateAnalysisProjects: projects => { analysisProjects = [...projects]; },
     inspectAnalysis: async () => {
