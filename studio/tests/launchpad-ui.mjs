@@ -165,8 +165,11 @@ try {
     await checkEditorSashes(page, true);
     for (const [x,y] of sashPoints) { await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+10,y+10); await page.mouse.up(); }
     assert.equal(await page.evaluate(()=>new Set(window.sashDrags).size),2,'both resize directions still work in a project window');
+    await page.mouse.move(0,0);
     await page.evaluate(()=>window.startLaunchpad());
     const rows=page.locator('.lp-project-row'); await rows.first().waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
+    const selected=page.locator('.lp-project-row[aria-selected=true]');
+    assert.equal(await selected.count(),0,'no project is selected when history first renders');
     assert.equal(await rows.locator('.lp-project-type').count(),0,'first run has not inspected these folders yet');
     await page.evaluate(()=>window.activateProjects());
     await rows.locator('.lp-project-avatar').first().waitFor();
@@ -195,13 +198,18 @@ try {
     }
     assert.equal(await page.locator('.lp-store').isVisible(),enhanced);
     const stem = `${language}-${enhanced?'enhanced':'local'}-${light?'light':'dark'}`;
+    assert.equal(await rows.first().evaluate(el=>getComputedStyle(el).boxShadow),'none','the first row has no selection highlight');
     await page.screenshot({path:fileURLToPath(new URL(`${stem}.png`,proof))});
     assert.equal(await page.locator('.lp-primary').evaluate(el=>getComputedStyle(el).backgroundColor), 'rgb(0, 122, 204)', 'primary action inherits the Studio theme');
     assert.equal(await page.locator('.action-toolbar-container').isVisible(),false,'layout controls must not overlap Web console');
     const bounds=async selector=>page.locator(selector).first().boundingBox();
     if(enhanced){assert.ok((await bounds('.lp-inbox')).x>(await bounds('.lp-projects')).x);assert.equal((await bounds('.lp-inbox')).x,(await bounds('.lp-store')).x);}
     const status=await bounds('.lp-statusbar');assert.equal(status.y+status.height,680);
+    await page.locator('.lp-history-tools .lp-tool').focus(); await page.keyboard.press('Tab');
+    assert.equal(await rows.first().evaluate(el=>el===document.activeElement),true,'history remains reachable by keyboard');
+    assert.equal(await selected.count(),0,'tab focus does not select a project');
     const foot=page.locator('.lp-foot button'); await foot.click(); assert.equal(await foot.evaluate(el=>getComputedStyle(el).outlineStyle),'none',`${language}: pointer focus must not draw a blue outline`); assert.equal(await rows.count(),9);
+    assert.equal(await selected.count(),0,'expanding history does not select a project');
     const find=page.locator('.lp-find'), search=page.getByRole('combobox'); await find.click(); await search.fill('no-match'); assert.ok(await page.locator('.lp-quick-empty').isVisible());
     await search.press('Escape'); assert.ok(await find.evaluate(el=>el===document.activeElement));
     await page.keyboard.press('Control+p'); await search.fill('projects folder.code'); assert.equal(await page.getByRole('option').count(),1); await search.press('Enter');
@@ -210,7 +218,8 @@ try {
     await page.locator('.lp-live-project').first().click(); await page.locator('.lp-actions .lp-outline').click(); await page.locator('.lp-choice').nth(1).click();
     await page.locator('.lp-statusbar button').click(); await page.locator('.lp-quick-foot button').click(); assert.equal(await search.inputValue(),'');
     await search.press('ArrowDown'); assert.equal(await search.getAttribute('aria-activedescendant'),'lp-option-1'); await page.keyboard.press('Escape');
-    await rows.nth(1).click(); await rows.nth(1).press('ArrowDown'); assert.equal(await rows.nth(2).getAttribute('aria-selected'),'true');
+    await rows.nth(1).click(); assert.equal(await rows.nth(1).getAttribute('aria-selected'),'true');
+    await rows.nth(1).press('ArrowDown'); assert.equal(await rows.nth(2).getAttribute('aria-selected'),'true');
     assert.notEqual(await rows.nth(2).evaluate(el=>getComputedStyle(el).outlineStyle),'none','keyboard navigation keeps focus visible');
     // An older window snapshot (waiting on history) must not undo a live edit. Edits and saves do not reread projects.
     const workflow=rows.filter({hasText:'Project 8'}), third=rows.filter({hasText:'Project 5'});
@@ -247,6 +256,7 @@ try {
     assert.equal(await page.locator('.lp-choice').first().textContent(),zh?'打开或重新定位…':'Open or locate project…');
     await page.locator('.lp-choice').last().click(); await msg.getByRole('button').last().click(); assert.ok(await missing.isVisible());
     await page.evaluate(()=>window.newLocation='/projects/relocated'); await missing.press('Enter'); await msg.getByRole('button').first().click(); await missing.waitFor({state:'detached'});
+    assert.equal(await selected.count(),0,'when the selected row disappears, no other project is selected automatically');
     await page.locator('.lp-history-tools .lp-tool').click(); await page.locator('.lp-choice').nth(1).click();
     await page.locator('.lp-primary').click(); const modal=page.locator('.studio-create-dialog'); await modal.waitFor({timeout:5000});
     assert.equal(await modal.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}),true);
