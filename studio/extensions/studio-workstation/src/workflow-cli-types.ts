@@ -17,6 +17,7 @@ export interface WebReady {
   webAppLoginProtocolVersion?: number;
   webAppConfigurations?: Record<string, import('./web-app-types').WebAppRequest['configuration']>;
   systemAiConnectionProtocolVersion?: number;
+  restrictedConfigurationEntries?: string[];
   entriesProtocolVersion: number;
   traceProtocolVersion?: number;
   traceModelRequestProtocolVersion?: number;

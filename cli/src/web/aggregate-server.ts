@@ -130,6 +130,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     invokeEntry,
     get manifest() { return manifest; }, get project() { return project(); },
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },
+    get restrictedConfigurationEntries() { return [...entries].filter(([, entry]) => entry.configurations?.state.profilePolicy).map(([id]) => id); },
     get webAppConfigurations() { return Object.fromEntries([...entries].filter(([, entry]) => entry.project.kanban?.webApp).map(([id, entry]) => [id, entry.kanbanController!.configuration()])); },
     get projectController() { return current()?.projectController; }, get kanbanController() { return current()?.kanbanController; },
     entryUrl:(entryId:string) => { selectProjectEntry(manifest,entryId); return `${origin}/entries/${entryId}/#session=${credentials.capability}`; },

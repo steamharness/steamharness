@@ -22,6 +22,7 @@ afterEach(async () => {
 async function fixture(options: {
   id?: unknown; connection?: WebConnection; platform?: boolean; savedServer?: string; fail?: boolean; webApp?: boolean;
   configurationChanged?: Parameters<typeof startWebServer>[0]['onWebAppConfigurationChanged'];
+  restrictedEntry?: string;
 } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
@@ -55,7 +56,12 @@ async function fixture(options: {
       await writeFile(path.join(path.dirname(filename), 'board.js'), 'document.body.dataset.loaded = "yes";');
       await writeFile(path.join(path.dirname(filename), 'board.css'), 'body { color: teal; }');
     }
-    await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
+    await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify(entry.entryId === options.restrictedEntry
+      ? { version: 2, fields: [{ name: 'mode', type: 'string' }], profilePolicy: { version: 1, defaultProfileKey: 'ask', manageMinimumRole: 'developer', profiles: [
+        { key: 'ask', name: 'Ask', minimumRole: 'guest', fixedValues: { mode: 'ask' } },
+        { key: 'build', name: 'Build', minimumRole: 'developer', fixedValues: { mode: 'build' } },
+      ] } }
+      : { version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
   const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html', ...(options.webApp ? { webApp: { service: 'sample.app' } } : {}) } } : {}) }));
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
@@ -78,6 +84,31 @@ async function fixture(options: {
   };
   return { directory, entries, runtime, active, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
 }
+
+it('announces restricted entries before account connection and restores Build only after a verified role', async () => {
+  const plain = await fixture({ platform: true });
+  expect(plain.app.restrictedConfigurationEntries).toEqual([]);
+  const f = await fixture({ platform: true, restrictedEntry: 'assistant' });
+  expect(f.app.restrictedConfigurationEntries).toEqual(['assistant']);
+  const profiles = async () => (await f.state('assistant')).configurations.configurations.map((profile: { profileKey: string }) => profile.profileKey);
+  expect(await profiles()).toEqual(['ask']);
+  let role = 'developer';
+  const originalFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const address = String(input);
+    if (!address.startsWith('https://roles.invalid/')) return originalFetch(input, init);
+    return Promise.resolve(Response.json({ errCode: 0, data: address.endsWith('/api/auth/me')
+      ? { profile: { userId: 'alice', email: null, displayName: 'Alice' } } : { access: { effectiveRole: role } } }));
+  });
+  const connection = { serverUrl: 'https://roles.invalid', accessToken: 'test-project-token' };
+  await f.app.setHostConnection(connection);
+  expect(await profiles()).toEqual(['ask', 'build']);
+  role = 'guest';
+  expect(await profiles()).toEqual(['ask']);
+  await f.app.setHostConnection(undefined);
+  expect(await profiles()).toEqual(['ask']);
+  expect(f.app.restrictedConfigurationEntries).toEqual(['assistant']);
+});
 
 it('shows the hosted recovery document in an iframe while keeping recovery APIs and foreign origins blocked', async () => {
   const f = await fixture({ fail: true, platform: true });

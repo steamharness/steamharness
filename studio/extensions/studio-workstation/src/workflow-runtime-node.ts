@@ -329,9 +329,21 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           }
         };
         if (account.platform) session.connectPlatform = connectPlatform;
+        // A declared profile policy opts this aggregate into project role checks.
+        // Use the verified host account without opening a sign-in flow on startup.
+        const restrictedConfigurations = account.platform && session.ready.restrictedConfigurationEntries?.some(entryId =>
+          session.ready.project.entries.some(entry => entry.entryId === entryId));
+        if (restrictedConfigurations) {
+          projectConnection = account.getConnection();
+          if (projectConnection) session.updateAuth(projectConnection, aiConnection);
+        }
         const revoke = account.onDidChange(state => {
-          if (state.status !== 'checking' && projectConnection && !same(projectConnection, account.getConnection())) {
-            projectConnection = undefined; session.updateAuth(undefined, aiConnection);
+          if (state.status !== 'checking') {
+            const current = account.getConnection();
+            const next = restrictedConfigurations ? current : same(projectConnection, current) ? projectConnection : undefined;
+            if (!same(projectConnection, next)) {
+              projectConnection = next; session.updateAuth(projectConnection, aiConnection);
+            }
           }
           if (aiConnection && !same(aiConnection, account.getAiConnection())) {
             aiConnection = undefined; session.updateAuth(projectConnection);

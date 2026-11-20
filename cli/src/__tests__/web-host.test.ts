@@ -22,6 +22,7 @@ it('processes logout and close while an earlier host authentication is pending',
   vi.mocked(startWebServer).mockResolvedValue({
     url: `http://127.0.0.1:3000/#session=${'a'.repeat(64)}`,
     manifest:{entries:[],defaultEntry:'main'}, project: { id: 'host-test', name: 'Host test', projectType: 'bot', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
+    restrictedConfigurationEntries: ['chat'],
     setHostConnection, setHostResourceProjects, setHostUserSettings, setHostWebApps, close,
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([
@@ -37,7 +38,7 @@ it('processes logout and close while an earlier host authentication is pending',
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
-    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: ['chat'], userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host?.userSettings).toEqual({ agent: { permissionPolicy: 'auto' } });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host).toMatchObject({ connection, systemAiConnection });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
