@@ -7,26 +7,25 @@ declare function acquireVsCodeApi(): { postMessage(message: unknown): void; setS
 const host = acquireVsCodeApi(); host.setState({});
 const app = document.querySelector<HTMLElement>('#login-app')!;
 app.innerHTML = `<div class="login-shell"><header class="login-header"><p class="muted">SteamHarness Studio</p><h1>${t('Sign in to SteamHarness')}</h1><p class="muted">${t('Continue in your browser to sign in, register or recover your account.')}</p></header>
-<section class="login-card"><form id="login-form"><label for="server-url">${t('Server')}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
+<section class="login-card"><form id="login-form">
 <p id="login-error" role="alert" hidden></p><p id="login-status" class="muted" role="status"></p><a id="login-link" hidden target="_blank" rel="noopener noreferrer">${t('Open sign-in page')}</a>
 <button id="login-submit" type="submit" class="primary">${t('Browser sign-in')}</button><button id="login-cancel" type="button" hidden>${t('Cancel sign-in')}</button></form>
 <div id="login-success" hidden><h2>${t('Signed in; account verified')}</h2><p id="login-account"></p><button id="open-account" type="button">${t('View account')}</button></div></section></div>`;
 const form = document.querySelector<HTMLFormElement>('#login-form')!;
-const server = document.querySelector<HTMLInputElement>('#server-url')!;
 const submit = document.querySelector<HTMLButtonElement>('#login-submit')!;
 const cancel = document.querySelector<HTMLButtonElement>('#login-cancel')!;
 let pending = false;
 let hostServer: string | undefined;
-form.addEventListener('submit', event => { event.preventDefault(); if (!pending && form.reportValidity()) { pending = true; server.disabled = submit.disabled = true; cancel.hidden = false; host.postMessage({ type: 'login', serverUrl: server.value }); } });
+form.addEventListener('submit', event => { event.preventDefault(); if (!pending) { pending = true; submit.disabled = true; cancel.hidden = false; host.postMessage({ type: 'login' }); } });
 cancel.addEventListener('click', () => host.postMessage({ type: 'cancel-login' }));
 document.querySelector('#open-account')!.addEventListener('click', () => host.postMessage({ type: 'open-account' }));
 window.addEventListener('message', event => {
   if (!['account','login-result'].includes(event.data.type)) return;
   const state = event.data.state as AccountState;
   const signedIn = state.status === 'authenticated';
-  if (hostServer === undefined || !pending && event.data.busy !== true && hostServer !== state.serverUrl) { server.value = state.serverUrl; hostServer = state.serverUrl; }
+  hostServer = state.serverUrl;
   pending = event.data.busy === true;
-  server.disabled = submit.disabled = pending;
+  submit.disabled = pending;
   cancel.hidden = !pending;
   form.hidden = signedIn;
   document.querySelector<HTMLElement>('#login-success')!.hidden = !signedIn;
@@ -38,7 +37,7 @@ window.addEventListener('message', event => {
   link.hidden = true;
   if (typeof event.data.loginUrl === 'string') {
     try {
-      const url = new URL(event.data.loginUrl), target = new URL(normalizeAuthServer(server.value));
+      const url = new URL(event.data.loginUrl), target = new URL(normalizeAuthServer(hostServer));
       if (url.origin === target.origin && url.pathname === target.pathname.replace(/\/$/, '') + '/login/device' && !url.username && !url.password) { link.href = url.href; link.hidden = false; }
     } catch {}
   }

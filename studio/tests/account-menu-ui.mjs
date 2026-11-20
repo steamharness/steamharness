@@ -100,6 +100,8 @@ try {
         await fits();
         assert.equal(await command('studio.openAccount').textContent(), language === 'en' ? 'Personal Information' : '个人信息');
         assert.doesNotMatch(await menu.textContent(), /Manage Trusted|Manage Extension|Manage Language|AI|余额|套餐|用量/);
+        assert.equal(await menu.locator('.studio-account-server').count(), 0);
+        assert.ok(!(await menu.innerText()).includes(account.serverUrl));
         assert.equal(await menu.locator('img').evaluate(image => image.complete && image.naturalWidth > 0), true);
         await page.screenshot({ path: path.join(output, `menu-${language}-${theme}-${width}.png`) });
         await page.keyboard.press('Tab');

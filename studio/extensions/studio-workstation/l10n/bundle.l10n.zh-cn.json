@@ -728,7 +728,7 @@
   "Keyboard shortcuts": "快捷键设置",
   "Leave empty to use the automatically resolved Node.js runtime. Changes apply to new processes.": "留空则自动查找 Node.js 运行时，修改后对新进程生效。",
   "Manage Studio settings and your account": "管理 Studio 设置与账号",
-  "Manage your account and Server connection.": "管理账号和服务器连接。",
+  "Manage your account.": "管理账号。",
   "Maximum number of projects in the recent projects list.": "最近项目列表中保留的项目数量上限。",
   "Name used when opening a new Studio terminal.": "新建 Studio 终端时使用的名称。",
   "No matching settings": "没有匹配的设置",

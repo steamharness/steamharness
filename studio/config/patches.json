@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "b4aa87cad71a10cceea2573cdb66311f1f74ec53",
+  "commit": "d2e2745df023cd9099558ec9efccb6d0f563657b",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -88,6 +88,7 @@
     "0088-studio-project-overview.patch": "76839defd7daf22dc0cf542e1badcd98619b7315cc5f8258283b473bdc95cb11",
     "0089-studio-launchpad-splash.patch": "b4937fbe759bff63a3709ee404de02d61ed7d42931517e23c5a30ffffe0d5f78",
     "0090-studio-launchpad-startup-recovery.patch": "613f8e1bd9530dfd023e7f151ad0970acb238cb76ea542876e0036e3b1af98bd",
-    "0091-studio-macos-tray-icon-size.patch": "70bb0e23e5a7346fd5df10736e470d9f35a3f5b6e65c218513ea1c097b30a461"
+    "0091-studio-macos-tray-icon-size.patch": "70bb0e23e5a7346fd5df10736e470d9f35a3f5b6e65c218513ea1c097b30a461",
+    "0092-studio-account-server-details.patch": "b649e42b587dcad4d8a1d0f3626e99095e15aed7cec918dbf6118e81ccce5887"
   }
 }

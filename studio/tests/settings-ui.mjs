@@ -197,6 +197,8 @@ try {
           }
         }
         assert.equal(await page.locator('#profile').isVisible(), true);
+        assert.equal(await page.locator('#profile-server, #profile-transport, #account-server, [data-copy="serverUrl"]').count(), 0);
+        assert.ok(!(await page.locator('#settings-account').innerText()).includes(account.serverUrl));
         await page.locator('[data-copy="userId"]').click(); assert.equal((await last('copy')).field, 'userId');
         await fits();
         await category('about').click();
@@ -213,6 +215,7 @@ try {
         await category('account').click();
         assert.equal(await page.locator('#login-form, #login-email, #login-password').count(), 0);
         assert.equal(await page.locator('#account-sign-in').isVisible(), true);
+        assert.ok(!(await page.locator('#settings-account').innerText()).includes(account.serverUrl));
         await page.locator('#open-login').click(); assert.equal((await last('open-login')).type, 'open-login');
         await page.locator('#settings-identity').click(); assert.equal((await last('open-login')).type, 'open-login');
         await category('general').click(); await fits();

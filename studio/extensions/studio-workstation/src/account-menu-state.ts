@@ -8,13 +8,13 @@ export function accountMenuState(state: AccountState) {
     expired: t('Server Sign-in Expired'), error: t('Server Connection Error'),
   };
   return {
-    status: state.status, statusLabel: statusLabels[state.status], serverUrl: state.serverUrl,
+    status: state.status, statusLabel: statusLabels[state.status],
     name: state.user?.displayName || state.user?.email || t('Signed Out'),
     email: state.user?.email, avatarUrl: state.user?.avatarUrl || generatedAvatarUrl(state.user?.userId), hasAccount: !!state.user, error: state.error,
     labels: {
       title: t('SteamHarness Account'), profile: t('Personal Information'), signIn: t('Sign In'),
       refresh: t('Refresh Account'), refreshing: t('Refreshing Account...'), signOut: t('Sign out'),
-      server: t('Server'), close: t('Close'),
+      close: t('Close'),
     },
   };
 }

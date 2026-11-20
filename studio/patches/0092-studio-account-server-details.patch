@@ -1,0 +1,45 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioAccountMenu.css b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+index a50c6c85fb8..413070a4aaa 100644
+--- a/src/vs/workbench/browser/parts/media/studioAccountMenu.css
++++ b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+@@ -65,9 +65,6 @@
+ .studio-account-status[data-status='authenticated']::before { background: var(--vscode-testing-iconPassed); }
+ .studio-account-status[data-status='checking']::before { background: var(--vscode-progressBar-background); }
+ .studio-account-status[data-status='expired']::before, .studio-account-status[data-status='error']::before { background: var(--vscode-editorWarning-foreground); }
+-.studio-account-server { display: flex; align-items: flex-start; gap: 8px; margin: 0 16px 12px; color: var(--vscode-descriptionForeground); line-height: 18px; }
+-.studio-account-server > .codicon { flex: 0 0 16px; margin-top: 1px; }
+-.studio-account-server > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+ .studio-account-error { margin: 0 16px 12px; color: var(--vscode-errorForeground); line-height: 18px; overflow-wrap: anywhere; }
+ .studio-account-actions { padding: 6px; border-top: 1px solid var(--vscode-menu-separatorBackground); }
+ .studio-account-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; }
+diff --git a/src/vs/workbench/browser/parts/studioAccountMenu.ts b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+index 1f01e6af92f..720928a96d2 100644
+--- a/src/vs/workbench/browser/parts/studioAccountMenu.ts
++++ b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+@@ -21,7 +21,6 @@ import { INotificationService } from '../../../platform/notification/common/noti
+ interface AccountMenuState {
+ 	status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
+ 	statusLabel: string;
+-	serverUrl: string;
+ 	name: string;
+ 	email?: string;
+ 	avatarUrl?: string;
+@@ -112,9 +111,6 @@ export class StudioAccountMenu extends Disposable {
+ 		const name = append(details, $('.studio-account-name'));
+ 		const email = append(details, $('.studio-account-email'));
+ 		const status = append(details, $('.studio-account-status', { role: 'status', 'aria-live': 'polite' }));
+-		const server = append(root, $('.studio-account-server'));
+-		append(server, $('span', { class: ThemeIcon.asClassName(Codicon.server), 'aria-hidden': 'true' }));
+-		const serverText = append(server, $('span'));
+ 		const error = append(root, $('.studio-account-error', { role: 'status' }));
+ 		const actions = append(root, $('.studio-account-actions'));
+ 		let refreshing = false;
+@@ -160,8 +156,6 @@ export class StudioAccountMenu extends Disposable {
+ 			email.hidden = !state.email;
+ 			text(status, state.statusLabel);
+ 			status.dataset.status = state.status;
+-			text(serverText, state.serverUrl);
+-			server.setAttribute('aria-label', `${state.labels.server}: ${state.serverUrl}`);
+ 			text(error, state.error ?? '');
+ 			error.hidden = !state.error;
+ 			text(profile.querySelector('.studio-account-action-label')!, state.hasAccount ? state.labels.profile : state.labels.signIn);

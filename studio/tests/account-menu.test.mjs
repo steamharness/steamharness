@@ -22,7 +22,7 @@ test('the account menu patches apply repeatably to the pinned kernel and preserv
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
   await mkdir(path.join(fixture, 'patches'));
-  const patches = ['0028-studio-account-menu.patch', '0029-studio-account-menu-focus.patch'];
+  const patches = ['0028-studio-account-menu.patch', '0029-studio-account-menu-focus.patch', '0092-studio-account-server-details.patch'];
   for (const name of patches) { await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name)); }
   for (const name of [...patches].reverse()) {
     const patch = path.join(fixture, 'patches', name);
@@ -42,4 +42,5 @@ test('the account menu patches apply repeatably to the pinned kernel and preserv
   assert.doesNotMatch(first[0], /MenuRegistry\.appendMenuItem\(MenuId\.AccountsContext/);
   const menu = first[1];
   assert.doesNotMatch(menu, /Manage Trusted|Manage Extension|Manage Language|\/api\/ai|System AI/);
+  assert.doesNotMatch(menu, /serverUrl|studio-account-server/);
 });

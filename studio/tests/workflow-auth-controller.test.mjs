@@ -14,11 +14,10 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126' } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
-  const serverUrl = 'http://127.0.0.1:7126';
-  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
-  const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': serverUrl };
+  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, requestUrls: [], statuses: [], messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
+  const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': 'https://obsolete.example.test' };
   const user = {}, workspace = {}, writes = [];
   const saved = new Map();
   const stored = signedIn ? JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile, sessionCookie }) : undefined;
@@ -61,14 +60,14 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
       },
     }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
     window: { registerUriHandler: handler => { f.uriHandler = handler; return disposable; }, state: { focused: true }, onDidChangeWindowState: focus.event,
-      showInputBox: async () => f.aiServer,
+      showInputBox: async () => assert.fail('Connections must use the startup Server without prompting'),
       withProgress: async (_options, run) => {
         const cancel = new Emitter(); f.cancelAi = () => cancel.fire();
         return run({}, { onCancellationRequested: cancel.event, isCancellationRequested: false });
       },
       registerWebviewPanelSerializer: (type, serializer) => { f.serializers.set(type, serializer); if (type === 'studio.settings') { f.serializer = serializer; } return disposable; },
       registerWebviewViewProvider: (id, provider) => { assert.equal(id, 'studio.launchpadSettings'); f.settingsProvider = provider; return disposable; },
-      createStatusBarItem: () => ({ show() {}, dispose() {} }),
+      createStatusBarItem: () => { const item = { show() {}, dispose() {} }; f.statuses.push(item); return item; },
       createWebviewPanel: (type, title, _column, options) => {
         const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
         const messages = [];
@@ -86,9 +85,10 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
     module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, URLSearchParams, btoa, Error, AbortSignal, AbortController, structuredClone, crypto: globalThis.crypto, setTimeout, clearTimeout,
     fetch: async (url, options) => {
       f.requests++;
+      f.requestUrls.push(url);
       const response = await f.fetch?.(url, options);
       if (response) { return response; }
-      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-device-secret',userCode:'ABCD-1234',verificationUriComplete:`${new URL(url).origin}/login/device?user_code=ABCD-1234`,intervalSeconds:1,expiresAt:new Date(Date.now()+60000).toISOString()}});
+      if (url.endsWith('/device/start')) return Response.json({errCode:0,data:{deviceCode:'host-device-secret',userCode:'ABCD-1234',verificationUriComplete:`${url.replace(/\/api\/auth\/device\/start$/, '')}/login/device?user_code=ABCD-1234`,intervalSeconds:1,expiresAt:new Date(Date.now()+60000).toISOString()}});
       if (url.endsWith('/device/token')) return Response.json({errCode:0,data:{accessToken:'test-token',apiKey:{id:'test-key'},user:f.profile}});
       if (url.endsWith('/device/cancel')) return Response.json({errCode:0,data:{cancelled:true}});
       return Response.json({errCode:0,data:{profile:f.profile,principal:{apiKeyId:'test-key'}}});
@@ -99,7 +99,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: {
     get: async key => { secretReads.push(key); return saved.has(key) ? saved.get(key) : key.startsWith('studio.project') ? stored : undefined; },
     store: async (key, value) => { saved.set(key, value); }, delete: async key => { saved.set(key, undefined); }, onDidChange: secretsChanged.event } };
-  const controller = new module.exports.AccountController(context, undefined, platform);
+  const controller = new module.exports.AccountController(context, undefined, platform, serverUrl);
   await controller.initialize();
   t.after(() => controller.dispose());
   if (connect) await controller.connect();
@@ -265,7 +265,8 @@ test('successful login updates the shared session and returns to the existing ac
   assert.equal(login.disposed, true); assert.equal(f.panel, settings);
   assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'account');
   assert.equal(f.controller.getState().status, 'authenticated');
-  assert.equal(f.user['project.serverUrl'], 'https://server.example.test');
+  assert.equal(f.controller.getState().serverUrl, 'http://127.0.0.1:7126');
+  assert.equal(f.writes.length, 0, 'Sign-in must not persist a separate server setting');
   assert.equal((await f.provider.getSessions([], {}))[0].accessToken, 'test-token');
   assert.doesNotMatch(JSON.stringify(f.messages), /fixture-password|test-token/);
   await f.commands.get('studio.openLogin')(); assert.equal(f.panel, settings); assert.equal(f.panels.length, 2);
@@ -504,6 +505,7 @@ test('account actions use fixed Server routes and copy account fields selected b
   await f.message({ type: 'open-sessions' });
   await f.message({ type: 'copy', field: 'userId', value: 'test-token' });
   await f.message({ type: 'copy', field: 'accessToken' });
+  await f.message({ type: 'copy', field: 'serverUrl' });
   assert.deepEqual(f.opened, ['http://127.0.0.1:7126/settings/profile', 'http://127.0.0.1:7126/settings/api-keys']);
   assert.deepEqual(f.copied, ['user']);
   f.controller.dispose();
@@ -515,7 +517,6 @@ test('account actions use fixed Server routes and copy account fields selected b
 
 test('sign out immediately clears contributed content even when a section refresh is pending', async t => {
   const f = await fixture(t);
-  f.aiServer = 'https://ai.example.test';
   await f.controller.connectAi();
   let release, signal;
   f.controller.registerSectionProvider({ id: 'example', title: 'Example', load: (_connection, abort) => {
@@ -534,10 +535,28 @@ test('sign out immediately clears contributed content even when a section refres
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
 });
 
+for (const serverUrl of ['http://localhost:7126', 'https://launch.example.test/services']) {
+  test(`account and System AI use the startup Server ${serverUrl} without an address prompt`, async t => {
+    const f = await fixture(t, { signedIn: false, serverUrl });
+    const normalized = serverUrl.replace('localhost', '127.0.0.1');
+    assert.equal(f.controller.getState().serverUrl, normalized);
+    await f.commands.get('studio.openLogin')();
+    await f.panel.message({ type: 'login', serverUrl: 'https://untrusted.example.test' });
+    assert.equal(f.controller.getState().serverUrl, normalized);
+    await f.vscode.workspace.getConfiguration('studio').update('project.serverUrl', 'https://other.example.test', 1);
+    const otherKey = 'studio.system-ai.dev.' + encodeURIComponent('https://other.example.test');
+    f.saved.set(otherKey, JSON.stringify({ serverUrl: 'https://other.example.test', accessToken: 'other-server-token' }));
+    assert.equal((await f.controller.connectAi()).serverUrl, normalized);
+    assert.equal(f.controller.getState().status, 'authenticated');
+    assert.ok(f.requestUrls.every(url => url.startsWith(`${normalized}/`)), 'Both sign-ins stay on the startup Server');
+    assert.ok(!f.secretReads.includes(otherKey), 'Credentials from another Server must not be read');
+    assert.equal(f.writes.length, 1, 'Only the simulated legacy settings change writes a setting');
+  });
+}
+
 test('System AI signs in separately, validates a cached session, and retires expired credentials', async t => {
   const f = await fixture(t);
   const calls = [];
-  f.aiServer = 'https://ai.example.test';
   let accessToken = 'ai-first', expired = false;
   f.fetch = (url, options) => {
     calls.push([url, options.headers.Authorization]);
@@ -552,13 +571,12 @@ test('System AI signs in separately, validates a cached session, and retires exp
   assert.equal((await f.controller.connectAi()).accessToken, 'ai-second');
   assert.equal(f.controller.getConnection().accessToken, 'test-token');
   assert.equal(f.opened.length, 2);
-  assert.ok(calls.every(([url, token]) => url.startsWith(f.aiServer) && token !== 'Bearer test-token'));
+  assert.ok(calls.every(([url, token]) => url.startsWith(f.controller.getState().serverUrl) && token !== 'Bearer test-token'));
 });
 
 for (const [failure, error] of [['access_denied', /denied/i], ['expired_token', /expired/i], ['offline', /connect|offline/i], ['cancelled', undefined]]) {
   test(`System AI leaves the project session unchanged when sign-in is ${failure}`, async t => {
     const f = await fixture(t);
-    f.aiServer = 'https://ai.example.test';
     const calls = [];
     f.fetch = (url, options) => {
       calls.push(url);
@@ -584,7 +602,10 @@ test('the avatar menu exposes only public profile data and refreshes both the me
   const initial = read();
   assert.equal(initial.name, 'User');
   assert.equal(initial.labels.profile, 'Personal Information');
-  assert.doesNotMatch(JSON.stringify(initial), /test-token|test-key|private-token|private\.example|aiConfigured|aiServerUrl/);
+  assert.doesNotMatch(JSON.stringify(initial), /test-token|test-key|private-token|private\.example|aiConfigured|serverUrl|aiServerUrl|127\.0\.0\.1/);
+  for (const status of f.statuses) {
+    assert.doesNotMatch(`${status.tooltip} ${status.accessibilityInformation.label}`, /127\.0\.0\.1|https?:/);
+  }
   f.profile = { ...f.profile, displayName: 'Updated User', avatarUrl: 'data:image/webp;base64,bmV3' };
   await f.commands.get('studio.refreshAccount')();
   assert.equal(sectionLoads, 0, 'Refreshing the avatar menu must not load optional account sections');

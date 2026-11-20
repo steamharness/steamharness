@@ -60,7 +60,8 @@ export class AccountController implements vscode.Disposable {
   private aiLoginAbort?: AbortController;
   private readonly lifetime = new AbortController();
 
-  constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false) {
+  constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
+    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
@@ -176,20 +177,14 @@ export class AccountController implements vscode.Disposable {
         if (this.onlineOpened && event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
         if (event.key === USER_MODELS_SECRET) { void this.userModels.reload(); }
       }),
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        this.scheduleSettings();
-        if (this.platform && event.affectsConfiguration('studio.project.serverUrl')) {
-          this.cancelLogin();
-          void this.account.changeServer(this.configuredServer()).catch(() => undefined);
-        }
-      }),
+      vscode.workspace.onDidChangeConfiguration(() => this.scheduleSettings()),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleSettings()),
       vscode.extensions.onDidChange(() => this.scheduleSettings()),
     );
   }
 
   private configuredServer(): string {
-    return (this.platform ? vscode.workspace.getConfiguration('studio').get<string>('project.serverUrl') : undefined) || DEFAULT_STEAMHARNESS_SERVER_URL;
+    return this.serverUrl;
   }
 
   private authenticationSession(): vscode.AuthenticationSession | undefined {
@@ -251,11 +246,8 @@ export class AccountController implements vscode.Disposable {
   private aiKey(serverUrl: string): string { return `studio.system-ai.${studioAuthChannel}.${encodeURIComponent(serverUrl)}`; }
   private async openAiLogin(lifetime: AbortSignal): Promise<Connection | undefined> {
     const title = t('Connect to System AI');
-    const input = await vscode.window.showInputBox({ title, prompt: t('Enter a valid server address.'),
-      value: this.aiSession?.serverUrl ?? this.configuredServer(), ignoreFocusOut: true,
-      validateInput: value => { try { normalizeProjectServerUrl(value); return undefined; } catch (error) { return (error as Error).message; } } });
-    if (!input || lifetime.aborted) return undefined;
-    const client = new ServerAuthClient(normalizeProjectServerUrl(input), fetch, locale());
+    if (lifetime.aborted) return undefined;
+    const client = new ServerAuthClient(this.configuredServer(), fetch, locale());
     const key = this.aiKey(client.serverUrl);
     return vscode.window.withProgress({ title, location: vscode.ProgressLocation.Notification, cancellable: true }, async (_progress, token) => {
       const abort = new AbortController();
@@ -401,7 +393,7 @@ export class AccountController implements vscode.Disposable {
       if (message.type === 'ready') { ++pageGeneration; this.publishLogin(); return; }
       if (message.type === 'open-account') { this.open({ section: 'account' }); panel.dispose(); return; }
       if (message.type === 'cancel-login') { this.cancelLogin(); return; }
-      if (message.type !== 'login' || this.loginBusy || typeof message.serverUrl !== 'string') return;
+      if (message.type !== 'login' || this.loginBusy) return;
       const generation = pageGeneration;
       const current = (): boolean => this.loginPanel === panel && generation === pageGeneration;
       this.loginBusy = true;
@@ -409,7 +401,7 @@ export class AccountController implements vscode.Disposable {
       let failure: string | undefined;
       const abort = new AbortController(); this.loginAbort = abort;
       try {
-        await this.signInWithBrowser(message.serverUrl, abort.signal);
+        await this.signInWithBrowser(this.configuredServer(), abort.signal);
         this.pendingLogin = undefined;
         if (this.getState().status === 'authenticated') {
           if (current()) { this.open({ section: 'account' }, false); panel.dispose(); }
@@ -438,9 +430,6 @@ export class AccountController implements vscode.Disposable {
         signal.throwIfAborted(); return session;
       } catch (error) { await client.cancel(started.deviceCode).catch(() => undefined); throw error; }
     }, signal);
-    if (this.getState().status === 'authenticated') {
-      await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
-    }
   }
 
   private runtimeStatus?: SettingsState['nodeRuntime'];
@@ -635,9 +624,9 @@ export class AccountController implements vscode.Disposable {
         } else if (message.type === 'open-profile' || message.type === 'open-sessions') {
           const route = message.type === 'open-profile' ? '/settings/profile' : '/settings/api-keys';
           await vscode.env.openExternal(vscode.Uri.parse(`${this.getState().serverUrl}${route}`));
-        } else if (message.type === 'copy' && ['userId', 'email', 'serverUrl'].includes(message.field)) {
+        } else if (message.type === 'copy' && ['userId', 'email'].includes(message.field)) {
           const state = this.getState();
-          const value = message.field === 'serverUrl' ? state.serverUrl : message.field === 'userId' ? state.user?.userId : state.user?.email;
+          const value = message.field === 'userId' ? state.user?.userId : state.user?.email;
           if (value) {
             await vscode.env.clipboard.writeText(value);
             await panel.webview.postMessage({ type: 'copied', field: message.field });
@@ -682,8 +671,9 @@ export class AccountController implements vscode.Disposable {
   }
 }
 
-export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false): Promise<AccountController> {
-  const account = new AccountController(context, modelWriteLock, platform);
+export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false,
+  serverUrl?: string): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock, platform, serverUrl);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

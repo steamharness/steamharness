@@ -10,6 +10,7 @@ import { prepareInternalLayer } from './internal-layer';
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const platform = await prepareInternalLayer();
   await activateNodeRuntime(context);
-  const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run), platform);
+  const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run), platform,
+    platform ? process.env.STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL : undefined);
   return activateWorkstation(context, createProjectRuntime(context, account), account);
 }

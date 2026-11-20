@@ -728,7 +728,7 @@
   "Keyboard shortcuts": "Keyboard shortcuts",
   "Leave empty to use the automatically resolved Node.js runtime. Changes apply to new processes.": "Leave empty to use the automatically resolved Node.js runtime. Changes apply to new processes.",
   "Manage Studio settings and your account": "Manage Studio settings and your account",
-  "Manage your account and Server connection.": "Manage your account and Server connection.",
+  "Manage your account.": "Manage your account.",
   "Maximum number of projects in the recent projects list.": "Maximum number of projects in the recent projects list.",
   "Name used when opening a new Studio terminal.": "Name used when opening a new Studio terminal.",
   "No matching settings": "No matching settings",

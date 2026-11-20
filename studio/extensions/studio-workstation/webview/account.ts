@@ -14,12 +14,11 @@ const app = settings.accountRoot;
 const icon = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 const copyButton = (field: string, label: string): string => `<button type="button" class="icon-button copy-button" data-copy="${field}" title="${label}" aria-label="${label}">${icon('copy')}</button>`;
 app.innerHTML = `
-  <header class="page-header"><p class="muted">${t('Manage your account and Server connection.')}</p><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
+  <header class="page-header"><p class="muted">${t('Manage your account.')}</p><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
   <div id="account-status" role="status"></div>
   <section id="account-sign-in" class="settings-card account-sign-in">
     <span class="codicon codicon-account" aria-hidden="true"></span><h2>${t('Sign in to SteamHarness')}</h2>
     <p class="muted">${t('Connect your account to access projects and services.')}</p>
-    <p id="account-server" class="mono"></p>
     <button id="open-login" type="button" class="primary">${icon('sign-in')}<span>${t('Sign In')}</span></button>
   </section>
   <section id="profile" hidden>
@@ -27,7 +26,6 @@ app.innerHTML = `
       <button id="edit-profile" class="secondary">${icon('edit')}<span>${t("Edit profile")}</span></button>
     </div>
     <div class="account-details">
-      <section><h3>${icon('remote')}${t("Connection")}</h3><dl><dt>${t("Server")}</dt><dd class="inline-value"><span id="profile-server" class="mono"></span>${copyButton('serverUrl', t("Copy server address"))}</dd><dt>${t("Transport")}</dt><dd id="profile-transport"></dd></dl></section>
       <section><h3>${icon('shield')}${t("Session")}</h3><dl><dt>${t("Validity")}</dt><dd><span id="profile-expiry"></span><div id="profile-remaining" class="muted"></div></dd></dl><button id="manage-sessions" class="text-button">${icon('link-external')}<span>${t("Manage sessions")}</span></button></section>
     </div>
     <div class="account-actions"><button id="logout" class="text-button">${icon('sign-out')}<span>${t("Sign out")}</span></button><span id="copy-status" class="muted" role="status"></span></div>
@@ -65,7 +63,6 @@ function render(next: AccountState): void {
   signIn.hidden = signedIn;
   document.querySelector<HTMLElement>('#profile')!.hidden = !signedIn;
   verify.hidden = !signedIn;
-  document.querySelector('#account-server')!.textContent = next.serverUrl;
   document.querySelectorAll<HTMLButtonElement>('#open-login, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
   status.textContent = next.status === 'authenticated' ? t("Signed in; account verified") : next.status === 'checking' ? t("Verifying account...") : next.status === 'expired' ? t("Sign-in expired") : next.status === 'error' && next.user ? t("Connection not verified") : t("Signed out");
   status.classList.toggle('connected', next.status === 'authenticated');
@@ -76,9 +73,6 @@ function render(next: AccountState): void {
     document.querySelector('#display-name')!.textContent = next.user.displayName || next.user.email;
     document.querySelector('#user-email')!.textContent = next.user.email;
     document.querySelector('#user-id')!.textContent = next.user.userId;
-    document.querySelector('#profile-server')!.textContent = next.serverUrl;
-    const url = new URL(next.serverUrl);
-    document.querySelector('#profile-transport')!.textContent = url.protocol === 'https:' ? t("Encrypted (HTTPS)") : ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? t("Local connection (HTTP)") : t("Unencrypted (HTTP)");
     const expiry = next.expiresAt ? Date.parse(next.expiresAt) : NaN;
     document.querySelector('#profile-expiry')!.textContent = Number.isFinite(expiry) ? new Date(expiry).toLocaleString(locale()) : t("Managed by server");
     const days = Math.ceil((expiry - Date.now()) / 86_400_000);

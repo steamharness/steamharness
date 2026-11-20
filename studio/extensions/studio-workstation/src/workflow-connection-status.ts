@@ -16,8 +16,8 @@ export function registerProjectConnectionStatus(account: AccountController): vsc
     else if (state.status === 'expired') { icon = 'warning'; label = t('Server Sign-in Expired'); }
     else if (state.status === 'error') { icon = 'warning'; label = t('Server Connection Error'); }
     status.text = `$(${icon}) ${label}`;
-    status.tooltip = `${t('SteamHarness Server: {0}', state.serverUrl)}${state.error ? `\n\n${state.error}` : ''}`;
-    status.accessibilityInformation = { label: `${label}, ${state.serverUrl}` };
+    status.tooltip = `${label}${state.error ? `\n\n${state.error}` : ''}`;
+    status.accessibilityInformation = { label };
     status.show();
   };
 

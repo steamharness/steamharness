@@ -85,7 +85,6 @@
   "view.studio.projects": "Open Project Window",
   "welcome.studio.projects": "No entries found in the current project.",
   "welcome.studio.projectsUntrusted": "Trust the workspace to load project entries.",
-  "config.studio.project.serverUrl": "SteamHarness Server URL. Leave empty to use this Studio channel's Server (local for dev). Sign in again after changing it.",
   "config.studio.project.nodePath": "Absolute Node.js executable path for local mode. Leave empty to search the original system PATH.",
   "command.openDocumentPreview": "Open Preview",
   "command.refreshDocumentPreview": "Refresh Preview",
