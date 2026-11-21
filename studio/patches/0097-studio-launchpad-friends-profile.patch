@@ -1,0 +1,427 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 43af762f1aac2a733045e16124db08117080e1a0..6f1e83c082219629d78eadad866c7518c5a254dc 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -27,7 +27,7 @@
+ .studio-launchpad button:hover:not(:disabled) { background: var(--lp-hover); }
+ .monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
+ .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager,.lp-profile-nav { display: flex; align-items: center; gap: 8px; }
++.lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager { display: flex; align-items: center; gap: 8px; }
+ .lp-titlebar { container: lp-titlebar / inline-size; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+ .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
+@@ -72,9 +72,9 @@
+ .lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
+ .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+-.lp-shelf,.lp-profile,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
++.lp-shelf,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title { display: grid; gap: 12px; }
+-.lp-library-heading,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
++.lp-library-heading,.lp-shelf-head,.lp-store-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+ .lp-library-actions { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+ .lp-shelf-head { justify-content: flex-start; margin-bottom: 10px; }
+ .lp-collection { margin-top: 24px; }
+@@ -105,7 +105,7 @@
+ .lp-search-field { display: flex; align-items: center; gap: 6px; padding-inline: 7px; border: 1px solid var(--lp-edge); background: var(--vscode-input-background,var(--lp-panel)); border-radius: 4px; }
+ .lp-query { min-width: 0; width: 100%; height: 30px; font: inherit; padding-inline: 6px; background: var(--vscode-input-background,var(--lp-panel)); border: 1px solid var(--lp-edge); color: var(--vscode-input-foreground,var(--lp-text)); border-radius: 4px; }
+ .lp-search-field .lp-query { border: 0; }
+-.studio-launchpad :is(.lp-filters,.lp-profile-nav) [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.studio-launchpad .lp-filters [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+ .studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
+ .studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
+ .studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
+@@ -117,11 +117,35 @@
+ .lp-section-kicker,.lp-feature-meta,.lp-message,.lp-store-status { color: var(--lp-muted); font-size: 12px; }
+ .lp-store-status { margin-block: 16px 8px; } .lp-pager { justify-content: center; margin-block: 14px; }
+ .lp-community { display: grid; justify-items: center; align-content: center; gap: 12px; } .lp-community > .codicon { font-size: 34px; color: var(--lp-muted); }
+-.lp-profile-header { justify-content: flex-start; padding-block: 12px 25px; border-bottom: 1px solid var(--lp-line); } .lp-profile-header > div { margin-inline-end: auto; }
+-.lp-profile-header .lp-avatar { width: 54px; height: 54px; font-size: 22px; }
+-.lp-profile-nav { padding-block: 12px; flex-wrap: wrap; } .lp-profile > .lp-query { max-width: 350px; margin-bottom: 8px; }
+-.lp-social-row { display: flex; align-items: center; flex-wrap: wrap; min-height: 58px; gap: 9px; border-bottom: 1px solid var(--lp-line); }
+-.lp-social-text { flex: 1; min-width: 60px; display: grid; overflow-wrap: anywhere; }
++.lp-profile { display: grid; grid-template-columns: clamp(220px,23%,284px) minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
++.lp-profile-rail { min-width: 0; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); padding: 20px 12px; }
++.lp-profile-header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: start; gap: 10px; padding: 2px 4px 18px; border-bottom: 1px solid var(--lp-line); }
++.lp-profile-header .lp-avatar { width: 42px; height: 42px; font-size: 19px; }
++.lp-profile-identity { display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-profile-identity strong { font-size: 15px; color: var(--lp-strong); }
++.lp-profile-account-state { margin-top: 3px; }
++.lp-profile-header .lp-primary { grid-column: 2/-1; justify-self: start; }
++.studio-launchpad .lp-profile-tool { width: 28px; height: 28px; padding: 0; color: var(--lp-muted); }
++.lp-profile-nav { display: grid; gap: 4px; padding-top: 16px; }
++.studio-launchpad .lp-profile-nav button { justify-content: flex-start; position: relative; min-height: 36px; gap: 10px; padding-inline: 12px; color: var(--lp-muted); }
++.studio-launchpad .lp-profile-nav [aria-selected=true] { color: var(--lp-strong); font-weight: 600; background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.lp-profile-nav [aria-selected=true]::before { content: ''; position: absolute; inset-inline-start: 0; inset-block: 9px; width: 3px; border-radius: 2px; background: var(--lp-accent); }
++.lp-profile-short { display: none; }
++.lp-profile-content { min-width: 0; padding: 24px var(--lp-pad) 32px; }
++.lp-profile-body { max-width: 960px; margin-inline: auto; }
++.lp-profile-toolbar,.lp-profile-title,.lp-profile-status,.lp-social-actions { display: flex; align-items: center; gap: 8px; }
++.lp-profile-toolbar { min-height: 45px; padding-bottom: 12px; border-bottom: 1px solid var(--lp-line); justify-content: space-between; flex-wrap: wrap; gap: 10px; }
++.lp-profile-toolbar .lp-search-field { width: min(230px,100%); color: var(--lp-muted); }
++.lp-profile-title h1 { font-size: 21px; } .lp-profile-count,.lp-unread-count { padding: 1px 6px; border-radius: 4px; font-variant-numeric: tabular-nums; font-size: 11px; }
++.lp-profile-count { color: var(--lp-muted); background: var(--lp-side); } .lp-unread-count { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
++.lp-profile-status:not(:empty) { padding-block: 12px; flex-wrap: wrap; }
++.lp-profile-rows { list-style: none; margin: 0; padding: 0; }
++.lp-social-row { display: flex; align-items: center; flex-wrap: wrap; min-height: 58px; gap: 8px 12px; padding: 10px 2px; border-bottom: 1px solid var(--lp-line); }
++.lp-social-row > :is(.lp-avatar,.codicon) { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: var(--lp-side); }
++.lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
++.lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
++.lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
++.lp-profile-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 48px 12px; color: var(--lp-muted); }
++.lp-profile-empty > .codicon { font-size: 28px; }
+ .lp-empty { padding: 30px 0; color: var(--lp-muted); display: flex; align-items: center; gap: 8px; }
+ .lp-statusbar { padding-inline: 12px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); }
+ .lp-chat-launch { margin-inline-start: auto; } .lp-chat-launch:not([data-count=""])::after { content: attr(data-count); color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); padding: 0 5px; border-radius: 4px; }
+@@ -145,6 +169,16 @@
+ 	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
+ }
+ @media (max-width: 700px) {
++	.lp-profile { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
++	.lp-profile-rail { padding: 10px var(--lp-pad) 0; border-inline-end: 0; border-bottom: 1px solid var(--lp-line); max-height: 42vh; }
++	.lp-profile-header { align-items: center; grid-template-columns: auto minmax(0,1fr) auto auto; padding: 0; border: 0; }
++	.lp-profile-header .lp-primary { grid-column: auto; } .lp-profile-account-state { margin-top: 0; }
++	.lp-profile-nav { display: flex; padding-top: 8px; }
++	.studio-launchpad .lp-profile-nav button { flex: 1; justify-content: center; padding: 4px 2px; gap: 5px; border-radius: 0; }
++	.studio-launchpad .lp-profile-nav [aria-selected=true] { background: transparent; }
++	.lp-profile-nav [aria-selected=true]::before { inset: auto 12px 0; width: auto; height: 2px; }
++	.lp-profile-label { display: none; } .lp-profile-short { display: inline; }
++	.lp-profile-content { padding-top: 16px; }
+ 	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
+ 	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
+ 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
+@@ -153,5 +187,5 @@
+ 	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); }
+ 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
+ 	.lp-store-feature > .lp-artwork { max-height: 165px; }
+-	.lp-profile-nav { gap: 2px; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
++	.lp-profile-nav { gap: 2px; } .lp-profile-toolbar .lp-search-field { width: 100%; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index ca1ae5bff5371f814a6967c84fa242e03537fe73..cf9eab585ed766bb1bc68166c19b4c0beef6b28a 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -119,6 +119,12 @@ export class StudioLaunchpad extends Disposable {
+ 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
+ 			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
+ 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
++			confirmRemoveFriend: async name => {
++				const zh = this.language.startsWith('zh');
++				const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
++					buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
++				return response === 0;
++			},
+ 			chatUser: user => run(this.openInbox(undefined, user)),
+ 			readNotice: id => this.notices.read(id),
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index 4fa4c1f57b8abbf6ea89117e8318c206fcdcf76f..cf7cdbf7f064b93e15af80599580d6f9f7964338 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -3,8 +3,9 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { mainWindow } from '../../base/browser/window.js';
+ import { RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable } from '../../base/common/lifecycle.js';
++import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { picture } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ 
+@@ -12,12 +13,13 @@ export interface LaunchpadAccount { name: string; email?: string | null; avatarU
+ export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
+ export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
+ export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+-export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string }
++export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean }
+ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
+ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+-export interface SocialAction { action: 'request' | 'accept' | 'remove' | 'unfavorite' | 'read'; id: string }
++export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+ export interface ProfileActions {
+ 	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
++	confirmRemoveFriend(name: string): Promise<boolean>;
+ 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+ }
+ export function avatar(name: string, src?: string): HTMLElement {
+@@ -29,19 +31,42 @@ export function avatar(name: string, src?: string): HTMLElement {
+ }
+ 
+ type Section = 'activity' | 'people' | 'favorites' | 'notifications';
++type Failure = 'unsupported' | 'unavailable' | 'change';
++
++function tool(label: string, glyph: string, action: () => void): HTMLButtonElement {
++	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
++}
++
++function row(name: string, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
++	const item = element('li', 'lp-social-row'), text = element('div', 'lp-social-text');
++	text.append(element('strong', '', name));
++	if (detail) { text.append(element('small', '', detail)); }
++	item.append(mark, text);
++	if (buttons.length) { const actions = element('div', 'lp-social-actions'); actions.append(...buttons); item.append(actions); }
++	return item;
++}
+ 
+ export class LaunchpadProfile extends Disposable {
+-	readonly element = element('div', 'lp-profile lp-scroll');
++	readonly element = element('div', 'lp-profile');
+ 	private readonly header = element('header', 'lp-profile-header');
+-	private readonly nav = element('nav', 'lp-profile-nav');
+-	private readonly rows = element('div', 'lp-profile-rows');
++	private readonly nav = element('div', 'lp-profile-nav');
++	private readonly tabs = new Map<Section, HTMLButtonElement>();
++	private readonly content = element('section', 'lp-profile-content lp-scroll');
++	private readonly heading = element('h1');
++	private readonly count = element('span', 'lp-profile-count');
++	private readonly rows = element('ul', 'lp-profile-rows');
++	private readonly empty = element('div', 'lp-profile-empty');
++	private readonly search = element('label', 'lp-search-field');
+ 	private readonly filter = element('input', 'lp-query');
+-	private readonly status = element('div', 'lp-message');
+-	private readonly debounce = this._register(new RunOnceScheduler(() => void this.refresh(), 280));
+-	private data?: { snapshot: SocialSnapshot; query: string };
+-	private failure?: 'unsupported' | 'unavailable' | 'change';
++	private readonly status = element('div', 'lp-message lp-profile-status');
++	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
++	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
++	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number }>();
++	private generation = 0;
++	private pending?: { query: string; generation: number };
++	private failure?: { query: string; reason: Failure };
++	private changing = new Set<string>();
+ 	private scope?: string;
+-	private revision = 0;
+ 	private active = false;
+ 	private section: Section = 'activity';
+ 	private inbox?: LaunchpadInbox;
+@@ -51,99 +76,176 @@ export class LaunchpadProfile extends Disposable {
+ 
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void) {
+ 		super();
+-		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.placeholder = t('Find a Studio user', '查找 Studio 用户'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+-		this.filter.addEventListener('input', () => { ++this.revision; this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
+-		for (const [id, title, glyph] of [['activity', t('Recent chats', '最近会话'), 'comment-discussion'], ['people', t('Contacts & friends', '通讯录与好友'), 'organization'], ['favorites', t('Favorites', '收藏'), 'star-empty'], ['notifications', t('Notifications', '通知'), 'bell']] as const) {
+-			const b = button(title, glyph, () => this.select(id)); b.dataset.id = id; this.nav.append(b);
++		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
++		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
++		this.search.append(icon('search'), this.filter);
++		this.filter.addEventListener('input', () => { if (this.pending?.query !== this.query) { this.pending = undefined; } this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
++		this.content.id = 'lp-profile-section'; this.content.setAttribute('role', 'tabpanel'); this.content.tabIndex = 0;
++		this.nav.setAttribute('role', 'tablist'); this.nav.setAttribute('aria-label', t('My Studio sections', '我的分区'));
++		for (const [id, title, short, glyph] of [
++			['activity', t('Recent chats', '最近会话'), t('Chats', '会话'), 'comment-discussion'],
++			['people', t('Contacts & friends', '通讯录与好友'), t('Friends', '好友'), 'organization'],
++			['favorites', t('Favorites', '收藏'), t('Favorites', '收藏'), 'star-empty'],
++			['notifications', t('Notifications', '通知'), t('Notices', '通知'), 'bell'],
++		] as const) {
++			const b = button('', glyph, () => this.select(id)); b.append(element('span', 'lp-profile-label', title), element('span', 'lp-profile-short', short));
++			b.id = `lp-profile-tab-${id}`; b.title = title; b.setAttribute('aria-label', title); b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', this.content.id);
++			this.tabs.set(id, b); this.nav.append(b);
+ 		}
+-		this.element.append(this.header, this.nav, this.filter, this.status, this.rows);
++		const narrow = mainWindow.matchMedia('(max-width: 700px)');
++		const orient = () => this.nav.setAttribute('aria-orientation', narrow.matches ? 'horizontal' : 'vertical');
++		orient(); narrow.addEventListener('change', orient); this._register(toDisposable(() => narrow.removeEventListener('change', orient)));
++		this.nav.addEventListener('keydown', e => {
++			const ids = [...this.tabs.keys()].filter(id => !this.tabs.get(id)!.hidden), i = ids.indexOf(this.section);
++			const prev = narrow.matches ? 'ArrowLeft' : 'ArrowUp', next = narrow.matches ? 'ArrowRight' : 'ArrowDown';
++			if (i < 0 || ![prev, next, 'Home', 'End'].includes(e.key)) { return; }
++			e.preventDefault(); const id = ids[e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (i + (e.key === prev ? -1 : 1) + ids.length) % ids.length];
++			this.select(id); this.tabs.get(id)!.focus();
++		});
++		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
++		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.search);
++		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
+ 	}
+ 
+ 	select(section: Section): void {
+-		++this.revision; this.debounce.cancel(); this.failure = undefined;
+-		this.section = section; this.filter.value = ''; this.render();
+-		if (this.active) { void this.refresh(); }
++		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
++		this.debounce.cancel(); this.section = section; this.failure = undefined;
++		if (section === 'activity' || this.pending?.query !== this.query) { this.pending = undefined; }
++		this.renderSection(); this.content.scrollTop = 0;
++		void this.load();
+ 	}
+ 	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[]): void {
+-		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey]);
++		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey ?? account?.email ?? account?.name]);
+ 		const changed = this.scope !== scope, enter = active && !this.active;
+-		const repaint = changed || enter || JSON.stringify([this.account, this.inbox, this.nativeNotices]) !== JSON.stringify([account, inbox, notices]);
++		const identityChanged = changed || JSON.stringify(this.account) !== JSON.stringify(account);
++		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' && JSON.stringify(notices) !== JSON.stringify(this.nativeNotices));
++		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
+ 		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices;
+-		if (changed) { ++this.revision; this.debounce.cancel(); this.data = undefined; this.failure = undefined; this.scope = scope; this.filter.value = ''; }
+-		if (!platform) { this.section = 'notifications'; }
+-		if (active && repaint) { this.render(); }
+-		if (active && (enter || changed)) { void this.refresh(); }
++		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
++		if (identityChanged) { this.renderAccount(); }
++		if (changed || (active && repaint)) { this.renderSection(); }
++		if (active && (enter || changed)) { this.refresh(); }
+ 	}
+ 
+-	async refresh(): Promise<void> {
+-		if (!this.account?.signedIn || !this.active || this.section === 'activity') { return; }
+-		const rev = ++this.revision, query = this.section === 'people' ? this.filter.value.trim() : '';
++	private get query(): string { return this.section === 'people' ? this.filter.value.trim() : ''; }
++	refresh(): void { ++this.generation; this.pending = undefined; this.debounce.schedule(); }
++
++	private async load(): Promise<void> {
++		if (!this.active || !this.platform || !this.account?.signedIn || this.section === 'activity') { return; }
++		const query = this.query, generation = this.generation;
++		if (this.cache.get(query)?.generation === generation || (this.pending?.query === query && this.pending.generation === generation)) { return; }
++		const request = this.pending = { query, generation };
+ 		try {
+ 			const result = await this.actions.social(query);
+-			if (rev !== this.revision) { return; }
+-			if ('unavailable' in result) { this.failure = result.unavailable; }
+-			else { this.data = { snapshot: result, query }; this.failure = undefined; }
++			if (this.pending !== request) { return; }
++			if ('unavailable' in result) { this.failure = { query, reason: result.unavailable }; }
++			else {
++				if (query) { for (const key of this.cache.keys()) { if (key && key !== query) { this.cache.delete(key); } } }
++				this.cache.set(query, { snapshot: { ...result, people: result.people.filter(p => p.relation === 'friend') }, generation }); this.failure = undefined;
++			}
+ 		} catch {
+-			if (rev !== this.revision) { return; }
+-			this.failure = 'unavailable';
++			if (this.pending !== request) { return; }
++			this.failure = { query, reason: 'unavailable' };
+ 		}
+-		this.renderRows();
++		this.pending = undefined;
++		if (this.active && this.query === query) { this.renderRows(); }
+ 	}
+ 
+-	private mutate(action: SocialAction, b: HTMLButtonElement): void {
+-		b.disabled = true; const scope = this.scope, section = this.section;
+-		void this.actions.change(action).then(async () => { if (scope === this.scope) { await this.refresh(); } }, () => { if (scope === this.scope && section === this.section) { this.failure = 'change'; this.renderRows(); } }).finally(() => b.disabled = false);
++	private async mutate(action: SocialAction): Promise<void> {
++		const changing = this.changing, section = this.section;
++		if (changing.has(action.id)) { return; }
++		changing.add(action.id); this.renderRows();
++		try {
++			await this.actions.change(action);
++			if (changing !== this.changing) { return; }
++			for (const { snapshot } of this.cache.values()) {
++				if (action.action === 'remove') { snapshot.people = snapshot.people.filter(p => p.id !== action.id); }
++				if (action.action === 'unfavorite') { snapshot.favorites = snapshot.favorites.filter(f => f.id !== action.id); }
++				if (action.action === 'read' || action.action.endsWith('-invite')) {
++					snapshot.notices = snapshot.notices.map(n => n.id === action.id || n.inviteId === action.id ? { ...n, read: true, inviteId: action.action === 'read' ? n.inviteId : undefined } : n);
++				}
++			}
++			this.failure = undefined; this.refresh();
++		} catch { if (changing === this.changing && section === this.section) { this.failure = { query: this.query, reason: 'change' }; } }
++		finally { changing.delete(action.id); if (changing === this.changing && this.active) { this.renderRows(); } }
+ 	}
+ 
+-	private render(): void {
++	private renderAccount(): void {
+ 		const t = this.t, a = this.account;
+ 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
+-		const identity = element('div'); identity.append(element('h1', '', name), element('small', '', [a?.email, a?.statusLabel].filter(Boolean).join(' · ')));
+-		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, button(t('Settings', '设置'), 'settings-gear', this.actions.settings, 'lp-outline'));
++		const identity = element('div', 'lp-profile-identity'); identity.append(element('strong', '', name));
++		if (a?.email) { identity.append(element('small', '', a.email)); }
++		if (a?.statusLabel) { identity.append(element('small', 'lp-profile-account-state', a.statusLabel)); }
++		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, tool(t('Settings', '设置'), 'settings-gear', this.actions.settings));
+ 		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
+-		for (const b of this.nav.querySelectorAll('button')) { b.hidden = !this.platform && b.dataset.id !== 'notifications'; b.setAttribute('aria-pressed', String(this.section === b.dataset.id)); }
+-		this.filter.hidden = this.section !== 'people' || !a?.signedIn;
++	}
++
++	private renderSection(): void {
++		for (const [id, b] of this.tabs) {
++			const selected = this.section === id; b.hidden = !this.platform && id !== 'notifications'; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1;
++			if (selected) { this.heading.textContent = b.title; this.content.setAttribute('aria-labelledby', b.id); }
++		}
++		this.search.hidden = this.section !== 'people' || !this.account?.signedIn;
+ 		this.renderRows();
+ 	}
+ 
+ 	private renderRows(): void {
+ 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
+-		const data = this.section === 'people' && this.data?.query !== this.filter.value.trim() ? undefined : this.data?.snapshot;
++		const query = this.query, data = this.cache.get(query)?.snapshot;
++		const failure = this.failure?.query === query ? this.failure.reason : undefined;
++		const friends = data?.people ?? (query ? this.cache.get('')?.snapshot.people.filter(p => p.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())) : undefined);
+ 		this.status.replaceChildren();
+ 		if (needsSocial) {
+-			if (this.failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
+-			else if (this.failure) {
+-				const message = this.failure === 'unsupported'
++			if (failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
++			else if (failure) {
++				const message = failure === 'unsupported'
+ 					? t('This server does not provide Studio social data. Check the server version and retry.', '当前服务器未提供 Studio 社交接口，请确认服务器版本后重试。')
+ 					: t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。');
+-				this.status.append(message, button(t('Retry', '重试'), 'refresh', () => void this.refresh()));
+-			} else if (!data) { this.status.textContent = t('Loading…', '正在加载…'); }
++				this.status.append(icon('warning'), message, button(t('Retry', '重试'), 'refresh', () => this.refresh()));
++			} else if (!data && !friends?.length) { this.status.textContent = t('Loading…', '正在加载…'); }
+ 		}
+-		const row = (name: string, detail: string, mark: HTMLElement, ...commands: HTMLButtonElement[]) => {
+-			const r = element('div', 'lp-social-row'), text = element('div', 'lp-social-text'); text.append(element('strong', '', name), element('small', '', detail)); r.append(mark, text, ...commands); return r;
+-		};
+-		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => this.mutate(action, b), 'lp-outline'); return b; };
+-		this.rows.replaceChildren();
++		const items: HTMLLIElement[] = [];
++		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
+ 		if (this.section === 'activity') {
+-			for (const c of this.inbox?.items ?? []) { this.rows.append(row(c.name, c.preview, avatar(c.name, c.avatarUrl), button(c.unread ? String(c.unread) : t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'))); }
++			for (const c of this.inbox?.items ?? []) {
++				const item = row(c.name, c.preview, avatar(c.name, c.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'));
++				if (c.unread) { const unread = element('span', 'lp-unread-count', String(c.unread)); unread.title = t(`${c.unread} unread`, `${c.unread} 条未读`); item.lastElementChild?.prepend(unread); }
++				items.push(item);
++			}
+ 		} else if (this.section === 'people') {
+-			for (const p of data?.people ?? []) {
+-				const controls = p.relation === 'friend' ? [button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), change(t('Remove', '移除'), 'remove', { action: 'remove', id: p.id })] : p.relation === 'incoming' ? [change(t('Accept', '接受'), 'check', { action: 'accept', id: p.id }), change(t('Decline', '拒绝'), 'close', { action: 'remove', id: p.id })] : p.relation === 'outgoing' ? [change(t('Cancel request', '撤回申请'), 'close', { action: 'remove', id: p.id })] : [change(t('Add friend', '添加好友'), 'person-add', { action: 'request', id: p.id })];
+-				this.rows.append(row(p.name, p.relation === 'incoming' ? t('Friend request', '好友申请') : p.relation === 'friend' ? t('Friend', '好友') : p.relation === 'outgoing' ? t('Request sent', '已发出申请') : '', avatar(p.name, p.avatarUrl), ...controls));
++			for (const p of friends ?? []) {
++				const remove = tool(t('Remove friend', '移除好友'), 'trash', () => void this.removeFriend(p)); remove.disabled = this.changing.has(p.id);
++				items.push(row(p.name, '', avatar(p.name, p.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), remove));
+ 			}
+ 		} else if (this.section === 'favorites') {
+-			for (const f of data?.favorites ?? []) { this.rows.append(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation))] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
++			for (const f of data?.favorites ?? []) { items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
+ 		} else {
+ 			for (const n of [...this.nativeNotices, ...data?.notices ?? []]) {
+ 				const controls = n.conversation || n.source === 'im' ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(n.conversation), 'lp-outline')] : [];
+-				if (n.id.startsWith('request:') || n.id.startsWith('friend:')) { controls.push(button(t('View contacts', '查看联系人'), 'organization', () => this.select('people'), 'lp-outline')); }
++				if (n.inviteId && n.id === 'request:' + n.inviteId) {
++					controls.push(change(t('Accept', '接受'), 'check', { action: 'accept-invite', id: n.inviteId }), change(t('Decline', '拒绝'), 'close', { action: 'decline-invite', id: n.inviteId }));
++				}
+ 				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
+ 				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : n.id.startsWith('request:') ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
+-				this.rows.append(row(title, n.source === 'im' ? 'IM' : 'Studio', icon(n.read ? 'mail-read' : 'mail'), ...controls));
++				const detail = n.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : n.source === 'im' ? 'IM' : 'Studio';
++				const item = row(title, detail, icon(n.read ? 'mail-read' : 'mail'), ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
+ 			}
+ 		}
+-		const canShowEmpty = this.section === 'activity' || (needsSocial ? !!data && !this.failure : this.section === 'notifications');
+-		if (!this.rows.childElementCount && canShowEmpty) { this.rows.append(element('p', 'lp-empty', this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : this.section === 'people' ? t('No contacts found.', '暂无联系人。') : this.section === 'favorites' ? t('No favorites yet.', '暂无收藏。') : t('No notifications.', '暂无通知。'))); }
++		this.rows.replaceChildren(...items);
++		this.count.textContent = String(items.length); this.count.hidden = !items.length;
++		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure));
++		if (!this.empty.hidden) {
++			const guest = this.platform && !this.account?.signedIn;
++			const label = this.section === 'people' ? guest ? t('Sign in to see your friends.', '登录后可查看好友。') : query ? t('No matching friends.', '没有匹配的好友。') : t('No friends yet.', '暂无好友。')
++				: this.section === 'favorites' ? guest ? t('Sign in to see your favorites.', '登录后可查看收藏。') : t('No favorites yet.', '暂无收藏。')
++					: this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
++			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? 'comment-discussion' : 'bell'), element('p', '', label));
++		}
++	}
++
++	private async removeFriend(person: StudioPerson): Promise<void> {
++		const owner = this.changing;
++		if (await this.actions.confirmRemoveFriend(person.name) && owner === this.changing) { await this.mutate({ action: 'remove', id: person.id }); }
+ 	}
+-	override dispose(): void { ++this.revision; super.dispose(); }
++	override dispose(): void { this.active = false; this.pending = undefined; this.changing = new Set(); super.dispose(); }
+ }

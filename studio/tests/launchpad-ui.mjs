@@ -65,15 +65,29 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     publishAccount();
   };
   window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml('en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
+  const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
+    {id:'dana',name:'Dana',relation:'incoming'},{id:'erin',name:'Erin',relation:'incoming'},{id:'sent',name:'Outgoing',relation:'outgoing'},{id:'removed',name:'Former friend',relation:'removed'}];
+  const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true},
+    {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},{id:'request:old',title:'Old request',source:'studio',read:true}];
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
     if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') return { items: [{id:'checklist', name:'Checklist', projectType:'bot',version:'1.2.0',description:'Verify a release'}].filter(p=>p.name.toLowerCase().includes(args[0].query.toLowerCase()) && (!args[0].type || args[0].type===p.projectType)), total:1, pageSize:12 };
     if (id === 'studio.getSocialSnapshot') {
+      const owned = account.scopeKey === 'a'.repeat(64);
       if (window.socialGate) await window.socialGate;
       if (window.socialFailure === 'unsupported') return {unavailable:'unsupported'};
       if (window.socialFailure) throw new Error('Service unavailable');
-      return {people:[{id:'alice',name:'Alice',relation:'friend'}].filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices:[]};
+      return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices}) : {people:[],favorites:[],notices:[]};
+    }
+    if (id === 'studio.changeSocial') {
+      const {action,id:key}=args[0];
+      if(action==='remove') people.find(p=>p.id===key).relation='removed';
+      else if(action==='accept-invite'||action==='decline-invite'){
+        const n=notices.find(n=>n.inviteId===key); if(!n) throw new Error('Invalid invitation');
+        people.find(p=>p.name===n.title).relation=action==='accept-invite'?'friend':'removed'; delete n.inviteId; n.read=true;
+      }
+      return;
     }
     if (id === 'studio.openSettings') {
       window.settingsDestination = args[0];

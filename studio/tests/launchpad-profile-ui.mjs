@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+
+export async function checkProfileSections({ page, profile, frame, t, screenshot }) {
+  const tab = (en, zh) => profile.getByRole('tab', { name: t(en, zh), exact: true });
+  const friends = tab('Contacts & friends', '通讯录与好友'), favorites = tab('Favorites', '收藏'), notices = tab('Notifications', '通知');
+  const panel = profile.getByRole('tabpanel'), rows = panel.getByRole('listitem'), status = panel.getByRole('status');
+  const statusText = regex => status.filter({ hasText: regex });
+  const empty = panel.getByText(t('No friends yet.', '暂无好友。'), { exact: true });
+  const noMatch = panel.getByText(t('No matching friends.', '没有匹配的好友。'), { exact: true });
+  const names = () => rows.locator('.lp-social-text strong').allTextContents();
+  const readCount = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.getSocialSnapshot').length);
+  const actions = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.changeSocial').map(([, a]) => a));
+  const button = (where, en, zh) => where.getByRole('button', { name: t(en, zh), exact: true });
+  await friends.click(); assert.equal(await profile.getByRole('tablist').getAttribute('aria-orientation'), 'vertical');
+  await statusText(t('Loading…', '正在加载…')).waitFor(); assert.equal(await empty.isVisible(), false);
+  await page.evaluate(() => { window.resumeSocial(); delete window.socialGate; });
+  await statusText(/server version|服务器版本/).waitFor(); assert.equal(await empty.isVisible(), false);
+  const retry = button(status, 'Retry', '重试');
+  await page.evaluate(() => window.socialFailure = 'offline'); await retry.click();
+  await statusText(/social data is unavailable|暂时无法读取/).waitFor(); assert.equal(await empty.isVisible(), false);
+  await page.evaluate(() => window.socialFailure = undefined); await retry.click();
+  const alice = rows.filter({ hasText: 'Alice' }); await alice.locator('img').evaluate(img => img.decode());
+  assert.deepEqual(await names(), ['Alice']);
+  await button(alice, 'Chat', '聊天').click(); await frame.getByText('user:alice', { exact: true }).waitFor();
+  assert.equal(await frame.getByLabel('draft').inputValue(), 'kept');
+  const beforeBurst = await readCount();
+  await page.evaluate(() => { window.socialFailure = 'offline'; for (let i = 0; i < 5; i++) window.refreshSocial(); });
+  await retry.waitFor(); assert.deepEqual(await names(), ['Alice']); assert.equal(await readCount(), beforeBurst + 1);
+  await page.evaluate(() => window.socialFailure = undefined); await retry.click(); await retry.waitFor({ state: 'hidden' });
+  const search = panel.getByRole('searchbox', { name: t('Search friends', '搜索好友') });
+  for (const keyword of ['Visitor', 'Dana', 'Outgoing', 'Former friend']) {
+    await search.fill(keyword); await noMatch.waitFor(); assert.deepEqual(await names(), []);
+  }
+  const reads = await readCount();
+  await friends.focus(); await page.keyboard.press('ArrowDown'); await panel.getByText('Saved message').waitFor();
+  await page.keyboard.press('End'); assert.equal(await notices.getAttribute('aria-selected'), 'true');
+  await friends.click(); assert.equal(await search.inputValue(), 'Former friend'); await noMatch.waitFor();
+  assert.equal(await readCount(), reads, 'switching between cached sections does not re-fetch or reset the search');
+  await search.fill(''); await alice.waitFor();
+  const remove = button(alice, 'Remove friend', '移除好友'); await remove.click();
+  await button(page.locator('.native-message'), 'Cancel', '取消').click(); assert.deepEqual(await actions(), []);
+  await notices.click();
+  const accept = button(rows.filter({ hasText: 'Dana' }), 'Accept', '接受'), decline = button(rows.filter({ hasText: 'Erin' }), 'Decline', '拒绝');
+  assert.equal(await button(rows.filter({ hasText: 'Old request' }), 'Decline', '拒绝').count(), 0);
+  await accept.click(); await accept.waitFor({ state: 'detached' });
+  await decline.click(); await decline.waitFor({ state: 'detached' });
+  assert.deepEqual(await actions(), [{ action: 'accept-invite', id: 'first' }, { action: 'decline-invite', id: 'second' }]);
+  await friends.click(); await rows.filter({ hasText: 'Dana' }).waitFor(); assert.deepEqual(await names(), ['Alice', 'Dana']);
+  await screenshot('profile-friends');
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.waitForFunction(() => document.querySelector('.lp-profile-nav').getAttribute('aria-orientation') === 'horizontal');
+  assert.ok(await profile.evaluate(el => [el, el.querySelector('.lp-profile-content'), el.querySelector('.lp-profile-nav')].every(n => n.scrollWidth <= n.clientWidth)));
+  await friends.focus(); await page.keyboard.press('ArrowRight'); assert.equal(await favorites.getAttribute('aria-selected'), 'true');
+  await page.keyboard.press('ArrowLeft'); assert.equal(await friends.getAttribute('aria-selected'), 'true');
+  await remove.click({trial:true}); await friends.click(); assert.equal(await friends.evaluate(el => getComputedStyle(el).outlineStyle), 'none');
+  await screenshot('profile-friends-narrow'); await page.setViewportSize({ width:1120, height:680 });
+  await remove.click(); await button(page.locator('.native-message'), 'Remove friend', '移除好友').click(); await alice.waitFor({state:'detached'});
+  await search.fill('Alice'); await noMatch.waitFor();
+  // A response authorised for A must not paint after switching to B, even when A's fetch finishes last.
+  await page.evaluate(() => { window.socialGate = new Promise(resolve => window.resumeSocial = resolve); });
+  await search.fill('Dana'); await page.waitForFunction(() => window.actions.at(-1)?.[0] === 'studio.getSocialSnapshot' && window.actions.at(-1)[1] === 'Dana');
+  await page.evaluate(() => { delete window.socialGate; window.updateAccount({scopeKey:'b'.repeat(64)}); });
+  await empty.waitFor(); await page.evaluate(() => window.resumeSocial());
+  assert.deepEqual(await names(), []); assert.equal(await search.inputValue(), '');
+  await page.evaluate(() => window.updateAccount({scopeKey:'a'.repeat(64)})); await panel.getByText('Dana',{exact:true}).waitFor();
+  await favorites.click(); await panel.getByText('Saved message').waitFor(); await screenshot('profile');
+}

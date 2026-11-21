@@ -17,7 +17,7 @@ test('the workspace-mode series and the current launchpad replay twice without c
   const fromFork = args => execFileSync('git', args, { cwd: upstream.directory, stdio: ['ignore', 'pipe', 'pipe'] });
   let historical = true;
   try { fromFork(['cat-file', '-e', `${original}^{tree}`]); } catch { historical = false; }
-  const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch'];
+  const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch', '0097-studio-launchpad-friends-profile.patch'];
   for (const [group, series, commit] of [['mode-files', names, undefined], ...(historical ? [['modes', names, original]] : []), ['launchpad', launchpad, upstream.commit]]) {
     const root = path.join(fixture, group), kernel = path.join(root, 'vscode'), patches = [], paths = new Set();
     await mkdir(kernel, { recursive: true }); await mkdir(path.join(root, 'patches'));

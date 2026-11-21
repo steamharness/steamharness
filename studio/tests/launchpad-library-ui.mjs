@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkProfileSections } from './launchpad-profile-ui.mjs';
 
 export async function checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop, screenshot, loads }) {
   const zh = language === 'zh-cn', t = (en, cn) => zh ? cn : en;
@@ -120,37 +121,26 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     assert.equal(await page.locator('.part.editor').isVisible(),false); assert.equal(page.context().pages().length,1);
     await page.evaluate(()=>{window.imError='';window.socialFailure='unsupported';window.socialGate=new Promise(resolve=>window.resumeSocial=resolve);});
     await tab('profile').click(); const profile=home.locator('#lp-page-profile');
-    await profile.getByRole('button',{name:t('Recent chats','最近会话'),exact:true}).click();
+    await profile.getByRole('tab',{name:t('Recent chats','最近会话'),exact:true}).click();
     const team=profile.locator('.lp-social-row').filter({hasText:'Team'});
     await team.locator('.lp-avatar img').evaluate(img=>img.decode());
     const opened=page.waitForEvent('popup'); await team.getByRole('button').click(); const popup=await opened;
     const frame=popup.frameLocator('iframe').frameLocator('#project-frame'); await frame.getByText('group-team',{exact:true}).waitFor();
     assert.ok(await home.isVisible()); await frame.getByLabel('draft').fill('kept');
-    await profile.getByRole('button',{name:t('Contacts & friends','通讯录与好友')}).click();
-    const status=profile.getByRole('status'), empty=profile.getByText(t('No contacts found.','暂无联系人。'),{exact:true});
-    await status.filter({hasText:t('Loading…','正在加载…')}).waitFor(); assert.equal(await empty.count(),0);
-    await page.evaluate(()=>{window.resumeSocial();delete window.socialGate;});
-    await status.filter({hasText:/server version|服务器版本/}).waitFor(); assert.equal(await empty.count(),0);
-    const retry=status.getByRole('button',{name:t('Retry','重试')});
-    await page.evaluate(()=>window.socialFailure='offline'); await retry.click();
-    await status.filter({hasText:/social data is unavailable|暂时无法读取/}).waitFor(); assert.equal(await empty.count(),0);
-    await page.evaluate(()=>window.socialFailure=undefined); await retry.click();
-    await profile.locator('.lp-social-row').filter({hasText:'Alice'}).getByRole('button',{name:t('Chat','聊天'),exact:true}).click();
-    await frame.getByText('user:alice',{exact:true}).waitFor(); assert.equal(await frame.getByLabel('draft').inputValue(),'kept');
-    assert.equal(await status.textContent(),''); const search=profile.getByRole('searchbox');
-    await page.evaluate(()=>{window.socialFailure='offline';window.refreshSocial();});
-    await retry.waitFor(); assert.ok(await profile.getByText('Alice',{exact:true}).isVisible());
-    await page.evaluate(()=>window.socialFailure=undefined);
-    await search.fill('nobody'); await empty.waitFor(); assert.equal(await profile.getByText('Alice').count(),0);
-    assert.equal(loads(),1); await profile.getByRole('button',{name:t('Favorites','收藏'),exact:true}).click(); await profile.getByText('Saved message').waitFor();
-    await screenshot('profile');
+    await checkProfileSections({page,profile,frame,t,screenshot}); assert.equal(loads(),1);
     await profile.getByRole('button',{name:t('Settings','设置'),exact:true}).click(); await page.locator('.studio-launchpad-settings').waitFor();
     assert.equal(await home.isVisible(),false); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
     const settings=page.frameLocator('.webview-overlay-content iframe'); await settings.locator('#profile #display-name').getByText('My account').waitFor();
     await page.locator('.studio-launchpad-app-close').click(); await home.waitFor();
     const closed=popup.waitForEvent('close'); await page.evaluate(()=>{window.guest=true;window.signOut();}); await closed;
     assert.equal(await profile.getByText('Saved message').count(),0); await profile.getByRole('button',{name:t('Sign in','登录'),exact:true}).click();
-  } else { assert.ok(!await home.locator('.lp-chat-launch').isVisible()); }
+  } else {
+    assert.ok(!await home.locator('.lp-chat-launch').isVisible()); await tab('profile').click();
+    const profile=home.locator('#lp-page-profile'); assert.equal(await profile.getByRole('tab').count(),1);
+    assert.equal(await profile.getByRole('tab',{name:'Notifications',exact:true}).getAttribute('aria-selected'),'true');
+    await profile.getByRole('heading',{name:'Notifications',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.actions.filter(([id])=>id==='studio.getSocialSnapshot').length),0);
+  }
   await tab('library').click();
   for (const width of [768,480,360]) {
     await page.setViewportSize({width,height:640}); assert.ok(await find.isVisible());
