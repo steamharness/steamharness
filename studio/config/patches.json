@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "de0847792ba7b10bad3428c6574157e524620f6b",
+  "commit": "5c93502c548345023797265c58c2f69906a58564",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -90,6 +90,7 @@
     "0090-studio-launchpad-startup-recovery.patch": "613f8e1bd9530dfd023e7f151ad0970acb238cb76ea542876e0036e3b1af98bd",
     "0091-studio-macos-tray-icon-size.patch": "70bb0e23e5a7346fd5df10736e470d9f35a3f5b6e65c218513ea1c097b30a461",
     "0092-studio-account-server-details.patch": "b649e42b587dcad4d8a1d0f3626e99095e15aed7cec918dbf6118e81ccce5887",
-    "0093-studio-agent-library.patch": "8d95c205b3eb0463e74f8ff14f3cd16957aa5a17d0f49cccb6edfa6ccef719ea"
+    "0093-studio-agent-library.patch": "8d95c205b3eb0463e74f8ff14f3cd16957aa5a17d0f49cccb6edfa6ccef719ea",
+    "0094-studio-launchpad-social-and-chat.patch": "2a568119e76622b6caf3d1bd8ba0f958b8ca35aaabdbc0b570ac535ba3e08a7b"
   }
 }

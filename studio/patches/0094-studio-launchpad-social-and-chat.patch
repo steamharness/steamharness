@@ -1,0 +1,187 @@
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 8d59a16267f0981785b8a7a8b339bd490e51ed38..88be3b81916bd7c563eacd38fc461bf4963e3b60 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { addDisposableListener } from '../../base/browser/dom.js';
++import { $, addDisposableListener } from '../../base/browser/dom.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { URI } from '../../base/common/uri.js';
+@@ -45,7 +45,8 @@ export class StudioChatWindow extends Disposable {
+ 		try {
+ 			const app = prepared.app, ready = new DeferredPromise<boolean>(); life.add(toDisposable(() => { void ready.complete(false); }));
+ 			const doc = window.window.document; doc.title = app.title;
+-			const host = doc.createElement('div'); host.className = 'studio-chat-window'; window.container.append(host);
++			// Auxiliary windows adopt workbench elements from the main document.
++			const host = window.container.appendChild($('.studio-chat-window'));
+ 			const webview = life.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+ 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index b580c85069479578eb7201c6a22ba177f13b794d..0cee20c9e3b3473e8cbf3b684350aedfce3a9bad 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -35,7 +35,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
+ import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
+-import { SocialSnapshot } from './studioLaunchpadProfile.js';
++import { SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import './media/studioLaunchpad.css';
+ 
+@@ -109,7 +109,7 @@ export class StudioLaunchpad extends Disposable {
+ 			cover: project => this.cover(project),
+ 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
+ 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
+-			social: async query => { const snapshot = await commands.executeCommand<SocialSnapshot>('studio.getSocialSnapshot', query); if (!snapshot) { throw new Error('Social data unavailable'); } return snapshot; },
++			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
+ 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
+ 			chatUser: user => run(this.openInbox(undefined, user)),
+ 			readNotice: id => this.notices.read(id),
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index 4aae5e1fc592246be5095b0059092355a81c84ae..4fa4c1f57b8abbf6ea89117e8318c206fcdcf76f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -14,10 +14,11 @@ export interface StudioPerson { id: string; name: string; avatarUrl?: string; re
+ export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+ export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string }
+ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
++export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+ export interface SocialAction { action: 'request' | 'accept' | 'remove' | 'unfavorite' | 'read'; id: string }
+ export interface ProfileActions {
+ 	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
+-	social(query: string): Promise<SocialSnapshot>; change(action: SocialAction): Promise<void>;
++	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+ }
+ export function avatar(name: string, src?: string): HTMLElement {
+ 	const mark = element('span', 'lp-avatar', Array.from(name)[0] ?? '');
+@@ -35,9 +36,10 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly nav = element('nav', 'lp-profile-nav');
+ 	private readonly rows = element('div', 'lp-profile-rows');
+ 	private readonly filter = element('input', 'lp-query');
+-	private readonly error = element('div', 'lp-message');
++	private readonly status = element('div', 'lp-message');
+ 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.refresh(), 280));
+-	private data?: SocialSnapshot;
++	private data?: { snapshot: SocialSnapshot; query: string };
++	private failure?: 'unsupported' | 'unavailable' | 'change';
+ 	private scope?: string;
+ 	private revision = 0;
+ 	private active = false;
+@@ -49,39 +51,48 @@ export class LaunchpadProfile extends Disposable {
+ 
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void) {
+ 		super();
+-		this.error.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.placeholder = t('Find a Studio user', '查找 Studio 用户'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+-		this.filter.addEventListener('input', () => { ++this.revision; this.debounce.schedule(); });
++		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.placeholder = t('Find a Studio user', '查找 Studio 用户'); this.filter.setAttribute('aria-label', this.filter.placeholder);
++		this.filter.addEventListener('input', () => { ++this.revision; this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
+ 		for (const [id, title, glyph] of [['activity', t('Recent chats', '最近会话'), 'comment-discussion'], ['people', t('Contacts & friends', '通讯录与好友'), 'organization'], ['favorites', t('Favorites', '收藏'), 'star-empty'], ['notifications', t('Notifications', '通知'), 'bell']] as const) {
+ 			const b = button(title, glyph, () => this.select(id)); b.dataset.id = id; this.nav.append(b);
+ 		}
+-		this.element.append(this.header, this.nav, this.filter, this.error, this.rows);
++		this.element.append(this.header, this.nav, this.filter, this.status, this.rows);
+ 	}
+ 
+-	select(section: Section): void { this.section = section; this.filter.value = ''; this.render(); if (this.active) { void this.refresh(); } }
++	select(section: Section): void {
++		++this.revision; this.debounce.cancel(); this.failure = undefined;
++		this.section = section; this.filter.value = ''; this.render();
++		if (this.active) { void this.refresh(); }
++	}
+ 	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[]): void {
+ 		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey]);
+ 		const changed = this.scope !== scope, enter = active && !this.active;
+ 		const repaint = changed || enter || JSON.stringify([this.account, this.inbox, this.nativeNotices]) !== JSON.stringify([account, inbox, notices]);
+ 		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices;
+-		if (changed) { ++this.revision; this.debounce.cancel(); this.data = undefined; this.scope = scope; this.filter.value = ''; this.error.replaceChildren(); }
++		if (changed) { ++this.revision; this.debounce.cancel(); this.data = undefined; this.failure = undefined; this.scope = scope; this.filter.value = ''; }
+ 		if (!platform) { this.section = 'notifications'; }
+ 		if (active && repaint) { this.render(); }
+ 		if (active && (enter || changed)) { void this.refresh(); }
+ 	}
+ 
+ 	async refresh(): Promise<void> {
+-		const rev = ++this.revision; if (!this.account?.signedIn || !this.active) { return; }
++		if (!this.account?.signedIn || !this.active || this.section === 'activity') { return; }
++		const rev = ++this.revision, query = this.section === 'people' ? this.filter.value.trim() : '';
+ 		try {
+-			const data = await this.actions.social(this.section === 'people' ? this.filter.value.trim() : '');
++			const result = await this.actions.social(query);
++			if (rev !== this.revision) { return; }
++			if ('unavailable' in result) { this.failure = result.unavailable; }
++			else { this.data = { snapshot: result, query }; this.failure = undefined; }
++		} catch {
+ 			if (rev !== this.revision) { return; }
+-			if (!data) { throw new Error(); }
+-			this.data = data; this.error.replaceChildren(); this.render();
+-		} catch { if (rev === this.revision) { this.error.replaceChildren(this.t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。'), button(this.t('Retry', '重试'), 'refresh', () => void this.refresh())); } }
++			this.failure = 'unavailable';
++		}
++		this.renderRows();
+ 	}
+ 
+ 	private mutate(action: SocialAction, b: HTMLButtonElement): void {
+-		b.disabled = true; const scope = this.scope;
+-		void this.actions.change(action).then(async () => { if (scope === this.scope) { await this.refresh(); } }, () => { if (scope === this.scope) { this.error.textContent = this.t('Change could not be saved.', '更改未能保存。'); } }).finally(() => b.disabled = false);
++		b.disabled = true; const scope = this.scope, section = this.section;
++		void this.actions.change(action).then(async () => { if (scope === this.scope) { await this.refresh(); } }, () => { if (scope === this.scope && section === this.section) { this.failure = 'change'; this.renderRows(); } }).finally(() => b.disabled = false);
+ 	}
+ 
+ 	private render(): void {
+@@ -92,6 +103,22 @@ export class LaunchpadProfile extends Disposable {
+ 		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
+ 		for (const b of this.nav.querySelectorAll('button')) { b.hidden = !this.platform && b.dataset.id !== 'notifications'; b.setAttribute('aria-pressed', String(this.section === b.dataset.id)); }
+ 		this.filter.hidden = this.section !== 'people' || !a?.signedIn;
++		this.renderRows();
++	}
++
++	private renderRows(): void {
++		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
++		const data = this.section === 'people' && this.data?.query !== this.filter.value.trim() ? undefined : this.data?.snapshot;
++		this.status.replaceChildren();
++		if (needsSocial) {
++			if (this.failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
++			else if (this.failure) {
++				const message = this.failure === 'unsupported'
++					? t('This server does not provide Studio social data. Check the server version and retry.', '当前服务器未提供 Studio 社交接口，请确认服务器版本后重试。')
++					: t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。');
++				this.status.append(message, button(t('Retry', '重试'), 'refresh', () => void this.refresh()));
++			} else if (!data) { this.status.textContent = t('Loading…', '正在加载…'); }
++		}
+ 		const row = (name: string, detail: string, mark: HTMLElement, ...commands: HTMLButtonElement[]) => {
+ 			const r = element('div', 'lp-social-row'), text = element('div', 'lp-social-text'); text.append(element('strong', '', name), element('small', '', detail)); r.append(mark, text, ...commands); return r;
+ 		};
+@@ -100,14 +127,14 @@ export class LaunchpadProfile extends Disposable {
+ 		if (this.section === 'activity') {
+ 			for (const c of this.inbox?.items ?? []) { this.rows.append(row(c.name, c.preview, avatar(c.name, c.avatarUrl), button(c.unread ? String(c.unread) : t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'))); }
+ 		} else if (this.section === 'people') {
+-			for (const p of this.data?.people ?? []) {
++			for (const p of data?.people ?? []) {
+ 				const controls = p.relation === 'friend' ? [button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), change(t('Remove', '移除'), 'remove', { action: 'remove', id: p.id })] : p.relation === 'incoming' ? [change(t('Accept', '接受'), 'check', { action: 'accept', id: p.id }), change(t('Decline', '拒绝'), 'close', { action: 'remove', id: p.id })] : p.relation === 'outgoing' ? [change(t('Cancel request', '撤回申请'), 'close', { action: 'remove', id: p.id })] : [change(t('Add friend', '添加好友'), 'person-add', { action: 'request', id: p.id })];
+ 				this.rows.append(row(p.name, p.relation === 'incoming' ? t('Friend request', '好友申请') : p.relation === 'friend' ? t('Friend', '好友') : p.relation === 'outgoing' ? t('Request sent', '已发出申请') : '', avatar(p.name, p.avatarUrl), ...controls));
+ 			}
+ 		} else if (this.section === 'favorites') {
+-			for (const f of this.data?.favorites ?? []) { this.rows.append(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation))] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
++			for (const f of data?.favorites ?? []) { this.rows.append(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation))] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
+ 		} else {
+-			for (const n of [...this.nativeNotices, ...this.data?.notices ?? []]) {
++			for (const n of [...this.nativeNotices, ...data?.notices ?? []]) {
+ 				const controls = n.conversation || n.source === 'im' ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(n.conversation), 'lp-outline')] : [];
+ 				if (n.id.startsWith('request:') || n.id.startsWith('friend:')) { controls.push(button(t('View contacts', '查看联系人'), 'organization', () => this.select('people'), 'lp-outline')); }
+ 				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
+@@ -115,7 +142,8 @@ export class LaunchpadProfile extends Disposable {
+ 				this.rows.append(row(title, n.source === 'im' ? 'IM' : 'Studio', icon(n.read ? 'mail-read' : 'mail'), ...controls));
+ 			}
+ 		}
+-		if (!this.rows.childElementCount) { this.rows.append(element('p', 'lp-empty', this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : this.section === 'people' ? t('No contacts found.', '暂无联系人。') : this.section === 'favorites' ? t('No favorites yet.', '暂无收藏。') : t('No notifications.', '暂无通知。'))); }
++		const canShowEmpty = this.section === 'activity' || (needsSocial ? !!data && !this.failure : this.section === 'notifications');
++		if (!this.rows.childElementCount && canShowEmpty) { this.rows.append(element('p', 'lp-empty', this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : this.section === 'people' ? t('No contacts found.', '暂无联系人。') : this.section === 'favorites' ? t('No favorites yet.', '暂无收藏。') : t('No notifications.', '暂无通知。'))); }
+ 	}
+ 	override dispose(): void { ++this.revision; super.dispose(); }
+ }

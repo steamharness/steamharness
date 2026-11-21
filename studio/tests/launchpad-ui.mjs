@@ -26,6 +26,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { Emitter, Event } from './src/vs/base/common/event.ts';
   import { observableValue } from './src/vs/base/common/observable.ts';
   import { OverlayWebview } from './src/vs/workbench/contrib/webview/browser/overlayWebview.ts';
+  import { BrowserAuxiliaryWindowService } from './src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts';
   import { WebviewViewService } from './src/vs/workbench/contrib/webviewView/browser/webviewViewService.ts';
   import { Sash, Orientation } from './src/vs/base/browser/ui/sash/sash.ts';
   import './src/vs/base/browser/ui/splitview/splitview.css';
@@ -61,7 +62,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
     if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') return { items: [{id:'checklist', name:'Checklist', projectType:'bot',version:'1.2.0',description:'Verify a release'}].filter(p=>p.name.toLowerCase().includes(args[0].query.toLowerCase()) && (!args[0].type || args[0].type===p.projectType)), total:1, pageSize:12 };
-    if (id === 'studio.getSocialSnapshot') return {people:[{id:'alice',name:'Alice',relation:'friend'}],favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices:[]};
+    if (id === 'studio.getSocialSnapshot') {
+      if (window.socialGate) await window.socialGate;
+      if (window.socialFailure === 'unsupported') return {unavailable:'unsupported'};
+      if (window.socialFailure) throw new Error('Service unavailable');
+      return {people:[{id:'alice',name:'Alice',relation:'friend'}].filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices:[]};
+    }
     if (id === 'studio.openSettings') {
       window.settingsDestination = args[0];
       await kernelCommand('ShowLaunchpadSettings',zh?'设置':'Settings');
@@ -151,7 +157,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const changed = () => window.events['vscode:studioProjectWindowsChanged']();
   window.startLaunchpad = () => {
     root.classList.add('studio-launchpad-window');
-    const auxiliary = {async open(){ const popup=window.open('about:blank','', 'width=920,height=680'); const unload=new Emitter(); popup.addEventListener('unload',()=>unload.fire()); popup.document.body.style='margin:0;height:100vh'; return {window:popup,container:popup.document.body,onUnload:unload.event,dispose(){popup.close();unload.dispose();}}; }};
+    const auxiliary = new BrowserAuxiliaryWindowService(layout, dialogs, {getValue:()=>undefined}, {publicLog2(){}}, {onDidChangeFullScreen:Event.None,focus(){}}, {}, {});
     const records = new Map(), notification = new Emitter(), valueChange = new Emitter();
     const notices = new StudioNotificationInbox({keys:()=>Array.from(records.keys()),getObject:key=>records.get(key),onDidChangeValue:()=>valueChange.event,store(key,value){records.set(key,value);valueChange.fire({key});},remove:key=>{records.delete(key);valueChange.fire({key});}}, {model:{onDidChangeNotification:notification.event}},commands);
     window.notify = text=>notification.fire({kind:NotificationChangeType.ADD,item:{message:{raw:text}}});
@@ -169,11 +175,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage,webviewViews,auxiliary);
     window.clearHistory=()=>{recent.workspaces=[];changed();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
+    window.refreshSocial=()=>kernelCommand('StudioSocialChanged');
     window.closeProject=id=>{ if (id===undefined) windows.length=0; else windows.splice(windows.findIndex(w=>w.id===id),1); changed(); };
     window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
-    window.stopLaunchpad=()=>{controller.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
+    window.stopLaunchpad=()=>{controller.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
     window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
