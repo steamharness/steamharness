@@ -4,11 +4,18 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   const zh = language === 'zh-cn', t = (en, cn) => zh ? cn : en;
   const home = page.locator('.studio-launchpad'), library = home.locator('#lp-page-library');
   const tab = name => home.locator(`#lp-tab-${name}`), cards = library.locator('.lp-all .lp-library-card');
+  const createLabel=t('New project','新建项目'), importLabel=t('Import project','导入项目');
+  const create=library.getByRole('button',{name:createLabel,exact:true}), importProject=library.getByRole('button',{name:importLabel,exact:true});
+  const checkActionsHidden=async()=>{
+    for (const name of [createLabel,importLabel]) assert.equal(await home.getByRole('button',{name,exact:true}).count(),0);
+  };
+  const header=home.locator('.lp-titlebar'), resources=header.getByRole('group',{name:t('Resources','资源')});
   page.setDefaultTimeout(6000);
   await cards.first().waitFor();
   assert.equal(await tab('library').getAttribute('aria-selected'), 'true');
   assert.equal(await home.getByRole('tab').count(), 4);
   assert.equal(await library.locator('[aria-selected=true]').count(), 0);
+  assert.ok(await create.isDisabled()); assert.ok(await importProject.isEnabled());
   assert.deepEqual((await cards.locator('strong').allTextContents()).slice(0, 3), ['Sample.code-workspace','Project 8','folder.code-workspace']);
   await page.evaluate(() => window.activateProjects());
   const source = cards.filter({hasText:'Project 8'}), downloaded = cards.filter({hasText:'Project 6'});
@@ -21,6 +28,15 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await page.evaluate(()=>{window.stopLaunchpad();window.delayProjects();window.startLaunchpad();});
   await downloaded.getByText(t('Downloaded source · Steam','已下载源码 · Steam')).waitFor();
   await page.evaluate(()=>window.activateProjects());
+  const names=[t('Documentation','文档'),'GitHub',...(enhanced?[t('Web console','Web 控制台')]:[])];
+  assert.deepEqual(await resources.getByRole('button').allTextContents(),names);
+  for (const name of names) {
+    const resource=resources.getByRole('button',{name,exact:true}); assert.ok(await resource.getByText(name,{exact:true}).isVisible()); await resource.click();
+  }
+  assert.deepEqual(await page.evaluate(()=>window.actions.filter(([id])=>['external','studio.openLaunchpadResource'].includes(id))),[
+    ['studio.openLaunchpadResource','docs'],['external','https://github.com/steamharness/steamharness',true],...(enhanced?[['studio.openLaunchpadResource','server']]:[])]);
+  const logo=await header.locator('.lp-brand img').boundingBox(), avatar=await header.locator('.lp-avatar').boundingBox();
+  assert.deepEqual([logo.width,logo.height,avatar.width,avatar.height],[36,36,32,32]);
   await checkEditorSashes(page,false);
   await library.locator('.lp-recent .lp-cover').evaluate(img => img.decode());
   await screenshot('library');
@@ -30,6 +46,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   const choose = (en,cn) => page.getByRole('menuitem',{name:t(en,cn),exact:true}).click({delay:150});
   const before = await openCount();
   await source.click(); await detail.getByRole('heading',{name:'Project 8',exact:true}).waitFor();
+  await checkActionsHidden();
   assert.equal(await row('Project 8').getAttribute('aria-current'),'page');
   for (const text of [t('Source · IDE','源码 · IDE'),'1.2.0','/projects/Project 8','294b1eec-23fa-42cf-9fd3-2417f71c0570','Main workflow',t('Default','默认入口')]) await detail.getByText(text,{exact:true}).waitFor();
   await row('Project 6').click({button:'right'}); await choose('Copy path','复制路径');
@@ -56,22 +73,39 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await cards.first().waitFor(); await row('Project 1').waitFor({state:'detached'}); assert.equal(await detail.count(),0);
   const find = library.getByRole('searchbox'); await find.fill('Project 8'); assert.equal(await cards.count(),1);
   await tab('community').click(); await home.getByText(t('Coming soon','暂未开放')).waitFor();
+  await checkActionsHidden(); await home.press('F1'); await home.locator('dialog[open] [role=listbox]').waitFor();
+  for (const name of [createLabel,importLabel]) assert.equal(await home.getByRole('option',{name,exact:true}).count(),0);
+  await page.keyboard.press('Escape');
   await tab('library').click(); assert.equal(await find.inputValue(),'Project 8'); await find.fill('');
   await library.getByRole('button',{name:t('Installed','已安装'),exact:true}).click(); assert.equal(await cards.count(),2);
   await library.getByRole('button',{name:t('All','全部'),exact:true}).click();
   await tab('store').click(); const store=home.locator('#lp-page-store'); await store.locator('.lp-store-grid button').first().click();
+  await checkActionsHidden();
   await store.locator('.lp-feature-controls .lp-primary').click();
   assert.ok(await page.evaluate(enhanced=>window.actions.some(([id,arg])=>id===(enhanced?'studio.getStoreListing':'studio.createExample') && arg==='checklist'),enhanced));
   await store.getByRole('searchbox').fill('not found'); await store.getByText(t('No matching items.','没有匹配的内容。')).waitFor();
   await store.getByRole('searchbox').fill(''); await store.locator('.lp-store-grid button').first().waitFor(); await screenshot('store');
-  await tab('library').click(); await home.getByRole('button',{name:t('Add project','添加项目'),exact:true}).click();
+  await tab('profile').click(); await checkActionsHidden();
+  await tab('library').click(); await home.getByRole('button',{name:t('Open project…','打开项目…'),exact:true}).click();
   await home.getByRole('button',{name:t('Open folder…','打开文件夹…')}).click();
   assert.deepEqual(await page.evaluate(()=>window.actions.at(-1)),['pickFolder',true]);
   await home.press('Control+o'); await home.getByRole('button',{name:t('Open workspace…','打开工作区…')}).click();
   assert.deepEqual(await page.evaluate(()=>window.actions.at(-1)),['pickWorkspace',true]);
   await page.keyboard.press('Control+p'); await home.locator('dialog[open] input').fill('Project 6'); const searches = await openCount(); await page.keyboard.press('Enter');
   await detail.getByRole('heading',{name:'Project 6'}).waitFor(); assert.equal(await openCount(),searches); await tab('library').click();
-  await home.getByRole('button',{name:t('New project','新建项目'),exact:true}).click(); await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape');
+  await create.click(); await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape');
+  const oldOpens=await openCount(); await find.fill('no matching folder'); await importProject.click();
+  assert.deepEqual(await page.evaluate(()=>window.actions.filter(([id])=>id==='pickPaths').at(-1)[1]),{
+    title:importLabel,openLabel:t('Import','导入'),canSelectFolders:true,canSelectFiles:false,canSelectMany:true,availableFileSystems:['file']});
+  assert.equal(await find.inputValue(),'no matching folder'); assert.equal(await page.evaluate(()=>window.actions.some(([id])=>id==='import')),false);
+  await page.evaluate(()=>{window.selectedPaths=['/projects/Imported folder'];window.delayHistory=true;}); await importProject.click();
+  await page.waitForFunction(()=>typeof window.resumeHistory==='function'); await page.evaluate(()=>window.resumeHistory());
+  await detail.getByRole('heading',{name:'Imported folder',exact:true}).waitFor(); assert.equal(await find.inputValue(),'');
+  await tab('library').click(); await importProject.click(); await detail.getByRole('heading',{name:'Imported folder',exact:true}).waitFor();
+  assert.equal(await openCount(),oldOpens,'import and reimport do not launch or focus a project');
+  await detail.getByRole('button',{name:t('Open in new window','在新窗口打开')}).click();
+  assert.deepEqual(await page.evaluate(()=>window.openRequests.at(-1)),{openables:[{kind:'folderUri',path:'/projects/Imported folder'}],forceNewWindow:true});
+  await tab('library').click(); assert.equal(await cards.filter({hasText:'Imported folder'}).count(),1);
   if (enhanced) {
     await page.evaluate(()=>{window.notify('Account A only');});
     const list=()=>page.evaluate(()=>window.localNotices());
@@ -120,9 +154,24 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await tab('library').click();
   for (const width of [768,480,360]) {
     await page.setViewportSize({width,height:640}); assert.ok(await find.isVisible());
+    for (const name of names) {
+      const item=resources.getByRole('button',{name,exact:true}); assert.equal(await item.getAttribute('title'),name);
+      if(width<=480) assert.equal(await item.getByText(name,{exact:true}).isVisible(),false);
+      await item.click({trial:true});
+    }
+    await importProject.click({trial:true}); await create.click({trial:true});
     const overflow=await home.evaluate(el=>[el.scrollWidth,el.clientWidth,Array.from(el.querySelectorAll('*')).filter(c=>{if(c.getBoundingClientRect().right<=innerWidth)return false;for(let p=c.parentElement;p&&p!==el;p=p.parentElement)if(/hidden|scroll|auto|clip/.test(getComputedStyle(p).overflowX))return false;return true;}).map(c=>[c.className,c.textContent.slice(0,40)])]);
     assert.ok(overflow[0]<=overflow[1],`overflow at ${width}: ${JSON.stringify(overflow)}`);
   }
+  for (const side of ['right','left']) {
+    await page.evaluate(side=>window.placeWindowControls(side),side);
+    const controls=page.locator('.window-controls-container'), nativeBox=await controls.boundingBox();
+    const edge=await header.locator(side==='left'?'.lp-brand img':'.lp-account').boundingBox();
+    assert.ok(side==='left'?edge.x>=nativeBox.x+nativeBox.width:edge.x+edge.width<=nativeBox.x,`header must clear ${side} window controls`);
+    await controls.click({trial:true});
+    for (const button of await header.getByRole('button').all()) await button.click({trial:true});
+  }
+  await create.hover(); assert.notEqual(await create.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)'); await page.mouse.move(0,0);
   await screenshot('narrow');
   await cards.filter({hasText:'Project 8'}).click(); await detail.getByRole('button',{name:t('Switch to window','切换到项目窗口')}).waitFor();
   assert.ok(await detail.evaluate(el=>el.scrollWidth<=el.clientWidth && el.getBoundingClientRect().right<=innerWidth));

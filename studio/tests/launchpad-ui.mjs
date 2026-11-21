@@ -44,7 +44,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     new Sash(inner, {getVerticalSashLeft:()=>400}, {orientation:Orientation.VERTICAL})];
   window.sashDrags = [];
   sashes.forEach(sash=>sash.onDidStart(()=>window.sashDrags.push(sash.orientation)));
-  const layout = { mainContainer:root, activeContainer:root, getContainer:(_window,part)=>part ? root.querySelector('.titlebar') : root, mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None, onDidLayoutContainer:Event.None };
+  const layoutChange = new Emitter();
+  const layout = { mainContainer:root, activeContainer:root, getContainer:(_window,part)=>part ? root.querySelector('.titlebar') : root, mainContainerOffset:{top:36}, onDidLayoutMainContainer:layoutChange.event, onDidLayoutContainer:Event.None };
+  window.placeWindowControls = side => {
+    const controls=root.querySelector('.window-controls-container'); root.querySelector('.titlebar-'+side).append(controls);
+    controls.style.width=side==='right'?'138px':'66px'; layoutChange.fire();
+  };
   const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#3063af"/></svg>');
   const chats = { connection:'connected', items:[{id:'group-team',group:true,time:Date.now(),name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{id:'solo',name:'Solo',preview:'Hi',unread:0,avatarUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="#345" d="M0 0h32v32H0z"/></svg>')}] };
   const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
@@ -92,6 +97,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const folders = Array.from({length:8}, (_,i)=>URI.file('/projects/Project '+(8-i)));
   folders[1] = URI.file('/projects/folder.code-workspace');
   const workspace = URI.file('/projects/Sample.code-workspace');
+  const historyChange = new Emitter();
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
   const history = folders.map((uri,i) => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000-i*86400000}));
@@ -127,7 +133,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       window.actions.push(['open',openables[0].kind,opts.forceNewWindow]);
     }};
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
-    showOpenDialog: async opts=>{ window.actions.push(['relocate',opts.canSelectFolders]); return window.newLocation && [URI.file(window.newLocation)]; } };
+    showOpenDialog: async opts=>{ window.actions.push(['pickPaths',opts]); return window.selectedPaths?.map(path=>URI.file(path)); } };
+  const opener = {open:async (uri,opts)=>window.actions.push(['external',uri.toString(),opts.openExternal])};
   const files = {readFile:async()=>({value:decodeBase64(window.coverBytes)}), stat: async uri=>{
     window.projectReads.stats++;
     if (uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND);
@@ -176,10 +183,13 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
         await new Promise(resolve=>window.resumeHistory=()=>{delete window.resumeHistory;resolve();});
       }
       return recent;
-    },onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
-      window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage,webviewViews,auxiliary,menus,{writeText:async text=>window.actions.push(['copy',text])});
-    window.clearHistory=()=>{recent.workspaces=[];changed();};
+    },onDidChangeRecentlyOpened:historyChange.event,addRecentlyOpened:async entries=>{
+      const paths=new Set(entries.map(row=>row.folderUri.path)); window.actions.push(['import',...paths]);
+      recent.workspaces=[...entries,...recent.workspaces.filter(row=>!paths.has((row.folderUri??row.workspace.configPath).path))]; historyChange.fire();
+    },removeRecentlyOpened:async ([uri])=>{
+      window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); historyChange.fire();
+    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,{writeText:async text=>window.actions.push(['copy',text])});
+    window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.refreshSocial=()=>kernelCommand('StudioSocialChanged');
     window.closeProject=id=>{ if (id===undefined) windows.length=0; else windows.splice(windows.findIndex(w=>w.id===id),1); changed(); };
@@ -187,7 +197,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
     window.stopLaunchpad=()=>{controller.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
-    window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
+    window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); historyChange.dispose(); layoutChange.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
   loader: { '.svg':'dataurl', '.ttf':'dataurl', '.png':'dataurl' } });
@@ -309,7 +319,7 @@ async function checkEditorSashes(page, visible) {
   }), 'the native titlebar still has reachable drag space outside its action buttons');
 }
 async function checkProjectDrop(page, language) {
-  const home=page.locator('.studio-launchpad'), title=home.locator('#lp-page-library h1'), hint=page.locator('.lp-project-drop');
+  const home=page.locator('.studio-launchpad'), title=home.locator('.lp-library-heading h1'), hint=page.locator('.lp-project-drop');
   const warning=page.locator('.native-message');
   const count=await page.evaluate(()=>window.openRequests.length);
   const fileTransfer=names=>page.evaluateHandle(names=>{
@@ -321,7 +331,7 @@ async function checkProjectDrop(page, language) {
   await home.dispatchEvent('dragenter',{dataTransfer});
   await home.dispatchEvent('dragover',{dataTransfer});
   assert.ok(await hint.isVisible());
-  assert.equal(await hint.textContent(),language==='zh-cn'?'松开以导入项目文件夹':'Drop folders to open projects');
+  assert.equal(await hint.textContent(),language==='zh-cn'?'松开以导入项目文件夹':'Drop folders to import projects');
   assert.ok((await hint.boundingBox()).y >= (await home.locator('.lp-titlebar').boundingBox()).height,'drop hint clears native controls');
   assert.equal(await hint.evaluate(el=>getComputedStyle(el).pointerEvents),'none');
   await title.dispatchEvent('dragenter',{dataTransfer});
@@ -334,10 +344,15 @@ async function checkProjectDrop(page, language) {
   await title.dispatchEvent('dragenter',{dataTransfer});
   await title.dispatchEvent('dragover',{dataTransfer});
   await title.dispatchEvent('drop',{dataTransfer});
-  await page.waitForFunction(count=>window.openRequests.length===count+1,count);
-  assert.deepEqual(await page.evaluate(()=>window.openRequests.at(-1)),{openables:[{kind:'folderUri',path:'/projects/拖入 project'}],forceNewWindow:true});
+  await home.locator('.lp-project-details').getByRole('heading',{name:'拖入 project'}).waitFor();
   assert.equal(await hint.isVisible(),false);
-  assert.ok(await home.isVisible(),'opening a dropped folder leaves the launchpad resident');
+  assert.ok(await home.isVisible(),'importing a dropped folder leaves the launchpad resident');
+
+  await home.locator('#lp-tab-community').click();
+  const batch=await fileTransfer(['Batch A','notes.txt','Batch B','Batch A']); await home.dispatchEvent('drop',{dataTransfer:batch});
+  await home.locator('.lp-all .lp-library-card').filter({hasText:'Batch B'}).waitFor();
+  assert.equal(await home.locator('.lp-project-details').count(),0,'a batch returns to the library without picking a project');
+  assert.deepEqual(await page.evaluate(()=>window.actions.filter(([id])=>id==='import').at(-1)),['import','/projects/Batch A','/projects/Batch B']);
 
   const link=await page.evaluateHandle(()=>{const transfer=new DataTransfer(); transfer.setData('text/uri-list','file:///projects/untrusted-link'); return transfer;});
   await home.dispatchEvent('dragover',{dataTransfer:link});
@@ -346,9 +361,9 @@ async function checkProjectDrop(page, language) {
   const file=await fileTransfer(['notes.txt']);
   await home.dispatchEvent('drop',{dataTransfer:file});
   await warning.waitFor();
-  assert.ok((await warning.textContent()).includes(language==='zh-cn'?'没有可打开的项目文件夹':'No project folders could be opened'));
+  assert.ok((await warning.textContent()).includes(language==='zh-cn'?'没有可导入的项目文件夹':'No project folders could be imported'));
   await warning.getByRole('button').click();
-  assert.equal(await page.evaluate(()=>window.openRequests.length),count+1,'dropping a link or regular file never opens an editor');
+  assert.equal(await page.evaluate(()=>window.openRequests.length),count,'dropping folders, links or regular files never opens an editor');
 }
 
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
@@ -429,6 +444,6 @@ try {
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
     await checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop,
       screenshot: name => page.screenshot({path:fileURLToPath(new URL(stem+'-'+name+'.png',proof))}), loads:()=>loads });
-    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad layout, keyboard actions, window changes, drag and drop, creation${enhanced?', account and settings':''} passed`);
+    await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad resources, layout, keyboard actions, window changes, library import, drag and drop, creation${enhanced?', account and settings':''} passed`);
   }
 } finally { await browser.close(); }

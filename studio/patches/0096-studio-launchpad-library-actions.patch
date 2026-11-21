@@ -1,0 +1,352 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 8ae6c6209b47b3cb4e523d902895a90d5e776104..43af762f1aac2a733045e16124db08117080e1a0 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -28,16 +28,22 @@
+ .monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
+ .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+ .lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager,.lp-profile-nav { display: flex; align-items: center; gap: 8px; }
+-.lp-titlebar { padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
++.lp-titlebar { container: lp-titlebar / inline-size; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+ .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
+-.lp-brand { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+-.lp-brand img { height: 42px; width: 42px; object-fit: contain; }
+-.lp-utilities .lp-tool,.studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
++.lp-brand { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
++.lp-brand img { width: min(36px,var(--studio-launchpad-bar,44px)); aspect-ratio: 1; flex: none; object-fit: contain; }
++.lp-wordmark { overflow: hidden; text-overflow: ellipsis; }
++.lp-utilities { flex: none; --lp-avatar-size: min(32px,calc(var(--studio-launchpad-bar,44px) - 2px)); }
++.studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
++.lp-resources { display: flex; align-items: center; gap: 2px; border-inline-end: 1px solid var(--lp-line); padding-inline-end: 8px; }
++.lp-resources .lp-tool { width: auto; padding-inline: 7px; white-space: nowrap; }
++.lp-utilities .lp-account { width: calc(var(--lp-avatar-size) + 2px); height: calc(var(--lp-avatar-size) + 2px); }
+ .lp-has-unread::after { content: ''; position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent); }
+ .lp-avatar { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; overflow: hidden; border-radius: 5px; background: var(--lp-panel); }
+ .lp-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+-.lp-utilities .lp-avatar { width: 24px; height: 24px; }
++.lp-utilities .lp-avatar { width: var(--lp-avatar-size); height: var(--lp-avatar-size); }
++.lp-account .codicon-account { font-size: 22px; }
+ .lp-navigation,.lp-statusbar,.lp-panels,.lp-dialog,.lp-project-drop { pointer-events: auto; }
+ .lp-navigation { justify-content: space-between; padding-inline: var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-chrome); }
+ .lp-tabs { display: flex; align-items: stretch; height: 100%; gap: clamp(6px,2vw,26px); }
+@@ -67,7 +73,9 @@
+ .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+ .lp-shelf,.lp-profile,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
+-.lp-library-title,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
++.lp-library-title { display: grid; gap: 12px; }
++.lp-library-heading,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
++.lp-library-actions { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+ .lp-shelf-head { justify-content: flex-start; margin-bottom: 10px; }
+ .lp-collection { margin-top: 24px; }
+ .lp-library-grid,.lp-store-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(156px,100%),1fr)); gap: 14px; }
+@@ -99,7 +107,7 @@
+ .lp-search-field .lp-query { border: 0; }
+ .studio-launchpad :is(.lp-filters,.lp-profile-nav) [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+ .studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
+-.studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
++.studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
+ .studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
+ .lp-store-page { padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
+ .lp-store-toolbar { margin-bottom: 19px; }
+@@ -128,15 +136,22 @@
+ .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); height: 26px; border: 0; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
++@container lp-titlebar (max-width: 680px) {
++	.lp-resource-label { display: none; } .lp-resources .lp-tool { width: 30px; padding: 0; }
++}
++@container lp-titlebar (max-width: 360px) {
++	.lp-wordmark { display: none; } .lp-brand img { width: min(30px,var(--studio-launchpad-bar,44px)); }
++	.lp-resources,.lp-utilities { gap: 2px; } .lp-resources { padding-inline-end: 3px; }
++	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
++}
+ @media (max-width: 700px) {
+ 	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
+ 	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
+ 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
+ }
+ @media (max-width: 480px) {
+-	.lp-create-label { display: none; } .studio-launchpad .lp-create { flex: 0 0 28px; height: 28px; }
+-	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); } .lp-brand { min-width: 0; overflow: hidden; } .lp-utilities { flex: none; }
++	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); }
+ 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
+-	.lp-store-feature > .lp-artwork { max-height: 165px; } .lp-utilities { gap: 3px; } .lp-brand img { width: 33px; }
++	.lp-store-feature > .lp-artwork { max-height: 165px; }
+ 	.lp-profile-nav { gap: 2px; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 9ee4630429ffeb6bc7591814c64a68c049a5d19b..ca1ae5bff5371f814a6967c84fa242e03537fe73 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -11,6 +11,7 @@ import { encodeBase64 } from '../../base/common/buffer.js';
+ import { CancellationTokenSource } from '../../base/common/cancellation.js';
+ import { Event } from '../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { Schemas } from '../../base/common/network.js';
+ import { basenameOrAuthority } from '../../base/common/resources.js';
+ import { URI } from '../../base/common/uri.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+@@ -105,6 +106,7 @@ export class StudioLaunchpad extends Disposable {
+ 			open: () => run(dialogs.pickFolderAndOpen({ forceNewWindow: true })),
+ 			workspace: () => run(dialogs.pickWorkspaceAndOpen({ forceNewWindow: true })),
+ 			create: () => run(commands.executeCommand('studio.createProject')),
++			importProjects: () => run(this.pickProjectsToImport()),
+ 			project: project => run(this.openProject(project)),
+ 			remove: project => run(this.removeProject(project)),
+ 			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
+@@ -141,7 +143,7 @@ export class StudioLaunchpad extends Disposable {
+ 				event.preventDefault();
+ 				event.stopPropagation();
+ 				const paths = new Set(Array.from(data.files, file => webUtils.getPathForFile(file)).filter(Boolean));
+-				if (paths.size) { run(this.openDroppedFolders(Array.from(paths, path => URI.file(path)))); }
++				if (paths.size) { run(this.importFolders(Array.from(paths, path => URI.file(path)))); }
+ 			},
+ 		}));
+ 		const resize = () => {
+@@ -359,20 +361,31 @@ export class StudioLaunchpad extends Disposable {
+ 		return data;
+ 	}
+ 
+-	private async openDroppedFolders(uris: URI[]): Promise<void> {
++	private async pickProjectsToImport(): Promise<void> {
++		const zh = this.language.startsWith('zh');
++		const uris = await this.dialogs.showOpenDialog({ title: zh ? '导入项目' : 'Import project', openLabel: zh ? '导入' : 'Import',
++			canSelectFolders: true, canSelectFiles: false, canSelectMany: true, availableFileSystems: [Schemas.file] });
++		if (uris?.length && !this._store.isDisposed) { await this.importFolders(uris); }
++	}
++
++	private async importFolders(uris: URI[]): Promise<void> {
+ 		const folders = (await Promise.all(uris.map(async uri => {
+ 			try {
+ 				return (await this.files.stat(uri)).isDirectory ? { folderUri: uri } : undefined;
+ 			} catch {
+-				return undefined; // A dropped path can disappear before it is opened.
++				return undefined; // The folder may have moved since the picker or drop.
+ 			}
+ 		}))).filter(folder => folder !== undefined);
+ 		if (this._store.isDisposed) { return; }
+ 		if (folders.length) {
+-			await this.native.openWindow(folders, { forceNewWindow: true });
++			await this.workspaces.addRecentlyOpened(folders);
++			if (this._store.isDisposed) { return; }
++			for (const { folderUri } of folders) { this.missing.delete(folderUri.toString()); }
++			this.paint();
++			this.view.showImportedProjects(folders.length === 1 ? folders[0].folderUri.toString() : undefined);
+ 		} else {
+ 			const zh = this.language.startsWith('zh');
+-			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可打开的项目文件夹' : 'No project folders could be opened',
++			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可导入的项目文件夹' : 'No project folders could be imported',
+ 				buttons: [zh ? '确定' : 'OK'], noLink: true });
+ 		}
+ 	}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index f89614a6f8c25fa196841d97d0500925aaefbf7e..e7b0584ad7325898e6dc3323a602745aea238fed 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -10,6 +10,8 @@ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.j
+ import { projectDetails } from './studioLaunchpadProjectDetails.js';
+ 
+ export interface LibraryActions {
++	create(): void;
++	importProjects(): void;
+ 	project(p: LaunchpadProject): void;
+ 	remove(p: LaunchpadProject): void;
+ 	reveal(p: LaunchpadProject): void;
+@@ -22,6 +24,9 @@ export class LaunchpadLibrary {
+ 	readonly element = element('div', 'lp-library');
+ 	private readonly index = element('div', 'lp-index lp-scroll');
+ 	private readonly shelf = element('div', 'lp-shelf lp-scroll');
++	private readonly toolbar = element('header', 'lp-library-title');
++	private readonly content = element('div');
++	private readonly createButton: HTMLButtonElement;
+ 	private readonly search = element('input', 'lp-query');
+ 	private readonly filters = element('div', 'lp-filters');
+ 	private filter = 'all';
+@@ -29,34 +34,49 @@ export class LaunchpadLibrary {
+ 	private projects = new Map<string, LaunchpadProject>();
+ 	private history = new Set<string>();
+ 	private selected?: string;
++	private pendingSelection?: string;
+ 	private homeScroll = 0;
+ 
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
+ 		const rail = element('aside', 'lp-rail');
+ 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
+-		this.search.addEventListener('input', () => { this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
++		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+ 		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
+ 		for (const [id, label] of [['all', t('All', '全部')], ['source', t('Source', '源码')], ['installed', t('Installed', '已安装')], ['folder', t('Folders', '文件夹')]]) {
+-			const b = button(label, '', () => { this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
++			const b = button(label, '', () => { this.pendingSelection = undefined; this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
+ 		}
++		const heading = element('div', 'lp-library-heading'), manage = element('div', 'lp-library-actions');
++		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
++		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
++		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
++		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.content);
+ 		this.element.append(rail, this.shelf);
+ 	}
+ 
+-	update(recent: LaunchpadProject[], windows: LaunchpadProject[]): void {
++	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean): void {
++		this.createButton.disabled = !canCreate;
+ 		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
+ 		this.projects = new Map(recent.map(p => [p.uri, p]));
+ 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
+-		if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
++		if (this.pendingSelection && this.projects.has(this.pendingSelection)) { this.show(this.pendingSelection); }
++		else if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
++	}
++
++	resetFilters(): void {
++		this.homeScroll = this.shelf.scrollTop = 0;
++		if (this.search.value || this.filter !== 'all') { this.search.value = ''; this.filter = 'all'; this.render(); }
+ 	}
+ 
+ 	show(uri?: string): void {
+-		if (uri === this.selected || (uri && !this.projects.has(uri))) { return; }
++		// Imported folders arrive with the debounced native history snapshot, not the picker result.
++		this.pendingSelection = uri && !this.projects.has(uri) ? uri : undefined;
++		if (this.pendingSelection || uri === this.selected) { return; }
+ 		if (!this.selected) { this.homeScroll = this.shelf.scrollTop; }
+ 		this.selected = uri; this.render();
+ 		this.shelf.scrollTop = uri ? 0 : this.homeScroll;
+-		if (uri) { this.shelf.querySelector('h1')?.focus({ preventScroll: true }); }
++		if (uri) { this.content.querySelector('h1')?.focus({ preventScroll: true }); }
+ 	}
+ 
+ 	private manage(p: LaunchpadProject, origin: HTMLElement, point?: { x: number; y: number }): void {
+@@ -94,14 +114,14 @@ export class LaunchpadLibrary {
+ 			this.bindMenu(b, p); return b;
+ 		}));
+ 		const selected = this.selected && this.projects.get(this.selected);
++		this.toolbar.hidden = !!selected;
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
+ 		if (selected) {
+-			this.shelf.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
++			this.content.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
+ 		}
+-		const toolbar = element('header', 'lp-library-title'); toolbar.append(element('h1', '', t('Project library', '项目仓库')), this.filters);
+-		this.shelf.replaceChildren(toolbar);
++		this.content.replaceChildren();
+ 		if (!rows.length) {
+-			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.shelf.append(empty); return;
++			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.content.append(empty); return;
+ 		}
+ 		const gallery = (title: string, group: string, projects: LaunchpadProject[]) => {
+ 			const section = element('section', `lp-collection lp-${group}`), grid = element('div', 'lp-library-grid');
+@@ -118,7 +138,7 @@ export class LaunchpadLibrary {
+ 				this.bindMenu(b, p);
+ 				item.append(b, more); grid.append(item);
+ 			}
+-			section.append(heading(title, projects.length), grid); this.shelf.append(section);
++			section.append(heading(title, projects.length), grid); this.content.append(section);
+ 		};
+ 		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
+ 		gallery(t('All projects', '所有项目'), 'all', rows);
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 217cea6247f96270082a352abefc9283c6059000..3d22a6a951864f4f06cfecc00816e425a49b71d5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -17,7 +17,7 @@ export interface LaunchpadState {
+ 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+ }
+ interface LaunchpadActions extends ProfileActions, LibraryActions {
+-	open(): void; workspace(): void; create(): void;
++	open(): void; workspace(): void;
+ 	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
+ 	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
+ 	resource(id: 'docs' | 'github' | 'server'): void;
+@@ -33,7 +33,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	private readonly accountButton: HTMLButtonElement;
+ 	private readonly inboxButton: HTMLButtonElement;
+ 	private readonly bell: HTMLButtonElement;
+-	private readonly createButton: HTMLButtonElement;
++	private readonly consoleButton: HTMLButtonElement;
+ 	private readonly picker: LaunchpadPicker;
+ 	private readonly store: LaunchpadStore;
+ 	private readonly library: LaunchpadLibrary;
+@@ -50,12 +50,20 @@ export class StudioLaunchpadView extends Disposable {
+ 		this.element.addEventListener('pointerdown', () => this.element.classList.add('lp-pointer'), true);
+ 		this.element.addEventListener('keydown', () => this.element.classList.remove('lp-pointer'), true);
+ 		const chrome = element('header', 'lp-titlebar');
+-		const brand = element('span', 'lp-brand'); brand.append(picture(STEAMHARNESS_ICON_DATA_URI), element('strong', '', 'SteamHarness'), ' Studio');
++		const brand = element('span', 'lp-brand'), wordmark = element('span', 'lp-wordmark');
++		wordmark.append(element('strong', '', 'SteamHarness'), ' Studio'); brand.append(picture(STEAMHARNESS_ICON_DATA_URI), wordmark);
+ 		const tool = (name: string, glyph: string, run: () => void) => { const b = button('', glyph, run, 'lp-tool'); b.title = name; b.setAttribute('aria-label', name); return b; };
++		const resources = element('div', 'lp-resources'); resources.setAttribute('role', 'group'); resources.setAttribute('aria-label', t('Resources', '资源'));
++		const resource = (id: 'docs' | 'github' | 'server', name: string, glyph: string) => {
++			const b = tool(name, glyph, () => actions.resource(id)); b.append(element('span', 'lp-resource-label', name)); return b;
++		};
++		this.consoleButton = resource('server', t('Web console', 'Web 控制台'), 'link-external'); this.consoleButton.hidden = true;
++		resources.append(resource('docs', t('Documentation', '文档'), 'book'), resource('github', 'GitHub', 'github'), this.consoleButton);
+ 		this.commandCenter = tool(t('Search projects or commands', '搜索项目或命令'), 'search', () => this.search(false));
+ 		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
+ 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
+-		const utilities = element('div', 'lp-utilities'); utilities.append(this.commandCenter, this.bell, this.accountButton);
++		this.accountButton.classList.add('lp-account');
++		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.commandCenter, this.bell, this.accountButton);
+ 		chrome.append(brand, utilities);
+ 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
+ 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
+@@ -66,24 +74,16 @@ export class StudioLaunchpadView extends Disposable {
+ 			if (i < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { return; }
+ 			e.preventDefault(); const next = buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length]; this.select(next.dataset.tab as Tab); next.focus();
+ 		});
+-		const createLabel = t('New project', '新建项目');
+-		this.createButton = button('', 'add', actions.create, 'lp-outline lp-create');
+-		this.createButton.title = createLabel; this.createButton.setAttribute('aria-label', createLabel);
+-		this.createButton.append(element('span', 'lp-create-label', createLabel)); navigation.append(this.tabs, this.createButton);
++		navigation.append(this.tabs);
+ 		this.library = new LaunchpadLibrary(t, actions);
+ 		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
+ 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
+ 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
+ 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
+ 		}
+-		const foot = element('footer', 'lp-statusbar'); const open = button(t('Add project', '添加项目'), 'folder-opened', () => this.openOptions(open));
+-		const links = tool(t('Resources', '资源'), 'book', () => {
+-			const options: LaunchpadOption[] = [{ label: t('Documentation', '文档'), glyph: 'book', run: () => actions.resource('docs') }, { label: 'GitHub', glyph: 'github', run: () => actions.resource('github') }];
+-			if (this.state?.platform) { options.push({ label: t('Web console', 'Web 控制台'), glyph: 'link-external', run: () => actions.resource('server') }); }
+-			this.picker.choices(t('Resources', '资源'), options, links);
+-		});
++		const foot = element('footer', 'lp-statusbar'); const open = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(open));
+ 		this.inboxButton = button(t('Friends & chat', '好友与聊天'), 'comment-discussion', () => actions.inbox(), 'lp-chat-launch');
+-		foot.append(open, links, this.inboxButton); this.drop.append(icon('folder-opened'), t('Drop folders to open projects', '松开以导入项目文件夹')); this.drop.hidden = true;
++		foot.append(open, this.inboxButton); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
+ 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
+ 	}
+ 
+@@ -96,9 +96,9 @@ export class StudioLaunchpadView extends Disposable {
+ 	}
+ 
+ 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
+-	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Add project', '添加项目'), this.fileOptions(), origin); }
++	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Open project…', '打开项目…'), this.fileOptions(), origin); }
+ 	private search(commands: boolean): void {
+-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
++		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
+ 	}
+ 	shortcut(event: KeyboardEvent): void {
+ 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
+@@ -114,13 +114,14 @@ export class StudioLaunchpadView extends Disposable {
+ 	closePicker(): void { this.picker.close(); }
+ 	refreshSocial(): void { void this.profile.refresh(); }
+ 	showSocial(section: 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
++	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
+ 	update(state: LaunchpadState): void {
+ 		const previous = this.state; this.state = state;
+-		this.createButton.disabled = !state.canCreate; this.inboxButton.hidden = !state.platform;
++		this.consoleButton.hidden = this.inboxButton.hidden = !state.platform;
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+ 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+ 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
+-		this.library.update(state.recent, state.windows); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey, state.store?.items ?? []);
++		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey, state.store?.items ?? []);
+ 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
+ 		if (this.picker.dialog.open) { this.picker.update(); }
+ 	}
