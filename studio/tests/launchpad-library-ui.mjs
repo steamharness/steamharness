@@ -11,6 +11,8 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     for (const name of [createLabel,importLabel]) assert.equal(await home.getByRole('button',{name,exact:true}).count(),0);
   };
   const header=home.locator('.lp-titlebar'), resources=header.getByRole('group',{name:t('Resources','资源')});
+  const searchLabel=t('Search projects or commands','搜索项目或命令');
+  const center=header.getByRole('button',{name:searchLabel,exact:true});
   page.setDefaultTimeout(6000);
   await cards.first().waitFor();
   assert.equal(await tab('library').getAttribute('aria-selected'), 'true');
@@ -87,6 +89,20 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await store.getByRole('searchbox').fill('not found'); await store.getByText(t('No matching items.','没有匹配的内容。')).waitFor();
   await store.getByRole('searchbox').fill(''); await store.locator('.lp-store-grid button').first().waitFor(); await screenshot('store');
   await tab('profile').click(); await checkActionsHidden();
+  assert.ok(await center.getByText(searchLabel, { exact:true }).isVisible());
+  const quick = home.getByRole('dialog', { name:t('Command center','命令中心') });
+  const previousOpens = await openCount();
+  await center.click(); await quick.getByRole('combobox').waitFor();
+  await screenshot('command-center');
+  assert.equal(await center.getAttribute('aria-expanded'), 'true');
+  await quick.getByRole('combobox').fill('/projects/Project 8');
+  await quick.getByRole('option', { name:/Project 8/ }).click();
+  await detail.getByRole('heading', { name:'Project 8', exact:true }).waitFor();
+  assert.equal(await openCount(), previousOpens, 'a picker result shows details without opening or focusing a project window');
+  await page.keyboard.press('Control+Shift+p');
+  await quick.getByRole('combobox', { name:t('Find a command','查找命令') }).waitFor();
+  await page.keyboard.press('Escape');
+  assert.deepEqual(await center.evaluate(el => [el.getAttribute('aria-expanded'), el === document.activeElement]), ['false', true]);
   await tab('library').click(); await home.getByRole('button',{name:t('Open project…','打开项目…'),exact:true}).click();
   await home.getByRole('button',{name:t('Open folder…','打开文件夹…')}).click();
   assert.deepEqual(await page.evaluate(()=>window.actions.at(-1)),['pickFolder',true]);
@@ -153,13 +169,19 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     const overflow=await home.evaluate(el=>[el.scrollWidth,el.clientWidth,Array.from(el.querySelectorAll('*')).filter(c=>{if(c.getBoundingClientRect().right<=innerWidth)return false;for(let p=c.parentElement;p&&p!==el;p=p.parentElement)if(/hidden|scroll|auto|clip/.test(getComputedStyle(p).overflowX))return false;return true;}).map(c=>[c.className,c.textContent.slice(0,40)])]);
     assert.ok(overflow[0]<=overflow[1],`overflow at ${width}: ${JSON.stringify(overflow)}`);
   }
-  for (const side of ['right','left']) {
-    await page.evaluate(side=>window.placeWindowControls(side),side);
-    const controls=page.locator('.window-controls-container'), nativeBox=await controls.boundingBox();
-    const edge=await header.locator(side==='left'?'.lp-brand img':'.lp-account').boundingBox();
-    assert.ok(side==='left'?edge.x>=nativeBox.x+nativeBox.width:edge.x+edge.width<=nativeBox.x,`header must clear ${side} window controls`);
-    await controls.click({trial:true});
-    for (const button of await header.getByRole('button').all()) await button.click({trial:true});
+  for (const width of [1120,768,360]) {
+    await page.setViewportSize({width,height:640});
+    for (const side of ['right','left']) {
+      await page.evaluate(side=>window.placeWindowControls(side),side);
+      const controls=page.locator('.window-controls-container'), nativeBox=await controls.boundingBox();
+      const edge=await header.locator(side==='left'?'.lp-brand img':'.lp-account').boundingBox();
+      assert.ok(side==='left'?edge.x>=nativeBox.x+nativeBox.width:edge.x+edge.width<=nativeBox.x,`header must clear ${side} window controls`);
+      const [brand, search, tools] = await Promise.all([header.locator('.lp-brand').boundingBox(), center.boundingBox(), resources.boundingBox()]);
+      assert.ok(search.width >= 24 && brand.x + brand.width <= search.x && search.x + search.width <= tools.x, `command center overlaps at ${width} with ${side} controls`);
+      if (width >= 768) assert.ok(Math.abs(search.x + search.width / 2 - width / 2) <= 1, `command center is not centered at ${width} with ${side} controls`);
+      await controls.click({trial:true});
+      for (const button of await header.getByRole('button').all()) await button.click({trial:true});
+    }
   }
   await create.hover(); assert.notEqual(await create.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)'); await page.mouse.move(0,0);
   await screenshot('narrow');

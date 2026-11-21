@@ -1,0 +1,109 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 6f1e83c082219629d78eadad866c7518c5a254dc..e5c50cfac2aa602286d4e6d4c63aaaeb72d19a7c 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -27,17 +27,36 @@
+ .studio-launchpad button:hover:not(:disabled) { background: var(--lp-hover); }
+ .monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
+ .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager { display: flex; align-items: center; gap: 8px; }
+-.lp-titlebar { container: lp-titlebar / inline-size; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
++.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager { display: flex; align-items: center; gap: 8px; }
++.lp-titlebar {
++	/* Balance the native controls on both sides of the grid; each edge group reclaims its unused inset. */
++	--lp-title-inset: max(var(--lp-controls-left,0px),var(--lp-controls-right,0px));
++	container: lp-titlebar / inline-size; display: grid; align-items: center; gap: 8px;
++	padding-inline: calc(var(--lp-title-inset) + 10px);
++	grid-template-columns: minmax(0,1fr) min(32%,600px) minmax(0,1fr);
++}
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+ .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
+-.lp-brand { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
++.lp-brand { display: flex; align-items: center; gap: 6px; margin-inline-start: calc(var(--lp-controls-left,0px) - var(--lp-title-inset)); white-space: nowrap; }
+ .lp-brand img { width: min(36px,var(--studio-launchpad-bar,44px)); aspect-ratio: 1; flex: none; object-fit: contain; }
+ .lp-wordmark { overflow: hidden; text-overflow: ellipsis; }
+-.lp-utilities { flex: none; --lp-avatar-size: min(32px,calc(var(--studio-launchpad-bar,44px) - 2px)); }
++.studio-launchpad .lp-command-center {
++	container: lp-command / inline-size; min-width: 0; height: 22px; padding: 0 4px; font-size: 12px; white-space: nowrap;
++	color: var(--vscode-commandCenter-foreground,var(--lp-text)); background: var(--vscode-commandCenter-background,var(--lp-panel));
++	border: 1px solid var(--vscode-commandCenter-border,var(--lp-edge)); border-radius: var(--vscode-cornerRadius-medium,4px);
++}
++.studio-launchpad .lp-command-center:hover:not(:disabled) {
++	color: var(--vscode-commandCenter-activeForeground,var(--lp-strong)); background: var(--vscode-commandCenter-activeBackground,var(--lp-hover));
++	border-color: var(--vscode-commandCenter-activeBorder,var(--lp-edge));
++}
++.lp-command-center .codicon { font-size: 14px; }
++.lp-command-short { display: none; }
++.lp-utilities { justify-content: flex-end; min-width: 0; margin-inline-end: calc(var(--lp-controls-right,0px) - var(--lp-title-inset)); --lp-avatar-size: min(32px,calc(var(--studio-launchpad-bar,44px) - 2px)); }
+ .studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
+-.lp-resources { display: flex; align-items: center; gap: 2px; border-inline-end: 1px solid var(--lp-line); padding-inline-end: 8px; }
+-.lp-resources .lp-tool { width: auto; padding-inline: 7px; white-space: nowrap; }
++.lp-resources { display: flex; align-items: center; min-width: 0; gap: 2px; border-inline-end: 1px solid var(--lp-line); padding-inline-end: 8px; }
++.lp-resources .lp-tool { width: auto; min-width: 0; gap: 4px; padding-inline: 4px; font-size: 12px; white-space: nowrap; }
++.lp-resource-label { overflow: hidden; text-overflow: ellipsis; }
++.lp-utilities > .lp-tool { flex: none; }
+ .lp-utilities .lp-account { width: calc(var(--lp-avatar-size) + 2px); height: calc(var(--lp-avatar-size) + 2px); }
+ .lp-has-unread::after { content: ''; position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent); }
+ .lp-avatar { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; overflow: hidden; border-radius: 5px; background: var(--lp-panel); }
+@@ -160,15 +179,25 @@
+ .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); height: 26px; border: 0; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+-@container lp-titlebar (max-width: 680px) {
++@container lp-command (max-width: 180px) {
++	.lp-command-label { display: none; }
++	.lp-command-short { display: inline; }
++}
++@container lp-command (max-width: 70px) {
++	.lp-command-short { display: none; }
++}
++@container lp-titlebar (max-width: 960px) {
+ 	.lp-resource-label { display: none; } .lp-resources .lp-tool { width: 30px; padding: 0; }
+ }
+-@container lp-titlebar (max-width: 360px) {
++@container lp-titlebar (max-width: 520px) {
+ 	.lp-wordmark { display: none; } .lp-brand img { width: min(30px,var(--studio-launchpad-bar,44px)); }
+ 	.lp-resources,.lp-utilities { gap: 2px; } .lp-resources { padding-inline-end: 3px; }
+ 	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
+ }
+ @media (max-width: 700px) {
++	/* When native controls take up most of one wing, use the real gap between the two groups. */
++	.lp-titlebar { gap: 3px; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 3px); grid-template-columns: auto minmax(26px,1fr) max-content; }
++	.lp-brand,.lp-utilities { margin-inline: 0; }
+ 	.lp-profile { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
+ 	.lp-profile-rail { padding: 10px var(--lp-pad) 0; border-inline-end: 0; border-bottom: 1px solid var(--lp-line); max-height: 42vh; }
+ 	.lp-profile-header { align-items: center; grid-template-columns: auto minmax(0,1fr) auto auto; padding: 0; border: 0; }
+@@ -184,7 +213,6 @@
+ 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
+ }
+ @media (max-width: 480px) {
+-	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); }
+ 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
+ 	.lp-store-feature > .lp-artwork { max-height: 165px; }
+ 	.lp-profile-nav { gap: 2px; } .lp-profile-toolbar .lp-search-field { width: 100%; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 3d22a6a951864f4f06cfecc00816e425a49b71d5..fcc63d160bbff50e5f3011ee0c86095f665c14c4 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -59,12 +59,18 @@ export class StudioLaunchpadView extends Disposable {
+ 		};
+ 		this.consoleButton = resource('server', t('Web console', 'Web 控制台'), 'link-external'); this.consoleButton.hidden = true;
+ 		resources.append(resource('docs', t('Documentation', '文档'), 'book'), resource('github', 'GitHub', 'github'), this.consoleButton);
+-		this.commandCenter = tool(t('Search projects or commands', '搜索项目或命令'), 'search', () => this.search(false));
++		const searchLabel = t('Search projects or commands', '搜索项目或命令');
++		this.commandCenter = button('', 'search', () => this.search(false), 'lp-command-center');
++		this.commandCenter.append(element('span', 'lp-command-label', searchLabel), element('span', 'lp-command-short', t('Search', '搜索')));
++		this.commandCenter.title = searchLabel;
++		this.commandCenter.setAttribute('aria-label', searchLabel);
++		this.commandCenter.setAttribute('aria-haspopup', 'dialog');
++		this.commandCenter.setAttribute('aria-expanded', 'false');
+ 		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
+ 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
+ 		this.accountButton.classList.add('lp-account');
+-		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.commandCenter, this.bell, this.accountButton);
+-		chrome.append(brand, utilities);
++		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.accountButton);
++		chrome.append(brand, this.commandCenter, utilities);
+ 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
+ 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
+ 			const b = button(name, '', () => this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);
