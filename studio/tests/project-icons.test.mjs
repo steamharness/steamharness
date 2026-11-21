@@ -17,7 +17,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-function fixture(t, history = []) {
+function fixture(t, history = [], imports = []) {
   const files = new Map(), failures = new Map(), reads = [], changed = new Emitter(), focus = new Emitter();
   const uri = value => ({ toString: () => value, scheme: new URL(value).protocol.slice(0, -1), path: new URL(value).pathname });
   const vscode = {
@@ -50,7 +50,7 @@ function fixture(t, history = []) {
     return types.size === 1 ? [...types][0] : undefined;
   } };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: () => vscode, TextDecoder, URL, Date, SyntaxError, setTimeout, clearTimeout });
-  const icons = new module.exports.ProjectIcons(launcher, undefined, history);
+  const icons = new module.exports.ProjectIcons(launcher, undefined, history, () => imports);
   t.after(() => icons.dispose());
   const types = async (...uris) => Object.fromEntries((await icons.resolveMany(uris)).map(result => [result.uri, result.projectType]));
   return { files, failures, reads, icons, types, launcher, vscode, change: name => changed.fire(uri(name)), focus: () => focus.fire({ focused: true }) };
@@ -100,6 +100,30 @@ test('local entries retain their icons without a release UUID', async t => {
       assert.deepEqual(await f.types(root), { [root]: type });
     }
   }
+});
+
+test('library format repairs an old download badge for locally created source without reclassifying installed artifacts', async t => {
+  const root = 'file:///projects/source', entry = { id, uri:root, name:'Example' }, source = { ...declaration('bot'), release:{files:['data/example.json']} };
+  const history = [{ uri:root, label:entry.name, kind:'folder', lastOpened:1, projectType:'bot', projectId:id, distribution:'download' }];
+  const imports = [entry], f = fixture(t, history, imports);
+  f.files.set(`${root}/steamharness.json`,JSON.stringify(source));
+  const updates = new Promise(resolve=>f.icons.onDidChange(resolve));
+  const detect = async () => { f.icons.refresh(); return (await f.icons.resolveMany([root]))[0]; };
+  const result = await detect(); assert.equal(result.distribution,'source');
+  assert.deepEqual(JSON.parse(JSON.stringify(result.entries)),[{entryId:'main',name:'Main',type:'bot',primary:true}]);
+  assert.equal(applyRecentMetadata(history,await updates)[0].distribution,'source','the corrected format survives a restart');
+  imports[0] = {...entry,version:'0.0.1'}; assert.equal((await detect()).distribution,'source');
+  imports[0] = {...entry,version:source.version}; assert.equal((await detect()).distribution,'download');
+  imports.length = 0;
+  f.files.set(`${root}/.steamharness/download.json`,JSON.stringify({kind:'steamharness.download',version:1,projectId:id,projectVersion:source.version}));
+  assert.equal((await detect()).distribution,'download');
+  f.files.delete(`${root}/.steamharness/download.json`);
+  f.files.set(`${root}/steamharness.json`,JSON.stringify({...declaration('bot'),distribution:{kind:'release',version:1}}));
+  assert.equal((await detect()).distribution,undefined,'an incomplete release must not be advertised as runnable in Steam');
+  f.files.set(`${root}/steamharness.release.json`, JSON.stringify({kind:'steamharness.project.release',version:1,projectId:id,projectVersion:source.version,entries:[{entryId:'main'}]}));
+  assert.equal((await detect()).distribution,'release');
+  f.files.set(`${root}/steamharness.json`,JSON.stringify({...declaration('bot'),entries:[{entryId:'main',root:'older-entry'}],distribution:{kind:'release',version:1}}));
+  const older = await detect(); assert.deepEqual([older.distribution,older.projectId,older.version,older.entries],['release',id,source.version,undefined]);
 });
 
 test('ordinary folders, broken and old declarations, invalid entries and unsupported schemes keep default icons', async t => {

@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { JSDOM } from 'jsdom';
+import { downloadedStudioProject, hasStudioDownloadRecord } from '../upstream/vscode/src/vs/platform/window/common/studioReleaseProject.ts';
 
 const kernel = new URL('../upstream/vscode/', import.meta.url);
 const read = relative => readFile(new URL(relative, kernel), 'utf8');
@@ -51,6 +52,18 @@ test('a downloaded source folder selects its own Steam shell before opening; an 
   const write = r => writeFile(path.join(f.directory,'.steamharness/download.json'),JSON.stringify(r));
   await write(receipt); assert.equal((await metadata.exports.readStudioReleaseProject(f.uri)).projectUri,f.uri.toString());
   await write({...receipt,projectVersion:'0.0.1'}); assert.equal(await metadata.exports.readStudioReleaseProject(f.uri),undefined);
+});
+
+test('a registered multi-entry source with build options is not a Steam installation; legacy downloads must match URI, ID and version', async t => {
+  const source = {...project, distribution:undefined, release:{files:['data/example.json']}, entries:[{entryId:'agent',root:'chat'},{entryId:'api',root:'api'}]};
+  const f = await fixture(t, source);
+  const uri = f.uri.toString(), entry = {uri,id,name:source.name}, document = JSON.stringify(source);
+  assert.equal(await metadata.exports.readStudioReleaseProject(f.uri),undefined);
+  for (const record of [entry, {...entry,version:''}, {...entry,version:'0.9.0'}, {...entry,id:'unrelated',version:source.version}, {...entry,uri:`${uri}/other`,version:source.version}]) {
+    assert.equal(downloadedStudioProject(uri,document,[record]), undefined);
+  }
+  assert.equal(hasStudioDownloadRecord([entry],uri),false,'an ordinary catalog entry does not need a second renderer file read');
+  assert.equal(downloadedStudioProject(uri,document,[{...entry,version:source.version}])?.projectUri,uri);
 });
 
 test('source declarations, incomplete releases and unsupported formats cannot select the release shell', async t => {
@@ -105,6 +118,26 @@ test('the initial release layout hides IDE parts before selecting views and reta
   assert.match(method.getText(source), /restoreEditors: this.shouldRestoreEditors/);
 });
 
+test('reopening a formerly locked source in the library recovers visibility only, preserving saved IDE layouts and Zen mode', async () => {
+  class Emitter { event = () => {}; }
+  const stub = { Emitter, Disposable:class {}, CommandsRegistry:{registerCommand(){}}, StorageScope:{WORKSPACE:1} };
+  const module = {exports:{}};
+  runInNewContext(native,{module,exports:module.exports,require:()=>new Proxy(stub,{get:(obj,key)=>obj[key] ?? (()=>{})})});
+  const {studioModeState,shouldRecoverStudioIdeVisibility} = module.exports;
+  const text = await read('src/vs/workbench/browser/layout.ts'), source = ts.createSourceFile('layout.ts',text,ts.ScriptTarget.Latest,true);
+  let guard; const find = node => { if (ts.isIfStatement(node) && node.expression.getText(source).startsWith('shouldRecoverStudioIdeVisibility(')) guard=node; ts.forEachChild(node,find); }; find(source);
+  const apply = ts.transpileModule(`(function(){${guard.getText(source)}}).call(target)`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  const flags = ['SIDEBAR_HIDDEN','EDITOR_HIDDEN','PANEL_HIDDEN','AUXILIARYBAR_HIDDEN','AUXILIARYBAR_WAS_LAST_MAXIMIZED'];
+  const LayoutStateKeys = Object.fromEntries([...flags,'ZEN_MODE_ACTIVE','SIDEBAR_SIZE'].map(name=>[name,{name}]));
+  for (const [fromLibrary,release,mode,snapshot,zen,reset] of [[true,false,'steam',undefined,false,true],[true,true,'steam',undefined,false,false],[false,false,'steam',undefined,false,false],[true,false,'steam','{}',false,false],[true,false,'ide',undefined,false,false],[true,false,'steam',undefined,true,false]]) {
+    studioModeState.openedFromLibrary=fromLibrary; studioModeState.state.releaseOnly=release;
+    const stateCache = new Map([...flags.map(k=>[k,true]),['ZEN_MODE_ACTIVE',zen],['SIDEBAR_SIZE',314]]);
+    const storageService = new Map([['studio.workbenchMode',mode],['studio.ideLayout',snapshot]]);
+    runInNewContext(apply,{target:{stateCache,storageService},shouldRecoverStudioIdeVisibility,LayoutStateKeys});
+    assert.deepEqual([...stateCache.keys()], reset ? ['ZEN_MODE_ACTIVE','SIDEBAR_SIZE'] : [...flags,'ZEN_MODE_ACTIVE','SIDEBAR_SIZE']);
+  }
+});
+
 function findFunction(text, name) {
   const source = ts.createSourceFile('source.ts', text, ts.ScriptTarget.Latest, true);
   let result;
@@ -129,7 +162,8 @@ for (const option of ['studioReleaseProject', 'studioReleasePending']) {
 
 test('desktop bootstrap selects release mode before constructing the workbench', async () => {
   const desktop = await read('src/vs/workbench/electron-browser/desktop.main.ts');
-  assert.ok(desktop.indexOf('initializeStudioReleaseProject(release)') < desktop.indexOf('new Workbench('));
+  const init = desktop.indexOf('initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary)');
+  assert.ok(init >= 0 && init < desktop.indexOf('new Workbench('));
   const contribution = await read('src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts');
   assert.match(contribution, /registerWorkbenchContribution2\(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.BlockRestore\)/);
   const sidebar = await read('src/vs/workbench/browser/parts/auxiliarybar/studioSidebarTabs.ts');

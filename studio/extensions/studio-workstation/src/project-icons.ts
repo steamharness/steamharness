@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { readProjectDeclarationWithReader, selectProjectEntry } from '@steamharness/project-manifest';
+import { downloadedStudioProject, hasStudioDownloadRecord, parseStudioReleaseProject } from '../../../upstream/vscode/src/vs/platform/window/common/studioReleaseProject';
 import type { LibraryArtwork, ProjectType, RecentMetadata, RecentProject } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
@@ -20,11 +21,11 @@ export class ProjectIcons implements vscode.Disposable {
   private generation = 0;
   private disposed = false;
 
-  constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined, history: RecentProject[] = []) {
-    for (const { uri, kind, projectType, avatarUrl, version, artwork, distribution, projectId } of history) {
-      if (kind === 'folder') this.cache.set(uri, { type: projectType, metadata: { projectType, avatarUrl, version, artwork, distribution, projectId }, checked: 0 });
+  constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined, history: RecentProject[] = [], private readonly importedProjects: () => unknown = () => undefined) {
+    for (const { uri, kind, projectType, avatarUrl, version, artwork, distribution, projectId, entries } of history) {
+      if (kind === 'folder') this.cache.set(uri, { type: projectType, metadata: { projectType, avatarUrl, version, artwork, distribution, projectId, entries }, checked: 0 });
     }
-    const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,studio-cover.webp,studio-cover.jpg,studio-cover.png,download.json,*.ts}');
+    const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,steamharness.release.json,studio-cover.webp,studio-cover.jpg,studio-cover.png,download.json,*.ts}');
     this.subscriptions.push(watcher, watcher.onDidChange(uri => this.invalidate(uri)), watcher.onDidCreate(uri => this.invalidate(uri)),
       watcher.onDidDelete(uri => this.invalidate(uri)), vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.refresh(); } }));
   }
@@ -91,21 +92,37 @@ export class ProjectIcons implements vscode.Disposable {
   }
 
   private async inspect(root: vscode.Uri): Promise<RecentMetadata> {
-    const empty: RecentMetadata = { projectType: undefined, avatarUrl: undefined, version: undefined, projectId: undefined, distribution: undefined, artwork: undefined };
+    const empty: RecentMetadata = { projectType: undefined, avatarUrl: undefined, version: undefined, projectId: undefined, distribution: undefined, artwork: undefined, entries: undefined };
     if (!['file', 'vscode-remote'].includes(root.scheme)) { return empty; }
-    const read = async (uri: vscode.Uri): Promise<string> => {
-      if ((await vscode.workspace.fs.stat(uri)).size > 1_048_576) { throw new Error('Project declaration is too large.'); }
+    const read = async (uri: vscode.Uri, limit = 2_000_000): Promise<string> => {
+      if ((await vscode.workspace.fs.stat(uri)).size > limit) { throw new Error('Project declaration is too large.'); }
       return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
     };
-    let pkg: Record<string, unknown> | undefined;
-    try { pkg = JSON.parse(await read(vscode.Uri.joinPath(root, 'steamharness.json'))); }
+    let document = '', pkg: Record<string, unknown> | undefined;
+    try { document = await read(vscode.Uri.joinPath(root, 'steamharness.json')); pkg = JSON.parse(document); }
     catch (error) {
       if (!(error instanceof SyntaxError) && (error as vscode.FileSystemError).code !== 'FileNotFound') { throw error; }
     }
     const children = await Promise.resolve(vscode.workspace.fs.readDirectory(root)).catch(() => []);
     const files = children.filter(([name, type]) => type === vscode.FileType.File && !name.startsWith('.')).map(([name]) => name).sort();
-    const manifest = pkg && await readProjectDeclarationWithReader(pkg, async relative => JSON.parse(await read(vscode.Uri.joinPath(root, relative, 'steamharness.json')))).catch(() => undefined);
-    if (!manifest || !pkg) { return { ...empty, artwork: { files: files.slice(0, 3) } }; }
+    const fallback = { ...empty, artwork: { files: files.slice(0, 3) } };
+    if (!pkg) { return fallback; }
+    const uri = root.toString();
+    let distribution: RecentMetadata['distribution'];
+    if (pkg.distribution !== undefined) {
+      const release = await read(vscode.Uri.joinPath(root, 'steamharness.release.json')).catch(() => undefined);
+      if (release && parseStudioReleaseProject(uri, document, release)) { distribution = 'release'; }
+    } else {
+      const receipt = children.some(([name]) => name === '.steamharness') ? await read(vscode.Uri.joinPath(root, '.steamharness', 'download.json'), 2048).catch(() => undefined) : undefined;
+      const imports = this.importedProjects();
+      if ((receipt || hasStudioDownloadRecord(imports, uri)) && downloadedStudioProject(uri, document, imports, receipt)) { distribution = 'download'; }
+    }
+    const manifest = await readProjectDeclarationWithReader(pkg, async relative => JSON.parse(await read(vscode.Uri.joinPath(root, relative, 'steamharness.json')))).catch(() => undefined);
+    if (!manifest) {
+      // An installed package can identify its format even if this host cannot inspect its child entries.
+      return distribution ? { ...fallback, distribution, projectId: String(pkg.id), version: String(pkg.version) } : fallback;
+    }
+    if (pkg.distribution === undefined) { distribution ??= 'source'; }
     const projectType = selectProjectEntry(manifest).type;
     const cover = ['studio-cover.webp', 'studio-cover.png', 'studio-cover.jpg'].find(name => files.includes(name));
     const artwork: LibraryArtwork = { entries: manifest.entries.slice(0, 3).map(e => projectAvatarDataUrl(e.projectCard, e.type)) };
@@ -113,10 +130,9 @@ export class ProjectIcons implements vscode.Disposable {
       const stat = await Promise.resolve(vscode.workspace.fs.stat(vscode.Uri.joinPath(root, cover))).catch(() => undefined);
       if (stat && stat.size > 0 && stat.size <= 2_000_000) artwork.cover = { name: cover, mtime: stat.mtime };
     }
-    const receipt = children.some(([name]) => name === '.steamharness') && await read(vscode.Uri.joinPath(root, '.steamharness', 'download.json')).then(text => JSON.parse(text), () => undefined).catch(() => undefined);
-    const downloaded = receipt?.kind === 'steamharness.download' && receipt.version === 1 && receipt.projectId === manifest.projectId && receipt.projectVersion === manifest.version;
-    return { projectType, version: manifest.version, projectId: manifest.projectId, artwork,
-      distribution: pkg.distribution ? 'release' : downloaded ? 'download' : 'source', avatarUrl: projectAvatarDataUrl(readProjectCardMetadata(pkg, projectType), projectType) };
+    const entries = manifest.entries.map(({ entryId, name, type }) => ({ entryId, name, type, primary: entryId === manifest.defaultEntry }));
+    return { projectType, version: manifest.version, projectId: manifest.projectId, artwork, distribution, entries,
+      avatarUrl: projectAvatarDataUrl(readProjectCardMetadata(pkg, projectType), projectType) };
   }
 
   dispose(): void {

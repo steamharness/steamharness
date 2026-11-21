@@ -32,6 +32,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import './src/vs/base/browser/ui/splitview/splitview.css';
   import './src/vs/workbench/contrib/modernUI/browser/media/sashHandles.css';
   import { CommandsRegistry } from './src/vs/platform/commands/common/commands.ts';
+  import { ContextMenuService } from './src/vs/platform/contextview/browser/contextMenuService.ts';
+  import { ContextViewService } from './src/vs/platform/contextview/browser/contextViewService.ts';
   import { FileOperationError, FileOperationResult } from './src/vs/platform/files/common/files.ts';
   import { hostedSidebarHtml } from '../../extensions/studio-workstation/src/project-sidebar-html.ts';
   import { applyRecentMetadata, RECENT_PROJECTS_KEY } from '../../extensions/studio-workstation/src/projects.ts';
@@ -42,7 +44,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     new Sash(inner, {getVerticalSashLeft:()=>400}, {orientation:Orientation.VERTICAL})];
   window.sashDrags = [];
   sashes.forEach(sash=>sash.onDidStart(()=>window.sashDrags.push(sash.orientation)));
-  const layout = { mainContainer:root, activeContainer:root, getContainer:(_window,part)=>part ? root.querySelector('.titlebar') : root, mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None };
+  const layout = { mainContainer:root, activeContainer:root, getContainer:(_window,part)=>part ? root.querySelector('.titlebar') : root, mainContainerOffset:{top:36}, onDidLayoutMainContainer: Event.None, onDidLayoutContainer:Event.None };
   const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#3063af"/></svg>');
   const chats = { connection:'connected', items:[{id:'group-team',group:true,time:Date.now(),name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{id:'solo',name:'Solo',preview:'Hi',unread:0,avatarUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="#345" d="M0 0h32v32H0z"/></svg>')}] };
   const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
@@ -93,8 +95,9 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
   const history = folders.map((uri,i) => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000-i*86400000}));
-  const detected = new Map([[history[0].uri,{projectType:'workflow',distribution:'source',artwork:{entries:[avatar,avatar]},avatarUrl:avatar}],[history[2].uri,{projectType:'bot',distribution:'download',artwork:{entries:[avatar]}}],[history[3].uri,{artwork:{files:['notes.txt','demo.js','README.md']}}]]);
+  const detected = new Map([[history[0].uri,{projectType:'workflow',version:'1.2.0',projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',distribution:'source',entries:[{entryId:'main',name:'Main workflow',type:'workflow',primary:true},{entryId:'chat',name:'Chat',type:'bot',primary:false}],artwork:{entries:[avatar,avatar]},avatarUrl:avatar}],[history[2].uri,{projectType:'bot',distribution:'download',artwork:{entries:[avatar]}}],[history[3].uri,{artwork:{files:['notes.txt','demo.js','README.md']}}]]);
   detected.set(history[1].uri,{projectType:'kanban',distribution:'source',artwork:{cover:{name:window.coverName,mtime:1}}});
+  detected.set(history[4].uri,{projectType:'bot',distribution:'release',artwork:{entries:[avatar]}});
   const startEvent = new Emitter();
   const start = { state:undefined, onDidChange:startEvent.event, setVisible(){} };
   const storage = { getExtensionState:(id,global)=>global && JSON.parse(localStorage.getItem(id)) };
@@ -110,6 +113,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   window.openRequests = [];
   window.editProject = (id, dirty) => { windows.find(w=>w.id===id).dirty=dirty; edits.fire({windowId:id,dirty}); };
   const native = {onDidChangeWindowDirty:edits.event, getWindows:async()=>{window.projectReads.windows++; return windows.map(w=>({...w}));}, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
+    showItemInFolder:async path=>window.actions.push(['reveal',path]),
     async showMessageBox({message,detail,buttons}) {
       const dialog = document.createElement('dialog'); dialog.className = 'native-message';
       dialog.append(message, detail ?? ''); document.body.append(dialog);
@@ -163,6 +167,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.notify = text=>notification.fire({kind:NotificationChangeType.ADD,item:{message:{raw:text}}});
     window.localNotices=()=>notices.list(); window.readNotice=id=>notices.read(id);
     window.notify('Owner not yet known');
+    const contextView = new ContextViewService(layout);
+    const menus = new ContextMenuService({publicLog2(){}},{error:e=>{throw e;}},contextView,{lookupKeybinding:()=>undefined},{},contextKeys);
     const controller = new StudioLaunchpad(notices,start,native,{getRecentlyOpened:async()=>{
       window.projectReads.history++;
       if (window.delayHistory) {
@@ -172,7 +178,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       return recent;
     },onDidChangeRecentlyOpened:Event.None,removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); changed();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage,webviewViews,auxiliary);
+    }},layout,commands,dialogs,{error:e=>{throw e;}},{},webviews,files,storage,webviewViews,auxiliary,menus,{writeText:async text=>window.actions.push(['copy',text])});
     window.clearHistory=()=>{recent.workspaces=[];changed();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.refreshSocial=()=>kernelCommand('StudioSocialChanged');
@@ -180,7 +186,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
-    window.stopLaunchpad=()=>{controller.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
+    window.stopLaunchpad=()=>{controller.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
     window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',

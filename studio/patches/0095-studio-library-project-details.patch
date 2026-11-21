@@ -1,0 +1,540 @@
+diff --git a/src/vs/platform/window/common/studioReleaseProject.ts b/src/vs/platform/window/common/studioReleaseProject.ts
+index 6f425e1581e2fc6bc91a225d809e434095088ab8..8b66ef83ab4911a3531e7dc41ea64797c655bc64 100644
+--- a/src/vs/platform/window/common/studioReleaseProject.ts
++++ b/src/vs/platform/window/common/studioReleaseProject.ts
+@@ -9,14 +9,20 @@ export interface IStudioReleaseProject {
+ 	readonly avatarUrl: string;
+ }
+ 
++/** The legacy catalog also contains locally created sources. Only downloads recorded an installed version. */
++export function hasStudioDownloadRecord(imports: unknown, uri: string, project?: { id: string; version: string }): boolean {
++	return Array.isArray(imports) && imports.some(row => row?.uri === uri && typeof row.version === 'string' && !!row.version.trim()
++		&& (!project || row.id === project.id.toLowerCase() && row.version === project.version));
++}
++
+ /** A downloaded source snapshot has normal source bytes. Match the installation record to the current folder and identity. */
+ export function downloadedStudioProject(uri: string, document: string, imports: unknown, receipt?: string): IStudioReleaseProject | undefined {
+ 	try {
+ 		const project = JSON.parse(document);
+-		if (typeof project?.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id) || typeof project.name !== 'string' || !project.name.trim() || !Array.isArray(project.entries) || !project.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) { return undefined; }
+-		const saved = Array.isArray(imports) && imports.some(row => row?.uri === uri && row.id === project.id.toLowerCase());
++		if (typeof project?.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id) || typeof project.version !== 'string' || !project.version.trim() || project.distribution !== undefined || typeof project.name !== 'string' || !project.name.trim() || !Array.isArray(project.entries) || !project.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) { return undefined; }
++		const saved = hasStudioDownloadRecord(imports, uri, project);
+ 		const mark = !saved && receipt && JSON.parse(receipt);
+-		return saved || (mark?.kind === 'steamharness.download' && mark.version === 1 && mark.projectId === project.id.toLowerCase() && typeof project.version === 'string' && mark.projectVersion === project.version) ? { projectUri: uri, name: project.name, avatarUrl: '' } : undefined;
++		return saved || (mark?.kind === 'steamharness.download' && mark.version === 1 && mark.projectId === project.id.toLowerCase() && mark.projectVersion === project.version) ? { projectUri: uri, name: project.name, avatarUrl: '' } : undefined;
+ 	} catch { return undefined; }
+ }
+ 
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+index 88f356f4ac95b209944fa45de02b07f60be23808..25ba544bc88ab74f5019617b5602b30da939b24d 100644
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -52,7 +52,7 @@ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js'
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { CodeWindow, mainWindow } from '../../base/browser/window.js';
+ import { localize } from '../../nls.js';
+-import { studioModeState } from './parts/studioMode.js';
++import { shouldRecoverStudioIdeVisibility, studioModeState } from './parts/studioMode.js';
+ import { isStudioSidebarTab } from '../common/studioSidebar.js';
+ 
+ //#region Layout Implementation
+@@ -3089,6 +3089,14 @@ class LayoutStateModel extends Disposable {
+ 			}
+ 		}
+ 
++		// A folder formerly opened as an installation has no IDE snapshot. Keep its sizes,
++		// editor groups and user settings; let the normal visibility defaults below take effect.
++		if (shouldRecoverStudioIdeVisibility(this.storageService) && !this.stateCache.get(LayoutStateKeys.ZEN_MODE_ACTIVE.name)) {
++			for (const part of [LayoutStateKeys.SIDEBAR_HIDDEN, LayoutStateKeys.EDITOR_HIDDEN, LayoutStateKeys.PANEL_HIDDEN, LayoutStateKeys.AUXILIARYBAR_HIDDEN, LayoutStateKeys.AUXILIARYBAR_WAS_LAST_MAXIMIZED]) {
++				this.stateCache.delete(part.name);
++			}
++		}
++
+ 		// Apply legacy settings
+ 		this.stateCache.set(LayoutStateKeys.ACTIVITYBAR_HIDDEN.name, this.isActivityBarHidden());
+ 		this.stateCache.set(LayoutStateKeys.STATUSBAR_HIDDEN.name, !this.configurationService.getValue(LegacyWorkbenchLayoutSettings.STATUSBAR_VISIBLE));
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 0c00935e710c0a0faacee414e8f72c0810001c86..e1c3736b8bcf72201ea08743bd8984e2101cdfd1 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -34,7 +34,8 @@ export interface StudioStartState {
+ 	hasWorkspace: boolean;
+ 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
+ 	projects: StudioOverviewProject[];
+-	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string;
++	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectId?: string; projectType?: string; version?: string; avatarUrl?: string;
++		entries?: { entryId: string; name: string; type: string; primary: boolean }[];
+ 		distribution?: 'source' | 'release' | 'download'; artwork?: { cover?: { name: string; mtime: number }; entries?: string[]; files?: string[] } }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+ 	busy: boolean;
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index a75ed855917c945b86592606b39ee5c70b661dc0..cd7b6abdff8ebd0e5b1371b528506f13739e46ef 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -18,6 +18,7 @@ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/brows
+ import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+ import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
++import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
+ import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
+ 
+ /** Space reserved by the embedded project for the retained native workbench controls. */
+@@ -67,6 +68,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
+ 
+ const stateChange = new Emitter<StudioModeState>();
+ const modeChange = new Emitter<void>();
++export const studioModeStorageKeys = { mode: 'studio.workbenchMode', ideLayout: 'studio.ideLayout' } as const;
+ export const studioModeState = {
+ 	openedFromLibrary: false,
+ 	releaseProject: undefined as IStudioReleaseProject | undefined,
+@@ -84,6 +86,12 @@ export const studioModeState = {
+ 	}
+ };
+ 
++/** Only a locked Steam window leaves a persisted Steam mode without capturing an IDE layout. */
++export function shouldRecoverStudioIdeVisibility(storage: IStorageService): boolean {
++	return studioModeState.openedFromLibrary && !studioModeState.state.releaseOnly
++		&& storage.get(studioModeStorageKeys.mode, StorageScope.WORKSPACE) === 'steam' && !storage.get(studioModeStorageKeys.ideLayout, StorageScope.WORKSPACE);
++}
++
+ /** Establish the release shell before layout, title controls, or editor restoration. */
+ export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {
+ 	studioModeState.openedFromLibrary = openedFromLibrary;
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 4336e4e29fb060425d4c8dbd218bd7bb1ad66d28..97c692b700a725de9980a4f73149418746472ff0 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -17,7 +17,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+-import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
++import { StudioModeLoading, StudioSteamTools, studioModeState, studioModeStorageKeys, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
+ import { ViewPane } from '../../../browser/parts/views/viewPane.js';
+ import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
+ import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
+@@ -31,8 +31,7 @@ import { StudioSteamWorkspace } from './studioSteamWorkspace.js';
+ 
+ const TOOLS_CONTAINER = 'studio-steam-tools';
+ const TOOLS_VIEW = 'studio.steamTools';
+-const MODE_KEY = 'studio.workbenchMode';
+-const SNAPSHOT_KEY = 'studio.ideLayout';
++const { mode: MODE_KEY, ideLayout: SNAPSHOT_KEY } = studioModeStorageKeys;
+ const STEAM_WIDTH_KEY = 'studio.steamToolsWidth';
+ const toolsTitle = localize2('studioSteamTools', "Open Tools");
+ const sideParts = [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART] as const;
+diff --git a/src/vs/workbench/electron-browser/desktop.main.ts b/src/vs/workbench/electron-browser/desktop.main.ts
+index 1b536efdab7f34c399fb4c0f30c62aa06645553f..d324efeff206a14c756e9746ffeb45b9f1cbbe06 100644
+--- a/src/vs/workbench/electron-browser/desktop.main.ts
++++ b/src/vs/workbench/electron-browser/desktop.main.ts
+@@ -8,7 +8,7 @@ import product from '../../platform/product/common/product.js';
+ import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
+ import { Workbench } from '../browser/workbench.js';
+ import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
+-import { downloadedStudioProject, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
++import { downloadedStudioProject, hasStudioDownloadRecord, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+ import { joinPath } from '../../base/common/resources.js';
+ import { CommandsRegistry } from '../../platform/commands/common/commands.js';
+ import { StudioLaunchpad } from './studioLaunchpad.js';
+@@ -141,7 +141,7 @@ export class DesktopMain extends Disposable {
+ 			const state = services.storageService.getObject('studio.studio-workstation', StorageScope.PROFILE) as Record<string, unknown> | undefined;
+ 			const imports = state?.['studio.importedProjects'];
+ 			// Main already checked local marker files. Re-read only a legacy installation or a remote folder.
+-			const legacy = Array.isArray(imports) && imports.some(row => row?.uri === folder.toString());
++			const legacy = hasStudioDownloadRecord(imports, folder.toString());
+ 			try {
+ 				if (legacy || folder.scheme !== Schemas.file) {
+ 					const read = (name: string, size: number) => fileService.readFile(joinPath(folder, name), { limits: { size } }).then(file => file.value.toString(), () => undefined);
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 3e16431bbd138dc9fcfdfe3d8e10f9fa8664b8c3..8ae6c6209b47b3cb4e523d902895a90d5e776104 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -52,6 +52,19 @@
+ .lp-index { display: flex; flex-direction: column; gap: 2px; }
+ .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
+ .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
++.studio-launchpad .lp-index-row[aria-current=page] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.lp-project-details { max-width: 880px; }
++.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--lp-line); }
++.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--lp-side); border-radius: 6px; }
++.lp-detail-mark img { width: 100%; height: 100%; border-radius: inherit; } .lp-detail-mark .codicon { font-size: 28px; }
++.lp-detail-identity { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; }
++.monaco-workbench .studio-launchpad .lp-detail-identity h1[tabindex="-1"]:focus { outline: none; }
++.lp-detail-actions { display: flex; align-items: center; gap: 6px; }
++.lp-detail-facts { margin: 16px 0 22px; } .lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
++.lp-detail-facts dt,.lp-entry-type { color: var(--lp-muted); } .lp-detail-facts dd { margin: 0; overflow-wrap: anywhere; }
++.lp-detail-entries { border-top: 1px solid var(--lp-line); padding-top: 18px; } .lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
++.lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
++.lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+ .lp-shelf,.lp-profile,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 0cee20c9e3b3473e8cbf3b684350aedfce3a9bad..9ee4630429ffeb6bc7591814c64a68c049a5d19b 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -16,7 +16,9 @@ import { URI } from '../../base/common/uri.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+ import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
+ import { getNLSLanguage } from '../../nls.js';
++import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
+ import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
++import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+ import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
+ import { containsDragType } from '../../platform/dnd/browser/dnd.js';
+ import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
+@@ -39,7 +41,7 @@ import { SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import './media/studioLaunchpad.css';
+ 
+-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version'>;
++type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
+ type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
+ const launchpadSettingsViewType = 'studio.launchpadSettings';
+ 
+@@ -79,6 +81,8 @@ export class StudioLaunchpad extends Disposable {
+ 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
+ 		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
+ 		@IAuxiliaryWindowService auxiliaryWindows: IAuxiliaryWindowService,
++		@IContextMenuService contextMenu: IContextMenuService,
++		@IClipboardService clipboard: IClipboardService,
+ 	) {
+ 		super();
+ 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, section => {
+@@ -90,7 +94,7 @@ export class StudioLaunchpad extends Disposable {
+ 			for (const row of saved.slice(0, 50)) {
+ 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
+ 					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
+-						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version,
++						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version, entries: row.entries,
+ 						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
+ 						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
+ 				}
+@@ -103,6 +107,8 @@ export class StudioLaunchpad extends Disposable {
+ 			create: () => run(commands.executeCommand('studio.createProject')),
+ 			project: project => run(this.openProject(project)),
+ 			remove: project => run(this.removeProject(project)),
++			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
++			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: conversation => run(this.openInbox(conversation)),
+@@ -434,7 +440,7 @@ export class StudioLaunchpad extends Disposable {
+ 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
+ 		this.paint();
+ 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
+-		const others = this.recent.filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri);
++		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
+ 		if (others.length) {
+ 			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
+ 			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
+@@ -473,8 +479,12 @@ export class StudioLaunchpad extends Disposable {
+ 		const enrich = (row: LaunchpadProject, window?: LaunchpadProject): LaunchpadProject => {
+ 			const info = metadata.get(row.uri);
+ 			const saved = this.savedProjects.get(row.uri);
+-			const details = info ? { name: info.label || row.name, projectType: info.projectType ?? saved?.projectType, avatarUrl: info.avatarUrl ?? saved?.avatarUrl, lastOpened: info.lastOpened, artwork: info.artwork ?? saved?.artwork, distribution: info.distribution ?? saved?.distribution, version: info.version ?? saved?.version } : saved;
+-			return { ...row, ...details, windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
++			// Once inspected, an absent field is authoritative (e.g. a plain folder replacing a release).
++			const details = info?.artwork ? info : { ...saved, ...info };
++			return { ...row, projectId: details.projectId, projectType: details.projectType, distribution: details.distribution,
++				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version,
++				name: info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
++				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+ 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+ 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread });
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index b31016c860cbdb88cb9fb676114b56ca32a8a490..0fcdcda6e7f03312c0efa247d38b4ef54ea0c372 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -17,6 +17,7 @@ export interface LaunchpadProject {
+ 	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
+ 	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
+ 	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
++	entries?: { entryId: string; name: string; type: string; primary: boolean }[];
+ }
+ 
+ export interface StoreListing {
+@@ -27,7 +28,7 @@ export function picture(src: string, className = ''): HTMLImageElement {
+ 	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
+ }
+ 
+-export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
++export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
+ export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
+ export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
+ 	switch (type) {
+@@ -36,11 +37,21 @@ export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
+ }
+ export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
+ 	switch (p.distribution) {
+-		case 'download': return t('Downloaded · Steam', '已下载 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
++		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
+ 		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
+ 	}
+ }
+ 
++export function openProjectLabel(p: LaunchpadProject, t: LaunchpadLabel): string {
++	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
++	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
++	switch (p.distribution) {
++		case 'source': return t('Open in IDE', '在 IDE 中打开');
++		case 'release': case 'download': return t('Open in Steam mode', '在 Steam 模式打开');
++		default: return t('Open in new window', '在新窗口打开');
++	}
++}
++
+ /** Use real entry identities or file names; never fetch a URL supplied by a local manifest. */
+ export function artwork(key: string, art: LibraryArtwork | undefined, fallback: HTMLElement, cover?: string | Promise<string | undefined>): HTMLElement {
+ 	const surface = element('span', 'lp-artwork'); surface.setAttribute('aria-hidden', 'true');
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 882d231cde5e56a2b52991ad0f975c5914bf00a2..f89614a6f8c25fa196841d97d0500925aaefbf7e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -3,12 +3,18 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { artwork, edition, LaunchpadProject, projectMark, typeLabel } from './studioLaunchpadCards.js';
++import { IAction, Separator, toAction } from '../../base/common/actions.js';
++import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
++import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { projectDetails } from './studioLaunchpadProjectDetails.js';
+ 
+-interface LibraryActions {
++export interface LibraryActions {
+ 	project(p: LaunchpadProject): void;
+-	manage(p: LaunchpadProject, origin: HTMLElement): void;
++	remove(p: LaunchpadProject): void;
++	reveal(p: LaunchpadProject): void;
++	copyPath(p: LaunchpadProject): void;
++	contextMenu: IContextMenuService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
+ }
+ 
+@@ -20,13 +26,15 @@ export class LaunchpadLibrary {
+ 	private readonly filters = element('div', 'lp-filters');
+ 	private filter = 'all';
+ 	private signature?: string;
+-	private recent: LaunchpadProject[] = [];
+-	private windows: LaunchpadProject[] = [];
++	private projects = new Map<string, LaunchpadProject>();
++	private history = new Set<string>();
++	private selected?: string;
++	private homeScroll = 0;
+ 
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
+ 		const rail = element('aside', 'lp-rail');
+ 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
+-		this.search.addEventListener('input', () => this.render());
++		this.search.addEventListener('input', () => { this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+ 		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
+ 		for (const [id, label] of [['all', t('All', '全部')], ['source', t('Source', '源码')], ['installed', t('Installed', '已安装')], ['folder', t('Folders', '文件夹')]]) {
+@@ -37,19 +45,59 @@ export class LaunchpadLibrary {
+ 
+ 	update(recent: LaunchpadProject[], windows: LaunchpadProject[]): void {
+ 		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
+-		this.signature = signature; this.recent = recent; this.windows = windows; this.render();
++		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
++		this.projects = new Map(recent.map(p => [p.uri, p]));
++		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
++		if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
++	}
++
++	show(uri?: string): void {
++		if (uri === this.selected || (uri && !this.projects.has(uri))) { return; }
++		if (!this.selected) { this.homeScroll = this.shelf.scrollTop; }
++		this.selected = uri; this.render();
++		this.shelf.scrollTop = uri ? 0 : this.homeScroll;
++		if (uri) { this.shelf.querySelector('h1')?.focus({ preventScroll: true }); }
++	}
++
++	private manage(p: LaunchpadProject, origin: HTMLElement, point?: { x: number; y: number }): void {
++		const t = this.t;
++		const action = (id: string, label: string, run: () => void) => toAction({ id: `studio.library.${id}`, label, run });
++		const items: IAction[] = [action('details', t('View details', '查看详情'), () => this.show(p.uri)),
++			action('open', openProjectLabel(p, t), () => this.actions.project(p))];
++		items.push(new Separator());
++		if (p.uri.startsWith('file:') && !p.missing) { items.push(action('reveal', t('Show in file manager', '在文件管理器中显示'), () => this.actions.reveal(p))); }
++		items.push(action('copyPath', t('Copy path', '复制路径'), () => this.actions.copyPath(p)));
++		if (this.history.has(p.uri)) { items.push(new Separator(), action('forget', t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
++		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
++	}
++
++	private bindMenu(row: HTMLButtonElement, p: LaunchpadProject): void {
++		row.addEventListener('contextmenu', e => {
++			e.preventDefault(); e.stopPropagation(); row.focus({ preventScroll: true });
++			this.manage(p, row, e.button === 2 ? { x: e.clientX, y: e.clientY } : undefined);
++		});
++		row.addEventListener('keydown', e => {
++			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); this.manage(p, row); }
++		});
+ 	}
+ 
+ 	private render(): void {
+ 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
+-		const rows = [...this.recent, ...this.windows.filter(p => !this.recent.some(r => r.uri === p.uri))].filter(p => (!query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) &&
+-			(this.filter === 'all' || (this.filter === 'installed' ? p.distribution === 'release' || p.distribution === 'download' : this.filter === 'source' ? p.distribution === 'source' : !p.projectType)));
++		const rows = [...this.projects.values()].filter(p => (!query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) &&
++			(this.filter === 'all' || (this.filter === 'installed' ? p.distribution === 'release' || p.distribution === 'download' : this.filter === 'source' ? p.distribution === 'source' : p.kind === 'folder' && !p.projectType && !p.distribution)));
+ 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
+ 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+ 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
+ 		this.index.replaceChildren(...rows.map(p => {
+-			const b = button('', '', () => this.actions.project(p), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri; return b;
++			const b = button('', '', () => this.show(p.uri), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri;
++			if (p.uri === this.selected) { b.setAttribute('aria-current', 'page'); }
++			this.bindMenu(b, p); return b;
+ 		}));
++		const selected = this.selected && this.projects.get(this.selected);
++		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
++		if (selected) {
++			this.shelf.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
++		}
+ 		const toolbar = element('header', 'lp-library-title'); toolbar.append(element('h1', '', t('Project library', '项目仓库')), this.filters);
+ 		this.shelf.replaceChildren(toolbar);
+ 		if (!rows.length) {
+@@ -59,21 +107,21 @@ export class LaunchpadLibrary {
+ 			const section = element('section', `lp-collection lp-${group}`), grid = element('div', 'lp-library-grid');
+ 			for (const p of projects) {
+ 				const item = element('article', 'lp-library-item');
+-				const b = button('', '', () => this.actions.project(p), 'lp-library-card'); b.dataset.key = group + ':' + p.uri; b.title = p.path;
++				const b = button('', '', () => this.show(p.uri), 'lp-library-card'); b.dataset.key = group + ':' + p.uri; b.title = p.path;
+ 				const art = artwork(p.uri, p.artwork, projectMark(p), p.artwork?.cover && this.actions.cover(p));
+ 				const meta = element('span', 'lp-caption'); meta.append(element('strong', 'lp-ellipsis', p.name));
+ 				const tags = element('span', 'lp-card-tags'); tags.append(element('span', 'lp-edition', edition(p, t)));
+ 				if (p.projectType) { tags.append(element('small', '', typeLabel(p.projectType, t))); }
+ 				if (p.windowId !== undefined || p.missing) { tags.append(element('small', 'lp-state', p.missing ? t('Not found', '路径失效') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'))); }
+ 				meta.append(tags); b.append(art, meta);
+-				const more = button('', 'ellipsis', () => this.actions.manage(p, more), 'lp-card-more'); more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', `${more.title}: ${p.name}`);
+-				b.addEventListener('contextmenu', e => { e.preventDefault(); this.actions.manage(p, b); });
++				const more = button('', 'ellipsis', () => this.manage(p, more), 'lp-card-more'); more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', `${more.title}: ${p.name}`); more.setAttribute('aria-haspopup', 'menu');
++				this.bindMenu(b, p);
+ 				item.append(b, more); grid.append(item);
+ 			}
+ 			section.append(heading(title, projects.length), grid); this.shelf.append(section);
+ 		};
+ 		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
+ 		gallery(t('All projects', '所有项目'), 'all', rows);
+-		if (focus) { Array.from(this.element.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); }
++		restoreFocus();
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f41153f66dc7943f90469bc77f9f04f35616982
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+@@ -0,0 +1,45 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { studioProjectIcon } from '../common/studioProjectIcons.js';
++import { edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
++import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++
++export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: () => void, manage: (origin: HTMLElement) => void): HTMLElement {
++	const page = element('article', 'lp-project-details');
++	const head = element('header', 'lp-detail-head'), mark = element('span', 'lp-detail-mark');
++	mark.append(projectMark(p));
++	const identity = element('div', 'lp-detail-identity'), title = element('h1', '', p.name);
++	title.tabIndex = -1; title.dataset.key = 'detail:' + p.uri;
++	identity.append(element('span', 'lp-section-kicker', t('Project details', '项目详情')), title);
++	const controls = element('div', 'lp-detail-actions');
++	const launch = button(openProjectLabel(p, t), 'open-in-window', open, 'lp-primary'); launch.dataset.key = 'open:' + p.uri;
++	const more = button('', 'ellipsis', () => manage(more), 'lp-outline lp-tool'); more.dataset.key = 'more:' + p.uri;
++	more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
++	controls.append(launch, more); head.append(mark, identity, controls); page.append(head);
++
++	const facts = element('dl', 'lp-detail-facts');
++	const fact = (label: string, value?: string) => {
++		if (value) { const row = element('div'); row.append(element('dt', '', label), element('dd', '', value)); facts.append(row); }
++	};
++	fact(t('Format', '项目形式'), edition(p, t));
++	if (p.projectType) { fact(t('Project type', '项目类型'), typeLabel(p.projectType, t)); }
++	fact(t('Version', '版本'), p.version);
++	fact(t('Window', '窗口状态'), p.missing ? t('Not found', '路径失效') : p.windowId === undefined ? t('Closed', '未打开') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'));
++	if (p.lastOpened !== undefined) { fact(t('Last opened', '最近打开时间'), new Date(p.lastOpened).toLocaleString(t('en', 'zh-CN'))); }
++	fact(t('Location', '位置'), p.path);
++	fact(t('Project ID', '项目 ID'), p.projectId);
++	page.append(facts);
++	if (p.entries?.length) {
++		const section = element('section', 'lp-detail-entries'), list = element('ul');
++		for (const entry of p.entries) {
++			const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
++			if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
++			row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
++		}
++		section.append(element('h2', '', t('Project entries', '项目入口')), list); page.append(section);
++	}
++	return page;
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index cdcb7679ce88de29d93b659f7515b0c3b1d21e4f..217cea6247f96270082a352abefc9283c6059000 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -5,8 +5,8 @@
+ 
+ import { Disposable } from '../../base/common/lifecycle.js';
+ import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
+-import { edition, glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
+-import { LaunchpadLibrary } from './studioLaunchpadLibrary.js';
++import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
++import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
+ import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
+ import { CatalogPage, CatalogRequest, LaunchpadStore } from './studioLaunchpadStore.js';
+@@ -16,9 +16,9 @@ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+ 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+ }
+-interface LaunchpadActions extends ProfileActions {
+-	open(): void; workspace(): void; create(): void; project(p: LaunchpadProject): void; remove(p: LaunchpadProject): void;
+-	cover(p: LaunchpadProject): Promise<string | undefined>; catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
++interface LaunchpadActions extends ProfileActions, LibraryActions {
++	open(): void; workspace(): void; create(): void;
++	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
+ 	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
+ 	resource(id: 'docs' | 'github' | 'server'): void;
+ }
+@@ -70,7 +70,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		this.createButton = button('', 'add', actions.create, 'lp-outline lp-create');
+ 		this.createButton.title = createLabel; this.createButton.setAttribute('aria-label', createLabel);
+ 		this.createButton.append(element('span', 'lp-create-label', createLabel)); navigation.append(this.tabs, this.createButton);
+-		this.library = new LaunchpadLibrary(t, { ...actions, manage: (p, b) => this.manage(p, b) });
++		this.library = new LaunchpadLibrary(t, actions);
+ 		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
+ 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
+ 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
+@@ -87,23 +87,18 @@ export class StudioLaunchpadView extends Disposable {
+ 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
+ 	}
+ 
+-	select(id: Tab): void {
++	select(id: Tab, projectUri?: string): void {
+ 		this.active = id;
+ 		for (const b of this.tabs.querySelectorAll('button')) { const selected = b.dataset.tab === id; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1; }
+ 		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
+ 		if (this.state) { this.update(this.state); }
++		if (id === 'library') { this.library.show(projectUri); }
+ 	}
+ 
+ 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
+ 	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Add project', '添加项目'), this.fileOptions(), origin); }
+-	private manage(p: LaunchpadProject, b: HTMLElement): void {
+-		const t = this.t; this.picker.choices(p.name, [
+-			{ label: p.windowId !== undefined ? t('Switch to window', '切换到项目窗口') : t('Open in new window', '在新窗口打开'), glyph: 'open-in-window', run: () => this.actions.project(p) },
+-			{ label: t('Remove from history…', '移除打开记录…'), glyph: 'trash', run: () => this.actions.remove(p) },
+-		], b, [p.path, edition(p, t), p.version].filter(Boolean).join('\n'));
+-	}
+ 	private search(commands: boolean): void {
+-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.actions.project(p) })));
++		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
+ 	}
+ 	shortcut(event: KeyboardEvent): void {
+ 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }

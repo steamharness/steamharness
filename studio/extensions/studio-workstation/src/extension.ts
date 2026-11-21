@@ -1,7 +1,7 @@
 import './localization-host';
 import { t } from './localization';
 import * as vscode from 'vscode';
-import { applyRecentMetadata, IMPORTED_PROJECTS_KEY, projectTypeIcons, RECENT_PROJECTS_KEY, readImportedProjects, readRecentProjects, rememberProjects, type RecentMetadata, type RecentProject } from './projects';
+import { applyRecentMetadata, IMPORTED_PROJECTS_KEY, projectTypeIcons, RECENT_PROJECTS_KEY, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
 import { activateProject } from './workflow';
 import type { Launcher } from './workflow-cli-types';
@@ -21,13 +21,9 @@ class RecentProjectsProvider {
   async reconcile(): Promise<void> { if (await pruneMissingProjectHistory(this.context)) { this.refresh(); } }
   refresh(): void { this.change.fire(); }
   dispose(): void { this.change.dispose(); }
-  withOrigin(uri: string, metadata?: RecentMetadata): RecentMetadata | undefined {
-    return metadata?.projectId && metadata.distribution !== 'release' && readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)).some(row => row.uri === uri && row.id === metadata.projectId)
-      ? { ...metadata, distribution: 'download' } : metadata;
-  }
   getChildren(): RecentProject[] {
     return readRecentProjects(this.context.globalState.get(RECENT_PROJECTS_KEY)).map(project => ({ ...project,
-      ...(project.kind === 'folder' ? this.withOrigin(project.uri, this.icons.metadata(project.uri)) : undefined) }));
+      ...(project.kind === 'folder' ? this.icons.metadata(project.uri) : undefined) }));
   }
 
   getTreeItem(project: RecentProject): vscode.TreeItem {
@@ -54,11 +50,11 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     cliEntry: async () => { throw new Error('Workflow requires a Node extension host.'); },
     dispose: () => undefined,
   };
-  const icons = new ProjectIcons(launcher, message => output.appendLine(message), readRecentProjects(context.globalState.get(RECENT_PROJECTS_KEY)));
+  const icons = new ProjectIcons(launcher, message => output.appendLine(message), readRecentProjects(context.globalState.get(RECENT_PROJECTS_KEY)), () => context.globalState.get(IMPORTED_PROJECTS_KEY));
   const recent = new RecentProjectsProvider(context, icons);
   context.subscriptions.push(output, recent, icons, icons.onDidChange(updates => {
     recent.refresh();
-    void updateProjectHistory(context, history => ({ ...history, recent: applyRecentMetadata(history.recent, new Map([...updates].map(([uri, data]) => [uri, recent.withOrigin(uri, data) ?? data]))) }))
+    void updateProjectHistory(context, history => ({ ...history, recent: applyRecentMetadata(history.recent, updates) }))
       .catch(error => output.appendLine(`Recent project icons: ${String(error)}`));
   }));
 
@@ -151,7 +147,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       await saveRecent(() => [], true);
     }
   });
-  register('studio.internalDetectProjectTypes', async (uris: string[]) => (await icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : [])).map(row => ({ ...row, ...recent.withOrigin(row.uri, row) })));
+  register('studio.internalDetectProjectTypes', (uris: string[]) => icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : []));
   register('studio.refreshProjects', async () => { await recent.reconcile(); icons.refresh(); recent.refresh(); });
   register('studio.newFile', async () => {
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument());

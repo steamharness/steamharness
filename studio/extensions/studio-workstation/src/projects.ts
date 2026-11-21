@@ -19,12 +19,13 @@ export interface RecentProject {
   projectId?: string;
   distribution?: 'source' | 'release' | 'download';
   artwork?: LibraryArtwork;
+  entries?: { entryId: string; name: string; type: ProjectType; primary: boolean }[];
 }
 
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
 export const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
-export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version' | 'projectId' | 'distribution' | 'artwork'>;
+export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version' | 'projectId' | 'distribution' | 'artwork' | 'entries'>;
 export function applyRecentMetadata(rows: RecentProject[], updates: ReadonlyMap<string, RecentMetadata>): RecentProject[] {
   return rows.map(row => row.kind === 'folder' && updates.has(row.uri) ? { ...row, ...updates.get(row.uri) } : row);
 }
