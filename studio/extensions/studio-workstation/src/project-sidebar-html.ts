@@ -12,11 +12,12 @@ export function sidebarStatusDocument(lang: string, message: string, label?: str
 }
 
 export function hostedSidebarHtml(lang: string, title: string, preview: HostedSidebarPreview, resident = false): string {
-  const nonce = newNonce(), origin = new URL(preview.url).origin;
+  const nonce = newNonce(), url = new URL(preview.url), origin = url.origin;
+  if (resident) url.searchParams.set('studio-language', lang);
   return `<!doctype html><html lang="${escape(lang)}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; frame-src ${escape(origin)}">
 <style nonce="${nonce}">html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}body.vscode-light,body.vscode-high-contrast-light{color-scheme:light}body.vscode-dark,body.vscode-high-contrast:not(.vscode-high-contrast-light){color-scheme:dark}iframe{display:block;border:0;width:100%;height:100%;background:var(--vscode-sideBar-background)}</style>
-<iframe id="project-frame" title="${escape(title)}" sandbox="allow-scripts allow-forms allow-downloads allow-same-origin" allow="${preview.microphone ? 'microphone' : "microphone 'none'"}" referrerpolicy="no-referrer" src="${escape(preview.url)}"></iframe>
+<iframe id="project-frame" title="${escape(title)}" sandbox="allow-scripts allow-forms allow-downloads allow-same-origin" allow="${preview.microphone ? 'microphone' : "microphone 'none'"}" referrerpolicy="no-referrer" src="${escape(resident ? url.href : preview.url)}"></iframe>
 <script nonce="${nonce}">const host=acquireVsCodeApi(),frame=document.getElementById('project-frame'),origin=${JSON.stringify(origin)},nonce=${JSON.stringify(preview.nonce)};
 window.addEventListener('message',event=>{
   if(event.source===frame.contentWindow){

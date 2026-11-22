@@ -65,7 +65,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     account = {status:'signed-out',hasAccount:false,name:'',serverUrl,statusLabel:zh?'未登录':'Signed Out'};
     publishAccount();
   };
-  window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml('en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
+  window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml(zh?'zh-cn':'en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
   const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
     {id:'dana',name:'Dana',relation:'incoming'},{id:'erin',name:'Erin',relation:'incoming'},{id:'sent',name:'Outgoing',relation:'outgoing'},{id:'removed',name:'Former friend',relation:'removed'}];
   const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true,avatarUrl:chatAvatar},
@@ -110,7 +110,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     if (id === 'studio.openLaunchpadInbox') {
       if (window.imError) return window.imError;
       if (window.delayOpen) await new Promise(resolve => window.finishOpening = resolve);
-      const ok=await kernelCommand('ShowLaunchpadApp','account-key',args[0],args[2]?'user:'+args[2]:args[1]);
+      const ok=await kernelCommand('ShowLaunchpadApp','account-key',args[0],args[3]==='add-contact'?'action:add-contact':args[2]?'user:'+args[2]:args[1]);
       window.actions.push(['opened', args[0]]);
       return ok;
     }

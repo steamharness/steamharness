@@ -12,6 +12,9 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   const actions = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.changeSocial').map(([, a]) => a));
   const button = (where, en, zh) => where.getByRole('button', { name: t(en, zh), exact: true });
   await friends.click(); assert.equal(await profile.getByRole('tablist').getAttribute('aria-orientation'), 'vertical');
+  const addFriend = button(panel, 'Add friend', '添加好友');
+  await addFriend.click(); await frame.getByText('action:add-contact', { exact: true }).waitFor();
+  assert.equal(await frame.locator('html').evaluate(el => new URL(el.ownerDocument.URL).searchParams.get('studio-language')), t('en', 'zh-cn'));
   await statusText(t('Loading…', '正在加载…')).waitFor(); assert.equal(await empty.isVisible(), false);
   await page.evaluate(() => { window.resumeSocial(); delete window.socialGate; });
   await statusText(/server version|服务器版本/).waitFor(); assert.equal(await empty.isVisible(), false);
@@ -58,6 +61,7 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await screenshot('profile-friends');
   await page.setViewportSize({ width: 360, height: 640 });
   await page.waitForFunction(() => document.querySelector('.lp-profile-nav').getAttribute('aria-orientation') === 'horizontal');
+  await addFriend.waitFor();
   assert.ok(await profile.evaluate(el => [el, el.querySelector('.lp-profile-content'), el.querySelector('.lp-profile-nav')].every(n => n.scrollWidth <= n.clientWidth)));
   await friends.focus(); await page.keyboard.press('ArrowRight'); assert.equal(await favorites.getAttribute('aria-selected'), 'true');
   await page.keyboard.press('ArrowLeft'); assert.equal(await friends.getAttribute('aria-selected'), 'true');
@@ -72,5 +76,5 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await empty.waitFor(); await page.evaluate(() => window.resumeSocial());
   assert.deepEqual(await names(), []); assert.equal(await search.inputValue(), '');
   await page.evaluate(() => window.updateAccount({scopeKey:'a'.repeat(64)})); await panel.getByText('Dana',{exact:true}).waitFor();
-  await favorites.click(); await panel.getByText('Saved message').waitFor(); await screenshot('profile');
+  await favorites.click(); await panel.getByText('Saved message').waitFor(); assert.equal(await addFriend.isVisible(), false); await screenshot('profile');
 }

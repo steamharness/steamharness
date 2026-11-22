@@ -1,0 +1,97 @@
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index a5d060adeabe04a5631764c59ecd0754c51431cd..998329bf1aaa4501e1603dff4bd74205294ff111 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -137,6 +137,7 @@ export class StudioLaunchpad extends Disposable {
+ 				return response === 0;
+ 			},
+ 			chatUser: user => run(this.openInbox(undefined, user)),
++			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+ 			readNotice: id => this.notices.read(id),
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+ 		}));
+@@ -345,7 +346,7 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private async openInbox(conversation?: string, user?: string): Promise<void> {
++	private async openInbox(conversation?: string, user?: string, action?: 'add-contact'): Promise<void> {
+ 		if (this.requestId) { return; }
+ 		const id = this.requestId = generateUuid();
+ 		this.view.closePicker();
+@@ -354,7 +355,7 @@ export class StudioLaunchpad extends Disposable {
+ 		try {
+ 			let reason: string | undefined; let opened = false;
+ 			try {
+-				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user);
++				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action);
+ 				opened = result === true; reason = typeof result === 'string' ? result : undefined;
+ 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
+ 			if (!opened && id === this.requestId) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index ddc95dd094a2566f0be6a663f4c8d4f95c292187..276079a9566798bd76970626590aae38d34d56d7 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -20,6 +20,7 @@ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+ export interface ProfileActions {
+ 	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
++	addContact(): void;
+ 	confirmRemoveFriend(name: string): Promise<boolean>;
+ 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+ }
+@@ -71,6 +72,8 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly empty = element('div', 'lp-profile-empty');
+ 	private readonly search = element('label', 'lp-search-field');
+ 	private readonly filter = element('input', 'lp-query');
++	private readonly peopleTools = element('div', 'lp-social-actions');
++	private readonly addContact: HTMLButtonElement;
+ 	private readonly status = element('div', 'lp-message lp-profile-status');
+ 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
+ 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
+@@ -92,6 +95,9 @@ export class LaunchpadProfile extends Disposable {
+ 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
+ 		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+ 		this.search.append(icon('search'), this.filter);
++		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
++		this.peopleTools.hidden = true;
++		this.peopleTools.append(this.search, this.addContact);
+ 		this.filter.addEventListener('input', () => { if (this.pending?.query !== this.query) { this.pending = undefined; } this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
+ 		this.content.id = 'lp-profile-section'; this.content.setAttribute('role', 'tabpanel'); this.content.tabIndex = 0;
+ 		this.nav.setAttribute('role', 'tablist'); this.nav.setAttribute('aria-label', t('My Studio sections', '我的分区'));
+@@ -116,10 +122,12 @@ export class LaunchpadProfile extends Disposable {
+ 			this.select(id); this.tabs.get(id)!.focus();
+ 		});
+ 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
+-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.search);
++		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools);
+ 		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
+ 	}
+ 
++	setInboxBusy(busy: boolean): void { this.addContact.disabled = busy; }
++
+ 	select(section: Section): void {
+ 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
+ 		this.debounce.cancel(); this.section = section; this.failure = undefined;
+@@ -197,7 +205,7 @@ export class LaunchpadProfile extends Disposable {
+ 			const selected = this.section === id; b.hidden = !this.platform && id !== 'notifications'; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1;
+ 			if (selected) { this.heading.textContent = b.title; this.content.setAttribute('aria-labelledby', b.id); }
+ 		}
+-		this.search.hidden = this.section !== 'people' || !this.account?.signedIn;
++		this.peopleTools.hidden = this.section !== 'people' || !this.platform || !this.account?.signedIn;
+ 		this.renderRows();
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 74a310990665479b506d6907d85f347871cb354f..2cb988b590b553d334ddb31b16fc8440c791de11 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -114,7 +114,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+ 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
+ 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+-	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
++	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); this.profile.setInboxBusy(busy); }
+ 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
+ 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
