@@ -53,6 +53,9 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   const choose = (en,cn) => page.getByRole('menuitem',{name:t(en,cn),exact:true}).click({delay:150});
   const before = await openCount();
   await source.click(); await detail.getByRole('heading',{name:'Project 8',exact:true}).waitFor();
+  const productAction=detail.getByRole('button',{name:t('Fixture action','示例操作'),exact:true});
+  if(enhanced){await productAction.click();assert.ok(await page.evaluate(()=>window.actions.some(([id,uri,key])=>id==='studio.runLibraryProjectAction' && uri.startsWith('file:') && key==='fixture')));}
+  else {assert.equal(await productAction.count(),0);assert.equal(await page.evaluate(()=>window.actions.some(([id])=>id==='studio.listLibraryProjectActions')),false);}
   await checkActionsHidden();
   assert.equal(await row('Project 8').getAttribute('aria-current'),'page');
   for (const text of [t('Source · IDE','源码 · IDE'),'1.2.0','/projects/Project 8','294b1eec-23fa-42cf-9fd3-2417f71c0570','Main workflow',t('Default','默认入口')]) await detail.getByText(text,{exact:true}).waitFor();

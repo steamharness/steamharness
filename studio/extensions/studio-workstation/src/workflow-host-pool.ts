@@ -60,6 +60,10 @@ export class AggregateWebHostPool {
           return { ...ready, url: url.href };
         },
         closed, close: release, reconnect: () => current.reconnect(),
+        get hostTurn(): WebSession['hostTurn'] {
+          const call = current.hostTurn;
+          return released || !call ? undefined : (entryId,input) => entryId === project.entryId ? call(entryId,input) : Promise.reject(new Error('Invalid host entry.'));
+        },
         updateAuth: (connection, ai) => current.updateAuth(connection, ai),
         connectPlatform: (purpose, entryId, interactive) => current.connectPlatform?.(purpose, entryId, interactive) ?? Promise.resolve(),
         updateUserSettings: settings => current.updateUserSettings(settings),

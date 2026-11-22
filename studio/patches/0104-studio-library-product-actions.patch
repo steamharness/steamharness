@@ -1,0 +1,79 @@
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 1623a2a18f8..a5d060adeab 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -116,6 +116,14 @@ export class StudioLaunchpad extends Disposable {
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: conversation => run(this.openInbox(conversation)),
+ 			cover: project => this.cover(project),
++			detailActions: async project => this.start.state?.platform && !project.missing && project.uri.startsWith('file:') ? await commands.executeCommand<{ id: string; label: string }[]>('studio.listLibraryProjectActions', project) ?? [] : [],
++			runDetailAction: async (project, id) => {
++				if (!this.start.state?.platform) { return; }
++				try {
++					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
++					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser); }
++				} catch (error) { notifications.error(error); }
++			},
+ 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
+ 			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
+ 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index e7b0584ad73..d590711d1d5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -18,6 +18,8 @@ export interface LibraryActions {
+ 	copyPath(p: LaunchpadProject): void;
+ 	contextMenu: IContextMenuService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
++	detailActions?(p: LaunchpadProject): Promise<{ id: string; label: string }[]>;
++	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
+ }
+ 
+ export class LaunchpadLibrary {
+@@ -54,9 +56,9 @@ export class LaunchpadLibrary {
+ 		this.element.append(rail, this.shelf);
+ 	}
+ 
+-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean): void {
++	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string): void {
+ 		this.createButton.disabled = !canCreate;
+-		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
++		const signature = JSON.stringify([recent, windows, actionScope]); if (signature === this.signature) { return; }
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
+ 		this.projects = new Map(recent.map(p => [p.uri, p]));
+ 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
+@@ -117,7 +119,19 @@ export class LaunchpadLibrary {
+ 		this.toolbar.hidden = !!selected;
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
+ 		if (selected) {
+-			this.content.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
++			const detail = projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin));
++			this.content.replaceChildren(detail); restoreFocus();
++			void this.actions.detailActions?.(selected).then(items => {
++				if (detail.parentElement !== this.content) { return; }
++				const controls = detail.querySelector('.lp-detail-actions');
++				for (const item of items.slice(0, 4)) {
++					const action = button(item.label, '', () => {
++						action.disabled = true;
++						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
++					}, 'lp-outline');
++					controls?.insertBefore(action, controls.lastElementChild);
++				}
++			}).catch(() => undefined); return;
+ 		}
+ 		this.content.replaceChildren();
+ 		if (!rows.length) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 7d0e2832946..74a31099066 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -127,7 +127,8 @@ export class StudioLaunchpadView extends Disposable {
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+ 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+ 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
+-		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
++		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '');
++		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+ 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
+ 		if (this.picker.dialog.open) { this.picker.update(); }
+ 	}

@@ -79,3 +79,11 @@ test('multiple tabs of the same entry hold independent leases on a single aggreg
   assert.equal(new URL(second.ready.url).pathname, '/entries/agent/');
   await second.close(); assert.equal(host.closes, 1); await pool.close();
 });
+
+test('background turns stay on the leased entry and stop when the lease is released',async t=>{
+  const pool=new AggregateWebHostPool(),host=session();t.after(()=>pool.close());
+  host.hostTurn=async(entry,input)=>({entry,...input});
+  const lease=await pool.acquire('project',{entryId:'agent'},async()=>host);
+  assert.deepEqual(await lease.hostTurn('agent',{action:'turn'}),{entry:'agent',action:'turn'});
+  await assert.rejects(lease.hostTurn('worker',{}));await lease.close();assert.equal(lease.hostTurn,undefined);
+});

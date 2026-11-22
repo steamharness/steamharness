@@ -74,6 +74,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     {id:'ordinary',title:'Ordinary Studio notice',source:'studio',read:false}];
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
+    if (id === 'studio.listLibraryProjectActions') return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
+    if (id === 'studio.runLibraryProjectAction') return {};
     if (id === 'studio.internalGetAccountMenuState') return account;
     if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') {
       const {page,query,type}=args[0], pageSize=2, rows=window.storeFixture.items.filter(p=>p.name.toLowerCase().includes(query.toLowerCase()) && (!type || type===p.projectType));

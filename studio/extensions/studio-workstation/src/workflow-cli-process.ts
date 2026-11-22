@@ -234,12 +234,14 @@ export async function startProjectCli(options: {
     child.on('error', () => void close());
     // The browser session URL does not grant access to private trace details.
     const pendingTrace = new Map<string, (request?: unknown) => void>();
-    if (ready.traceModelRequestProtocolVersion === 1 || ready.webAppConfigurationProtocolVersion === 1 || ready.webAppLoginProtocolVersion === 1) {
+    const pendingTurns = new Map<string, (value?: unknown, failed?: boolean) => void>();
+    if (ready.hostConversationProtocolVersion === 1 || ready.traceModelRequestProtocolVersion === 1 || ready.webAppConfigurationProtocolVersion === 1 || ready.webAppLoginProtocolVersion === 1) {
       const lines = createInterface({ input: child.stdout!, crlfDelay: Infinity });
       lines.on('line', line => {
         if (!line.startsWith('{')) return;
         try {
           const reply = JSON.parse(line);
+          if (reply.type === 'host-turn') pendingTurns.get(reply.requestId)?.(reply.value, reply.failed === true);
           if (reply.type === 'trace-model-request') pendingTrace.get(reply.requestId)?.(reply.request);
           if (ready.webAppLoginProtocolVersion === 1 && reply.type === 'web-app-login' && reply.entryId === activeWebApp?.entryId) {
             const selected = JSON.stringify(webAppConfigurations[reply.entryId]);
@@ -258,10 +260,18 @@ export async function startProjectCli(options: {
       });
       child.once('close', () => {
         lines.close();
+        for (const settle of pendingTurns.values()) settle(undefined, true);
         for (const settle of pendingTrace.values()) settle();
       });
     }
     return { ready, closed, close,
+      hostTurn: ready.hostConversationProtocolVersion !== 1 ? undefined : (entryId, input) => new Promise((resolve,reject) => {
+        const id = globalThis.crypto.randomUUID(), line = JSON.stringify({ type:'host-turn', requestId:id, entryId, input });
+        if (line.length > 256_000 || closing || finished || !child.stdin?.writable) { reject(new Error('Background conversation unavailable.')); return; }
+        const settle = (value?: unknown, failed = false) => { clearTimeout(timer); pendingTurns.delete(id); if (failed) reject(new Error('Background conversation unavailable.')); else resolve(value); };
+        const timer = setTimeout(() => settle(undefined,true), 30_000);
+        pendingTurns.set(id,settle); child.stdin.write(line+'\n', error => { if (error) settle(undefined,true); });
+      }),
       readModelRequest: ready.traceModelRequestProtocolVersion !== 1 ? undefined : (entryId, target) => new Promise(resolve => {
         if (closing || finished || !child.stdin?.writable) { resolve(undefined); return; }
         const requestId = globalThis.crypto.randomUUID();

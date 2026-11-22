@@ -21,6 +21,7 @@ export interface WebReady {
   entriesProtocolVersion: number;
   traceProtocolVersion?: number;
   traceModelRequestProtocolVersion?: number;
+  hostConversationProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
   runtime?: { harnessVersion: string; harnessPath: string };
@@ -37,6 +38,7 @@ export interface WebSession {
   updateUserSettings(settings: StudioUserSettings): void;
   updateResourceProjects(projects: string[]): void;
   readModelRequest?(entryId: string, target: TraceModelRequestTarget): Promise<unknown>;
+  hostTurn?(entryId: string, input: Record<string, unknown>): Promise<unknown>;
   retryWebApps?(): Promise<void>;
   onWebAppError?(callback: (reason: WebAppFailureReason) => void): { dispose(): void };
   reconnect?(): Promise<boolean>;

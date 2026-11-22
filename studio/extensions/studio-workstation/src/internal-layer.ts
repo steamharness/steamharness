@@ -5,6 +5,7 @@ import { registerProjectUploadProvider } from './project-upload-extension';
 import type { UserModelCatalogProvider } from './user-model-types';
 import { registerStartRecommendationsProvider } from './start-page-recommendations';
 import type { ProjectSidebar } from './project-sidebar';
+import type { Launcher } from './workflow-cli-types';
 
 interface LayerAccount {
   getState?: () => { serverUrl: string };
@@ -22,6 +23,7 @@ interface InternalLayer {
     context: vscode.ExtensionContext;
     vscode: typeof import('vscode');
     output: vscode.OutputChannel;
+    projects?: Pick<Launcher, 'inspect' | 'start'>;
     account?: LayerAccount;
     uploads: { registerProvider: typeof registerProjectUploadProvider };
     webApps: { registerProvider: typeof registerWebAppProvider };
@@ -63,10 +65,11 @@ export async function activateInternalLayer(
   output: vscode.OutputChannel,
   account: LayerAccount,
   sidebar: Pick<ProjectSidebar, 'registerHosted' | 'prepareHostedInLaunchpad' | 'showHostedInLaunchpad'>,
+  projects?: Pick<Launcher, 'inspect' | 'start'>,
 ): Promise<void> {
   try {
     const layer = await loadInternalLayer();
-    await layer?.activate?.({ context, vscode, output, account, sidebar, uploads: { registerProvider: registerProjectUploadProvider }, webApps: { registerProvider: registerWebAppProvider }, startPage: { registerRecommendationsProvider: registerStartRecommendationsProvider } });
+    await layer?.activate?.({ context, vscode, output, account, sidebar, projects, uploads: { registerProvider: registerProjectUploadProvider }, webApps: { registerProvider: registerWebAppProvider }, startPage: { registerRecommendationsProvider: registerStartRecommendationsProvider } });
   } catch (error) {
     output.appendLine(`[internal-layer] ${String(error)}`);
   }

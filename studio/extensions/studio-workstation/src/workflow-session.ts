@@ -23,6 +23,7 @@ export class RecoverableWebSession implements WebSession {
     this.exitListener = this.watch(current);
   }
   get ready() { return this.current.ready; }
+  get hostTurn(): WebSession['hostTurn'] { return this.exited || this.closing ? undefined : this.current.hostTurn; }
   get readModelRequest(): WebSession['readModelRequest'] {
     return this.exited || this.closing ? undefined : this.current.readModelRequest;
   }
