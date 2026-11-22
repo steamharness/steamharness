@@ -1,0 +1,158 @@
+diff --git a/src/vs/code/electron-main/app.ts b/src/vs/code/electron-main/app.ts
+index 253ac967c60cea23d3b027bb9b84bdf86b6a018b..85635436cfb1ac5b1037203c8d1bb3cf3b2d8825 100644
+--- a/src/vs/code/electron-main/app.ts
++++ b/src/vs/code/electron-main/app.ts
+@@ -620,10 +620,11 @@ export class CodeApplication extends Disposable {
+ 				// about:blank windows can open as window witho our default options
+ 				if (details.url === 'about:blank') {
+ 					this.logService.trace('[aux window] webContents#setWindowOpenHandler: Allowing auxiliary window to open on about:blank');
++					const owner = this.windowsMainService?.getWindowByWebContents(contents);
+ 
+ 					return {
+ 						action: 'allow',
+-						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details)
++						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details, owner?.isStudioLaunchpad ? owner.win ?? undefined : undefined)
+ 					};
+ 				}
+ 
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
+index a67d76690ab3fb0f0b4a8879558e77df9edf8d96..7159a44bd010a9f48b9d0088b61ca35e9889c640 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
++import { BrowserWindow, BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
+ import { Event } from '../../../base/common/event.js';
+ import { IAuxiliaryWindow } from './auxiliaryWindow.js';
+ import { createDecorator } from '../../instantiation/common/instantiation.js';
+@@ -20,7 +20,7 @@ export interface IAuxiliaryWindowsMainService {
+ 	readonly onDidChangeAlwaysOnTop: Event<{ window: IAuxiliaryWindow; alwaysOnTop: boolean }>;
+ 	readonly onDidTriggerSystemContextMenu: Event<{ readonly window: IAuxiliaryWindow; readonly x: number; readonly y: number }>;
+ 
+-	createWindow(details: HandlerDetails): BrowserWindowConstructorOptions;
++	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions;
+ 	registerWindow(webContents: WebContents): void;
+ 
+ 	getWindowByWebContents(webContents: WebContents): IAuxiliaryWindow | undefined;
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+index 8b56d65f61090b2cf2d1cad5dd8f52aca201148b..86acf140bef74f99e0a13567b41a4afde2aa9573 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+@@ -92,19 +92,23 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 		});
+ 	}
+ 
+-	createWindow(details: HandlerDetails): BrowserWindowConstructorOptions {
+-		const { state, overrides, disableMaximize } = this.computeWindowStateAndOverrides(details);
++	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
++		const { state, overrides, disableMaximize, keepAboveParent } = this.computeWindowStateAndOverrides(details);
+ 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
+ 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
+ 		});
++		if (keepAboveParent && parent && !parent.isDestroyed()) {
++			options.parent = parent;
++		}
+ 		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
+ 		return options;
+ 	}
+ 
+-	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean } {
++	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean; readonly keepAboveParent: boolean } {
+ 		const windowState: IWindowState = {};
+ 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
+ 		let disableMaximize = false;
++		let keepAboveParent = false;
+ 
+ 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
+ 		for (const feature of features) {
+@@ -137,6 +141,9 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 				case 'window-always-on-top':
+ 					overrides.alwaysOnTop = true;
+ 					break;
++				case 'window-keep-above-parent':
++					keepAboveParent = value === 'yes';
++					break;
+ 				case 'window-frameless':
+ 					overrides.frameless = true;
+ 					break;
+@@ -161,7 +168,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 
+ 		this.logService.trace('[aux window] using window state', state);
+ 
+-		return { state, overrides, disableMaximize };
++		return { state, overrides, disableMaximize, keepAboveParent };
+ 	}
+ 
+ 	registerWindow(webContents: WebContents): void {
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 16047d758593613c55e1fcd463c09f38d8057180..d6994ed6055c8c22d934b923f0245e6361ec1d4f 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -7,6 +7,7 @@ import { $ } from '../../base/browser/dom.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
+ import { URI } from '../../base/common/uri.js';
++import { INativeHostService } from '../../platform/native/common/native.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+@@ -22,6 +23,7 @@ export class StudioChatWindow extends Disposable {
+ 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
+ 
+ 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
++		private readonly native: INativeHostService,
+ 		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
+ 
+ 	prepare(key: string, app: LaunchpadApp): boolean {
+@@ -41,10 +43,12 @@ export class StudioChatWindow extends Disposable {
+ 			try { chat = await pending; } finally { if (this.opening.get(view.id) === pending) { this.opening.delete(view.id); } }
+ 		}
+ 		if (!chat || !await chat.ready || this.chats.get(view.id) !== chat || this.prepared !== prepared) { return false; }
+-		chat.window.window.focus(); chat.webview.focus(); return true;
++		await this.native.focusWindow({ targetWindowId: chat.window.window.vscodeWindowId });
++		if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return false; }
++		chat.webview.focus(); return true;
+ 	}
+ 	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
+-		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true });
++		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true });
+ 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
+ 		const life = new DisposableStore();
+ 		try {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 216ea9e03ae0ed89b2801e3b67841efa056d7ce4..46bc53fafaa33dd541e7883a043bf6302b57624f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -91,7 +91,7 @@ export class StudioLaunchpad extends Disposable {
+ 		@IClipboardService clipboard: IClipboardService,
+ 	) {
+ 		super();
+-		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
++		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native,
+ 			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+ 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+diff --git a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+index abf2104cb89ffc3b815306272a87bc074024ce22..23ddb8483bd3b975e8b0b66e617c8c078eae5e61 100644
+--- a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
++++ b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+@@ -49,6 +49,8 @@ export interface IAuxiliaryWindowOpenOptions {
+ 	readonly mode?: AuxiliaryWindowMode;
+ 	readonly zoomLevel?: number;
+ 	readonly alwaysOnTop?: boolean;
++	/** Keep this native window above its opener, not above other applications. */
++	readonly keepAboveParent?: boolean;
+ 
+ 	readonly nativeTitlebar?: boolean;
+ 	readonly disableFullscreen?: boolean;
+@@ -374,6 +376,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
+ 			options?.nativeTitlebar ? 'window-native-titlebar=yes' : undefined,
+ 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
+ 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
++			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,
+ 			options?.mode === AuxiliaryWindowMode.Maximized ? 'window-maximized=yes' : undefined,
+ 			options?.mode === AuxiliaryWindowMode.Fullscreen ? 'window-fullscreen=yes' : undefined,
+ 			options?.frameless ? 'window-frameless=yes' : undefined,

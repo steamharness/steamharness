@@ -110,6 +110,7 @@
     "0113-studio-project-details-layout.patch": "2090728fe1f189ef417aee1a9e3392e14e5b055eb9161fd04b4ed215ca3345e1",
     "0114-studio-add-friend-toolbar.patch": "fc65678f1f3142119478b0aba1cd739feeb28929655c7d8fa4fc1e90e3ff865b",
     "0115-studio-recent-chat-toolbar.patch": "4def1a5be6a512145f4017952995ce1acd21ab1b38c9c6d0190cc8f89aae34b6",
-    "0116-studio-launchpad-settings-toolbar.patch": "fcac320e13be5ac90fe33b629874ce6bb51b9dfd42c8fc1573d52a2efa0d10de"
+    "0116-studio-launchpad-settings-toolbar.patch": "fcac320e13be5ac90fe33b629874ce6bb51b9dfd42c8fc1573d52a2efa0d10de",
+    "0117-studio-owned-chat-windows.patch": "0a085287f5c2bbc3457b9bc9126fd3e95cf7ee394b3b3b61a10aedab9ce4678d"
   }
 }

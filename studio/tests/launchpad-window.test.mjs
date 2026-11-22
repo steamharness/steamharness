@@ -18,12 +18,13 @@ const { outputFiles } = await build({ stdin: { contents: `
   export { WindowsMainService } from './src/vs/platform/windows/electron-main/windowsMainService.ts';
   export { LaunchMainService } from './src/vs/platform/launch/electron-main/launchMainService.ts';
   export { LifecycleMainService } from './src/vs/platform/lifecycle/electron-main/lifecycleMainService.ts';
+  export { AuxiliaryWindowsMainService } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts';
   export { createStudioTray } from './src/vs/platform/windows/electron-main/studioTray.ts';`, resolveDir: fileURLToPath(kernel) },
   tsconfig: fileURLToPath(new URL('src/tsconfig.json', kernel)), bundle: true, packages: 'external', platform: 'node', format: 'cjs', write: false,
   define: { 'globalThis._VSCODE_FILE_ROOT': JSON.stringify(new URL('out/', kernel).href) } });
 const module = { exports: {} }, electron = {};
 new Function('module', 'exports', 'require', outputFiles[0].text)(module, module.exports, id => id === 'electron' ? electron : require(id));
-const { CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, createStudioTray } = module.exports;
+const { CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, createStudioTray } = module.exports;
 
 function mockWindow(isStudioLaunchpad) {
   const win = new EventEmitter();
@@ -124,6 +125,23 @@ test('ordinary project windows keep native startup visibility', t => {
   const f = createWindow(t, undefined);
   assert.equal(f.win.options.show, true);
   assert.equal(f.win.isVisible(), true);
+});
+
+test('standalone chats use native ownership rather than global always-on-top', t => {
+  const { win } = createWindow(t, { background: false });
+  electron.app = new EventEmitter();
+  electron.ipcMain.handle = () => {};
+  const service = new AuxiliaryWindowsMainService({ invokeFunction: (_fn, _state, overrides) => ({
+    alwaysOnTop: overrides.alwaysOnTop ?? false,
+  }) }, { trace() {} });
+  t.after(() => service.dispose());
+  const features = 'popup=yes,left=100,top=100,width=780,height=680';
+  const chat = { features: features + ',window-keep-above-parent=yes' };
+  assert.deepEqual(service.createWindow(chat, win), { parent: win, alwaysOnTop: false });
+  assert.deepEqual(service.createWindow(chat), { alwaysOnTop: false });
+  assert.deepEqual(service.createWindow({ features }, win), { alwaysOnTop: false });
+  win.destroy();
+  assert.deepEqual(service.createWindow(chat, win), { alwaysOnTop: false });
 });
 
 test('a failed background load stays silent until requested, then retries the same launchpad', async t => {
