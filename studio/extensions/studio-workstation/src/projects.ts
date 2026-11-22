@@ -14,6 +14,8 @@ export interface RecentProject {
   kind: 'folder' | 'workspace';
   lastOpened: number;
   projectType?: ProjectType;
+  projectName?: string;
+  description?: string;
   version?: string;
   avatarUrl?: string;
   projectId?: string;
@@ -25,7 +27,7 @@ export interface RecentProject {
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
 export const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
-export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version' | 'projectId' | 'distribution' | 'artwork' | 'entries'>;
+export type RecentMetadata = Pick<RecentProject, 'projectType' | 'avatarUrl' | 'version' | 'projectId' | 'distribution' | 'artwork' | 'entries' | 'projectName' | 'description'>;
 export function applyRecentMetadata(rows: RecentProject[], updates: ReadonlyMap<string, RecentMetadata>): RecentProject[] {
   return rows.map(row => row.kind === 'folder' && updates.has(row.uri) ? { ...row, ...updates.get(row.uri) } : row);
 }

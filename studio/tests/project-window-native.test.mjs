@@ -10,6 +10,7 @@ import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const compiled = await build({ stdin: { contents: `
+  export { URI } from './upstream/vscode/src/vs/base/common/uri';
   export * from './upstream/vscode/src/vs/platform/window/common/studioProjectWindow';
   export * from './upstream/vscode/src/vs/platform/windows/electron-main/studioProjectWindow';
 `, resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false,
@@ -78,6 +79,23 @@ test('closing the source window during a native dialog cancels the project open'
   assert.deepEqual(f.opens, []);
 });
 
+test('the native launch request is scoped to the single project folder rather than another window', () => {
+  const f = fixture();
+  const folder = f.URI.parse('vscode-remote://ssh-remote+host/projects/aggregate');
+  const other = f.URI.parse('vscode-remote://ssh-remote+other/projects/aggregate');
+  const run = { studioProjectEntry: { entryId: 'board' }, forceNewWindow: true };
+  const explicit = f.studioEntryForOpenables([{ folderUri: folder.toJSON() }], run);
+  assert.equal(explicit.uri, folder.toString());
+  assert.equal(f.studioEntryForFolder(explicit, folder).entryId, 'board');
+  assert.equal(f.studioEntryForFolder(explicit, other), undefined);
+  assert.equal(f.studioEntryForFolder(explicit, undefined), undefined);
+  assert.equal(f.studioEntryForOpenables([{ folderUri: folder }, { folderUri: other }], run), undefined);
+  assert.equal(f.studioEntryForOpenables([{ workspaceUri: folder }], run), undefined);
+  assert.equal(f.studioEntryForOpenables([{ folderUri: folder }], { ...run, addMode: true }), undefined);
+  const defaultEntry = f.studioEntryForOpenables([{ folderUri: folder }], { studioProjectEntry: {} });
+  assert.equal(f.studioEntryForFolder(defaultEntry, folder).entryId, undefined);
+});
+
 test('the project-window patch reproduces the kernel changes repeatedly without changing the index', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-project-window-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
@@ -97,16 +115,25 @@ test('the project-window patch reproduces the kernel changes repeatedly without 
   await mkdir(path.join(fixture, 'patches'));
   const patch = path.join(fixture, 'patches/0034-studio-project-window-choice.patch');
   await copyFile(path.join(ROOT, 'patches/0034-studio-project-window-choice.patch'), patch);
-  let applied = true;
-  try { git(['apply', '--reverse', '--check', patch]); } catch { applied = false; }
-  if (applied) { git(['apply', '--reverse', patch]); }
+  const entryPatchName = '0110-studio-shared-project-details.patch';
+  const entryPatch = path.join(fixture, 'patches', entryPatchName);
+  const details = await readFile(path.join(ROOT, 'patches', entryPatchName), 'utf8');
+  await writeFile(entryPatch, details.split(/(?=^diff --git )/m).filter(part => files.some(file => part.startsWith(`diff --git a/${file} b/${file}\n`))).join(''));
+  const applied = file => {
+    try { git(['apply', '--reverse', '--check', file]); return true; } catch { return false; }
+  };
+  if (!applied(entryPatch)) { git(['apply', entryPatch]); }
+  const bytes = () => Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8')));
+  const expected = await bytes();
+  git(['apply', '--reverse', entryPatch]);
+  if (applied(patch)) { git(['apply', '--reverse', patch]); }
   git(['add', '--all']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'kernel fixture']);
   const index = git(['write-tree']);
   for (let attempt = 0; attempt < 2; attempt++) {
     await applyPatches(fixture, kernel);
-    for (const file of files) { assert.equal(await readFile(path.join(kernel, file), 'utf8'), await readFile(path.join(source, file), 'utf8')); }
+    assert.deepEqual(await bytes(), expected);
     assert.equal(git(['write-tree']), index);
   }
 });

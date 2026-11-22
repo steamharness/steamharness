@@ -1,0 +1,1134 @@
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index 543bbddc64a673fef57243e7891de57116725bdc..89502b5c088ebfd42603d607992fe24673c5fe5a 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -35,6 +35,7 @@ import { IPartsSplash } from '../../theme/common/themeService.js';
+ import { IThemeMainService } from '../../theme/electron-main/themeMainService.js';
+ import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
+ import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
++import { studioEntryForOpenables } from '../../window/common/studioProjectWindow.js';
+ import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
+ import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
+ import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
+@@ -307,6 +308,7 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 				contextWindowId: windowId,
+ 				urisToOpen: toOpen,
+ 				cli: this.environmentMainService.args,
++				studioProjectEntry: studioEntryForOpenables(toOpen, options),
+ 				forceNewWindow: options.forceNewWindow,
+ 				forceReuseWindow: options.forceReuseWindow,
+ 				preferNewWindow: options.preferNewWindow,
+diff --git a/src/vs/platform/window/common/studioProjectWindow.ts b/src/vs/platform/window/common/studioProjectWindow.ts
+index 9fb0e2f38867fee1ac52cd03bfdebdb89c732d36..6c5a68eb2aeae40dccefa1f77da5d12bb34cb11c 100644
+--- a/src/vs/platform/window/common/studioProjectWindow.ts
++++ b/src/vs/platform/window/common/studioProjectWindow.ts
+@@ -3,10 +3,33 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+
++import { extUriBiasedIgnorePathCase } from '../../../base/common/resources.js';
++import { URI } from '../../../base/common/uri.js';
+ import { getNLSLanguage, localize } from '../../../nls.js';
+ import { hasWorkspaceFileExtension } from '../../workspace/common/workspace.js';
+ import { IOpenWindowOptions, IWindowOpenable, isFileToOpen, isFolderToOpen, isWorkspaceToOpen } from './window.js';
+
++export interface IStudioProjectEntry {
++	readonly uri: string;
++	readonly entryId?: string;
++}
++
++export function studioEntryForOpenables(toOpen: readonly IWindowOpenable[], options: IOpenWindowOptions): IStudioProjectEntry | undefined {
++	const [folder] = toOpen;
++	const entry = options.studioProjectEntry;
++	if (entry && toOpen.length === 1 && isFolderToOpen(folder) && !options.addMode && !options.removeMode) {
++		return { uri: URI.revive(folder.folderUri).toString(), entryId: entry.entryId };
++	}
++	return undefined;
++}
++
++export function studioEntryForFolder(entry: IStudioProjectEntry | undefined, folder: URI | undefined): IStudioProjectEntry | undefined {
++	if (entry && folder && extUriBiasedIgnorePathCase.isEqual(folder, URI.parse(entry.uri))) {
++		return { uri: folder.toString(), entryId: entry.entryId };
++	}
++	return undefined;
++}
++
+ export function shouldChooseProjectWindow(toOpen: readonly IWindowOpenable[], options?: IOpenWindowOptions): boolean {
+ 	return !options?.forceNewWindow && !options?.forceReuseWindow && !options?.addMode && !options?.removeMode
+ 		&& toOpen.some(openable => isFolderToOpen(openable) || isWorkspaceToOpen(openable)
+diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
+index 84d9a9f2903a6c5b5fae95a18effc63e7829069f..1fadea20c90046a96edcf89e6a19bb92dbf3f358 100644
+--- a/src/vs/platform/window/common/window.ts
++++ b/src/vs/platform/window/common/window.ts
+@@ -19,6 +19,7 @@ import { PolicyDefinition, PolicyValue } from '../../policy/common/policy.js';
+ import { IPartsSplash } from '../../theme/common/themeService.js';
+ import { IUserDataProfile } from '../../userDataProfile/common/userDataProfile.js';
+ import { IAnyWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, IWorkspaceIdentifier } from '../../workspace/common/workspace.js';
++import type { IStudioProjectEntry } from './studioProjectWindow.js';
+
+ export const WindowMinimumSize = {
+ 	WIDTH: 400,
+@@ -77,6 +78,9 @@ export interface IOpenWindowOptions extends IBaseOpenWindowsOptions {
+ 	 * the Agents window) so the new window restores both the folder and session.
+ 	 */
+ 	readonly chatSessionToOpen?: URI;
++
++	/** Run the requested entry (or the default if omitted) in the single folder being opened. */
++	readonly studioProjectEntry?: Omit<IStudioProjectEntry, 'uri'>;
+ }
+
+ export interface IAddRemoveFoldersRequest {
+@@ -517,6 +521,8 @@ export interface IOSConfiguration {
+ export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
+ 	readonly isStudioLaunchpad?: boolean;
+ 	studioOpenedFromLibrary?: boolean;
++	/** One-shot startup target; a cold release window must select it before preparing the Steam view. */
++	studioProjectEntry?: IStudioProjectEntry;
+ 	studioLaunchpadReduceMotion?: boolean;
+ 	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
+ 	studioReleasePending?: boolean;
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index d59e9c0d8fc1ce08e45907b496f088434dfdec94..7acd2cbe6be81a24e7f92aecfa5e48842fe3b282 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -1383,6 +1383,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
+
+ 	load(configuration: INativeWindowConfiguration, options: ILoadOptions = Object.create(null)): void {
+ 		this.logService.trace(`window#load: attempt to load window (id: ${this._id})`);
++		if (options.isReload && configuration.studioProjectEntry) {
++			configuration = { ...configuration, studioProjectEntry: undefined };
++		}
+
+ 		// Clear Document Edited if needed
+ 		if (this.isDocumentEdited()) {
+diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
+index 419348274339fadb8cf526b6f96e027c8acc1acd..290437c1a2507411286a3545f550d89dd4eb1ab3 100644
+--- a/src/vs/platform/windows/electron-main/windows.ts
++++ b/src/vs/platform/windows/electron-main/windows.ts
+@@ -11,6 +11,7 @@ import { IProcessEnvironment, isLinux, isMacintosh, isWindows } from '../../../b
+ import { URI } from '../../../base/common/uri.js';
+ import { IAuxiliaryWindow } from '../../auxiliaryWindow/electron-main/auxiliaryWindow.js';
+ import { IConfigurationService } from '../../configuration/common/configuration.js';
++import type { IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+ import { NativeParsedArgs } from '../../environment/common/argv.js';
+ import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
+ import { ServicesAccessor, createDecorator } from '../../instantiation/common/instantiation.js';
+@@ -96,6 +97,7 @@ export interface IBaseOpenConfiguration {
+
+ export interface IOpenConfiguration extends IBaseOpenConfiguration {
+ 	readonly cli: NativeParsedArgs;
++	readonly studioProjectEntry?: IStudioProjectEntry;
+ 	readonly userEnv?: IProcessEnvironment;
+ 	readonly urisToOpen?: IWindowOpenable[];
+ 	readonly waitMarkerFileURI?: URI;
+diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
+index 55465afd180d76eedb11d99d2375c1d02229a1d4..3da7e971ae15b1319d1e0cfcd314b7107a76f01e 100644
+--- a/src/vs/platform/windows/electron-main/windowsMainService.ts
++++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
+@@ -62,11 +62,13 @@ import { VSBuffer } from '../../../base/common/buffer.js';
+ import { resolveAgentsWindowFolder } from './agentsWindow.js';
+ import { createStudioTray } from './studioTray.js';
+ import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
++import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+
+ //#region Helper Interfaces
+
+ interface IOpenBrowserWindowOptions {
+ 	readonly studioOpenedFromLibrary?: boolean;
++	readonly studioProjectEntry?: IStudioProjectEntry;
+ 	readonly studioLaunchpad?: { background: boolean };
+ 	readonly userEnv?: IProcessEnvironment;
+ 	readonly cli?: NativeParsedArgs;
+@@ -783,6 +785,10 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 			termProgram: configuration?.userEnv?.['TERM_PROGRAM']
+ 		};
+ 		window.sendWhenReady('vscode:openFiles', CancellationToken.None, params);
++		const entry = studioEntryForFolder(configuration.studioProjectEntry, isSingleFolderWorkspaceIdentifier(window.openedWorkspace) ? window.openedWorkspace.uri : undefined);
++		if (entry) {
++			window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: 'studio.internalLaunchProjectEntry', from: 'mouse', args: [entry] });
++		}
+
+ 		return window;
+ 	}
+@@ -859,6 +865,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 		return this.openInBrowserWindow({
+ 			workspace: folderOrWorkspace.workspace,
+ 			studioOpenedFromLibrary: typeof openConfig.contextWindowId === 'number' && this.getWindowById(openConfig.contextWindowId)?.isStudioLaunchpad,
++			studioProjectEntry: studioEntryForFolder(openConfig.studioProjectEntry, isSingleFolderWorkspaceIdentifier(folderOrWorkspace.workspace) ? folderOrWorkspace.workspace.uri : undefined),
+ 			userEnv: openConfig.userEnv,
+ 			cli: openConfig.cli,
+ 			initialStartup: openConfig.initialStartup,
+@@ -1613,6 +1620,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 			workspace: options.workspace,
+ 			isStudioLaunchpad: !!options.studioLaunchpad,
+ 			studioOpenedFromLibrary: options.studioOpenedFromLibrary,
++			studioProjectEntry: options.studioProjectEntry,
+ 			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
+ 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
+ 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
+diff --git a/src/vs/workbench/browser/media/studioProjectDetails.css b/src/vs/workbench/browser/media/studioProjectDetails.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..165454c39c8601c431818df9a3ea466338cdccde
+--- /dev/null
++++ b/src/vs/workbench/browser/media/studioProjectDetails.css
+@@ -0,0 +1,46 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++.lp-project-details, .lp-detail-entries {
++	--detail-fg: var(--vscode-foreground);
++	--detail-muted: var(--vscode-descriptionForeground);
++	--detail-line: var(--vscode-contrastBorder,var(--vscode-panel-border,color-mix(in srgb,var(--detail-fg) 15%,transparent)));
++	color: var(--detail-fg); font: 13px/1.45 var(--vscode-font-family,system-ui); letter-spacing: 0; user-select: text;
++}
++.lp-project-details { max-width: 880px; }
++.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--detail-line); }
++.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--vscode-sideBar-background,var(--vscode-editor-background)); border-radius: 6px; }
++.lp-detail-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
++.lp-detail-mark .codicon { font-size: 28px; }
++.lp-detail-identity { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
++.lp-project-details .lp-section-kicker { color: var(--detail-muted); font-size: 12px; }
++.lp-project-details h1 { margin: 0; color: var(--vscode-editor-foreground,var(--detail-fg)); font-size: 24px; line-height: 1.22; font-weight: 600; }
++.monaco-workbench .lp-project-details h1[tabindex="-1"]:focus { outline: none; }
++.lp-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: 100%; }
++.lp-project-details .lp-detail-description { margin: 16px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
++.lp-detail-facts { margin: 16px 0 22px; }
++.lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
++.lp-detail-facts dt, .lp-detail-entries small { color: var(--detail-muted); }
++.lp-detail-facts dd { margin: 0; overflow-wrap: anywhere; }
++.lp-detail-entries { border-top: 1px solid var(--detail-line); padding-top: 18px; }
++.lp-detail-entries h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
++.lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
++.lp-detail-entries li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; padding: 8px 0; border-bottom: 1px solid var(--detail-line); }
++.lp-entry-identity { display: flex; align-items: baseline; gap: 4px 7px; flex-wrap: wrap; flex: 1 1 90px; min-width: 0; overflow-wrap: anywhere; }
++.lp-detail-entries strong { min-width: 0; font-weight: 500; }
++.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
++.lp-project-details .studio-project-action {
++	display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent;
++	background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text;
++	padding: 4px 7px; border-radius: 4px; max-width: 100%; overflow-wrap: anywhere;
++}
++.lp-project-details .studio-project-action > .codicon { flex: none; color: var(--vscode-icon-foreground,var(--detail-fg)); }
++.lp-project-details .studio-project-action:disabled { opacity: .55; cursor: default; }
++.lp-project-details .studio-project-action:hover:not(:disabled) { background: var(--vscode-list-hoverBackground,var(--vscode-toolbar-hoverBackground)); }
++.lp-project-details .studio-project-action:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
++.lp-project-details .studio-project-action.lp-outline { border-color: var(--vscode-contrastBorder,var(--vscode-widget-border,color-mix(in srgb,var(--detail-fg) 25%,transparent))); }
++.lp-project-details .studio-project-action.lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground,#fff); padding-inline: 12px; }
++.lp-project-details .studio-project-action.lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
++.lp-project-details .studio-project-action.lp-primary > .codicon { color: inherit; }
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 62a2ca39cc30a95d3c48f018d95a96ccf4629fcb..8f580dcc3d59024accf7a0c4c8772937b763757e 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -14,9 +14,7 @@
+ .studio-start:hover, .studio-start-setup-error pre:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+ .monaco-workbench .studio-start[tabindex]:focus { outline:none; }
+ .studio-start-inner { box-sizing:border-box; max-width:1000px; padding:28px 36px 36px; margin:0 auto; }
+-.studio-start h1 { margin:0 0 24px; color:var(--vscode-descriptionForeground); font-size:13px; font-weight:600; }
+-.studio-start h2 { margin:0; font-size:25px; line-height:1.24; font-weight:600; }
+-.studio-start h3 { margin:0; font-size:14px; font-weight:600; }
++.studio-start-heading { margin:0 0 24px; color:var(--vscode-descriptionForeground); font-size:13px; font-weight:600; }
+ .studio-start .studio-start-loading, .studio-start.loading .studio-start-content { display:none; }
+ .studio-start.loading .studio-start-loading { display:block; }
+ .studio-start-skeleton { border-radius:4px; background:currentColor; opacity:.1; }
+@@ -27,29 +25,8 @@
+ .studio-start-skeleton-path { width:min(80%,500px); height:12px; margin-bottom:42px; }
+ .studio-start-skeleton-row { display:flex; align-items:center; min-height:60px; border-top:1px solid var(--studio-start-border); }
+ .studio-start-skeleton-row > .studio-start-skeleton { width:min(48%,190px); height:12px; }
+-.studio-start-project-card + .studio-start-project-card { border-top:1px solid var(--studio-start-border); margin-top:32px; padding-top:28px; }
+-.studio-start-project-heading { display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:start; gap:14px; }
+-.studio-start-project-identity, .studio-start-entry-description { min-width:0; }
+-.studio-start-avatar {
+-	display:grid; place-items:center; overflow:hidden; border-radius:6px; color:var(--vscode-icon-foreground);
+-	background:var(--vscode-toolbar-hoverBackground);
+-}
+-.studio-start-avatar-project { width:48px; height:48px; }
+-.studio-start-avatar-project > .codicon { font-size:22px; }
+-.studio-start-avatar > img[src^="data:image/svg+xml"] { width:100%; height:100%; object-fit:contain; }
+-.studio-start-avatar-entry { width:32px; height:32px; border-radius:4px; }
+-.studio-start-avatar > img { display:block; width:100%; height:100%; object-fit:contain; }
+-.studio-start-project-meta, .studio-start-entry-meta {
+-	display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; color:var(--vscode-descriptionForeground); font-size:12px;
+-}
+-.studio-start-project-meta { margin-top:4px; }
+-.studio-start-project-description { white-space:pre-wrap; margin:14px 0 0; }
+-.studio-start-project-details {
+-	display:grid; grid-template-columns:auto minmax(0,1fr); gap:3px 12px; margin:14px 0 24px; font-size:12px;
+-}
+-.studio-start-project-details dt { color:var(--vscode-descriptionForeground); }
+-.studio-start-project-details dd, .studio-start-empty p { margin:0; }
+-.studio-start code { font-family:var(--monaco-monospace-font); }
++.studio-start-current > .lp-project-details + .lp-project-details { margin-top:32px; }
++.studio-start-empty p { margin:0; }
+ .studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-width:0; }
+ .studio-start-action {
+ 	display:inline-flex; align-items:center; gap:6px; min-height:30px; min-width:0; max-width:100%; padding:4px 8px;
+@@ -61,17 +38,6 @@
+ .monaco-workbench .studio-start-action:focus:not(:focus-visible) { outline:none; }
+ .monaco-workbench .studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
+ .studio-start-action:disabled { opacity:.5; cursor:default; }
+-.studio-start-primary { background:var(--vscode-button-background); color:var(--vscode-button-foreground); }
+-.studio-start-primary:hover:not(:disabled) { background:var(--vscode-button-hoverBackground); color:var(--vscode-button-foreground); }
+-.studio-start-entries { margin:8px 0 0; padding:0; list-style:none; border-top:1px solid var(--studio-start-border); }
+-.studio-start-entry {
+-	display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:center; gap:10px;
+-	min-height:60px; padding:6px 8px; box-sizing:border-box; border-bottom:1px solid var(--studio-start-border);
+-}
+-.studio-start-entry-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 8px; }
+-.studio-start-entry-name { font-weight:600; }
+-.studio-start-entry-default { font-size:11px; color:var(--vscode-descriptionForeground); }
+-.studio-start-entry-meta, .studio-start-entry-unavailable { color:var(--vscode-descriptionForeground); font-size:12px; }
+ .studio-start-setup { padding:10px 12px; margin-bottom:16px; border:1px solid var(--studio-start-border); border-radius:6px; }
+ .studio-start-setup-status { display:flex; align-items:center; gap:8px; margin:0 0 4px; }
+ .studio-start-setup-error { margin:4px 0; }
+@@ -80,12 +46,7 @@
+ .studio-start-empty { display:flex; align-items:center; gap:10px; color:var(--vscode-descriptionForeground); }
+ @container (max-width:600px) {
+ 	.studio-start-inner { padding:20px; }
+-	.studio-start-project-heading { grid-template-columns:48px minmax(0,1fr); gap:8px 12px; }
+-	.studio-start-project-heading > .studio-start-project-actions { grid-column:1 / -1; }
+ }
+ @container (max-width:360px) {
+ 	.studio-start-inner { padding:16px; }
+-	.studio-start h2 { font-size:19px; }
+-	.studio-start-project-details { grid-template-columns:minmax(0,1fr); }
+-	.studio-start-entry { gap:8px; padding-inline:4px; }
+ }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 9faf8a7369cf5a91bd8bd84a1751cdad4a068726..ccc97562e3a3f5b0bc9208dc467b766466ef00f2 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -7,14 +7,17 @@ import { $, addDisposableListener, append, clearNode, getWindow } from '../../..
+ import { Emitter, Event } from '../../../../base/common/event.js';
+ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+ import { generateUuid } from '../../../../base/common/uuid.js';
++import { getNLSLanguage } from '../../../../nls.js';
+ import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+-import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
++import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
+ import './media/studioStart.css';
+
+ interface StudioOverviewProject {
+ 	uri: string;
++	projectId?: string;
++	distribution?: StudioProjectDetails['distribution'];
+ 	defaultEntry: string;
+ 	name: string;
+ 	description?: string;
+@@ -35,6 +38,7 @@ export interface StudioStartState {
+ 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
+ 	projects: StudioOverviewProject[];
+ 	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectId?: string; projectType?: string; version?: string; avatarUrl?: string;
++		projectName?: string; description?: string;
+ 		entries?: { entryId: string; name: string; type: string; primary: boolean }[];
+ 		distribution?: 'source' | 'release' | 'download'; artwork?: { cover?: { name: string; mtime: number }; entries?: string[]; files?: string[] } }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+@@ -90,6 +94,7 @@ export class StudioStartView extends Disposable {
+ 	private readonly id = generateUuid();
+ 	private readonly content: HTMLElement;
+ 	private readonly contentDisposables = this._register(new DisposableStore());
++	private readonly zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+ 	private renderKey = '';
+ 	private intersecting = false;
+ 	private enabled = true;
+@@ -144,8 +149,8 @@ export class StudioStartView extends Disposable {
+ 		}
+ 	}
+
+-	private button(parent: HTMLElement, label: string, icon: string, command: string, arg: { uri: string; entryId?: string } | string): HTMLButtonElement {
+-		const button = append(parent, $<HTMLButtonElement>('button.studio-start-action', { type: 'button' }));
++	private button(label: string, icon: string, command: string, arg: { uri: string; entryId?: string } | string, css = 'studio-start-action'): HTMLButtonElement {
++		const button = $<HTMLButtonElement>('button', { type: 'button', class: css });
+ 		append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
+ 		append(button, $('span.studio-start-action-label', undefined, label));
+ 		button.dataset.action = command;
+@@ -157,30 +162,24 @@ export class StudioStartView extends Disposable {
+ 		return button;
+ 	}
+
+-	private avatar(parent: HTMLElement, size: 'project' | 'entry', projectType: string, avatarUrl: string | undefined): void {
+-		const icon = append(parent, $(`span.studio-start-avatar.studio-start-avatar-${size}`, { 'aria-hidden': 'true' }));
+-		const source = avatarUrl?.startsWith('data:image/svg+xml,') ? avatarUrl : studioProjectCardIcon(projectType);
+-		if (source) {
+-			append(icon, $('img', { alt: '', src: source }));
+-		} else {
+-			append(icon, $('span.codicon.codicon-root-folder'));
+-		}
+-	}
+-
+ 	private render(): void {
+ 		const state = this.service.state;
+ 		this.element.classList.toggle('loading', !state);
+ 		this.element.setAttribute('aria-busy', String(!state));
+ 		if (!state) { return; }
+ 		const { hasWorkspace, projects, pending, platform, installing, busy, labels } = state;
+-		const key = JSON.stringify({ hasWorkspace, projects, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
++		const lastOpened = new Map(state.recent.map(row => [row.uri, row.lastOpened]));
++		const details = projects.map(project => ({ ...project, lastOpened: lastOpened.get(project.uri) }));
++		const key = JSON.stringify({ hasWorkspace, details, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
+ 		if (key === this.renderKey) { return; }
+ 		this.renderKey = key;
++		const active = this.element.ownerDocument.activeElement;
++		const focusKey = this.content.contains(active) ? (active as HTMLElement | null)?.dataset.key : undefined;
+ 		this.contentDisposables.clear();
+ 		clearNode(this.content);
+ 		const text = (key: string): string => labels[key] ?? key;
+ 		this.element.setAttribute('aria-label', text('overview'));
+-		append(this.content, $('h1', undefined, text('overview')));
++		if (!projects.length) { append(this.content, $('h1.studio-start-heading', undefined, text('overview'))); }
+ 		for (const project of pending) {
+ 			const setup = append(this.content, $('.studio-start-setup'));
+ 			const active = installing === project.id;
+@@ -195,8 +194,8 @@ export class StudioStartView extends Disposable {
+ 				append(details, $('pre', undefined, project.error));
+ 			}
+ 			const actions = append(setup, $('.studio-start-project-actions'));
+-			if (!active) { this.button(actions, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id).disabled = busy; }
+-			this.button(actions, text('installationLog'), 'output', 'studio.showProjectSetupLog', project.id);
++			if (!active) { append(actions, this.button(text('retry'), 'refresh', 'studio.retryProjectSetup', project.id)).disabled = busy; }
++			append(actions, this.button(text('installationLog'), 'output', 'studio.showProjectSetupLog', project.id));
+ 		}
+ 		if (!projects.length && !pending.length) {
+ 			const empty = append(this.content, $('.studio-start-empty'));
+@@ -205,61 +204,38 @@ export class StudioStartView extends Disposable {
+ 			return;
+ 		}
+ 		const root = append(this.content, $('.studio-start-current'));
+-		for (const project of projects) { this.renderProject(root, project, !!platform, text); }
++		for (const project of details) { this.renderProject(root, project, !!platform, text); }
++		if (focusKey) { Array.from(root.querySelectorAll<HTMLElement>('[data-key]')).find(node => node.dataset.key === focusKey)?.focus({ preventScroll: true }); }
+ 	}
+
+-	private renderProject(root: HTMLElement, project: StudioOverviewProject, platform: boolean, text: (key: string) => string): void {
+-		const section = append(root, $('section.studio-start-project-card'));
+-		const header = append(section, $('header.studio-start-project-heading'));
+-		this.avatar(header, 'project', project.projectType, project.avatarUrl);
+-		const identity = append(header, $('.studio-start-project-identity'));
+-		append(identity, $('h2', undefined, project.name));
+-		const meta = append(identity, $('.studio-start-project-meta'));
+-		append(meta, $('span.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
+-		if (project.version) { append(meta, $('span', undefined, `${text('localVersion')} ${project.version}`)); }
+-		if (project.update?.serverVersion && project.update.status !== 'unavailable') {
+-			append(meta, $('span', undefined, `${text('serverVersion')} ${project.update.serverVersion}`));
+-		}
+-		const updateAvailable = project.update?.status === 'upgrade';
+-		if (updateAvailable || project.update?.status === 'current' || project.update?.status === 'ahead') {
+-			append(meta, $('span', undefined, text(updateAvailable ? 'updateAvailable' : project.update?.status === 'current' ? 'upToDate' : 'localNewer')));
++	private renderProject(root: HTMLElement, project: StudioOverviewProject & { lastOpened?: number }, platform: boolean, text: (key: string) => string): void {
++		const t = (en: string, zh: string) => this.zh ? zh : en;
++		const { uri, entries, defaultEntry, update, folderPath, distribution = 'source' } = project;
++		const actions: HTMLButtonElement[] = [];
++		const action = (label: string, icon: string, command: string, entryId?: string, css = 'lp-outline') => {
++			const button = this.button(label, icon, command, entryId === undefined ? { uri } : { uri, entryId }, `studio-project-action ${css}`);
++			button.dataset.key = `${command}:${uri}`;
++			actions.push(button);
++			return button;
++		};
++		const primary = entries.find(entry => entry.entryId === defaultEntry && entry.available);
++		if (primary) { action(t('Run project', '运行项目'), 'play', 'studio.internalRunProjectEntry', primary.entryId, 'lp-primary'); }
++		if (distribution === 'source') {
++			const sourceEntry = primary ?? entries.find(entry => entry.available);
++			if (sourceEntry) { action(text('source'), 'code', 'studio.openProjectSource', sourceEntry.entryId); }
++			if (platform) { action(text('upload'), 'cloud-upload', 'studio.uploadProject'); }
+ 		}
+-		const actions = append(header, $('.studio-start-project-actions'));
+-		const sourceEntry = project.entries.find(entry => entry.available && entry.entryId === project.defaultEntry) ?? project.entries.find(entry => entry.available);
+-		if (sourceEntry) {
+-			this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri, entryId: sourceEntry.entryId });
+-		}
+-		if (platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }); }
+-		if (updateAvailable) {
+-			const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri });
+-			upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
+-			if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
+-		}
+-		if (project.description?.trim()) { append(section, $('p.studio-start-project-description', undefined, project.description)); }
+-		const details = append(section, $('dl.studio-start-project-details'));
+-		append(details, $('dt', undefined, text('projectFolder')));
+-		append(append(details, $('dd')), $('code.studio-start-project-path', undefined, project.folderPath));
+-		append(section, $('h3.studio-start-entries-title', undefined, text('entries')));
+-		const entries = append(section, $('ul.studio-start-entries'));
+-		for (const entry of project.entries) {
+-			const row = append(entries, $('li.studio-start-entry', { 'data-entry-id': entry.entryId }));
+-			const primary = entry.entryId === project.defaultEntry;
+-			this.avatar(row, 'entry', entry.projectType, entry.avatarUrl);
+-			const description = append(row, $('.studio-start-entry-description'));
+-			const title = append(description, $('.studio-start-entry-title'));
+-			append(title, $('span.studio-start-entry-name', undefined, entry.name));
+-			if (primary) { append(title, $('span.studio-start-entry-default', undefined, text('defaultEntry'))); }
+-			const entryMeta = append(description, $('.studio-start-entry-meta'));
+-			append(entryMeta, $('span', undefined, text(`type.${entry.projectType}`)));
+-			append(entryMeta, $('code', undefined, entry.entryId));
+-			if (entry.available) {
+-				const open = this.button(row, text('openEntry'), 'play', 'studio.openProject', { uri: project.uri, entryId: entry.entryId });
+-				open.setAttribute('aria-label', `${text('openEntry')}: ${entry.name}`);
+-				open.classList.toggle('studio-start-primary', primary);
+-			} else {
+-				append(row, $('span.studio-start-entry-unavailable', undefined, text('unavailable')));
+-			}
++		if (update?.status === 'upgrade') {
++			const upgrade = action(text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject');
++			upgrade.disabled = !update.canDownload || !!update.busy;
++			if (!update.canDownload) { upgrade.title = text('downloadUnavailable'); }
+ 		}
++		const status = update?.status === 'upgrade' ? 'updateAvailable' : update?.status === 'current' ? 'upToDate' : update?.status === 'ahead' ? 'localNewer' : undefined;
++		const extraFacts: [string, string | undefined][] = [[text('serverVersion'), update?.status !== 'unavailable' ? update?.serverVersion : undefined],
++			[t('Update status', '更新状态'), status ? text(status) : undefined]];
++		append(root, projectDetails({ ...project, kind: 'folder', path: folderPath, distribution,
++			entries: entries.map(entry => ({ ...entry, type: entry.projectType, primary: entry.entryId === defaultEntry })),
++		}, t, { actions, extraFacts, currentWindow: true, openEntry: entryId => { void this.commands.executeCommand('studio.internalRunProjectEntry', { uri, entryId }).catch(() => undefined); } }));
+ 	}
+
+ 	override dispose(): void {
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index cd7b6abdff8ebd0e5b1371b528506f13739e46ef..19f5a33dcef3d1084ee44edc00baeb6cea910155 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -18,6 +18,7 @@ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/brows
+ import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+ import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
++import type { IStudioProjectEntry } from '../../../platform/window/common/studioProjectWindow.js';
+ import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
+ import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
+
+@@ -71,6 +72,7 @@ const modeChange = new Emitter<void>();
+ export const studioModeStorageKeys = { mode: 'studio.workbenchMode', ideLayout: 'studio.ideLayout' } as const;
+ export const studioModeState = {
+ 	openedFromLibrary: false,
++	startupEntry: undefined as IStudioProjectEntry | undefined,
+ 	releaseProject: undefined as IStudioReleaseProject | undefined,
+ 	state: { available: false, labels: {} } as StudioModeState,
+ 	steam: false,
+@@ -93,8 +95,9 @@ export function shouldRecoverStudioIdeVisibility(storage: IStorageService): bool
+ }
+
+ /** Establish the release shell before layout, title controls, or editor restoration. */
+-export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {
++export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false, startupEntry?: IStudioProjectEntry): void {
+ 	studioModeState.openedFromLibrary = openedFromLibrary;
++	studioModeState.startupEntry = startupEntry;
+ 	if (!project) { return; }
+ 	studioModeState.releaseProject = project;
+ 	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,
+diff --git a/src/vs/workbench/browser/studioProjectDetails.ts b/src/vs/workbench/browser/studioProjectDetails.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a4778cdcba918599eb5a35104d49414f1215220
+--- /dev/null
++++ b/src/vs/workbench/browser/studioProjectDetails.ts
+@@ -0,0 +1,129 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
++import { button, element, icon, picture, type StudioLabel } from './studioUiElements.js';
++import './media/studioProjectDetails.css';
++
++export interface StudioProjectEntry {
++	entryId: string;
++	name: string;
++	type: string;
++	primary: boolean;
++	avatarUrl?: string;
++	available?: boolean;
++}
++
++export interface StudioProjectDetails {
++	kind: 'folder' | 'workspace';
++	uri: string;
++	name: string;
++	path: string;
++	projectId?: string;
++	projectType?: string;
++	avatarUrl?: string;
++	description?: string;
++	version?: string;
++	distribution?: 'source' | 'release' | 'download';
++	windowId?: number;
++	dirty?: boolean;
++	lastOpened?: number;
++	missing?: boolean;
++	entries?: readonly StudioProjectEntry[];
++}
++
++export function glyph(p: StudioProjectDetails): string {
++	return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder');
++}
++
++export function projectMark(p: StudioProjectDetails): HTMLElement {
++	return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p));
++}
++
++export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
++	const source = studioProjectCardIcon(type);
++	return source ? picture(source) : fallback;
++}
++
++export function typeLabel(type: string | undefined, t: StudioLabel): string {
++	switch (type) {
++		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
++	}
++}
++
++export function edition(p: StudioProjectDetails, t: StudioLabel): string {
++	switch (p.distribution) {
++		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
++		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
++	}
++}
++
++interface ProjectDetailsOptions {
++	actions: readonly HTMLElement[];
++	openEntry?(entryId: string): void;
++	currentWindow?: boolean;
++	extraFacts?: [label: string, value: string | undefined][];
++}
++
++/** The resident library and IDE use the same layout; each supplies its own window actions. */
++export function projectDetails(p: StudioProjectDetails, t: StudioLabel, options: ProjectDetailsOptions): HTMLElement {
++	const page = element('article', 'lp-project-details');
++	const head = element('header', 'lp-detail-head'), mark = element('span', 'lp-detail-mark');
++	mark.append(projectMark(p));
++	const identity = element('div', 'lp-detail-identity'), title = element('h1', '', p.name);
++	title.tabIndex = -1; title.dataset.key = 'detail:' + p.uri;
++	identity.append(element('span', 'lp-section-kicker', t('Project details', '项目详情')), title);
++	const controls = element('div', 'lp-detail-actions');
++	controls.append(...options.actions);
++	head.append(mark, identity, controls); page.append(head);
++
++	if (p.description?.trim()) { page.append(element('p', 'lp-detail-description', p.description)); }
++	const facts = element('dl', 'lp-detail-facts');
++	const fact = (label: string, value?: string, className = '') => {
++		if (value) { const row = element('div'); row.append(element('dt', '', label), element('dd', className, value)); facts.append(row); }
++	};
++	fact(t('Format', '项目形式'), edition(p, t));
++	if (p.projectType) { fact(t('Project type', '项目类型'), typeLabel((p.entries?.length ?? 0) > 1 ? 'aggregate' : p.projectType, t), 'lp-detail-type'); }
++	fact(t('Version', '版本'), p.version);
++	for (const [label, value] of options.extraFacts ?? []) { fact(label, value); }
++	fact(t('Window', '窗口状态'), p.missing ? t('Not found', '路径失效') : p.windowId === undefined && !options.currentWindow ? t('Closed', '未打开') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'));
++	if (p.lastOpened !== undefined) { fact(t('Last opened', '最近打开时间'), new Date(p.lastOpened).toLocaleString(t('en', 'zh-CN'))); }
++	fact(t('Location', '位置'), p.path, 'lp-detail-location');
++	fact(t('Project ID', '项目 ID'), p.projectId);
++	page.append(facts);
++	if (p.entries?.length) {
++		page.append(projectEntryList(p.entries, t, options.openEntry, p.uri));
++	}
++	return page;
++}
++
++type ListedEntry = Omit<StudioProjectEntry, 'entryId'> & { entryId?: string };
++
++export function projectEntryList(entries: readonly ListedEntry[], t: StudioLabel, openEntry?: (entryId: string) => void, uri?: string): HTMLElement {
++	const section = element('section', 'lp-detail-entries'), list = element('ul');
++	for (const entry of entries) {
++		const { entryId } = entry;
++		const row = element('li'), identity = element('span', 'lp-entry-identity');
++		if (entryId) { row.dataset.entryId = entryId; }
++		const mark = entry.avatarUrl?.startsWith('data:image/') ? picture(entry.avatarUrl) : projectTypeMark(entry.type, icon('extensions'));
++		identity.append(element('strong', 'lp-entry-name', entry.name));
++		if (entry.primary) { identity.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
++		row.append(mark, identity, element('small', 'lp-entry-type', typeLabel(entry.type, t)));
++		if (entryId && openEntry) {
++			if (entry.available === false) {
++				row.append(element('small', 'lp-entry-unavailable', t('Unavailable', '不可用')));
++			} else {
++				const label = t('Open entry', '打开入口');
++				const open = button(label, 'play', () => openEntry(entryId), 'lp-outline studio-project-action');
++				open.setAttribute('aria-label', `${label}: ${entry.name}`);
++				open.dataset.key = `entry:${uri}:${entryId}`;
++				row.append(open);
++			}
++		}
++		list.append(row);
++	}
++	section.append(element('h2', '', t('Project entries', '项目入口')), list);
++	return section;
++}
+diff --git a/src/vs/workbench/browser/studioUiElements.ts b/src/vs/workbench/browser/studioUiElements.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9e7cc9ecd3b13b2b47397cb1fe8d6a90d1aab715
+--- /dev/null
++++ b/src/vs/workbench/browser/studioUiElements.ts
+@@ -0,0 +1,34 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export type StudioLabel = (en: string, zh: string) => string;
++
++export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
++	const node = document.createElement(tag);
++	node.className = className;
++	node.textContent = text;
++	return node;
++}
++
++export function icon(name: string): HTMLElement {
++	const node = element('span', `codicon codicon-${name}`);
++	node.setAttribute('aria-hidden', 'true');
++	return node;
++}
++
++export function button(text: string, glyph: string, action: () => void, className = ''): HTMLButtonElement {
++	const node = element('button', className);
++	node.type = 'button';
++	if (glyph) { node.append(icon(glyph)); }
++	node.append(text);
++	node.addEventListener('click', action);
++	return node;
++}
++
++export function picture(src: string, className = ''): HTMLImageElement {
++	const img = element('img', className);
++	img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src;
++	return img;
++}
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 97c692b700a725de9980a4f73149418746472ff0..16aad29dd2dc0b0c1f710dfcf54ad91fb120c32c 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -17,6 +17,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
++import type { IStudioProjectEntry } from '../../../../platform/window/common/studioProjectWindow.js';
+ import { StudioModeLoading, StudioSteamTools, studioModeState, studioModeStorageKeys, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
+ import { ViewPane } from '../../../browser/parts/views/viewPane.js';
+ import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
+@@ -130,6 +131,19 @@ export class StudioModeContribution extends Disposable {
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+ 		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+ 		this.requested = !!studioModeState.state.releaseOnly || !studioModeState.openedFromLibrary && storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		const startupEntry = studioModeState.startupEntry;
++		studioModeState.startupEntry = undefined;
++		let pendingReleaseEntry = studioModeState.state.releaseOnly && startupEntry?.uri === studioModeState.state.projectUri ? startupEntry : undefined;
++		const launchEntry = async (entry: IStudioProjectEntry): Promise<void> => {
++			if (studioModeState.state.releaseOnly) {
++				if (entry.uri !== studioModeState.state.projectUri) { return; }
++				if (!studioModeState.state.available) { pendingReleaseEntry = entry; return; }
++				await this.request(true, entry);
++			} else {
++				await this.request(false);
++				if (!this._store.isDisposed) { await this.commands.executeCommand('studio.internalRunProjectEntry', entry); }
++			}
++		};
+ 		if (studioModeState.state.releaseOnly) {
+ 			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+ 			this.layout.mainContainer.classList.add('studio-steam-mode');
+@@ -149,6 +163,7 @@ export class StudioModeContribution extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalToggleMode', () => this.request(!this.requested)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
++		this._register(CommandsRegistry.registerCommand('studio.internalLaunchProjectEntry', (_accessor, entry: IStudioProjectEntry) => launchEntry(entry)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
+@@ -177,32 +192,33 @@ export class StudioModeContribution extends Disposable {
+ 			when: ContextKeyExpr.and(ContextKeyExpr.has('studio.steamMode'), ContextKeyExpr.or(ContextKeyExpr.equals('studio.steamTool', 'info'), ContextKeyExpr.equals('studio.steamTool', 'versions'))),
+ 			group: '2_configuration',
+ 		}));
+-		this._register(studioModeState.onDidChangeState(state => {
++		const updateMode = (state: typeof studioModeState.state) => {
+ 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
+ 			if (state.releaseOnly && !state.available) { return; }
+-			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
++			if (pendingReleaseEntry || !this.initialized || !state.available || state.releaseOnly && !this.requested) {
+ 				this.initialized = true;
+-				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
++				const entry = pendingReleaseEntry;
++				pendingReleaseEntry = undefined;
++				void this.request((this.requested || !!state.releaseOnly) && state.available, entry).catch(error => notifications.error(error));
+ 			}
+-		}));
+-		if (studioModeState.state.labels.mode) {
+-			this.initialized = true;
+-			void this.request(this.requested && studioModeState.state.available).catch(error => notifications.error(error));
+-		}
++		};
++		this._register(studioModeState.onDidChangeState(updateMode));
++		if (studioModeState.state.labels.mode) { updateMode(studioModeState.state); }
++		if (startupEntry && !studioModeState.state.releaseOnly) { void launchEntry(startupEntry).catch(error => notifications.error(error)); }
+ 	}
+
+-	private request(steam: boolean): Promise<void> {
++	private request(steam: boolean, entry?: IStudioProjectEntry): Promise<void> {
+ 		this.requested = (steam || !!studioModeState.state.releaseOnly) && studioModeState.state.available;
+ 		const revision = ++this.revision;
+ 		for (const animation of this.animations) { animation.cancel(); }
+-		if (!this.requested && studioModeState.busy) {
++		if ((!this.requested || entry) && studioModeState.busy) {
+ 			void this.commands.executeCommand('studio.internalCancelSteamPreparation').catch(() => undefined);
+ 		}
+ 		return this.sequencer.queue(async () => {
+ 			if (revision !== this.revision || this._store.isDisposed) { return; }
+ 			const next = this.requested;
+-			const projectUri = this.snapshot?.projectUri ?? studioModeState.state.projectUri;
+-			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
++			const projectUri = entry?.uri ?? this.snapshot?.projectUri ?? studioModeState.state.projectUri;
++			if (!entry && next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
+ 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
+ 				if (revision === this.revision && !this._store.isDisposed && this.storage.get(MODE_KEY, StorageScope.WORKSPACE) !== (next ? 'steam' : 'ide')) {
+ 					await this.rememberMode(next);
+@@ -214,7 +230,7 @@ export class StudioModeContribution extends Disposable {
+ 				if (next) {
+ 					let prepared: boolean | undefined;
+ 					const prepare = async () => {
+-						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri); }
++						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri, ...(entry ? [entry.entryId] : [])); }
+ 						catch (error) {
+ 							if (revision !== this.revision || this._store.isDisposed) { return undefined; }
+ 							throw error;
+diff --git a/src/vs/workbench/electron-browser/desktop.main.ts b/src/vs/workbench/electron-browser/desktop.main.ts
+index d324efeff206a14c756e9746ffeb45b9f1cbbe06..32dc3b7b3edd334239676be473bcbdf8d68cfd48 100644
+--- a/src/vs/workbench/electron-browser/desktop.main.ts
++++ b/src/vs/workbench/electron-browser/desktop.main.ts
+@@ -150,7 +150,7 @@ export class DesktopMain extends Disposable {
+ 				}
+ 			} catch { /* Ordinary folders have no release identity. */ }
+ 		}
+-		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary);
++		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary, this.configuration.studioProjectEntry);
+
+ 		// Create Workbench
+ 		const workbench = new Workbench(mainWindow.document.body, {
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 0d7afa42d76dd4c1a7172f898101b6667205fd25..3469de52eae545ed43d823e634fdf41b0eec0576 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -81,19 +81,6 @@
+ .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
+ .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
+ .studio-launchpad .lp-index-row[aria-current=page] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+-.lp-project-details { max-width: 880px; }
+-.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--lp-line); }
+-.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--lp-side); border-radius: 6px; }
+-.lp-detail-mark img { width: 100%; height: 100%; border-radius: inherit; } .lp-detail-mark .codicon { font-size: 28px; }
+-.lp-detail-identity { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; }
+-.monaco-workbench .studio-launchpad .lp-detail-identity h1[tabindex="-1"]:focus { outline: none; }
+-.lp-detail-actions { display: flex; align-items: center; gap: 6px; }
+-.lp-detail-facts { margin: 16px 0 22px; } .lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
+-.lp-detail-facts dt,.lp-entry-type { color: var(--lp-muted); } .lp-detail-facts dd { margin: 0; overflow-wrap: anywhere; }
+-.lp-detail-entries { border-top: 1px solid var(--lp-line); padding-top: 18px; } .lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
+-.lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
+-.lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+-.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+ .lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title { display: grid; gap: 12px; }
+@@ -165,7 +152,7 @@
+ .lp-listing-info { border-inline-start: 1px solid var(--lp-line); padding-inline-start: 24px; min-width: 0; }
+ .lp-listing-info dl { margin: 12px 0 0; } .lp-listing-info dl > div { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px; padding-block: 6px; }
+ .lp-listing-info dt { color: var(--lp-muted); } .lp-listing-info dd { margin: 0; text-align: end; }
+-.lp-listing-info .lp-detail-entries { margin-top: 16px; padding-top: 16px; } .lp-listing-info .lp-detail-entries li { flex-wrap: wrap; }
++.lp-listing-info .lp-detail-entries { margin-top: 16px; padding-top: 16px; }
+ .lp-listing-screens > header { justify-content: space-between; margin-bottom: 12px; } .lp-screen-controls { font-variant-numeric: tabular-nums; }
+ .lp-listing-frame { width: 100%; aspect-ratio: 16/9; max-height: 360px; display: grid; place-items: center; background: var(--lp-side); border: 1px solid var(--lp-line); border-radius: var(--vscode-cornerRadius-medium,6px); overflow: hidden; color: var(--lp-muted); }
+ .lp-listing-frame img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index c66b4e79dad3aa8d96cd15dee93f0e784697b4d4..34f01c871799d7b3ea539cb1b5494a6ca3718ed8 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -44,7 +44,7 @@ import { StoreListingDetails } from './studioLaunchpadCards.js';
+ import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+ import './media/studioLaunchpad.css';
+
+-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
++type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
+ type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
+ const launchpadSettingsViewType = 'studio.launchpadSettings';
+
+@@ -101,6 +101,7 @@ export class StudioLaunchpad extends Disposable {
+ 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
+ 					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
+ 						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version, entries: row.entries,
++						description: row.description, projectName: row.projectName,
+ 						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
+ 						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
+ 				}
+@@ -112,7 +113,7 @@ export class StudioLaunchpad extends Disposable {
+ 			workspace: () => run(dialogs.pickWorkspaceAndOpen({ forceNewWindow: true })),
+ 			create: () => run(commands.executeCommand('studio.createProject')),
+ 			importProjects: () => run(this.pickProjectsToImport()),
+-			project: project => run(this.openProject(project)),
++			project: (project, entryId) => run(this.openProject(project, entryId)),
+ 			remove: project => run(this.removeProject(project)),
+ 			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
+ 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
+@@ -425,11 +426,7 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+
+-	private async openProject(project: LaunchpadProject): Promise<void> {
+-		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
+-		if (live?.windowId !== undefined) {
+-			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
+-		}
++	private async openProject(project: LaunchpadProject, entryId?: string): Promise<void> {
+ 		const uri = URI.parse(project.uri);
+ 		if (uri.scheme === 'file') {
+ 			let present: boolean;
+@@ -437,8 +434,22 @@ export class StudioLaunchpad extends Disposable {
+ 			catch (error) { if (!(error instanceof Error) || toFileOperationResult(error) !== FileOperationResult.FILE_NOT_FOUND) { throw error; } present = false; }
+ 			if (!present) { await this.locateProject(project); return; }
+ 		}
++		let distribution = project.distribution;
++		if (!distribution && !project.artwork && project.kind === 'folder') {
++			// A click can arrive before the asynchronous library scan populates this row.
++			const [metadata] = await this.commands.executeCommand<LibraryMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
++			distribution = metadata?.distribution;
++		}
++		if (this._store.isDisposed) { return; }
++		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined);
++		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
++		if (!runEntry && live?.windowId !== undefined) {
++			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
++		}
+ 		this.missing.delete(project.uri);
+-		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], { forceNewWindow: true });
++		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
++			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: entryId === undefined ? {} : { entryId } } : {}),
++		});
+ 	}
+
+ 	private async removeProject(project: LaunchpadProject): Promise<void> {
+@@ -549,8 +560,8 @@ export class StudioLaunchpad extends Disposable {
+ 			// Once inspected, an absent field is authoritative (e.g. a plain folder replacing a release).
+ 			const details = info?.artwork ? info : { ...saved, ...info };
+ 			return { ...row, projectId: details.projectId, projectType: details.projectType, distribution: details.distribution,
+-				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version,
+-				name: info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
++				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version, description: details.description,
++				name: details.projectName || info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
+ 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+ 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index 137054bc375657c693cf9aa4a877fcc56570e9c3..a0e657de030e4d143aea70e625e3cb20756a6751 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -3,8 +3,11 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+
+-import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
+-import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { projectTypeMark, type StudioProjectDetails } from '../browser/studioProjectDetails.js';
++import { element, icon, picture, type StudioLabel } from '../browser/studioUiElements.js';
++
++export { edition, glyph, projectMark, typeLabel } from '../browser/studioProjectDetails.js';
++export { picture } from '../browser/studioUiElements.js';
+
+ export interface LibraryArtwork {
+ 	cover?: { name: string; mtime: number };
+@@ -13,11 +16,8 @@ export interface LibraryArtwork {
+ 	entryTypes?: string[];
+ }
+
+-export interface LaunchpadProject {
+-	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
+-	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
+-	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
+-	entries?: { entryId: string; name: string; type: string; primary: boolean }[];
++export interface LaunchpadProject extends StudioProjectDetails {
++	artwork?: LibraryArtwork;
+ }
+
+ export interface StoreListing {
+@@ -32,30 +32,7 @@ export function storeArtwork(p: StoreListing, cover?: string | Promise<string |
+ 	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, projectTypeMark(p.projectType, icon('extensions')), cover);
+ }
+
+-export function picture(src: string, className = ''): HTMLImageElement {
+-	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
+-}
+-
+-export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
+-export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
+-/** Project type identity uses the same Lucide card glyphs as the shared avatar assets. */
+-export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
+-	const source = studioProjectCardIcon(type);
+-	return source ? picture(source) : fallback;
+-}
+-export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
+-	switch (type) {
+-		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
+-	}
+-}
+-export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
+-	switch (p.distribution) {
+-		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
+-		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
+-	}
+-}
+-
+-export function openProjectLabel(p: LaunchpadProject, t: LaunchpadLabel): string {
++export function openProjectLabel(p: LaunchpadProject, t: StudioLabel): string {
+ 	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
+ 	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
+ 	switch (p.distribution) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 3f1cbc0262bbcb2a834e11f7d93b92813dc1ab5f..9b1bb7fd18e8cc098702c26fa7a32cdaa3184c19 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -5,9 +5,9 @@
+
+ import { IAction, Separator, toAction } from '../../base/common/actions.js';
+ import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
++import { projectDetails } from '../browser/studioProjectDetails.js';
+ import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+-import { projectDetails } from './studioLaunchpadProjectDetails.js';
+
+ export interface LibraryProjectCategory {
+ 	label: string;
+@@ -18,7 +18,7 @@ export interface LibraryProjectCategory {
+ export interface LibraryActions {
+ 	create(): void;
+ 	importProjects(): void;
+-	project(p: LaunchpadProject): void;
++	project(p: LaunchpadProject, entryId?: string): void;
+ 	remove(p: LaunchpadProject): void;
+ 	reveal(p: LaunchpadProject): void;
+ 	copyPath(p: LaunchpadProject): void;
+@@ -150,7 +150,19 @@ export class LaunchpadLibrary {
+ 		this.toolbar.hidden = !!selected;
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
+ 		if (selected) {
+-			const detail = projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin));
++			const canRun = !!selected.distribution && !selected.missing;
++			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
++			open.dataset.key = 'open:' + selected.uri;
++			const more = button('', 'ellipsis', () => this.manage(selected, more), 'studio-project-action lp-outline lp-tool');
++			more.dataset.key = 'more:' + selected.uri;
++			more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
++			const actions = [open, more];
++			if (canRun) {
++				const run = button(t('Run project', '运行项目'), 'play', () => this.actions.project(selected), 'studio-project-action lp-primary');
++				run.dataset.key = 'run:' + selected.uri;
++				actions.unshift(run);
++			}
++			const detail = projectDetails(selected, t, { actions, openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
+ 			this.content.replaceChildren(detail); restoreFocus();
+ 			void this.actions.detailActions?.(selected).then(items => {
+ 				if (detail.parentElement !== this.content) { return; }
+@@ -159,7 +171,7 @@ export class LaunchpadLibrary {
+ 					const action = button(item.label, '', () => {
+ 						action.disabled = true;
+ 						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
+-					}, 'lp-outline');
++					}, 'studio-project-action lp-outline');
+ 					controls?.insertBefore(action, controls.lastElementChild);
+ 				}
+ 			}).catch(() => undefined); return;
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts b/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
+index c79b945b9578404ef21eb58e11d4061bd378bb4e..f9e0f61663f10d627d817f8acfe2424ec7df8521 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadPicker.ts
+@@ -3,30 +3,12 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+
+-export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
+-	const node = document.createElement(tag);
+-	node.className = className;
+-	node.textContent = text;
+-	return node;
+-}
+-
+-export function icon(name: string): HTMLElement {
+-	const node = element('span', `codicon codicon-${name}`);
+-	node.setAttribute('aria-hidden', 'true');
+-	return node;
+-}
++import { button, element, icon, type StudioLabel } from '../browser/studioUiElements.js';
+
+-export function button(text: string, glyph: string, action: () => void, className = ''): HTMLButtonElement {
+-	const node = element('button', className);
+-	node.type = 'button';
+-	if (glyph) { node.append(icon(glyph)); }
+-	node.append(text);
+-	node.addEventListener('click', action);
+-	return node;
+-}
++export { button, element, icon } from '../browser/studioUiElements.js';
+
+ export interface LaunchpadOption { label: string; glyph: string; detail?: string; visible?(): boolean; run(): void }
+-export type LaunchpadLabel = (en: string, zh: string) => string;
++export type LaunchpadLabel = StudioLabel;
+
+ /** Only launchpad actions are offered here; the workbench command palette belongs to project windows. */
+ export class LaunchpadPicker {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+deleted file mode 100644
+index e87452fbecfa2ff1cc593454e7e720223121374e..0000000000000000000000000000000000000000
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
++++ /dev/null
+@@ -1,48 +0,0 @@
+-/*---------------------------------------------------------------------------------------------
+- *  Copyright (c) Microsoft Corporation. All rights reserved.
+- *  Licensed under the MIT License. See License.txt in the project root for license information.
+- *--------------------------------------------------------------------------------------------*/
+-
+-import { projectTypeMark } from './studioLaunchpadCards.js';
+-import { edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+-import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+-
+-export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: () => void, manage: (origin: HTMLElement) => void): HTMLElement {
+-	const page = element('article', 'lp-project-details');
+-	const head = element('header', 'lp-detail-head'), mark = element('span', 'lp-detail-mark');
+-	mark.append(projectMark(p));
+-	const identity = element('div', 'lp-detail-identity'), title = element('h1', '', p.name);
+-	title.tabIndex = -1; title.dataset.key = 'detail:' + p.uri;
+-	identity.append(element('span', 'lp-section-kicker', t('Project details', '项目详情')), title);
+-	const controls = element('div', 'lp-detail-actions');
+-	const launch = button(openProjectLabel(p, t), 'open-in-window', open, 'lp-primary'); launch.dataset.key = 'open:' + p.uri;
+-	const more = button('', 'ellipsis', () => manage(more), 'lp-outline lp-tool'); more.dataset.key = 'more:' + p.uri;
+-	more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
+-	controls.append(launch, more); head.append(mark, identity, controls); page.append(head);
+-
+-	const facts = element('dl', 'lp-detail-facts');
+-	const fact = (label: string, value?: string) => {
+-		if (value) { const row = element('div'); row.append(element('dt', '', label), element('dd', '', value)); facts.append(row); }
+-	};
+-	fact(t('Format', '项目形式'), edition(p, t));
+-	if (p.projectType) { fact(t('Project type', '项目类型'), typeLabel(p.projectType, t)); }
+-	fact(t('Version', '版本'), p.version);
+-	fact(t('Window', '窗口状态'), p.missing ? t('Not found', '路径失效') : p.windowId === undefined ? t('Closed', '未打开') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'));
+-	if (p.lastOpened !== undefined) { fact(t('Last opened', '最近打开时间'), new Date(p.lastOpened).toLocaleString(t('en', 'zh-CN'))); }
+-	fact(t('Location', '位置'), p.path);
+-	fact(t('Project ID', '项目 ID'), p.projectId);
+-	page.append(facts);
+-	if (p.entries?.length) { page.append(projectEntryList(p.entries, t)); }
+-	return page;
+-}
+-
+-export function projectEntryList(entries: readonly { name: string; type: string; primary: boolean }[], t: LaunchpadLabel): HTMLElement {
+-	const section = element('section', 'lp-detail-entries'), list = element('ul');
+-	for (const entry of entries) {
+-		const row = element('li'); row.append(projectTypeMark(entry.type, icon('extensions')), element('strong', '', entry.name));
+-		if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
+-		row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
+-	}
+-	section.append(element('h2', '', t('Project entries', '项目入口')), list);
+-	return section;
+-}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts
+index dbbdd7213c19957eb8c83374b69834c9a470964d..e4728ea410e2842a038bf498eea29e4623552507 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts
+@@ -7,7 +7,7 @@ import { renderMarkdown } from '../../base/browser/markdownRenderer.js';
+ import { Disposable } from '../../base/common/lifecycle.js';
+ import { picture, storeArtwork, StoreListing, StoreListingDetails, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+-import { projectEntryList } from './studioLaunchpadProjectDetails.js';
++import { projectEntryList } from '../browser/studioProjectDetails.js';
+ import type { StoreActions } from './studioLaunchpadStore.js';
+
+ export class LaunchpadStoreDetails extends Disposable {

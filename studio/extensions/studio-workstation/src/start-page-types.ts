@@ -34,6 +34,8 @@ export interface StartProjectEntry {
 }
 export interface StartProject {
   uri: string;
+  projectId?: string;
+  distribution: 'source' | 'release' | 'download';
   defaultEntry: string;
   name: string;
   description?: string;

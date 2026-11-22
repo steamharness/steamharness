@@ -21,6 +21,7 @@ function fixture(t, history = [], imports = []) {
   const files = new Map(), failures = new Map(), reads = [], changed = new Emitter(), focus = new Emitter();
   const uri = value => ({ toString: () => value, scheme: new URL(value).protocol.slice(0, -1), path: new URL(value).pathname });
   const vscode = {
+    env: { language: 'en' },
     EventEmitter: Emitter, FileType: { File: 1, Directory: 2 },
     Uri: { parse: uri, joinPath: (root, ...names) => uri(`${root.toString()}/${names.join('/')}`) },
     workspace: {

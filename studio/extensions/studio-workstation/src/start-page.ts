@@ -53,7 +53,7 @@ interface ProjectSource {
   onDidChangeVersions: vscode.Event<void>;
 }
 
-function summarizeProjects(source: ProjectSource, roots: Set<string>): StartProject[] {
+function summarizeProjects(source: ProjectSource, roots: Set<string>, recent: ReadonlyMap<string, RecentProject>): StartProject[] {
   const prefixes = [...roots].map(root => root.endsWith('/') ? root : `${root}/`);
   const aggregates = new Map<string, Map<string, Project>>();
   for (const project of source.getProjects()) {
@@ -73,9 +73,10 @@ function summarizeProjects(source: ProjectSource, roots: Set<string>): StartProj
       return { entryId: entry.entryId, name: resolved?.name ?? resolveProjectName(entry.name, readProjectInfo(entry), vscode.env.language), projectType,
         avatarUrl: projectAvatarDataUrl(resolved?.projectCard ?? entry.projectCard, projectType), available: !!resolved };
     });
-    return { uri: project.uri, defaultEntry: project.defaultEntry, name: project.aggregateName, description: project.manifest?.description,
+    return { uri: project.uri, projectId: project.id || undefined, distribution: project.distribution === 'release' ? 'release' : recent.get(project.uri)?.distribution === 'download' ? 'download' : 'source',
+      defaultEntry: project.defaultEntry, name: project.aggregateName, description: project.manifest?.description,
       version: projectVersion(project), projectType: entries.length > 1 ? 'aggregate' : defaultType, folderPath: project.folderPath,
-      avatarUrl: projectAvatarDataUrl(project.aggregateProjectCard, defaultType), entries, update: source.getVersionStatus(project) };
+      avatarUrl: recent.get(project.uri)?.avatarUrl ?? projectAvatarDataUrl(project.aggregateProjectCard, defaultType), entries, update: source.getVersionStatus(project) };
   });
 }
 
@@ -239,10 +240,10 @@ export class StudioStartController implements vscode.Disposable {
     }
     const roots = new Set(vscode.workspace.workspaceFolders?.map(folder => folder.uri.toString()));
     this.state.hasWorkspace = roots.size > 0;
-    this.state.projects = summarizeProjects(this.projects, roots);
     const currentUris = new Set(roots);
     if (vscode.workspace.workspaceFile) { currentUris.add(vscode.workspace.workspaceFile.toString()); }
     this.state.recent = this.recent.getChildren().map(project => ({ ...project, current: currentUris.has(project.uri) }));
+    this.state.projects = summarizeProjects(this.projects, roots, new Map(this.state.recent.map(project => [project.uri, project])));
     const projectUris = new Set([...roots, ...this.state.projects.map(project => project.uri)]);
     this.state.pending = this.pending().filter(project => projectUris.has(vscode.Uri.file(project.directory).toString()))
       .map(({ id, name, directory, status, stage, error }) => ({ id, name, directory, status, stage, error }));

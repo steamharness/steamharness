@@ -162,7 +162,7 @@ for (const option of ['studioReleaseProject', 'studioReleasePending']) {
 
 test('desktop bootstrap selects release mode before constructing the workbench', async () => {
   const desktop = await read('src/vs/workbench/electron-browser/desktop.main.ts');
-  const init = desktop.indexOf('initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary)');
+  const init = desktop.indexOf('initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary, this.configuration.studioProjectEntry)');
   assert.ok(init >= 0 && init < desktop.indexOf('new Workbench('));
   const contribution = await read('src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts');
   assert.match(contribution, /registerWorkbenchContribution2\(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.BlockRestore\)/);

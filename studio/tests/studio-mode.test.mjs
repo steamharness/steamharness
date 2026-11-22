@@ -197,6 +197,32 @@ for (const inspectedBeforeRender of [false, true]) {
   });
 }
 
+test('an explicit release entry is used at cold startup and a later click selects another entry without leaving Steam', async t => {
+  const uri = 'file:///release';
+  const f = fixture(t, new Map(), { releaseOnly: true, projectUri: uri }, false);
+  f.state.startupEntry = { uri, entryId: 'board' };
+  const starts = [];
+  f.prepare = async (...args) => { starts.push(args); return true; };
+  f.render(); f.publish(true);
+  await new Promise(resolve => setImmediate(resolve));
+  await f.run('LaunchProjectEntry', { uri, entryId: 'bot' });
+  await f.run('LaunchProjectEntry', { uri: 'file:///unrelated', entryId: 'wrong' });
+  assert.deepEqual(starts, [[uri, 'board'], [uri, 'bot']]);
+  assert.equal(f.state.steam, true);
+  assert.deepEqual(f.errors, []);
+});
+
+test('launching a source entry reuses the project window and leaves Steam before opening the IDE tab', async t => {
+  const f = fixture(t); f.publish(true);
+  await f.run('EnterSteamMode');
+  assert.equal(f.state.steam, true);
+  const entry = { uri: 'file:///source', entryId: 'board' };
+  f.toolCommand = command => { if (command === 'studio.internalRunProjectEntry') { assert.equal(f.state.steam, false); } };
+  await f.run('LaunchProjectEntry', entry);
+  assert.deepEqual(f.calls.filter(call => call[1] === 'studio.internalRunProjectEntry'), [['command', 'studio.internalRunProjectEntry', entry]]);
+  assert.equal(f.saved.get('studio.workbenchMode'), 'ide');
+});
+
 test('a window closed before the first render does not create Steam UI or start a project', t => {
   const f = fixture(t, new Map(), { releaseOnly: true, projectUri: 'file:///release' }, false);
   f.controller.dispose();

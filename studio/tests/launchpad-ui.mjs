@@ -143,7 +143,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   const detected = new Map([[history[0].uri,{projectType:'workflow',version:'1.2.0',projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',distribution:'source',entries:[{entryId:'main',name:'Main workflow',type:'workflow',primary:true},{entryId:'chat',name:'Chat',type:'bot',primary:false}],artwork:{entries:[avatar,avatar]},avatarUrl:avatar}],[history[2].uri,{projectType:'bot',distribution:'download',artwork:{entries:[avatar]}}],[history[3].uri,{artwork:{files:['notes.txt','demo.js','README.md']}}]]);
   detected.set(history[1].uri,{projectType:'kanban',distribution:'source',artwork:{cover:{name:window.coverName,mtime:1}}});
-  detected.set(history[4].uri,{projectType:'bot',distribution:'release',artwork:{entries:[avatar]}});
+  detected.set(history[4].uri,{projectType:'bot',distribution:'release',artwork:{entries:[avatar]},entries:[
+    {entryId:'main',name:'Release bot',type:'bot',primary:true},{entryId:'board',name:'Release board',type:'kanban',primary:false}]});
   const startEvent = new Emitter();
   const start = { state:undefined, onDidChange:startEvent.event, setVisible(){} };
   const storage = { getExtensionState:(id,global)=>global && JSON.parse(localStorage.getItem(id)) };
@@ -169,7 +170,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     },
     openWindow:async (entries,opts)=>{
       const openables=entries.map(entry=>{const kind=Object.keys(entry)[0]; return {kind,path:entry[kind].path};});
-      window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow});
+      window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow,...(opts.studioProjectEntry ? {studioProjectEntry:opts.studioProjectEntry} : {})});
       window.actions.push(['open',openables[0].kind,opts.forceNewWindow]);
     }};
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),

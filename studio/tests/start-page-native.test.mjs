@@ -19,8 +19,8 @@ const compiled = await build({ entryPoints: [path.join(ROOT, 'upstream/vscode', 
 
 for (const language of ['en', 'zh-cn']) test(`native overview renders only current projects and opens every available entry in ${language}`, async t => {
   const bundle = JSON.parse(await readFile(path.join(ROOT, `extensions/studio-workstation/l10n/bundle.l10n${language === 'en' ? '' : '.zh-cn'}.json`), 'utf8'));
-  const labels = Object.fromEntries(Object.entries({ overview: 'Project Overview', entries: 'Project Entries', defaultEntry: 'Default Entry',
-    openEntry: 'Open Entry', source: 'Open Project Source', localVersion: 'Local Version', projectFolder: 'Project Folder',
+  const zh = language === 'zh-cn';
+  const labels = Object.fromEntries(Object.entries({ overview: 'Project Overview', source: 'Open Project Source', upload: 'Upload Project',
     noWorkspace: 'No project is open.', noCurrent: 'No SteamHarness projects in this workspace.', retry: 'Retry Project Setup', installationLog: 'Show Installation Log',
     unavailable: 'Unavailable', details: 'Details', installFailed: 'Dependency installation failed', validationFailed: 'Project validation failed',
     registrationFailed: 'Server registration needs attention', registering: 'Registering Project', 'type.aggregate': 'Aggregate Project',
@@ -28,6 +28,7 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   const dom = new JSDOM('<div id="host"></div>', { runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const { window } = dom, { document } = window;
+  window._VSCODE_NLS_LANGUAGE = language;
   window.IntersectionObserver = class { observe() {} disconnect() {} };
   const { StudioStartView } = window.eval(`${compiled.outputFiles[0].text}\nstudioStart;`);
   const calls = [], service = { state: undefined, onDidChange: callback => { service.change = callback; return { dispose() {} }; }, setVisible() {} };
@@ -45,26 +46,33 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
       ] }] };
   service.state = state; service.change();
   assert.equal(element.getAttribute('aria-busy'), 'false');
-  assert.equal(element.querySelector('h1').textContent, labels.overview);
-  assert.equal(element.querySelector('h2').textContent, 'Aggregate');
-  assert.equal(element.querySelector('h3').textContent, labels.entries);
-  assert.equal(element.querySelector('.studio-start-project-path').textContent, '/aggregate');
-  assert.equal(element.querySelector('.studio-start-project-description').textContent, state.projects[0].description);
+  assert.equal(element.querySelector('.lp-section-kicker').textContent, zh ? '项目详情' : 'Project details');
+  assert.equal(element.querySelector('h1').textContent, 'Aggregate');
+  assert.equal(element.querySelector('h2').textContent, zh ? '项目入口' : 'Project entries');
+  assert.equal(element.querySelector('.lp-detail-location').textContent, '/aggregate');
+  assert.equal(element.querySelector('.lp-detail-description').textContent, state.projects[0].description);
   assert.equal(element.querySelector('script'), null);
   assert.ok(!element.textContent.includes('Recent record') && !element.textContent.includes('Store recommendation'));
-  const rows = [...element.querySelectorAll('.studio-start-entry')];
-  assert.deepEqual(rows.map(row => [row.dataset.entryId, row.querySelector('.studio-start-entry-default')?.textContent, !!row.querySelector('button')]),
-    [['agent', undefined, true], ['database', labels.defaultEntry, true], ['board', undefined, false]]);
+  const rows = [...element.querySelectorAll('.lp-detail-entries li')];
+  assert.deepEqual(rows.map(row => [row.dataset.entryId, row.querySelector('.lp-entry-default')?.textContent, !!row.querySelector('button')]),
+    [['agent', undefined, true], ['database', zh ? '默认入口' : 'Default', true], ['board', undefined, false]]);
   // Kanban has no usable avatar, so the shared project-type glyph is shown instead of an external URL.
   assert.match(rows[2].querySelector('img')?.getAttribute('src') ?? '', /^data:image\/svg\+xml,/);
   assert.doesNotMatch(rows[2].querySelector('img')?.getAttribute('src') ?? '', /example\.invalid/);
-  assert.equal(rows[1].querySelector('button').getAttribute('aria-label'), `${labels.openEntry}: Database`);
+  assert.equal(rows[1].querySelector('button').getAttribute('aria-label'), `${zh ? '打开入口' : 'Open entry'}: Database`);
+  assert.equal(element.querySelector('.lp-detail-actions .lp-primary').textContent, zh ? '运行项目' : 'Run project');
   for (const button of element.querySelectorAll('button')) { button.click(); }
-  assert.deepEqual(calls, [['studio.openProjectSource', { uri, entryId: 'database' }],
-    ['studio.openProject', { uri, entryId: 'agent' }], ['studio.openProject', { uri, entryId: 'database' }]]);
+  assert.deepEqual(calls, [['studio.internalRunProjectEntry', { uri, entryId: 'database' }], ['studio.openProjectSource', { uri, entryId: 'database' }],
+    ['studio.internalRunProjectEntry', { uri, entryId: 'agent' }], ['studio.internalRunProjectEntry', { uri, entryId: 'database' }]]);
   const focused = rows[1].querySelector('button'); focused.focus();
   state.recent = []; state.recommendations = undefined; state.busy = true; service.change();
   assert.equal(document.activeElement, focused, 'Launchpad state must not replace or refocus current entries');
+  state.platform = true; service.change();
+  assert.equal(element.querySelector('[data-action="studio.uploadProject"]').textContent, labels.upload);
+  assert.equal(document.activeElement.dataset.key, focused.dataset.key, 'Changing header actions must preserve entry focus');
+  state.projects[0].distribution = 'release'; service.change();
+  assert.ok(element.textContent.includes(zh ? '发行版 · Steam' : 'Release · Steam'));
+  assert.equal(element.querySelector('[data-action="studio.openProjectSource"], [data-action="studio.uploadProject"]'), null);
   state.projects = []; service.change();
   assert.equal(element.querySelector('.studio-start-empty p').textContent, labels.noCurrent);
   state.hasWorkspace = false; service.change();
@@ -106,7 +114,7 @@ for (const [patchNames, files] of [
   const sequence = patchNames.includes(overviewPatch) ? [...patchNames, '0107-studio-project-type-icons.patch'] : patchNames.includes('0067-studio-start-recent-projects.patch')
     ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch']
     : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch'];
-  for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch']) {
+  for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch']) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');
     if (relevant) await writeFile(path.join(directory, 'patches', patchName), relevant);

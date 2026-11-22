@@ -34,6 +34,7 @@ for (const language of ['en', 'zh-cn']) {
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
   let browser, child, page, sourceMessages, log = '';
   try {
+    const defaultEntryLabel = language === 'en' ? 'Default' : '默认入口';
     await mkdir(workdir, { recursive: true }); await mkdir(extension, { recursive: true }); await mkdir(creationParent);
     if (language === 'zh-cn' && process.env.STEAMHARNESS_UI_LANGUAGE_PACK) {
       const location = await realpath(process.env.STEAMHARNESS_UI_LANGUAGE_PACK);
@@ -232,11 +233,11 @@ for (const language of ['en', 'zh-cn']) {
             await page.evaluate(width => { globalThis.studioStartLoadingTest.host.style.width = `${width}px`; }, width);
             const bounds = await loading.evaluate((element, phase) => {
               const loading = phase === 'loading';
-              const avatar = element.querySelector(loading ? '.studio-start-skeleton-avatar' : '.studio-start-avatar-project').getBoundingClientRect();
-              const title = element.querySelector(loading ? '.studio-start-skeleton-name' : '.studio-start-project-identity').getBoundingClientRect();
+              const avatar = element.querySelector(loading ? '.studio-start-skeleton-avatar' : '.lp-detail-mark').getBoundingClientRect();
+              const title = element.querySelector(loading ? '.studio-start-skeleton-name' : '.lp-detail-identity').getBoundingClientRect();
               const layout = element.querySelector('.studio-start-inner').getBoundingClientRect();
               return { client: element.clientWidth, scroll: element.scrollWidth, avatarAligned: avatar.right <= title.left && avatar.top < title.bottom && avatar.bottom > title.top,
-                outside: [...element.querySelectorAll('button, .studio-start-project-path, .studio-start-entry-name')].some(item => {
+                outside: [...element.querySelectorAll('button, .lp-detail-location, .lp-entry-name')].some(item => {
                   const rect = item.getBoundingClientRect();
                   return rect.left < layout.left - 1 || rect.right > layout.right + 1;
                 }), placeholders: [...element.querySelectorAll('.studio-start-skeleton')].every(item => item.offsetWidth > 0 && item.offsetHeight > 0) };
@@ -269,7 +270,7 @@ for (const language of ['en', 'zh-cn']) {
       await page.evaluate(state => {
         const fixture = globalThis.studioStartLoadingTest;
         fixture.service.state = state; fixture.change.fire();
-        fixture.card = fixture.host.querySelector('.studio-start-current .studio-start-project-card');
+        fixture.card = fixture.host.querySelector('.studio-start-current .lp-project-details');
       }, { ...initial.start, hasWorkspace: true, pending: [], platform: true,
         projects: [{ uri: pathToFileURL(workdir).href, name: language === 'en' ? 'Workspace Data Assistant' : '工作区数据助手',
           description: language === 'en' ? 'Chat, query project data, and review it on the map.' : '用于项目对话、查询数据和查看地图。',
@@ -277,15 +278,15 @@ for (const language of ['en', 'zh-cn']) {
           entries: [['chat', 'bot'], ['api', 'workflow'], ['map', 'kanban']].map(([entryId, projectType], index) => ({ entryId, projectType, name: samples[index], available: true })) }] });
       assert.equal(await loading.getAttribute('aria-busy'), 'false');
       assert.equal(await loading.locator('[role="progressbar"]').isVisible(), false);
-      assert.equal(await loading.locator('.studio-start-entry').count(), 3);
-      assert.equal(await loading.locator('[data-entry-id="api"] .studio-start-entry-default').textContent(), initial.start.labels.defaultEntry);
+      assert.equal(await loading.locator('.lp-detail-entries [data-entry-id]').count(), 3);
+      assert.equal(await loading.locator('[data-entry-id="api"] .lp-entry-default').textContent(), defaultEntryLabel);
       assert.equal(await loading.locator('[data-action="studio.createProject"], .studio-start-recent, .studio-start-system, .studio-start-quick').count(), 0);
       await checkLayouts('loaded');
       await page.evaluate(() => {
         const fixture = globalThis.studioStartLoadingTest;
-        fixture.service.state = { ...fixture.service.state, recent: [] }; fixture.change.fire();
+        fixture.service.state = { ...fixture.service.state, recent: [...fixture.service.state.recent].reverse() }; fixture.change.fire();
       });
-      assert.equal(await page.evaluate(() => globalThis.studioStartLoadingTest.card === globalThis.studioStartLoadingTest.host.querySelector('.studio-start-current .studio-start-project-card')), true);
+      assert.equal(await page.evaluate(() => globalThis.studioStartLoadingTest.card === globalThis.studioStartLoadingTest.host.querySelector('.studio-start-current .lp-project-details')), true);
       check(`${language}: initialization shows the project and its entries; refreshing recents leaves the overview unchanged`);
     } finally {
       await page.evaluate(() => {
@@ -293,20 +294,20 @@ for (const language of ['en', 'zh-cn']) {
         fixture.view.dispose(); fixture.change.dispose(); fixture.host.remove(); delete globalThis.studioStartLoadingTest;
       });
     }
-    await start().locator('h1').waitFor();
-    assert.equal(await start().locator('h1').textContent(), language === 'en' ? 'Project Overview' : '项目概览');
+    await start().locator('h1').first().waitFor();
+    assert.equal(await start().getAttribute('aria-label'), language === 'en' ? 'Project Overview' : '项目概览');
     assert.equal(await start().locator('[data-action="studio.createProject"], .studio-start-recent, .studio-start-system, .studio-start-quick').count(), 0);
     if (await exists(fixtureModules)) {
       const title = language === 'en' ? 'Overview Sample' : '项目概览示例';
-      const current = start().locator('.studio-start-project-card').filter({ has: page.getByRole('heading', { name: title, exact: true, level: 2 }) });
+      const current = start().locator('.lp-project-details').filter({ has: page.getByRole('heading', { name: title, exact: true, level: 1 }) });
       await current.waitFor();
-      assert.equal(await current.locator('.studio-start-project-path').textContent(), aggregate);
-      assert.deepEqual(await current.locator('.studio-start-entry-name').allTextContents(), registrations.map(({ entryId }) => entryNames[entryId][language === 'en' ? 0 : 1]));
-      assert.equal(await current.locator('[data-entry-id="api"] .studio-start-entry-default').textContent(), initial.start.labels.defaultEntry);
-      assert.equal(await current.locator('.studio-start-avatar img').count(), 4);
+      assert.equal(await current.locator('.lp-detail-location').textContent(), aggregate);
+      assert.deepEqual(await current.locator('.lp-entry-name').allTextContents(), registrations.map(({ entryId }) => entryNames[entryId][language === 'en' ? 0 : 1]));
+      assert.equal(await current.locator('[data-entry-id="api"] .lp-entry-default').textContent(), defaultEntryLabel);
+      assert.equal(await current.locator('.lp-detail-mark img, .lp-detail-entries img').count(), 4);
       await current.screenshot({ path: path.join(proof, `${language}-workspace-project.png`) });
       if (layoutOnly) {
-        await current.locator('[data-entry-id="board"] [data-action="studio.openProject"]').click();
+        await current.locator('[data-entry-id="board"] button').click();
         await until(() => findFrame('#overview-board'), Boolean, 'The non-default Kanban entry did not open from the overview');
       }
       check(`${language}: the empty editor renders the inspected aggregate and its localized entries`);
@@ -330,16 +331,17 @@ for (const language of ['en', 'zh-cn']) {
     assert.deepEqual((await call({ action: 'state' })).folders, recentBefore.folders);
     check(`${language}: the global recent removal command preserves cancelled entries and the current workspace`);
     assert.equal(await page.locator('.tabs-container .tab').count(), 0, 'The empty-group start must not create a tab');
-    await start().locator('h1').dblclick();
+    await start().locator('h1').first().dblclick();
     await pause(300);
     assert.equal(await page.locator('.tabs-container .tab').count(), 0, 'Double-clicking the empty background must not create Untitled');
-    assert.equal(await start().locator('.studio-start-project-card').count(), initial.start.projects.length);
+    assert.equal(await start().locator('.lp-project-details').count(), initial.start.projects.length);
     for (const project of initial.start.projects) {
-      const card = start().locator('.studio-start-project-card').filter({ has: page.getByRole('heading', { name: project.name, exact: true, level: 2 }) });
-      assert.equal(await card.locator('.studio-start-project-path').textContent(), project.folderPath);
-      assert.deepEqual(await card.locator('.studio-start-entry').evaluateAll(rows => rows.map(row => row.dataset.entryId)), project.entries.map(entry => entry.entryId));
-      assert.equal(await card.locator(`[data-entry-id="${project.defaultEntry}"] .studio-start-entry-default`).textContent(), initial.start.labels.defaultEntry);
-      assert.equal(await card.locator('.studio-start-project-type').textContent(), initial.start.labels[`type.${project.projectType}`]);
+      const card = start().locator('.lp-project-details').filter({ has: page.getByRole('heading', { name: project.name, exact: true, level: 1 }) });
+      assert.equal(await card.locator('.lp-detail-location').textContent(), project.folderPath);
+      assert.deepEqual(await card.locator('.lp-detail-entries [data-entry-id]').evaluateAll(rows => rows.map(row => row.dataset.entryId)), project.entries.map(entry => entry.entryId));
+      assert.equal(await card.locator(`[data-entry-id="${project.defaultEntry}"] .lp-entry-default`).textContent(), defaultEntryLabel);
+      const type = project.projectType === 'aggregate' ? language === 'en' ? 'Multi-entry' : '多入口' : initial.start.labels[`type.${project.projectType}`];
+      assert.equal(await card.locator('.lp-detail-type').textContent(), type);
     }
     check(`${language}: editor overview lists only current projects, paths, types and their declared entries`);
     const modal = () => page.locator('.studio-create-dialog');
@@ -508,8 +510,7 @@ for (const language of ['en', 'zh-cn']) {
     await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' });
     await command('workbench.action.joinAllGroups'); await page.setViewportSize({ width: 1440, height: 1000 });
     check(`${language}: saved empty file and diff excluded, narrow split layout`);
-    const aggregateUri = pathToFileURL(aggregate).href;
-    await start().locator(`[data-entry-id="board"] [data-action="studio.openProject"][data-uri="${aggregateUri}"]`).click();
+    await start().locator('[data-entry-id="board"] button').click();
     await until(() => findFrame('#overview-board'), Boolean, 'The non-default Kanban entry did not open');
     check(`${language}: the overview opens the selected child entry`);
     await command('studio.openStart');

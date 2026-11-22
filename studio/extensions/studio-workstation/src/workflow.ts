@@ -615,6 +615,19 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
+    register('studio.internalRunProjectEntry', async ({ uri, entryId }: { uri: string; entryId?: string }) => {
+      await initialScan;
+      if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
+      const select = () => provider.projects.find(project => project.uri === uri && project.entryId === (entryId ?? project.defaultEntry));
+      let project = select();
+      if (!project) { await refresh(); project = select(); }
+      if (!project || !projectAvailable(project)) { throw new Error(t('The project entry has changed or is no longer available.')); }
+      if (lockedWindow || await vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow').then(Boolean, () => false)) {
+        await vscode.commands.executeCommand('studio.internalLaunchProjectEntry', { uri, entryId: project.entryId });
+      } else {
+        await openProject(project);
+      }
+    }),
     register('studio.openProjectWindow', (target?: Project) => openProjectWindow(target)),
     register('studio.openProjectInTab', async (target?: string) => {
       if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
@@ -625,9 +638,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }),
     vscode.commands.registerCommand('studio.internalUpdateWindowChrome', (chrome: ProjectWindowChrome) => { if (chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); } }),
     vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
-    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string) => {
-      const project = projectUri ? findProject(projectUri) : currentProject();
-      if (!project || !projectAvailable(project)) { return false; }
+    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string, entryId?: string) => {
+      const project = projectUri ? findProject(projectUri, entryId) : currentProject();
+      if (!project || !projectAvailable(project)) {
+        if (entryId !== undefined) { throw new Error(t('The project entry has changed or is no longer available.')); }
+        return false;
+      }
       steamPreparation?.abort();
       const controller = new AbortController();
       steamPreparation = controller;

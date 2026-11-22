@@ -18,13 +18,14 @@ test('the workspace-mode series and the current launchpad replay twice without c
   let historical = true;
   try { fromFork(['cat-file', '-e', `${original}^{tree}`]); } catch { historical = false; }
   const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch', '0097-studio-launchpad-friends-profile.patch', '0098-studio-launchpad-command-center.patch', '0099-studio-store-listing-details.patch', '0100-studio-launchpad-refresh-social.patch', '0101-studio-launchpad-icon-contrast.patch', '0102-studio-launchpad-request-avatars.patch', '0103-studio-launchpad-back-icon-alignment.patch', '0106-studio-launchpad-hide-server-status.patch', '0107-studio-project-type-icons.patch'];
-  launchpad.push('0104-studio-library-product-actions.patch');
+  const sharedDetails = '0110-studio-shared-project-details.patch';
+  launchpad.push('0104-studio-library-product-actions.patch', '0105-studio-launchpad-identity-badges.patch', '0108-studio-launchpad-add-contacts.patch', '0109-studio-library-project-category.patch', sharedDetails);
   for (const [group, series, commit] of [['mode-files', names, undefined], ...(historical ? [['modes', names, original]] : []), ['launchpad', launchpad, upstream.commit]]) {
     const root = path.join(fixture, group), kernel = path.join(root, 'vscode'), patches = [], paths = new Set();
     await mkdir(kernel, { recursive: true }); await mkdir(path.join(root, 'patches'));
     const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     git(['init', '-q']);
-    for (const name of series) {
+    for (const name of [...series].sort()) {
       let patch = await readFile(path.join(ROOT, 'patches', name), 'utf8');
       if (!commit) {
         // Depth-one installs can still replay the full lifetime of files created in this series from an empty tree.
@@ -40,12 +41,23 @@ test('the workspace-mode series and the current launchpad replay twice without c
       for (const line of git(['apply', '--numstat', dest]).trim().split('\n')) paths.add(line.split('\t')[2]);
     }
     assert.ok(paths.size > 0);
-    const bytes = () => Promise.all([...paths].map(file => readFile(path.join(kernel, file))));
+    const bytes = () => Promise.all([...paths].map(file => readFile(path.join(kernel, file)).catch(error => {
+      if (error.code === 'ENOENT') { return null; }
+      throw error;
+    })));
     let expected;
     if (commit) {
-      for (const file of paths) {
+      const tracked = fromFork(['ls-tree', '-r', '--name-only', '-z', commit, '--', ...paths]).toString().split('\0').filter(Boolean);
+      for (const file of tracked) {
         await mkdir(path.dirname(path.join(kernel, file)), { recursive: true });
         await writeFile(path.join(kernel, file), fromFork(['show', `${commit}:${file}`]));
+      }
+      if (group === 'launchpad') {
+        // Before the fork commit is made, build the candidate snapshot from its patch.
+        const lastPatch = patches.at(-1);
+        let integrated = true;
+        try { git(['apply', '--reverse', '--check', lastPatch]); } catch { integrated = false; }
+        if (!integrated) { git(['apply', lastPatch]); }
       }
       expected = await bytes();
       for (const patch of [...patches].reverse()) git(['apply', '--reverse', patch]);

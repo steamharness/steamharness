@@ -25,7 +25,8 @@
     "onWebviewPanel:studio.tool.trace",
     "onWebviewPanel:studio.project",
     "onWebviewPanel:studio.projectTool",
-    "onCommand:studio.internalStartPageVisibility"
+    "onCommand:studio.internalStartPageVisibility",
+    "onCommand:studio.internalRunProjectEntry"
   ],
   "extensionKind": [
     "workspace"
