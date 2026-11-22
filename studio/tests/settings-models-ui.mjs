@@ -84,6 +84,11 @@ try {
     assert.ok((await firstRow.innerText()).includes(zh ? '默认模型' : 'Default model'));
     assert.equal(await firstRow.locator('.settings-model-brand-minimax').count(), 1, 'API compatibility must not misidentify the model brand');
     assert.ok((await firstRow.boundingBox()).height <= 40, 'Custom model details fit in a compact row');
+    state = { ...state, systemAvailable: true };
+    await send({ type: 'settings-models', state });
+    assert.ok((await pane.innerText()).includes(zh ? '暂无可用的系统 AI 模型，请检查当前登录账户和 AI 套餐。' : 'No system AI models available. Check your signed-in account and AI subscription.'), 'The missing built-in catalogue explains the shared account state');
+    state = { ...state, systemAvailable: false };
+    await send({ type: 'settings-models', state });
     await edit(firstRow).click(); assert.equal(await page.locator('#user-model-apiKey').inputValue(), '');
     await send({ type: 'settings-models', state }); // Replacing rows must not break the dialog's return focus.
     await cancel.click(); assert.equal(await edit(firstRow).evaluate(button => document.activeElement === button), true);

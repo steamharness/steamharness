@@ -386,7 +386,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     find('settings-sign-in').hidden = hasProvider || !snapshot?.providers.length;
     find('settings-sign-in').querySelector('p')!.textContent = account?.status === 'checking' || signedIn && account?.status !== 'error'
       ? t('Loading...') : signedIn ? t('Account verification failed.') : t('Sign in to view this information.');
-    find('settings-provider-sign-in').textContent = t('Connect to System AI');
+    find('settings-provider-sign-in').textContent = account?.aiConfigured ? t('Manage AI account') : t('Sign in to connect System AI');
     sections.hidden = !hasProvider;
     find('settings-title').textContent = searching ? t('Search results') : selected?.label ?? t('General');
     find('settings-no-results').hidden = !searching || matches > 0;

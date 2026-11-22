@@ -170,7 +170,7 @@ export class SettingsModels {
     const previousScroll = this.list.querySelector('.settings-model-table-viewport')?.scrollLeft ?? 0;
     this.refresh.hidden = !this.state.systemAvailable;
     this.catalogueStatus.parentElement!.hidden = !this.state.systemAvailable;
-    this.catalogueStatus.textContent = this.state.catalogError ?? (this.state.catalogLoading ? t('Loading...') : this.state.entries.some(entry => entry.source === 'system') ? '' : t('No system AI models available. Sign in and check your AI account.'));
+    this.catalogueStatus.textContent = this.state.catalogError ?? (this.state.catalogLoading ? t('Loading...') : this.state.entries.some(entry => entry.source === 'system') ? '' : t('No system AI models available. Check your signed-in account and AI subscription.'));
     this.catalogueStatus.classList.toggle('setting-error', !!this.state.catalogError);
     this.account.hidden = this.state.entries.some(entry => entry.source === 'system');
     this.list.replaceChildren();
@@ -202,7 +202,7 @@ export class SettingsModels {
       heading.append(toggle); group.append(heading); body.append(group); table.append(body);
       if (this.collapsed.has(sourceKind)) continue;
       if (!entries.length) {
-        const row = node('tr'); const empty = node('td', this.state.catalogLoading && sourceKind === 'system' ? t('Loading...') : sourceKind === 'system' ? t('No system AI models available. Sign in and check your AI account.') : t('No custom models configured.'), 'muted');
+        const row = node('tr'); const empty = node('td', this.state.catalogLoading && sourceKind === 'system' ? t('Loading...') : sourceKind === 'system' ? t('No system AI models available. Check your signed-in account and AI subscription.') : t('No custom models configured.'), 'muted');
         empty.colSpan = 3; row.append(empty); body.append(row);
       }
       for (const entry of entries) {

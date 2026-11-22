@@ -76,6 +76,7 @@ export class AccountController implements vscode.Disposable {
       delete: () => context.secrets.store(SECRET_KEY, ''),
     }, (state) => {
       this.change.fire(state);
+      this.syncPlatformConnection();
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
       void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state, platform, digest)).then(undefined, () => undefined);
       void this.panel?.webview.postMessage({ type: 'account', state });
@@ -229,12 +230,15 @@ export class AccountController implements vscode.Disposable {
   registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
   getAiConnection(): Connection | undefined {
-    const session = this.aiSession;
-    if (!session || session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) return undefined;
-    return { serverUrl: session.serverUrl, accessToken: session.accessToken };
+    const project = this.account.getConnection();
+    const ai = this.aiSession;
+    const session = ai && (!ai.expiresAt || Date.parse(ai.expiresAt) > Date.now()) ? ai
+      : project && this.account.getState().status === 'authenticated' ? project : undefined;
+    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken } : undefined;
   }
   connectAi(): Promise<Connection | undefined> {
     if (!this.platform) return Promise.resolve(undefined);
+    if (this.getAiConnection()) return Promise.resolve(this.getAiConnection());
     if (!this.aiLogin) {
       const abort = this.aiLoginAbort = new AbortController();
       this.aiLogin = this.openAiLogin(AbortSignal.any([abort.signal, this.lifetime.signal])).finally(() => {
@@ -292,16 +296,28 @@ export class AccountController implements vscode.Disposable {
     this.aiLoginAbort?.abort();
     await this.aiLogin?.catch(() => undefined);
     const session = this.aiSession;
-    this.publishAiSession(undefined);
+    this.aiSession = undefined;
+    this.syncPlatformConnection();
+    this.change.fire(this.getState());
+    void this.panel?.webview.postMessage({ type: 'account', state: this.getState() });
     if (session) await this.context.secrets.delete(this.aiKey(session.serverUrl));
   }
   private publishAiSession(session?: LoginSession): void {
     this.aiSession = session;
-    const connection = this.getAiConnection();
-    this.userModels.setConnection(connection);
-    this.sections.setConnection(connection);
+    this.syncPlatformConnection();
     this.change.fire(this.getState());
     void this.panel?.webview.postMessage({ type: 'account', state: this.getState() });
+  }
+  private syncPlatformConnection(): void {
+    const connection = this.getAiConnection();
+    if (!connection) {
+      this.userModels.setConnection(undefined);
+      this.sections.setConnection(undefined);
+      return;
+    }
+    this.userModels.setConnection(connection);
+    // Contributed account pages remain available to the project account even if System AI is disconnected.
+    this.sections.setConnection(this.account.getConnection());
   }
   async openServerPage(path: string): Promise<void> {
     const connection = await this.connect();
@@ -535,7 +551,7 @@ export class AccountController implements vscode.Disposable {
         const generation = pageGeneration, signal = modelsAbort.signal;
         try {
           if (message.action === 'catalog') {
-            if (this.platform && !this.getAiConnection()) await this.connectAi();
+            if (this.platform) await this.connect();
             const catalog = await this.userModels.refreshCatalog();
             if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-model-catalog', requestId: message.requestId, catalog });
           } else {

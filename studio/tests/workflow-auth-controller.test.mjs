@@ -517,7 +517,7 @@ test('account actions use fixed Server routes and copy account fields selected b
 });
 
 test('sign out immediately clears contributed content even when a section refresh is pending', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, { connect: false });
   await f.controller.connectAi();
   let release, signal;
   f.controller.registerSectionProvider({ id: 'example', title: 'Example', load: (_connection, abort) => {
@@ -527,8 +527,8 @@ test('sign out immediately clears contributed content even when a section refres
   f.controller.open(); await f.message({ type: 'ready' });
   const refreshing = f.message({ type: 'refresh-sections' });
   await until(() => release);
-  await f.controller.disconnectAi();
-  assert.equal(f.controller.getState().status, 'authenticated');
+  await f.commands.get('studio.logout')();
+  assert.equal(f.controller.getState().status, 'signed-out');
   assert.equal(signal.aborted, true);
   release([{ id: 'old', title: 'Old account data' }]);
   await refreshing;
@@ -555,45 +555,27 @@ for (const serverUrl of ['http://localhost:7126', 'https://launch.example.test/s
   });
 }
 
-test('System AI signs in separately, validates a cached session, and retires expired credentials', async t => {
+test('System AI reuses the signed-in account unless an explicit AI session is configured', async t => {
   const f = await fixture(t);
-  const calls = [];
-  let accessToken = 'ai-first', expired = false;
-  f.fetch = (url, options) => {
-    calls.push([url, options.headers.Authorization]);
-    if (url.endsWith('/device/token')) return Response.json({ errCode: 0, data: { accessToken, apiKey: { id: 'ai-key' }, user: f.profile } });
-    if (url.endsWith('/me') && expired && options.headers.Authorization === 'Bearer ai-first') return Response.json({ errCode: 401, errMessage: 'Expired' }, { status: 401 });
-  };
-  assert.equal(f.controller.getAiConnection(), undefined);
-  assert.equal((await f.controller.connectAi()).accessToken, 'ai-first');
-  assert.equal((await f.controller.connectAi()).accessToken, 'ai-first');
-  assert.equal(f.opened.length, 1);
-  expired = true; accessToken = 'ai-second';
-  assert.equal((await f.controller.connectAi()).accessToken, 'ai-second');
-  assert.equal(f.controller.getConnection().accessToken, 'test-token');
-  assert.equal(f.opened.length, 2);
-  assert.ok(calls.every(([url, token]) => url.startsWith(f.controller.getState().serverUrl) && token !== 'Bearer test-token'));
+  assert.equal(f.controller.getAiConnection().accessToken, 'test-token');
+  assert.equal((await f.controller.connectAi()).accessToken, 'test-token');
+  assert.equal(f.opened.length, 0);
 });
 
-for (const [failure, error] of [['access_denied', /denied/i], ['expired_token', /expired/i], ['offline', /connect|offline/i], ['cancelled', undefined]]) {
-  test(`System AI leaves the project session unchanged when sign-in is ${failure}`, async t => {
-    const f = await fixture(t);
-    const calls = [];
-    f.fetch = (url, options) => {
-      calls.push(url);
-      if (!url.endsWith('/device/token')) return;
-      if (failure === 'offline') throw new Error('Fixture offline');
-      if (failure === 'cancelled') { f.cancelAi(); options.signal.throwIfAborted(); }
-      return Response.json({ errCode: 400, errMessage: failure, data: { error: failure } }, { status: 400 });
-    };
-    if (error) await assert.rejects(f.controller.connectAi(), error);
-    else assert.equal(await f.controller.connectAi(), undefined);
-    assert.equal(f.controller.getAiConnection(), undefined);
-    assert.equal(f.controller.getConnection().accessToken, 'test-token');
-    assert.ok(calls.some(url => url.endsWith('/device/cancel')));
-    assert.ok([...f.saved.keys()].every(key => !key.startsWith('studio.system-ai.')));
-  });
-}
+test('an explicit cached System AI session is validated before it replaces the account connection', async t => {
+  const f = await fixture(t, { connect: false });
+  const requests = [];
+  f.fetch = async (url, options) => {
+    requests.push(url);
+    assert.equal(options.headers.Authorization, 'Bearer explicit-ai-token');
+    return Response.json({ errCode: 0, data: { profile: f.profile, principal: { apiKeyId: 'explicit-ai-key' } } });
+  };
+  const key = 'studio.system-ai.dev.' + encodeURIComponent('http://127.0.0.1:7126');
+  f.saved.set(key, JSON.stringify({ serverUrl: 'http://127.0.0.1:7126', accessToken: 'explicit-ai-token' }));
+  assert.equal((await f.controller.connectAi()).accessToken, 'explicit-ai-token');
+  assert.equal(f.opened.length, 0);
+  assert.ok(requests.every(url => url.endsWith('/api/auth/me')));
+});
 
 test('the avatar menu exposes only public profile data and refreshes both the menu and authentication avatar', async t => {
   const f = await fixture(t);

@@ -49,6 +49,13 @@ try {
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
         assert.deepEqual(await page.locator('#settings-navigation button').evaluateAll(buttons => buttons.map(button => button.dataset.section)),
           ['account', 'general', 'editor', 'sidebar', 'models', 'permissions', 'about']);
+        const modelDivider = await category('models').evaluate(button => {
+          const model = button.getBoundingClientRect(), previous = button.previousElementSibling.getBoundingClientRect();
+          const beforePrevious = button.previousElementSibling.previousElementSibling.getBoundingClientRect(), style = getComputedStyle(button);
+          return { usualGap:previous.top+previous.height/2-(beforePrevious.top+beforePrevious.height/2), centerGap:model.top+model.height/2-(previous.top+previous.height/2), border:style.borderTopWidth, borderColor:style.borderTopColor, topRadius:style.borderTopLeftRadius };
+        });
+        if (width > 700) assert.ok(modelDivider.centerGap >= modelDivider.usualGap + 16);
+        assert.equal(modelDivider.border, '1px'); assert.equal(modelDivider.topRadius, '0px'); assert.notEqual(modelDivider.borderColor, 'rgba(0, 0, 0, 0)');
         const browserKey = 'studio.browser.linkTarget', browserChoice = setting(browserKey);
         assert.match(await browserChoice.innerText(), language === 'en' ? /Built-in browser/ : /内置浏览器/);
         await selectSettingsOption(page, browserChoice, 'external');
@@ -207,6 +214,10 @@ try {
         await fits();
         const provider = { id: 'plugin', title: language === 'en' ? 'Plugin Information' : '扩展信息', icon: 'sparkle' };
         state = { ...state, providers: [provider] }; await send('settings', { state });
+        await send('account-sections', { states: [{ ...provider, loading: false, failed: false, sections: [{ id: 'details', title: 'Details', metrics: [{ label: 'Requests', value: '42' }] }] }] });
+        await send('account', { state: { ...account, aiConfigured: false, status: 'signed-out', user: undefined } });
+        assert.equal(await page.locator('#settings-provider-sign-in').textContent(), language === 'en' ? 'Sign in to connect System AI' : '登录后连接系统 AI');
+        await send('account', { state: account });
         await send('account-sections', { states: [{ ...provider, loading: false, failed: false, sections: [{ id: 'details', title: 'Details', metrics: [{ label: 'Requests', value: '42' }] }] }] });
         await category('provider:plugin').click(); assert.equal(await page.locator('.metric-value').textContent(), '42');
         await send('account', { state: { status: 'expired', serverUrl: account.serverUrl, user: account.user, revision: 2 } });
