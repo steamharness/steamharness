@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { checkProfileSections } from './launchpad-profile-ui.mjs';
 import { checkStoreExperience } from './launchpad-store-ui.mjs';
 import { checkLaunchpadContrast } from './launchpad-contrast-ui.mjs';
+import { checkLaunchpadBackButton } from './launchpad-back-button-ui.mjs';
 
 export async function checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop, screenshot, loads }) {
   const zh = language === 'zh-cn', t = (en, cn) => zh ? cn : en;
@@ -145,6 +146,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     await checkProfileSections({page,profile,frame,t,screenshot}); assert.equal(loads(),1);
     await profile.getByRole('button',{name:t('Settings','设置'),exact:true}).click(); await page.locator('.studio-launchpad-settings').waitFor();
     assert.equal(await home.isVisible(),false); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
+    await checkLaunchpadBackButton(page); await screenshot('settings-back-button');
     const settings=page.frameLocator('.webview-overlay-content iframe'); await settings.locator('#profile #display-name').getByText('My account').waitFor();
     await page.locator('.studio-launchpad-app-close').click(); await home.waitFor();
     const closed=popup.waitForEvent('close'); await page.evaluate(()=>{window.guest=true;window.signOut();}); await closed;

@@ -1,0 +1,15 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 4e586ed107469bb5fcb55ef7c6e7c3dc3afea9ba..457334e42c1a4525a5a39e39536cbe72e37ac163 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -209,7 +209,9 @@
+ .lp-filter,.lp-option { display: flex; align-items: center; gap: 8px; } .lp-results { max-height: 45vh; } .lp-option { min-height: 30px; cursor: pointer; } .lp-option[aria-selected=true] { background: var(--lp-hover); }
+ .lp-project-drop { position: absolute; inset: var(--studio-launchpad-bar) 0 0; display: grid; align-content: center; justify-items: center; background: color-mix(in srgb,var(--lp-bg) 94%,transparent); border: 2px dashed var(--lp-edge); pointer-events: none; }
+ .studio-launchpad-settings { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
+-.studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); height: 26px; border: 0; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
++.studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); display: flex; align-items: center; gap: 4px; height: 26px; padding-inline: 6px; border: 0; border-radius: 4px; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
++.studio-launchpad-app-close:hover { background: var(--lp-hover); }
++.studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+ @container lp-command (max-width: 180px) {
