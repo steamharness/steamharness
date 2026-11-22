@@ -1,0 +1,253 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index c7283828d425c017334809a62a2c5e24a3f7cecc..9faf8a7369cf5a91bd8bd84a1751cdad4a068726 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -10,7 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
+ import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+-import { studioProjectCardIcon, studioProjectIcon } from '../../../common/studioProjectIcons.js';
++import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
+ import './media/studioStart.css';
+ 
+ interface StudioOverviewProject {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 998329bf1aaa4501e1603dff4bd74205294ff111..c66b4e79dad3aa8d96cd15dee93f0e784697b4d4 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -41,6 +41,7 @@ import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
+ import { SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { StoreListingDetails } from './studioLaunchpadCards.js';
++import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+ import './media/studioLaunchpad.css';
+ 
+ type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
+@@ -59,14 +60,17 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly missing = new Set<string>();
+ 	private readonly editsSinceSnapshot = new Map<number, boolean>();
+ 	private inbox?: LaunchpadInbox;
++	private libraryCategory?: LibraryProjectCategory;
+ 	private account?: LaunchpadState['account'];
+ 	private windowRevision = 0;
++	private libraryCategoryRevision = 0;
+ 	private inboxRevision = 0;
+ 	private noticeRevision = 0;
+ 	private socialUnread = false;
+ 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
+ 	private readonly language = getNLSLanguage() ?? 'en';
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
++	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryCategory(), 100));
+ 
+ 	constructor(
+ 		private readonly notices: StudioNotificationInbox,
+@@ -187,6 +191,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
++		this._register(CommandsRegistry.registerCommand('studio.internalLibraryProjectCategoryChanged', () => this.scheduleLibraryCategory()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+ 			++this.inboxRevision;
+ 			if (reset && !this.account?.hasAccount) {
+@@ -197,10 +202,15 @@ export class StudioLaunchpad extends Disposable {
+ 		}));
+ 		let platform = false, accountRevision = 0;
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
+-			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule(); }
+-			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule(); }
++			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
++			if (scopeChanged) {
++				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
++				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
++				this.libraryCategory = undefined;
++			}
+ 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+ 				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
++			if (scopeChanged) { this.scheduleLibraryCategory(); }
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
+@@ -250,7 +260,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
+ 		for (const part of parts) { part.inert = true; }
+ 		this._register(toDisposable(() => {
+-			++this.windowRevision; ++this.inboxRevision;
++			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
+ 			this.requestId = undefined;
+ 			this.start.setVisible('launchpad', false);
+ 			for (const part of parts) { part.inert = false; }
+@@ -476,6 +486,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
+ 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
+ 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
++		this.scheduleLibraryCategory();
+ 		this.paint();
+ 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
+ 		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
+@@ -485,6 +496,24 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
++	private scheduleLibraryCategory(): void {
++		++this.libraryCategoryRevision;
++		if (this.start.state?.platform && this.account?.signedIn) { this.refreshLibraryCategory.schedule(); }
++		else { this.refreshLibraryCategory.cancel(); }
++	}
++
++	private async readLibraryCategory(): Promise<void> {
++		const revision = this.libraryCategoryRevision;
++		const uris = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && p.uri.startsWith('file:')).map(p => p.uri))];
++		const category = await this.commands.executeCommand<LibraryProjectCategory | null | undefined>('studio.getLibraryProjectCategory', uris).catch(() => undefined);
++		// Undefined means temporarily unavailable; null explicitly removes the optional category.
++		if (revision !== this.libraryCategoryRevision || category === undefined) { return; }
++		if (JSON.stringify(category ?? undefined) !== JSON.stringify(this.libraryCategory)) {
++			this.libraryCategory = category ?? undefined;
++			this.paint();
++		}
++	}
++
+ 	private async readInbox(): Promise<void> {
+ 		if (document.hidden || this.view.element.hidden || !this.start.state?.platform || !this.account?.signedIn) { return; }
+ 		const revision = ++this.inboxRevision;
+@@ -525,6 +554,7 @@ export class StudioLaunchpad extends Disposable {
+ 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+ 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+-			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread });
++			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread,
++			libraryCategory: this.libraryCategory });
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index d590711d1d5932e3f7fa898f126148bdcfd1aa61..3f1cbc0262bbcb2a834e11f7d93b92813dc1ab5f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -9,6 +9,12 @@ import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, type
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ import { projectDetails } from './studioLaunchpadProjectDetails.js';
+ 
++export interface LibraryProjectCategory {
++	label: string;
++	emptyLabel: string;
++	projectUris: string[];
++}
++
+ export interface LibraryActions {
+ 	create(): void;
+ 	importProjects(): void;
+@@ -31,6 +37,8 @@ export class LaunchpadLibrary {
+ 	private readonly createButton: HTMLButtonElement;
+ 	private readonly search = element('input', 'lp-query');
+ 	private readonly filters = element('div', 'lp-filters');
++	private readonly categoryButton: HTMLButtonElement;
++	private category?: LibraryProjectCategory;
+ 	private filter = 'all';
+ 	private signature?: string;
+ 	private projects = new Map<string, LaunchpadProject>();
+@@ -45,9 +53,15 @@ export class LaunchpadLibrary {
+ 		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+ 		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
++		const addFilter = (id: string, label: string) => {
++			const b = button(label, '', () => { this.pendingSelection = undefined; this.filter = id; this.render(); }, 'lp-filter-btn');
++			b.dataset.id = id; this.filters.append(b);
++			return b;
++		};
+ 		for (const [id, label] of [['all', t('All', '全部')], ['source', t('Source', '源码')], ['installed', t('Installed', '已安装')], ['folder', t('Folders', '文件夹')]]) {
+-			const b = button(label, '', () => { this.pendingSelection = undefined; this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
++			addFilter(id, label);
+ 		}
++		this.categoryButton = addFilter('product', ''); this.categoryButton.hidden = true;
+ 		const heading = element('div', 'lp-library-heading'), manage = element('div', 'lp-library-actions');
+ 		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
+ 		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
+@@ -56,10 +70,17 @@ export class LaunchpadLibrary {
+ 		this.element.append(rail, this.shelf);
+ 	}
+ 
+-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string): void {
++	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory): void {
+ 		this.createButton.disabled = !canCreate;
+-		const signature = JSON.stringify([recent, windows, actionScope]); if (signature === this.signature) { return; }
++		const signature = JSON.stringify([recent, windows, actionScope, category]); if (signature === this.signature) { return; }
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
++		this.category = category;
++		this.categoryButton.textContent = category?.label ?? '';
++		if (!category && this.filter === 'product') {
++			this.filter = 'all';
++			if (document.activeElement === this.categoryButton) { this.filters.querySelector<HTMLButtonElement>('[data-id="all"]')?.focus(); }
++		}
++		this.categoryButton.hidden = !category;
+ 		this.projects = new Map(recent.map(p => [p.uri, p]));
+ 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
+ 		if (this.pendingSelection && this.projects.has(this.pendingSelection)) { this.show(this.pendingSelection); }
+@@ -105,8 +126,18 @@ export class LaunchpadLibrary {
+ 
+ 	private render(): void {
+ 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
+-		const rows = [...this.projects.values()].filter(p => (!query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) &&
+-			(this.filter === 'all' || (this.filter === 'installed' ? p.distribution === 'release' || p.distribution === 'download' : this.filter === 'source' ? p.distribution === 'source' : p.kind === 'folder' && !p.projectType && !p.distribution)));
++		const category = this.filter === 'product' ? this.category : undefined;
++		const members = category && new Set(category.projectUris);
++		const rows = [...this.projects.values()].filter(p => {
++			if (query && !`${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) { return false; }
++			switch (this.filter) {
++				case 'installed': return p.distribution === 'release' || p.distribution === 'download';
++				case 'source': return p.distribution === 'source';
++				case 'folder': return p.kind === 'folder' && !p.projectType && !p.distribution;
++				case 'product': return !p.missing && members?.has(p.uri) === true;
++				default: return true;
++			}
++		});
+ 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
+ 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+ 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
+@@ -135,7 +166,8 @@ export class LaunchpadLibrary {
+ 		}
+ 		this.content.replaceChildren();
+ 		if (!rows.length) {
+-			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.content.append(empty); return;
++			const message = (!query && category?.emptyLabel) || (query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。'));
++			const empty = element('p', 'lp-empty'); empty.append(icon('library'), message); this.content.append(empty); return;
+ 		}
+ 		const gallery = (title: string, group: string, projects: LaunchpadProject[]) => {
+ 			const section = element('section', `lp-collection lp-${group}`), grid = element('div', 'lp-library-grid');
+@@ -155,7 +187,7 @@ export class LaunchpadLibrary {
+ 			section.append(heading(title, projects.length), grid); this.content.append(section);
+ 		};
+ 		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
+-		gallery(t('All projects', '所有项目'), 'all', rows);
++		gallery(category?.label ?? t('All projects', '所有项目'), category ? 'product' : 'all', rows);
+ 		restoreFocus();
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 2cb988b590b553d334ddb31b16fc8440c791de11..f32986f3d7b0700fc723aff7cf4a8e7b722d5b31 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -6,7 +6,7 @@
+ import { Disposable } from '../../base/common/lifecycle.js';
+ import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
+ import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
+-import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
++import { LaunchpadLibrary, LibraryActions, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
+ import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
+ import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
+@@ -15,6 +15,7 @@ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
+ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+ 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
++	libraryCategory?: LibraryProjectCategory;
+ }
+ interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
+ 	open(): void; workspace(): void;
+@@ -127,7 +128,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+ 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+ 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
+-		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '');
++		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
+ 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+ 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
+ 		if (this.picker.dialog.open) { this.picker.update(); }

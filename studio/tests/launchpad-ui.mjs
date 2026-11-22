@@ -76,6 +76,14 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.actions.push([id,...args]);
     if (id === 'studio.listLibraryProjectActions') return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
     if (id === 'studio.runLibraryProjectAction') return {};
+    if (id === 'studio.getLibraryProjectCategory') {
+      const projectUris = account.scopeKey === 'a'.repeat(64) ? args[0].filter(uri=>window.libraryCategoryUris.includes(uri)) : [];
+      if (window.holdLibraryCategory) {
+        window.holdLibraryCategory=false;
+        await new Promise(resolve=>window.resumeLibraryCategory=resolve);
+      }
+      return {label:zh?'已关联项目':'Linked projects',emptyLabel:zh?'没有已关联的项目。':'No linked projects.',projectUris};
+    }
     if (id === 'studio.internalGetAccountMenuState') return account;
     if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') {
       const {page,query,type}=args[0], pageSize=2, rows=window.storeFixture.items.filter(p=>p.name.toLowerCase().includes(query.toLowerCase()) && (!type || type===p.projectType));
@@ -128,6 +136,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
   const history = folders.map((uri,i) => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000-i*86400000}));
+  window.libraryCategoryUris = [history[2].uri, history[4].uri];
+  window.setLibraryCategory = names => {
+    window.libraryCategoryUris = history.filter(row=>names.includes(row.label)).map(row=>row.uri);
+    kernelCommand('LibraryProjectCategoryChanged');
+  };
   const detected = new Map([[history[0].uri,{projectType:'workflow',version:'1.2.0',projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',distribution:'source',entries:[{entryId:'main',name:'Main workflow',type:'workflow',primary:true},{entryId:'chat',name:'Chat',type:'bot',primary:false}],artwork:{entries:[avatar,avatar]},avatarUrl:avatar}],[history[2].uri,{projectType:'bot',distribution:'download',artwork:{entries:[avatar]}}],[history[3].uri,{artwork:{files:['notes.txt','demo.js','README.md']}}]]);
   detected.set(history[1].uri,{projectType:'kanban',distribution:'source',artwork:{cover:{name:window.coverName,mtime:1}}});
   detected.set(history[4].uri,{projectType:'bot',distribution:'release',artwork:{entries:[avatar]}});

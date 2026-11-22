@@ -88,6 +88,36 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await page.keyboard.press('Escape');
   await tab('library').click(); assert.equal(await find.inputValue(),'Project 8'); await find.fill('');
   await library.getByRole('button',{name:t('Installed','已安装'),exact:true}).click(); assert.equal(await cards.count(),2);
+  const linked = library.getByRole('button',{name:t('Linked projects','已关联项目'),exact:true});
+  if (enhanced) {
+    const members = library.locator('.lp-product .lp-library-card strong');
+    await linked.click();
+    assert.deepEqual(await members.allTextContents(), ['Project 6','Project 4']);
+    await find.fill('Project 4'); assert.deepEqual(await members.allTextContents(), ['Project 4']);
+    await find.fill('Project 8'); await library.getByText(t('No matching projects.','没有匹配的项目。')).waitFor();
+    await find.fill('');
+    await page.evaluate(()=>window.setLibraryCategory(['Project 4']));
+    await members.filter({hasText:'Project 6'}).waitFor({state:'detached'});
+    assert.deepEqual(await members.allTextContents(), ['Project 4']);
+    const viewport = page.viewportSize();
+    await page.setViewportSize({width:360,height:640}); await linked.click({trial:true});
+    assert.ok(await library.evaluate(el=>el.scrollWidth<=el.clientWidth));
+    await screenshot('linked-projects'); await page.setViewportSize(viewport);
+    await page.evaluate(()=>{window.holdLibraryCategory=true;window.setLibraryCategory(['Project 6']);});
+    await page.waitForFunction(()=>typeof window.resumeLibraryCategory==='function');
+    await page.evaluate(()=>window.updateAccount({scopeKey:'b'.repeat(64)}));
+    assert.equal(await members.count(),0, 'switching accounts clears the old category immediately');
+    await linked.click();
+    const empty = library.getByText(t('No linked projects.','没有已关联的项目。'));
+    await empty.waitFor();
+    await page.evaluate(()=>window.resumeLibraryCategory());
+    assert.ok(await empty.isVisible(), 'an old result cannot repopulate the new account');
+    await page.evaluate(()=>window.updateAccount({scopeKey:'a'.repeat(64)}));
+    await linked.waitFor();
+  } else {
+    assert.equal(await linked.count(),0);
+    assert.equal(await page.evaluate(()=>window.actions.some(([id])=>id==='studio.getLibraryProjectCategory')),false);
+  }
   await library.getByRole('button',{name:t('All','全部'),exact:true}).click();
   await checkStoreExperience({page,t,enhanced,screenshot});
   await checkActionsHidden();
