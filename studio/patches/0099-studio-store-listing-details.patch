@@ -1,0 +1,462 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index e5c50cfac2aa602286d4e6d4c63aaaeb72d19a7c..f478c9ce88aa6c74555c99f5945a9cd85d5bd38b 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -91,7 +91,7 @@
+ .lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
+ .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+-.lp-shelf,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
++.lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title { display: grid; gap: 12px; }
+ .lp-library-heading,.lp-shelf-head,.lp-store-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+ .lp-library-actions { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+@@ -128,13 +128,42 @@
+ .studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
+ .studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
+ .studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
+-.lp-store-page { padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
++.lp-store-content { height: 100%; padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
+ .lp-store-toolbar { margin-bottom: 19px; }
+-.lp-store-feature { margin-block: 15px 20px; display: grid; grid-template-columns: minmax(0,1.65fr) minmax(180px,1fr); background: var(--lp-side); }
++.lp-store-feature { margin-block: 15px 20px; display: grid; grid-template-columns: minmax(0,1.65fr) minmax(180px,1fr); background: var(--lp-side); cursor: pointer; }
+ .lp-feature-info { padding: clamp(12px,2vw,26px); display: grid; align-content: center; gap: 9px; overflow-wrap: anywhere; }
+-.lp-feature-info h2 { font-size: 23px; } .lp-feature-info p { max-height: 9em; overflow: auto; }
++.lp-feature-info h2 { font-size: 23px; } .lp-feature-info p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+ .lp-section-kicker,.lp-feature-meta,.lp-message,.lp-store-status { color: var(--lp-muted); font-size: 12px; }
+ .lp-store-status { margin-block: 16px 8px; } .lp-pager { justify-content: center; margin-block: 14px; }
++.lp-store-details { overflow-wrap: anywhere; }
++.lp-listing-trail,.lp-screen-controls,.lp-listing-screens > header { display: flex; align-items: center; gap: 8px; }
++.lp-listing-trail,.lp-screen-controls { color: var(--lp-muted); font-size: var(--vscode-fontSize-label1,12px); }
++.lp-listing-trail button { color: var(--lp-accent); } .lp-listing-trail > .codicon { font-size: 12px; }
++.lp-listing-head { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; padding-block: 24px; border-bottom: 1px solid var(--lp-line); }
++.lp-listing-mark { width: 64px; } .lp-listing-mark .lp-artwork { aspect-ratio: 1; border: 1px solid var(--lp-line); border-radius: var(--vscode-cornerRadius-large,8px); }
++.lp-listing-mark .lp-art-stack { width: 88%; height: 88%; } .lp-listing-mark .lp-art-stack > .codicon { font-size: 32px; }
++.lp-listing-identity { display: grid; gap: 6px; } .lp-listing-identity h1 { font-size: var(--vscode-fontSize-heading1,26px); }
++.monaco-workbench .studio-launchpad .lp-listing-identity h1:focus { outline: none; }
++.lp-listing-summary,.lp-listing-empty { color: var(--lp-muted); max-width: 72ch; }
++.lp-listing-head .lp-primary { min-height: 32px; white-space: nowrap; }
++.lp-listing-status:not(:empty) { display: flex; align-items: center; gap: 8px; padding-block: 20px; color: var(--lp-muted); }
++.lp-listing-body { display: grid; grid-template-columns: minmax(0,1fr) minmax(210px,29%); gap: 32px; padding-block: 24px; align-items: start; }
++.lp-listing-body:empty { display: none; } .lp-listing-main:only-child { grid-column: 1/-1; max-width: 80ch; }
++.lp-listing-main { display: grid; gap: 28px; min-width: 0; } .lp-listing-main h2,.lp-listing-info h2 { color: var(--lp-strong); }
++.lp-listing-prose,.lp-listing-empty { margin-top: 12px; } .lp-listing-prose { line-height: 1.65; }
++.lp-listing-prose > :first-child { margin-top: 0; } .lp-listing-prose > :last-child { margin-bottom: 0; }
++.lp-listing-prose :is(h1,h2,h3,h4,h5,h6) { font-size: var(--vscode-fontSize-heading3,13px); line-height: 1.45; margin: 16px 0 6px; font-weight: 600; }
++.lp-listing-prose p,.lp-listing-prose :is(ul,ol) { margin: 6px 0; } .lp-listing-prose :is(ul,ol) { padding-inline-start: 24px; }
++.lp-listing-prose blockquote { border-inline-start: 2px solid var(--lp-edge); margin-inline: 0; padding-inline: 12px; }
++.lp-listing-prose pre { white-space: pre-wrap; padding: 12px; background: var(--lp-side); } .lp-listing-prose table { border-collapse: collapse; table-layout: fixed; width: 100%; }
++.lp-listing-prose :is(th,td) { text-align: start; padding: 4px 8px; border: 1px solid var(--lp-line); }
++.lp-listing-info { border-inline-start: 1px solid var(--lp-line); padding-inline-start: 24px; min-width: 0; }
++.lp-listing-info dl { margin: 12px 0 0; } .lp-listing-info dl > div { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px; padding-block: 6px; }
++.lp-listing-info dt { color: var(--lp-muted); } .lp-listing-info dd { margin: 0; text-align: end; }
++.lp-listing-info .lp-detail-entries { margin-top: 16px; padding-top: 16px; } .lp-listing-info .lp-detail-entries li { flex-wrap: wrap; }
++.lp-listing-screens > header { justify-content: space-between; margin-bottom: 12px; } .lp-screen-controls { font-variant-numeric: tabular-nums; }
++.lp-listing-frame { width: 100%; aspect-ratio: 16/9; max-height: 360px; display: grid; place-items: center; background: var(--lp-side); border: 1px solid var(--lp-line); border-radius: var(--vscode-cornerRadius-medium,6px); overflow: hidden; color: var(--lp-muted); }
++.lp-listing-frame img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+ .lp-community { display: grid; justify-items: center; align-content: center; gap: 12px; } .lp-community > .codicon { font-size: 34px; color: var(--lp-muted); }
+ .lp-profile { display: grid; grid-template-columns: clamp(220px,23%,284px) minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
+ .lp-profile-rail { min-width: 0; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); padding: 20px 12px; }
+@@ -195,6 +224,8 @@
+ 	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
+ }
+ @media (max-width: 700px) {
++	.lp-listing-body { grid-template-columns: minmax(0,1fr); gap: 24px; }
++	.lp-listing-info { border-inline-start: 0; border-top: 1px solid var(--lp-line); padding: 20px 0 0; }
+ 	/* When native controls take up most of one wing, use the real gap between the two groups. */
+ 	.lp-titlebar { gap: 3px; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 3px); grid-template-columns: auto minmax(26px,1fr) max-content; }
+ 	.lp-brand,.lp-utilities { margin-inline: 0; }
+@@ -213,6 +244,8 @@
+ 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
+ }
+ @media (max-width: 480px) {
++	.lp-listing-head { grid-template-columns: auto minmax(0,1fr); gap: 12px; padding-block: 16px; }
++	.lp-listing-head .lp-primary { grid-column: 1/-1; justify-self: start; } .lp-listing-mark { width: 48px; }
+ 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
+ 	.lp-store-feature > .lp-artwork { max-height: 165px; }
+ 	.lp-profile-nav { gap: 2px; } .lp-profile-toolbar .lp-search-field { width: 100%; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index cf9eab585ed766bb1bc68166c19b4c0beef6b28a..d94194230972423de72cf59f0f22e6b9fbb5c63e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -40,6 +40,7 @@ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, Stu
+ import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
+ import { SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
++import { StoreListingDetails } from './studioLaunchpadCards.js';
+ import './media/studioLaunchpad.css';
+ 
+ type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
+@@ -116,6 +117,8 @@ export class StudioLaunchpad extends Disposable {
+ 			inbox: conversation => run(this.openInbox(conversation)),
+ 			cover: project => this.cover(project),
+ 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
++			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
++			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
+ 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
+ 			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
+ 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
+@@ -188,7 +191,7 @@ export class StudioLaunchpad extends Disposable {
+ 			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule(); }
+ 			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule(); }
+ 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+-				scopeKey: state.scopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
++				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index 0fcdcda6e7f03312c0efa247d38b4ef54ea0c372..2bac3801f48f4495e2ee9379b48c5357cb994737 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -24,6 +24,14 @@ export interface StoreListing {
+ 	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
+ }
+ 
++export interface StoreListingDetails extends StoreListing {
++	summary?: string; updatedAt?: string; projectEntries?: { name: string; type: string; primary: boolean }[];
++}
++
++export function storeArtwork(p: StoreListing, cover?: string | Promise<string | undefined>): HTMLElement {
++	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon(studioProjectIcon(p.projectType) ?? 'extensions'), cover);
++}
++
+ export function picture(src: string, className = ''): HTMLImageElement {
+ 	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index cf7cdbf7f064b93e15af80599580d6f9f7964338..cab7d4cce7513b1d7ced8b7b2e92ba54bb6a973b 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -9,7 +9,7 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { picture } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ 
+-export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
++export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
+ export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
+ export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
+ export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+index 6f41153f66dc7943f90469bc77f9f04f35616982..434a5e13eca543db0d673b1428aa1e29773fc498 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+@@ -32,14 +32,17 @@ export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: ()
+ 	fact(t('Location', '位置'), p.path);
+ 	fact(t('Project ID', '项目 ID'), p.projectId);
+ 	page.append(facts);
+-	if (p.entries?.length) {
+-		const section = element('section', 'lp-detail-entries'), list = element('ul');
+-		for (const entry of p.entries) {
+-			const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
+-			if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
+-			row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
+-		}
+-		section.append(element('h2', '', t('Project entries', '项目入口')), list); page.append(section);
+-	}
++	if (p.entries?.length) { page.append(projectEntryList(p.entries, t)); }
+ 	return page;
+ }
++
++export function projectEntryList(entries: readonly { name: string; type: string; primary: boolean }[], t: LaunchpadLabel): HTMLElement {
++	const section = element('section', 'lp-detail-entries'), list = element('ul');
++	for (const entry of entries) {
++		const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
++		if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
++		row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
++	}
++	section.append(element('h2', '', t('Project entries', '项目入口')), list);
++	return section;
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadStore.ts b/src/vs/workbench/electron-browser/studioLaunchpadStore.ts
+index ed74bbd903cff75388c1351a2edc8851f0ac4a25..04a228a13ffe8c5282731c8c4ec4929444cfdbd4 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadStore.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadStore.ts
+@@ -4,15 +4,25 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable } from '../../base/common/lifecycle.js';
+-import { artwork, StoreListing, typeLabel } from './studioLaunchpadCards.js';
++import { Disposable, MutableDisposable } from '../../base/common/lifecycle.js';
++import { storeArtwork, StoreListing, StoreListingDetails, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { LaunchpadStoreDetails } from './studioLaunchpadStoreDetails.js';
+ 
+ export interface CatalogRequest { query: string; type: string; page: number }
+ export interface CatalogPage { items: StoreListing[]; total: number; pageSize: number }
++export interface StoreActions {
++	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
++	listingDetails(id: string): Promise<StoreListingDetails>;
++	storeImage(src: string): Promise<string | undefined>;
++	getListing(id: string, platform: boolean): void;
++}
+ 
+ export class LaunchpadStore extends Disposable {
+-	readonly element = element('div', 'lp-store-page lp-scroll');
++	readonly element = element('div', 'lp-store-page');
++	private readonly catalog = element('div', 'lp-store-content lp-scroll');
++	private readonly details = this._register(new MutableDisposable<LaunchpadStoreDetails>());
++	private origin?: HTMLButtonElement;
+ 	private readonly gallery = element('section', 'lp-store-feature');
+ 	private readonly results = element('div', 'lp-store-grid');
+ 	private readonly status = element('div', 'lp-store-status');
+@@ -30,25 +40,25 @@ export class LaunchpadStore extends Disposable {
+ 	private featured = 0;
+ 	private data?: CatalogPage;
+ 	private recommendations: StoreListing[] = [];
+-	private detail?: StoreListing;
+ 
+-	constructor(private readonly t: LaunchpadLabel, private readonly fetchPage: (request: CatalogRequest, platform: boolean) => Promise<CatalogPage>, private readonly open: (id: string, platform: boolean) => void) {
++	constructor(private readonly t: LaunchpadLabel, private readonly actions: StoreActions) {
+ 		super();
+ 		this.search.type = 'search'; this.search.placeholder = t('Search agents', '搜索 Agent'); this.search.setAttribute('aria-label', this.search.placeholder);
+-		this.search.addEventListener('input', () => { ++this.generation; this.page = 1; this.detail = undefined; this.debounce.schedule(); });
++		this.search.addEventListener('input', () => { ++this.generation; this.page = 1; this.debounce.schedule(); });
+ 		for (const [id, label] of [['', t('All items', '全部')], ['bot', 'Bot'], ['workflow', t('Workflows', '工作流')], ['kanban', t('Kanban', '看板')]]) {
+-			const b = button(label, '', () => { this.type = id; this.page = 1; this.detail = undefined; void this.load(); }, 'lp-filter-btn'); b.dataset.id = id; this.categories.append(b);
++			const b = button(label, '', () => { this.type = id; this.page = 1; void this.load(); }, 'lp-filter-btn'); b.dataset.id = id; this.categories.append(b);
+ 		}
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+ 		const bar = element('header', 'lp-store-toolbar'); bar.append(this.categories, field);
+ 		this.status.setAttribute('role', 'status');
+-		this.element.append(bar, this.heading, this.gallery, this.status, this.results, this.pager);
++		this.catalog.append(bar, this.heading, this.gallery, this.status, this.results, this.pager); this.element.append(this.catalog);
+ 	}
+ 
+ 	update(visible: boolean, platform: boolean, server: string | undefined, recommendations: StoreListing[]): void {
+ 		const key = `${platform}:${server ?? ''}`;
+ 		if (this.scope !== key) {
+-			++this.generation; this.scope = key; this.platform = platform; this.loaded = false; this.data = this.detail = undefined; this.page = 1; this.featured = 0;
++			this.showCatalog(false); this.debounce.cancel();
++			++this.generation; this.scope = key; this.platform = platform; this.loaded = false; this.data = undefined; this.page = 1; this.featured = 0;
+ 			this.results.replaceChildren(); this.gallery.replaceChildren(); this.pager.replaceChildren();
+ 		}
+ 		if (JSON.stringify(recommendations) !== JSON.stringify(this.recommendations)) { this.recommendations = recommendations; this.renderFeature(); }
+@@ -60,35 +70,51 @@ export class LaunchpadStore extends Disposable {
+ 		const t = this.t;
+ 		this.heading.textContent = this.platform ? t('Agent Store', 'Agent 商店') : t('Built-in catalog', '内置目录');
+ 		for (const b of this.categories.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.type)); }
+-		this.element.setAttribute('aria-busy', 'true'); this.status.textContent = this.data ? '' : t('Loading catalog…', '正在读取目录…');
++		this.catalog.setAttribute('aria-busy', 'true'); this.status.textContent = this.data ? '' : t('Loading catalog…', '正在读取目录…');
+ 		try {
+-			const data = await this.fetchPage({ query: this.search.value.trim(), type: this.type, page: this.page }, this.platform);
++			const data = await this.actions.catalog({ query: this.search.value.trim(), type: this.type, page: this.page }, this.platform);
+ 			if (generation !== this.generation) { return; }
+ 			if (!data || !Array.isArray(data.items) || !(data.pageSize > 0)) { throw new Error(); }
+ 			this.data = data; this.render();
+ 		} catch {
+ 			if (generation !== this.generation) { return; }
+ 			this.status.replaceChildren(t('Catalog unavailable.', '暂时无法读取目录。'), button(t('Retry', '重试'), 'refresh', () => void this.load(), 'lp-link'));
+-		} finally { if (generation === this.generation) { this.element.setAttribute('aria-busy', 'false'); } }
++		} finally { if (generation === this.generation) { this.catalog.setAttribute('aria-busy', 'false'); } }
++	}
++
++	private showDetails(p: StoreListing, origin: HTMLButtonElement): void {
++		const view = new LaunchpadStoreDetails(this.t, p, this.platform, this.actions, () => this.showCatalog(true));
++		this.details.value = view; this.origin = origin; this.catalog.hidden = true; this.element.append(view.element); view.title.focus({ preventScroll: true });
++	}
++
++	showCatalog(restoreFocus: boolean): void {
++		if (!this.details.value) { return; }
++		this.details.clear(); this.catalog.hidden = false;
++		if (restoreFocus && this.origin) {
++			const source = this.origin.isConnected ? this.origin : Array.from(this.catalog.querySelectorAll<HTMLButtonElement>('button[data-listing]')).find(b => b.className === this.origin?.className && b.dataset.listing === this.origin?.dataset.listing);
++			(source ?? this.search).focus({ preventScroll: true });
++		}
++		this.origin = undefined;
+ 	}
+ 
+-	private cover(p: StoreListing, index = 0): HTMLElement {
+-		return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon('extensions'), p.images?.[index]);
++	private cover(p: StoreListing): HTMLElement {
++		const src = p.images?.[0];
++		return storeArtwork(p, src && this.platform ? this.actions.storeImage(src) : src);
+ 	}
+ 
+ 	private renderFeature(): void {
+ 		const t = this.t;
+ 		const offers = this.recommendations.length ? this.recommendations.map(item => this.data?.items.find(p => p.id === item.id) ?? item) : this.data?.items ?? [];
+-		const p = this.detail ?? offers[this.featured % (offers.length || 1)];
+-		this.gallery.hidden = !p || !this.detail && (!!this.search.value || !!this.type || this.page !== 1);
+-		if (!p || this.gallery.hidden) { this.gallery.replaceChildren(); return; }
++		const p = offers[this.featured % (offers.length || 1)];
++		this.gallery.hidden = !p || !!this.search.value || !!this.type || this.page !== 1;
++		if (!p || this.gallery.hidden) { this.gallery.onclick = null; this.gallery.replaceChildren(); return; }
+ 		const art = this.cover(p), body = element('div', 'lp-feature-info');
+-		body.append(element('small', 'lp-section-kicker', this.detail ? t('Project details', '项目详情') : t('Featured selection', '精选推荐')), element('h2', '', p.name),
++		body.append(element('small', 'lp-section-kicker', t('Featured selection', '精选推荐')), element('h2', '', p.name),
+ 			element('span', 'lp-feature-meta', [typeLabel(p.projectType, t), p.version].filter(Boolean).join(' · ')), element('p', '', p.description ?? ''));
+ 		const controls = element('div', 'lp-feature-controls');
+-		controls.append(button(this.platform ? t('Get agent', '获取 Agent') : t('Create from example', '从示例创建'), this.platform ? 'cloud-download' : 'add', () => this.open(p.id, this.platform), 'lp-primary'));
+-		if (this.detail) { controls.append(button(t('Back to catalog', '返回目录'), 'arrow-left', () => { this.detail = undefined; this.renderFeature(); }, 'lp-link')); }
+-		else if (offers.length > 1) {
++		const view = button(t('View details', '查看详情'), 'arrow-right', () => this.showDetails(p, view), 'lp-primary'); view.dataset.listing = p.id; controls.append(view);
++		this.gallery.onclick = e => { if (e.target instanceof Element && !e.target.closest('button') && !this.gallery.ownerDocument.getSelection()?.toString()) { view.click(); } };
++		if (offers.length > 1) {
+ 			for (const step of [-1, 1]) {
+ 				const b = button('', step < 0 ? 'chevron-left' : 'chevron-right', () => { this.featured = (this.featured + step + offers.length) % offers.length; this.renderFeature(); }, 'lp-tool');
+ 				b.title = step < 0 ? t('Previous item', '上一个') : t('Next item', '下一个'); b.setAttribute('aria-label', b.title); controls.append(b);
+@@ -101,7 +127,7 @@ export class LaunchpadStore extends Disposable {
+ 		const t = this.t, data = this.data!; this.renderFeature();
+ 		this.status.textContent = data.items.length ? t(`Catalog · ${data.total}`, `目录 · ${data.total}`) : t('No matching items.', '没有匹配的内容。');
+ 		this.results.replaceChildren(...data.items.map(p => {
+-			const b = button('', '', () => { this.detail = p; this.renderFeature(); this.element.scrollTop = 0; this.gallery.querySelector('button')?.focus({ preventScroll: true }); }, 'lp-library-card');
++			const b = button('', '', () => this.showDetails(p, b), 'lp-library-card'); b.dataset.listing = p.id;
+ 			const caption = element('span', 'lp-caption'); caption.append(element('strong', '', p.name), element('small', '', [typeLabel(p.projectType, t), p.version].filter(Boolean).join(' · ')));
+ 			b.append(this.cover(p), caption); return b;
+ 		}));
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbbdd7213c19957eb8c83374b69834c9a470964d
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioLaunchpadStoreDetails.ts
+@@ -0,0 +1,97 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { renderMarkdown } from '../../base/browser/markdownRenderer.js';
++import { Disposable } from '../../base/common/lifecycle.js';
++import { picture, storeArtwork, StoreListing, StoreListingDetails, typeLabel } from './studioLaunchpadCards.js';
++import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { projectEntryList } from './studioLaunchpadProjectDetails.js';
++import type { StoreActions } from './studioLaunchpadStore.js';
++
++export class LaunchpadStoreDetails extends Disposable {
++	readonly element = element('article', 'lp-store-content lp-store-details lp-scroll');
++	readonly title = element('h1');
++	private readonly mark = element('div', 'lp-listing-mark');
++	private readonly summary = element('p', 'lp-listing-summary');
++	private readonly content = element('div', 'lp-listing-body');
++	private readonly status = element('div', 'lp-listing-status');
++	private readonly acquire: HTMLButtonElement;
++
++	constructor(private readonly t: LaunchpadLabel, private readonly listing: StoreListing, private readonly platform: boolean, private readonly actions: StoreActions, back: () => void) {
++		super();
++		const trail = element('div', 'lp-listing-trail');
++		trail.append(button(platform ? t('Back to Store', '返回商店') : t('Back to catalog', '返回目录'), 'arrow-left', back), icon('chevron-right'), element('span', '', t('Project details', '项目详情')));
++		this.title.tabIndex = -1; this.title.textContent = listing.name;
++		this.mark.append(storeArtwork(listing));
++		const identity = element('div', 'lp-listing-identity'); identity.append(this.title, this.summary);
++		this.summary.hidden = !platform || !listing.description; this.summary.textContent = listing.description ?? '';
++		this.acquire = button(platform ? t('Get agent', '获取 Agent') : t('Create from example', '从示例创建'), platform ? 'cloud-download' : 'add', () => actions.getListing(listing.id, platform), 'lp-primary');
++		const head = element('header', 'lp-listing-head'); head.append(this.mark, identity, this.acquire);
++		this.status.setAttribute('role', 'status'); this.element.append(trail, head, this.status, this.content);
++		this.element.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.isComposing && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); back(); } });
++		void this.load();
++	}
++
++	private async load(): Promise<void> {
++		this.acquire.disabled = true;
++		this.status.textContent = this.t('Loading project details…', '正在加载项目详情…');
++		this.content.setAttribute('aria-busy', 'true');
++		try {
++			const p = this.platform ? await this.actions.listingDetails(this.listing.id) : this.listing;
++			if (this._store.isDisposed) { return; }
++			if (p?.id !== this.listing.id) { throw new Error(); }
++			this.render(p); this.status.textContent = ''; this.acquire.disabled = false;
++		} catch {
++			if (this._store.isDisposed) { return; }
++			this.status.replaceChildren(this.t('Project details unavailable.', '暂时无法读取项目详情。'), button(this.t('Retry', '重试'), 'refresh', () => { this.title.focus(); void this.load(); }, 'lp-link'));
++		} finally { this.content.setAttribute('aria-busy', 'false'); }
++	}
++
++	private render(p: StoreListingDetails): void {
++		const t = this.t;
++		this.title.textContent = p.name; this.mark.replaceChildren(storeArtwork(p));
++		this.summary.textContent = p.summary ?? ''; this.summary.hidden = !p.summary || p.summary === p.description;
++		const main = element('div', 'lp-listing-main'), about = element('section');
++		about.append(element('h2', '', t('About this project', '项目介绍')));
++		if (p.description || p.summary) {
++			// Published prose is untrusted; only the separate, host-supplied screenshot gallery loads media.
++			const prose = this._register(renderMarkdown({ value: p.description || p.summary || '' }, { sanitizerConfig: { allowedTags: { override: ['p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'strong', 'em', 'del', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] } } }));
++			prose.element.className = 'lp-listing-prose'; about.append(prose.element);
++		} else { about.append(element('p', 'lp-listing-empty', t('No description provided.', '暂无项目介绍。'))); }
++		main.append(about);
++		if (p.images?.length) { main.append(this.screenshots(p.name, p.images)); }
++		const aside = element('aside', 'lp-listing-info'), facts = element('dl');
++		const fact = (label: string, value: string) => { const row = element('div'); row.append(element('dt', '', label), element('dd', '', value)); facts.append(row); };
++		if (p.projectType) { fact(t('Project type', '项目类型'), typeLabel(p.projectType, t)); }
++		if (p.version) { fact(t('Version', '版本'), p.version); }
++		if (p.updatedAt && Number.isFinite(Date.parse(p.updatedAt))) { fact(t('Updated', '更新日期'), new Date(p.updatedAt).toLocaleDateString(t('en', 'zh-CN'), { year: 'numeric', month: 'short', day: 'numeric' })); }
++		if (facts.childElementCount) { aside.append(element('h2', '', t('Project information', '项目信息')), facts); }
++		if (p.projectEntries?.length) { aside.append(projectEntryList(p.projectEntries, t)); }
++		if (aside.childElementCount) { this.content.replaceChildren(main, aside); } else { this.content.replaceChildren(main); }
++	}
++
++	private screenshots(name: string, images: string[]): HTMLElement {
++		const t = this.t, section = element('section', 'lp-listing-screens'), bar = element('header');
++		bar.append(element('h2', '', t('Screenshots', '项目截图')));
++		const frame = element('div', 'lp-listing-frame'), count = element('span'); let index = 0, revision = 0;
++		const show = async () => {
++			const current = ++revision; count.textContent = `${index + 1} / ${images.length}`;
++			const unavailable = () => element('span', '', t('Screenshot unavailable.', '截图暂时无法显示。'));
++			frame.replaceChildren(); const src = this.platform ? await this.actions.storeImage(images[index]).catch(() => undefined) : images[index];
++			if (current !== revision || this._store.isDisposed) { return; }
++			if (!src) { frame.replaceChildren(unavailable()); return; }
++			const img = picture(src); img.alt = t(`${name}, screenshot ${index + 1}`, `${name}，截图 ${index + 1}`);
++			img.addEventListener('error', () => img.replaceWith(unavailable()), { once: true }); frame.replaceChildren(img);
++		};
++		if (images.length > 1) {
++			const controls = element('div', 'lp-screen-controls');
++			const step = (n: number, glyph: string, label: string) => { const b = button('', glyph, () => { index = (index + n + images.length) % images.length; void show(); }); b.title = label; b.setAttribute('aria-label', label); return b; };
++			count.setAttribute('aria-live', 'polite'); controls.append(step(-1, 'chevron-left', t('Previous screenshot', '上一张截图')), count, step(1, 'chevron-right', t('Next screenshot', '下一张截图'))); bar.append(controls);
++		}
++		void show(); section.append(bar, frame); return section;
++	}
++
++	override dispose(): void { this.element.remove(); super.dispose(); }
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index fcc63d160bbff50e5f3011ee0c86095f665c14c4..7d0e2832946a614d28053935784f8646f2146dd0 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -9,17 +9,16 @@ import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpa
+ import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
+ import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
+-import { CatalogPage, CatalogRequest, LaunchpadStore } from './studioLaunchpadStore.js';
++import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
+ 
+ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
+ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+ 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+ }
+-interface LaunchpadActions extends ProfileActions, LibraryActions {
++interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
+ 	open(): void; workspace(): void;
+-	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
+-	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
++	readNotice(id: string): void;
+ 	resource(id: 'docs' | 'github' | 'server'): void;
+ }
+ type Tab = 'store' | 'library' | 'community' | 'profile';
+@@ -82,7 +81,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		});
+ 		navigation.append(this.tabs);
+ 		this.library = new LaunchpadLibrary(t, actions);
+-		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
++		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
+ 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
+ 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
+ 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
+@@ -99,6 +98,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
+ 		if (this.state) { this.update(this.state); }
+ 		if (id === 'library') { this.library.show(projectUri); }
++		if (id === 'store') { this.store.showCatalog(false); }
+ 	}
+ 
+ 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
+@@ -127,7 +127,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+ 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+ 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
+-		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey, state.store?.items ?? []);
++		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+ 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
+ 		if (this.picker.dialog.open) { this.picker.update(); }
+ 	}

@@ -10,6 +10,7 @@ export function accountMenuState(state: AccountState, platform: boolean, digest?
   return {
     status: state.status, statusLabel: statusLabels[state.status], localProfile: !platform,
     scopeKey: platform && state.user?.userId ? digest?.(JSON.stringify([state.serverUrl, state.user.userId])) : undefined,
+    storeScopeKey: platform && !state.user?.userId ? digest?.(state.serverUrl) : undefined,
     name: state.user?.displayName || state.user?.email || t('Signed Out'),
     email: state.user?.email, avatarUrl: state.user?.avatarUrl || generatedAvatarUrl(state.user?.userId), hasAccount: !!state.user, error: state.error,
     labels: {

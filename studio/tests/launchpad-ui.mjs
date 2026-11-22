@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
 import { checkLibraryExperience } from './launchpad-library-ui.mjs';
+import { storeFixture } from './launchpad-store-ui.mjs';
 
 // Render the desktop controller, creation dialog and Settings UI with isolated host services.
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
@@ -37,7 +38,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { FileOperationError, FileOperationResult } from './src/vs/platform/files/common/files.ts';
   import { hostedSidebarHtml } from '../../extensions/studio-workstation/src/project-sidebar-html.ts';
   import { applyRecentMetadata, RECENT_PROJECTS_KEY } from '../../extensions/studio-workstation/src/projects.ts';
-  const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items: [{ id:'checklist', name:'Checklist', description:'Verify a release' }] } : undefined };
+  const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items:window.storeFixture.recommendations } : undefined };
   const root = document.querySelector('.monaco-workbench');
   const [outer, inner] = root.querySelectorAll('.sash-container');
   const sashes = [new Sash(outer, {getHorizontalSashTop:()=>365}, {orientation:Orientation.HORIZONTAL}),
@@ -72,7 +73,15 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
-    if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') return { items: [{id:'checklist', name:'Checklist', projectType:'bot',version:'1.2.0',description:'Verify a release'}].filter(p=>p.name.toLowerCase().includes(args[0].query.toLowerCase()) && (!args[0].type || args[0].type===p.projectType)), total:1, pageSize:12 };
+    if (id === 'studio.getStoreCatalog' || id === 'studio.getLocalCatalog') {
+      const {page,query,type}=args[0], pageSize=2, rows=window.storeFixture.items.filter(p=>p.name.toLowerCase().includes(query.toLowerCase()) && (!type || type===p.projectType));
+      return {items:rows.slice((page-1)*pageSize,page*pageSize).map(p=>window.enhanced?{id:p.id,name:p.name,description:p.summary,version:p.version,projectType:p.projectType,images:p.images}:p),total:rows.length,pageSize};
+    }
+    if (id === 'studio.getStoreListingDetails') {
+      if (window.storePending) await window.storePending;
+      if (window.storeFailure) throw new Error('Unavailable');
+      return window.storeFixture.items.find(p=>p.id===args[0]);
+    }
     if (id === 'studio.getSocialSnapshot') {
       const owned = account.scopeKey === 'a'.repeat(64);
       if (window.socialGate) await window.socialGate;
@@ -405,6 +414,7 @@ try {
     let loads=0;
     await page.context().route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main>Inbox fixture</main><output></output><input aria-label="draft"><script>window.addEventListener('message',e=>{if(e.source===parent && e.data?.nonce==='fixture' && e.data.visible && e.data.conversation) document.querySelector('output').textContent=e.data.conversation;});parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
     await page.route('http://127.0.0.1:4321/settings-fixture.js',route=>route.fulfill({contentType:'text/javascript',body:settingsJs}));
+    await page.route(`${origin}/store-preview/*.png`,route=>route.fulfill({path:fileURLToPath(new URL(`../../docs/images/studio/${language}/${new URL(route.request().url()).pathname.split('/').pop()}`,import.meta.url))}));
     await page.goto('http://127.0.0.1:4321/');
     await page.setContent(`<style>
       :root{--vscode-foreground:#d4d4d4;--vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#252526;--vscode-panel-border:#3a3a3a;--vscode-textLink-foreground:#68b6ed;--vscode-button-background:#007acc;--vscode-button-foreground:white;--vscode-descriptionForeground:#aaa;--vscode-focusBorder:#007acc;--vscode-badge-background:#38383c;--vscode-badge-foreground:#eee;--vscode-list-hoverBackground:#303030;--vscode-input-background:#272727;--vscode-input-foreground:#ddd;--vscode-charts-yellow:#dcbd85;}
@@ -415,13 +425,14 @@ try {
       <div class="part titlebar"><div class="titlebar-container"><div class="titlebar-drag-region"></div><div class="titlebar-left"><button>IDE</button><button class="window-controls-container" style="width:66px">×</button></div><div class="titlebar-right"><div class="action-toolbar-container"><button>Layout</button></div></div></div></div><div class="part editor"><button>Editor</button></div><div class="part statusbar"></div></div></div></div></div>`);
     if (light) await page.addStyleTag({content:':root{--vscode-foreground:#262626;--vscode-editor-background:#fff;--vscode-sideBar-background:#f6f6f6;--vscode-panel-border:#d9d9d9;--vscode-descriptionForeground:#565656;--vscode-input-background:#fafafa;--vscode-input-foreground:#333;--vscode-textLink-foreground:#005fb8;--vscode-list-hoverBackground:#ededed;--vscode-badge-background:#dedede;--vscode-badge-foreground:#333}'});
     await page.addStyleTag({content:'.vs{--vscode-list-warningForeground:#855f00}.vs-dark{--vscode-list-warningForeground:#cca700}.hc-black,.hc-light{--vscode-contrastBorder:currentColor}'});
-    await page.evaluate(({language,enhanced,coverBytes,coverName})=>{
+    await page.evaluate(({language,enhanced,coverBytes,coverName,store})=>{
+      window.storeFixture=store;
       window.coverBytes=coverBytes; window.coverName=coverName;
       window._VSCODE_NLS_LANGUAGE=language; window.enhanced=enhanced; window.actions=[]; window.events={};
       window.vscodeWindowId=1; // The UI fixture loads before the bootstrap replaces this with the real window ID.
       window.vscode={ipcRenderer:{on:(id,fn)=>window.events[id]=fn,removeListener:id=>delete window.events[id]},
         webUtils:{getPathForFile:file=>'/projects/'+file.name}};
-    },{language,enhanced,coverBytes:coverBytes.toString('base64'),coverName});
+    },{language,enhanced,coverBytes:coverBytes.toString('base64'),coverName,store:storeFixture(language==='zh-cn')});
     if (enhanced) {
       const localization = JSON.stringify({locale:language,bundle:language==='zh-cn'?chinese:{}}).replace(/</g,'\\u003c');
       const html = `<!doctype html><html lang="${language}"><head><style>${settingsThemeCss(light?'light':'dark')}\n${settingsCss}\n${iconCss}</style></head>

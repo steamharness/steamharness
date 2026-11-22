@@ -623,6 +623,10 @@ test('the avatar menu exposes only public profile data and refreshes both the me
   await f.commands.get('studio.logout')();
   assert.equal(read().hasAccount, false);
   assert.equal(read().scopeKey, undefined);
+  assert.match(read().storeScopeKey, /^[a-f\d]{64}$/);
+  await other.commands.get('studio.logout')();
+  assert.notEqual(other.commands.get('studio.internalGetAccountMenuState')().storeScopeKey, read().storeScopeKey);
+  assert.equal(local.commands.get('studio.internalGetAccountMenuState')().storeScopeKey, undefined);
   assert.equal(read().email, undefined);
   assert.equal(read().avatarUrl, undefined);
 });

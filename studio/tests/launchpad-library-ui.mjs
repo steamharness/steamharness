@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { checkProfileSections } from './launchpad-profile-ui.mjs';
+import { checkStoreExperience } from './launchpad-store-ui.mjs';
 
 export async function checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop, screenshot, loads }) {
   const zh = language === 'zh-cn', t = (en, cn) => zh ? cn : en;
@@ -82,12 +83,8 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await tab('library').click(); assert.equal(await find.inputValue(),'Project 8'); await find.fill('');
   await library.getByRole('button',{name:t('Installed','已安装'),exact:true}).click(); assert.equal(await cards.count(),2);
   await library.getByRole('button',{name:t('All','全部'),exact:true}).click();
-  await tab('store').click(); const store=home.locator('#lp-page-store'); await store.locator('.lp-store-grid button').first().click();
+  await checkStoreExperience({page,t,enhanced,screenshot});
   await checkActionsHidden();
-  await store.locator('.lp-feature-controls .lp-primary').click();
-  assert.ok(await page.evaluate(enhanced=>window.actions.some(([id,arg])=>id===(enhanced?'studio.getStoreListing':'studio.createExample') && arg==='checklist'),enhanced));
-  await store.getByRole('searchbox').fill('not found'); await store.getByText(t('No matching items.','没有匹配的内容。')).waitFor();
-  await store.getByRole('searchbox').fill(''); await store.locator('.lp-store-grid button').first().waitFor(); await screenshot('store');
   await tab('profile').click(); await checkActionsHidden();
   assert.ok(await center.getByText(searchLabel, { exact:true }).isVisible());
   const quick = home.getByRole('dialog', { name:t('Command center','命令中心') });
