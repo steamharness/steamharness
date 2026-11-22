@@ -8,7 +8,7 @@ export const SYSTEM_THEME = '__system__';
 export function settingsViewState(value: unknown): SettingsViewState {
   const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return {
-    section: typeof state.section === 'string' && /^(general|editor|permissions|models|account|sidebar|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
+    section: typeof state.section === 'string' && /^(general|editor|permissions|notifications|models|account|sidebar|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
     query: typeof state.query === 'string' ? state.query.slice(0, 512) : '',
     target: state.target === 'workspace' ? 'workspace' : 'user',
     scroll: typeof state.scroll === 'number' && Number.isFinite(state.scroll) ? Math.min(500_000, Math.max(0, state.scroll)) : 0,
@@ -38,6 +38,10 @@ export function settingsCatalog(): SettingItem[] {
         { value: 'workspace', label: t('Workspace'), description: t('Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.') },
         { value: 'auto', label: t('Auto approve'), description: t('Approve all permissions that are not explicitly denied, including access to paths outside the workspace.') },
       ] },
+    { key: 'studio.notifications.desktop', section: 'notifications', group: t('IM messages'), label: t('Desktop notifications'),
+      description: t('Send IM alerts to the operating system, even while Studio is in the background.'), type: 'boolean' },
+    { key: 'studio.notifications.workbench', section: 'notifications', group: t('IM messages'), label: t('In-app notifications'),
+      description: t('Show IM alerts in the VS Code notification area. This follows the editor’s Do Not Disturb setting.'), type: 'boolean' },
     { key: 'editor.fontSize', section: 'editor', group: t('Text editor'), label: t('Font size'), description: t('Editor font size in pixels.'), type: 'number', minimum: 6, maximum: 100 },
     { key: 'editor.tabSize', section: 'editor', group: t('Text editor'), label: t('Indent size'), description: t('Number of spaces represented by a tab. File indentation detection can override this value.'), type: 'number', integer: true, minimum: 1 },
     { key: 'editor.insertSpaces', section: 'editor', group: t('Text editor'), label: t('Insert spaces'), description: t('Insert spaces when pressing Tab. File indentation detection can override this value.'), type: 'boolean' },
@@ -65,11 +69,11 @@ export function themeOptions(): { value: string; label: string }[] {
   return [{ value: SYSTEM_THEME, label: t('Follow system') }, ...[...themes].map(([value, label]) => ({ value, label }))];
 }
 
-export function settingsState(studioVersion: string, target: SettingsTarget, providers: SettingsProvider[], languagePreference = 'system'): SettingsState {
+export function settingsState(studioVersion: string, target: SettingsTarget, providers: SettingsProvider[], languagePreference = 'system', notifications = false): SettingsState {
   const configuration = vscode.workspace.getConfiguration();
   const workspaceAvailable = !!vscode.workspace.workspaceFolders?.length || !!vscode.workspace.workspaceFile;
   if (!workspaceAvailable) { target = 'user'; }
-  const items = settingsCatalog().map(item => {
+  const items = settingsCatalog().filter(item => notifications || item.section !== 'notifications').map(item => {
     const inspected = configuration.inspect<string | number | boolean>(item.key);
     const workspace = item.section === 'editor' && target === 'workspace';
     const inherited = inspected?.globalValue ?? inspected?.defaultValue ?? configuration.get<string | number | boolean>(item.key) ?? '';

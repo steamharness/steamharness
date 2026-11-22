@@ -35,6 +35,8 @@
   "command.createExample": "从示例创建项目",
   "command.refreshStart": "刷新项目概览",
   "config.startPage.enabled": "在空编辑器组中显示项目概览。",
+  "config.studio.notifications.desktop": "由操作系统显示 IM 消息通知。",
+  "config.studio.notifications.workbench": "在 VS Code 通知区域显示 IM 消息通知。",
   "command.openAnalysis": "打开 Studio 分析",
   "displayName": "SteamHarness 工作台",
   "description": "Studio 工作区和项目工具。",

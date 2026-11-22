@@ -101,6 +101,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       if (window.socialFailure) throw new Error('Service unavailable');
       return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices}) : {people:[],favorites:[],notices:[]};
     }
+    if (id === 'studio.hasUnreadNotices') return account.scopeKey === 'a'.repeat(64) && notices.some(notice=>!notice.read);
+    if (id === 'studio.markAllNoticesRead') {
+      if (window.markAllFails) throw new Error('Service unavailable');
+      if (account.scopeKey === 'a'.repeat(64)) for (const notice of notices) notice.read=true;
+      return;
+    }
     if (id === 'studio.changeSocial') {
       const {action,id:key}=args[0];
       if(action==='remove') people.find(p=>p.id===key).relation='removed';

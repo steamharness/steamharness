@@ -14,7 +14,7 @@ export interface SettingsViewState extends SettingsOpenOptions {
 
 export interface SettingItem {
   key: string;
-  section: 'general' | 'editor' | 'permissions';
+  section: 'general' | 'editor' | 'permissions' | 'notifications';
   group: string;
   label: string;
   description: string;
@@ -48,4 +48,9 @@ export interface SettingsState {
   providers: SettingsProvider[];
   sidebar?: { items: SidebarItem[]; canAdd: boolean };
   nodeRuntime?: { source?: 'bundled' | 'local' | 'host'; version?: string; path?: string; error?: string };
+  desktopNotificationStatus?: {
+    platform: 'macos' | 'windows' | 'linux';
+    appName: string;
+    permission: 'granted' | 'denied' | 'not-determined' | 'unknown' | 'unsupported';
+  };
 }

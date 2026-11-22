@@ -15,7 +15,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126' } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126', uiKind = 1 } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, requestUrls: [], statuses: [], messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': 'https://obsolete.example.test' };
@@ -29,7 +29,8 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
     Disposable: { from: (...items) => ({ dispose: () => items.forEach(item => item.dispose()) }) },
     Uri: { parse: value => ({ toString: () => value, toJSON: () => value }), joinPath: (_base, ...parts) => ({ toString: () => `file:///extension/${parts.join('/')}` }) },
     ThemeIcon: class { constructor(id) { this.id = id; } }, ViewColumn: { Active: 1 },
-    env: { language: 'en', openExternal: async uri => { f.opened.push(uri.toString()); return true; }, clipboard: { writeText: async text => { f.copied.push(text); } } },
+    env: { language: 'en', uiKind, openExternal: async uri => { f.opened.push(uri.toString()); return true; }, clipboard: { writeText: async text => { f.copied.push(text); } } },
+    UIKind: { Desktop: 1, Web: 2 },
     version: '1.141.0', extensions: { all: [], onDidChange: configuration.event },
     ConfigurationTarget: { Global: 1, Workspace: 2 },
     commands: {
@@ -38,6 +39,8 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
         f.executed.push({ id, args });
         if (id === 'studio.internalIsLaunchpad') { return launchpad; }
         if (id === 'studio.internalGetDisplayLanguage') { return f.languagePreference; }
+        if (id === 'studio.internalGetDesktopNotificationStatus') { return f.desktopNotificationStatus; }
+        if (id === 'studio.internalOpenNotificationSettings') { return true; }
         if (id === 'studio.internalSetDisplayLanguage') {
           await f.beforeLanguage?.(args[0]);
           if (f.languageError) { throw new Error('Fixture language failure'); }
@@ -154,6 +157,22 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.equal(f.panel, panel);
   assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('only enhanced desktop settings expose IM notification switches and system permissions', async t => {
+  for (const [platform, uiKind, enabled] of [[true, 1, true], [true, 2, false], [false, 1, false]]) {
+    const f = await fixture(t, { platform, uiKind, connect: false });
+    f.desktopNotificationStatus = { platform: 'macos', permission: 'denied', appName: 'SteamHarness Dev' };
+    f.commands.get('studio.openSettings')({ section: 'notifications' });
+    await f.message({ type: 'ready' });
+    const latest = () => f.messages.filter(message => message.type === 'settings').at(-1)?.state;
+    if (enabled) await until(() => latest()?.desktopNotificationStatus);
+    assert.equal(latest().items.filter(item => item.section === 'notifications').length, enabled ? 2 : 0);
+    assert.equal(latest().desktopNotificationStatus, enabled ? f.desktopNotificationStatus : undefined);
+    await f.message({ type: 'settings-action', action: 'notification-settings' });
+    assert.equal(f.executed.some(({ id }) => id === 'studio.internalOpenNotificationSettings'), enabled);
+    assert.equal(f.executed.some(({ id }) => id === 'studio.internalGetDesktopNotificationStatus'), enabled);
+  }
 });
 
 test('launchpad settings reuse the account page without creating an editor or login panel', async t => {

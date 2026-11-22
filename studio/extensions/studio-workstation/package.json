@@ -829,6 +829,18 @@
           "default": true,
           "description": "%config.startPage.enabled%"
         },
+        "studio.notifications.desktop": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "%config.studio.notifications.desktop%"
+        },
+        "studio.notifications.workbench": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "%config.studio.notifications.workbench%"
+        },
         "studio.project.nodePath": {
           "type": "string",
           "default": "",

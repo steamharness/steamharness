@@ -35,6 +35,8 @@
   "command.createExample": "Create Project from Example",
   "command.refreshStart": "Refresh Project Overview",
   "config.startPage.enabled": "Show the project overview in empty editor groups.",
+  "config.studio.notifications.desktop": "Send IM alerts to the operating system.",
+  "config.studio.notifications.workbench": "Show IM alerts in the VS Code notification area.",
   "command.openAnalysis": "Open Studio Analysis",
   "displayName": "SteamHarness Studio",
   "description": "Workspace and project tools for Studio.",

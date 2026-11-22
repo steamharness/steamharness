@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { ROOT, assertRuntime, assertUpstream, builtinProjectDirectory, exists, git, prepareDistribution, readJSON, resolveMonorepoRoot, run } from './distribution.mjs';
 import { buildExtension } from './build-extension.mjs';
 import { electronEnvironment, electronVersion, ensureElectronTypes } from './downloads.mjs';
+import { devElectronIsSigned } from './electron-cache.mjs';
 import { ensureDefaultExtensions } from './default-extensions.mjs';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -179,13 +180,16 @@ async function main() {
       // Patches and local edits can change source without changing HEAD.
       // Let build-fast validate its own input fingerprints on every launch.
       await build(upstream);
-      const executable = process.platform === 'darwin'
-        ? path.join(upstream.directory, '.build/electron', `${product.nameLong}.app`, 'Contents/MacOS', product.nameShort)
-        : path.join(upstream.directory, '.build/electron', process.platform === 'win32' ? `${product.nameShort}.exe` : product.applicationName);
-      const versionFile = path.join(upstream.directory, '.build/electron/version');
+      const cache = path.join(upstream.directory, '.build/electron');
+      const macBundle = process.platform === 'darwin' ? path.join(cache, `${product.nameLong}.app`) : undefined;
+      const executable = macBundle
+        ? path.join(macBundle, 'Contents/MacOS', product.nameShort)
+        : path.join(cache, process.platform === 'win32' ? `${product.nameShort}.exe` : product.applicationName);
+      const versionFile = path.join(cache, 'version');
       const installedVersion = await exists(versionFile)
         ? (await readFile(versionFile, 'utf8')).trim().replace(/^v/, '') : undefined;
-      if (!await exists(executable) || installedVersion !== await electronVersion(upstream) || process.env.VSCODE_FORCE_PRELAUNCH) {
+      if (!await exists(executable) || installedVersion !== await electronVersion(upstream) || process.env.VSCODE_FORCE_PRELAUNCH ||
+          (macBundle && !await devElectronIsSigned(upstream, macBundle))) {
         await run(process.execPath, [path.join(ROOT, 'scripts/electron.mjs')], ROOT);
       }
       await run(process.execPath, ['build/lib/preLaunch.ts'], upstream.directory, {

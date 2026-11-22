@@ -1,0 +1,809 @@
+diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
+index 34cc2f2f2f41a46e138cc0322d3d56276dc7f840..4469a65f23f7f6bb5e671060cb671dda4da71643 100644
+--- a/build/gulpfile.vscode.ts
++++ b/build/gulpfile.vscode.ts
+@@ -22,6 +22,7 @@ import * as cp from 'child_process';
+ import * as i18n from './lib/i18n.ts';
+ import { getProductionDependencies } from './lib/dependencies.ts';
+ import { config } from './lib/electron.ts';
++import { buildStudioNotificationPermission, studioNotificationPermissionName } from './lib/studioNotificationPermission.ts';
+ import { createAsar } from './lib/asar.ts';
+ import minimist from 'minimist';
+ import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
+@@ -373,6 +374,14 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
+ 				...(platform === 'win32' ? ['!**/electron_proxy.exe'] : []),
+ 			], { dot: true }));
+
++		if (platform === 'darwin' && process.platform === 'darwin') {
++			const directory = path.join(root, '.build', 'studio-notifications', arch);
++			const permissionAddon = path.join(directory, studioNotificationPermissionName);
++			buildStudioNotificationPermission(permissionAddon, arch);
++			result = es.merge(result, gulp.src(permissionAddon, { base: directory })
++				.pipe(rename(f => f.dirname = `${product.nameLong}.app/Contents/Resources`)));
++		}
++
+ 		if (platform === 'linux') {
+ 			result = es.merge(result, gulp.src('resources/completions/bash/code', { base: '.' })
+ 				.pipe(replace('@@APPNAME@@', product.applicationName))
+diff --git a/build/lib/studioNotificationPermission.ts b/build/lib/studioNotificationPermission.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b724a087400053764c6022130a871b64ee20cf4
+--- /dev/null
++++ b/build/lib/studioNotificationPermission.ts
+@@ -0,0 +1,18 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { execFileSync } from 'node:child_process';
++import { mkdirSync, realpathSync } from 'node:fs';
++import { dirname, resolve } from 'node:path';
++
++const source = resolve(import.meta.dirname, '../../src/vs/platform/native/electron-main/studioNotificationPermission.mm');
++export const studioNotificationPermissionName = 'studio-notification-permission.node';
++
++export function buildStudioNotificationPermission(destination: string, arch: string): void {
++	const nodeHeaders = resolve(dirname(realpathSync(process.execPath)), '../include/node');
++	mkdirSync(dirname(destination), { recursive: true });
++	execFileSync('/usr/bin/xcrun', ['clang++', '-arch', arch === 'x64' ? 'x86_64' : arch, '-std=c++17', '-fobjc-arc', '-bundle', '-undefined', 'dynamic_lookup', '-mmacosx-version-min=11.0',
++		'-framework', 'Foundation', '-framework', 'UserNotifications', '-I', nodeHeaders, source, '-o', destination], { stdio: 'inherit' });
++}
+diff --git a/src/vs/platform/native/common/native.ts b/src/vs/platform/native/common/native.ts
+index 5874bb9af67fded3400e6ed6719d4832e4579434..7c7930c550cb294ffb99b2e9b382d24724dff79a 100644
+--- a/src/vs/platform/native/common/native.ts
++++ b/src/vs/platform/native/common/native.ts
+@@ -43,6 +43,13 @@ export interface IToastResult {
+ 	readonly actionIndex?: number;
+ }
+
++export interface IStudioDesktopNotificationStatus {
++	readonly platform: 'macos' | 'windows' | 'linux';
++	readonly appName: string;
++	// Native toast support does not imply that the OS has granted permission.
++	readonly permission: 'granted' | 'denied' | 'not-determined' | 'unknown' | 'unsupported';
++}
++
+ /**
+  * A count badge to render on the application icon in the dock (macOS), the
+  * launcher (Linux) or over the taskbar icon of a window (Windows).
+@@ -433,6 +440,10 @@ export interface ICommonNativeHostService {
+ 	showToast(options: IToastOptions): Promise<IToastResult>;
+ 	clearToast(id: string): Promise<void>;
+ 	clearToasts(): Promise<void>;
++	isStudioNotificationWindow(): Promise<boolean>;
++	getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus>;
++	openStudioNotificationSettings(): Promise<boolean>;
++	setStudioUnreadCount(count: number): Promise<void>;
+
+ 	// Zip
+ 	/**
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index 89502b5c088ebfd42603d607992fe24673c5fe5a..923b2dd82996c0458d6d0394775273be23d42fe8 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -6,6 +6,7 @@
+ import * as fs from 'fs';
+ import { exec } from 'child_process';
+ import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
++import { createRequire } from 'node:module';
+ import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
+ import { promisify } from 'util';
+ import { memoize } from '../../../base/common/decorators.js';
+@@ -27,7 +28,7 @@ import { IEnvironmentMainService } from '../../environment/electron-main/environ
+ import { createDecorator, IInstantiationService } from '../../instantiation/common/instantiation.js';
+ import { ILifecycleMainService, IRelaunchOptions } from '../../lifecycle/electron-main/lifecycleMainService.js';
+ import { ILogService } from '../../log/common/log.js';
+-import { FocusMode, IApplicationBadge, ICommonNativeHostService, INativeHostOptions, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, INativeZipOptions, IOpenAgentsWindowOptions, IOSProperties, IOSProxy, IOSProxyConfig, IOSStatistics, IStartTracingOptions, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../common/native.js';
++import { FocusMode, IApplicationBadge, ICommonNativeHostService, INativeHostOptions, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, INativeZipOptions, IOpenAgentsWindowOptions, IOSProperties, IOSProxy, IOSProxyConfig, IOSStatistics, IStartTracingOptions, IStudioDesktopNotificationStatus, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../common/native.js';
+ import { IGlobalKeybindingsMainService } from '../../globalKeybindings/electron-main/globalKeybindingsMainService.js';
+ import { IGPUProcessMainService } from '../../gpu/electron-main/gpuProcessMainService.js';
+ import { IProductService } from '../../product/common/productService.js';
+@@ -1386,6 +1387,42 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+
+ 	//#region Toast Notifications
+
++	async isStudioNotificationWindow(windowId: number | undefined): Promise<boolean> {
++		const focused = this.windowsMainService.getFocusedWindow();
++		const lastActive = this.windowsMainService.getLastActiveWindow();
++		const owner = focused?.isReady ? focused : lastActive?.isReady ? lastActive : this.windowsMainService.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
++		return !!owner && owner.id === windowId;
++	}
++
++	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> {
++		// On macOS isSupported() initializes Electron's presenter, which can prompt for permission.
++		let permission: IStudioDesktopNotificationStatus['permission'] = isMacintosh || Notification.isSupported() ? 'unknown' : 'unsupported';
++		if (isMacintosh) {
++			try {
++				const addon = createRequire(import.meta.url)(join(process.resourcesPath, 'studio-notification-permission.node')) as { getPermission(): Promise<IStudioDesktopNotificationStatus['permission']> };
++				permission = await addon.getPermission();
++			} catch { /* Builds without the native permission helper still offer a system settings link. */ }
++		}
++		return {
++			platform: isMacintosh ? 'macos' : isWindows ? 'windows' : 'linux',
++			appName: app.getName(),
++			permission,
++		};
++	}
++
++	async openStudioNotificationSettings(): Promise<boolean> {
++		const url = isMacintosh ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : isWindows ? 'ms-settings:notifications' : undefined;
++		if (!url) { return false; }
++		try { await shell.openExternal(url); return true; }
++		catch { return false; }
++	}
++
++	async setStudioUnreadCount(windowId: number | undefined, count: number): Promise<void> {
++		if (windowId !== undefined && Number.isSafeInteger(count) && count >= 0 && count <= 1e9) {
++			this.windowsMainService.setStudioUnreadCount(windowId, count);
++		}
++	}
++
+ 	private readonly activeToasts = this._register(new DisposableMap<string>());
+ 	private readonly activeToastDedupeKeys = new Map<string, string>();
+
+@@ -1447,7 +1484,10 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 			toast.on('click', () => resolve({ supported: true, clicked: true }));
+ 			toast.on('action', (_event, actionIndex) => resolve({ supported: true, clicked: true, actionIndex }));
+ 			toast.on('close', () => resolve({ supported: true, clicked: false }));
+-			toast.on('failed', () => resolve({ supported: false, clicked: false }));
++			toast.on('failed', (_event, error) => {
++				this.logService.warn('Native notification failed', error);
++				resolve({ supported: false, clicked: false });
++			});
+
+ 			try {
+ 				toast.show();
+diff --git a/src/vs/platform/native/electron-main/studioNotificationPermission.mm b/src/vs/platform/native/electron-main/studioNotificationPermission.mm
+new file mode 100644
+index 0000000000000000000000000000000000000000..199528f26248789dc89ce07fccc42d8c6f12bb7b
+--- /dev/null
++++ b/src/vs/platform/native/electron-main/studioNotificationPermission.mm
+@@ -0,0 +1,80 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++#import <Foundation/Foundation.h>
++#import <UserNotifications/UserNotifications.h>
++#include <node_api.h>
++
++namespace {
++
++struct Request {
++	napi_deferred result;
++	napi_async_work work;
++	const char *permission = "unknown";
++};
++
++void Read(napi_env, void *data) {
++	@autoreleasepool {
++		@try {
++			dispatch_semaphore_t ready = dispatch_semaphore_create(0);
++			__block const char *permission = "unknown";
++			// Query in the Electron main process so macOS uses Studio's identity, not a helper's.
++			[[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
++				if (settings) {
++					switch (settings.authorizationStatus) {
++						case UNAuthorizationStatusAuthorized:
++						case UNAuthorizationStatusProvisional: permission = "granted"; break;
++						case UNAuthorizationStatusDenied: permission = "denied"; break;
++						case UNAuthorizationStatusNotDetermined: permission = "not-determined"; break;
++						default: break;
++					}
++				}
++				dispatch_semaphore_signal(ready);
++			}];
++			if (dispatch_semaphore_wait(ready, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0) {
++				static_cast<Request *>(data)->permission = permission;
++			}
++		} @catch (NSException *) {
++			// An invalid or unpackaged application identity cannot query the system.
++		}
++	}
++}
++
++void Complete(napi_env env, napi_status, void *data) {
++	auto *request = static_cast<Request *>(data);
++	napi_value permission;
++	if (napi_create_string_utf8(env, request->permission, NAPI_AUTO_LENGTH, &permission) == napi_ok) {
++		napi_resolve_deferred(env, request->result, permission);
++	}
++	napi_delete_async_work(env, request->work);
++	delete request;
++}
++
++napi_value GetPermission(napi_env env, napi_callback_info) {
++	auto *request = new Request{};
++	napi_value promise, resource;
++	if (napi_create_promise(env, &request->result, &promise) != napi_ok ||
++		napi_create_string_utf8(env, "StudioNotificationPermission", NAPI_AUTO_LENGTH, &resource) != napi_ok ||
++		napi_create_async_work(env, nullptr, resource, Read, Complete, request, &request->work) != napi_ok ||
++		napi_queue_async_work(env, request->work) != napi_ok) {
++		if (request->work) { napi_delete_async_work(env, request->work); }
++		delete request;
++		napi_throw_error(env, nullptr, "Could not query notification permission");
++		return nullptr;
++	}
++	return promise;
++}
++
++napi_value Init(napi_env env, napi_value exports) {
++	napi_value fn;
++	if (napi_create_function(env, "getPermission", NAPI_AUTO_LENGTH, GetPermission, nullptr, &fn) == napi_ok) {
++		napi_set_named_property(env, exports, "getPermission", fn);
++	}
++	return exports;
++}
++
++}
++
++NAPI_MODULE(studio_notification_permission, Init)
+diff --git a/src/vs/platform/windows/electron-main/studioTray.ts b/src/vs/platform/windows/electron-main/studioTray.ts
+index 5ecd155b48b09bbd218f266953ab6d728b4243d3..af23f70246d603d08be48c0ea02b7d81702f1580 100644
+--- a/src/vs/platform/windows/electron-main/studioTray.ts
++++ b/src/vs/platform/windows/electron-main/studioTray.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+
+-import { Menu, nativeImage, Tray } from 'electron';
++import { Menu, type NativeImage, nativeImage, Tray } from 'electron';
+ import { isLinux, isMacintosh } from '../../../base/common/platform.js';
+ import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+ import { getNLSLanguage } from '../../../nls.js';
+@@ -13,7 +13,46 @@ import { getNLSLanguage } from '../../../nls.js';
+ const templatePng = 'iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABmJLR0QA/wD/AP+gvaeTAAACB0lEQVRYhe3XT4hNYRjH8c/4U0ahjDKNPwuJmoiFhSxtWFmwo2HsKTtTLCSyUJaSBQ3Z2EipIbKxQFmIlIXE+LNRMgYxf1yL957cuc57zr3nnivp/upZ3Ps+z3O+5z3v+zvvoaOO/jN1tVDbg9XoxTIsyMkfwxvcw+cWrjtDqzCE+5hGpUD8wGWsbAVkKc5ioiBEWnzE1iIw+zBeIkhtfMGGRkG6cKxNILXxGLMagbn0F2CS2J5ceE4EaAgDedQ1GsdUTs48dEfGduBmrHCb/B30AaewGfMbhO7Gw0i/O7Gi2XiWAfITZ7CoQYh6nY/0fZAk1D+y/eiPNJvCIK5Ufy/BFiyXb4oEI90bGXsXK3ohPjsHqznrcL0KWNaiTnrP0PqMgpFqzqDgtGV7UW8a0NGMoo3YJayhsrf8kTQYuBUpeCKsl09tgLkqwxSfRopO42TJIN9xPA2mdpf1RUBf40DsLvBNWFd5GsMo7mIYr7KSuzAp/W72RP6v4IK42xdSMmUVPEoZn8bLjPph+a+Mwtrkz4V7WLD82AxdxNwyIeqPsH3YLTjviN+W/hxrIz0aXUP1msB7nBNeKU3phPK3fG0cahaoR3t8KIm3zQLBTu1x6orwyAt9AQ0IplY20O0iMIn6cU3ct5qNUaxJmrfyobhYOA+twMIC9ZPCOegGvrbA0VFH/7Z+AZAwycX4IlRmAAAAAElFTkSuQmCC';
+ const colorPng = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAE40lEQVRYhe2XS2yUVRTHf/d79DEdoJ2W8k5LoKgkBBDUpKRaCcZIV4LFjQYXhqUmujPEaEK6NTFs0JUSN1ZdqhGIhgRFQROJgjSgBBX7mjKdzvv77jkuZjrMq62yYcOZnJw797vf/f/Puefeez64L/dYzFLPVbUlD3sF2YhYB8AuMFhK1nFcEZw/lsMZY0we0P9NbFY1lpPwTKgShCraSIMltKASzElwKqHasZCzjTpNSrW7WeWyMSZmVSkgKKBolSsKqNb8L0+stBgX3ziEaDyJs3W1MVO10XDq4AcHXR85bYyJZdWS1JCcCjm1JVvUrJRULVm1ZEpabIek1DIlBZIS4mE62zQ8xeCgu1QETEH1MUf1uwAhpbZEV6u8U6UckUrPG44FYo5PCw5zxj7aZZouVkahOgLDw44VOYyBnErdhAr4OCx3PKRgmZpLMZ6cY2I2yeRskunZJK3WsMx4mIp3UhpiDHjCSwwPV2F6dSExug4MtsZDB0OzGD64McbJG79xfTaBioAV1AqIoNbiqHKwdwsj/YOkveIMYclfNWZDLV4dAS31VYK7GGayWV78/muuJRNFMJEGVrHW8vHYrwRBwDv7nmFGg3IkTAO8ug6paM8vVLYQ8Oy3XzGeSZfBoo5HbzSKq4qKggjWCr9MTWBF+PzqJUb6n4BWvyLthVqpI1C75lHj8eqlc4xnMiBCxHEZ2dHP871baHKqU0hUGRj9kCuTf9MZZJiejRNpXb3oKdSAQLX7Y3MJTo//CSJ4Yvho4Cl+mp5g7xejXJ2JE4QhiEVtMTLGCt1Bhq4wx/pYN/GKs6Pe/0UIKOAbw5f/3Cwn2cENmzh5/Qqf/H61mHzl9S8uAVaIBWliQYaXd+8haPZRDe8uAori4jCWTNDV1MTrD+3AV4fXzn8DotXJZ4skOsIcO6MRXtg2wN5HBpnUwpKXQKNdUGWtCD2RZWzv6GKylAcqwqGND3B8YB9eRR4oEKiS0pB4RfbfXQ4AWRXe2PowI5cucDkeZ4XfVPb44uQtjv98EQN4YmmzARHJE7EBEVugd9V62vu2c1uD8h3SiMiiORCiLG9r5d3+JwlQwnxAu+dzO8hy/fYMb50/i28Dugupks6V7bVCiudeOQ49m1HMgmGov4zKBIo/i5LUkIxaaPY48fjTrPB81ApGLLEgU9I0nUGGzpKNBWncIF+8LRdZg4YRqF27+XZeLdvWreHcocOcvXmDW/EJImGOqM0TtQWiYZ42WyBq86xZu4mgbycihYW9bERAjUnCnWvyDpkinawK2uyyp28z3pa+8phq8kpShIIUd4FjzPzD2Vq8OnKh6A8ATcapA6+MTICQUUu6VAek1ZJSS0pD0mIpVBxArSWYAHN+SQJ5xzshqrmo8XC4UwUtdOdXa7FQqOxzgQ7HxxrNiuO/vySBB4eGunIqb7rG6EqniRbjVnlfCz7fo2hFoVKUNuOwwW3FM0ZThEe3Dg2trMWrlyO7/PYD+3sSNn8sJzYsqNWcWE1LWNZUA52r0YwU38tIGE7Y/NvtB/b3cGSXXwvXuCw/sstvn161duzTz/wmcY45xtltoLXR0EY7TFFENRPChYwjR7cfPGATXRO3eO/H4L8RmCfx16q16rqL7aIlxVgrifWNwRcnADA8XFfF3pWMji70LXNf7r38C9J6fq1Ajt2mAAAAAElFTkSuQmCC';
+
+-export function createStudioTray(show: () => void, quit: () => void): IDisposable {
++// Windows and Linux trays do not support a separate title. Render the count at
++// the icon's native 2x resolution without depending on installed font metrics.
++const badgeGlyphs = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111', '000010111010000'];
++
++function withBadge(image: NativeImage, label: string): NativeImage {
++	const scaleFactor = 2;
++	const size = image.getSize(scaleFactor); // Logical size; the bitmap is in physical pixels.
++	const width = size.width * scaleFactor;
++	const height = size.height * scaleFactor;
++	const pixels = image.toBitmap({ scaleFactor });
++	const left = width - label.length * 8 - 2;
++	const top = height - 14;
++	if (left < 0 || top < 0 || pixels.length !== width * height * 4) { return image; }
++	const put = (x: number, y: number, rgb: number) => pixels.writeUInt32LE(0xff000000 + rgb, (y * width + x) * 4);
++	for (let y = top; y < height; y++) {
++		for (let x = left; x < width; x++) {
++			// Bitmap bytes are BGRA; paint fully opaque pixels over the original icon.
++			const dx = Math.max(left + 3 - x, x - (width - 4), 0);
++			const dy = Math.max(top + 3 - y, y - (height - 4), 0);
++			if (dx * dx + dy * dy <= 9) { put(x, y, 0xb42332); }
++		}
++	}
++	for (let i = 0; i < label.length; i++) {
++		const glyph = badgeGlyphs[label[i] === '+' ? 10 : Number(label[i])];
++		for (let cell = 0; cell < glyph.length; cell++) {
++			if (glyph[cell] === '0') { continue; }
++			const x = left + 2 + i * 8 + (cell % 3) * 2;
++			const y = top + 2 + Math.floor(cell / 3) * 2;
++			put(x, y, 0xffffff); put(x + 1, y, 0xffffff);
++			put(x, y + 1, 0xffffff); put(x + 1, y + 1, 0xffffff);
++		}
++	}
++	return nativeImage.createFromBitmap(pixels, { width, height, scaleFactor });
++}
++
++export interface IStudioTray extends IDisposable {
++	setUnreadCount(count: number): void;
++}
++
++export function createStudioTray(show: () => void, quit: () => void): IStudioTray {
+ 	const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+ 	const image = nativeImage.createFromBuffer(Buffer.from(isMacintosh ? templatePng : colorPng, 'base64'), { scaleFactor: 2 });
+ 	if (isMacintosh) { image.setTemplateImage(true); }
+@@ -30,5 +69,20 @@ export function createStudioTray(show: () => void, quit: () => void): IDisposabl
+ 	} else {
+ 		tray.on('right-click', () => tray.popUpContextMenu(menu));
+ 	}
+-	return toDisposable(() => tray.destroy());
++	const lifetime = toDisposable(() => tray.destroy());
++	let unread = 0;
++	return {
++		dispose: () => lifetime.dispose(),
++		setUnreadCount(count) {
++			if (tray.isDestroyed() || unread === count) { return; }
++			const label = count > 99 ? '99+' : count ? String(count) : '';
++			const previous = unread > 99 ? '99+' : unread ? String(unread) : '';
++			unread = count;
++			if (label !== previous) {
++				if (isMacintosh) { tray.setTitle(label ? ` ${label}` : ''); }
++				else { tray.setImage(label ? withBadge(image, label) : image); }
++			}
++			tray.setToolTip(count ? zh ? `SteamHarness Studio · ${count} 条未读消息` : `SteamHarness Studio · ${count} unread` : 'SteamHarness Studio');
++		},
++	};
+ }
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index 7acd2cbe6be81a24e7f92aecfa5e48842fe3b282..a069074dbfb99d3d3891b26c86c9d61978d0c248 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -102,6 +102,14 @@ class DockBadgeManager {
+
+ 	private readonly attention = new Set<number>();
+ 	private readonly counts = new Map<number, number>();
++	private studioCount = 0;
++
++	setStudioCount(count: number): void {
++		if (this.studioCount !== count) {
++			this.studioCount = count;
++			this.update();
++		}
++	}
+
+ 	acquireBadge(window: IBaseWindow): IDisposable {
+ 		const windowId = window.id;
+@@ -129,7 +137,7 @@ class DockBadgeManager {
+ 	}
+
+ 	private update(): void {
+-		let total = 0;
++		let total = this.studioCount;
+ 		for (const count of this.counts.values()) {
+ 			total += count;
+ 		}
+@@ -144,6 +152,10 @@ class DockBadgeManager {
+ 	}
+ }
+
++export function setStudioDockUnreadCount(count: number): void {
++	DockBadgeManager.INSTANCE.setStudioCount(count);
++}
++
+ export abstract class BaseWindow extends Disposable implements IBaseWindow {
+
+ 	private applicationBadgeWindowId: number | undefined;
+diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
+index 290437c1a2507411286a3545f550d89dd4eb1ab3..c33d7ea9e3f0744e29763ea8abb58b29a3ca1808 100644
+--- a/src/vs/platform/windows/electron-main/windows.ts
++++ b/src/vs/platform/windows/electron-main/windows.ts
+@@ -39,6 +39,7 @@ export interface IWindowsMainService {
+
+ 	readonly hasStudioLaunchpad: boolean;
+ 	enableStudioLaunchpad(): void;
++	setStudioUnreadCount(windowId: number, count: number): void;
+ 	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
+ 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
+ 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;
+diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
+index 3da7e971ae15b1319d1e0cfcd314b7107a76f01e..9b1dedbf98d792e4439d90298bf400ac71562b4a 100644
+--- a/src/vs/platform/windows/electron-main/windowsMainService.ts
++++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
+@@ -38,7 +38,7 @@ import { IProtocolMainService } from '../../protocol/electron-main/protocol.js';
+ import { getRemoteAuthority } from '../../remote/common/remoteHosts.js';
+ import { IStateService } from '../../state/node/state.js';
+ import { AgentsWindowOpenSource, DEFAULT_RESTORE_WINDOWS_SETTING, IAgentsWindowDraft, IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings } from '../../window/common/window.js';
+-import { CodeWindow } from './windowImpl.js';
++import { CodeWindow, setStudioDockUnreadCount } from './windowImpl.js';
+ import { IOpenConfiguration, IOpenEmptyConfiguration, IWindowsCountChangedEvent, IWindowsMainService, OpenContext, getLastFocused } from './windows.js';
+ import { findWindowOnExtensionDevelopmentPath, findWindowOnFile, findWindowOnWorkspaceOrFolder } from './windowsFinder.js';
+ import { IWindowState, WindowsStateHandler } from './windowsStateHandler.js';
+@@ -60,7 +60,7 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
+ import { ResourceSet } from '../../../base/common/map.js';
+ import { VSBuffer } from '../../../base/common/buffer.js';
+ import { resolveAgentsWindowFolder } from './agentsWindow.js';
+-import { createStudioTray } from './studioTray.js';
++import { createStudioTray, IStudioTray } from './studioTray.js';
+ import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
+ import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+
+@@ -250,6 +250,9 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 	}
+
+ 	private registerListeners(): void {
++		this._register(this.onDidDestroyWindow(window => {
++			if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
++		}));
+
+ 		this._register(Event.any(this.onDidSignalReadyWindow, Event.map(this.onDidChangeWindowsCount, () => undefined))(() => {
+ 			const launchpad = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
+@@ -282,8 +285,19 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+
+ 	private studioLaunchpadEnabled = false;
+ 	private launchpadOpening?: Promise<ICodeWindow>;
++	private studioTray?: IStudioTray;
+ 	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
+
++	setStudioUnreadCount(windowId: number, count: number): void {
++		// The resident launchpad reports an account snapshot, not a per-window delta.
++		if (this.getWindowById(windowId)?.isStudioLaunchpad) { this.updateStudioUnreadCount(count); }
++	}
++
++	private updateStudioUnreadCount(count: number): void {
++		setStudioDockUnreadCount(count);
++		this.studioTray?.setUnreadCount(count);
++	}
++
+ 	enableStudioLaunchpad(): void {
+ 		const args = this.environmentMainService.args;
+ 		if (this.studioLaunchpadEnabled || args.extensionDevelopmentPath || args.extensionTestsPath || args['enable-smoke-test-driver'] || args['agents'] || args['profile-temp']) {
+@@ -291,7 +305,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 		}
+ 		this.studioLaunchpadEnabled = true;
+ 		try {
+-			this._register(createStudioTray(
++			this.studioTray = this._register(createStudioTray(
+ 				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
+ 				() => { void this.lifecycleMainService.quit(); },
+ 			));
+@@ -1815,6 +1829,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 	}
+
+ 	private onWindowClosed(window: ICodeWindow, disposables: IDisposable): void {
++		if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
+
+ 		// Remove from our list so that Electron can clean it up
+ 		this.windows.delete(window.id);
+diff --git a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+index 11f054743f0f5d2aefc33ce037d4995a7deb48b3..4fc16610b8be37548fc4475050f83b8c350ab612 100644
+--- a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
++++ b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+@@ -5,9 +5,11 @@
+
+ import { toAction } from '../../base/common/actions.js';
+ import { mainWindow } from '../../base/browser/window.js';
++import { DisposableStore } from '../../base/common/lifecycle.js';
+ import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
++import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
+ import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
+-import { INotificationService, INotificationSource, NotificationPriority, NotificationsFilter, Severity } from '../../platform/notification/common/notification.js';
++import { INotificationHandle, INotificationService, INotificationSource, Severity } from '../../platform/notification/common/notification.js';
+ import { NotificationText } from '../../platform/notification/common/notificationMessage.js';
+ import { IHostService } from '../services/host/browser/host.js';
+
+@@ -24,8 +26,13 @@ const pending = new Set<string>();
+ const cancelled = new Set<string>();
+ const safeId = (value: unknown): value is string => typeof value === 'string' && /^[\w.-]{1,100}$/.test(value);
+ const text = (value: unknown, limit: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= limit && !/[\r\n]/.test(value);
++const desktopKey = 'studio.notifications.desktop';
++const workbenchKey = 'studio.notifications.workbench';
+
+-CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(IHostService).hadLastFocus());
++CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(INativeHostService).isStudioNotificationWindow());
++CommandsRegistry.registerCommand('studio.internalGetDesktopNotificationStatus', accessor => accessor.get(INativeHostService).getStudioDesktopNotificationStatus());
++CommandsRegistry.registerCommand('studio.internalOpenNotificationSettings', accessor => accessor.get(INativeHostService).openStudioNotificationSettings());
++CommandsRegistry.registerCommand('studio.internalSetUnreadCount', (accessor, count: number) => accessor.get(INativeHostService).setStudioUnreadCount(count));
+
+ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async (accessor, notice: DesktopNotice) => {
+ 	if (!safeId(notice?.id) || !safeId(notice.source?.id) || !text(notice.source.label, 80) || !text(notice.title, 120) ||
+@@ -36,23 +43,36 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 	const nativeHost = accessor.get(INativeHostService);
+ 	const notifications = accessor.get(INotificationService);
+ 	const commands = accessor.get(ICommandService);
++	const configuration = accessor.get(IConfigurationService);
+ 	const { id, source, message, title, actionLabel } = notice;
+ 	pending.add(id);
+ 	let owner = false;
+-	try { owner = await host.hadLastFocus(); } catch { /* No window claimed the notification. */ }
++	try { owner = await nativeHost.isStudioNotificationWindow(); } catch { /* No window claimed the notification. */ }
+ 	finally { pending.delete(id); }
+ 	if (cancelled.delete(id) || !owner) {
+ 		return false;
+ 	}
+-	const background = !host.hasFocus;
+-	const nativeAllowed = () => notifications.getFilter() === NotificationsFilter.OFF && notifications.getFilter(source) === NotificationsFilter.OFF;
+ 	live.get(source.id)?.close();
++	let native = configuration.getValue<boolean>(desktopKey) !== false;
++	const workbench = configuration.getValue<boolean>(workbenchKey) !== false;
++	// Acknowledge the event even if both channels are disabled, so toggling them on does not replay it.
++	if (!native && !workbench) { return true; }
++	const lifetime = new DisposableStore();
+ 	let closed = false;
+-	let native = false;
++	let handle: INotificationHandle | undefined;
+ 	const clearNative = () => {
+ 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
+ 		native = false;
+ 	};
++	const close = () => {
++		if (closed) { return; }
++		closed = true;
++		if (live.get(source.id)?.id === id) { live.delete(source.id); }
++		lifetime.dispose();
++		handle?.close();
++		clearNative();
++	};
++	const closeIfIdle = () => { if (!handle && !native) { close(); } };
+ 	const activate = async (focus: boolean) => {
+ 		if (closed) { return; }
+ 		const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
+@@ -62,30 +82,29 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 		} else if (focus) {
+ 			await host.focus(mainWindow, { mode: FocusMode.Force });
+ 		}
+-		handle.close();
++		close();
+ 	};
+-	const handle = notifications.notify({
+-		id, source, message: NotificationText.concat(message), severity: Severity.Info,
+-		priority: background ? NotificationPriority.SILENT : NotificationPriority.DEFAULT,
+-		actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
+-	});
+-	const filter = notifications.onDidChangeFilter(() => { if (!nativeAllowed()) { clearNative(); } });
+-	const closeListener = handle.onDidClose(() => {
+-		closed = true;
+-		clearNative();
+-		filter.dispose();
+-		closeListener.dispose();
+-		if (live.get(source.id)?.id === id) { live.delete(source.id); }
+-	});
+-	live.set(source.id, { id, close: () => handle.close() });
+-	if (background && nativeAllowed()) {
+-		native = true;
+-		// Use the desktop notification service directly: no browser permission prompt or focus change on delivery.
++	live.set(source.id, { id, close });
++	if (workbench) {
++		// The normal workbench notification model handles its own Do Not Disturb and source filters.
++		handle = notifications.notify({
++			id, source, message: NotificationText.concat(message), severity: Severity.Info,
++			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
++		});
++		lifetime.add(handle.onDidClose(() => { handle = undefined; closeIfIdle(); }));
++	}
++	lifetime.add(configuration.onDidChangeConfiguration(event => {
++		if (event.affectsConfiguration(desktopKey) && configuration.getValue<boolean>(desktopKey) === false) { clearNative(); }
++		if (event.affectsConfiguration(workbenchKey) && configuration.getValue<boolean>(workbenchKey) === false) { handle?.close(); }
++		closeIfIdle();
++	}));
++	if (native) {
++		// OS notifications are independent of workbench focus and its Do Not Disturb setting.
+ 		void nativeHost.showToast({ id, dedupeKey: source.id, replaceExisting: true, title, body: message, actions: [actionLabel] }).then(async result => {
+ 			const actionable = native;
+ 			native = false;
+ 			if (result.clicked && actionable) { await activate(true); }
+-		}).catch(() => { native = false; });
++		}).catch(() => undefined).finally(() => { native = false; closeIfIdle(); });
+ 	}
+ 	return true;
+ });
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 34f01c871799d7b3ea539cb1b5494a6ca3718ed8..902e0bdac3073fd5f29a3e3e3d4282fa5bcf66dd 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -144,6 +144,14 @@ export class StudioLaunchpad extends Disposable {
+ 			chatUser: user => run(this.openInbox(undefined, user)),
+ 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+ 			readNotice: id => this.notices.read(id),
++			readAllNotices: async () => {
++				this.notices.readAll();
++				if (this.start.state?.platform && this.account?.signedIn) {
++					++this.noticeRevision;
++					try { await commands.executeCommand('studio.markAllNoticesRead'); }
++					finally { this.refreshNotices.schedule(); }
++				}
++			},
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+ 		}));
+ 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
+@@ -565,7 +573,7 @@ export class StudioLaunchpad extends Disposable {
+ 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+ 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+-			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread,
++			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
+ 			libraryCategory: this.libraryCategory });
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index 276079a9566798bd76970626590aae38d34d56d7..ae2a5c43263932061ab47934c40ecdac5191d362 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -23,6 +23,7 @@ export interface ProfileActions {
+ 	addContact(): void;
+ 	confirmRemoveFriend(name: string): Promise<boolean>;
+ 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
++	readAllNotices(): Promise<void>;
+ }
+ export function avatar(name: string, src?: string): HTMLElement {
+ 	const mark = element('span', 'lp-avatar');
+@@ -74,6 +75,7 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly filter = element('input', 'lp-query');
+ 	private readonly peopleTools = element('div', 'lp-social-actions');
+ 	private readonly addContact: HTMLButtonElement;
++	private readonly readAll: HTMLButtonElement;
+ 	private readonly status = element('div', 'lp-message lp-profile-status');
+ 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
+ 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
+@@ -82,11 +84,14 @@ export class LaunchpadProfile extends Disposable {
+ 	private pending?: { query: string; generation: number };
+ 	private failure?: { query: string; reason: Failure };
+ 	private changing = new Set<string>();
++	private markingAll = false;
++	private markAllFailed = false;
+ 	private scope?: string;
+ 	private active = false;
+ 	private section: Section = 'activity';
+ 	private inbox?: LaunchpadInbox;
+ 	private nativeNotices: StudioNotice[] = [];
++	private notificationUnread = false;
+ 	private platform = false;
+ 	private account?: LaunchpadAccount;
+
+@@ -96,6 +101,8 @@ export class LaunchpadProfile extends Disposable {
+ 		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+ 		this.search.append(icon('search'), this.filter);
+ 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
++		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
++		this.readAll.hidden = true;
+ 		this.peopleTools.hidden = true;
+ 		this.peopleTools.append(this.search, this.addContact);
+ 		this.filter.addEventListener('input', () => { if (this.pending?.query !== this.query) { this.pending = undefined; } this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
+@@ -122,7 +129,7 @@ export class LaunchpadProfile extends Disposable {
+ 			this.select(id); this.tabs.get(id)!.focus();
+ 		});
+ 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
+-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools);
++		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools, this.readAll);
+ 		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
+ 	}
+
+@@ -135,14 +142,15 @@ export class LaunchpadProfile extends Disposable {
+ 		this.renderSection(); this.content.scrollTop = 0;
+ 		void this.load();
+ 	}
+-	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[]): void {
++	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[], notificationUnread: boolean): void {
+ 		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey ?? account?.email ?? account?.name]);
+ 		const changed = this.scope !== scope, enter = active && !this.active;
+ 		const identityChanged = changed || JSON.stringify(this.account) !== JSON.stringify(account);
+-		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' && JSON.stringify(notices) !== JSON.stringify(this.nativeNotices));
++		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' &&
++			(notificationUnread !== this.notificationUnread || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
+ 		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
+-		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices;
+-		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
++		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices; this.notificationUnread = notificationUnread;
++		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
+ 		if (identityChanged) { this.renderAccount(); }
+ 		if (changed || (active && repaint)) { this.renderSection(); }
+ 		if (active && (enter || changed)) { this.refresh(); }
+@@ -191,6 +199,29 @@ export class LaunchpadProfile extends Disposable {
+ 		finally { changing.delete(action.id); if (changing === this.changing && this.active) { this.renderRows(); } }
+ 	}
+
++	private async markAllRead(): Promise<void> {
++		if (this.markingAll) { return; }
++		const owner = this.changing;
++		const existing = new Set([...this.cache.values()].flatMap(({ snapshot }) => snapshot.notices.map(notice => notice.id)));
++		this.markingAll = true; this.markAllFailed = false; this.renderRows();
++		try {
++			await this.actions.readAllNotices();
++			if (owner !== this.changing) { return; }
++			for (const { snapshot } of this.cache.values()) {
++				snapshot.notices = snapshot.notices.map(notice => existing.has(notice.id) ? { ...notice, read: true } : notice);
++			}
++			this.failure = undefined;
++		} catch {
++			if (owner === this.changing) { this.markAllFailed = true; }
++		} finally {
++			if (owner === this.changing) {
++				this.markingAll = false;
++				this.refresh();
++				if (this.active) { this.renderRows(); }
++			}
++		}
++	}
++
+ 	private renderAccount(): void {
+ 		const t = this.t, a = this.account;
+ 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
+@@ -212,10 +243,14 @@ export class LaunchpadProfile extends Disposable {
+ 	private renderRows(): void {
+ 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
+ 		const query = this.query, data = this.cache.get(query)?.snapshot;
++		this.readAll.hidden = this.section !== 'notifications';
++		this.readAll.disabled = this.markingAll || !(this.markAllFailed || this.notificationUnread || data?.notices.some(notice => !notice.read));
+ 		const failure = this.failure?.query === query ? this.failure.reason : undefined;
+ 		const friends = data?.people ?? (query ? this.cache.get('')?.snapshot.people.filter(p => p.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())) : undefined);
+ 		this.status.replaceChildren();
+-		if (needsSocial) {
++		if (this.section === 'notifications' && this.markAllFailed) {
++			this.status.textContent = t('Could not mark all notifications as read. Try again.', '未能将所有通知标为已读，请重试。');
++		} else if (needsSocial) {
+ 			if (failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
+ 			else if (failure) {
+ 				const message = failure === 'unsupported'
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index f32986f3d7b0700fc723aff7cf4a8e7b722d5b31..f8b4dd2aa720883d62c1ebaeaa613c8e08d8c3c2 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -14,7 +14,7 @@ import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
+ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
+ export interface LaunchpadState {
+ 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+-	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
++	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; notificationUnread: boolean;
+ 	libraryCategory?: LibraryProjectCategory;
+ }
+ interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
+@@ -127,10 +127,10 @@ export class StudioLaunchpadView extends Disposable {
+ 		this.consoleButton.hidden = this.inboxButton.hidden = !state.platform;
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+ 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+-		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
++		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
+ 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
+ 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+-		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
++		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread);
+ 		if (this.picker.dialog.open) { this.picker.update(); }
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioNotificationInbox.ts b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+index 0276fe8c33f038f7ea81a86389b02a2099c22194..23a1d7715fea3f38ec17f2104ffce822db6ed59e 100644
+--- a/src/vs/workbench/electron-browser/studioNotificationInbox.ts
++++ b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+@@ -20,7 +20,7 @@ interface Notice extends StudioNotice { owner: string }
+ /** One key per event: simultaneous project windows cannot overwrite each other's notifications. */
+ export class StudioNotificationInbox extends Disposable {
+ 	private owner?: string;
+-	private visible?: StudioNotice[];
++	private stored?: Notice[];
+ 	private revision = 0;
+ 	private readonly change = this._register(new Emitter<void>());
+ 	readonly onDidChange = this.change.event;
+@@ -30,7 +30,7 @@ export class StudioNotificationInbox extends Disposable {
+ 		const update = (value: unknown) => {
+ 			const account = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+ 			const owner = account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined;
+-			if (owner !== this.owner) { this.owner = owner; this.visible = undefined; this.change.fire(); }
++			if (owner !== this.owner) { this.owner = owner; this.stored = undefined; this.change.fire(); }
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
+@@ -42,13 +42,20 @@ export class StudioNotificationInbox extends Disposable {
+ 			this.storage.store(prefix + id, { owner: this.owner, id, title: e.item.message.raw.slice(0, 500), source: 'studio', read: false }, scope, target);
+ 			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
+ 		}));
+-		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.visible = undefined; this.change.fire(); } }));
++		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); } }));
+ 		// Until the profile is known, do not persist potentially account-specific text.
+ 		const rev = this.revision;
+ 		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
+ 	}
+ 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
+-	list(): StudioNotice[] { return this.visible ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner).slice(0, 100) : []; }
++	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
++	list(): StudioNotice[] { return this.owned().slice(0, 100); }
++	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
++	readAll(): void {
++		for (const notice of this.owned()) {
++			if (!notice.read) { this.read(notice.id); }
++		}
++	}
+ 	read(id: string): void {
+ 		const item = this.storage.getObject(prefix + id, scope) as Notice | undefined;
+ 		if (this.owner && item?.owner === this.owner && item.id === id) { this.storage.store(prefix + id, { ...item, read: true }, scope, target); }
+diff --git a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+index 9277de661b76ac232ec136be01a007c22763a4bd..54d706c8976e3763577e4a8331d7d214fd132584 100644
+--- a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -25,7 +25,7 @@ import { InMemoryFileSystemProvider } from '../../../platform/files/common/inMem
+ import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
+ import { ISharedProcessService } from '../../../platform/ipc/electron-browser/services.js';
+ import { NullLogService } from '../../../platform/log/common/log.js';
+-import { IApplicationBadge, INativeHostOptions, INativeHostService, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, IOSProperties, IOSStatistics, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../../../platform/native/common/native.js';
++import { IApplicationBadge, INativeHostOptions, INativeHostService, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, IOSProperties, IOSStatistics, IStudioDesktopNotificationStatus, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../../../platform/native/common/native.js';
+ import { IProductService } from '../../../platform/product/common/productService.js';
+ import { AuthInfo, Credentials } from '../../../platform/request/common/request.js';
+ import { IStorageService } from '../../../platform/storage/common/storage.js';
+@@ -209,6 +209,10 @@ export class TestNativeHostService implements INativeHostService {
+ 	async showToast(options: IToastOptions): Promise<IToastResult> { return { supported: false, clicked: false }; }
+ 	async clearToast(id: string): Promise<void> { }
+ 	async clearToasts(): Promise<void> { }
++	async isStudioNotificationWindow(): Promise<boolean> { return false; }
++	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> { return { platform: 'linux', appName: 'Studio', permission: 'unsupported' }; }
++	async openStudioNotificationSettings(): Promise<boolean> { return false; }
++	async setStudioUnreadCount(count: number): Promise<void> { }
+
+ 	// Power APIs
+ 	async getSystemIdleState(idleThreshold: number): Promise<SystemIdleState> { return 'unknown'; }

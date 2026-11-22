@@ -42,13 +42,29 @@ try {
         await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(theme)}\n${iconCss}\n${css}</style></head><body data-platform="true"><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle }).replace(/</g, '\\u003c')}</script></body></html>`);
         await page.evaluate(() => { window.messages = []; window.acquireVsCodeApi = () => ({ postMessage: message => window.messages.push(message), setState: state => { window.savedState = state; } }); });
         await page.addScriptTag({ content: js });
-        let state = { ...settingsFixture(language), sidebar: { items: [], canAdd: true } };
+        let state = { ...settingsFixture(language, [], 'user', true), sidebar: { items: [], canAdd: true },
+          desktopNotificationStatus: { platform: 'macos', permission: 'unknown', appName: 'SteamHarness Dev' } };
         await send('settings', { state });
         await send('account', { state: { status: 'signed-out', serverUrl: account.serverUrl, revision: 0 } });
         await send('settings-navigate', { state: { section: 'general' } });
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
         assert.deepEqual(await page.locator('#settings-navigation button').evaluateAll(buttons => buttons.map(button => button.dataset.section)),
-          ['account', 'general', 'editor', 'sidebar', 'models', 'permissions', 'about']);
+          ['account', 'general', 'editor', 'sidebar', 'models', 'permissions', 'notifications', 'about']);
+        assert.equal(await category('notifications').textContent(), language === 'en' ? 'Notifications' : '通知');
+        await category('notifications').click();
+        assert.equal(await page.locator('#settings-notification-status').textContent(), language === 'en' ? 'Check permission in system settings' : '授权状态需在系统设置中确认');
+        for (const [permission, en, zh] of [['granted', 'System notifications allowed', '已允许系统通知'], ['denied', 'System notifications blocked', '系统通知已被禁止'], ['not-determined', 'Notification permission not requested', '尚未请求系统通知权限']]) {
+          await send('settings', { state: { ...state, desktopNotificationStatus: { ...state.desktopNotificationStatus, permission } } });
+          assert.equal(await page.locator('#settings-notification-status').textContent(), language === 'en' ? en : zh);
+        }
+        const desktop = setting('studio.notifications.desktop'), workbench = setting('studio.notifications.workbench');
+        await desktop.uncheck();
+        assert.deepEqual(await last('settings-update'), { type: 'settings-update', key: 'studio.notifications.desktop', value: false, reset: false, target: 'user' });
+        assert.equal(await workbench.isChecked(), true);
+        await page.locator('[data-settings-action="notification-settings"]').click();
+        assert.deepEqual(await last('settings-action'), { type: 'settings-action', action: 'notification-settings' });
+        await fits();
+        await category('general').click();
         const modelDivider = await category('models').evaluate(button => {
           const model = button.getBoundingClientRect(), previous = button.previousElementSibling.getBoundingClientRect();
           const beforePrevious = button.previousElementSibling.previousElementSibling.getBoundingClientRect(), style = getComputedStyle(button);

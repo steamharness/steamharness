@@ -9,9 +9,9 @@ const compiled = await build({ stdin: { contents: `export { settingsState } from
 const require = createRequire(import.meta.url);
 const chinese = JSON.parse(await readFile(new URL('extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', root), 'utf8'));
 
-export function settingsFixture(language = 'en', providers = [], target = 'user') {
+export function settingsFixture(language = 'en', providers = [], target = 'user', notifications = false) {
   const values = { 'workbench.colorTheme': 'Dark', 'window.autoDetectColorScheme': true, 'studio.startPage.enabled': true, 'studio.recentProjects.limit': 12,
-    'studio.agent.permissionPolicy': 'auto',
+    'studio.agent.permissionPolicy': 'auto', 'studio.notifications.desktop': true, 'studio.notifications.workbench': true,
     'studio.browser.linkTarget': 'internal',
     'studio.terminal.name': 'Studio', 'studio.project.nodePath': '', 'editor.fontSize': 14, 'editor.tabSize': 4, 'editor.insertSpaces': true, 'editor.wordWrap': 'off', 'files.autoSave': 'off' };
   const vscode = { env: { language }, version: '1.141.0',
@@ -20,7 +20,7 @@ export function settingsFixture(language = 'en', providers = [], target = 'user'
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id) });
   module.exports.configureLocalization(language === 'en' ? {} : chinese, language);
-  return module.exports.settingsState('0.1.0', target, providers);
+  return module.exports.settingsState('0.1.0', target, providers, 'system', notifications);
 }
 
 export async function selectSettingsOption(page, control, value) {

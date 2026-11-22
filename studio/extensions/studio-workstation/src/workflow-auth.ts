@@ -182,6 +182,11 @@ export class AccountController implements vscode.Disposable {
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleSettings()),
       vscode.extensions.onDidChange(() => this.scheduleSettings()),
     );
+    if (vscode.window.onDidChangeWindowState) {
+      this.disposables.push(vscode.window.onDidChangeWindowState(state => {
+        if (state.focused && this.viewState.section === 'notifications') this.scheduleSettings();
+      }));
+    }
   }
 
   private configuredServer(): string {
@@ -447,23 +452,34 @@ export class AccountController implements vscode.Disposable {
   }
 
   private runtimeStatus?: SettingsState['nodeRuntime'];
-  private runtimeStatusEpoch = 0;
+  private desktopNotificationStatus?: SettingsState['desktopNotificationStatus'];
+  private settingsStatusEpoch = 0;
+
+  private get hasDesktopNotifications(): boolean {
+    return this.platform && vscode.env.uiKind === vscode.UIKind.Desktop;
+  }
+
   private publishSettings(): void {
     if (!this.panel) { return; }
     void this.panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
     void this.panel.webview.postMessage({ type: 'settings-models', state: this.userModels.state() });
-    const panel = this.panel, epoch = ++this.runtimeStatusEpoch;
-    void vscode.commands.executeCommand<SettingsState['nodeRuntime']>('studio.internalGetNodeRuntime').then(status => {
-      if (!status || this.panel !== panel || epoch !== this.runtimeStatusEpoch) return;
-      this.runtimeStatus = status;
+    const panel = this.panel, epoch = ++this.settingsStatusEpoch;
+    void Promise.all([
+      vscode.commands.executeCommand<SettingsState['nodeRuntime']>('studio.internalGetNodeRuntime').then(value => value, () => undefined),
+      this.hasDesktopNotifications ? vscode.commands.executeCommand<SettingsState['desktopNotificationStatus']>('studio.internalGetDesktopNotificationStatus').then(value => value, () => undefined) : undefined,
+    ]).then(([runtime, notifications]) => {
+      if (this.panel !== panel || epoch !== this.settingsStatusEpoch || (!runtime && !notifications)) return;
+      this.runtimeStatus = runtime;
+      this.desktopNotificationStatus = notifications;
       void panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
     }, () => undefined);
   }
 
   private settingsSnapshot(): SettingsState {
-    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference);
+    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference, this.hasDesktopNotifications);
     this.viewState.target = state.target;
     state.nodeRuntime = this.runtimeStatus;
+    state.desktopNotificationStatus = this.desktopNotificationStatus;
     state.sidebar = this.sidebarSnapshot();
     return state;
   }
@@ -611,7 +627,9 @@ export class AccountController implements vscode.Disposable {
         };
         try {
           if (!this.launchpad && Object.hasOwn(commands, message.action)) { await vscode.commands.executeCommand(commands[message.action]); }
-          else if (message.action === 'documentation') {
+          else if (message.action === 'notification-settings' && this.hasDesktopNotifications) {
+            if (!await vscode.commands.executeCommand<boolean>('studio.internalOpenNotificationSettings')) throw new Error('Notification settings unavailable');
+          } else if (message.action === 'documentation') {
             await vscode.env.openExternal(vscode.Uri.parse(publicServiceUrls(serviceChannelFromServerUrl(this.getState().serverUrl) ?? 'main').docs));
           }
         } catch { await panel.webview.postMessage({ type: 'settings-error', message: t('Unable to complete settings action.') }); }

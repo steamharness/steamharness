@@ -50,6 +50,14 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-general" class="settings-panel" aria-label="${t('General')}"></section>
         <section id="settings-editor" class="settings-panel" aria-label="${t('Editor')}" hidden></section>
         <section id="settings-permissions" class="settings-panel" aria-label="${t('Permissions')}" hidden></section>
+        <section id="settings-notifications" class="settings-panel" aria-label="${t('Notifications')}" hidden>
+          <section id="settings-notification-permission" class="settings-group"><h2>${t('Operating system permission')}</h2>
+            <div class="settings-card"><div class="setting-row">
+              <div class="setting-copy"><strong class="setting-label" id="settings-notification-status" role="status"></strong><p id="settings-notification-guide" class="muted setting-description"></p></div>
+              <div class="setting-controls"><button type="button" class="secondary" data-settings-action="notification-settings" hidden>${t('Open notification settings')}</button></div>
+            </div></div>
+          </section>
+        </section>
         <section id="settings-models" class="settings-panel" aria-label="${t('Models')}" hidden></section>
         <section id="settings-sidebar" class="settings-panel" aria-label="${t('Right Sidebar')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
@@ -109,6 +117,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       ...(snapshot?.sidebar ? [{ id: 'sidebar', label: t('Right Sidebar'), icon: 'layout-sidebar-right' }] : []),
       { id: 'models', label: t('Models'), icon: 'sparkle' },
       { id: 'permissions', label: t('Permissions'), icon: 'shield' },
+      ...(snapshot?.items.some(item => item.section === 'notifications') ? [{ id: 'notifications', label: t('Notifications'), icon: 'bell' }] : []),
       ...(snapshot?.providers ?? []).map(provider => ({ id: `provider:${provider.id}`, label: provider.title, icon: provider.icon ?? 'extensions' })),
       { id: 'about', label: t('About'), icon: 'info' },
     ];
@@ -211,6 +220,21 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
 
   function renderSettings(): void {
     if (!snapshot) { return; }
+    const status = snapshot.desktopNotificationStatus;
+    const permissionLabels = {
+      granted: t('System notifications allowed'), denied: t('System notifications blocked'),
+      'not-determined': t('Notification permission not requested'),
+      unsupported: t('Desktop notifications unavailable'), unknown: t('Check permission in system settings'),
+    };
+    find('settings-notification-status').textContent = permissionLabels[status?.permission ?? 'unknown'];
+    find('settings-notification-guide').textContent = status?.platform === 'macos'
+      ? status.permission === 'not-determined'
+        ? t('macOS requests permission when {0} sends its first desktop notification.', status.appName)
+        : t('In System Settings > Notifications, select {0} and check Allow Notifications.', status.appName)
+      : status?.platform === 'windows'
+        ? t('In Settings > System > Notifications, check that notifications are enabled for {0}.', status.appName)
+        : t('Check whether your desktop environment allows notifications from Studio.');
+    root.querySelector<HTMLButtonElement>('[data-settings-action="notification-settings"]')!.hidden = status?.platform !== 'macos' && status?.platform !== 'windows';
     for (const item of snapshot.items) {
       const groupKey = `${item.section}:${item.group}`;
       let group = groups.get(groupKey);
@@ -344,18 +368,24 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const selected = categories().find(category => category.id === view.section) ?? categories().find(category => category.id === 'general')!;
     const activeSection = selected.id;
     let matches = 0;
-    for (const section of ['general', 'editor', 'permissions', 'models', 'sidebar', 'account', 'provider', 'about']) {
+    for (const section of ['general', 'editor', 'permissions', 'notifications', 'models', 'sidebar', 'account', 'provider', 'about']) {
       const pane = find<HTMLElement>(`settings-${section}`);
       let visible = searching ? false : section === (activeSection.startsWith('provider:') ? 'provider' : activeSection);
-      if (section === 'general' || section === 'editor' || section === 'permissions') {
+      if (section === 'general' || section === 'editor' || section === 'permissions' || section === 'notifications') {
         for (const item of snapshot?.items.filter(item => item.section === section) ?? []) {
           const row = rows.get(item.key);
-          const matched = !query || `${item.key} ${item.label} ${item.description} ${item.group} ${(item.options ?? []).map(option => `${option.label} ${option.description ?? ''}`).join(' ')}`.toLocaleLowerCase().includes(query);
+          const matched = !query || `${item.key} ${item.label} ${item.description} ${item.group} ${section === 'notifications' ? t('Notifications') : ''} ${(item.options ?? []).map(option => `${option.label} ${option.description ?? ''}`).join(' ')}`.toLocaleLowerCase().includes(query);
           if (row) { row.hidden = !matched; }
           if (searching && matched) { visible = true; ++matches; }
         }
         for (const [id, group] of groups) {
           if (id.startsWith(`${section}:`)) { group.hidden = ![...group.querySelectorAll<HTMLElement>('.setting-row')].some(row => !row.hidden); }
+        }
+        if (section === 'notifications') {
+          const permission = find('settings-notification-permission');
+          const available = snapshot?.items.some(item => item.section === 'notifications');
+          permission.hidden = !available || (searching && !`${t('Notifications')} ${permission.textContent}`.toLocaleLowerCase().includes(query));
+          if (searching && !permission.hidden) { visible = true; ++matches; }
         }
         const language = root.querySelector<HTMLElement>('#settings-language');
         if (section === 'general' && language) {
