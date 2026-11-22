@@ -1,0 +1,33 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index f478c9ce88aa6c74555c99f5945a9cd85d5bd38b..4e586ed107469bb5fcb55ef7c6e7c3dc3afea9ba 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -6,6 +6,7 @@
+ 	--lp-bg: var(--vscode-editor-background); --lp-side: var(--vscode-sideBar-background,var(--lp-bg));
+ 	--lp-chrome: var(--vscode-titleBar-activeBackground,var(--lp-side)); --lp-panel: var(--vscode-editorWidget-background,var(--lp-side));
+ 	--lp-text: var(--vscode-foreground); --lp-strong: var(--vscode-editor-foreground,var(--lp-text)); --lp-muted: var(--vscode-descriptionForeground);
++	--lp-icon: var(--vscode-icon-foreground,var(--lp-text)); --lp-button-fg: var(--vscode-button-foreground,#fff);
+ 	--lp-line: var(--vscode-panel-border,color-mix(in srgb,var(--lp-text) 15%,var(--lp-bg))); --lp-edge: var(--vscode-widget-border,color-mix(in srgb,var(--lp-text) 25%,var(--lp-bg)));
+ 	--lp-hover: var(--vscode-list-hoverBackground,var(--lp-panel)); --lp-accent: var(--vscode-textLink-foreground); --lp-pad: clamp(16px,2.5vw,40px);
+ }
+@@ -25,6 +26,8 @@
+ .studio-launchpad button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text; padding: 4px 7px; border-radius: 4px; }
+ .studio-launchpad button:disabled { opacity: .55; cursor: default; }
+ .studio-launchpad button:hover:not(:disabled) { background: var(--lp-hover); }
++.studio-launchpad :is(button,label) > .codicon { color: var(--lp-icon); }
++.studio-launchpad .lp-primary .codicon { color: var(--lp-button-fg); }
+ .monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
+ .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+ .lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager { display: flex; align-items: center; gap: 8px; }
+@@ -125,9 +128,10 @@
+ .lp-query { min-width: 0; width: 100%; height: 30px; font: inherit; padding-inline: 6px; background: var(--vscode-input-background,var(--lp-panel)); border: 1px solid var(--lp-edge); color: var(--vscode-input-foreground,var(--lp-text)); border-radius: 4px; }
+ .lp-search-field .lp-query { border: 0; }
+ .studio-launchpad .lp-filters [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+-.studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
++.studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--lp-button-fg); padding: 6px 12px; }
+ .studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
+ .studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
++.studio-launchpad [aria-selected=true] > .codicon,.studio-launchpad [aria-current=page] > .codicon { color: currentColor; }
+ .lp-store-content { height: 100%; padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
+ .lp-store-toolbar { margin-bottom: 19px; }
+ .lp-store-feature { margin-block: 15px 20px; display: grid; grid-template-columns: minmax(0,1.65fr) minmax(180px,1fr); background: var(--lp-side); cursor: pointer; }

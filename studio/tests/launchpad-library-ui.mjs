@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { checkProfileSections } from './launchpad-profile-ui.mjs';
 import { checkStoreExperience } from './launchpad-store-ui.mjs';
+import { checkLaunchpadContrast } from './launchpad-contrast-ui.mjs';
 
 export async function checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop, screenshot, loads }) {
   const zh = language === 'zh-cn', t = (en, cn) => zh ? cn : en;
@@ -22,6 +23,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   assert.ok(await create.isDisabled()); assert.ok(await importProject.isEnabled());
   assert.deepEqual((await cards.locator('strong').allTextContents()).slice(0, 3), ['Sample.code-workspace','Project 8','folder.code-workspace']);
   await page.evaluate(() => window.activateProjects());
+  await checkLaunchpadContrast({page,t,enhanced});
   const source = cards.filter({hasText:'Project 8'}), downloaded = cards.filter({hasText:'Project 6'});
   await source.getByText(t('Source · IDE','源码 · IDE')).waitFor();
   await downloaded.getByText(t('Downloaded source · Steam','已下载源码 · Steam')).waitFor();
