@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
 import { applyRecentMetadata, projectTypeIcons, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
-import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
+import { studioProjectCardIcon, studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
@@ -59,6 +59,26 @@ function fixture(t, history = [], imports = []) {
 test('native and extension project icons share the existing template glyphs', () => {
   assert.deepEqual(Object.fromEntries(Object.keys(projectTypeIcons).map(type => [type, studioProjectIcon(type)])), projectTypeIcons);
   assert.equal(studioProjectIcon('__proto__'), undefined);
+});
+
+test('project identity surfaces share the Lucide card glyphs instead of legacy codicons', () => {
+  const glyphs = Object.fromEntries(['workflow', 'bot', 'kanban'].map(type => [type, decodeURIComponent(studioProjectCardIcon(type))]));
+  assert.match(glyphs.workflow, /viewBox="0 0 64 64"/);
+  assert.match(glyphs.bot, /viewBox="0 0 64 64"/);
+  assert.match(glyphs.kanban, /viewBox="0 0 64 64"/);
+  assert.match(glyphs.workflow, /rect/);
+  assert.match(glyphs.bot, /M12 8V4H8/);
+  assert.match(glyphs.kanban, /M12 13.5V19/);
+  assert.equal(studioProjectCardIcon('__proto__'), undefined);
+  assert.equal(studioProjectCardIcon('aggregate'), undefined);
+});
+
+test('the kernel and shared project avatars stay byte-identical for every project type', async () => {
+  const bundle = await build({ entryPoints: ['../shared/project-card-metadata/avatar.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+  const module = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+  for (const type of ['workflow', 'bot', 'kanban']) {
+    assert.equal(studioProjectCardIcon(type), module.projectAvatarDataUrl(undefined, type));
+  }
 });
 
 test('icons read the default registered entry without analyzing or executing project code', async t => {

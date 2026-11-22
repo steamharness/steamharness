@@ -55,7 +55,9 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   const rows = [...element.querySelectorAll('.studio-start-entry')];
   assert.deepEqual(rows.map(row => [row.dataset.entryId, row.querySelector('.studio-start-entry-default')?.textContent, !!row.querySelector('button')]),
     [['agent', undefined, true], ['database', labels.defaultEntry, true], ['board', undefined, false]]);
-  assert.equal(rows[2].querySelector('img'), null);
+  // Kanban has no usable avatar, so the shared project-type glyph is shown instead of an external URL.
+  assert.match(rows[2].querySelector('img')?.getAttribute('src') ?? '', /^data:image\/svg\+xml,/);
+  assert.doesNotMatch(rows[2].querySelector('img')?.getAttribute('src') ?? '', /example\.invalid/);
   assert.equal(rows[1].querySelector('button').getAttribute('aria-label'), `${labels.openEntry}: Database`);
   for (const button of element.querySelectorAll('button')) { button.click(); }
   assert.deepEqual(calls, [['studio.openProjectSource', { uri, entryId: 'database' }],
@@ -101,9 +103,9 @@ for (const [patchNames, files] of [
   }
   await mkdir(path.join(directory, 'patches'));
   // Replay later refinements too, restricted to this fixture's files.
-  const sequence = patchNames.includes(overviewPatch) ? patchNames : patchNames.includes('0067-studio-start-recent-projects.patch')
-    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch]
-    : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch];
+  const sequence = patchNames.includes(overviewPatch) ? [...patchNames, '0107-studio-project-type-icons.patch'] : patchNames.includes('0067-studio-start-recent-projects.patch')
+    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch']
+    : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch'];
   for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch']) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');

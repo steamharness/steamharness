@@ -1,0 +1,188 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 862eec87d7f127f40415c765854366c1d33f8c59..62a2ca39cc30a95d3c48f018d95a96ccf4629fcb 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -36,6 +36,7 @@
+ }
+ .studio-start-avatar-project { width:48px; height:48px; }
+ .studio-start-avatar-project > .codicon { font-size:22px; }
++.studio-start-avatar > img[src^="data:image/svg+xml"] { width:100%; height:100%; object-fit:contain; }
+ .studio-start-avatar-entry { width:32px; height:32px; border-radius:4px; }
+ .studio-start-avatar > img { display:block; width:100%; height:100%; object-fit:contain; }
+ .studio-start-project-meta, .studio-start-entry-meta {
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index e1c3736b8bcf72201ea08743bd8984e2101cdfd1..c7283828d425c017334809a62a2c5e24a3f7cecc 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -10,7 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
+ import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+-import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
++import { studioProjectCardIcon, studioProjectIcon } from '../../../common/studioProjectIcons.js';
+ import './media/studioStart.css';
+ 
+ interface StudioOverviewProject {
+@@ -159,10 +159,11 @@ export class StudioStartView extends Disposable {
+ 
+ 	private avatar(parent: HTMLElement, size: 'project' | 'entry', projectType: string, avatarUrl: string | undefined): void {
+ 		const icon = append(parent, $(`span.studio-start-avatar.studio-start-avatar-${size}`, { 'aria-hidden': 'true' }));
+-		if (avatarUrl?.startsWith('data:image/svg+xml,')) {
+-			append(icon, $('img', { alt: '', src: avatarUrl }));
++		const source = avatarUrl?.startsWith('data:image/svg+xml,') ? avatarUrl : studioProjectCardIcon(projectType);
++		if (source) {
++			append(icon, $('img', { alt: '', src: source }));
+ 		} else {
+-			append(icon, $(`span.codicon.codicon-${studioProjectIcon(projectType) ?? 'root-folder'}`));
++			append(icon, $('span.codicon.codicon-root-folder'));
+ 		}
+ 	}
+ 
+diff --git a/src/vs/workbench/common/studioProjectIcons.ts b/src/vs/workbench/common/studioProjectIcons.ts
+index 59dea67f583f250ed1701fae47c4c68184e6761b..471c714bb8d7a65524fe99a9bee587c8c4119952 100644
+--- a/src/vs/workbench/common/studioProjectIcons.ts
++++ b/src/vs/workbench/common/studioProjectIcons.ts
+@@ -12,3 +12,28 @@ export function studioProjectIcon(projectType: string | undefined): string | und
+ 		default: return undefined;
+ 	}
+ }
++
++/**
++ * The project card identity is shared by every Studio surface that can render an
++ * image. Keep the Lucide glyphs in sync with the platform project type defaults:
++ * workflow -> Workflow, bot -> Bot, kanban -> Boxes.
++ */
++const projectCardGlyphs: Record<string, { background: string; paths: readonly string[] }> = Object.assign(Object.create(null) as Record<string, { background: string; paths: readonly string[] }>, {
++	workflow: { background: '#2563eb', paths: ['<rect width="8" height="8" x="3" y="3" rx="2"/>', '<path d="M7 11v4a2 2 0 0 0 2 2h4"/>', '<rect width="8" height="8" x="13" y="13" rx="2"/>'] },
++	bot: { background: '#0f766e', paths: ['<path d="M12 8V4H8"/>', '<rect width="16" height="12" x="4" y="8" rx="2"/>', '<path d="M2 14h2"/>', '<path d="M20 14h2"/>', '<path d="M15 13v2"/>', '<path d="M9 13v2"/>'] },
++	kanban: { background: '#b45309', paths: [
++		'<path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/>',
++		'<path d="m7 16.5-4.74-2.85"/>', '<path d="m7 16.5 5-3"/>', '<path d="M7 16.5v5.17"/>',
++		'<path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/>',
++		'<path d="m17 16.5-5-3"/>', '<path d="m17 16.5 4.74-2.85"/>', '<path d="M17 16.5v5.17"/>',
++		'<path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/>',
++		'<path d="M12 8 7.26 5.15"/>', '<path d="m12 8 4.74-2.85"/>', '<path d="M12 13.5V8"/>',
++	] },
++});
++
++/** Self-contained Lucide project glyph as a data URI, shared by native image surfaces. */
++export function studioProjectCardIcon(projectType: string | undefined): string | undefined {
++	const glyph = projectType ? projectCardGlyphs[projectType] : undefined;
++	if (!glyph) { return undefined; }
++	return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="${glyph.background}"/><g transform="translate(14 14) scale(1.5)" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${glyph.paths.join('')}</g></svg>`)}`;
++}
+diff --git a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+index 5aed3410205056205b4b3dae6c87914ebb645818..9d30b9003c023f8572cd79113dce7aff072ec963 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
++++ b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+@@ -15,6 +15,7 @@
+ .studio-create-type:has(:checked) { border-color:var(--vscode-focusBorder); background:var(--vscode-list-activeSelectionBackground); color:var(--vscode-list-activeSelectionForeground); }
+ .studio-create-type input { position:absolute; opacity:0; width:1px; height:1px; }
+ .studio-create-type:focus-within { outline:1px solid var(--vscode-focusBorder); outline-offset:2px; }
++.studio-create-type-icon { display:block; width:18px; height:18px; flex:none; object-fit:contain; }
+ .studio-create-options { max-height:230px; overflow:auto; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+ .studio-create-options:hover, .studio-create-options:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+ .studio-create-template { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; padding:10px 8px; border-bottom:1px solid var(--vscode-widget-border,transparent); cursor:pointer; }
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+index e448e94a53fe1ae9d22e7e03e734c3349145205c..537b8ac9b707d2ad33872ee48853b8c1228901ea 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -14,7 +14,7 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
+ import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
+ import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+ import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
+-import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
++import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import './media/studioProjectCreateDialog.css';
+ 
+@@ -97,7 +97,11 @@ export class StudioProjectCreateDialog extends Disposable {
+ 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
+ 			radio.checked = this.projectType === type;
+ 			radio.tabIndex = radio.checked ? 0 : -1;
+-			append(label, $(`span.codicon.codicon-${type === 'link' ? 'link' : studioProjectIcon(type)}`)).setAttribute('aria-hidden', 'true');
++			if (type === 'link') {
++				append(label, $('span.codicon.codicon-link')).setAttribute('aria-hidden', 'true');
++			} else {
++				append(label, $('img.studio-create-type-icon', { alt: '', src: studioProjectCardIcon(type)! })).setAttribute('aria-hidden', 'true');
++			}
+ 			append(label, $('span', undefined, this.text(`type.${type}`)));
+ 			this._register(addDisposableListener(radio, 'change', () => {
+ 				if (!radio.checked) { return; }
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 9892eb42c769e7fe78402f0cff20928e7e0f0800..0d7afa42d76dd4c1a7172f898101b6667205fd25 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -93,6 +93,7 @@
+ .lp-detail-entries { border-top: 1px solid var(--lp-line); padding-top: 18px; } .lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
+ .lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
+ .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
++.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+ .lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title { display: grid; gap: 12px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index 2bac3801f48f4495e2ee9379b48c5357cb994737..137054bc375657c693cf9aa4a877fcc56570e9c3 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { studioProjectIcon } from '../common/studioProjectIcons.js';
++import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
+ import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ 
+ export interface LibraryArtwork {
+@@ -29,7 +29,7 @@ export interface StoreListingDetails extends StoreListing {
+ }
+ 
+ export function storeArtwork(p: StoreListing, cover?: string | Promise<string | undefined>): HTMLElement {
+-	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon(studioProjectIcon(p.projectType) ?? 'extensions'), cover);
++	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, projectTypeMark(p.projectType, icon('extensions')), cover);
+ }
+ 
+ export function picture(src: string, className = ''): HTMLImageElement {
+@@ -38,6 +38,11 @@ export function picture(src: string, className = ''): HTMLImageElement {
+ 
+ export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
+ export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
++/** Project type identity uses the same Lucide card glyphs as the shared avatar assets. */
++export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
++	const source = studioProjectCardIcon(type);
++	return source ? picture(source) : fallback;
++}
+ export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
+ 	switch (type) {
+ 		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
+@@ -68,7 +73,7 @@ export function artwork(key: string, art: LibraryArtwork | undefined, fallback:
+ 	const stack = element('span', 'lp-art-stack');
+ 	const marks = art?.entries?.filter(src => src.startsWith('data:image/')).slice(0, 3).map(src => picture(src));
+ 	if (marks?.length) { stack.append(...marks); }
+-	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => icon(studioProjectIcon(type) ?? 'extensions'))); }
++	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => projectTypeMark(type, icon('extensions')))); }
+ 	else if (art?.files?.length) {
+ 		for (const filename of art.files.slice(0, 3)) {
+ 			const sheet = element('span', 'lp-art-file'); sheet.title = filename;
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+index 434a5e13eca543db0d673b1428aa1e29773fc498..e87452fbecfa2ff1cc593454e7e720223121374e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProjectDetails.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { studioProjectIcon } from '../common/studioProjectIcons.js';
++import { projectTypeMark } from './studioLaunchpadCards.js';
+ import { edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ 
+@@ -39,7 +39,7 @@ export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: ()
+ export function projectEntryList(entries: readonly { name: string; type: string; primary: boolean }[], t: LaunchpadLabel): HTMLElement {
+ 	const section = element('section', 'lp-detail-entries'), list = element('ul');
+ 	for (const entry of entries) {
+-		const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
++		const row = element('li'); row.append(projectTypeMark(entry.type, icon('extensions')), element('strong', '', entry.name));
+ 		if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
+ 		row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
+ 	}
