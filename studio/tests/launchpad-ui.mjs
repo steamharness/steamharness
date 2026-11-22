@@ -140,7 +140,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       if (window.imError) return window.imError;
       if (window.delayOpen) await new Promise(resolve => window.finishOpening = resolve);
       const [, conversation, user, action, title = 'IM'] = args;
-      const target = action === 'add-contact' ? '/add-contact' : '/chat?' + new URLSearchParams(user ? { user_id: user } : { conversation_id: conversation });
+      const target = action ? '/' + action : '/chat?' + new URLSearchParams(user ? { user_id: user } : { conversation_id: conversation });
       const ok=await kernelCommand('ShowLaunchpadApp','account-key',args[0],{ id: conversation ?? user ?? action, title, html: hostedSidebarHtml(zh?'zh-cn':'en',title,imPreview,target) });
       window.actions.push(['opened', args[0]]);
       return ok;
@@ -453,7 +453,19 @@ try {
     const errors=[]; page.on('pageerror', e=>errors.push(e.message));
     await page.context().addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage:fixtureHost=>parent.postMessage({fixtureHost},window.origin) }); });
     let loads=0;
-    await page.context().route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main><output></output><input aria-label="draft"></main><script>const hash=location.hash.slice(1),q=new URLSearchParams(hash.split('?')[1]);document.querySelector('output').textContent=q.get('conversation_id')||q.get('user_id')||hash;parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
+    await page.context().route('http://127.0.0.1:4321/**', route => {
+      if (new URL(route.request().url()).pathname === '/app') loads++;
+      return route.fulfill({contentType:'text/html',body:`<main><output></output><input aria-label="draft"></main><script>
+        const hash=location.hash.slice(1),q=new URLSearchParams(hash.split('?')[1]);
+        const send=(type,data)=>parent.postMessage({type:'steamharness:web-app-'+type,nonce:'fixture',...data},'*');
+        document.querySelector('output').textContent=q.get('conversation_id')||q.get('user_id')||hash;
+        if(hash==='/create-group')for(const [label,run] of [
+          ['Cancel',()=>send('close')],
+          ['Open new group',()=>send('open-conversation',{conversation:'group_created',closeSource:true})],
+        ]){const b=document.createElement('button');b.textContent=label;b.onclick=run;document.querySelector('main').append(b);}
+        send('ready');
+        </script>`});
+    });
     await page.route('http://127.0.0.1:4321/settings-fixture.js',route=>route.fulfill({contentType:'text/javascript',body:settingsJs}));
     await page.route(`${origin}/store-preview/*.png`,route=>route.fulfill({path:fileURLToPath(new URL(`../../docs/images/studio/${language}/${new URL(route.request().url()).pathname.split('/').pop()}`,import.meta.url))}));
     await page.goto('http://127.0.0.1:4321/');

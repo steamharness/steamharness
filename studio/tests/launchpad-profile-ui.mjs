@@ -1,5 +1,46 @@
 import assert from 'node:assert/strict';
 
+async function checkRecentToolbar({ page, panel, names, t, openWindow, screenshot }) {
+  const search = panel.getByRole('button', { name: t('Search recent chats', '搜索最近会话'), exact: true });
+  const create = panel.getByRole('button', { name: t('Start a group chat', '发起群聊'), exact: true });
+  const input = panel.getByRole('searchbox', { name: t('Search recent chats', '搜索最近会话') });
+  const match = name => panel.locator('.lp-social-text strong').getByText(name, { exact: true });
+  const noMatch = panel.getByText(t('No matching chats.', '没有匹配的会话。'), { exact: true });
+  const viewport = page.viewportSize();
+  const allNames = await names();
+  for (const width of [viewport.width, 360]) {
+    await page.setViewportSize({ ...viewport, width });
+    const [heading, searchBox, createBox] = await Promise.all([panel.getByRole('heading').boundingBox(), search.boundingBox(), create.boundingBox()]);
+    assert.ok(heading && searchBox && createBox && heading.x + heading.width <= searchBox.x && searchBox.x + searchBox.width <= createBox.x &&
+      Math.abs(searchBox.y - createBox.y) < 1, 'recent chat actions are to the right of the heading');
+    await search.press('Enter');
+    assert.equal(await search.getAttribute('aria-expanded'), 'true');
+    assert.ok(await input.evaluate(el => el === document.activeElement));
+    await input.fill('  sOlO '); await match('Team').waitFor({ state: 'detached' }); assert.deepEqual(await names(), ['Solo']);
+    await input.fill('rEviEw'); await match('Solo').waitFor({ state: 'detached' }); assert.deepEqual(await names(), ['Team']);
+    await input.fill('unmatched'); await noMatch.waitFor();
+    await input.clear(); await match('Build Bot').waitFor(); assert.deepEqual(await names(), allNames);
+    assert.ok(await panel.evaluate(el => el.scrollWidth <= el.clientWidth));
+    await screenshot(`profile-recent-${width}`);
+    await input.fill('rEviEw'); await input.press('Escape');
+    assert.equal(await search.getAttribute('aria-expanded'), 'false');
+    assert.equal(await input.isVisible(), false); assert.deepEqual(await names(), allNames);
+  }
+  await page.setViewportSize(viewport);
+
+  const popupFrame = popup => popup.frameLocator('iframe').frameLocator('#project-frame');
+  const cancelled = await openWindow(create, '/create-group', 'Enter');
+  const closing = cancelled.waitForEvent('close'); await popupFrame(cancelled).getByRole('button', { name: 'Cancel' }).click(); await closing;
+  const creator = await openWindow(create, '/create-group');
+  const openGroup = popupFrame(creator).getByRole('button', { name: 'Open new group' });
+  await page.evaluate(() => window.imError = 'offline'); await openGroup.click();
+  const warning = page.locator('.native-message'); await warning.getByText(/offline/).waitFor();
+  assert.equal(creator.isClosed(), false, 'a failed chat open keeps the creation window available');
+  await warning.getByRole('button').click(); await page.evaluate(() => window.imError = '');
+  const closed = creator.waitForEvent('close');
+  await (await openWindow(openGroup, 'group_created')).close(); await closed;
+}
+
 export async function checkProfileSections({ page, profile, frame, t, screenshot }) {
   const tab = (en, zh) => profile.getByRole('tab', { name: t(en, zh), exact: true });
   const friends = tab('Contacts & friends', '通讯录与好友'), favorites = tab('Favorites', '收藏'), notices = tab('Notifications', '通知');
@@ -11,7 +52,6 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   const readCount = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.getSocialSnapshot').length);
   const actions = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.changeSocial').map(([, a]) => a));
   const button = (where, en, zh) => where.getByRole('button', { name: t(en, zh), exact: true });
-  await friends.click(); assert.equal(await profile.getByRole('tablist').getAttribute('aria-orientation'), 'vertical');
   const addFriend = button(panel, 'Add friend', '添加好友');
   const search = panel.getByRole('searchbox', { name: t('Search friends and groups', '搜索好友和群聊') });
   const checkPeopleToolbar = async () => {
@@ -19,7 +59,6 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
     assert.ok(field && action && field.x + field.width <= action.x &&
       Math.abs(field.y + field.height / 2 - action.y - action.height / 2) < 1, 'Add friend must be to the right of the search field on the same row');
   };
-  await checkPeopleToolbar();
   async function openWindow(control, expected, key) {
     const opening = page.waitForEvent('popup');
     if (key) { await control.press(key); } else { await control.click(); }
@@ -29,6 +68,9 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
     assert.equal(await chat.locator('html').evaluate(el => new URL(el.ownerDocument.URL).searchParams.get('studio-language')), t('en', 'zh-cn'));
     return popup;
   }
+  await checkRecentToolbar({ page, panel, names, t, openWindow, screenshot });
+  await friends.click(); assert.equal(await profile.getByRole('tablist').getAttribute('aria-orientation'), 'vertical');
+  await checkPeopleToolbar();
   await (await openWindow(addFriend, '/add-contact')).close();
   await statusText(t('Loading…', '正在加载…')).waitFor(); assert.equal(await empty.isVisible(), false);
   await page.evaluate(() => { window.resumeSocial(); delete window.socialGate; });

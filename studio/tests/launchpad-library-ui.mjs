@@ -212,7 +212,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     assert.ok(await home.isVisible()); await frame.getByLabel('draft').fill('kept');
     assert.deepEqual(await profile.locator('.lp-profile-identity small').allTextContents(), ['me@example.test']);
     assert.equal(await profile.getByText(t('Server Connected','服务器已连接'),{exact:true}).count(),0);
-    await checkProfileSections({page,profile,frame,t,screenshot}); assert.equal(loads(),4);
+    await checkProfileSections({page,profile,frame,t,screenshot}); assert.equal(loads(),7);
     await profile.getByRole('button',{name:t('Settings','设置'),exact:true}).click(); await page.locator('.studio-launchpad-settings').waitFor();
     assert.equal(await home.isVisible(),false); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
     await checkLaunchpadBackButton(page); await screenshot('settings-back-button');

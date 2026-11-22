@@ -32,7 +32,7 @@ window.addEventListener('message',event=>{
     if(event.data.type==='steamharness:web-app-close')host.postMessage({type:'studio-launchpad-close'});
     if(event.data.type==='steamharness:web-app-open-conversation'){
       const {conversation,user}=event.data;
-      if(typeof conversation==='string'&&conversation.length>0&&conversation.length<=256)host.postMessage({type:'studio-launchpad-open-conversation',conversation});
+      if(typeof conversation==='string'&&conversation.length>0&&conversation.length<=256)host.postMessage({type:'studio-launchpad-open-conversation',conversation,...(event.data.closeSource===true?{closeSource:true}:{})});
       else if(typeof user==='string'&&user.length>0&&user.length<=100)host.postMessage({type:'studio-launchpad-open-conversation',user});
     }` : ''}
   }
