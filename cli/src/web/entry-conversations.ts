@@ -1,5 +1,5 @@
 import type { EntryConversationAction, EntryConversationSnapshot } from 'steamharness';
-import { sessionRunning, type ConversationSession, type ConversationQueuedInput } from './workflow-types';
+import { sessionRunning, type Attachment, type ConversationSession, type ConversationQueuedInput } from './workflow-types';
 import type { ConversationController } from './conversation-controller';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -41,7 +41,8 @@ export class EntryConversations {
   private readonly admissions = new Map<string, { signature: Record<string, unknown>; result: Promise<unknown> }>();
   constructor(private readonly controller: ConversationController, private readonly snapshot: (session: ConversationSession) => EntryConversationSnapshot,
     private readonly prepare?: (session: ConversationSession, text: string, params: Record<string, string | string[]>) => Promise<Pick<ConversationQueuedInput, "params" | "states" | "configurationSelection">>) {}
-  async invoke(action: EntryConversationAction, input: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+  async invoke(action: EntryConversationAction, input: Record<string, unknown>, signal?: AbortSignal,
+    files?: { keys: string[]; load(): Promise<Attachment[]> }): Promise<unknown> {
     signal?.throwIfAborted();
     if (action === 'list') return this.controller.sessions.map(session => ({ conversationId: session.id, title: session.title }));
     const id = required(input.conversationId, 'id');
@@ -55,7 +56,7 @@ export class EntryConversations {
     if (action === 'snapshot') return this.snapshot(session);
     const requestId = required(input.requestId, 'requestId');
     const key = JSON.stringify([id, action, requestId]);
-    const signature = structuredClone(input);
+    const signature = structuredClone({ ...input, fileKeys: files?.keys });
     const pending = this.admissions.get(key);
     if (pending) {
       if (!isDeepStrictEqual(pending.signature, signature)) throw new Error('A requestId cannot be reused with different content.');
@@ -64,12 +65,12 @@ export class EntryConversations {
     const target = session;
     const operation = (async () => {
       if (action === 'submit') {
-        const text = required(input.text, 'text', 200_000);
+        const text = input.text === '' && files?.keys.length ? '' : required(input.text, 'text', 200_000);
         const params = input.params ?? {};
         if (!params || typeof params !== 'object' || Array.isArray(params) || !Object.values(params).every(value => typeof value === 'string' || Array.isArray(value) && value.every(item => typeof item === 'string'))) throw new Error('Invalid conversation parameters.');
         const previous = target.queuedInputs?.find(item => (item.requestId ?? item.id) === requestId)
           ?? target.messages.find(message => message.role === 'user' && (message.id === requestId || message.sessionRequestId === requestId || message.input?.requestId === requestId));
-        if (previous && (('text' in previous ? previous.text : previous.content) !== text
+        if (previous && (!isDeepStrictEqual(('text' in previous ? previous.entrySubmission : previous.input?.entrySubmission)?.fileKeys, files?.keys) || ('text' in previous ? previous.text : previous.content) !== text
           || !isDeepStrictEqual('text' in previous ? previous.entrySubmission?.params ?? previous.params : previous.input?.entrySubmission?.params ?? previous.input?.params ?? {}, params))) throw new Error('A requestId cannot be reused with different content.');
         if (previous) {
           // The original persisted input is the durable receipt, even if model defaults have changed.
@@ -78,7 +79,9 @@ export class EntryConversations {
           const submitted = params as Record<string, string | string[]>;
           const prepared = this.prepare ? await this.prepare(target, text, submitted) : { params: submitted };
           signal?.throwIfAborted();
-          await this.controller.send({ text, ...prepared, entrySubmission: { params: structuredClone(submitted) }, attachments: [] }, target, true, requestId);
+          const attachments = files ? await files.load() : [];
+          signal?.throwIfAborted();
+          await this.controller.send({ text, ...prepared, entrySubmission: { params: structuredClone(submitted), ...(files && { fileKeys: files.keys }) }, attachments }, target, true, requestId);
         }
         return { conversationId: id, requestId, messageId: requestId,
           status: target.queuedInputs?.some(item => (item.requestId ?? item.id) === requestId) ? 'queued' : 'accepted' };

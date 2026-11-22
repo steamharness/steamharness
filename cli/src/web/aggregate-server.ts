@@ -128,6 +128,11 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
   return {
     origin, url:`${origin}/entries/${selectedId}/#session=${credentials.capability}`,
     invokeEntry,
+    hostTurn: async (entryId: string, input: Record<string, unknown>) => {
+      const target = entries.get(entryId);
+      if (closing || resetting || !target || selectProjectEntry(manifest,entryId).type !== 'bot') throw new Error('Conversation entry unavailable.');
+      return target.hostTurn(input);
+    },
     get manifest() { return manifest; }, get project() { return project(); },
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },
     get restrictedConfigurationEntries() { return [...entries].filter(([, entry]) => entry.configurations?.state.profilePolicy).map(([id]) => id); },

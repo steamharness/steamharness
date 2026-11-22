@@ -46,6 +46,7 @@ import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
 import { projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
+import { hostConversation } from './host-conversation';
 import type { EntryConversationSnapshot } from 'steamharness';
 
 import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
@@ -90,6 +91,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
     openConversationView: (...args: Parameters<OpenConversationView>) => current.openConversationView(...args),
     invokeEntry: (call: AggregateEntryCall) => current.invokeEntry(call),
+    hostTurn: async (input: Record<string, unknown>) => { await restarting; return current.hostTurn(input); },
     subscribeConversation: (id: string, listener: (snapshot: EntryConversationSnapshot) => void) => current.subscribeConversation(id, listener),
     setHostUserSettings: async (value: UserSettings) => {
       const settings = parseUserSettings(value);
@@ -1037,6 +1039,16 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let closing: Promise<void> | undefined;
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
+    hostTurn: async (input: Record<string, unknown>) => {
+      const id = input.conversationId;
+      if (options.host?.surface !== 'editor' || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
+      if (input.action !== 'turn') await ownership?.assertWritable(id);
+      const release = input.action !== 'turn' ? await ownership?.hold(id) : undefined;
+      try {
+        await refreshHistory();
+        return redactProjectData(await hostConversation(controller, entryConversations, runtime, project, input), [...sensitiveTokens]);
+      } finally { release?.(); }
+    },
     // Only the Studio stdio control channel can call this, never a Web client.
     readModelRequest: (sessionId: string, messageId: string, executionId: string) => {
       if (options.host?.surface !== 'editor' || !storageReady) return;

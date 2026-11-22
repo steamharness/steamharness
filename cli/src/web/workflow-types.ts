@@ -285,7 +285,7 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   engine?: NonNullable<Project['conversation']>['engine'];

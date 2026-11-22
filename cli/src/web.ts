@@ -74,7 +74,8 @@ export async function main(argv: string[]): Promise<number> {
   } : undefined }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  const hostConversationProtocolVersion = input && host?.surface === 'editor' ? 1 : undefined;
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, hostConversationProtocolVersion, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -96,6 +97,11 @@ export async function main(argv: string[]): Promise<number> {
             if ([requestId, entryId, sessionId, messageId, executionId].every(id => typeof id === 'string' && id.length > 0 && id.length <= 256)) {
               console.log(JSON.stringify({ type: 'trace-model-request', requestId, request: app.readModelRequest(entryId, sessionId, messageId, executionId) }));
             }
+          }
+          else if (message.type === 'host-turn' && hostConversationProtocolVersion && typeof message.requestId === 'string') {
+            const envelope = { type: 'host-turn', requestId: message.requestId };
+            try { console.log(JSON.stringify({ ...envelope, value: await app.hostTurn(message.entryId, message.input) })); }
+            catch { console.log(JSON.stringify({ ...envelope, failed: true })); }
           }
           else if (message.type === 'close') { break; }
           else { throw new Error('Unknown web host message.'); }

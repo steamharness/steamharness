@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { ConversationController } from '../web/conversation-controller';
 import { EntryConversations, conversationProjection } from '../web/entry-conversations';
+import { hostConversation } from '../web/host-conversation';
+import { randomUUID } from 'node:crypto';
 import type { Project, Report, Runtime, ConversationSession } from '../web/workflow-types';
 
 function fixture(saved: { sessions?: ConversationSession[] } = {}) {
@@ -11,8 +13,26 @@ function fixture(saved: { sessions?: ConversationSession[] } = {}) {
   const save = vi.fn(async () => {});
   const controller = new ConversationController(project, runtime, saved, { save, changed() {}, log() {} });
   const api = new EntryConversations(controller, session => conversationProjection('bot',session,'owner',1));
-  return { controller, api, runtime, running, save };
+  return { controller, api, runtime, running, save, project };
 }
+it('handles an image-only host turn without selecting it, replaying its upload, or exposing trace data', async () => {
+  const f=fixture(), selected=f.controller.activeId, conversationId=randomUUID(), requestId=randomUUID();
+  f.project.conversation!.attachments={images:true};
+  f.runtime.uploadFiles=vi.fn(async()=>[{ id:'file',name:'image.png',mimeType:'image/png',kind:'image' as const,storage:'local' as const,size:8,createdAt:'today',path:'/private/image' }]);
+  const input={conversationId,requestId,title:'background 1',action:'submit',text:'',images:[{key:'image-1',path:'/private/image',mimeType:'image/png'}]};
+  const call=(data:Record<string,unknown>)=>hostConversation(f.controller,f.api,f.runtime,f.project,data);
+  await call(input); await call(input); await vi.waitFor(()=>expect(f.running.has(requestId)).toBe(true));
+  expect(f.runtime.uploadFiles).toHaveBeenCalledTimes(1);expect(f.controller.activeId).toBe(selected);
+  expect(f.controller.sessions.find(s=>s.id===conversationId)?.title).toBe('background 1');
+  await expect(call({...input,requestId:randomUUID()})).rejects.toThrow('busy');
+  f.running.get(requestId)!({status:'success',result:{data:{internal:'secret fallback'}},output:{items:[{id:'answer',contentType:'text',content:'complete answer',metadata:{private:'never send'}}]}});
+  await f.controller.idle(); const turn=await call({...input,action:'turn'});
+  expect(turn).toMatchObject({status:'success',items:[{content:'complete answer'}]});expect(JSON.stringify(turn)).not.toMatch(/private|secret fallback/);
+  const history=structuredClone(f.controller.sessions);f.controller.dispose();const r=fixture({sessions:history});r.project.conversation!.attachments={images:true};
+  await hostConversation(r.controller,r.api,r.runtime,r.project,input);expect(r.runtime.run).not.toHaveBeenCalled();
+  await hostConversation(r.controller,r.api,r.runtime,r.project,{...input,action:'ensure',conversationId:randomUUID(),title:'background 2'});
+  expect(r.controller.sessions.map(s=>s.title)).toEqual(expect.arrayContaining(['background 1','background 2']));r.controller.dispose();
+});
 it('admits durable requests without waiting for the model, preserves native selection/draft and deduplicates across restart', async () => {
   const f = fixture(), selected = f.controller.activeId;
   f.controller.current.draft = {text:'native draft',attachments:[]};
