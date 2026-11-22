@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "c3efe4f2c4985f4b9b28de4cacdf78e668fdecef",
+  "commit": "2f8263b5d531c5c52e58d2333aae9b0ac32fe704",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -105,6 +105,7 @@
     "0107-studio-project-type-icons.patch": "06ec245eff8fc4776e6145a644309f3c301db0085037a92f26e68232e2ba9555",
     "0109-studio-library-project-category.patch": "cd2ffacf3038238228c68f17a5030fe4fcb4e2c5618b44e3032575e4af0b8731",
     "0110-studio-shared-project-details.patch": "5240f1ef05d71aeab4e2892a768142362b7424a1bde24923588f420845bfde57",
-    "0111-studio-desktop-notifications.patch": "a177fcab9db30a87b6ac1562350cc9a4bd9744baa8b43c930bcb95eff1960a3c"
+    "0111-studio-desktop-notifications.patch": "a177fcab9db30a87b6ac1562350cc9a4bd9744baa8b43c930bcb95eff1960a3c",
+    "0112-studio-direct-chat-windows.patch": "29f9332b135b982866046610862a1caf81a360d8848702bcd72c16e5015b003f"
   }
 }

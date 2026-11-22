@@ -110,21 +110,21 @@ test('launchpad shares a warming preview across clicks, and replaces it on accou
       created++; assert.equal(binding.bootstrap.secret, 'host-only');
       return { url: 'http://127.0.0.1:1234/nonce/index.html', nonce: 'nonce', close: async () => { closed++; } };
     },
-    async launchpad(cmd, key, arg, conversation) {
+    async launchpad(cmd, key, arg, view) {
       if (cmd === 'studio.internalCloseLaunchpadApp') { revoked.push(key); return; }
-      if (cmd === 'studio.internalShowLaunchpadApp') { opened.push([key,arg,conversation]); return true; }
-      mounted.push(key); assert.equal(arg.port,1234); assert.match(arg.html,/id="project-frame"/);
+      if (cmd === 'studio.internalShowLaunchpadApp') { opened.push([key,arg,view.id]); assert.match(view.html,/id="project-frame"/); assert.doesNotMatch(view.html,/host-only/); return true; }
+      mounted.push(key); assert.equal(arg.port,1234);
       assert.doesNotMatch(JSON.stringify(arg), /host-only/); await ready.promise; return true;
     },
   });
   f.sidebar.registerHosted({ id:'hosted',title:'Chat',getState:()=>({binding:{bootstrap:{secret:'host-only'}}}) });
   const warm = f.sidebar.prepareHostedInLaunchpad('hosted',auth.signal);
-  const first = f.sidebar.showHostedInLaunchpad('hosted','r1',auth.signal,'a&b');
-  ready.resolve(); const key = await warm; await first;
-  await f.sidebar.showHostedInLaunchpad('hosted','r2',auth.signal,'other');
+  const first = f.sidebar.showHostedInLaunchpad('hosted','r1',auth.signal,{ id: 'a&b', route: '/chat?id=a%26b' });
+  ready.resolve(); const { key } = await warm; await first;
+  await f.sidebar.showHostedInLaunchpad('hosted','r2',auth.signal,{ id: 'other', route: '/chat?id=other' });
   assert.deepEqual([created,closed,mounted,opened],[1,0,[key],[[key,'r1','a&b'],[key,'r2','other']]]);
   auth.abort(); assert.deepEqual([closed,revoked],[1,[key]]);
-  const second = await f.sidebar.prepareHostedInLaunchpad('hosted',new AbortController().signal);
+  const { key: second } = await f.sidebar.prepareHostedInLaunchpad('hosted',new AbortController().signal);
   assert.notEqual(second,key); await f.commands.get('studio.internalReleaseHostedLaunchpadApp')(key);
   assert.equal(closed,1); f.sidebar.dispose(); assert.equal(closed,2);
 });

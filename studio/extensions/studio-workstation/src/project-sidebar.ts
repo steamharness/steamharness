@@ -5,7 +5,7 @@ import { findProjectCandidates } from './project-candidates';
 import { editSidebarPreferences, orderedSidebarIds, readSidebarPreferences, sidebarEntryKey, sidebarEntryTitle, type SavedSidebarEntry, type SidebarPreferences } from './project-sidebar-state';
 import { bindHostedSidebar, sidebarStatusHtml } from './project-sidebar-view';
 import { hostedSidebarHtml } from './project-sidebar-html';
-import type { HostedSidebarPreview, HostedSidebarProject, SidebarEdit, SidebarItem, SidebarProjectEntry } from './project-sidebar-types';
+import type { HostedLaunchpadTarget, HostedSidebarPreview, HostedSidebarProject, SidebarEdit, SidebarItem, SidebarProjectEntry } from './project-sidebar-types';
 import type { AssistantConversation } from './assistant-view';
 import type { Launcher } from './workflow-cli-types';
 import type { Project } from './workflow-types';
@@ -23,7 +23,7 @@ export class ProjectSidebar implements vscode.Disposable {
   private readonly builtin = new Map<string, { item: SidebarItem; viewId: string; provider: vscode.WebviewViewProvider; hosted?: HostedSidebarProject }>();
   private readonly providers = new Map<string, { dispose(): void }>();
   private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void> }>();
-  private resident?: { id: string; key: string; signal: AbortSignal; ready: Promise<string>; close(): void };
+  private resident?: { id: string; key: string; signal: AbortSignal; ready: Promise<{ key: string; preview: HostedSidebarPreview; title: string }>; close(): void };
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
@@ -53,7 +53,7 @@ export class ProjectSidebar implements vscode.Disposable {
   }
 
   /** One in-flight or ready preview per account scope, not per navigation. */
-  async prepareHostedInLaunchpad(id: string, signal: AbortSignal): Promise<string> {
+  async prepareHostedInLaunchpad(id: string, signal: AbortSignal) {
     signal.throwIfAborted();
     if (this.resident?.id === id && this.resident.signal === signal) return this.resident.ready;
     const project = this.builtin.get(id)?.hosted;
@@ -79,11 +79,10 @@ export class ProjectSidebar implements vscode.Disposable {
       preview = await open(project, state.binding, signal);
       if (closed) { await preview.close(); throw new Error('Preview revoked'); }
       const mounted = await vscode.commands.executeCommand<boolean>('studio.internalPrepareLaunchpadApp', key, {
-        title: project.title, html: hostedSidebarHtml(vscode.env.language, project.title, preview, true),
         port: Number(new URL(preview.url).port), accountUrl: state.binding.accountUrl,
       });
       if (!mounted || closed) throw new Error('Preview unavailable');
-      return key;
+      return { key, preview, title: project.title };
     }).catch(error => {
       if (!closed) this.output.appendLine(`[launchpad] ${project.title}: ${String(error)}`);
       close(); throw new Error(t('The built-in project files are unavailable.'));
@@ -92,10 +91,12 @@ export class ProjectSidebar implements vscode.Disposable {
     return ready;
   }
 
-  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal, conversation?: string): Promise<void> {
-    const key = await this.prepareHostedInLaunchpad(id, signal);
+  async showHostedInLaunchpad(id: string, requestId: string, signal: AbortSignal, target: HostedLaunchpadTarget): Promise<void> {
+    const { key, preview, title: defaultTitle } = await this.prepareHostedInLaunchpad(id, signal);
     signal.throwIfAborted();
-    if (!await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', key, requestId, conversation)) {
+    const title = target.title?.trim() || defaultTitle;
+    if (!await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', key, requestId, { id: target.id, title,
+      html: hostedSidebarHtml(vscode.env.language, title, preview, target.route) })) {
       throw new Error(t('The built-in project files are unavailable.'));
     }
   }

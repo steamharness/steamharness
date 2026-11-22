@@ -53,6 +53,9 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   const chatAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#3063af"/></svg>');
   const chats = { connection:'connected', items:[{id:'group-team',group:true,time:Date.now(),name:'Team',preview:'Review',unread:2,avatarUrl:chatAvatar},{id:'solo',name:'Solo',preview:'Hi',unread:0,avatarUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="#345" d="M0 0h32v32H0z"/></svg>')}] };
+  Object.assign(chats.items[0], { pinned: true, starred: true });
+  chats.items.push({ id: 'bot-chat', name: 'Build Bot', badge: 'Bot', avatarUrl: chatAvatar, time: Date.now(), preview: 'Ready', unread: 0 });
+  chats.latestNotice = { id: 'message-id', title: 'Team', detail: 'Review the plan', conversation: 'group-team', source: 'im', read: false, time: Date.now() };
   const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
   const serverUrl = 'https://studio.example.test';
   let account = { status:'authenticated', statusLabel:zh?'服务器已连接':'Server Connected', hasAccount:true, name:'My account', email:'me@example.test', avatarUrl:chatAvatar, scopeKey:'a'.repeat(64), serverUrl };
@@ -65,7 +68,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     account = {status:'signed-out',hasAccount:false,name:'',serverUrl,statusLabel:zh?'未登录':'Signed Out'};
     publishAccount();
   };
-  window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml(zh?'zh-cn':'en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
+  const imPreview = { url:'http://127.0.0.1:4321/app', nonce:'fixture', microphone:false };
+  window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{port:4321});
   const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
     {id:'dana',name:'Dana',relation:'incoming'},{id:'erin',name:'Erin',relation:'incoming'},{id:'sent',name:'Outgoing',relation:'outgoing'},{id:'removed',name:'Former friend',relation:'removed'}];
   const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true,avatarUrl:chatAvatar},
@@ -120,11 +124,24 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       window.settingsDestination = args[0];
       await kernelCommand('ShowLaunchpadSettings',zh?'设置':'Settings');
     }
-    if (id === 'studio.getLaunchpadInbox') return window.guest ? {items:[],message:'Signed out',connection:'guest'} : chats;
+    if (id === 'studio.getLaunchpadInbox') return window.guest || account.scopeKey !== 'a'.repeat(64) ? {items:[],message:'Signed out',connection:'guest'} : structuredClone(chats);
+    if (id === 'studio.getLaunchpadDirectory') {
+      if (window.directoryFailure) throw new Error('Group directory unavailable');
+      if (window.socialFailure) return;
+      return { groups: account.scopeKey === 'a'.repeat(64) ? [{id:'unlisted',name:'Unlisted group',conversation:'group_unlisted',members:5}] : [], conversations: [] };
+    }
+    if (id === 'studio.changeLaunchpadConversation') {
+      const { id: cid, setting, value } = args[0];
+      const chat = chats.items.find(item => item.id === cid);
+      if (setting === 'star') chat.starred = value;
+      return;
+    }
     if (id === 'studio.openLaunchpadInbox') {
       if (window.imError) return window.imError;
       if (window.delayOpen) await new Promise(resolve => window.finishOpening = resolve);
-      const ok=await kernelCommand('ShowLaunchpadApp','account-key',args[0],args[3]==='add-contact'?'action:add-contact':args[2]?'user:'+args[2]:args[1]);
+      const [, conversation, user, action, title = 'IM'] = args;
+      const target = action === 'add-contact' ? '/add-contact' : '/chat?' + new URLSearchParams(user ? { user_id: user } : { conversation_id: conversation });
+      const ok=await kernelCommand('ShowLaunchpadApp','account-key',args[0],{ id: conversation ?? user ?? action, title, html: hostedSidebarHtml(zh?'zh-cn':'en',title,imPreview,target) });
       window.actions.push(['opened', args[0]]);
       return ok;
     }
@@ -436,7 +453,7 @@ try {
     const errors=[]; page.on('pageerror', e=>errors.push(e.message));
     await page.context().addInitScript(() => { window.acquireVsCodeApi = () => ({ postMessage:fixtureHost=>parent.postMessage({fixtureHost},window.origin) }); });
     let loads=0;
-    await page.context().route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main>Inbox fixture</main><output></output><input aria-label="draft"><script>window.addEventListener('message',e=>{if(e.source===parent && e.data?.nonce==='fixture' && e.data.visible && e.data.conversation) document.querySelector('output').textContent=e.data.conversation;});parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
+    await page.context().route('http://127.0.0.1:4321/**', route => {if(new URL(route.request().url()).pathname==='/app') loads++;return route.fulfill({contentType:'text/html',body:`<main><output></output><input aria-label="draft"></main><script>const hash=location.hash.slice(1),q=new URLSearchParams(hash.split('?')[1]);document.querySelector('output').textContent=q.get('conversation_id')||q.get('user_id')||hash;parent.postMessage({type:'steamharness:web-app-ready',nonce:'fixture'},'*');</script>`});});
     await page.route('http://127.0.0.1:4321/settings-fixture.js',route=>route.fulfill({contentType:'text/javascript',body:settingsJs}));
     await page.route(`${origin}/store-preview/*.png`,route=>route.fulfill({path:fileURLToPath(new URL(`../../docs/images/studio/${language}/${new URL(route.request().url()).pathname.split('/').pop()}`,import.meta.url))}));
     await page.goto('http://127.0.0.1:4321/');

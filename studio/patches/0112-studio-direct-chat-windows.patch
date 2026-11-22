@@ -1,0 +1,708 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 3469de52eae545ed43d823e634fdf41b0eec0576..353264499772e4043ddbc69ccee4326e530d2223 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -183,16 +183,27 @@
+ .lp-social-row > :is(.lp-avatar,.codicon) { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: var(--lp-side); }
+ .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
+ .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
+-.lp-social-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+-.lp-social-title strong { min-width: 0; }
+ .lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px 1px 3px; color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
+ .lp-social-badge img { width: 15px; height: 15px; border-radius: 3px; }
+ .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
++.lp-conversation-row { border-bottom: 1px solid var(--lp-line); }
++.studio-launchpad .lp-conversation-open { display: flex; gap: 10px; width: 100%; min-height: 56px; padding: 7px 8px; justify-content: flex-start; }
++.lp-conversation-open > .lp-avatar { width: 36px; height: 36px; }
++.lp-conversation-open .lp-social-text { flex: 1 1 0; }
++.lp-conversation-open .lp-social-text > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
++.lp-conversation-meta { display: grid; justify-items: end; gap: 3px; min-width: 0; max-width: 55%; flex: 0 1 auto; color: var(--lp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
++.lp-conversation-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px 6px; }
++.lp-conversation-badges > .codicon { font-size: 13px; }
++.lp-contact-detail { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px 10px; }
++.lp-contact-detail .lp-contact-id { grid-column: 2; }
+ .lp-profile-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 48px 12px; color: var(--lp-muted); }
+ .lp-profile-empty > .codicon { font-size: 28px; }
+ .lp-empty { padding: 30px 0; color: var(--lp-muted); display: flex; align-items: center; gap: 8px; }
+ .lp-statusbar { padding-inline: 12px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); }
+-.lp-chat-launch { margin-inline-start: auto; } .lp-chat-launch:not([data-count=""])::after { content: attr(data-count); color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); padding: 0 5px; border-radius: 4px; }
++.lp-statusbar > :first-child { flex: none; }
++.studio-launchpad .lp-latest-notice { margin-inline-start: auto; min-width: 0; overflow: hidden; max-width: min(65%,520px); color: var(--lp-muted); }
++.lp-latest-notice > .codicon { flex: none; }
++.lp-latest-notice > span:last-child { min-width: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+ .lp-dialog { width: min(420px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 6px; box-shadow: 0 12px 38px #0005; }
+ .lp-dialog::backdrop { background: #0006; } .lp-dialog.lp-quick::backdrop { background: transparent; }
+ .lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); padding-block: 7px; }
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 88be3b81916bd7c563eacd38fc461bf4963e3b60..025bb3216c8e9317eb113ecd7d4ffc063b057994 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -3,65 +3,77 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { $, addDisposableListener } from '../../base/browser/dom.js';
++import { $ } from '../../base/browser/dom.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
+ import { URI } from '../../base/common/uri.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ 
+-export interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
++export interface LaunchpadApp { port: number; accountUrl?: string }
++export interface LaunchpadAppView { id: string; title: string; html: string }
+ interface MountedChat { window: IAuxiliaryWindow; webview: IWebviewElement; ready: Promise<boolean>; dispose(): void }
+ 
+ /** The runtime belongs to the resident host, but the chat document only ever lives in its own window. */
+ export class StudioChatWindow extends Disposable {
+ 	private prepared?: { key: string; app: LaunchpadApp };
+-	private readonly chat = this._register(new MutableDisposable<MountedChat>());
+-	private opening?: Promise<MountedChat | undefined>;
++	private readonly chats = this._register(new DisposableMap<string, MountedChat>());
++	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
+ 
+-	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService, private readonly social: (section: 'people' | 'favorites') => void) { super(); }
++	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
++		private readonly openConversation: (conversation?: string, user?: string) => void) { super(); }
+ 
+ 	prepare(key: string, app: LaunchpadApp): boolean {
+-		if (this.prepared?.key !== key) { this.chat.clear(); this.opening = undefined; this.prepared = { key, app }; }
++		if (this.prepared?.key !== key) { this.clear(this.prepared?.key); this.prepared = { key, app }; }
+ 		return true;
+ 	}
+-	clear(key: string): void { if (this.prepared?.key === key) { this.prepared = undefined; this.opening = undefined; this.chat.clear(); } }
+-	async show(key: string, conversation?: string): Promise<boolean> {
++	clear(key: string | undefined): void {
++		if (this.prepared?.key === key) { this.prepared = undefined; this.opening.clear(); this.chats.clearAndDisposeAll(); }
++	}
++	async show(key: string, view: LaunchpadAppView): Promise<boolean> {
+ 		const prepared = this.prepared;
+-		if (!prepared || prepared.key !== key || this._store.isDisposed) { return false; }
+-		if (!this.chat.value && !this.opening) {
+-			const pending = this.mount(prepared); this.opening = pending;
+-			try { await pending; } finally { if (this.opening === pending) { this.opening = undefined; } }
+-		} else if (this.opening) { await this.opening; }
+-		const chat = this.chat.value;
+-		if (!chat || !await chat.ready || this.chat.value !== chat || this.prepared !== prepared) { return false; }
+-		chat.window.window.focus(); chat.webview.focus(); return chat.webview.postMessage({ type: 'studio-launchpad-view', visible: true, conversation });
++		if (!prepared || prepared.key !== key || this._store.isDisposed || !view?.id) { return false; }
++		let chat = this.chats.get(view.id);
++		if (!chat) {
++			const pending = this.opening.get(view.id) ?? this.mount(prepared, view);
++			this.opening.set(view.id, pending);
++			try { chat = await pending; } finally { if (this.opening.get(view.id) === pending) { this.opening.delete(view.id); } }
++		}
++		if (!chat || !await chat.ready || this.chats.get(view.id) !== chat || this.prepared !== prepared) { return false; }
++		chat.window.window.focus(); chat.webview.focus(); return true;
+ 	}
+-	private async mount(prepared: { key: string; app: LaunchpadApp }): Promise<MountedChat | undefined> {
+-		const window = await this.windows.open({ bounds: { width: 920, height: 680 }, nativeTitlebar: true });
++	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
++		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true });
+ 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
+-		const life = new DisposableStore(); life.add(window);
++		const life = new DisposableStore();
+ 		try {
+ 			const app = prepared.app, ready = new DeferredPromise<boolean>(); life.add(toDisposable(() => { void ready.complete(false); }));
+-			const doc = window.window.document; doc.title = app.title;
++			window.window.document.title = view.title;
+ 			// Auxiliary windows adopt workbench elements from the main document.
+ 			const host = window.container.appendChild($('.studio-chat-window'));
+-			const webview = life.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
++			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: {}, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+ 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
+-			const close = () => { if (this.chat.value === chat) { this.chat.clear(); } };
+-			this.chat.value = chat; life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
++			const close = () => { if (this.chats.get(view.id) === chat) { this.chats.deleteAndLeak(view.id)?.dispose(); } };
++			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
++			life.add(window);
+ 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
+ 			life.add(webview.onMessage(({ message }) => {
+-				if (message?.type === 'studio-launchpad-social' && (message.section === 'people' || message.section === 'favorites')) { this.social(message.section); }
++				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
+ 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
+-				if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
++				else if (message?.type === 'studio-launchpad-close') { close(); }
++				else if (message?.type === 'studio-launchpad-open-conversation') {
++					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
++					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
++				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
+ 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
+ 				}
+ 			}));
+-			life.add(addDisposableListener(doc, 'visibilitychange', () => { void webview.postMessage({ type: 'studio-launchpad-view', visible: !doc.hidden }); }));
+-			webview.mountTo(host, window.window); webview.setHtml(app.html); deadline.schedule(); return chat;
+-		} catch (e) { if (this.chat.value?.window === window) { this.chat.clear(); } life.dispose(); throw e; }
++			webview.mountTo(host, window.window); deadline.schedule(); webview.setHtml(view.html); return chat;
++		} catch (e) {
++			if (this.chats.get(view.id)?.window === window) { this.chats.deleteAndLeak(view.id); }
++			life.dispose(); window.dispose(); throw e;
++		}
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 902e0bdac3073fd5f29a3e3e3d4282fa5bcf66dd..0a2a2bfe0a9c4ec11ea45dd22cf1584166ff06ca 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -37,8 +37,8 @@ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewS
+ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
+ import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+-import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
+-import { SocialResult } from './studioLaunchpadProfile.js';
++import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
++import { LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { StoreListingDetails } from './studioLaunchpadCards.js';
+ import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+@@ -53,7 +53,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly chat: StudioChatWindow;
+ 	private readonly covers = new Map<string, Promise<string | undefined>>();
+ 	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
+-	private requestId?: string;
++	private readonly appRequests = new Map<string, string>();
+ 	private windows: LaunchpadProject[] = [];
+ 	private recent: LaunchpadProject[] = [];
+ 	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
+@@ -91,9 +91,8 @@ export class StudioLaunchpad extends Disposable {
+ 		@IClipboardService clipboard: IClipboardService,
+ 	) {
+ 		super();
+-		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, section => {
+-			this.showHome(); this.view.showSocial(section); void this.native.focusWindow({ mode: FocusMode.Force });
+-		}));
++		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
++			(conversation, user) => { void this.openInbox(conversation, user).catch(error => notifications.error(error)); }));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+ 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+ 		if (Array.isArray(saved)) {
+@@ -119,29 +118,41 @@ export class StudioLaunchpad extends Disposable {
+ 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+-			inbox: conversation => run(this.openInbox(conversation)),
++			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
+ 			cover: project => this.cover(project),
+ 			detailActions: async project => this.start.state?.platform && !project.missing && project.uri.startsWith('file:') ? await commands.executeCommand<{ id: string; label: string }[]>('studio.listLibraryProjectActions', project) ?? [] : [],
+ 			runDetailAction: async (project, id) => {
+ 				if (!this.start.state?.platform) { return; }
+ 				try {
+ 					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
+-					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser); }
++					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser, undefined, project.name); }
+ 				} catch (error) { notifications.error(error); }
+ 			},
+ 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
+ 			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
+ 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
+ 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
+-			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
++			social: async (query, includeDirectory) => {
++				const [result, directory] = await Promise.all([
++					commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query),
++					includeDirectory ? commands.executeCommand<LaunchpadDirectory>('studio.getLaunchpadDirectory').catch(() => undefined) : undefined,
++				]);
++				if (!result) { throw new Error('Social data unavailable'); }
++				if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
++				return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
++			},
+ 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
++			changeConversation: async action => {
++				await commands.executeCommand('studio.changeLaunchpadConversation', action);
++				this.refreshInbox.schedule(); this.view.refreshDirectory();
++			},
+ 			confirmRemoveFriend: async name => {
+ 				const zh = this.language.startsWith('zh');
+ 				const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
+ 					buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
+ 				return response === 0;
+ 			},
+-			chatUser: user => run(this.openInbox(undefined, user)),
++			chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
+ 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+ 			readNotice: id => this.notices.read(id),
+ 			readAllNotices: async () => {
+@@ -194,9 +205,9 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
+-		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
++		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => { this.showHome(); this.view.showSocial('activity'); }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.chat.prepare(key, app)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.requestId === requestId && this.chat.show(key, conversation)));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) => Array.from(this.appRequests.values()).includes(requestId) && this.chat.show(key, view)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
+@@ -208,11 +219,13 @@ export class StudioLaunchpad extends Disposable {
+ 				this.paint();
+ 			}
+ 			this.refreshInbox.schedule();
++			this.view.refreshDirectory();
+ 		}));
+ 		let platform = false, accountRevision = 0;
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
+ 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
+ 			if (scopeChanged) {
++				this.appRequests.clear(); this.view.setAddContactBusy(false);
+ 				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
+ 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
+ 				this.libraryCategory = undefined;
+@@ -270,7 +283,7 @@ export class StudioLaunchpad extends Disposable {
+ 		for (const part of parts) { part.inert = true; }
+ 		this._register(toDisposable(() => {
+ 			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
+-			this.requestId = undefined;
++			this.appRequests.clear();
+ 			this.start.setVisible('launchpad', false);
+ 			for (const part of parts) { part.inert = false; }
+ 			this.view.element.remove();
+@@ -285,9 +298,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const fromSettings = !!this.settings.value;
+ 		this.settings.clear();
+ 		this.view.closePicker();
+-		this.requestId = undefined;
+ 		this.view.setVisible(true);
+-		this.view.setInboxBusy(false);
+ 		this.start.setVisible('launchpad', !document.hidden);
+ 		if (fromSettings) { this.view.focusAccount(); }
+ 		else { this.view.element.focus({ preventScroll: true }); }
+@@ -365,24 +376,29 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private async openInbox(conversation?: string, user?: string, action?: 'add-contact'): Promise<void> {
+-		if (this.requestId) { return; }
+-		const id = this.requestId = generateUuid();
++	private async openInbox(conversation?: string, user?: string, action?: 'add-contact', title?: string): Promise<void> {
++		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
++		if (!target || this.appRequests.has(target)) { return; }
++		const id = generateUuid();
++		this.appRequests.set(target, id);
+ 		this.view.closePicker();
+-		this.view.setInboxBusy(true);
+ 		const zh = this.language.startsWith('zh');
++		if (action === 'add-contact') { this.view.setAddContactBusy(true); title = zh ? '添加好友' : 'Add friend'; }
+ 		try {
+ 			let reason: string | undefined; let opened = false;
+ 			try {
+-				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action);
++				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action, title);
+ 				opened = result === true; reason = typeof result === 'string' ? result : undefined;
+ 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
+-			if (!opened && id === this.requestId) {
++			if (!opened && id === this.appRequests.get(target)) {
+ 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
+ 					buttons: [zh ? '确定' : 'OK'], noLink: true });
+ 			}
+ 		} finally {
+-			if (id === this.requestId) { this.requestId = undefined; this.view.setInboxBusy(false); }
++			if (id === this.appRequests.get(target)) {
++				this.appRequests.delete(target);
++				if (action === 'add-contact') { this.view.setAddContactBusy(false); }
++			}
+ 		}
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index ae2a5c43263932061ab47934c40ecdac5191d362..ed89640d2d801ace16fdb306396c58542ada2bad 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -4,30 +4,39 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { mainWindow } from '../../base/browser/window.js';
++import { IAction, Separator, toAction } from '../../base/common/actions.js';
+ import { RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
++import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+ import { picture } from './studioLaunchpadCards.js';
+-import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { button, element, icon, LaunchpadLabel, LaunchpadPicker } from './studioLaunchpadPicker.js';
+ 
+ export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
+ interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
+-export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: (NamedIdentity & { id?: string; preview: string; unread: number; time?: number; group?: boolean })[] }
++interface ConversationState { id: string; peerId?: string; unread: number; time?: number; pinned?: boolean; starred?: boolean; muted?: boolean }
++interface RecentChat extends NamedIdentity, ConversationState { preview: string; group?: boolean }
++export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: RecentChat[]; latestNotice?: StudioNotice }
+ export interface StudioPerson extends NamedIdentity { id: string; relation?: 'friend' | 'incoming' | 'outgoing' }
++interface StudioGroup extends NamedIdentity { id: string; conversation: string; members?: number }
++export interface LaunchpadDirectory { groups: StudioGroup[]; conversations: ConversationState[] }
+ export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+-export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string }
+-export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
++export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string; time?: number; detail?: string }
++export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[]; directory?: LaunchpadDirectory; directoryUnavailable?: boolean }
+ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
++export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
+ export interface ProfileActions {
+-	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
++	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
+ 	addContact(): void;
++	contextMenu: IContextMenuService;
+ 	confirmRemoveFriend(name: string): Promise<boolean>;
+-	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
++	social(query: string, directory: boolean): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
++	changeConversation(action: ConversationAction): Promise<void>;
+ 	readAllNotices(): Promise<void>;
+ }
+-export function avatar(name: string, src?: string): HTMLElement {
++export function avatar(name: string, src?: string, glyph = 'account'): HTMLElement {
+ 	const mark = element('span', 'lp-avatar');
+-	const fallback = name ? element('span', '', Array.from(name)[0]) : icon('account');
++	const fallback = glyph !== 'account' || !name ? icon(glyph) : element('span', '', Array.from(name)[0]);
+ 	mark.append(fallback);
+ 	if (src && /^(?:https?:\/\/|data:image\/)/i.test(src)) {
+ 		const img = picture(src);
+@@ -46,17 +55,16 @@ function tool(label: string, glyph: string, action: () => void): HTMLButtonEleme
+ 	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
+ }
+ 
+-function row(identity: string | NamedIdentity, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
+-	const item = element('li', 'lp-social-row'), text = element('div', 'lp-social-text');
+-	const name = element('strong', '', typeof identity === 'string' ? identity : identity.name);
+-	if (typeof identity !== 'string' && identity.badge) {
+-		const title = element('div', 'lp-social-title'), badge = element('span', 'lp-social-badge');
+-		if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
+-		badge.append(identity.badge);
+-		title.append(name, badge); text.append(title);
+-	} else { text.append(name); }
++function socialText(name: string, detail: string): HTMLElement {
++	const text = element('span', 'lp-social-text');
++	text.append(element('strong', '', name));
+ 	if (detail) { text.append(element('small', '', detail)); }
+-	item.append(mark, text);
++	return text;
++}
++
++function row(name: string, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
++	const item = element('li', 'lp-social-row');
++	item.append(mark, socialText(name, detail));
+ 	if (buttons.length) { const actions = element('div', 'lp-social-actions'); actions.append(...buttons); item.append(actions); }
+ 	return item;
+ }
+@@ -79,9 +87,9 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly status = element('div', 'lp-message lp-profile-status');
+ 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
+ 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
+-	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number }>();
++	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number; directory: boolean }>();
+ 	private generation = 0;
+-	private pending?: { query: string; generation: number };
++	private pending?: { query: string; generation: number; directory: boolean };
+ 	private failure?: { query: string; reason: Failure };
+ 	private changing = new Set<string>();
+ 	private markingAll = false;
+@@ -95,10 +103,10 @@ export class LaunchpadProfile extends Disposable {
+ 	private platform = false;
+ 	private account?: LaunchpadAccount;
+ 
+-	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void) {
++	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void, private readonly picker: LaunchpadPicker) {
+ 		super();
+ 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
+-		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
++		this.filter.placeholder = t('Search friends and groups', '搜索好友和群聊'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+ 		this.search.append(icon('search'), this.filter);
+ 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
+ 		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
+@@ -138,7 +146,7 @@ export class LaunchpadProfile extends Disposable {
+ 	select(section: Section): void {
+ 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
+ 		this.debounce.cancel(); this.section = section; this.failure = undefined;
+-		if (section === 'activity' || this.pending?.query !== this.query) { this.pending = undefined; }
++		if (section === 'activity' || this.pending?.query !== this.query || this.pending.directory !== (section === 'people')) { this.pending = undefined; }
+ 		this.renderSection(); this.content.scrollTop = 0;
+ 		void this.load();
+ 	}
+@@ -161,16 +169,18 @@ export class LaunchpadProfile extends Disposable {
+ 
+ 	private async load(): Promise<void> {
+ 		if (!this.active || !this.platform || !this.account?.signedIn || this.section === 'activity') { return; }
+-		const query = this.query, generation = this.generation;
+-		if (this.cache.get(query)?.generation === generation || (this.pending?.query === query && this.pending.generation === generation)) { return; }
+-		const request = this.pending = { query, generation };
++		const query = this.query, generation = this.generation, directory = this.section === 'people';
++		const cached = this.cache.get(query);
++		if ((cached?.generation === generation && (!directory || cached.directory)) ||
++			(this.pending?.query === query && this.pending.generation === generation && (!directory || this.pending.directory))) { return; }
++		const request = this.pending = { query, generation, directory };
+ 		try {
+-			const result = await this.actions.social(query);
++			const result = await this.actions.social(query, directory);
+ 			if (this.pending !== request) { return; }
+ 			if ('unavailable' in result) { this.failure = { query, reason: result.unavailable }; }
+ 			else {
+ 				if (query) { for (const key of this.cache.keys()) { if (key && key !== query) { this.cache.delete(key); } } }
+-				this.cache.set(query, { snapshot: { ...result, people: result.people.filter(p => p.relation === 'friend') }, generation }); this.failure = undefined;
++				this.cache.set(query, { snapshot: { ...result, directory: result.directory ?? cached?.snapshot.directory, people: result.people.filter(p => p.relation === 'friend') }, generation, directory }); this.failure = undefined;
+ 			}
+ 		} catch {
+ 			if (this.pending !== request) { return; }
+@@ -180,6 +190,102 @@ export class LaunchpadProfile extends Disposable {
+ 		if (this.active && this.query === query) { this.renderRows(); }
+ 	}
+ 
++	refreshDirectory(): void { if (this.active && this.section === 'people') { this.refresh(); } }
++
++	private entries(identity: NamedIdentity, preview: string, key: string, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, group = false): HTMLLIElement {
++		const t = this.t;
++		const item = element('li', 'lp-conversation-row');
++		const activate = button('', '', () => {
++			const selection = mainWindow.getSelection();
++			if (!selection?.isCollapsed && selection?.anchorNode && activate.contains(selection.anchorNode)) { return; }
++			open();
++		}, 'lp-conversation-open');
++		activate.dataset.key = key;
++		activate.setAttribute('aria-haspopup', 'menu');
++		const meta = element('span', 'lp-conversation-meta');
++		const badges = element('span', 'lp-conversation-badges');
++		const statusIcon = (glyph: string, label: string) => {
++			const mark = icon(glyph); mark.title = label; mark.setAttribute('aria-label', label); mark.setAttribute('aria-hidden', 'false'); badges.append(mark);
++		};
++		if (identity.badge) {
++			const badge = element('span', 'lp-social-badge');
++			if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
++			badge.append(identity.badge); badges.append(badge);
++		}
++		if (group) { statusIcon('organization', t('Group chat', '群聊')); }
++		if (state?.pinned) { statusIcon('pinned', t('Pinned', '已置顶')); }
++		if (state?.starred) { statusIcon('star-full', t('Starred', '已加星标')); }
++		if (state?.muted) { statusIcon('bell-slash', t('Muted', '免打扰')); }
++		if (state?.unread) {
++			const unread = element('span', 'lp-unread-count', state.unread > 99 ? '99+' : String(state.unread));
++			unread.title = t(`${state.unread} unread`, `${state.unread} 条未读`); badges.append(unread);
++		}
++		if (state?.time) {
++			const date = new Date(state.time), now = new Date(), language = t('en', 'zh-CN');
++			if (Number.isFinite(date.getTime())) {
++				const today = date.toDateString() === now.toDateString();
++				const options: Intl.DateTimeFormatOptions = today ? { hour: 'numeric', minute: '2-digit' }
++					: { month: 'short', day: 'numeric', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) };
++				const time = element('time', '', date.toLocaleString(language, options));
++				time.dateTime = date.toISOString(); time.title = date.toLocaleString(language); meta.append(time);
++			}
++		}
++		if (badges.childElementCount) { meta.append(badges); }
++		activate.append(group && !identity.avatarUrl ? avatar('', undefined, 'organization') : avatar(identity.name, identity.avatarUrl), socialText(identity.name, preview));
++		if (meta.childElementCount) { activate.append(meta); }
++		item.append(activate);
++		const menu = (point?: { x: number; y: number }) => this.showConversationMenu(identity, activate, open, state, contact, point);
++		activate.addEventListener('contextmenu', e => {
++			e.preventDefault(); e.stopPropagation(); activate.focus({ preventScroll: true });
++			menu(e.button === 2 ? { x: e.clientX, y: e.clientY } : undefined);
++		});
++		activate.addEventListener('keydown', e => {
++			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); menu(); }
++		});
++		return item;
++	}
++
++	private showConversationMenu(identity: NamedIdentity, origin: HTMLElement, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, point?: { x: number; y: number }): void {
++		const t = this.t, scope = this.changing;
++		const action = (id: string, label: string, run: () => void | Promise<void>) => toAction({ id: `studio.social.${id}`, label, run: () => { if (scope === this.changing) { return run(); } } });
++		const items: IAction[] = [action('open', t('Open conversation', '打开会话'), open)];
++		if (state) {
++			const toggle = (setting: ConversationAction['setting'], label: string, value: boolean) => action(setting, label, () => this.changeConversation({ id: state.id, setting, value }));
++			items.push(new Separator(), toggle('pin', state.pinned ? t('Unpin', '取消置顶') : t('Pin', '置顶'), !state.pinned),
++				toggle('star', state.starred ? t('Remove star', '取消星标') : t('Star', '加星标'), !state.starred),
++				toggle('read', state.unread ? t('Mark as read', '标为已读') : t('Mark as unread', '标为未读'), !!state.unread),
++				toggle('mute', state.muted ? t('Unmute', '取消免打扰') : t('Mute', '消息免打扰'), !state.muted));
++			if (!contact) { items.push(toggle('hide', t('Hide conversation', '从最近会话中移除'), true)); }
++		}
++		if (contact) {
++			const group = 'conversation' in contact;
++			const title = group ? t('Group info', '群聊信息') : t('Friend info', '好友资料');
++			items.push(new Separator(), action('info', group ? t('View group info', '查看群聊信息') : t('View friend info', '查看好友资料'), () => {
++				const detail = element('span', 'lp-contact-detail');
++				const description = group ? (contact.members !== undefined ? t(`${contact.members} members`, `${contact.members} 位成员`) : t('Group chat', '群聊')) : contact.badge ?? t('Friend', '好友');
++				detail.append(avatar(identity.name, identity.avatarUrl, group ? 'organization' : undefined), socialText(identity.name, description),
++					element('small', 'lp-contact-id', `${group ? t('Group ID', '群 ID') : t('User ID', '用户 ID')}: ${contact.id}`));
++				this.picker.choices(title, [{ label: t('Open conversation', '打开会话'), glyph: 'comment', run: open }], origin, detail);
++			}));
++			if (!group) { items.push(action('remove', t('Remove friend…', '删除好友…'), () => this.removeFriend(contact))); }
++		}
++		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
++	}
++
++	private async changeConversation(action: ConversationAction): Promise<void> {
++		const changing = this.changing;
++		if (changing.has(action.id)) { return; }
++		changing.add(action.id);
++		try {
++			await this.actions.changeConversation(action);
++			if (changing === this.changing) { this.failure = undefined; }
++		} catch {
++			if (changing === this.changing) {
++				this.failure = { query: this.query, reason: 'change' }; this.renderRows();
++			}
++		} finally { changing.delete(action.id); }
++	}
++
+ 	private async mutate(action: SocialAction): Promise<void> {
+ 		const changing = this.changing, section = this.section;
+ 		if (changing.has(action.id)) { return; }
+@@ -243,6 +349,8 @@ export class LaunchpadProfile extends Disposable {
+ 	private renderRows(): void {
+ 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
+ 		const query = this.query, data = this.cache.get(query)?.snapshot;
++		const directory = data?.directory ?? this.cache.get('')?.snapshot.directory;
++		const directoryUnavailable = this.section === 'people' && data?.directoryUnavailable;
+ 		this.readAll.hidden = this.section !== 'notifications';
+ 		this.readAll.disabled = this.markingAll || !(this.markAllFailed || this.notificationUnread || data?.notices.some(notice => !notice.read));
+ 		const failure = this.failure?.query === query ? this.failure.reason : undefined;
+@@ -250,33 +358,46 @@ export class LaunchpadProfile extends Disposable {
+ 		this.status.replaceChildren();
+ 		if (this.section === 'notifications' && this.markAllFailed) {
+ 			this.status.textContent = t('Could not mark all notifications as read. Try again.', '未能将所有通知标为已读，请重试。');
++		} else if (failure === 'change') {
++			this.status.textContent = t('Change could not be saved.', '更改未能保存。');
+ 		} else if (needsSocial) {
+-			if (failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
+-			else if (failure) {
++			if (failure) {
+ 				const message = failure === 'unsupported'
+ 					? t('This server does not provide Studio social data. Check the server version and retry.', '当前服务器未提供 Studio 社交接口，请确认服务器版本后重试。')
+ 					: t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。');
+ 				this.status.append(icon('warning'), message, button(t('Retry', '重试'), 'refresh', () => this.refresh()));
++			} else if (directoryUnavailable) {
++				this.status.append(icon('warning'), t('Could not refresh groups.', '暂时无法刷新群聊。'), button(t('Retry', '重试'), 'refresh', () => this.refresh()));
+ 			} else if (!data && !friends?.length) { this.status.textContent = t('Loading…', '正在加载…'); }
+ 		}
+ 		const items: HTMLLIElement[] = [];
+ 		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
+ 		if (this.section === 'activity') {
+ 			for (const c of this.inbox?.items ?? []) {
+-				const item = row(c, c.preview, avatar(c.name, c.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'));
+-				if (c.unread) { const unread = element('span', 'lp-unread-count', String(c.unread)); unread.title = t(`${c.unread} unread`, `${c.unread} 条未读`); item.lastElementChild?.prepend(unread); }
+-				items.push(item);
++				items.push(this.entries(c, c.preview, c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
+ 			}
+ 		} else if (this.section === 'people') {
++			const byPeer = new Map(directory?.conversations.flatMap(c => c.peerId ? [[c.peerId, c] as const] : []));
++			const byId = new Map(directory?.conversations.map(c => [c.id, c] as const));
+ 			for (const p of friends ?? []) {
+-				const remove = tool(t('Remove friend', '移除好友'), 'trash', () => void this.removeFriend(p)); remove.disabled = this.changing.has(p.id);
+-				items.push(row(p, '', avatar(p.name, p.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), remove));
++				const chat = byPeer.get(p.id);
++				items.push(this.entries(p, '', 'person:' + p.id, () => chat ? this.actions.inbox(chat.id, p.name) : this.actions.chatUser(p.id, p.name), chat, p));
++			}
++			for (const g of directory?.groups ?? []) {
++				if (query && !g.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()) && !g.id.includes(query)) { continue; }
++				const detail = g.members !== undefined ? t(`${g.members} members`, `${g.members} 位成员`) : '';
++				items.push(this.entries(g, detail, 'group:' + g.id, () => this.actions.inbox(g.conversation, g.name), byId.get(g.conversation), g, true));
+ 			}
+ 		} else if (this.section === 'favorites') {
+-			for (const f of data?.favorites ?? []) { items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
++			for (const f of data?.favorites ?? []) {
++				const id = f.conversation;
++				items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id })));
++			}
+ 		} else {
+ 			for (const n of [...this.nativeNotices, ...data?.notices ?? []]) {
+-				const controls = n.conversation || n.source === 'im' ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(n.conversation), 'lp-outline')] : [];
++				const id = n.conversation;
++				const controls = id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')]
++					: n.source === 'im' ? [button(t('View recent chats', '查看最近会话'), 'comment', () => this.select('activity'), 'lp-outline')] : [];
+ 				if (n.inviteId && n.id === 'request:' + n.inviteId) {
+ 					controls.push(change(t('Accept', '接受'), 'check', { action: 'accept-invite', id: n.inviteId }), change(t('Decline', '拒绝'), 'close', { action: 'decline-invite', id: n.inviteId }));
+ 				}
+@@ -288,12 +409,14 @@ export class LaunchpadProfile extends Disposable {
+ 				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
+ 			}
+ 		}
++		const focused = this.rows.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
+ 		this.rows.replaceChildren(...items);
++		if (focused) { Array.from(this.rows.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(el => el.dataset.key === focused)?.focus({ preventScroll: true }); }
+ 		this.count.textContent = String(items.length); this.count.hidden = !items.length;
+-		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure));
++		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure || !!directoryUnavailable));
+ 		if (!this.empty.hidden) {
+ 			const guest = this.platform && !this.account?.signedIn;
+-			const label = this.section === 'people' ? guest ? t('Sign in to see your friends.', '登录后可查看好友。') : query ? t('No matching friends.', '没有匹配的好友。') : t('No friends yet.', '暂无好友。')
++			const label = this.section === 'people' ? guest ? t('Sign in to see your friends and groups.', '登录后可查看好友和群聊。') : query ? t('No matching friends or groups.', '没有匹配的好友或群聊。') : t('No friends or groups yet.', '暂无好友或群聊。')
+ 				: this.section === 'favorites' ? guest ? t('Sign in to see your favorites.', '登录后可查看收藏。') : t('No favorites yet.', '暂无收藏。')
+ 					: this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
+ 			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? 'comment-discussion' : 'bell'), element('p', '', label));
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index f8b4dd2aa720883d62c1ebaeaa613c8e08d8c3c2..9d3624cc4982d09232e2a6fa628ec268f00453c2 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -31,7 +31,8 @@ export class StudioLaunchpadView extends Disposable {
+ 	private readonly panels = element('main', 'lp-panels');
+ 	private readonly commandCenter: HTMLButtonElement;
+ 	private readonly accountButton: HTMLButtonElement;
+-	private readonly inboxButton: HTMLButtonElement;
++	private readonly latestNotice: HTMLButtonElement;
++	private readonly noticeContent = element('span');
+ 	private readonly bell: HTMLButtonElement;
+ 	private readonly consoleButton: HTMLButtonElement;
+ 	private readonly picker: LaunchpadPicker;
+@@ -82,14 +83,19 @@ export class StudioLaunchpadView extends Disposable {
+ 		});
+ 		navigation.append(this.tabs);
+ 		this.library = new LaunchpadLibrary(t, actions);
+-		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
++		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));
+ 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
+ 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
+ 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
+ 		}
+ 		const foot = element('footer', 'lp-statusbar'); const open = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(open));
+-		this.inboxButton = button(t('Friends & chat', '好友与聊天'), 'comment-discussion', () => actions.inbox(), 'lp-chat-launch');
+-		foot.append(open, this.inboxButton); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
++		this.latestNotice = button('', 'bell', () => {
++			const notice = this.state?.inbox?.latestNotice;
++			if (notice?.conversation) { actions.inbox(notice.conversation, notice.title); }
++		}, 'lp-latest-notice');
++		this.latestNotice.hidden = true;
++		this.latestNotice.append(this.noticeContent);
++		foot.append(open, this.latestNotice); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
+ 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
+ 	}
+ 
+@@ -105,7 +111,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
+ 	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Open project…', '打开项目…'), this.fileOptions(), origin); }
+ 	private search(commands: boolean): void {
+-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
++		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('View recent chats', '查看最近会话'), glyph: 'comment', run: () => this.showSocial('activity') }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
+ 	}
+ 	shortcut(event: KeyboardEvent): void {
+ 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
+@@ -115,19 +121,23 @@ export class StudioLaunchpadView extends Disposable {
+ 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+ 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
+ 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+-	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); this.profile.setInboxBusy(busy); }
+-	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
++	setAddContactBusy(busy: boolean): void { this.profile.setInboxBusy(busy); }
+ 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
+ 	refreshSocial(): void { void this.profile.refresh(); }
+-	showSocial(section: 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
++	refreshDirectory(): void { this.profile.refreshDirectory(); }
++	showSocial(section: 'activity' | 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
+ 	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
+ 	update(state: LaunchpadState): void {
+ 		const previous = this.state; this.state = state;
+-		this.consoleButton.hidden = this.inboxButton.hidden = !state.platform;
++		this.consoleButton.hidden = !state.platform;
++		if (previous?.account?.scopeKey !== state.account?.scopeKey || previous?.account?.signedIn !== state.account?.signedIn) { this.picker.close(); }
+ 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
+-		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
+-		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
++		const notice = state.platform && state.account?.signedIn ? state.inbox?.latestNotice : undefined;
++		this.latestNotice.hidden = !notice?.conversation;
++		const preview = notice ? `${notice.title}${notice.detail ? `: ${notice.detail}` : ''}` : '';
++		if (this.noticeContent.textContent !== preview) { this.noticeContent.textContent = this.latestNotice.title = preview; }
++		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
+ 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
+ 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+ 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread);
