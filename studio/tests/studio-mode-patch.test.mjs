@@ -21,6 +21,7 @@ test('the workspace-mode series and the current launchpad replay twice without c
   launchpad.push('0104-studio-library-product-actions.patch', '0105-studio-launchpad-identity-badges.patch', '0108-studio-launchpad-add-contacts.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch', '0111-studio-desktop-notifications.patch', '0112-studio-direct-chat-windows.patch', '0113-studio-project-details-layout.patch');
   launchpad.push('0114-studio-add-friend-toolbar.patch');
   launchpad.push('0115-studio-recent-chat-toolbar.patch');
+  launchpad.push('0116-studio-launchpad-settings-toolbar.patch');
   for (const [group, series, commit] of [['mode-files', names, undefined], ...(historical ? [['modes', names, original]] : []), ['launchpad', launchpad, upstream.commit]]) {
     const root = path.join(fixture, group), kernel = path.join(root, 'vscode'), patches = [], paths = new Set();
     await mkdir(kernel, { recursive: true }); await mkdir(path.join(root, 'patches'));

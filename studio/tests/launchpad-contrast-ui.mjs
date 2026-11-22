@@ -34,7 +34,6 @@ export async function checkLaunchpadContrast({ page, t, enhanced }) {
     for (const icon of await store.locator('article .lp-screen-controls .codicon').all()) assert.ok(await contrast(icon) >= 3, 'screenshot controls remain legible');
   }
   await home.locator('#lp-tab-profile').click();
-  for (const icon of await home.locator('.lp-profile-tool > .codicon').all()) assert.ok(await contrast(icon) >= 3, 'profile tools remain legible');
   for (const icon of await home.locator('#lp-page-profile .lp-profile-nav .codicon').all()) assert.ok(await contrast(icon) >= 3, 'profile navigation remains legible');
   await home.locator('#lp-tab-library').click();
 }

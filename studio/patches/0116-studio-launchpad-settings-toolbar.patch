@@ -1,0 +1,145 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 2f2c0eb71a3..984b7b63584 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -36,7 +36,8 @@
+ 	--lp-title-inset: max(var(--lp-controls-left,0px),var(--lp-controls-right,0px));
+ 	container: lp-titlebar / inline-size; display: grid; align-items: center; gap: 8px;
+ 	padding-inline: calc(var(--lp-title-inset) + 10px);
+-	grid-template-columns: minmax(0,1fr) min(32%,600px) minmax(0,1fr);
++	/* Leave room for the compact toolbar on each side to keep search centered. */
++	grid-template-columns: minmax(168px,1fr) minmax(26px,min(32%,600px)) minmax(168px,1fr);
+ }
+ .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
+ .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
+@@ -159,12 +160,11 @@
+ .lp-community { display: grid; justify-items: center; align-content: center; gap: 12px; } .lp-community > .codicon { font-size: 34px; color: var(--lp-muted); }
+ .lp-profile { display: grid; grid-template-columns: clamp(220px,23%,284px) minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
+ .lp-profile-rail { min-width: 0; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); padding: 20px 12px; }
+-.lp-profile-header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: start; gap: 10px; padding: 2px 4px 18px; border-bottom: 1px solid var(--lp-line); }
++.lp-profile-header { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 10px; padding: 2px 4px 18px; border-bottom: 1px solid var(--lp-line); }
+ .lp-profile-header .lp-avatar { width: 42px; height: 42px; font-size: 19px; }
+ .lp-profile-identity { display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-profile-identity strong { font-size: 15px; color: var(--lp-strong); }
+ .lp-profile-account-state { margin-top: 3px; }
+ .lp-profile-header .lp-primary { grid-column: 2/-1; justify-self: start; }
+-.studio-launchpad .lp-profile-tool { width: 28px; height: 28px; padding: 0; color: var(--lp-muted); }
+ .lp-profile-nav { display: grid; gap: 4px; padding-top: 16px; }
+ .studio-launchpad .lp-profile-nav button { justify-content: flex-start; position: relative; min-height: 36px; gap: 10px; padding-inline: 12px; color: var(--lp-muted); }
+ .studio-launchpad .lp-profile-nav [aria-selected=true] { color: var(--lp-strong); font-weight: 600; background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+@@ -233,11 +233,17 @@
+ @container lp-titlebar (max-width: 960px) {
+ 	.lp-resource-label { display: none; } .lp-resources .lp-tool { width: 30px; padding: 0; }
+ }
+-@container lp-titlebar (max-width: 520px) {
+-	.lp-wordmark { display: none; } .lp-brand img { width: min(30px,var(--studio-launchpad-bar,44px)); }
++@container lp-titlebar (max-width: 620px) {
+ 	.lp-resources,.lp-utilities { gap: 2px; } .lp-resources { padding-inline-end: 3px; }
+ 	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
+ }
++@container lp-titlebar (max-width: 520px) {
++	.lp-wordmark { display: none; } .lp-brand img { width: min(30px,var(--studio-launchpad-bar,44px)); }
++}
++@container lp-titlebar (max-width: 235px) {
++	.lp-brand img { width: 20px; }
++	.lp-resources,.lp-utilities { gap: 0; } .lp-resources { padding-inline-end: 1px; }
++}
+ @media (max-width: 700px) {
+ 	.lp-listing-body { grid-template-columns: minmax(0,1fr); gap: 24px; }
+ 	.lp-listing-info { border-inline-start: 0; border-top: 1px solid var(--lp-line); padding: 20px 0 0; }
+@@ -246,7 +252,7 @@
+ 	.lp-brand,.lp-utilities { margin-inline: 0; }
+ 	.lp-profile { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
+ 	.lp-profile-rail { padding: 10px var(--lp-pad) 0; border-inline-end: 0; border-bottom: 1px solid var(--lp-line); max-height: 42vh; }
+-	.lp-profile-header { align-items: center; grid-template-columns: auto minmax(0,1fr) auto auto; padding: 0; border: 0; }
++	.lp-profile-header { align-items: center; grid-template-columns: auto minmax(0,1fr) auto; padding: 0; border: 0; }
+ 	.lp-profile-header .lp-primary { grid-column: auto; } .lp-profile-account-state { margin-top: 0; }
+ 	.lp-profile-nav { display: flex; padding-top: 8px; }
+ 	.studio-launchpad .lp-profile-nav button { flex: 1; justify-content: center; padding: 4px 2px; gap: 5px; border-radius: 0; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index a0ca2e7b2da..216ea9e03ae 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -301,7 +301,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this.view.closePicker();
+ 		this.view.setVisible(true);
+ 		this.start.setVisible('launchpad', !document.hidden);
+-		if (fromSettings) { this.view.focusAccount(); }
++		if (fromSettings) { this.view.focusSettings(); }
+ 		else { this.view.element.focus({ preventScroll: true }); }
+ 		this.refreshInbox.schedule();
+ 		this.refreshSocialState();
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index f0334b0e481..e7df3616de5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -27,7 +27,7 @@ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 're
+ export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
+ export type InboxAction = 'add-contact' | 'create-group';
+ export interface ProfileActions {
+-	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
++	signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
+ 	addContact(): void; createGroup(): void;
+ 	contextMenu: IContextMenuService;
+ 	confirmRemoveFriend(name: string): Promise<boolean>;
+@@ -52,10 +52,6 @@ export function avatar(name: string, src?: string, glyph = 'account'): HTMLEleme
+ type Section = 'activity' | 'people' | 'favorites' | 'notifications';
+ type Failure = 'unsupported' | 'unavailable' | 'change';
+ 
+-function tool(label: string, glyph: string, action: () => void): HTMLButtonElement {
+-	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
+-}
+-
+ function socialText(name: string, detail: string): HTMLElement {
+ 	const text = element('span', 'lp-social-text');
+ 	text.append(element('strong', '', name));
+@@ -369,7 +365,7 @@ export class LaunchpadProfile extends Disposable {
+ 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
+ 		const identity = element('div', 'lp-profile-identity'); identity.append(element('strong', '', name));
+ 		if (a?.email) { identity.append(element('small', '', a.email)); }
+-		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, tool(t('Settings', '设置'), 'settings-gear', this.actions.settings));
++		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity);
+ 		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 4f1718c88fc..f6eba0a9f16 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -18,7 +18,7 @@ export interface LaunchpadState {
+ 	libraryCategory?: LibraryProjectCategory;
+ }
+ interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
+-	open(): void; workspace(): void;
++	open(): void; workspace(): void; settings(): void;
+ 	readNotice(id: string): void;
+ 	resource(id: 'docs' | 'github' | 'server'): void;
+ }
+@@ -30,6 +30,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	private readonly tabs = element('nav', 'lp-tabs');
+ 	private readonly panels = element('main', 'lp-panels');
+ 	private readonly commandCenter: HTMLButtonElement;
++	private readonly settingsButton: HTMLButtonElement;
+ 	private readonly accountButton: HTMLButtonElement;
+ 	private readonly latestNotice: HTMLButtonElement;
+ 	private readonly noticeContent = element('span');
+@@ -68,9 +69,10 @@ export class StudioLaunchpadView extends Disposable {
+ 		this.commandCenter.setAttribute('aria-haspopup', 'dialog');
+ 		this.commandCenter.setAttribute('aria-expanded', 'false');
+ 		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
++		this.settingsButton = tool(t('Settings', '设置'), 'settings-gear', actions.settings);
+ 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
+ 		this.accountButton.classList.add('lp-account');
+-		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.accountButton);
++		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.settingsButton, this.accountButton);
+ 		chrome.append(brand, this.commandCenter, utilities);
+ 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
+ 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
+@@ -122,7 +124,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
+ 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+ 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
+-	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
++	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
+ 	refreshSocial(): void { void this.profile.refresh(); }
+ 	refreshDirectory(): void { this.profile.refreshDirectory(); }

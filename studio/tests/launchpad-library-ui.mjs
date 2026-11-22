@@ -16,9 +16,14 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   const header=home.locator('.lp-titlebar'), resources=header.getByRole('group',{name:t('Resources','资源')});
   const searchLabel=t('Search projects or commands','搜索项目或命令');
   const center=header.getByRole('button',{name:searchLabel,exact:true});
+  const settingsLabel=t('Settings','设置'), settingsButton=header.getByRole('button',{name:settingsLabel,exact:true});
   page.setDefaultTimeout(6000);
   await cards.first().waitFor();
   assert.equal(await tab('library').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(await header.locator('.lp-utilities > button').evaluateAll(buttons=>buttons.map(button=>button.getAttribute('aria-label'))), [
+    t('Studio notifications','Studio 通知'), settingsLabel, t('Studio account','Studio 账号'),
+  ]);
+  assert.equal(await settingsButton.getAttribute('title'),settingsLabel);
   assert.equal(await home.getByRole('tab').count(), 4);
   assert.equal(await library.locator('[aria-selected=true]').count(), 0);
   assert.ok(await create.isDisabled()); assert.ok(await importProject.isEnabled());
@@ -213,11 +218,14 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     assert.deepEqual(await profile.locator('.lp-profile-identity small').allTextContents(), ['me@example.test']);
     assert.equal(await profile.getByText(t('Server Connected','服务器已连接'),{exact:true}).count(),0);
     await checkProfileSections({page,profile,frame,t,screenshot}); assert.equal(loads(),7);
-    await profile.getByRole('button',{name:t('Settings','设置'),exact:true}).click(); await page.locator('.studio-launchpad-settings').waitFor();
+    assert.equal(await profile.getByRole('button',{name:settingsLabel,exact:true}).count(),0);
+    await settingsButton.press('Enter'); await page.locator('.studio-launchpad-settings').waitFor();
+    assert.deepEqual(await page.evaluate(()=>window.settingsDestination),{section:'account',target:'user'});
     assert.equal(await home.isVisible(),false); assert.equal(await page.locator('.part.editor').evaluate(el=>el.inert),true);
     await checkLaunchpadBackButton(page); await screenshot('settings-back-button');
     const settings=page.frameLocator('.webview-overlay-content iframe'); await settings.locator('#profile #display-name').getByText('My account').waitFor();
     await page.locator('.studio-launchpad-app-close').click(); await home.waitFor();
+    assert.equal(await settingsButton.evaluate(button=>button===document.activeElement),true);
     const closed=popup.waitForEvent('close'); await page.evaluate(()=>{window.guest=true;window.signOut();}); await closed;
     assert.equal(await latest.isVisible(),false);
     assert.equal(await profile.getByText('Saved message').count(),0); await profile.getByRole('button',{name:t('Sign in','登录'),exact:true}).click();
@@ -246,7 +254,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
       await page.evaluate(side=>window.placeWindowControls(side),side);
       const controls=page.locator('.window-controls-container'), nativeBox=await controls.boundingBox();
       const edge=await header.locator(side==='left'?'.lp-brand img':'.lp-account').boundingBox();
-      assert.ok(side==='left'?edge.x>=nativeBox.x+nativeBox.width:edge.x+edge.width<=nativeBox.x,`header must clear ${side} window controls`);
+      assert.ok(side==='left'?edge.x>=nativeBox.x+nativeBox.width:edge.x+edge.width<=nativeBox.x,`header must clear ${side} window controls at ${width}px`);
       const [brand, search, tools] = await Promise.all([header.locator('.lp-brand').boundingBox(), center.boundingBox(), resources.boundingBox()]);
       assert.ok(search.width >= 24 && brand.x + brand.width <= search.x && search.x + search.width <= tools.x, `command center overlaps at ${width} with ${side} controls`);
       if (width >= 768) assert.ok(Math.abs(search.x + search.width / 2 - width / 2) <= 1, `command center is not centered at ${width} with ${side} controls`);
