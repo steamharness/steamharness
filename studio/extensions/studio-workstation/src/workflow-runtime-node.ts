@@ -233,10 +233,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         throw error;
       }
     },
-    start: async (project, surface, signal, resourceProjects) => {
+    start: async (project, surface, signal, options) => {
       const runtime = await selectedRuntime();
+      const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
       const lease = await hosts.acquire(
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity]), project,
+      // A headless caller must not lease the CLI that received the embedded page's account.
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount]), project,
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
@@ -273,11 +275,16 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,
-          resourceProjects,
+          resourceProjects: options?.resourceProjects,
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
           surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant: project.assistant,
           studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
+        if (runSignal.aborted || !vscode.workspace.isTrusted) {
+          await session.close();
+          runSignal.throwIfAborted();
+          assertAvailable();
+        }
         let projectConnection: Connection | undefined, aiConnection: Connection | undefined, webAppConnection: Connection | undefined;
         let hostedEntry: string | undefined, connectedWebAppEntry: string | undefined, webAppServerUrl: string | undefined;
         let checkingWebAppAccount = 0;
@@ -329,18 +336,17 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           }
         };
         if (account.platform) session.connectPlatform = connectPlatform;
-        // A declared profile policy opts this aggregate into project role checks.
-        // Use the verified host account without opening a sign-in flow on startup.
-        const restrictedConfigurations = account.platform && session.ready.restrictedConfigurationEntries?.some(entryId =>
-          session.ready.project.entries.some(entry => entry.entryId === entryId));
-        if (restrictedConfigurations) {
-          projectConnection = account.getConnection();
-          if (projectConnection) session.updateAuth(projectConnection, aiConnection);
-        }
+        const entries = session.ready.project.entries;
+        const restrictedConfigurations = session.ready.restrictedConfigurationEntries?.some(entryId => entries.some(entry => entry.entryId === entryId));
+        // Hosted Web Apps keep their provider-scoped session. An aggregate with
+        // restricted configurations also needs the project account for role checks.
+        const inheritEmbeddedAccount = embeddedAccount && !entries.some(entry => entry.webApp);
+        const inheritProjectAccount = account.platform && (restrictedConfigurations || inheritEmbeddedAccount);
         const revoke = account.onDidChange(state => {
+          if (runSignal.aborted) return;
           if (state.status !== 'checking') {
             const current = account.getConnection();
-            const next = restrictedConfigurations ? current : same(projectConnection, current) ? projectConnection : undefined;
+            const next = inheritProjectAccount ? current : same(projectConnection, current) ? projectConnection : undefined;
             if (!same(projectConnection, next)) {
               projectConnection = next; session.updateAuth(projectConnection, aiConnection);
             }
@@ -350,6 +356,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           }
           if (state.status !== 'checking' && (!checkingWebAppAccount || !same(checkingWebAppConnection, account.getConnection()))) void syncWebApp(account.getConnection()).catch(webAppFailed);
         });
+        if (inheritProjectAccount) {
+          projectConnection = account.getConnection();
+          if (projectConnection) session.updateAuth(projectConnection);
+          // Restore a saved session in this window without blocking local startup or opening sign-in.
+          else if (inheritEmbeddedAccount) void account.connect().catch(() => undefined);
+        }
         const webAppLogin = session.onWebAppLogin?.((entryId, isCurrent) => {
           if (account.platform && !runSignal.aborted) void connectPlatform('web-app', entryId, true, isCurrent).catch(webAppFailed);
         });
@@ -374,7 +386,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         void session.closed.then(() => { revoke.dispose(); webAppErrors?.dispose(); webAppLogin?.dispose(); });
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
-        if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }
         try { session.updateUserSettings(settingsSnapshot()); }
         catch (error) { await session.close(); throw error; }
         if (project.assistant || session.ready.project.entries.some(entry => entry.type === 'kanban')) {

@@ -186,7 +186,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       startingSources.set(controller, sources);
       // Assistant protocol and host sharing follow the project scope, including editor tabs.
       session = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: t("Starting SteamHarness Web") }, async () =>
-        launcher.start(project, project.assistant ? 'assistant' : 'editor', controller.signal, resourceProjects));
+        launcher.start(project, project.assistant ? 'assistant' : 'editor', controller.signal, { resourceProjects, embedded: true }));
       if (controller.signal.aborted || !projectAvailable(project)) {
         await session.close(); controller.signal.throwIfAborted(); throw new Error('Workflow workspace has closed.');
       }

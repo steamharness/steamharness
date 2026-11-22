@@ -85,7 +85,7 @@ async function fixture(t, connection = first, beforeOpen = async () => {}) {
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } }, account);
   t.after(() => runtime.dispose());
   const start = async (entryId = 'main') => {
-    const session = await runtime.start({ id: projectId, folderPath: directory, uri: '', projectType: entryId === 'main' ? 'kanban' : 'workflow', entryId, entries }, 'editor');
+    const session = await runtime.start({ id: projectId, folderPath: directory, uri: '', projectType: entryId === 'main' ? 'kanban' : 'workflow', entryId, entries }, 'editor', undefined, { embedded: true });
     t.after(() => session.close());
     return session;
   };

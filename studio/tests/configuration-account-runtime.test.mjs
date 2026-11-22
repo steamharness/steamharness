@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'],
   bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const first = { serverUrl: 'https://account.invalid', accessToken: 'first-test-token' };
-const second = { serverUrl: 'https://account.invalid', accessToken: 'second-test-token' };
+const second = { serverUrl: 'https://other-account.invalid', accessToken: 'second-test-token' };
 const entries = ['main', 'chat'].map(entryId => ({ entryId, name: entryId, type: 'bot', root: '.', entry: 'index.ts' }));
 
 async function until(read, accept) {
@@ -19,12 +19,15 @@ async function until(read, accept) {
   for (;;) {
     const value = await read();
     if (accept(value)) return value;
-    assert.ok(Date.now() < deadline, 'The current account must reach the restricted project');
+    assert.ok(Date.now() < deadline, 'The current account must reach CLI Web');
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
 
-async function fixture(t, { restricted = ['chat'], platform = true, connection = first } = {}) {
+async function fixture(t, { restricted, platform = true, connection = first, restore, hosted = false, trusted = true, embedded = true } = {}) {
+  const projectEntries = hosted ? [...entries,
+    { entryId: 'app', name: 'Hosted app', type: 'kanban', root: '.', entry: 'index.html', webApp: { service: 'sample.app' } },
+  ] : entries;
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-configuration-account-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const cli = path.join(directory, 'node_modules/@steamharness/cli');
@@ -43,19 +46,23 @@ async function fixture(t, { restricted = ['chat'], platform = true, connection =
         type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
         restrictedConfigurationEntries:${JSON.stringify(restricted) ?? 'undefined'},
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),
-        project:{id:'configuration-project',name:'Configurations',entries:${JSON.stringify(entries)},defaultEntry:'main'}
+        project:{id:'configuration-project',name:'Configurations',entries:${JSON.stringify(projectEntries)},defaultEntry:'main'}
       })));
     });
   `);
   const listeners = new Set(), errors = [], commands = [];
   let connects = 0;
+  const change = (value, status = value ? 'authenticated' : 'signed-out') => {
+    connection = value;
+    for (const callback of listeners) callback({ status });
+  };
   const account = {
     platform, getConnection: () => connection, getAiConnection: () => undefined,
     onDidChange: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; },
-    connect: async () => { connects++; return connection; },
+    connect: async () => { connects++; if (restore) change(await restore()); return connection; },
   };
   const vscode = { env: { language: 'en' }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
-    workspace: { isTrusted: true, onDidChangeConfiguration: () => ({ dispose() {} }),
+    workspace: { isTrusted: trusted, onDidChangeConfiguration: () => ({ dispose() {} }),
       getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
     window: { activeColorTheme: { kind: 1 }, showErrorMessage: async message => { errors.push(message); } },
     commands: { executeCommand: async command => { commands.push(command); } },
@@ -65,18 +72,27 @@ async function fixture(t, { restricted = ['chat'], platform = true, connection =
     require: name => name === 'vscode' ? vscode : require(name), process, structuredClone, AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } }, account);
   t.after(() => runtime.dispose());
-  const session = await runtime.start({ id: 'configuration-project', folderPath: directory, uri: '', projectType: 'bot', entryId: 'main', entries }, 'editor');
-  t.after(() => session.close());
-  const read = () => fetch(session.ready.url).then(response => response.json());
-  const auth = () => read().then(value => value.messages.filter(message => message.type === 'auth'));
-  return { session, read, auth, commands, errors, get connects() { return connects; },
-    change(value, status = value ? 'authenticated' : 'signed-out') {
-      connection = value; for (const callback of listeners) callback({ status });
-    },
+  const start = async (embed = embedded) => {
+    const session = await runtime.start({ id: 'configuration-project', folderPath: directory, uri: '', projectType: 'bot', entryId: 'main', entries: projectEntries }, 'editor', undefined, embed ? { embedded: true } : undefined);
+    t.after(() => session.close());
+    const read = () => fetch(session.ready.url).then(response => response.json());
+    const auth = () => read().then(value => value.messages.filter(message => message.type === 'auth'));
+    return { session, read, auth };
   };
+  if (!trusted) {
+    await assert.rejects(start(), /Trust the current workspace/);
+    return { get connects() { return connects; } };
+  }
+  return { ...await start(), start, commands, errors, change, get connects() { return connects; } };
 }
 
 test('a restricted sibling entry receives the signed-in project account without interactive login', async t => {
+  const f = await fixture(t, { restricted: ['chat'], hosted: true });
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0].connection, first);
+  assert.equal(f.connects, 0); assert.deepEqual(f.commands, []);
+});
+
+test('an enhanced CLI Web session inherits the verified account without a restricted configuration', async t => {
   const f = await fixture(t);
   const updates = await until(f.auth, items => items.length === 1);
   assert.deepEqual(updates[0].connection, first);
@@ -85,9 +101,9 @@ test('a restricted sibling entry receives the signed-in project account without 
   assert.equal(f.connects, 0); assert.deepEqual(f.commands, []); assert.deepEqual(f.errors, []);
 });
 
-test('restricted configurations follow logout, later login and account replacement without losing a checking session', async t => {
+test('CLI Web follows logout and switches Server accounts without restarting', async t => {
   const f = await fixture(t);
-  await until(f.auth, items => items.length === 1);
+  const initial = await until(f.read, value => value.messages.some(message => message.type === 'auth'));
   f.change(undefined, 'checking');
   assert.equal((await f.auth()).length, 1);
   f.change(first);
@@ -95,22 +111,34 @@ test('restricted configurations follow logout, later login and account replaceme
   f.change(undefined);
   await until(f.auth, items => items.at(-1)?.connection === null);
   f.change(second);
-  await until(f.auth, items => items.at(-1)?.connection?.accessToken === second.accessToken);
+  const replacement = await until(f.auth, items => items.at(-1)?.connection?.accessToken === second.accessToken);
+  assert.deepEqual(replacement.at(-1).connection, second);
   f.change(first);
   await until(f.auth, items => items.at(-1)?.connection?.accessToken === first.accessToken);
+  assert.equal((await f.read()).pid, initial.pid);
   assert.equal(f.connects, 0); assert.deepEqual(f.commands, []);
 });
 
-test('a signed-out restricted project stays a guest and receives a later verified login', async t => {
+test('a signed-out CLI Web session stays a guest and receives a later verified login', async t => {
   const f = await fixture(t, { connection: null });
   assert.deepEqual(await f.auth(), []);
-  assert.equal(f.connects, 0); assert.deepEqual(f.commands, []);
+  assert.equal(f.connects, 1); assert.deepEqual(f.commands, []);
   f.change(first);
   await until(f.auth, items => items.at(-1)?.connection?.accessToken === first.accessToken);
 });
 
-for (const options of [{ restricted: [] }, { restricted: null }, { restricted: ['missing-entry'] }, { platform: false }]) {
-  test(`ordinary or unsupported local hosts do not receive an account: ${JSON.stringify(options)}`, async t => {
+test('restoring a saved Studio account does not block opening the CLI Web session', async t => {
+  let restored;
+  const pending = new Promise(resolve => { restored = resolve; });
+  const f = await fixture(t, { connection: null, restore: () => pending });
+  assert.deepEqual(await f.auth(), []);
+  restored(first);
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0].connection, first);
+  assert.equal(f.connects, 1); assert.deepEqual(f.commands, []);
+});
+
+for (const options of [{ platform: false }, { hosted: true }, { hosted: true, restricted: ['missing-entry'] }]) {
+  test(`offline or hosted-app runtimes do not inherit the Studio account: ${JSON.stringify(options)}`, async t => {
     const f = await fixture(t, options);
     f.change(second);
     assert.deepEqual(await f.auth(), []);
@@ -118,7 +146,23 @@ for (const options of [{ restricted: [] }, { restricted: null }, { restricted: [
   });
 }
 
-test('recovering the aggregate uses the current account for restricted configurations', async t => {
+test('an untrusted workspace cannot start a CLI Web session or restore an account', async t => {
+  const f = await fixture(t, { trusted: false, connection: null });
+  assert.equal(f.connects, 0);
+});
+
+test('a headless runtime cannot inherit the account through an embedded lease of the same project', async t => {
+  const f = await fixture(t, { embedded: false });
+  const embedded = await f.start(true);
+  await until(embedded.auth, items => items.length === 1);
+  assert.notEqual((await embedded.read()).pid, (await f.read()).pid);
+  f.change(second);
+  await until(embedded.auth, items => items.at(-1)?.connection?.accessToken === second.accessToken);
+  assert.deepEqual(await f.auth(), []);
+  assert.equal(f.connects, 0);
+});
+
+test('recovering the aggregate uses the current account', async t => {
   const f = await fixture(t);
   const initial = await until(f.read, value => value.messages.some(message => message.type === 'auth'));
   const exited = new Promise(resolve => f.session.onExit(resolve));

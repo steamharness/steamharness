@@ -69,7 +69,7 @@ export interface Launcher {
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
-  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, resourceProjects?: string[]): Promise<WebSession>;
+  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean }): Promise<WebSession>;
   startLegacyLocalFrame?(origin: URL): Promise<{ port: number; dispose(): void }>;
   cliEntry(projectDir: string): Promise<string>;
   dispose(): void;
