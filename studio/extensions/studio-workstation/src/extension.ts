@@ -171,7 +171,11 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   );
   const sidebar = new ProjectSidebar(context, launcher, output);
   account.setProjectSidebar(sidebar);
-  await Promise.all([activateInternalLayer(context, output, account, sidebar, launcher), recent.reconcile().then(rememberCurrentWorkspace)]);
+  await Promise.all([activateInternalLayer(context, output, account, sidebar, {
+    inspect: (paths, options) => launcher.inspect(paths, options),
+    start: (...args) => launcher.start(...args),
+    async avatar(uri) { return (await icons.resolveMany([uri]))[0]?.avatarUrl; },
+  }), recent.reconcile().then(rememberCurrentWorkspace)]);
   const workflows = await activateProject(context, launcher, output, account, icons, sidebar);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],

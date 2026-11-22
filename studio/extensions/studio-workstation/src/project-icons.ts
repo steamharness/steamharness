@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { readProjectDeclarationWithReader, selectProjectEntry } from '@steamharness/project-manifest';
 import { downloadedStudioProject, hasStudioDownloadRecord, parseStudioReleaseProject } from '../../../upstream/vscode/src/vs/platform/window/common/studioReleaseProject';
@@ -8,6 +7,13 @@ import type { Launcher } from './workflow-cli-types';
 
 interface Detection { type?: ProjectType; metadata?: RecentMetadata; checked: number; pending?: Promise<ProjectType | undefined> }
 const ignored = new Set(['node_modules', 'dist', 'out', 'build', 'vendor', 'upstream']);
+const botColors = ['#0f766e', '#be123c', '#166534', '#92400e', '#1d4ed8', '#6d28d9', '#155e75', '#9d174d'];
+
+function defaultBotCard(identity: string) {
+  let hash = 2166136261;
+  for (const char of identity) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return { icon: 'bot' as const, iconBackgroundColor: botColors[(hash >>> 0) % botColors.length] };
+}
 
 /** Reads declarations only. Recent folders must never supply executable inspection code. */
 export class ProjectIcons implements vscode.Disposable {
@@ -123,16 +129,20 @@ export class ProjectIcons implements vscode.Disposable {
       return distribution ? { ...fallback, distribution, projectId: String(pkg.id), version: String(pkg.version) } : fallback;
     }
     if (pkg.distribution === undefined) { distribution ??= 'source'; }
-    const projectType = selectProjectEntry(manifest).type;
+    const primary = selectProjectEntry(manifest);
+    const projectType = primary.type;
+    const identity = manifest.projectId || uri;
+    const avatarUrl = projectAvatarDataUrl(manifest.projectCard ?? (projectType === 'bot'
+      ? primary.projectCard ?? defaultBotCard(identity) : undefined), projectType);
     const cover = ['studio-cover.webp', 'studio-cover.png', 'studio-cover.jpg'].find(name => files.includes(name));
-    const artwork: LibraryArtwork = { entries: manifest.entries.slice(0, 3).map(e => projectAvatarDataUrl(e.projectCard, e.type)) };
+    const artwork: LibraryArtwork = { entries: manifest.entries.slice(0, 3).map(e => e === primary && projectType === 'bot'
+      ? avatarUrl : projectAvatarDataUrl(e.projectCard ?? (e.type === 'bot' ? defaultBotCard(`${identity}:${e.entryId}`) : undefined), e.type)) };
     if (cover) {
       const stat = await Promise.resolve(vscode.workspace.fs.stat(vscode.Uri.joinPath(root, cover))).catch(() => undefined);
       if (stat && stat.size > 0 && stat.size <= 2_000_000) artwork.cover = { name: cover, mtime: stat.mtime };
     }
     const entries = manifest.entries.map(({ entryId, name, type }) => ({ entryId, name, type, primary: entryId === manifest.defaultEntry }));
-    return { projectType, version: manifest.version, projectId: manifest.projectId, artwork, distribution, entries,
-      avatarUrl: projectAvatarDataUrl(readProjectCardMetadata(pkg, projectType), projectType) };
+    return { projectType, version: manifest.version, projectId: manifest.projectId, avatarUrl, artwork, distribution, entries };
   }
 
   dispose(): void {

@@ -102,6 +102,35 @@ test('local entries retain their icons without a release UUID', async t => {
   }
 });
 
+test('default Bot projects have stable colors and share their library avatar with the primary artwork', async t => {
+  const f = fixture(t);
+  const a = 'file:///first', copy = 'file:///copy', b = 'file:///second';
+  for (const root of [a, copy]) f.files.set(`${root}/steamharness.json`, manifest('bot'));
+  f.files.set(`${b}/steamharness.json`, manifest('bot', id.replace(/0$/, '1')));
+  const rows = new Map((await f.icons.resolveMany([a, copy, b])).map(row => [row.uri, row]));
+  assert.equal(rows.get(a).avatarUrl, rows.get(copy).avatarUrl);
+  assert.notEqual(rows.get(a).avatarUrl, rows.get(b).avatarUrl);
+  for (const row of rows.values()) assert.equal(row.artwork.entries[0], row.avatarUrl);
+});
+
+test('an aggregate uses its custom project card in the library, or the primary Bot card if not set', async t => {
+  const f = fixture(t);
+  const root = 'file:///aggregate';
+  const pkg = { ...declaration(), defaultEntry: 'agent' };
+  pkg.entries.push({ entryId: 'agent', root: 'agent' });
+  f.files.set(`${root}/agent/steamharness.json`, JSON.stringify({ type: 'bot', name: 'Agent', entry: 'index.ts',
+    projectCard: { icon: 'brain', iconBackgroundColor: '#321954', iconColor: '#f2e3ca' } }));
+  f.files.set(`${root}/steamharness.json`, JSON.stringify(pkg));
+  let [row] = await f.icons.resolveMany([root]);
+  assert.match(decodeURIComponent(row.avatarUrl), /fill="#321954".*stroke="#f2e3ca"/);
+  assert.equal(row.artwork.entries[1], row.avatarUrl);
+  f.files.set(`${root}/steamharness.json`, JSON.stringify({ ...pkg, projectCard: { icon: 'cpu', iconBackgroundColor: '#152035' } }));
+  f.icons.refresh();
+  [row] = await f.icons.resolveMany([root]);
+  assert.match(decodeURIComponent(row.avatarUrl), /fill="#152035"/);
+  assert.equal(row.artwork.entries[1], row.avatarUrl);
+});
+
 test('library format repairs an old download badge for locally created source without reclassifying installed artifacts', async t => {
   const root = 'file:///projects/source', entry = { id, uri:root, name:'Example' }, source = { ...declaration('bot'), release:{files:['data/example.json']} };
   const history = [{ uri:root, label:entry.name, kind:'folder', lastOpened:1, projectType:'bot', projectId:id, distribution:'download' }];

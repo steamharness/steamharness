@@ -49,7 +49,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
     'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts',
-    'src/vs/workbench/electron-browser/studioLaunchpad.ts'];
+    'src/vs/workbench/electron-browser/studioLaunchpad.ts',
+    'src/vs/workbench/electron-browser/studioLaunchpadProfile.ts', 'src/vs/workbench/electron-browser/media/studioLaunchpad.css'];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
     'src/vs/code/electron-main/app.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts',
     'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts',
