@@ -79,3 +79,15 @@ it('rejects a cancelled caller before creating a conversation', async () => {
   await expect(f.api.invoke('submit',{conversationId:'new',requestId:'r',text:'hello'},abort.signal)).rejects.toThrow('caller stopped');
   expect(f.controller.sessions.some(session=>session.id==='new')).toBe(false);f.controller.dispose();
 });
+
+it('withdraws just the named queued background request without stopping another active turn', async () => {
+  const f = fixture(), conversationId = randomUUID(), first = randomUUID(), queued = randomUUID();
+  await f.api.invoke('submit', { conversationId, requestId: first, text: 'running' });
+  await f.api.invoke('submit', { conversationId, requestId: queued, text: 'queued' });
+  const call = (action: string) => hostConversation(f.controller, f.api, f.runtime, f.project, { conversationId, requestId: queued, action });
+  expect(await call('turn')).toMatchObject({ status: 'queued' });
+  expect(await call('stop')).toMatchObject({ status: 'stopped' });
+  expect(await call('turn')).toMatchObject({ status: 'missing' });
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  f.running.get(first)!({ status: 'success' }); await f.controller.idle(); f.controller.dispose();
+});

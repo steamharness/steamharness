@@ -138,5 +138,9 @@ export async function hostConversation(
     await controller.stop(session);
     return { status: 'stopped' };
   }
+  if (action === 'stop' && queued) {
+    await controller.removeQueued(requestId, session);
+    return { status: 'stopped' };
+  }
   throw new Error('The background request has changed.');
 }

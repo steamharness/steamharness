@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
+import { HarnessError } from "../workflow/errors";
 import type { AgentSessionSnapshot } from "../agent/session-types";
 import { projectSessionEntries, projectSessionUsage } from "../agent/session";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "../agent/web-search";
@@ -34,6 +35,20 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("a parked tool publishes the committed text before the host answers the approval", async t => {
+  const f = session();
+  t.after(() => f.instance.close());
+  let calls = 0;
+  f.instance.state.tools = [{ name: "stamp", label: "Stamp", description: "Test", parameters: ai.Type.Object({}),
+    execute: async () => { calls++; return { content: [ai.fauxText("Stamped")], details: {} }; } }];
+  f.instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) });
+  f.faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("Checking"), ai.fauxToolCall("stamp", {})], { stopReason: "toolUse" })]);
+  f.instance.requestId = "check";
+  await f.instance.prompt("Stamp");
+  assert.equal(calls, 0);
+  assert.ok(f.snapshot().turns.find(turn => turn.requestId === "check")?.items.some(item => item.content === "Checking" && item.metadata?.status === "success"));
+});
 
 test("background results survive parent retry exhaustion and host reopen without replaying committed tools", async t => {
   const registry = createRegistry();

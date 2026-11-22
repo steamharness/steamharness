@@ -1727,6 +1727,33 @@ it('cancels stored work without restarting an owner with unavailable credentials
   expect(f.controller.current.messages[1].status).toBe('success');
 });
 
+it('retires a stored approval after its worker has exited without approving or losing history', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  const entry = f.controller.current, prior = structuredClone(entry.messages[1]);
+  entry.messages.push({ id: 'waiting', role: 'assistant', content: 'Checking', status: 'waiting_for_input',
+    pendingInput: { requestId: 'approval', nodeName: 'tool', title: 'Approve?', params: [], metadata: { type: 'tool-approval' } } });
+  await f.controller.stop();
+  expect(f.runtime.cancelConversation).toHaveBeenCalledWith(f.controller.project, entry.id);
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(entry.messages[1]).toEqual(prior);
+  expect(entry.messages.at(-1)).toMatchObject({ id: 'waiting', content: 'Checking', status: 'aborted' });
+  expect(entry.messages.at(-1)?.pendingInput).toBeUndefined();
+  expect(f.save).toHaveBeenCalled();
+});
+
+it('does not recover a parked tool just because the durable snapshot still has a placed turn', async () => {
+  const f = fixture(); await f.start('placed');
+  const pending = { requestId: 'approval', nodeName: 'tool', title: 'Approve?', params: [], metadata: { type: 'tool-approval' } };
+  f.runs[0].finish({ status: 'waiting_for_input', pendingUserInput: pending }); await f.controller.idle();
+  const entry = f.controller.current, answer = entry.messages[1];
+  f.controller.recover(); f.controller.recover();
+  expect(f.runtime.run).toHaveBeenCalledTimes(1);
+  expect(answer.pendingInput?.requestId).toBe('approval');
+  await f.controller.resume(answer.id!, 'approval', { approved: true });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  await f.finish();
+});
+
 it('settles a stopped follow-up when the owner exits before its final snapshot', async () => {
   const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
   owner.agentInputs = { next: { id: 'next', text: 'Active follow-up', params: { model: 'one' }, attachments: [], createdAt: 1 } };

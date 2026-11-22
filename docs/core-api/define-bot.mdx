@@ -73,6 +73,8 @@ export default executor;
 
 工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
 
+在 Studio 或 CLI Web 中，Bot 等待工具审批时，你可以先读它在调用工具前写出的文字。此时选择**停止**会取消这次审批。工具不会执行，之前的消息仍留在同一对话里。
+
 ## 项目记忆
 
 Agent Bot 默认开启项目记忆，同一项目、同一 Bot 入口的会话共享记忆。不同项目和不同入口分别保存；每条记忆再用 `category` 和 `key` 定位，适合把项目事实、决策和操作流程分开存储。

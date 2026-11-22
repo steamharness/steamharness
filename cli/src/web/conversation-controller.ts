@@ -161,6 +161,8 @@ export class ConversationController {
         if (!this.options.canRun || this.options.canRun(entry)) void this.stop(entry).catch(error => this.options.log(String(error)));
         continue;
       }
+      // The durable tool is still present while parked. Only an explicit answer may resume it.
+      if (entry.messages.some(message => message.pendingInput && !message.submittingInput)) continue;
       const answer = entry.messages.find(message => message.role === 'assistant' && message.status === 'running' && message.recovering && !message.cancelRequested);
       if (!answer) {
         const anchor = this.agentAnchor(entry);
@@ -1143,6 +1145,13 @@ export class ConversationController {
       // Cancelling stored work must remain possible after credentials expire;
       // it does not require restarting the model that owned the last turn.
       await this.runtime.cancelConversation(this.project, entry.id);
+      // A confirmation checkpoint can outlive its worker. No callback remains to retire it after cancel.
+      for (const session of stoppedSessions) for (const answer of session.messages) {
+        if (!answer.pendingInput && !answer.submittingInput) continue;
+        delete answer.pendingInput; delete answer.submittingInput; delete answer.cancelRequested;
+        answer.status = 'aborted'; answer.error = t('Stopped'); answer.recovering = false;
+        this.finishDuration(answer);
+      }
       this.settleStoppedAgent(entry);
       this.changed(); await this.persist(); return;
     }

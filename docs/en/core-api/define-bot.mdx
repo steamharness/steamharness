@@ -73,6 +73,8 @@ Both engines use the same [model and credential configuration](/en/concepts/proj
 
 Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
 
+While an Agent Bot waits for tool approval in Studio or CLI Web, you can read the text it wrote before requesting the tool. Choose **Stop** to cancel the pending approval. The tool does not run, and earlier messages stay in the conversation.
+
 ## Project memory
 
 Agent Bots enable project memory by default. Conversations in the same project and Bot entry share memories. Other projects and entries have separate storage. Each entry has a `category` and `key`, so project facts, decisions and procedures can be kept apart.

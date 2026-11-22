@@ -792,6 +792,8 @@ export class DurableAgent {
         ...(request === undefined ? {} : { request }) });
     }, context);
     if (decision?.pause !== undefined) {
+      // Parking closes the session's debounced observer. Publish the text and tool intent already committed.
+      await this.session?.emit();
       this.park?.();
       await awaitWithContext(new Promise<never>(() => undefined), callContext);
     }
