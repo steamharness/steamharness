@@ -67,7 +67,26 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await row('Project 8').press('Enter'); await page.evaluate(()=>window.editProject(23,true)); await detail.getByText(t('Unsaved','未保存')).waitFor();
   await page.evaluate(()=>window.editProject(23,false)); await detail.getByText(t('Open','已打开'),{exact:true}).waitFor();
   assert.equal(await openCount(),before,'browsing the library must not open or focus a project');
-  await screenshot('project-details');
+  if (enhanced) await productAction.waitFor();
+  const viewport = page.viewportSize();
+  for (const width of [1440, 360]) {
+    await page.setViewportSize({ ...viewport, width });
+    const layout = await detail.evaluate(article => {
+      const frame = article.parentElement.getBoundingClientRect(), content = article.getBoundingClientRect();
+      const actions = [...article.querySelectorAll('.lp-detail-actions > button')].map(button => button.getBoundingClientRect());
+      return { gutters: [content.left - frame.left, frame.right - content.right], heights: actions.map(rect => rect.height),
+        menuWidth: actions.at(-1).width, sameRow: actions.every(rect => rect.top === actions[0].top),
+        fit: actions.every(rect => rect.left >= content.left - 1 && rect.right <= content.right + 1) };
+    });
+    const [left, right] = layout.gutters;
+    assert.ok(left >= -1 && right >= -1 && Math.abs(left - right) <= 1, `Details must be centered at ${width}px: ${left}, ${right}`);
+    assert.ok(layout.fit && layout.heights.every(height => height === layout.menuWidth), `Header actions must fit and match the square menu height at ${width}px: ${JSON.stringify(layout)}`);
+    if (width === 1440) {
+      assert.ok(left > 0 && layout.sameRow, 'Wide details must have even gutters and a single row of actions');
+      await screenshot('project-details');
+    }
+  }
+  await page.setViewportSize(viewport);
   const request = () => page.evaluate(()=>window.openRequests.at(-1));
   const expectEntry = async (path, studioProjectEntry) => assert.deepEqual(await request(), {openables:[{kind:'folderUri',path}],forceNewWindow:true,studioProjectEntry});
   await detail.getByRole('button',{name:t('Switch to window','切换到项目窗口')}).click(); await expectEntry('/projects/Project 8',{});
