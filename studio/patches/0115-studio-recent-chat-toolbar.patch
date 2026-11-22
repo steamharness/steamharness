@@ -1,0 +1,271 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 5ed54389e9c..2f2c0eb71a3 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -174,6 +174,10 @@
+ .lp-profile-body { max-width: 960px; margin-inline: auto; }
+ .lp-profile-toolbar,.lp-profile-title,.lp-profile-status,.lp-social-actions { display: flex; align-items: center; gap: 8px; }
+ .lp-profile-toolbar { min-height: 45px; padding-bottom: 12px; border-bottom: 1px solid var(--lp-line); justify-content: space-between; flex-wrap: wrap; gap: 10px; }
++.lp-recent-tools { display: flex; flex: none; align-items: center; gap: 4px; margin-inline-start: auto; }
++.studio-launchpad .lp-recent-tools > button { width: 28px; height: 28px; padding: 0; color: var(--lp-muted); }
++.studio-launchpad .lp-recent-tools [aria-expanded=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.lp-recent-search { width: min(100%,360px); margin-block: 10px 4px; margin-inline-start: auto; color: var(--lp-muted); }
+ .lp-profile-toolbar .lp-search-field { width: 230px; min-width: 0; color: var(--lp-muted); }
+ .lp-profile-toolbar > .lp-social-actions { flex-wrap: nowrap; min-width: 0; max-width: 100%; gap: 8px; }
+ .lp-profile-toolbar > .lp-social-actions > button { flex: none; min-height: 32px; white-space: nowrap; }
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 025bb3216c8..16047d75859 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -22,7 +22,7 @@ export class StudioChatWindow extends Disposable {
+ 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
+ 
+ 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
+-		private readonly openConversation: (conversation?: string, user?: string) => void) { super(); }
++		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
+ 
+ 	prepare(key: string, app: LaunchpadApp): boolean {
+ 		if (this.prepared?.key !== key) { this.clear(this.prepared?.key); this.prepared = { key, app }; }
+@@ -64,8 +64,10 @@ export class StudioChatWindow extends Disposable {
+ 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
+ 				else if (message?.type === 'studio-launchpad-close') { close(); }
+ 				else if (message?.type === 'studio-launchpad-open-conversation') {
+-					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
+-					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
++					const { conversation, user, closeSource } = message;
++					if (typeof conversation === 'string') {
++						void this.openConversation(conversation).then(opened => { if (opened && closeSource === true && conversation !== view.id) { close(); } });
++					} else if (typeof user === 'string') { void this.openConversation(undefined, user); }
+ 				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
+ 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
+ 				}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 0a2a2bfe0a9..a0ca2e7b2da 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -38,7 +38,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
+ import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
+-import { LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
++import { InboxAction, LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { StoreListingDetails } from './studioLaunchpadCards.js';
+ import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+@@ -92,7 +92,7 @@ export class StudioLaunchpad extends Disposable {
+ 	) {
+ 		super();
+ 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
+-			(conversation, user) => { void this.openInbox(conversation, user).catch(error => notifications.error(error)); }));
++			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+ 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+ 		if (Array.isArray(saved)) {
+@@ -154,6 +154,7 @@ export class StudioLaunchpad extends Disposable {
+ 			},
+ 			chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
+ 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
++			createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
+ 			readNotice: id => this.notices.read(id),
+ 			readAllNotices: async () => {
+ 				this.notices.readAll();
+@@ -225,7 +226,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
+ 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
+ 			if (scopeChanged) {
+-				this.appRequests.clear(); this.view.setAddContactBusy(false);
++				this.appRequests.clear(); this.view.setInboxActionBusy('add-contact', false); this.view.setInboxActionBusy('create-group', false);
+ 				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
+ 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
+ 				this.libraryCategory = undefined;
+@@ -376,14 +377,17 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private async openInbox(conversation?: string, user?: string, action?: 'add-contact', title?: string): Promise<void> {
++	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<boolean> {
+ 		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
+-		if (!target || this.appRequests.has(target)) { return; }
++		if (!target || this.appRequests.has(target)) { return false; }
+ 		const id = generateUuid();
+ 		this.appRequests.set(target, id);
+ 		this.view.closePicker();
+ 		const zh = this.language.startsWith('zh');
+-		if (action === 'add-contact') { this.view.setAddContactBusy(true); title = zh ? '添加好友' : 'Add friend'; }
++		if (action) {
++			this.view.setInboxActionBusy(action, true);
++			title = action === 'add-contact' ? (zh ? '添加好友' : 'Add friend') : (zh ? '发起群聊' : 'Start a group chat');
++		}
+ 		try {
+ 			let reason: string | undefined; let opened = false;
+ 			try {
+@@ -394,10 +398,11 @@ export class StudioLaunchpad extends Disposable {
+ 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
+ 					buttons: [zh ? '确定' : 'OK'], noLink: true });
+ 			}
++			return opened && id === this.appRequests.get(target);
+ 		} finally {
+ 			if (id === this.appRequests.get(target)) {
+ 				this.appRequests.delete(target);
+-				if (action === 'add-contact') { this.view.setAddContactBusy(false); }
++				if (action) { this.view.setInboxActionBusy(action, false); }
+ 			}
+ 		}
+ 	}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index ed89640d2d8..f0334b0e481 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -25,9 +25,10 @@ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavor
+ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+ export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
++export type InboxAction = 'add-contact' | 'create-group';
+ export interface ProfileActions {
+ 	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
+-	addContact(): void;
++	addContact(): void; createGroup(): void;
+ 	contextMenu: IContextMenuService;
+ 	confirmRemoveFriend(name: string): Promise<boolean>;
+ 	social(query: string, directory: boolean): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+@@ -79,6 +80,11 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly count = element('span', 'lp-profile-count');
+ 	private readonly rows = element('ul', 'lp-profile-rows');
+ 	private readonly empty = element('div', 'lp-profile-empty');
++	private readonly recentTools = element('div', 'lp-recent-tools');
++	private readonly recentSearch = element('label', 'lp-search-field lp-recent-search');
++	private readonly recentFilter = element('input', 'lp-query');
++	private readonly searchChats: HTMLButtonElement;
++	private readonly createGroup: HTMLButtonElement;
+ 	private readonly search = element('label', 'lp-search-field');
+ 	private readonly filter = element('input', 'lp-query');
+ 	private readonly peopleTools = element('div', 'lp-social-actions');
+@@ -86,6 +92,9 @@ export class LaunchpadProfile extends Disposable {
+ 	private readonly readAll: HTMLButtonElement;
+ 	private readonly status = element('div', 'lp-message lp-profile-status');
+ 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
++	private readonly filterChats = this._register(new RunOnceScheduler(() => {
++		if (this.active && this.section === 'activity') { this.renderRows(); this.content.scrollTop = 0; }
++	}, 120));
+ 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
+ 	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number; directory: boolean }>();
+ 	private generation = 0;
+@@ -108,6 +117,23 @@ export class LaunchpadProfile extends Disposable {
+ 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
+ 		this.filter.placeholder = t('Search friends and groups', '搜索好友和群聊'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+ 		this.search.append(icon('search'), this.filter);
++		const searchLabel = t('Search recent chats', '搜索最近会话');
++		this.recentSearch.id = 'lp-recent-search'; this.recentSearch.hidden = true;
++		this.recentFilter.type = 'search'; this.recentFilter.maxLength = 100;
++		this.recentFilter.placeholder = searchLabel; this.recentFilter.setAttribute('aria-label', searchLabel);
++		this.recentSearch.append(icon('search'), this.recentFilter);
++		const recentTool = (label: string, glyph: string, action: () => void) => {
++			const b = button('', glyph, action); b.title = label; b.setAttribute('aria-label', label); return b;
++		};
++		this.searchChats = recentTool(searchLabel, 'search', () => this.toggleRecentSearch(this.recentSearch.hidden === true));
++		this.searchChats.setAttribute('aria-controls', this.recentSearch.id); this.searchChats.setAttribute('aria-expanded', 'false');
++		this.createGroup = recentTool(t('Start a group chat', '发起群聊'), 'new-session', this.actions.createGroup);
++		this.recentTools.hidden = true; this.recentTools.append(this.searchChats, this.createGroup);
++		this.recentFilter.addEventListener('input', e => { if (!(e as InputEvent).isComposing) { this.filterChats.schedule(); } });
++		this.recentFilter.addEventListener('compositionend', () => this.filterChats.schedule());
++		this.recentFilter.addEventListener('keydown', e => {
++			if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); this.toggleRecentSearch(false); }
++		});
+ 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
+ 		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
+ 		this.readAll.hidden = true;
+@@ -137,14 +163,24 @@ export class LaunchpadProfile extends Disposable {
+ 			this.select(id); this.tabs.get(id)!.focus();
+ 		});
+ 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
+-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools, this.readAll);
+-		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
++		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.recentTools, this.peopleTools, this.readAll);
++		rail.append(this.header, this.nav); body.append(toolbar, this.recentSearch, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
+ 	}
+ 
+-	setInboxBusy(busy: boolean): void { this.addContact.disabled = busy; }
++	setInboxActionBusy(action: InboxAction, busy: boolean): void { (action === 'add-contact' ? this.addContact : this.createGroup).disabled = busy; }
++
++	private toggleRecentSearch(open: boolean, focus = true): void {
++		this.recentSearch.hidden = !open; this.searchChats.setAttribute('aria-expanded', String(open));
++		if (!open) { this.filterChats.cancel(); this.recentFilter.value = ''; }
++		if (focus) {
++			(open ? this.recentFilter : this.searchChats).focus();
++			if (!open) { this.renderRows(); }
++		}
++	}
+ 
+ 	select(section: Section): void {
+ 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
++		if (this.section === 'activity') { this.toggleRecentSearch(false, false); }
+ 		this.debounce.cancel(); this.section = section; this.failure = undefined;
+ 		if (section === 'activity' || this.pending?.query !== this.query || this.pending.directory !== (section === 'people')) { this.pending = undefined; }
+ 		this.renderSection(); this.content.scrollTop = 0;
+@@ -158,7 +194,7 @@ export class LaunchpadProfile extends Disposable {
+ 			(notificationUnread !== this.notificationUnread || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
+ 		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
+ 		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices; this.notificationUnread = notificationUnread;
+-		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
++		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; this.toggleRecentSearch(false, false); }
+ 		if (identityChanged) { this.renderAccount(); }
+ 		if (changed || (active && repaint)) { this.renderSection(); }
+ 		if (active && (enter || changed)) { this.refresh(); }
+@@ -343,11 +379,13 @@ export class LaunchpadProfile extends Disposable {
+ 			if (selected) { this.heading.textContent = b.title; this.content.setAttribute('aria-labelledby', b.id); }
+ 		}
+ 		this.peopleTools.hidden = this.section !== 'people' || !this.platform || !this.account?.signedIn;
++		this.recentTools.hidden = this.section !== 'activity' || !this.platform || !this.account?.signedIn;
+ 		this.renderRows();
+ 	}
+ 
+ 	private renderRows(): void {
+ 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
++		const recentQuery = this.section === 'activity' ? this.recentFilter.value.trim().toLocaleLowerCase() : '';
+ 		const query = this.query, data = this.cache.get(query)?.snapshot;
+ 		const directory = data?.directory ?? this.cache.get('')?.snapshot.directory;
+ 		const directoryUnavailable = this.section === 'people' && data?.directoryUnavailable;
+@@ -374,6 +412,7 @@ export class LaunchpadProfile extends Disposable {
+ 		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
+ 		if (this.section === 'activity') {
+ 			for (const c of this.inbox?.items ?? []) {
++				if (recentQuery && !c.name.toLocaleLowerCase().includes(recentQuery) && !c.preview.toLocaleLowerCase().includes(recentQuery)) { continue; }
+ 				items.push(this.entries(c, c.preview, c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
+ 			}
+ 		} else if (this.section === 'people') {
+@@ -416,10 +455,11 @@ export class LaunchpadProfile extends Disposable {
+ 		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure || !!directoryUnavailable));
+ 		if (!this.empty.hidden) {
+ 			const guest = this.platform && !this.account?.signedIn;
++			const noRecentMatches = recentQuery && !!this.inbox?.items.length;
+ 			const label = this.section === 'people' ? guest ? t('Sign in to see your friends and groups.', '登录后可查看好友和群聊。') : query ? t('No matching friends or groups.', '没有匹配的好友或群聊。') : t('No friends or groups yet.', '暂无好友或群聊。')
+ 				: this.section === 'favorites' ? guest ? t('Sign in to see your favorites.', '登录后可查看收藏。') : t('No favorites yet.', '暂无收藏。')
+-					: this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
+-			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? 'comment-discussion' : 'bell'), element('p', '', label));
++					: this.section === 'activity' ? noRecentMatches ? t('No matching chats.', '没有匹配的会话。') : this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
++			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? noRecentMatches ? 'search' : 'comment-discussion' : 'bell'), element('p', '', label));
+ 		}
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 9d3624cc498..4f1718c88fc 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -8,7 +8,7 @@ import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
+ import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
+ import { LaunchpadLibrary, LibraryActions, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
+-import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
++import { avatar, InboxAction, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
+ import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
+ 
+ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
+@@ -121,7 +121,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+ 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
+ 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+-	setAddContactBusy(busy: boolean): void { this.profile.setInboxBusy(busy); }
++	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
+ 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
+ 	refreshSocial(): void { void this.profile.refresh(); }
