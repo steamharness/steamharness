@@ -17,7 +17,7 @@ test('the workspace-mode series and the current launchpad replay twice without c
   const fromFork = args => execFileSync('git', args, { cwd: upstream.directory, stdio: ['ignore', 'pipe', 'pipe'] });
   let historical = true;
   try { fromFork(['cat-file', '-e', `${original}^{tree}`]); } catch { historical = false; }
-  const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch', '0097-studio-launchpad-friends-profile.patch', '0098-studio-launchpad-command-center.patch', '0099-studio-store-listing-details.patch', '0100-studio-launchpad-refresh-social.patch', '0101-studio-launchpad-icon-contrast.patch', '0102-studio-launchpad-request-avatars.patch', '0103-studio-launchpad-back-icon-alignment.patch'];
+  const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch', '0097-studio-launchpad-friends-profile.patch', '0098-studio-launchpad-command-center.patch', '0099-studio-store-listing-details.patch', '0100-studio-launchpad-refresh-social.patch', '0101-studio-launchpad-icon-contrast.patch', '0102-studio-launchpad-request-avatars.patch', '0103-studio-launchpad-back-icon-alignment.patch', '0106-studio-launchpad-hide-server-status.patch'];
   launchpad.push('0104-studio-library-product-actions.patch');
   for (const [group, series, commit] of [['mode-files', names, undefined], ...(historical ? [['modes', names, original]] : []), ['launchpad', launchpad, upstream.commit]]) {
     const root = path.join(fixture, group), kernel = path.join(root, 'vscode'), patches = [], paths = new Set();

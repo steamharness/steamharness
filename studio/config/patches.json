@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "5a98d92766a24c94e4bf0ed6d73ace9e1e78492f",
+  "commit": "467974e05ec12b9ee2a0413937916eaa55c84775",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -100,6 +100,7 @@
     "0100-studio-launchpad-refresh-social.patch": "21d21fa8644dd89390a836178a1e61921932e03e4c6477abe15af2308487e817",
     "0101-studio-launchpad-icon-contrast.patch": "01a3ad4b33f5191fce219333b1fac0977fa246ee7a5097dff34c5ec3050acc38",
     "0102-studio-launchpad-request-avatars.patch": "6899c55d14a276d12ace1e874f9ee14b5ca7a1e7306ec03d29145e4f16fb3b8b",
-    "0103-studio-launchpad-back-icon-alignment.patch": "584fa248399725c2370446fb221ea1aa87f58d25ddd40e557854dc5e8f27a3bd"
+    "0103-studio-launchpad-back-icon-alignment.patch": "584fa248399725c2370446fb221ea1aa87f58d25ddd40e557854dc5e8f27a3bd",
+    "0106-studio-launchpad-hide-server-status.patch": "3490e7f7ae533a1089090c97664f8f027dd92340d25aca207e35746b0ab65344"
   }
 }
