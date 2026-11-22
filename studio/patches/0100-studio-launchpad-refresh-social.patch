@@ -1,0 +1,44 @@
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index d9419423097..1623a2a18f8 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -177,7 +177,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.requestId === requestId && this.chat.show(key, conversation)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
+-		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => { this.refreshNotices.schedule(); this.view.refreshSocial(); }));
++		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+ 			++this.inboxRevision;
+ 			if (reset && !this.account?.hasAccount) {
+@@ -229,13 +229,13 @@ export class StudioLaunchpad extends Disposable {
+ 		ipcRenderer.on('vscode:studioProjectWindowsChanged', changed);
+ 		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioProjectWindowsChanged', changed)));
+ 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
+-		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); this.refreshNotices.schedule(); }));
+-		const poll = mainWindow.setInterval(() => { if (this.account?.signedIn && !document.hidden && !this.view.element.hidden) { this.refreshNotices.schedule(); this.view.refreshSocial(); } }, 60_000);
++		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); }));
++		const poll = mainWindow.setInterval(() => this.refreshSocialState(), 60_000);
+ 		this._register(toDisposable(() => { ++this.noticeRevision; mainWindow.clearInterval(poll); }));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+ 			if (document.hidden) { clearProjectDrop(); }
+ 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+-			if (!document.hidden) { changed(); this.refreshInbox.schedule(); }
++			if (!document.hidden) { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); }
+ 		}));
+ 		// The resident window never becomes an editor, including while an app is opening or closing.
+ 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
+@@ -264,6 +264,13 @@ export class StudioLaunchpad extends Disposable {
+ 		if (fromSettings) { this.view.focusAccount(); }
+ 		else { this.view.element.focus({ preventScroll: true }); }
+ 		this.refreshInbox.schedule();
++		this.refreshSocialState();
++	}
++
++	private refreshSocialState(): void {
++		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
++		this.refreshNotices.schedule();
++		this.view.refreshSocial();
+ 	}
+ 
+ 	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {

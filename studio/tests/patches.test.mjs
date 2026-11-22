@@ -48,7 +48,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   const files = ['src/vs/workbench/browser/parts/studioMode.ts', 'src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts', 'src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css',
     'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
-    'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts'];
+    'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts',
+    'src/vs/workbench/electron-browser/studioLaunchpad.ts'];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
     'src/vs/code/electron-main/app.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts',
     'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts',
@@ -58,6 +59,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   await applyPatches(ROOT, upstream);
   assert.doesNotMatch(await fs.readFile(path.join(upstream, files[0]), 'utf8'), /\{ id: '(?:databases|kv|knowledge)'/u);
   assert.doesNotMatch(await fs.readFile(path.join(upstream, 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts'), 'utf8'), /studio\.databaseData/u);
+  assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioLaunchpad.ts'), 'utf8'), /private refreshSocialState\(/u);
   const before = await Promise.all(files.map(file => fs.readFile(path.join(upstream, file))));
   await applyPatches(ROOT, upstream);
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(upstream, file)))), before);
