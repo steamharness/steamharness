@@ -148,7 +148,7 @@ export class AccountController implements vscode.Disposable {
       }),
       vscode.commands.registerCommand('studio.refreshAccount', () => this.connect()),
       vscode.commands.registerCommand('studio.validateLogin', () => this.connect()),
-      vscode.commands.registerCommand('studio.logout', async () => { await this.connect(); this.cancelLogin(); return this.account.logout(); }),
+      vscode.commands.registerCommand('studio.logout', async () => { await this.connect(); this.cancelLogin(); this.expirePlatformConnection(); return this.account.logout(); }),
       vscode.commands.registerCommand('studio.disconnectSystemAi', () => this.disconnectAi()),
       ] : []),
       vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState(), platform, digest)),
@@ -310,14 +310,12 @@ export class AccountController implements vscode.Disposable {
   }
   private syncPlatformConnection(): void {
     const connection = this.getAiConnection();
-    if (!connection) {
-      this.userModels.setConnection(undefined);
-      this.sections.setConnection(undefined);
-      return;
-    }
     this.userModels.setConnection(connection);
-    // Contributed account pages remain available to the project account even if System AI is disconnected.
-    this.sections.setConnection(this.account.getConnection());
+    this.sections.setConnection(connection);
+  }
+  private expirePlatformConnection(): void {
+    this.userModels.setConnection(undefined);
+    this.sections.setConnection(undefined);
   }
   async openServerPage(path: string): Promise<void> {
     const connection = await this.connect();
@@ -328,7 +326,7 @@ export class AccountController implements vscode.Disposable {
       if (current?.serverUrl !== connection.serverUrl || current.accessToken !== connection.accessToken) { return; }
       await vscode.commands.executeCommand('simpleBrowser.show', url);
     } catch (error) {
-      if (error instanceof AuthError && error.status === 401) { await this.account.invalidate(connection); }
+    if (error instanceof AuthError && error.status === 401) { this.expirePlatformConnection(); await this.account.invalidate(connection); }
       throw error;
     }
   }
@@ -338,7 +336,7 @@ export class AccountController implements vscode.Disposable {
     if (this.panel?.visible) { void this.sections.refresh(); }
     return { dispose: () => { disposable.dispose(); this.publishSettings(); } };
   }
-  invalidate(connection: Connection): Promise<void> { return this.account.invalidate(connection); }
+  invalidate(connection: Connection): Promise<void> { this.expirePlatformConnection(); return this.account.invalidate(connection); }
   async verifyConnection(connection: Connection): Promise<void> {
     const current = this.account.getConnection();
     if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) { await this.account.verify(); }
@@ -632,7 +630,7 @@ export class AccountController implements vscode.Disposable {
       if (exclusive) { busy = true; }
       try {
         if (message.type === 'verify') { await this.connect(); }
-        else if (message.type === 'logout') { await this.account.logout(); }
+        else if (message.type === 'logout') { this.expirePlatformConnection(); await this.account.logout(); }
         else if (message.type === 'refresh-sections') { await this.sections.refresh(true); }
         else if (message.type === 'section-action' && typeof message.providerId === 'string' && typeof message.action === 'string') {
           try { await this.sections.runAction(message.providerId, message.action); }

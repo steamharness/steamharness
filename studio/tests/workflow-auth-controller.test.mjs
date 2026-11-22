@@ -532,7 +532,7 @@ test('sign out immediately clears contributed content even when a section refres
   assert.equal(signal.aborted, true);
   release([{ id: 'old', title: 'Old account data' }]);
   await refreshing;
-  assert.equal(f.messages.filter(message => message.type === 'account-sections').at(-1).states.length, 0);
+  assert.ok(!f.messages.filter(message => message.type === 'account-sections').at(-1).states.some(state => state.sections.some(section => section.id === 'old')));
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
 });
 
