@@ -15,7 +15,11 @@ export const openHostedSidebar: OpenHostedSidebar = async (project, binding, sig
   if (!await assets.asset(new URL(assets.url, 'http://127.0.0.1'))) throw new Error('Packaged Kanban entry could not be read.');
   signal.throwIfAborted();
   const validated = parseWebAppBindings({ [registration.entryId]: binding })[registration.entryId];
-  const preview = new WebAppPreview(() => ({ nonce: assets.nonce, artifact, asset: url => assets.asset(url), hostNotifications: project.hostNotifications }), validated);
+  const preview = new WebAppPreview(() => ({ nonce: assets.nonce, artifact, asset: url => assets.asset(url), hostNotifications: project.hostNotifications }), {
+    ...validated,
+    // Keep the proxy target fixed, but give each new window the current host session.
+    get bootstrap() { return binding.bootstrap ?? null; },
+  });
   try {
     await preview.start();
     signal.throwIfAborted();
