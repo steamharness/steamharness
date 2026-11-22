@@ -40,8 +40,17 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   const remove = button(alice, 'Remove friend', '移除好友'); await remove.click();
   await button(page.locator('.native-message'), 'Cancel', '取消').click(); assert.deepEqual(await actions(), []);
   await notices.click();
+  const dana = rows.filter({ hasText: 'Dana' }).locator('.lp-avatar');
+  await dana.locator('img').evaluate(img => img.decode());
+  await dana.locator(':scope > span[hidden]').waitFor({ state: 'attached' });
+  assert.equal(await rows.filter({ hasText: 'Erin' }).locator('.lp-avatar').textContent(), 'E');
+  const oldRequest = rows.filter({ hasText: 'Old request' });
+  await oldRequest.locator('.lp-avatar img').waitFor({ state: 'detached' });
+  assert.equal(await oldRequest.locator('.lp-avatar').textContent(), 'O');
+  await rows.filter({ hasText: 'Ordinary Studio notice' }).locator('.codicon-mail').waitFor();
+  await screenshot('profile-notification-avatars');
   const accept = button(rows.filter({ hasText: 'Dana' }), 'Accept', '接受'), decline = button(rows.filter({ hasText: 'Erin' }), 'Decline', '拒绝');
-  assert.equal(await button(rows.filter({ hasText: 'Old request' }), 'Decline', '拒绝').count(), 0);
+  assert.equal(await button(oldRequest, 'Decline', '拒绝').count(), 0);
   await accept.click(); await accept.waitFor({ state: 'detached' });
   await decline.click(); await decline.waitFor({ state: 'detached' });
   assert.deepEqual(await actions(), [{ action: 'accept-invite', id: 'first' }, { action: 'decline-invite', id: 'second' }]);

@@ -1,0 +1,47 @@
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index cab7d4cce7513b1d7ced8b7b2e92ba54bb6a973b..6719d02ad9395fbf237b96b0010620a3ae3b22c1 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -13,7 +13,7 @@ export interface LaunchpadAccount { name: string; email?: string | null; avatarU
+ export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
+ export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
+ export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+-export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean }
++export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string }
+ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
+ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+@@ -23,10 +23,16 @@ export interface ProfileActions {
+ 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+ }
+ export function avatar(name: string, src?: string): HTMLElement {
+-	const mark = element('span', 'lp-avatar', Array.from(name)[0] ?? '');
++	const mark = element('span', 'lp-avatar');
++	const fallback = name ? element('span', '', Array.from(name)[0]) : icon('account');
++	mark.append(fallback);
+ 	if (src && /^(?:https?:\/\/|data:image\/)/i.test(src)) {
+-		const img = picture(src); img.addEventListener('error', () => img.remove(), { once: true }); mark.append(img);
+-	} else if (!name) { mark.append(icon('account')); }
++		const img = picture(src);
++		img.addEventListener('load', () => { fallback.hidden = true; }, { once: true });
++		img.addEventListener('error', () => { img.remove(); }, { once: true });
++		fallback.hidden = img.complete && img.naturalWidth > 0;
++		mark.append(img);
++	}
+ 	return mark;
+ }
+ 
+@@ -226,9 +232,11 @@ export class LaunchpadProfile extends Disposable {
+ 					controls.push(change(t('Accept', '接受'), 'check', { action: 'accept-invite', id: n.inviteId }), change(t('Decline', '拒绝'), 'close', { action: 'decline-invite', id: n.inviteId }));
+ 				}
+ 				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
+-				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : n.id.startsWith('request:') ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
++				const isRequest = n.id.startsWith('request:');
++				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : isRequest ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
+ 				const detail = n.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : n.source === 'im' ? 'IM' : 'Studio';
+-				const item = row(title, detail, icon(n.read ? 'mail-read' : 'mail'), ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
++				const mark = isRequest ? avatar(n.title, n.avatarUrl) : icon(n.read ? 'mail-read' : 'mail');
++				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
+ 			}
+ 		}
+ 		this.rows.replaceChildren(...items);

@@ -68,8 +68,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{title:'IM',port:4321,html:hostedSidebarHtml('en','IM',{url:'http://127.0.0.1:4321/app',nonce:'fixture',microphone:false},true)});
   const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
     {id:'dana',name:'Dana',relation:'incoming'},{id:'erin',name:'Erin',relation:'incoming'},{id:'sent',name:'Outgoing',relation:'outgoing'},{id:'removed',name:'Former friend',relation:'removed'}];
-  const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true},
-    {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},{id:'request:old',title:'Old request',source:'studio',read:true}];
+  const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true,avatarUrl:chatAvatar},
+    {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},
+    {id:'request:old',title:'Old request',source:'studio',read:true,avatarUrl:'data:image/png;base64,bm90IGFuIGltYWdl'},
+    {id:'ordinary',title:'Ordinary Studio notice',source:'studio',read:false}];
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.internalGetAccountMenuState') return account;
