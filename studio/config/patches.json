@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "eaa6c7b0374920c8715ef2bc4a9486d93dd523c4",
+  "commit": "fc0969cf46192c558d6e534109795c758df6ccd0",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -107,6 +107,7 @@
     "0110-studio-shared-project-details.patch": "5240f1ef05d71aeab4e2892a768142362b7424a1bde24923588f420845bfde57",
     "0111-studio-desktop-notifications.patch": "a177fcab9db30a87b6ac1562350cc9a4bd9744baa8b43c930bcb95eff1960a3c",
     "0112-studio-direct-chat-windows.patch": "29f9332b135b982866046610862a1caf81a360d8848702bcd72c16e5015b003f",
-    "0113-studio-project-details-layout.patch": "2090728fe1f189ef417aee1a9e3392e14e5b055eb9161fd04b4ed215ca3345e1"
+    "0113-studio-project-details-layout.patch": "2090728fe1f189ef417aee1a9e3392e14e5b055eb9161fd04b4ed215ca3345e1",
+    "0114-studio-add-friend-toolbar.patch": "fc65678f1f3142119478b0aba1cd739feeb28929655c7d8fa4fc1e90e3ff865b"
   }
 }

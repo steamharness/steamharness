@@ -1,0 +1,22 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 353264499772e4043ddbc69ccee4326e530d2223..5ed54389e9c71abb82043c66f1fa2ff17d0eaf60 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -174,7 +174,9 @@
+ .lp-profile-body { max-width: 960px; margin-inline: auto; }
+ .lp-profile-toolbar,.lp-profile-title,.lp-profile-status,.lp-social-actions { display: flex; align-items: center; gap: 8px; }
+ .lp-profile-toolbar { min-height: 45px; padding-bottom: 12px; border-bottom: 1px solid var(--lp-line); justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+-.lp-profile-toolbar .lp-search-field { width: min(230px,100%); color: var(--lp-muted); }
++.lp-profile-toolbar .lp-search-field { width: 230px; min-width: 0; color: var(--lp-muted); }
++.lp-profile-toolbar > .lp-social-actions { flex-wrap: nowrap; min-width: 0; max-width: 100%; gap: 8px; }
++.lp-profile-toolbar > .lp-social-actions > button { flex: none; min-height: 32px; white-space: nowrap; }
+ .lp-profile-title h1 { font-size: 21px; } .lp-profile-count,.lp-unread-count { padding: 1px 6px; border-radius: 4px; font-variant-numeric: tabular-nums; font-size: 11px; }
+ .lp-profile-count { color: var(--lp-muted); background: var(--lp-side); } .lp-unread-count { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+ .lp-profile-status:not(:empty) { padding-block: 12px; flex-wrap: wrap; }
+@@ -257,5 +259,5 @@
+ 	.lp-listing-head .lp-primary { grid-column: 1/-1; justify-self: start; } .lp-listing-mark { width: 48px; }
+ 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
+ 	.lp-store-feature > .lp-artwork { max-height: 165px; }
+-	.lp-profile-nav { gap: 2px; } .lp-profile-toolbar .lp-search-field { width: 100%; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
++	.lp-profile-nav { gap: 2px; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ }

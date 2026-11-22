@@ -13,6 +13,13 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   const button = (where, en, zh) => where.getByRole('button', { name: t(en, zh), exact: true });
   await friends.click(); assert.equal(await profile.getByRole('tablist').getAttribute('aria-orientation'), 'vertical');
   const addFriend = button(panel, 'Add friend', '添加好友');
+  const search = panel.getByRole('searchbox', { name: t('Search friends and groups', '搜索好友和群聊') });
+  const checkPeopleToolbar = async () => {
+    const [field, action] = await Promise.all([panel.locator('.lp-profile-toolbar .lp-search-field').boundingBox(), addFriend.boundingBox()]);
+    assert.ok(field && action && field.x + field.width <= action.x &&
+      Math.abs(field.y + field.height / 2 - action.y - action.height / 2) < 1, 'Add friend must be to the right of the search field on the same row');
+  };
+  await checkPeopleToolbar();
   async function openWindow(control, expected, key) {
     const opening = page.waitForEvent('popup');
     if (key) { await control.press(key); } else { await control.click(); }
@@ -49,7 +56,6 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await statusText(/Could not refresh groups|暂时无法刷新群聊/).waitFor();
   assert.deepEqual(await names(), ['Alice', 'Unlisted group'], 'a directory outage retains the cached groups and friends');
   await page.evaluate(() => window.directoryFailure = false); await retry.click(); await retry.waitFor({ state: 'hidden' });
-  const search = panel.getByRole('searchbox', { name: t('Search friends and groups', '搜索好友和群聊') });
   await search.fill('Unlisted'); await group.waitFor(); assert.deepEqual(await names(), ['Unlisted group']);
   for (const keyword of ['Visitor', 'Dana', 'Outgoing', 'Former friend']) {
     await search.fill(keyword); await noMatch.waitFor(); assert.deepEqual(await names(), []);
@@ -104,6 +110,7 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await page.setViewportSize({ width: 360, height: 640 });
   await page.waitForFunction(() => document.querySelector('.lp-profile-nav').getAttribute('aria-orientation') === 'horizontal');
   await addFriend.waitFor();
+  await checkPeopleToolbar();
   assert.ok(await profile.evaluate(el => [el, el.querySelector('.lp-profile-content'), el.querySelector('.lp-profile-nav')].every(n => n.scrollWidth <= n.clientWidth)));
   await friends.focus(); await page.keyboard.press('ArrowRight'); assert.equal(await favorites.getAttribute('aria-selected'), 'true');
   await page.keyboard.press('ArrowLeft'); assert.equal(await friends.getAttribute('aria-selected'), 'true');
