@@ -55,6 +55,21 @@ it("preserves the bundled runtime when compiling a portable project release", as
   await rm(path.join(directory, cli));
   await expect(buildProjectRelease(directory)).rejects.toThrow(/steamharness-cli\.tgz/);
 });
+it.each([false, true])("prepares an LLM Bot release without Bot memory (has configuration: %s)", async hasConfiguration => {
+  const { directory, declaration } = await fixture();
+  const configuration = { version: 1, fields: [{ name: "greeting", type: "string", defaultValue: "Hello" }] };
+  const entry = { ...declaration.entries[0], type: "bot", ...(hasConfiguration ? { configuration: "configuration.json" } : {}) };
+  await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [entry] }));
+  await writeFile(path.join(directory, "index.ts"), 'export const executor = steamharness.defineBot({ engine: "llm", llm: { systemPrompt: "Be concise." } }); export default executor;');
+  if (hasConfiguration) await writeFile(path.join(directory, "configuration.json"), JSON.stringify(configuration));
+
+  const snapshot = await prepareReleaseRun(directory, { entryId: "main" });
+  const report = inspectLocalProjectStructure({ projectDir: snapshot.directory });
+  expect(report).toMatchObject({ entryId: "main", projectType: "bot", distribution: "release", conversation: { engine: "llm" } });
+  expect(report.configuration?.fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY)).toBeUndefined();
+  expect(readProjectReleaseSync(snapshot.directory)?.entries[0].configuration).toBe(entry.configuration);
+  if (hasConfiguration) expect(JSON.parse(await readFile(path.join(snapshot.directory, "entries/main/configuration.json"), "utf8"))).toEqual(configuration);
+});
 it.each([true, false])("preserves the Bot memory default (%s) in compiled releases and accepts saved overrides", async enabled => {
   const { directory, declaration } = await fixture();
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify({ ...declaration, entries: [{ ...declaration.entries[0], type: "bot" }] }));

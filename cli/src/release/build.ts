@@ -201,8 +201,10 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
       else if (override.profiles) throw new Error(`Entry ${entry.entryId} has no configuration profiles.`);
       if (entry.type === "bot") {
         const memory = readProjectConfigurationDefinition(root, entry.entryId, { sourceEntry: override.entry, configurationFile }).fields.find(field => field.name === BOT_MEMORY_CONFIGURATION_KEY);
-        if (!memory) throw new Error(`Entry ${entry.entryId} is missing its Bot memory configuration.`);
-        configuration = { ...configuration, version: configuration?.version ?? 1, fields: [...configuration?.fields.filter(field => field.name !== BOT_MEMORY_CONFIGURATION_KEY) ?? [], memory] };
+        // Core supplies a memory switch for Agent Bots only.
+        if (memory) {
+          configuration = { ...configuration, version: configuration?.version ?? 1, fields: [...configuration?.fields.filter(field => field.name !== BOT_MEMORY_CONFIGURATION_KEY) ?? [], memory] };
+        }
       }
       const { entryId, root: _sourceRoot, entry: _sourceEntry, configuration: _configuration, ...metadata } = entry;
       await writeJson(stage, `${targetRoot}/steamharness.json`, { ...metadata, entry: targetEntry, ...(configuration ? { configuration: "configuration.json" } : {}) });
