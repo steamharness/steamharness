@@ -28,12 +28,14 @@ import { ProjectServerClient } from './steamharness-server-projects';
 import { readStudioKanbanDiagnostics, type StudioKanbanHost } from './studio-kanban';
 import type { Connection } from './workflow-auth-client';
 import { readSidebarProjectEntries } from './project-sidebar-node';
+import { readRunningLibraryProjects } from './library-activity';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
   const kanbanSessions = new Map<WebSession, StudioKanbanHost>();
   const controller = new AbortController();
   const authRoot = path.join(context.globalStorageUri.fsPath, 'workflow', 'isolated-auth', randomUUID());
+  const webDataDirectory = path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
@@ -101,7 +103,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     for (let attempt = 0; attempt < 3; attempt++) {
       assertAvailable();
       const projects = studioAnalysisProjects(context, analysisProjects);
-      const result = await reader.readLocalStudioAnalysis({ storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
+      const result = await reader.readLocalStudioAnalysis({ storageDir: webDataDirectory,
         projects, locale: vscode.env.language });
       assertAvailable();
       if (JSON.stringify(projects) === JSON.stringify(studioAnalysisProjects(context, analysisProjects))) { return result; }
@@ -204,6 +206,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
     readSidebarEntries: vscode.env.remoteName ? undefined : readSidebarProjectEntries,
+    readLibraryActivity: vscode.env.remoteName ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
     openHostedSidebar: async (...args) => (await import('./hosted-sidebar-preview')).openHostedSidebar(...args),
     inspect: async (paths, options) => {
       assertAvailable();
@@ -283,7 +286,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,
           resourceProjects: options?.resourceProjects,
-          dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
+          dataDir: webDataDirectory,
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
           surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant: project.assistant,
           studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });

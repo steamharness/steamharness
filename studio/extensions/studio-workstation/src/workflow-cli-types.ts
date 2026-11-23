@@ -66,6 +66,7 @@ export interface Launcher {
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
   inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
+  readLibraryActivity?(projects: unknown): Promise<string[]>;
   openHostedSidebar?: OpenHostedSidebar;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   localAssistantDirectory?(): Promise<string>;

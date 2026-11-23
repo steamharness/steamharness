@@ -148,6 +148,10 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     }
   });
   register('studio.internalDetectProjectTypes', (uris: string[]) => icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : []));
+  const readLibraryActivity = launcher.readLibraryActivity;
+  if (readLibraryActivity) {
+    context.subscriptions.push(vscode.commands.registerCommand('studio.internalReadLibraryActivity', readLibraryActivity));
+  }
   register('studio.refreshProjects', async () => { await recent.reconcile(); icons.refresh(); recent.refresh(); });
   register('studio.newFile', async () => {
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument());
