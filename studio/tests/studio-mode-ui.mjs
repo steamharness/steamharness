@@ -16,6 +16,7 @@ import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
 await assertRuntime();
 const upstream = await assertUpstream();
 const platform = process.env.STEAMHARNESS_STUDIO_INTERNAL === '1';
+const toolsToggleOnly = process.env.STEAMHARNESS_UI_FOCUS === 'tools-toggle';
 const sourceRoot = path.resolve(process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.join(ROOT, '..'));
 const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
 await mkdir(proof, { recursive: true });
@@ -92,7 +93,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const executablePath = process.env.STEAMHARNESS_UI_BROWSER_PATH;
     browser = await chromium.launch({ ...(executablePath ? { executablePath } : { channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome' }),
       headless: true, args: ['--disable-features=LocalNetworkAccessChecks'] });
-    const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
+    const context = await browser.newContext({ viewport: { width: toolsToggleOnly ? 800 : 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
     await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
     await serveLocalWebviewAssets(context, upstream);
@@ -242,6 +243,54 @@ export default executor;`);
       const element = document.querySelector(`.part.${part}`), rect = element?.getBoundingClientRect();
       return [part, { visible: !!rect?.width && !!rect?.height && getComputedStyle(element).display !== 'none', width: rect?.width }];
     })));
+    const projectFrame = () => until(async () => {
+      for (const frame of page.frames()) {
+        if (await frame.locator('#message').isVisible().catch(() => false)
+          && await frame.locator('#app').getAttribute('data-project-uri').catch(() => undefined) === pathToFileURL(project).href) { return frame; }
+      }
+    }, Boolean, 'Project result frame did not open');
+    const toggleTools = page.locator('.studio-steam-toggle-tools');
+    if (toolsToggleOnly) {
+      await page.locator('.monaco-workbench.studio-narrow-titlebar').waitFor();
+      await steam.click();
+      await page.locator('.studio-mode-switcher.steam[aria-busy=false]').waitFor();
+      const frame = await projectFrame();
+      await frame.locator('#app[data-studio-window-chrome]').waitFor();
+      const assertToggle = async expanded => {
+        await until(partState, state => state.auxiliarybar.visible === expanded, `Tools did not ${expanded ? 'open' : 'close'}`);
+        assert.equal(await toggleTools.getAttribute('aria-expanded'), String(expanded));
+        assert.equal(await toggleTools.getAttribute('aria-label'), (language === 'en'
+          ? expanded ? 'Hide Tools' : 'Show Tools' : expanded ? '隐藏工具区' : '显示工具区'));
+        await toggleTools.waitFor();
+        const geometry = await toggleTools.evaluate(button => {
+          const bounds = button.getBoundingClientRect();
+          const regions = [...document.querySelectorAll('.studio-project-drag-region')].map(region => region.getBoundingClientRect());
+          // The Web workbench does not consume native drag clicks. Check the region geometry too.
+          return {
+            hit: button.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+            noDrag: getComputedStyle(button).getPropertyValue('-webkit-app-region') === 'no-drag',
+            reported: regions.some(region => region.width > 0 && region.height > 0),
+            overlap: regions.filter(region => Math.min(region.right, bounds.right) - Math.max(region.left, bounds.left) > 0.5
+              && Math.min(region.bottom, bounds.bottom) - Math.max(region.top, bounds.top) > 0.5).map(region => region.toJSON()),
+          };
+        });
+        assert.equal(geometry.hit, true, JSON.stringify(geometry));
+        assert.equal(geometry.noDrag, true);
+        assert.deepEqual(geometry.overlap, [], 'The project drag surface must not cover the native Tools button');
+        if (!expanded) { assert.equal(geometry.reported, true, 'The rest of the header must still be draggable'); }
+      };
+      await until(() => page.locator('.studio-project-drag-region').count(), count => count > 0, 'Project drag regions did not reach the workbench');
+      for (const width of [800, 1440, 760]) {
+        if (width !== 800) { await page.setViewportSize({ width, height: 960 }); }
+        await assertToggle(false);
+        await toggleTools.click(); await assertToggle(true);
+        await toggleTools.click(); await assertToggle(false);
+      }
+      assert.equal(frame.isDetached(), false);
+      await page.screenshot({ path: path.join(proof, `${language}-tools-toggle.png`) });
+      check(`${language}: the Steam Tools button is visible and clickable without a resize, across widths, and clear of project drag regions`);
+      continue;
+    }
     const before = await partState();
     const layoutButtons = page.locator('.titlebar-right .action-toolbar-container :is([class*="codicon-panel-"], [class*="codicon-auxiliarybar-"][class*="layout-icon"], .codicon-configure-layout-icon)');
     const ideLayoutButtons = await layoutButtons.count(); assert.ok(ideLayoutButtons > 0);
@@ -337,7 +386,6 @@ export default executor;`);
     assert.equal(during.auxiliarybar.visible, false);
     assert.equal(during.titlebar.visible, false); assert.equal(during.statusbar.visible, false);
     assert.equal(await layoutButtons.count(), 0);
-    const toggleTools = page.locator('.studio-steam-toggle-tools');
     await toggleTools.waitFor();
     assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Show Tools' : '显示工具区');
     assert.equal(await toggleTools.getAttribute('aria-expanded'), 'false');
@@ -396,12 +444,7 @@ export default executor;`);
     assert.deepEqual(cleanHeader, { addAfter: true, drag: 'drag', addDrag: 'no-drag', controls: 1 });
     check(`${language}: New follows the tool tab list and the visibility toggle stays on the right`);
 
-    const frame = await until(async () => {
-      for (const frame of page.frames()) {
-        if (await frame.locator('#message').isVisible().catch(() => false)
-          && await frame.locator('#app').getAttribute('data-project-uri').catch(() => undefined) === pathToFileURL(project).href) { return frame; }
-      }
-    }, Boolean, 'Project result frame did not open');
+    const frame = await projectFrame();
     await frame.locator('#app[data-studio-window-chrome]').waitFor();
     const assertDragRegions = async () => {
       await until(() => page.locator('.studio-project-drag-region').count(), count => count > 0, 'Project header drag regions did not reach the native renderer');

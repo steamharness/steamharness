@@ -1,0 +1,83 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index c253f231d7bd016abf2fdc8ac6553c5a99dfdab1..a61718d81689828560360498f370c52ce6fd58e4 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -343,11 +343,10 @@
+ 	display: flex;
+ 	align-items: center;
+ 	height: 52px;
+-	-webkit-app-region: drag;
+ }
+-.monaco-workbench .studio-steam-window-chrome { left: 0; }
++.monaco-workbench .studio-steam-window-chrome { left: 0; -webkit-app-region: drag; }
+ .monaco-workbench .studio-steam-window-chrome.studio-mode-in-ide .studio-mode-switcher { margin: 0; }
+-.monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); }
++.monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); -webkit-app-region: no-drag; }
+ .monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
+ .monaco-workbench .studio-steam-window-chrome[hidden],
+ .monaco-workbench .studio-steam-tools-chrome[hidden] { display: none; }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 19f5a33dcef3d1084ee44edc00baeb6cea910155..871ec72ba4de0e6dabf4af60a4e295c124a2509e 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -165,15 +165,15 @@ export class StudioModeSwitcher extends Disposable {
+ 		};
+ 		const publishChrome = () => {
+ 			positionMode();
+-			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			studioWindowChrome.active = studioModeState.steam;
+ 			studioWindowChrome.left = dock.offsetWidth;
+ 			slot.style.width = studioModeState.state.releaseOnly ? `${element.offsetWidth}px` : '';
+-			studioWindowChrome.right = visible ? 0 : toolsDock.offsetWidth;
++			studioWindowChrome.right = studioWindowChrome.active && toolsDock.parentElement === layout.mainContainer ? toolsDock.offsetWidth : 0;
+ 			const { revision, ...geometry } = studioWindowChrome;
+ 			const serialized = JSON.stringify(geometry);
+ 			if (serialized !== lastChrome) {
+ 				lastChrome = serialized;
++				layout.mainContainer.style.setProperty('--studio-window-chrome-right', `${geometry.right}px`);
+ 				studioWindowChrome.revision = revision + 1;
+ 				void this.commands.executeCommand('studio.internalUpdateWindowChrome', { ...studioWindowChrome }).catch(() => undefined);
+ 			}
+@@ -184,7 +184,11 @@ export class StudioModeSwitcher extends Disposable {
+ 		};
+ 		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
+ 		observer.observe(dock); observer.observe(toolsDock); observer.observe(slot); observer.observe(left);
+-		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
++		this._register(toDisposable(() => {
++			observer.disconnect(); getWindow(dock).clearTimeout(timer);
++			layout.mainContainer.style.removeProperty('--studio-window-chrome-right');
++			slot.remove(); dock.remove(); toolsDock.remove();
++		}));
+ 		const update = () => {
+ 			const { state, steam: active, busy, targetSteam } = studioModeState;
+ 			mode.hidden = state.releaseOnly === true;
+@@ -221,8 +225,8 @@ export class StudioModeSwitcher extends Disposable {
+ 			toggle.setAttribute('aria-label', toggleLabel);
+ 			toggleHover.update(toggleLabel);
+ 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
+-			positionMode();
+-			scheduleChrome();
++			// Keep the hit area in sync as the controls move between the sidebar and the window edge.
++			publishChrome();
+ 		};
+ 		for (const [button, command] of [[mode, 'studio.internalToggleMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+ 			this._register(addDisposableListener(button, 'click', () => {
+diff --git a/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts b/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts
+index c9818271c144705356b8264e2b607616da34f517..292ade8ae32960f63e4ebae6094688a5ae1444d7 100644
+--- a/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts
++++ b/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts
+@@ -34,9 +34,13 @@ export class StudioWindowDragRegions extends Disposable {
+ 		for (const region of regions) {
+ 			const element = this.element.ownerDocument.createElement('div');
+ 			element.className = 'studio-project-drag-region';
++			const left = region.x / message.width * 100;
+ 			Object.assign(element.style, {
+-				left: `${region.x / message.width * 100}%`, top: `${region.y / message.height * 100}%`,
++				left: `${left}%`, top: `${region.y / message.height * 100}%`,
+ 				width: `${region.width / message.width * 100}%`, height: `${region.height / message.height * 100}%`,
++				// Native hit testing can use drag rectangles behind a higher z-index control.
++				// Bound the rectangles themselves so the host's controls are always excluded.
++				maxWidth: `max(0px, calc(${100 - left}% - var(--studio-window-chrome-right, 0px)))`,
+ 			});
+ 			this.element.appendChild(element);
+ 		}

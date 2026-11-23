@@ -1,0 +1,12 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 0c6acd7d5927005f8ed98c78aa72207d4c4ed632..c253f231d7bd016abf2fdc8ac6553c5a99dfdab1 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -84,7 +84,6 @@
+ }
+ 
+ .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
+-.monaco-workbench.studio-narrow-titlebar .studio-steam-toggle-tools { display: none; }
+ .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-toggle-tools {
+ 	display: inline-flex;
