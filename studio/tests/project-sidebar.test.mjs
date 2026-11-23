@@ -112,17 +112,17 @@ test('launchpad shares a warming preview across clicks, and replaces it on accou
     },
     async launchpad(cmd, key, arg, view) {
       if (cmd === 'studio.internalCloseLaunchpadApp') { revoked.push(key); return; }
-      if (cmd === 'studio.internalShowLaunchpadApp') { opened.push([key,arg,view.id]); assert.match(view.html,/id="project-frame"/); assert.doesNotMatch(view.html,/host-only/); return true; }
+      if (cmd === 'studio.internalShowLaunchpadApp') { opened.push([key,arg,view.id,view.titlebarOverlay]); assert.match(view.html,/id="project-frame"/); assert.doesNotMatch(view.html,/host-only/); return true; }
       mounted.push(key); assert.equal(arg.port,1234);
       assert.doesNotMatch(JSON.stringify(arg), /host-only/); await ready.promise; return true;
     },
   });
   f.sidebar.registerHosted({ id:'hosted',title:'Chat',getState:()=>({binding:{bootstrap:{secret:'host-only'}}}) });
   const warm = f.sidebar.prepareHostedInLaunchpad('hosted',auth.signal);
-  const first = f.sidebar.showHostedInLaunchpad('hosted','r1',auth.signal,{ id: 'a&b', route: '/chat?id=a%26b' });
+  const first = f.sidebar.showHostedInLaunchpad('hosted','r1',auth.signal,{ id: 'a&b', route: '/chat?id=a%26b', titlebarOverlay: true });
   ready.resolve(); const { key } = await warm; await first;
   await f.sidebar.showHostedInLaunchpad('hosted','r2',auth.signal,{ id: 'other', route: '/chat?id=other' });
-  assert.deepEqual([created,closed,mounted,opened],[1,0,[key],[[key,'r1','a&b'],[key,'r2','other']]]);
+  assert.deepEqual([created,closed,mounted,opened],[1,0,[key],[[key,'r1','a&b',true],[key,'r2','other',undefined]]]);
   auth.abort(); assert.deepEqual([closed,revoked],[1,[key]]);
   const { key: second } = await f.sidebar.prepareHostedInLaunchpad('hosted',new AbortController().signal);
   assert.notEqual(second,key); await f.commands.get('studio.internalReleaseHostedLaunchpadApp')(key);

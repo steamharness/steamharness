@@ -36,5 +36,5 @@ export interface HostedSidebarProject {
 }
 
 export interface HostedSidebarPreview { url: string; nonce: string; microphone: boolean; close(): Promise<void> }
-export interface HostedLaunchpadTarget { id: string; route: string; title?: string }
+export interface HostedLaunchpadTarget { id: string; route: string; title?: string; titlebarOverlay?: boolean }
 export type OpenHostedSidebar = (project: HostedSidebarProject, binding: WebAppBinding, signal: AbortSignal) => Promise<HostedSidebarPreview>;

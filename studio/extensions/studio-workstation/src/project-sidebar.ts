@@ -96,7 +96,8 @@ export class ProjectSidebar implements vscode.Disposable {
     signal.throwIfAborted();
     const title = target.title?.trim() || defaultTitle;
     if (!await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', key, requestId, { id: target.id, title,
-      html: hostedSidebarHtml(vscode.env.language, title, preview, target.route) })) {
+      ...(target.titlebarOverlay === true && { titlebarOverlay: true }),
+      html: hostedSidebarHtml(vscode.env.language, title, preview, target.route, target.titlebarOverlay === true) })) {
       throw new Error(t('The built-in project files are unavailable.'));
     }
   }

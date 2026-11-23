@@ -1,0 +1,306 @@
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
+index bf173c0f62359e30bb5103395c8856ee01d830a8..03622f7072d9b6ef3341254c0473ee99d8862b86 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from 'electron';
++import { BrowserWindow, BrowserWindowConstructorOptions, Event as ElectronEvent, Input, WebContents } from 'electron';
+ import { Event } from '../../../base/common/event.js';
+ import { isLinux, isMacintosh, isWindows } from '../../../base/common/platform.js';
+ import { IConfigurationService } from '../../configuration/common/configuration.js';
+@@ -100,6 +100,18 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
+ 			// Lifecycle
+ 			this.lifecycleMainService.registerAuxWindow(this);
+ 
++			if (isMacintosh && options?.parent) {
++				// The workbench menu targets the owner. Close this window even when a nested frame has focus.
++				this._register(Event.fromNodeEventEmitter(this.webContents, 'before-input-event', (event: ElectronEvent, input: Input) => ({ event, input }))(({ event, input }) => {
++					if (input.type === 'keyDown' && input.meta && !input.control && !input.alt && !input.shift && !input.isComposing && input.key.toLowerCase() === 'w') {
++						event.preventDefault();
++						if (!input.isAutoRepeat) {
++							window.close();
++						}
++					}
++				}));
++			}
++
+ 			// Allow frameless windows to size down to their content
+ 			if (options?.frame === false) {
+ 				window.setMinimumSize(1, 1);
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+index 86acf140bef74f99e0a13567b41a4afde2aa9573..fb86e5ea25adaa0fb11d64bce19033ae36d4023a 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+@@ -4,14 +4,17 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { BrowserWindow, BrowserWindowConstructorOptions, HandlerDetails, WebContents, app } from 'electron';
++import { release } from 'os';
+ import { Emitter, Event } from '../../../base/common/event.js';
+ import { Disposable, DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
+ import { FileAccess } from '../../../base/common/network.js';
+ import { validatedIpcMain } from '../../../base/parts/ipc/electron-main/ipcMain.js';
++import { isMacintosh } from '../../../base/common/platform.js';
+ import { AuxiliaryWindow, IAuxiliaryWindow } from './auxiliaryWindow.js';
+ import { IAuxiliaryWindowsMainService } from './auxiliaryWindows.js';
+ import { IInstantiationService } from '../../instantiation/common/instantiation.js';
+ import { ILogService } from '../../log/common/log.js';
++import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, getMacOSWindowControlsPosition } from '../../window/common/window.js';
+ import { IWindowState, WindowMode, defaultAuxWindowState } from '../../window/electron-main/window.js';
+ import { IDefaultBrowserWindowOptionsOverrides, WindowStateValidator, defaultBrowserWindowOptions, getLastFocused } from '../../windows/electron-main/windows.js';
+ 
+@@ -93,22 +96,28 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 	}
+ 
+ 	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
+-		const { state, overrides, disableMaximize, keepAboveParent } = this.computeWindowStateAndOverrides(details);
++		const { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
+ 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
+ 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
+ 		});
+ 		if (keepAboveParent && parent && !parent.isDestroyed()) {
+ 			options.parent = parent;
++			if (isMacintosh && titlebarOverlay && options.frame !== false) {
++				options.titleBarStyle = 'hidden';
++				options.titleBarOverlay = true;
++				options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
++			}
+ 		}
+ 		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
+ 		return options;
+ 	}
+ 
+-	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean; readonly keepAboveParent: boolean } {
++	private computeWindowStateAndOverrides(details: HandlerDetails) {
+ 		const windowState: IWindowState = {};
+ 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
+ 		let disableMaximize = false;
+ 		let keepAboveParent = false;
++		let titlebarOverlay = false;
+ 
+ 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
+ 		for (const feature of features) {
+@@ -138,6 +147,9 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 				case 'window-native-titlebar':
+ 					overrides.forceNativeTitlebar = true;
+ 					break;
++				case 'window-titlebar-overlay':
++					titlebarOverlay = value === 'yes';
++					break;
+ 				case 'window-always-on-top':
+ 					overrides.alwaysOnTop = true;
+ 					break;
+@@ -168,7 +180,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 
+ 		this.logService.trace('[aux window] using window state', state);
+ 
+-		return { state, overrides, disableMaximize, keepAboveParent };
++		return { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay };
+ 	}
+ 
+ 	registerWindow(webContents: WebContents): void {
+diff --git a/src/vs/platform/window/common/window.ts b/src/vs/platform/window/common/window.ts
+index 1fadea20c90046a96edcf89e6a19bb92dbf3f358..f495e293bfb71a712e91303fa09f56256eb784e2 100644
+--- a/src/vs/platform/window/common/window.ts
++++ b/src/vs/platform/window/common/window.ts
+@@ -27,6 +27,8 @@ export const WindowMinimumSize = {
+ 	HEIGHT: 270
+ };
+ 
++export const COMPACT_AUXILIARY_TITLEBAR_HEIGHT = 38;
++
+ export interface IPoint {
+ 	readonly x: number;
+ 	readonly y: number;
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index a069074dbfb99d3d3891b26c86c9d61978d0c248..129734d560536198d95322b360de9fe9b2a57d2d 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -242,8 +242,8 @@ export abstract class BaseWindow extends Disposable implements IBaseWindow {
+ 			win.setSheetOffset(isTahoeOrNewer(release()) ? 32 : 28); // offset dialogs by the height of the custom title bar if we have any
+ 		}
+ 
+-		// Update the window controls immediately based on cached or default values
+-		if (this.hasWindowControlOverlay) {
++		// Honor an explicit traffic-light position instead of reusing the workbench's titlebar height.
++		if (this.hasWindowControlOverlay && !options?.trafficLightPosition) {
+ 			const cachedWindowControlHeight = this.stateService.getItem<number>((BaseWindow.windowControlHeightStateStorageKey));
+ 			if (cachedWindowControlHeight) {
+ 				this.updateWindowControls({ height: cachedWindowControlHeight });
+diff --git a/src/vs/workbench/contrib/webview/browser/webview.ts b/src/vs/workbench/contrib/webview/browser/webview.ts
+index f950b7b5a64e6bb4c5744bfd218ca56379013ff3..c1722b803b0ffc956e6b6bd14469e4208ba0075b 100644
+--- a/src/vs/workbench/contrib/webview/browser/webview.ts
++++ b/src/vs/workbench/contrib/webview/browser/webview.ts
+@@ -96,6 +96,8 @@ export interface WebviewOptions {
+ 	readonly purpose?: WebviewContentPurpose;
+ 	readonly customClasses?: string;
+ 	readonly enableFindWidget?: boolean;
++	/** Leave native menu handling alone for webviews with their own desktop window. */
++	readonly preserveNativeMenuShortcuts?: boolean;
+ 
+ 	/**
+ 	 * Disable the service worker used for loading local resources in the webview.
+diff --git a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+index 4fbc0867d2fc8d28fb052d4f77344ef885e53606..cc5994672653a5661eebee3e48cb2d6c830cda60 100644
+--- a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+@@ -30,7 +30,7 @@ import { WindowIgnoreMenuShortcutsManager } from './windowIgnoreMenuShortcutsMan
+  */
+ export class ElectronWebviewElement extends WebviewElement {
+ 
+-	private readonly _webviewKeyboardHandler: WindowIgnoreMenuShortcutsManager;
++	private readonly _webviewKeyboardHandler?: WindowIgnoreMenuShortcutsManager;
+ 
+ 	private _findStarted: boolean = false;
+ 	private _cachedHtmlContent: string | undefined;
+@@ -59,7 +59,9 @@ export class ElectronWebviewElement extends WebviewElement {
+ 			configurationService, contextMenuService, notificationService, environmentService,
+ 			logService, remoteAuthorityResolverService, tunnelService, accessibilityService, instantiationService);
+ 
+-		this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
++		if (!initInfo.options.preserveNativeMenuShortcuts) {
++			this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
++		}
+ 
+ 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
+ 		this._register(this.on('did-copy', async text => {
+@@ -89,7 +91,7 @@ export class ElectronWebviewElement extends WebviewElement {
+ 
+ 	override dispose(): void {
+ 		// Make sure keyboard handler knows it closed (#71800)
+-		this._webviewKeyboardHandler.didBlur();
++		this._webviewKeyboardHandler?.didBlur();
+ 
+ 		super.dispose();
+ 	}
+@@ -196,9 +198,9 @@ export class ElectronWebviewElement extends WebviewElement {
+ 	protected override handleFocusChange(isFocused: boolean): void {
+ 		super.handleFocusChange(isFocused);
+ 		if (isFocused) {
+-			this._webviewKeyboardHandler.didFocus();
++			this._webviewKeyboardHandler?.didFocus();
+ 		} else {
+-			this._webviewKeyboardHandler.didBlur();
++			this._webviewKeyboardHandler?.didBlur();
+ 		}
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 984b7b63584da463448af21e96d0dd91f6f2149d..d55177d0baec7b54c07ce90bf12bae932c8bb1fa 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -223,6 +223,8 @@
+ .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
++.studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: 5px; -webkit-app-region: drag; }
++.studio-chat-titlebar-drag::after { content: ''; position: absolute; inset: 0 auto auto 0; width: var(--studio-chat-titlebar-left, 92px); height: var(--studio-chat-titlebar-height, 38px); -webkit-app-region: drag; }
+ @container lp-command (max-width: 180px) {
+ 	.lp-command-label { display: none; }
+ 	.lp-command-short { display: inline; }
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index d6994ed6055c8c22d934b923f0245e6361ec1d4f..da41a001a3d33dfe94232d607e2730a7076a13de 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -3,17 +3,20 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { $ } from '../../base/browser/dom.js';
++import { getWCOTitlebarAreaRect, getZoomFactor, isFullscreen, onDidChangeFullscreen, onDidChangeZoomLevel } from '../../base/browser/browser.js';
++import { $, addDisposableListener } from '../../base/browser/dom.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
++import { isMacintosh } from '../../base/common/platform.js';
+ import { URI } from '../../base/common/uri.js';
+ import { INativeHostService } from '../../platform/native/common/native.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
++import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT } from '../../platform/window/common/window.js';
+ import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ 
+ export interface LaunchpadApp { port: number; accountUrl?: string }
+-export interface LaunchpadAppView { id: string; title: string; html: string }
++export interface LaunchpadAppView { id: string; title: string; html: string; titlebarOverlay?: boolean }
+ interface MountedChat { window: IAuxiliaryWindow; webview: IWebviewElement; ready: Promise<boolean>; dispose(): void }
+ 
+ /** The runtime belongs to the resident host, but the chat document only ever lives in its own window. */
+@@ -48,7 +51,8 @@ export class StudioChatWindow extends Disposable {
+ 		chat.webview.focus(); return true;
+ 	}
+ 	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
+-		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true });
++		const titlebarOverlay = isMacintosh && view.titlebarOverlay === true;
++		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true, titlebarOverlay });
+ 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
+ 		const life = new DisposableStore();
+ 		try {
+@@ -56,16 +60,18 @@ export class StudioChatWindow extends Disposable {
+ 			window.window.document.title = view.title;
+ 			// Auxiliary windows adopt workbench elements from the main document.
+ 			const host = window.container.appendChild($('.studio-chat-window'));
+-			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: {}, extension: undefined,
++			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: { preserveNativeMenuShortcuts: true }, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+ 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
+ 			const close = () => { if (this.chats.get(view.id) === chat) { this.chats.deleteAndLeak(view.id)?.dispose(); } };
+ 			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
+ 			life.add(window);
+ 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
++			const syncTitlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
+ 			life.add(webview.onMessage(({ message }) => {
+ 				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
+ 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
++				else if (message?.type === 'studio-launchpad-titlebar-request') { syncTitlebar?.(); }
+ 				else if (message?.type === 'studio-launchpad-close') { close(); }
+ 				else if (message?.type === 'studio-launchpad-open-conversation') {
+ 					const { conversation, user, closeSource } = message;
+@@ -82,4 +88,24 @@ export class StudioChatWindow extends Disposable {
+ 			life.dispose(); window.dispose(); throw e;
+ 		}
+ 	}
++
++	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore): () => void {
++		// Draggable regions in a cross-origin iframe don't reach the owning native window.
++		const drag = host.appendChild($('.studio-chat-titlebar-drag'));
++		drag.setAttribute('aria-hidden', 'true');
++		const overlay = (target.navigator as Navigator & { windowControlsOverlay?: EventTarget }).windowControlsOverlay;
++		const sync = () => {
++			const zoom = getZoomFactor(target), area = getWCOTitlebarAreaRect(target);
++			const left = area && area.width > 0 ? Math.ceil(area.x) + 8 : isFullscreen(target) ? 12 : Math.ceil(92 / zoom);
++			const height = Math.max(34, Math.ceil(COMPACT_AUXILIARY_TITLEBAR_HEIGHT / zoom), Math.ceil(area?.height ?? 0) + 2);
++			host.style.setProperty('--studio-chat-titlebar-height', `${height}px`);
++			host.style.setProperty('--studio-chat-titlebar-left', `${left}px`);
++			void webview.postMessage({ type: 'studio-launchpad-titlebar', left, height });
++		};
++		const refresh = life.add(new RunOnceScheduler(sync, 0));
++		if (overlay) { life.add(addDisposableListener(overlay, 'geometrychange', () => refresh.schedule())); }
++		life.add(onDidChangeZoomLevel(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
++		life.add(onDidChangeFullscreen(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
++		return sync;
++	}
+ }
+diff --git a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+index 23ddb8483bd3b975e8b0b66e617c8c078eae5e61..e7a427bdfe5f07eeec76b69bbb3efcefa92a4f31 100644
+--- a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
++++ b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+@@ -53,6 +53,8 @@ export interface IAuxiliaryWindowOpenOptions {
+ 	readonly keepAboveParent?: boolean;
+ 
+ 	readonly nativeTitlebar?: boolean;
++	/** Overlay the native controls on the content of an owned macOS window. */
++	readonly titlebarOverlay?: boolean;
+ 	readonly disableFullscreen?: boolean;
+ 	readonly frameless?: boolean;
+ 	readonly transparent?: boolean;
+@@ -374,6 +376,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
+ 
+ 			// non-standard properties
+ 			options?.nativeTitlebar ? 'window-native-titlebar=yes' : undefined,
++			options?.titlebarOverlay ? 'window-titlebar-overlay=yes' : undefined,
+ 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
+ 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
+ 			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,

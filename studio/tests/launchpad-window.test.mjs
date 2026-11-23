@@ -19,12 +19,17 @@ const { outputFiles } = await build({ stdin: { contents: `
   export { LaunchMainService } from './src/vs/platform/launch/electron-main/launchMainService.ts';
   export { LifecycleMainService } from './src/vs/platform/lifecycle/electron-main/lifecycleMainService.ts';
   export { AuxiliaryWindowsMainService } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts';
+  export { AuxiliaryWindow } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts';
   export { createStudioTray } from './src/vs/platform/windows/electron-main/studioTray.ts';`, resolveDir: fileURLToPath(kernel) },
   tsconfig: fileURLToPath(new URL('src/tsconfig.json', kernel)), bundle: true, packages: 'external', platform: 'node', format: 'cjs', write: false,
   define: { 'globalThis._VSCODE_FILE_ROOT': JSON.stringify(new URL('out/', kernel).href) } });
-const module = { exports: {} }, electron = {};
-new Function('module', 'exports', 'require', outputFiles[0].text)(module, module.exports, id => id === 'electron' ? electron : require(id));
-const { CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, createStudioTray } = module.exports;
+const loadKernel = platform => {
+  const module = { exports: {} }, electron = {};
+  new Function('module', 'exports', 'require', 'process', outputFiles[0].text)(module, module.exports,
+    id => id === 'electron' ? electron : require(id), Object.create(process, { platform: { value: platform } }));
+  return { electron, ...module.exports };
+};
+const { electron, CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, createStudioTray } = loadKernel(process.platform);
 
 function mockWindow(isStudioLaunchpad) {
   const win = new EventEmitter();
@@ -142,6 +147,52 @@ test('standalone chats use native ownership rather than global always-on-top', t
   assert.deepEqual(service.createWindow({ features }, win), { alwaysOnTop: false });
   win.destroy();
   assert.deepEqual(service.createWindow(chat, win), { alwaysOnTop: false });
+});
+
+test('only opted-in macOS windows owned by the launchpad overlay their native buttons', t => {
+  const parent = { isDestroyed: () => false };
+  for (const platform of ['darwin', 'win32', 'linux']) {
+    const { electron, AuxiliaryWindowsMainService } = loadKernel(platform);
+    const workArea = { x: 0, y: 0, width: 1600, height: 1024 };
+    Object.assign(electron, { app: new EventEmitter(), ipcMain: { handle() {} }, screen: { getAllDisplays: () => [{ bounds: workArea, workArea }] } });
+    const service = new AuxiliaryWindowsMainService({ invokeFunction: (_fn, _state, overrides) => ({
+      titleBarStyle: 'default', frame: !overrides.frameless,
+    }) }, { trace() {} });
+    t.after(() => service.dispose());
+    const features = 'left=100,top=100,width=780,height=680,window-keep-above-parent=yes,window-native-titlebar=yes';
+    const overlay = { features: `${features},window-titlebar-overlay=yes` };
+    const options = service.createWindow(overlay, parent);
+    assert.equal(options.parent, parent);
+    assert.equal(options.titleBarStyle, platform === 'darwin' ? 'hidden' : 'default');
+    assert.equal(options.titleBarOverlay, platform === 'darwin' ? true : undefined);
+    assert.equal(options.trafficLightPosition?.x, platform === 'darwin' ? 12 : undefined);
+    assert.equal(service.createWindow({ features }, parent).titleBarStyle, 'default');
+    assert.equal(service.createWindow(overlay).titleBarStyle, 'default');
+    assert.equal(service.createWindow({ features: overlay.features + ',window-frameless=yes' }, parent).titleBarStyle, 'default');
+  }
+});
+
+test('Command+W closes only the owned native auxiliary window, independently of renderer focus', t => {
+  for (const [platform, owned] of [['darwin', true], ['darwin', false], ['linux', true]]) {
+    const { electron, AuxiliaryWindow } = loadKernel(platform);
+    let closes = 0, prevented = 0;
+    const window = Object.assign(new EventEmitter(), {
+      setMenu() {}, setAutoHideMenuBar() {}, setSheetOffset() {}, close() { closes++; },
+    });
+    Object.assign(electron, { BrowserWindow: { fromWebContents: () => window }, screen: { getAllDisplays: () => [] } });
+    const contents = Object.assign(new EventEmitter(), { id: 5, isDestroyed: () => false });
+    const parent = { close: () => assert.fail('Closing an auxiliary window must not close the launchpad') };
+    const auxiliary = new AuxiliaryWindow(contents, owned ? { parent } : undefined, false, { args: {} }, { trace() {} },
+      { getValue: () => undefined }, {}, { registerAuxWindow() {} });
+    t.after(() => auxiliary.dispose());
+    const key = (change = {}) => contents.emit('before-input-event', { preventDefault: () => prevented++ }, { type: 'keyDown', key: 'w', meta: true, ...change });
+    for (const change of [{ key: 'q' }, { key: 'c' }, { meta: false, control: true }, { control: true }, { shift: true }, { alt: true }, { isComposing: true }, { type: 'keyUp' }]) key(change);
+    assert.deepEqual([closes, prevented], [0, 0]);
+    key(); key({ isAutoRepeat: true });
+    assert.deepEqual([closes, prevented], platform === 'darwin' && owned ? [1, 2] : [0, 0]);
+    window.emit('closed');
+    assert.equal(contents.listenerCount('before-input-event'), 0);
+  }
 });
 
 test('a failed background load stays silent until requested, then retries the same launchpad', async t => {

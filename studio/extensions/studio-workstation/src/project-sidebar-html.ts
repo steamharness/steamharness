@@ -11,7 +11,7 @@ export function sidebarStatusDocument(lang: string, message: string, label?: str
 <p role="status">${escape(message)}</p>${label ? `<button id="action" type="button">${escape(label)}</button><script nonce="${nonce}">const host=acquireVsCodeApi();document.getElementById('action').addEventListener('click',()=>host.postMessage({type:'studio-sidebar-action'}));</script>` : ''}</html>`;
 }
 
-export function hostedSidebarHtml(lang: string, title: string, preview: HostedSidebarPreview, route?: string): string {
+export function hostedSidebarHtml(lang: string, title: string, preview: HostedSidebarPreview, route?: string, titlebarOverlay = false): string {
   const nonce = newNonce(), url = new URL(preview.url), origin = url.origin;
   if (route !== undefined) {
     if (!route.startsWith('/') || route.startsWith('//')) throw new Error('Invalid hosted application route');
@@ -27,6 +27,7 @@ window.addEventListener('message',event=>{
   if(event.source===frame.contentWindow){
     if(event.origin!==origin||event.data?.nonce!==nonce)return;
     if(event.data.type==='steamharness:web-app-account')host.postMessage({type:'studio-sidebar-account'});
+    ${titlebarOverlay ? `if(event.data.type==='steamharness:web-app-titlebar-request')host.postMessage({type:'studio-launchpad-titlebar-request'});` : ''}
     ${route !== undefined ? `
     if(event.data.type==='steamharness:web-app-ready')host.postMessage({type:'studio-launchpad-ready'});
     if(event.data.type==='steamharness:web-app-close')host.postMessage({type:'studio-launchpad-close'});
@@ -35,6 +36,11 @@ window.addEventListener('message',event=>{
       if(typeof conversation==='string'&&conversation.length>0&&conversation.length<=256)host.postMessage({type:'studio-launchpad-open-conversation',conversation,...(event.data.closeSource===true?{closeSource:true}:{})});
       else if(typeof user==='string'&&user.length>0&&user.length<=100)host.postMessage({type:'studio-launchpad-open-conversation',user});
     }` : ''}
-  }
+  }${titlebarOverlay ? `else if(event.origin===window.origin&&event.data?.type==='studio-launchpad-titlebar'){
+    const {left,height}=event.data;
+    if(Number.isFinite(left)&&left>=0&&left<=1024&&Number.isFinite(height)&&height>=32&&height<=256){
+      frame.contentWindow?.postMessage({type:'steamharness:web-app-titlebar',nonce,left,height},origin);
+    }
+  }` : ''}
 });</script></html>`;
 }
