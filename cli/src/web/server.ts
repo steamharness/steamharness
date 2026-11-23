@@ -722,7 +722,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     }
     if (ownership && (message.type === 'ready' || message.type === 'select')) {
       // IM history can arrive from another process and must never take a page writer.
-      if (folderBot) await refreshHistory();
+      await refreshHistory();
       const selectedId = message.type === 'select' ? String(message.id) : selections.get(message.clientId ?? '') ?? controller.activeId;
       if (!isHostConversation(selectedId) && controller.sessions.some(session => session.id === selectedId)) await ownership.acquire(selectedId);
     }
@@ -1065,7 +1065,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     hostTurn: async (input: Record<string, unknown>) => {
       const id = input.conversationId;
       if (options.host?.surface !== 'editor' || folderBot?.background === false || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
-      const restore = folderBot?.background === true;
+      const restore = folderBot?.background === true || input.action === 'recover';
       const admit = !!folderBot && ['submit', 'resolve', 'recover'].includes(String(input.action));
       if (restore || input.action !== 'turn') await ownership?.assertWritable(id);
       const release = restore || input.action !== 'turn' ? await ownership?.hold(id) : undefined;
@@ -1079,7 +1079,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       } finally {
         if (admit) backgroundAdmissions.delete(id);
         release?.();
-        if (restore) broadcast();
+        if (restore || input.action !== 'turn') broadcast();
       }
     },
     // Only the Studio stdio control channel can call this, never a Web client.
@@ -1117,14 +1117,16 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (call.action === 'list' || call.action === 'snapshot') return entryConversations.invoke(call.action, call.input, call.abortSignal);
       const id = call.input.conversationId;
       if (typeof id !== 'string' || !id.trim() || id.length > 200) throw new Error('Invalid conversation id.');
-      if (folderBot) { await refreshHistory(); assertLocalConversation(id); }
+      await refreshHistory();
+      assertLocalConversation(id);
       await ownership?.assertWritable(id);
       const release = await ownership?.hold(id);
       try {
         // Refresh an acquired owner before creating or preparing a session, as
         // native controls do. Later polling must preserve this in-flight object.
         await refreshHistory();
-        if (folderBot && (isHostConversation(id) || folderBot.background)) throw new Error('Conversation is not editable by this entry.');
+        assertLocalConversation(id);
+        if (folderBot?.background) throw new Error('Conversation is not editable by this entry.');
         return await entryConversations.invoke(call.action, call.input, call.abortSignal);
       }
       finally { release?.(); }

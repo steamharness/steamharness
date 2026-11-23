@@ -70,7 +70,18 @@ function initialize(): void {
   app.dataset.initialized = 'true';
   app.innerHTML = `
     <header class="toolbar">
-      <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><div class="project-context"><span id="project-identity" class="project-identity" hidden><span id="assistant-folder" hidden></span><span id="project-name" class="project-name"></span></span><span id="running-count" class="running-count" hidden></span></div><button id="conversation-source" class="conversation-source" hidden></button></div></div>
+      <div class="project-title">
+        <button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button>
+        <div class="project-heading">
+          <h1 id="conversation-title">Workflow</h1>
+          <div class="project-context">
+            <span id="project-identity" class="project-identity" hidden><span id="assistant-folder" hidden></span><span id="project-name" class="project-name"></span></span>
+            <span id="running-count" class="running-count" hidden></span>
+            <span id="bot-invocation" class="bot-invocation" title="${t('Read-only IM history. Continue this conversation in IM.')}" hidden>${icon('robot')}${t('Bot invocation · Read-only')}</span>
+          </div>
+          <button id="conversation-source" class="conversation-source" hidden></button>
+        </div>
+      </div>
       <div class="toolbar-actions"><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
@@ -235,7 +246,8 @@ function initialize(): void {
   });
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
   const oldEngine = () => !!state && archivedConversation(state.project, currentSession());
-  const readOnly = () => oldEngine() || state?.conversationAccess?.readOnly === true;
+  const hostHistory = () => currentSession()?.origin === 'host' || state?.conversationAccess?.reason === 'host';
+  const readOnly = () => hostHistory() || oldEngine() || state?.conversationAccess?.readOnly === true;
   const accessNotice = document.createElement('div');
   accessNotice.className = 'conversation-access'; accessNotice.setAttribute('role', 'status'); accessNotice.hidden = true;
   accessNotice.textContent = t('This conversation is open or running in another window. You can read it here or start a new conversation.');
@@ -279,7 +291,7 @@ function initialize(): void {
   const values = (): ParamValues => paramValues[formKey] ??= {};
   const parametersLoading = (): boolean => resolving && !parametersReady;
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
-  const hideComposer = (): boolean => state?.project.projectType === 'bot' && state.project.conversation?.userInput?.hideComposer !== false
+  const hideComposer = (): boolean => hostHistory() || state?.project.projectType === 'bot' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
   const sendBlocked = (): boolean => submitting || pendingSend() && !canQueue();
@@ -661,9 +673,9 @@ function initialize(): void {
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
-    accessNotice.hidden = !readOnly() || !oldEngine() && state.conversationAccess?.reason === 'pending';
+    document.querySelector<HTMLElement>('#bot-invocation')!.hidden = !hostHistory();
+    accessNotice.hidden = !readOnly() || !oldEngine() && (hostHistory() || state.conversationAccess?.reason === 'pending');
     accessNotice.textContent = oldEngine() ? t('This conversation belongs to a different Bot engine.')
-      : state.conversationAccess?.reason === 'host' ? t('Read-only IM history. Continue this conversation in IM.')
       : t('This conversation is open or running in another window. You can read it here or start a new conversation.');
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
@@ -704,7 +716,7 @@ function initialize(): void {
       let button = existing.get(entry.id);
       if (!button) {
         button = document.createElement('button'); button.type = 'button'; button.dataset.sessionId = entry.id;
-        button.innerHTML = '<span class="session-title"></span><span class="history-status" hidden></span><time></time>';
+        button.innerHTML = `<span class="session-title"></span><span class="bot-invocation" hidden>${icon('robot')}<span>${t('Bot invocation')}</span></span><span class="history-status" hidden></span><time></time>`;
         button.addEventListener('click', () => { navigate(entry.id); closeHistory(); dismissNarrowMenu(); });
         button.setAttribute('aria-haspopup', 'menu'); button.setAttribute('aria-controls', sessionMenu.id); button.setAttribute('aria-expanded', 'false');
         button.addEventListener('contextmenu', (event) => { event.preventDefault(); openSessionMenu(entry.id, event.currentTarget as HTMLButtonElement, event); });
@@ -716,7 +728,8 @@ function initialize(): void {
       }
       existing.delete(entry.id);
       button.className = `session${entry.id === state.activeId ? ' active' : ''}${button === sessionMenuTrigger ? ' context-active' : ''}`;
-      const [label, indicator, time] = Array.from(button.children) as HTMLElement[];
+      const [label, bot, indicator, time] = Array.from(button.children) as HTMLElement[];
+      bot.hidden = entry.origin !== 'host';
       const title = `${entry.titleLocked ? icon('lock-small') : ''}${escape(entry.title)}`;
       if (label.innerHTML !== title) { label.innerHTML = title; }
       const status = conversationHistoryStatus(entry);
@@ -792,6 +805,8 @@ function initialize(): void {
     if (!sessionMenuId) { return; }
     const entry = state?.sessions.find((entry) => entry.id === sessionMenuId);
     if (!entry || !sessionMenuTrigger?.isConnected || !sessionMenuTrigger.getClientRects().length) { closeSessionMenu(); return; }
+    for (const button of sessionActions) button.hidden = entry.origin === 'host' && button.dataset.action !== 'export';
+    sessionMenu.querySelector<HTMLElement>('.session-menu-separator')!.hidden = entry.origin === 'host';
     sessionMenu.querySelector('[data-action=lock]')!.innerHTML = `${icon(entry.titleLocked ? 'unlock' : 'lock')}<span>${entry.titleLocked ? t("Unlock title") : t("Lock title")}</span>`;
   }
 
@@ -811,7 +826,7 @@ function initialize(): void {
     sessionMenu.style.left = `${Math.max(margin, Math.min(x + sessionMenu.offsetWidth + margin <= window.innerWidth ? x : x - sessionMenu.offsetWidth, window.innerWidth - sessionMenu.offsetWidth - margin))}px`;
     sessionMenu.style.top = `${Math.max(margin, Math.min(y + sessionMenu.offsetHeight + margin <= window.innerHeight ? y : y - sessionMenu.offsetHeight, window.innerHeight - sessionMenu.offsetHeight - margin))}px`;
     sessionMenu.scrollTop = 0;
-    focusSessionAction(0);
+    focusSessionAction(sessionActions.findIndex(button => !button.hidden));
   }
 
   function closeSessionMenu(restoreFocus = false): void {
@@ -824,13 +839,13 @@ function initialize(): void {
 
   function focusSessionAction(index: number): void {
     sessionActions.forEach((button, i) => { button.tabIndex = i === index ? 0 : -1; });
-    sessionActions[index].focus({ preventScroll: true });
+    sessionActions[index]?.focus({ preventScroll: true });
   }
 
   function saveDraft(sync = true): void {
     clearTimeout(draftTimer);
     draftTimer = undefined;
-    if (!state || submitting) { return; }
+    if (!state || submitting || hostHistory()) { return; }
     drafts[`${state.project.uri}:${state.activeId}`] = conversationMentions.text();
     const draft = { text: conversationMentions.text(), attachments: [...draftFiles], ...(draftReferences.length ? { references: [...draftReferences] } : {}), editingQueueId };
     currentSession()!.draft = draft;
@@ -876,7 +891,7 @@ function initialize(): void {
     let changed = false;
     for (const entry of submissions.list()) {
       if (entry.projectUri !== state.project.uri || entry.phase !== 'pending' || localSessions.has(entry.sessionId)
-        || !state.sessions.some(session => session.id === entry.sessionId)) continue;
+        || !state.sessions.some(session => session.id === entry.sessionId && session.origin !== 'host')) continue;
       entry.phase = 'sending'; changed = true;
       const { input } = entry;
       vscode.postMessage({ type: 'send', projectUri: entry.projectUri, sessionId: entry.sessionId, requestId: input.id,
@@ -961,7 +976,7 @@ function initialize(): void {
       const retry = view.root.querySelector<HTMLButtonElement>('.retry-message');
       if (retry) {
         const submission = submissions.forMessage(view.message);
-        retry.hidden = interrupted || !!submission && submission.phase !== 'failed';
+        retry.hidden = hostHistory() || interrupted || !!submission && submission.phase !== 'failed';
         retry.disabled = readOnly() || !!state?.running || pendingSend() || !!view.message.pendingInput || !!retryingMessage || !submission && !navigationReady();
       }
     }
@@ -1108,13 +1123,13 @@ function initialize(): void {
       const actions = root.querySelector('.message-actions')!;
       const fork = iconButton('git-branch', t('Fork conversation'), async () => {
         const entryId = view.message.entryId, sessionId = state?.activeId, projectUri = state?.project.uri;
-        if (!entryId || !connectionAvailable || !navigationReady()) return;
+        if (!entryId || hostHistory() || !connectionAvailable || !navigationReady()) return;
         const result = await requestAction({
           title: t('Fork from this response?'),
           description: t('Create and open a new conversation with the history up to and including this response. Later messages are not included. The original conversation stays unchanged, so you can explore a different direction in the new one.'),
           confirm: t('Fork'),
         });
-        if (result !== undefined && state && state.activeId === sessionId && state.project.uri === projectUri && connectionAvailable && navigationReady()) {
+        if (result !== undefined && state && state.activeId === sessionId && state.project.uri === projectUri && !hostHistory() && connectionAvailable && navigationReady()) {
           const requestId = beginAgentNavigation('fork');
           forkDialog.start({ requestId, projectUri: state.project.uri, sessionId: state.activeId });
           post({ type: 'agent-command', requestId, errorScope: 'fork', command: { type: 'fork', requestId, entryId } });
@@ -1125,6 +1140,7 @@ function initialize(): void {
       trace.classList.add('trace-message'); actions.prepend(trace);
       const exportButton = iconButton('export', t("Export run"), () => { exportButton.disabled = true; exportButton.innerHTML = icon('loading'); post({ type: 'export-message', messageId: view.message.id }); });
       const retry = iconButton('refresh', t("Retry"), () => {
+        if (hostHistory()) return;
         const submission = submissions.forMessage(view.message);
         if (submission) {
           if (!connectionAvailable || pendingSend() || state?.running) return;
@@ -1194,19 +1210,19 @@ function initialize(): void {
     if (view.configureModel) view.configureModel.hidden = !configureModel;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content && !message.references?.length;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
-    if (fork) { fork.hidden = !!embeddedConversation || oldEngine() || !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
+    if (fork) { fork.hidden = !!embeddedConversation || hostHistory() || oldEngine() || !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
     const signature = JSON.stringify([message.attachments, message.references]);
     if (signature !== view.extrasSignature) {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
     }
-    if (message.pendingInput && view.prompt?.request.requestId !== message.pendingInput.requestId) {
+    if (!hostHistory() && message.pendingInput && view.prompt?.request.requestId !== message.pendingInput.requestId) {
       view.prompt?.root.remove(); view.prompt = new InputPrompt(message.pendingInput, {
         submit: (values) => post({ type: 'resume', messageId: message.id, requestId: message.pendingInput!.requestId, values }),
         stop: () => post({ type: 'stop' }),
         files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name, ...fileSelectionOptions(message.pendingInput!.params.find(field => field.name === name)) }),
       }); view.promptRoot.append(view.prompt.root);
       if (readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
-    } else if (!message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
+    } else if (hostHistory() || !message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
     else { view.prompt?.setBusy(readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
   }
 
@@ -1215,7 +1231,7 @@ function initialize(): void {
     const owner = state?.sessions.find(entry => entry.id === (session.agentOwnerId ?? session.id));
     const result = conversationSubagents(session.agent ?? owner?.agent, session.agentConversationId,
       connectionAvailable, session.agentInterrupted ?? owner?.agentInterrupted);
-    return result && { ...result, displayUsage: state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false };
+    return result && { ...result, readOnly: hostHistory(), displayUsage: state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false };
   }
 
   function updateChildWorkStatus(session: ConversationSession): void {
@@ -1460,7 +1476,7 @@ function initialize(): void {
   }
 
   function send(): void {
-    if (!state) { return; }
+    if (!state || hostHistory()) { return; }
     if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     if (state.running && (!connectionAvailable || !canQueue() || !hasInput)) { void stopCurrent(); return; }
@@ -1518,7 +1534,7 @@ function initialize(): void {
   }
 
   async function stopCurrent(): Promise<void> {
-    if (!state) { return; }
+    if (!state || hostHistory()) { return; }
     const key = `${state.project.uri}:${state.activeId}`;
     const previous = stopRequests.get(key);
     if (previous?.phase === 'pending') { return; }
@@ -1589,7 +1605,7 @@ function initialize(): void {
     button.addEventListener('click', () => {
       const id = sessionMenuId;
       closeSessionMenu(true);
-      if (id) { post({ type: 'session-action', id, action: button.dataset.action, currentTitle: state?.sessions.find(session => session.id === id)?.title }); }
+      if (id && !button.hidden) { post({ type: 'session-action', id, action: button.dataset.action, currentTitle: state?.sessions.find(session => session.id === id)?.title }); }
     });
   }
   document.addEventListener('pointerdown', (event) => { if (!sessionMenu.contains(event.target as Node)) { closeSessionMenu(); } });
@@ -1663,9 +1679,11 @@ function initialize(): void {
       else if (event.key === 'Tab') { closeSessionMenu(true); }
       else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault();
-        const index = sessionActions.indexOf(document.activeElement as HTMLButtonElement);
-        focusSessionAction(event.key === 'Home' ? 0 : event.key === 'End' ? sessionActions.length - 1
-          : (index + (event.key === 'ArrowDown' ? 1 : -1) + sessionActions.length) % sessionActions.length);
+        const actions = sessionActions.filter(button => !button.hidden);
+        const index = actions.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? actions.length - 1
+          : (index + (event.key === 'ArrowDown' ? 1 : -1) + actions.length) % actions.length;
+        focusSessionAction(sessionActions.indexOf(actions[next]));
       }
       return;
     }
@@ -1815,7 +1833,7 @@ function initialize(): void {
       document.querySelector<HTMLButtonElement>(message.command === 'new' ? '#new' : '#history-toggle')!.click();
       return;
     }
-    if (message.type === 'conversation-retry' && embeddedConversation && state) {
+    if (message.type === 'conversation-retry' && embeddedConversation && state && !hostHistory()) {
       const submission = submissions.get(message.requestId);
       if (submission?.phase === 'failed' && submission.projectUri === state.project.uri && submission.sessionId === state.activeId && connectionAvailable) {
         submissions.retry(message.requestId); render(state, false); persist(); dispatchSubmissions();

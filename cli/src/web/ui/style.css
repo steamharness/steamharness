@@ -17,6 +17,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .project-context { display: flex; align-items: center; min-width: 0; gap: 8px; }
 .project-context > :not([hidden]) { margin-top: 3px; }
 .project-identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.bot-invocation { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.bot-invocation > .codicon { font-size: 12px; }
 .assistant-welcome { padding: 20px 16px; color: var(--muted); }
 body[data-surface=assistant] { background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
 h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

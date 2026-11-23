@@ -120,6 +120,36 @@ it.each(['disabled', 'manual', 'automatic'] as const)('settles interrupted IM hi
   }
 });
 
+it('keeps a standard hosted Bot conversation read-only for Web clients across restarts', async () => {
+  const f = await fixture({ platform: false });
+  const conversationId = randomUUID(), requestId = randomUUID(), clientId = randomUUID();
+  const hostTurn = (input: object) => f.app.hostTurn('agent', { conversationId, requestId, ...input });
+  const select = (id: string) => f.call('agent', { type: 'navigate', clientId, id, requestId: 1, updates: [] });
+  await hostTurn({ action: 'ensure', title: 'IM history' });
+  const first = await f.state('agent');
+  expect(first.activeId).not.toBe(conversationId);
+  await select(conversationId);
+  expect(await f.call('agent', { type: 'ready', clientId })).toMatchObject({
+    activeId: conversationId, conversationAccess: { readOnly: true, reason: 'host' },
+    sessions: expect.arrayContaining([expect.objectContaining({ id: conversationId, origin: 'host' })]),
+  });
+  for (const message of [{ type: 'send', text: 'edit from Web' }, { type: 'retry', messageId: requestId }, { type: 'session-action', action: 'delete', id: conversationId }]) {
+    const response = await f.post('agent', { ...message, sessionId: conversationId, clientId });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ message: 'Read-only IM history. Continue this conversation in IM.' });
+  }
+  await hostTurn({ action: 'submit', text: 'sent via IM' });
+  await vi.waitFor(() => expect(f.active.has('agent')).toBe(true));
+  f.active.get('agent')!.finish({ status: 'success', output: { items: [] } });
+  await vi.waitFor(async () => expect(await hostTurn({ action: 'turn' })).toMatchObject({ status: 'success' }));
+  await f.reopen();
+  const history = await select(conversationId);
+  expect(history).toMatchObject({ activeId: conversationId, conversationAccess: { readOnly: true, reason: 'host' } });
+  expect(history.sessions.find((session: ConversationSession) => session.id === conversationId)).toMatchObject({
+    origin: 'host', messages: [expect.objectContaining({ role: 'user', content: 'sent via IM' }), expect.objectContaining({ role: 'assistant', status: 'success' })],
+  });
+});
+
 it('announces restricted entries before account connection and restores Build only after a verified role', async () => {
   const plain = await fixture({ platform: true });
   expect(plain.app.restrictedConfigurationEntries).toEqual([]);

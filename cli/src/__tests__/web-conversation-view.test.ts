@@ -48,6 +48,34 @@ async function fixture(query = '', saved?: object) {
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
 
+it.each([
+  ['zh-CN', 'Bot 调用', 'Bot 调用 · 只读'],
+  ['en', 'Bot invocation', 'Bot invocation · Read-only'],
+])('renders host history as read-only in %s without hiding the local composer', async (language, label, title) => {
+  const f = await fixture(`?projectLocale=${language}`);
+  const local = session('local'), hosted: ConversationSession = { ...session('hosted'), origin: 'host', messages: [
+    { id: 'input', role: 'user', content: 'Message from IM' },
+    { id: 'reply', role: 'assistant', content: 'Reply from bot', status: 'success', pendingInput: { requestId: 'confirm', nodeName: 'bot', title: 'Confirm', params: [] } },
+  ] };
+  f.receive([local, hosted], local.id);
+  document.querySelector<HTMLButtonElement>('[data-session-id="hosted"]')!.click();
+  expect(document.querySelector<HTMLElement>('.composer-area')!.hidden).toBe(true);
+  const badge = document.querySelector<HTMLElement>('#bot-invocation')!;
+  expect(badge.hidden).toBe(false);
+  expect(badge.textContent).toBe(title);
+  expect(document.querySelector('[data-session-id="hosted"] .bot-invocation')?.textContent).toBe(label);
+  expect(document.querySelector('.conversation-access[hidden]')).not.toBeNull();
+  expect(document.querySelector('.message.assistant')?.textContent).toContain('Reply from bot');
+  expect(document.querySelector<HTMLButtonElement>('.message.assistant .copy-message')!.disabled).toBe(false);
+  expect(document.querySelector('.input-prompt')).toBeNull();
+  expect(document.querySelector<HTMLButtonElement>('.retry-message')!.hidden).toBe(true);
+  document.querySelector<HTMLButtonElement>('[data-session-id="local"]')!.click();
+  expect(document.querySelector<HTMLElement>('.composer-area')!.hidden).toBe(false);
+  expect(f.input.disabled).toBe(false);
+  expect(badge.hidden).toBe(true);
+  expect(f.requests().flatMap(request => request.updates).some(update => update.id === hosted.id)).toBe(false);
+});
+
 it('anchors project cards to their assistant turn and preserves drafts and history on UI updates', async () => {
   const f = await fixture(), entry: ConversationSession = { ...session('cards'), messages: [
     { id: 'question', sessionRequestId: 'turn-1', role: 'user', content: 'First request' },

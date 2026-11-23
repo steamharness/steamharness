@@ -24,7 +24,7 @@ it('handles an image-only host turn without selecting it, replaying its upload, 
   const call=(data:Record<string,unknown>)=>hostConversation(f.controller,f.api,f.runtime,f.project,data);
   await call(input); await call(input); await vi.waitFor(()=>expect(f.running.has(requestId)).toBe(true));
   expect(f.runtime.uploadFiles).toHaveBeenCalledTimes(1);expect(f.controller.activeId).toBe(selected);
-  expect(f.controller.sessions.find(s=>s.id===conversationId)?.title).toBe('background 1');
+  expect(f.controller.sessions.find(s=>s.id===conversationId)).toMatchObject({ title: 'background 1', origin: 'host' });
   await expect(call({...input,requestId:randomUUID()})).rejects.toThrow('busy');
   f.running.get(requestId)!({status:'success',result:{data:{internal:'secret fallback'}},output:{items:[{id:'answer',contentType:'text',content:'complete answer',metadata:{private:'never send'}}]}});
   await f.controller.idle(); const turn=await call({...input,action:'turn'});
@@ -34,6 +34,25 @@ it('handles an image-only host turn without selecting it, replaying its upload, 
   await hostConversation(r.controller,r.api,r.runtime,r.project,{...input,action:'ensure',conversationId:randomUUID(),title:'background 2'});
   expect(r.controller.sessions.map(s=>s.title)).toEqual(expect.arrayContaining(['background 1','background 2']));r.controller.dispose();
 });
+
+it('marks the matching legacy host conversation without classifying ordinary conversations by their title', async () => {
+  const conversationId = randomUUID(), requestId = randomUUID(), localId = randomUUID();
+  const title = 'IM · 私聊 · 1';
+  const oldInput = { id: requestId, sessionRequestId: requestId, role: 'user' as const, content: 'hello' };
+  const f = fixture({ sessions: [
+    { id: localId, title, messages: [oldInput] },
+    { id: conversationId, title: 'Renamed', messages: [{ ...oldInput, input: { text: 'hello', attachments: [], params: {}, entrySubmission: { params: {} } } }] },
+  ] });
+  const call = (id: string) => hostConversation(f.controller, f.api, f.runtime, f.project, { conversationId: id, requestId, action: 'submit', text: 'hello' });
+  await expect(call(localId)).rejects.toThrow('not owned');
+  await call(conversationId);
+  expect(f.controller.sessions).toMatchObject([{ id: localId }, { id: conversationId, title: 'Renamed', origin: 'host' }]);
+  expect(f.controller.sessions[0].origin).toBeUndefined();
+  expect(f.save).toHaveBeenCalled();
+  expect(f.runtime.run).not.toHaveBeenCalled();
+  f.controller.dispose();
+});
+
 it('admits durable requests without waiting for the model, preserves native selection/draft and deduplicates across restart', async () => {
   const f = fixture(), selected = f.controller.activeId;
   f.controller.current.draft = {text:'native draft',attachments:[]};

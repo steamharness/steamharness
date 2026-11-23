@@ -18,17 +18,29 @@ export async function hostConversation(
   if (!uuid(conversationId) || !uuid(requestId)) throw new Error('Invalid background turn.');
   let session = controller.sessions.find((row) => row.id === conversationId);
   if (isolate && session && session.origin !== 'host') throw new Error('This conversation is not owned by the background host.');
-  if (!session && (action === 'ensure' || action === 'submit')) {
+  const opening = action === 'ensure' || action === 'submit';
+  if (!session && opening) {
     await controller.navigate(
       conversationId,
       [{ id: conversationId, create: true, draft: { text: '', attachments: [] } }],
       false,
-      isolate ? 'host' : undefined,
+      'host',
     );
     session = controller.sessions.find((row) => row.id === conversationId);
     if (typeof input.title === 'string') await controller.rename(conversationId, input.title);
+  } else if (session && opening && !session.origin) {
+    // Older hosts did not mark their sessions. Match the stdio host's stable ID
+    // and require a submission receipt if the conversation already has turns.
+    const hasReceipt = session.messages.some(message => message.role === 'user' && message.input?.entrySubmission) ||
+      session.queuedInputs?.some(input => input.entrySubmission);
+    if (session.agentOwnerId || session.forkSource || !hasReceipt && (session.messages.length || session.queuedInputs?.length)) {
+      throw new Error('This conversation is not owned by the background host.');
+    }
+    session.origin = 'host';
+    await controller.persist();
   }
   if (!session) return { status: 'missing' };
+  const hosted = session.origin === 'host';
   const answer = session.messages.find(
     (m) => m.role === 'assistant' && (m.sessionRequestId ?? m.id) === requestId,
   );
@@ -41,13 +53,13 @@ export async function hostConversation(
   )) throw new Error('Another background request owns this conversation.');
   if (action === 'ensure') return { status: 'ready' };
   if (action === 'turn') {
-    if (!answer) return { status: queued ? 'queued' : 'missing', ...(isolate && queued ? { recovering: !sessionRunning(session) } : {}) };
+    if (!answer) return { status: queued ? 'queued' : 'missing', ...(hosted && queued ? { recovering: !sessionRunning(session) } : {}) };
     const pending = answer.pendingInput;
     // Do not project trace data, tool arguments, model requests, report data or parameter defaults.
     return {
       status: session.recoveryPaused && answer.recovering ? 'paused' : answer.status,
-      ...(isolate && answer.recovering && !session.activeRunId && !session.recoveryPaused ? { recovering: true } : {}),
-      ...(isolate && answer.cancelRequested ? { stopping: true } : {}),
+      ...(hosted && answer.recovering && !session.activeRunId && !session.recoveryPaused ? { recovering: true } : {}),
+      ...(hosted && answer.cancelRequested ? { stopping: true } : {}),
       messageId: answer.id,
       items: (answer.items ?? []).map(({ id, content, contentType, collapsed, metadata, display }) => ({
         id,
@@ -86,7 +98,7 @@ export async function hostConversation(
       },
     };
   }
-  if (isolate && action === 'recover' && (answer?.recovering && !session.recoveryPaused && !answer.pendingInput || queued)) {
+  if (hosted && action === 'recover' && (answer?.recovering && !session.recoveryPaused && !answer.pendingInput || queued)) {
     if (queued && !answer) await controller.runQueued(session);
     else controller.recover(session);
     return { status: 'ready' };
@@ -151,7 +163,7 @@ export async function hostConversation(
     );
     return { status: 'resolved' };
   }
-  if (action === 'stop' && answer && (isolate ? unfinished(answer) : answer.status === 'running' || answer.pendingInput)) {
+  if (action === 'stop' && answer && (hosted ? unfinished(answer) : answer.status === 'running' || answer.pendingInput)) {
     await controller.stop(session);
     return { status: 'stopped' };
   }

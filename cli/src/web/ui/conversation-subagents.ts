@@ -11,7 +11,7 @@ export interface ConversationSubagent {
 }
 export interface ConversationSubagentsState {
   ownerId: string; conversationId: number; connected: boolean; tasks: ConversationSubagent[];
-  capturedAt?: number; displayUsage?: boolean;
+  capturedAt?: number; displayUsage?: boolean; readOnly?: boolean;
 }
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const text = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
@@ -197,7 +197,7 @@ export class ConversationSubagents {
         const result = document.createElement('pre'); result.className = 'subagent-result';
         const open = iconButton('comment-discussion', t('Open child conversation'), () => {
           const current = this.state?.tasks.find(item => item.id === task.id);
-          if (this.state?.connected && current?.childId !== undefined) this.openConversation(current.childId, this.state.ownerId);
+          if (this.state?.connected && !this.state.readOnly && current?.childId !== undefined) this.openConversation(current.childId, this.state.ownerId);
         });
         open.className = 'subagent-open'; open.append(document.createTextNode(t('Open child conversation')));
         body.append(meta, progress, activity, error, result, open); root.append(summary, body);
@@ -214,7 +214,7 @@ export class ConversationSubagents {
       view.activity.hidden = !task.activity; setText(view.activity, task.activity ? t('Current activity: {0}', task.activity) : '');
       view.error.hidden = !task.error; setText(view.error, taskError(task));
       view.result.hidden = !task.result; setText(view.result, task.result ?? '');
-      view.open.hidden = task.childId === undefined; view.open.disabled = !state.connected;
+      view.open.hidden = !!state.readOnly || task.childId === undefined; view.open.disabled = !state.connected;
       const current = this.list.children[index] ?? null;
       if (current !== view.root) {
         if (this.list.moveBefore && this.list.isConnected && view.root.isConnected) this.list.moveBefore(view.root, current);
