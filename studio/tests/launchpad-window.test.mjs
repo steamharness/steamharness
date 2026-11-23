@@ -19,7 +19,6 @@ const { outputFiles } = await build({ stdin: { contents: `
   export { LaunchMainService } from './src/vs/platform/launch/electron-main/launchMainService.ts';
   export { LifecycleMainService } from './src/vs/platform/lifecycle/electron-main/lifecycleMainService.ts';
   export { AuxiliaryWindowsMainService } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts';
-  export { AuxiliaryWindow } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts';
   export { chatTitlebarDragRegions } from './src/vs/workbench/electron-browser/studioChatTitlebarDrag.ts';
   export { createStudioTray } from './src/vs/platform/windows/electron-main/studioTray.ts';`, resolveDir: fileURLToPath(kernel) },
   tsconfig: fileURLToPath(new URL('src/tsconfig.json', kernel)), bundle: true, packages: 'external', platform: 'node', format: 'cjs', write: false,
@@ -30,7 +29,22 @@ const loadKernel = platform => {
     id => id === 'electron' ? electron : require(id), Object.create(process, { platform: { value: platform } }));
   return { electron, ...module.exports };
 };
-const { electron, CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, chatTitlebarDragRegions, createStudioTray } = loadKernel(process.platform);
+const { electron, CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, chatTitlebarDragRegions, createStudioTray } = loadKernel(process.platform);
+
+function createAuxiliaryService(t, platform) {
+  const { electron, AuxiliaryWindowsMainService } = loadKernel(platform);
+  const workArea = { x: 0, y: 0, width: 1600, height: 1024 };
+  Object.assign(electron, { app: new EventEmitter(), ipcMain: { handle() {} }, screen: { getAllDisplays: () => [{ bounds: workArea, workArea }] } });
+  const log = { trace() {} };
+  const service = new AuxiliaryWindowsMainService({
+    invokeFunction: (_fn, _state, overrides) => ({ titleBarStyle: 'default', frame: !overrides.frameless, alwaysOnTop: overrides.alwaysOnTop ?? false }),
+    createInstance: (Window, ...args) => new Window(...args, { args: {} }, log, { getValue: () => undefined }, {}, { registerAuxWindow() {} }),
+  }, log);
+  t.after(() => service.dispose());
+  return { electron, service };
+}
+
+const chatFeatures = 'popup=yes,left=100,top=100,width=780,height=680,window-native-titlebar=yes,window-studio-chat=yes';
 
 function mockWindow(isStudioLaunchpad) {
   const win = new EventEmitter();
@@ -133,43 +147,20 @@ test('ordinary project windows keep native startup visibility', t => {
   assert.equal(f.win.isVisible(), true);
 });
 
-test('standalone chats use native ownership rather than global always-on-top', t => {
-  const { win } = createWindow(t, { background: false });
-  electron.app = new EventEmitter();
-  electron.ipcMain.handle = () => {};
-  const service = new AuxiliaryWindowsMainService({ invokeFunction: (_fn, _state, overrides) => ({
-    alwaysOnTop: overrides.alwaysOnTop ?? false,
-  }) }, { trace() {} });
-  t.after(() => service.dispose());
-  const features = 'popup=yes,left=100,top=100,width=780,height=680';
-  const chat = { features: features + ',window-keep-above-parent=yes' };
-  assert.deepEqual(service.createWindow(chat, win), { parent: win, alwaysOnTop: false });
-  assert.deepEqual(service.createWindow(chat), { alwaysOnTop: false });
-  assert.deepEqual(service.createWindow({ features }, win), { alwaysOnTop: false });
-  win.destroy();
-  assert.deepEqual(service.createWindow(chat, win), { alwaysOnTop: false });
-});
-
-test('only opted-in macOS windows owned by the launchpad overlay their native buttons', t => {
-  const parent = { isDestroyed: () => false };
+test('chats have no native parent or global always-on-top and retain the opt-in macOS titlebar overlay', t => {
   for (const platform of ['darwin', 'win32', 'linux']) {
-    const { electron, AuxiliaryWindowsMainService } = loadKernel(platform);
-    const workArea = { x: 0, y: 0, width: 1600, height: 1024 };
-    Object.assign(electron, { app: new EventEmitter(), ipcMain: { handle() {} }, screen: { getAllDisplays: () => [{ bounds: workArea, workArea }] } });
-    const service = new AuxiliaryWindowsMainService({ invokeFunction: (_fn, _state, overrides) => ({
-      titleBarStyle: 'default', frame: !overrides.frameless,
-    }) }, { trace() {} });
-    t.after(() => service.dispose());
-    const features = 'left=100,top=100,width=780,height=680,window-keep-above-parent=yes,window-native-titlebar=yes';
-    const overlay = { features: `${features},window-titlebar-overlay=yes` };
-    const options = service.createWindow(overlay, parent);
-    assert.equal(options.parent, parent);
+    const { service } = createAuxiliaryService(t, platform);
+    const overlay = { features: `${chatFeatures},window-titlebar-overlay=yes` };
+    const options = service.createWindow(overlay, true);
+    assert.equal(options.parent, undefined);
+    assert.equal(options.alwaysOnTop, false);
     assert.equal(options.titleBarStyle, platform === 'darwin' ? 'hidden' : 'default');
     assert.equal(options.titleBarOverlay, platform === 'darwin' ? true : undefined);
     assert.equal(options.trafficLightPosition?.x, platform === 'darwin' ? 12 : undefined);
-    assert.equal(service.createWindow({ features }, parent).titleBarStyle, 'default');
-    assert.equal(service.createWindow(overlay).titleBarStyle, 'default');
-    assert.equal(service.createWindow({ features: overlay.features + ',window-frameless=yes' }, parent).titleBarStyle, 'default');
+    assert.equal(service.createWindow({ features: chatFeatures }, true).titleBarStyle, 'default');
+    assert.equal(service.createWindow(overlay, false).titleBarStyle, 'default');
+    assert.equal(service.createWindow({ features: overlay.features.replace(',window-studio-chat=yes', '') }, true).titleBarStyle, 'default');
+    assert.equal(service.createWindow({ features: overlay.features + ',window-frameless=yes' }, true).titleBarStyle, 'default');
   }
 });
 
@@ -205,26 +196,25 @@ test('the chat titlebar rejects out-of-bounds or malformed control rectangles', 
   }
 });
 
-test('Command+W closes only the owned native auxiliary window, independently of renderer focus', t => {
-  for (const [platform, owned] of [['darwin', true], ['darwin', false], ['linux', true]]) {
-    const { electron, AuxiliaryWindow } = loadKernel(platform);
+test('Command+W closes only the registered macOS chat window, independently of renderer focus', t => {
+  for (const [platform, fromStudioLaunchpad, chat] of [['darwin', true, true], ['darwin', false, true], ['darwin', true, false], ['linux', true, true]]) {
+    const { electron, service } = createAuxiliaryService(t, platform);
     let closes = 0, prevented = 0;
     const window = Object.assign(new EventEmitter(), {
       setMenu() {}, setAutoHideMenuBar() {}, setSheetOffset() {}, close() { closes++; },
     });
-    Object.assign(electron, { BrowserWindow: { fromWebContents: () => window }, screen: { getAllDisplays: () => [] } });
+    electron.BrowserWindow = { fromWebContents: () => window };
     const contents = Object.assign(new EventEmitter(), { id: 5, isDestroyed: () => false });
-    const parent = { close: () => assert.fail('Closing an auxiliary window must not close the launchpad') };
-    const auxiliary = new AuxiliaryWindow(contents, owned ? { parent } : undefined, false, { args: {} }, { trace() {} },
-      { getValue: () => undefined }, {}, { registerAuxWindow() {} });
-    t.after(() => auxiliary.dispose());
+    service.createWindow({ features: chat ? chatFeatures : chatFeatures.replace(',window-studio-chat=yes', '') }, fromStudioLaunchpad);
+    service.registerWindow(contents);
     const key = (change = {}) => contents.emit('before-input-event', { preventDefault: () => prevented++ }, { type: 'keyDown', key: 'w', meta: true, ...change });
     for (const change of [{ key: 'q' }, { key: 'c' }, { meta: false, control: true }, { control: true }, { shift: true }, { alt: true }, { isComposing: true }, { type: 'keyUp' }]) key(change);
     assert.deepEqual([closes, prevented], [0, 0]);
     key(); key({ isAutoRepeat: true });
-    assert.deepEqual([closes, prevented], platform === 'darwin' && owned ? [1, 2] : [0, 0]);
+    assert.deepEqual([closes, prevented], platform === 'darwin' && fromStudioLaunchpad && chat ? [1, 2] : [0, 0]);
     window.emit('closed');
     assert.equal(contents.listenerCount('before-input-event'), 0);
+    assert.equal(service.getWindowByWebContents(contents), undefined);
   }
 });
 
@@ -303,15 +293,19 @@ test('an inbox request shows only the launchpad and dispatches when ready, even 
   }
 });
 
-test('close hides only the console while explicit quit unloads both windows', async () => {
+test('close hides only the console without closing the conversation; explicit quit unloads the console', async () => {
   const lifecycle = Object.assign(Object.create(LifecycleMainService.prototype), {
     trace() {}, windowCounter: 0, windowToCloseRequest: new Set(), _onBeforeCloseWindow: { fire() {} }, unload: async () => false,
   });
   const consoleWindow = mockWindow(true), project = mockWindow(false);
+  const conversation = mockWindow(false);
+  lifecycle.registerAuxWindow(conversation);
+  conversation.win.on('close', () => conversation.calls.push('close'));
   for (const window of [consoleWindow, project]) lifecycle.registerWindow(window);
   const close = window => window.win.emit('close', { preventDefault() {} });
   close(consoleWindow); close(project); await setImmediate();
   assert.deepEqual(consoleWindow.calls, ['hide']); assert.deepEqual(project.calls, ['close']);
+  assert.deepEqual(conversation.calls, []);
   lifecycle._quitRequested = true; close(consoleWindow); await setImmediate();
   assert.deepEqual(consoleWindow.calls, ['hide', 'close']);
 });

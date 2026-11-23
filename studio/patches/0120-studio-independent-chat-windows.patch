@@ -1,0 +1,185 @@
+diff --git a/src/vs/code/electron-main/app.ts b/src/vs/code/electron-main/app.ts
+index 85635436cfb1ac5b1037203c8d1bb3cf3b2d8825..4de93d4037f4c001e84b246e88ca266d2a9f86ea 100644
+--- a/src/vs/code/electron-main/app.ts
++++ b/src/vs/code/electron-main/app.ts
+@@ -620,11 +620,11 @@ export class CodeApplication extends Disposable {
+ 				// about:blank windows can open as window witho our default options
+ 				if (details.url === 'about:blank') {
+ 					this.logService.trace('[aux window] webContents#setWindowOpenHandler: Allowing auxiliary window to open on about:blank');
+-					const owner = this.windowsMainService?.getWindowByWebContents(contents);
++					const fromStudioLaunchpad = this.windowsMainService?.getWindowByWebContents(contents)?.isStudioLaunchpad === true;
+ 
+ 					return {
+ 						action: 'allow',
+-						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details, owner?.isStudioLaunchpad ? owner.win ?? undefined : undefined)
++						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details, fromStudioLaunchpad)
+ 					};
+ 				}
+ 
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
+index 03622f7072d9b6ef3341254c0473ee99d8862b86..4e27ae494020d16c02a54f7e8fbb7709d7e1708c 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts
+@@ -38,6 +38,7 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
+ 		private readonly webContents: WebContents,
+ 		private readonly windowOptions: BrowserWindowConstructorOptions | undefined,
+ 		private readonly disableMaximize: boolean,
++		private readonly isStudioChat: boolean,
+ 		@IEnvironmentMainService environmentMainService: IEnvironmentMainService,
+ 		@ILogService logService: ILogService,
+ 		@IConfigurationService configurationService: IConfigurationService,
+@@ -100,8 +101,8 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
+ 			// Lifecycle
+ 			this.lifecycleMainService.registerAuxWindow(this);
+ 
+-			if (isMacintosh && options?.parent) {
+-				// The workbench menu targets the owner. Close this window even when a nested frame has focus.
++			if (isMacintosh && this.isStudioChat) {
++				// The workbench menu targets the opener. Close this chat even when a nested frame has focus.
+ 				this._register(Event.fromNodeEventEmitter(this.webContents, 'before-input-event', (event: ElectronEvent, input: Input) => ({ event, input }))(({ event, input }) => {
+ 					if (input.type === 'keyDown' && input.meta && !input.control && !input.alt && !input.shift && !input.isComposing && input.key.toLowerCase() === 'w') {
+ 						event.preventDefault();
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
+index 7159a44bd010a9f48b9d0088b61ca35e9889c640..4a99bcee1bb1a076392309b909160112fc103064 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { BrowserWindow, BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
++import { BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
+ import { Event } from '../../../base/common/event.js';
+ import { IAuxiliaryWindow } from './auxiliaryWindow.js';
+ import { createDecorator } from '../../instantiation/common/instantiation.js';
+@@ -20,7 +20,7 @@ export interface IAuxiliaryWindowsMainService {
+ 	readonly onDidChangeAlwaysOnTop: Event<{ window: IAuxiliaryWindow; alwaysOnTop: boolean }>;
+ 	readonly onDidTriggerSystemContextMenu: Event<{ readonly window: IAuxiliaryWindow; readonly x: number; readonly y: number }>;
+ 
+-	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions;
++	createWindow(details: HandlerDetails, fromStudioLaunchpad: boolean): BrowserWindowConstructorOptions;
+ 	registerWindow(webContents: WebContents): void;
+ 
+ 	getWindowByWebContents(webContents: WebContents): IAuxiliaryWindow | undefined;
+diff --git a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+index fb86e5ea25adaa0fb11d64bce19033ae36d4023a..7f62e971c6c95de60f7c89860f3186c60d2e1419 100644
+--- a/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
++++ b/src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts
+@@ -39,7 +39,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 
+ 	private readonly windows = new Map<number /* webContents ID */, AuxiliaryWindow>();
+ 
+-	private readonly pendingWindowOptionsQueue: { readonly options: BrowserWindowConstructorOptions; readonly disableMaximize: boolean }[] = [];
++	private readonly pendingWindowOptionsQueue: { readonly options: BrowserWindowConstructorOptions; readonly disableMaximize: boolean; readonly isStudioChat: boolean }[] = [];
+ 
+ 	constructor(
+ 		@IInstantiationService private readonly instantiationService: IInstantiationService,
+@@ -95,20 +95,19 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 		});
+ 	}
+ 
+-	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
+-		const { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
++	createWindow(details: HandlerDetails, fromStudioLaunchpad: boolean): BrowserWindowConstructorOptions {
++		const { state, overrides, disableMaximize, studioChat, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
++		const isStudioChat = fromStudioLaunchpad && studioChat;
+ 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
+ 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
+ 		});
+-		if (keepAboveParent && parent && !parent.isDestroyed()) {
+-			options.parent = parent;
+-			if (isMacintosh && titlebarOverlay && options.frame !== false) {
+-				options.titleBarStyle = 'hidden';
+-				options.titleBarOverlay = true;
+-				options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
+-			}
++		// Keep the renderer opener, but not a native parent: moving or hiding the launchpad must leave chats alone.
++		if (isStudioChat && isMacintosh && titlebarOverlay && options.frame !== false) {
++			options.titleBarStyle = 'hidden';
++			options.titleBarOverlay = true;
++			options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
+ 		}
+-		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
++		this.pendingWindowOptionsQueue.push({ options, disableMaximize, isStudioChat });
+ 		return options;
+ 	}
+ 
+@@ -116,7 +115,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 		const windowState: IWindowState = {};
+ 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
+ 		let disableMaximize = false;
+-		let keepAboveParent = false;
++		let studioChat = false;
+ 		let titlebarOverlay = false;
+ 
+ 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
+@@ -153,8 +152,8 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 				case 'window-always-on-top':
+ 					overrides.alwaysOnTop = true;
+ 					break;
+-				case 'window-keep-above-parent':
+-					keepAboveParent = value === 'yes';
++				case 'window-studio-chat':
++					studioChat = value === 'yes';
+ 					break;
+ 				case 'window-frameless':
+ 					overrides.frameless = true;
+@@ -180,7 +179,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 
+ 		this.logService.trace('[aux window] using window state', state);
+ 
+-		return { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay };
++		return { state, overrides, disableMaximize, studioChat, titlebarOverlay };
+ 	}
+ 
+ 	registerWindow(webContents: WebContents): void {
+@@ -188,7 +187,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
+ 
+ 		const pendingWindowOptions = this.pendingWindowOptionsQueue.shift();
+ 
+-		const auxiliaryWindow = this.instantiationService.createInstance(AuxiliaryWindow, webContents, pendingWindowOptions?.options, pendingWindowOptions?.disableMaximize ?? false);
++		const auxiliaryWindow = this.instantiationService.createInstance(AuxiliaryWindow, webContents, pendingWindowOptions?.options, pendingWindowOptions?.disableMaximize ?? false, pendingWindowOptions?.isStudioChat ?? false);
+ 
+ 		this.windows.set(auxiliaryWindow.id, auxiliaryWindow);
+ 		disposables.add(toDisposable(() => this.windows.delete(auxiliaryWindow.id)));
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 376552b092b7d3272c19b7ce8b4d0d725f62e269..8ae2114565dc9c648aa772e01945f80e15d9261d 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -53,7 +53,7 @@ export class StudioChatWindow extends Disposable {
+ 	}
+ 	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
+ 		const titlebarOverlay = isMacintosh && view.titlebarOverlay === true;
+-		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true, titlebarOverlay });
++		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, studioChat: true, titlebarOverlay });
+ 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
+ 		const life = new DisposableStore();
+ 		try {
+diff --git a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+index e7a427bdfe5f07eeec76b69bbb3efcefa92a4f31..7996c38a033c07e92082d42cce9d873554f23b9f 100644
+--- a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
++++ b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+@@ -49,11 +49,11 @@ export interface IAuxiliaryWindowOpenOptions {
+ 	readonly mode?: AuxiliaryWindowMode;
+ 	readonly zoomLevel?: number;
+ 	readonly alwaysOnTop?: boolean;
+-	/** Keep this native window above its opener, not above other applications. */
+-	readonly keepAboveParent?: boolean;
++	/** Apply Studio chat behavior when opened from the launchpad. */
++	readonly studioChat?: boolean;
+ 
+ 	readonly nativeTitlebar?: boolean;
+-	/** Overlay the native controls on the content of an owned macOS window. */
++	/** Overlay the native controls on the content of a macOS Studio chat. */
+ 	readonly titlebarOverlay?: boolean;
+ 	readonly disableFullscreen?: boolean;
+ 	readonly frameless?: boolean;
+@@ -379,7 +379,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
+ 			options?.titlebarOverlay ? 'window-titlebar-overlay=yes' : undefined,
+ 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
+ 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
+-			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,
++			options?.studioChat ? 'window-studio-chat=yes' : undefined,
+ 			options?.mode === AuxiliaryWindowMode.Maximized ? 'window-maximized=yes' : undefined,
+ 			options?.mode === AuxiliaryWindowMode.Fullscreen ? 'window-fullscreen=yes' : undefined,
+ 			options?.frameless ? 'window-frameless=yes' : undefined,

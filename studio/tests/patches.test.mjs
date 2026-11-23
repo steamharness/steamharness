@@ -50,9 +50,12 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
     'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts',
     'src/vs/workbench/electron-browser/studioLaunchpad.ts',
-    'src/vs/workbench/electron-browser/studioLaunchpadProfile.ts', 'src/vs/workbench/electron-browser/media/studioLaunchpad.css'];
+    'src/vs/workbench/electron-browser/studioLaunchpadProfile.ts', 'src/vs/workbench/electron-browser/media/studioLaunchpad.css',
+    'src/vs/code/electron-main/app.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
+    'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts',
+    'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts'];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
-    'src/vs/code/electron-main/app.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts',
+    'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts',
     'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts',
     'src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts', 'src/vs/base/common/product.ts',
     'src/vs/workbench/contrib/update/browser/update.contribution.ts', 'src/vs/workbench/contrib/update/browser/update.ts']);
