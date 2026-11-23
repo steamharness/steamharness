@@ -29,6 +29,8 @@ import { readStudioKanbanDiagnostics, type StudioKanbanHost } from './studio-kan
 import type { Connection } from './workflow-auth-client';
 import { readSidebarProjectEntries } from './project-sidebar-node';
 import { readRunningLibraryProjects } from './library-activity';
+import { ProjectUsageService } from './project-usage-service';
+import type { ManagedUsageTarget } from './project-usage-types';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -36,6 +38,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const controller = new AbortController();
   const authRoot = path.join(context.globalStorageUri.fsPath, 'workflow', 'isolated-auth', randomUUID());
   const webDataDirectory = path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
+  const usage = new ProjectUsageService(webDataDirectory, path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'),
+    account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined);
+  context.subscriptions.push(usage);
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
@@ -207,6 +212,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     readSidebarEntries: vscode.env.remoteName ? undefined : readSidebarProjectEntries,
     readLibraryActivity: vscode.env.remoteName ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
+    readProjectUsage: vscode.env.remoteName || vscode.env.uiKind !== vscode.UIKind.Desktop ? undefined : input => usage.request(input),
     openHostedSidebar: async (...args) => (await import('./hosted-sidebar-preview')).openHostedSidebar(...args),
     inspect: async (paths, options) => {
       assertAvailable();

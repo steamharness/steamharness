@@ -47,6 +47,8 @@ async function receipt(root, upstream) {
 test('the pinned kernel skips superseded historical patches even in a shallow checkout with local edits', async t => {
   const files = ['src/vs/workbench/browser/parts/studioMode.ts', 'src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts', 'src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css',
     'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
+    'src/vs/workbench/browser/studioProjectDetails.ts', 'src/vs/workbench/browser/media/studioProjectDetails.css',
+    'src/vs/workbench/electron-browser/studioLaunchpadView.ts',
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
     'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts',
     'src/vs/workbench/common/studioProjectIcons.ts', 'src/vs/workbench/electron-browser/studioLaunchpad.ts', 'src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts',

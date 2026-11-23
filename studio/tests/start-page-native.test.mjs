@@ -32,7 +32,7 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   window.IntersectionObserver = class { observe() {} disconnect() {} };
   const { StudioStartView } = window.eval(`${compiled.outputFiles[0].text}\nstudioStart;`);
   const calls = [], service = { state: undefined, onDidChange: callback => { service.change = callback; return { dispose() {} }; }, setVisible() {} };
-  const view = new StudioStartView(document.getElementById('host'), service, { executeCommand: async (...args) => calls.push(JSON.parse(JSON.stringify(args))) });
+  const view = new StudioStartView(document.getElementById('host'), service, { executeCommand: async (...args) => calls.push(JSON.parse(JSON.stringify(args))) }, { writeText: async () => {} });
   const { element } = view;
   assert.equal(element.getAttribute('aria-busy'), 'true');
   assert.equal(element.querySelectorAll('button').length, 0);
@@ -48,7 +48,7 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   assert.equal(element.getAttribute('aria-busy'), 'false');
   assert.equal(element.querySelector('.lp-section-kicker').textContent, zh ? '项目详情' : 'Project details');
   assert.equal(element.querySelector('h1').textContent, 'Aggregate');
-  assert.equal(element.querySelector('h2').textContent, zh ? '项目入口' : 'Project entries');
+  assert.deepEqual([...element.querySelectorAll('h2')].map(heading => heading.textContent), zh ? ['本机用量', '项目入口'] : ['Local usage', 'Project entries']);
   assert.equal(element.querySelector('.lp-detail-location').textContent, '/aggregate');
   assert.equal(element.querySelector('.lp-detail-description').textContent, state.projects[0].description);
   assert.equal(element.querySelector('script'), null);
@@ -61,7 +61,7 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   assert.doesNotMatch(rows[2].querySelector('img')?.getAttribute('src') ?? '', /example\.invalid/);
   assert.equal(rows[1].querySelector('button').getAttribute('aria-label'), `${zh ? '打开入口' : 'Open entry'}: Database`);
   assert.equal(element.querySelector('.lp-detail-actions .lp-primary').textContent, zh ? '运行项目' : 'Run project');
-  for (const button of element.querySelectorAll('button')) { button.click(); }
+  for (const button of element.querySelectorAll('.lp-detail-actions button, .lp-detail-entries button')) { button.click(); }
   assert.deepEqual(calls, [['studio.internalRunProjectEntry', { uri, entryId: 'database' }], ['studio.openProjectSource', { uri, entryId: 'database' }],
     ['studio.internalRunProjectEntry', { uri, entryId: 'agent' }], ['studio.internalRunProjectEntry', { uri, entryId: 'database' }]]);
   const focused = rows[1].querySelector('button'); focused.focus();
@@ -95,6 +95,7 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   view.dispose();
 });
 
+const localUsagePatch = '0142-studio-project-local-usage.patch';
 for (const [patchNames, files] of [
   [[overviewPatch], [file, css, 'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts']],
   [['0070-studio-start-partial-status.patch'], [file]],
@@ -114,7 +115,7 @@ for (const [patchNames, files] of [
   const sequence = patchNames.includes(overviewPatch) ? [...patchNames, '0107-studio-project-type-icons.patch'] : patchNames.includes('0067-studio-start-recent-projects.patch')
     ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch']
     : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch'];
-  for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch']) {
+  for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch', localUsagePatch]) {
     const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
     const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');
     if (relevant) await writeFile(path.join(directory, 'patches', patchName), relevant);

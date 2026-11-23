@@ -219,7 +219,7 @@ for (const language of ['en', 'zh-cn']) {
       document.querySelector('.editor-group-container').append(host);
       const change = new Emitter();
       const service = { state: undefined, onDidChange: change.event, setVisible() {} };
-      const view = new StudioStartView(host, service, { executeCommand: async () => undefined });
+      const view = new StudioStartView(host, service, { executeCommand: async () => undefined }, { writeText: async () => {} });
       globalThis.studioStartLoadingTest = { host, change, service, view };
     });
     try {

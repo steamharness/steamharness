@@ -7,6 +7,7 @@ import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerPro
 import type { WebAppFailureReason } from './web-app-errors';
 import type { TraceModelRequestTarget } from './workflow-trace-types';
 import type { OpenHostedSidebar, SidebarProjectEntry } from './project-sidebar-types';
+import type { ProjectUsageSnapshot } from './project-usage-types';
 
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
@@ -67,6 +68,7 @@ export interface Launcher {
   inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
   readLibraryActivity?(projects: unknown): Promise<string[]>;
+  readProjectUsage?(input: unknown): Promise<ProjectUsageSnapshot | undefined> | undefined;
   openHostedSidebar?: OpenHostedSidebar;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   localAssistantDirectory?(): Promise<string>;

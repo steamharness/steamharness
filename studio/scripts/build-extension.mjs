@@ -36,6 +36,10 @@ export async function buildExtension({ watch = false } = {}) {
     { ...shared, entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },
     { ...shared, platform: 'browser', target: 'es2022', outfile: 'dist/extension-web.js' },
   ];
+  const usageWorker = { absWorkingDir: directory, entryPoints: ['src/project-usage-worker.ts'], bundle: true,
+    platform: 'node', format: 'cjs', target: 'node22', outfile: 'dist/project-usage-worker.cjs' };
+  if (watch) { await (await esbuild.context(usageWorker)).watch(); }
+  else { await esbuild.build(usageWorker); }
   for (const option of options) {
     option.plugins = [overlayExtensionBuildPlugin(directory, path.join(ROOT, '.studio/extension-with-overlay'), path.basename(option.outfile))];
     if (watch) {
