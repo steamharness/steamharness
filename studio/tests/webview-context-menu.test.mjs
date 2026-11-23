@@ -145,12 +145,15 @@ test('native commands route to the matching live webview, copy once and unregist
   second.dispose(); await command(reloadedInput); assert.equal(second.messages.length, 3);
 });
 
-test('every native object action is hidden from the palette and has English and Chinese menu text', async () => {
+test('webview menu commands are declared, and object actions are localized and hidden from the palette', async () => {
   const root = new URL('../extensions/studio-workstation/', import.meta.url);
   const [manifest, en, zh] = await Promise.all(['package.json', 'package.nls.json', 'package.nls.zh-cn.json'].map(async file => JSON.parse(await readFile(new URL(file, root), 'utf8'))));
+  const declared = new Set(manifest.contributes.commands.map(command => command.command));
+  const webviewMenus = manifest.contributes.menus['webview/context'];
+  assert.deepEqual(webviewMenus.map(item => item.command).filter(command => !declared.has(command)), []);
   for (const command of manifest.contributes.commands.filter(command => command.command.startsWith('studio.context.'))) {
     const key = command.title.slice(1, -1); assert.ok(en[key]); assert.ok(zh[key]);
-    assert.ok(manifest.contributes.menus['webview/context'].some(item => item.command === command.command && item.when.includes('studioContextMenu')));
+    assert.ok(webviewMenus.some(item => item.command === command.command && item.when.includes('studioContextMenu')));
     assert.ok(manifest.contributes.menus.commandPalette.some(item => item.command === command.command && item.when === 'false'));
   }
 });

@@ -509,11 +509,6 @@
           "group": "1_navigation@22"
         },
         {
-          "command": "editor.action.clipboardCopyAction",
-          "when": "studioFrameSelection && preventDefaultContextMenuItems",
-          "group": "2_clipboard"
-        },
-        {
           "command": "studio.context.open",
           "when": "studioContextMenu && studioContextAction_open",
           "group": "1_navigation@0"
