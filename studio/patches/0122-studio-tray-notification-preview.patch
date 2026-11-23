@@ -1,0 +1,832 @@
+diff --git a/build/checker/tsconfig.electron-browser.json b/build/checker/tsconfig.electron-browser.json
+index 80828443aa062de07c4fe077cd75540f58cd3134..a317398e2a92533c57f16d0a7de7d7691fa171e9 100644
+--- a/build/checker/tsconfig.electron-browser.json
++++ b/build/checker/tsconfig.electron-browser.json
+@@ -17,6 +17,7 @@
+ 		"../../src/**/fixtures/**",
+ 		"../../src/vs/base/parts/sandbox/electron-browser/preload.ts", 		// Preload scripts for Electron sandbox
+ 		"../../src/vs/base/parts/sandbox/electron-browser/preload-aux.ts",	// have limited access to node.js APIs
+-		"../../src/vs/platform/browserView/electron-browser/preload-browserView.ts"	// Browser view preload script
++		"../../src/vs/platform/browserView/electron-browser/preload-browserView.ts",	// Browser view preload script
++		"../../src/vs/platform/windows/electron-browser/preload-studioTrayPreview.ts"	// Tray preview preload script
+ 	]
+ }
+diff --git a/build/next/resources.ts b/build/next/resources.ts
+index 78acb6bc2df0be2f1110d64b66dc2b4def0c1444..5f84ab32041688ff2fb154e8c3e1a3e8059b6d06 100644
+--- a/build/next/resources.ts
++++ b/build/next/resources.ts
+@@ -39,6 +39,7 @@ const desktopResourcePatterns = [
+ 	'vs/code/electron-browser/workbench/workbench-dev.html',
+ 	'vs/sessions/electron-browser/sessions.html',
+ 	'vs/sessions/electron-browser/sessions-dev.html',
++	'vs/platform/windows/electron-browser/studioTrayPreview.html',
+ 	'vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html',
+ 	'vs/workbench/contrib/webview/browser/pre/*.html',
+ 
+diff --git a/build/next/standalone.ts b/build/next/standalone.ts
+index 76702bff86f4af30fbf1fd9b3e13bbd73b26a0bd..5e26992e4d95629e5cffc8080f795ee4ba4cbe2d 100644
+--- a/build/next/standalone.ts
++++ b/build/next/standalone.ts
+@@ -16,6 +16,7 @@ const desktopStandaloneFiles = [
+ 	'vs/base/parts/sandbox/electron-browser/preload.ts',
+ 	'vs/base/parts/sandbox/electron-browser/preload-aux.ts',
+ 	'vs/platform/browserView/electron-browser/preload-browserView.ts',
++	'vs/platform/windows/electron-browser/preload-studioTrayPreview.ts',
+ ];
+ 
+ export async function compileStandaloneFiles(srcDir: string, outDir: string, target: BuildTarget, minify: boolean, sourceMapBaseUrl?: string): Promise<void> {
+diff --git a/build/next/test/standalone.test.ts b/build/next/test/standalone.test.ts
+index 35608e3d30f89b989c6941af55ed59f7625d6d8a..61fc7060b0fe2c25acda343a12b7b2d1ac2d19a5 100644
+--- a/build/next/test/standalone.test.ts
++++ b/build/next/test/standalone.test.ts
+@@ -37,6 +37,10 @@ const preloads = [
+ 		file: 'vs/platform/browserView/electron-browser/preload-browserView.ts',
+ 		markers: ['isTrusted', 'exposeInMainWorld(', 'getBoundingClientRect(', '_onPicked('],
+ 	},
++	{
++		file: 'vs/platform/windows/electron-browser/preload-studioTrayPreview.ts',
++		markers: ['replaceChildren(', 'invoke('],
++	},
+ ];
+ const javascriptFiles = preloads.map(({ file }) => file.replace(/\.ts$/, '.js')).sort();
+ 
+diff --git a/src/vs/platform/native/common/native.ts b/src/vs/platform/native/common/native.ts
+index 7c7930c550cb294ffb99b2e9b382d24724dff79a..698c95b3ff05920897d7138c6ad93ada215ccb55 100644
+--- a/src/vs/platform/native/common/native.ts
++++ b/src/vs/platform/native/common/native.ts
+@@ -14,6 +14,7 @@ import { IV8Profile } from '../../profiling/common/profiling.js';
+ import { AuthInfo, Credentials } from '../../request/common/request.js';
+ import { IPartsSplash } from '../../theme/common/themeService.js';
+ import { AgentsWindowOpenSource, IAgentsWindowDraft, IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
++import type { IStudioTrayNotifications } from '../../windows/common/studioTrayNotifications.js';
+ 
+ export interface IToastOptions {
+ 	readonly id: string;
+@@ -443,7 +444,8 @@ export interface ICommonNativeHostService {
+ 	isStudioNotificationWindow(): Promise<boolean>;
+ 	getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus>;
+ 	openStudioNotificationSettings(): Promise<boolean>;
+-	setStudioUnreadCount(count: number): Promise<void>;
++	setStudioTrayNotifications(notices: IStudioTrayNotifications, scope: string): Promise<void>;
++	finishStudioTrayMarkAll(requestId: string, success: boolean): Promise<void>;
+ 
+ 	// Zip
+ 	/**
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index 923b2dd82996c0458d6d0394775273be23d42fe8..4a93e160b44d1cf355726c5c6e32eac0dde3046f 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -37,6 +37,7 @@ import { IThemeMainService } from '../../theme/electron-main/themeMainService.js
+ import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
+ import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
+ import { studioEntryForOpenables } from '../../window/common/studioProjectWindow.js';
++import type { IStudioTrayNotifications } from '../../windows/common/studioTrayNotifications.js';
+ import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
+ import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
+ import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
+@@ -1417,10 +1418,12 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 		catch { return false; }
+ 	}
+ 
+-	async setStudioUnreadCount(windowId: number | undefined, count: number): Promise<void> {
+-		if (windowId !== undefined && Number.isSafeInteger(count) && count >= 0 && count <= 1e9) {
+-			this.windowsMainService.setStudioUnreadCount(windowId, count);
+-		}
++	async setStudioTrayNotifications(windowId: number | undefined, notices: IStudioTrayNotifications, scope: string): Promise<void> {
++		if (windowId !== undefined) { this.windowsMainService.setStudioTrayNotifications(windowId, notices, scope); }
++	}
++
++	async finishStudioTrayMarkAll(windowId: number | undefined, requestId: string, success: boolean): Promise<void> {
++		if (windowId !== undefined) { this.windowsMainService.finishStudioTrayMarkAll(windowId, requestId, success); }
+ 	}
+ 
+ 	private readonly activeToasts = this._register(new DisposableMap<string>());
+diff --git a/src/vs/platform/windows/common/studioTrayNotifications.ts b/src/vs/platform/windows/common/studioTrayNotifications.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b60ce95912a92a90ce7a691962169dc4ef1f0428
+--- /dev/null
++++ b/src/vs/platform/windows/common/studioTrayNotifications.ts
+@@ -0,0 +1,29 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export interface IStudioTrayNotification {
++	readonly title: string;
++	readonly detail?: string;
++}
++
++export interface IStudioTrayNotifications {
++	readonly count: number;
++	readonly items: readonly IStudioTrayNotification[];
++}
++
++export const studioTrayPreviewLimit = 12;
++
++export const emptyStudioTrayNotifications: IStudioTrayNotifications = { count: 0, items: [] };
++
++export interface IStudioTrayPreview extends IStudioTrayNotifications {
++	readonly language: string;
++	readonly labels: {
++		readonly title: string;
++		readonly readAll: string;
++		readonly reading: string;
++		readonly noPreview: string;
++		readonly failed: string;
++	};
++}
+diff --git a/src/vs/platform/windows/electron-browser/preload-studioTrayPreview.ts b/src/vs/platform/windows/electron-browser/preload-studioTrayPreview.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8febefcfd221a72b9380dc753833128adbfd3e5e
+--- /dev/null
++++ b/src/vs/platform/windows/electron-browser/preload-studioTrayPreview.ts
+@@ -0,0 +1,57 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++// This sandboxed preload uses the DOM without exposing any IPC bridge to the page.
++(() => {
++	type IStudioTrayPreview = import('../common/studioTrayNotifications.js').IStudioTrayPreview;
++	const { ipcRenderer } = require('electron') as typeof import('electron');
++	window.addEventListener('DOMContentLoaded', () => {
++		const heading = document.getElementById('heading')!;
++		const list = document.getElementById('notices')!;
++		const button = document.getElementById('read-all') as HTMLButtonElement;
++		const status = document.getElementById('status')!;
++		let preview: IStudioTrayPreview | undefined;
++		let pending = false;
++		let failed = false;
++		const renderButton = () => {
++			if (!preview) { return; }
++			button.disabled = pending || !preview.count;
++			button.textContent = pending ? preview.labels.reading : preview.labels.readAll;
++			status.hidden = !failed;
++			status.textContent = failed ? preview.labels.failed : '';
++		};
++		ipcRenderer.on('vscode:studioTray:preview', (_event, state: IStudioTrayPreview) => {
++			document.documentElement.lang = state.language;
++			heading.textContent = state.labels.title;
++			// Keep the current selection and scroll position if only the badge changed.
++			if (!preview || JSON.stringify(preview.items) !== JSON.stringify(state.items)) {
++				const rows = (state.items.length ? state.items : [{ title: state.labels.noPreview }]).map(item => {
++					const row = document.createElement('li');
++					const title = document.createElement('strong');
++					title.textContent = item.title;
++					row.append(title);
++					if (item.detail) {
++						const detail = document.createElement('p');
++						detail.textContent = item.detail;
++						row.append(detail);
++					}
++					return row;
++				});
++				list.replaceChildren(...rows);
++			}
++			preview = state;
++			renderButton();
++		});
++		button.addEventListener('click', async () => {
++			if (pending || !preview?.count) { return; }
++			pending = true;
++			failed = false;
++			renderButton();
++			try { failed = !await ipcRenderer.invoke('vscode:studioTray:readAll'); }
++			catch { failed = true; }
++			finally { pending = false; renderButton(); }
++		});
++	});
++})();
+diff --git a/src/vs/platform/windows/electron-browser/studioTrayPreview.html b/src/vs/platform/windows/electron-browser/studioTrayPreview.html
+new file mode 100644
+index 0000000000000000000000000000000000000000..d4d789eaaee76340a6005dd6702392dfbfad1140
+--- /dev/null
++++ b/src/vs/platform/windows/electron-browser/studioTrayPreview.html
+@@ -0,0 +1,31 @@
++<!DOCTYPE html>
++<html>
++<head>
++	<meta charset="UTF-8">
++	<meta name="viewport" content="width=device-width,initial-scale=1">
++	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
++	<style>
++		:root { color-scheme: light dark; font: 13px system-ui, sans-serif; color: CanvasText; background: Canvas; }
++		* { box-sizing: border-box; }
++		body { margin: 0; height: 100vh; display: flex; flex-direction: column; }
++		header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 49px; padding: 7px 14px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
++		h1 { font-size: 13px; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
++		button { font: inherit; min-width: 126px; min-height: 30px; padding: 4px 9px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 6px; color: CanvasText; background: Canvas; cursor: pointer; }
++		button:hover:enabled { background: color-mix(in srgb, CanvasText 7%, Canvas); }
++		button:focus-visible, ul:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
++		button:disabled { color: GrayText; cursor: default; }
++		ul { flex: 1; list-style: none; overflow: auto; min-height: 0; margin: 0; padding: 0 14px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
++		ul:hover, ul:focus-visible { scrollbar-color: GrayText transparent; }
++		li { padding: 9px 0; overflow-wrap: anywhere; }
++		li + li { border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
++		li strong { display: block; font-weight: 600; }
++		li p { margin: 3px 0 0; color: color-mix(in srgb, CanvasText 76%, Canvas); white-space: pre-wrap; }
++		#status { margin: 0; padding: 8px 14px; border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
++	</style>
++</head>
++<body>
++	<header><h1 id="heading"></h1><button id="read-all" type="button" disabled></button></header>
++	<ul id="notices" aria-labelledby="heading" tabindex="0"></ul>
++	<p id="status" role="alert" hidden></p>
++</body>
++</html>
+diff --git a/src/vs/platform/windows/electron-main/studioTray.ts b/src/vs/platform/windows/electron-main/studioTray.ts
+index af23f70246d603d08be48c0ea02b7d81702f1580..b1638471c535d4b136404d53d958667dea89f335 100644
+--- a/src/vs/platform/windows/electron-main/studioTray.ts
++++ b/src/vs/platform/windows/electron-main/studioTray.ts
+@@ -7,6 +7,8 @@ import { Menu, type NativeImage, nativeImage, Tray } from 'electron';
+ import { isLinux, isMacintosh } from '../../../base/common/platform.js';
+ import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+ import { getNLSLanguage } from '../../../nls.js';
++import { emptyStudioTrayNotifications, IStudioTrayNotifications } from '../common/studioTrayNotifications.js';
++import { StudioTrayPreview } from './studioTrayPreview.js';
+ 
+ // 2x SteamHarness brand assets from docs/assets/brand, embedded for packaged builds.
+ // The macOS template frames the mark with viewBox="234 197 544 544" to fill the 18 pt canvas.
+@@ -49,10 +51,10 @@ function withBadge(image: NativeImage, label: string): NativeImage {
+ }
+ 
+ export interface IStudioTray extends IDisposable {
+-	setUnreadCount(count: number): void;
++	setNotifications(notices: IStudioTrayNotifications, reset?: boolean): void;
+ }
+ 
+-export function createStudioTray(show: () => void, quit: () => void): IStudioTray {
++export function createStudioTray(show: () => void, quit: () => void, markAll: () => Promise<boolean>, onError: (error: unknown) => void): IStudioTray {
+ 	const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+ 	const image = nativeImage.createFromBuffer(Buffer.from(isMacintosh ? templatePng : colorPng, 'base64'), { scaleFactor: 2 });
+ 	if (isMacintosh) { image.setTemplateImage(true); }
+@@ -63,21 +65,33 @@ export function createStudioTray(show: () => void, quit: () => void): IStudioTra
+ 		{ label: zh ? '退出 SteamHarness Studio' : 'Quit SteamHarness Studio', click: quit },
+ 	]);
+ 	tray.setToolTip('SteamHarness Studio');
+-	tray.on('click', show);
++	let notices = emptyStudioTrayNotifications;
++	let preview: StudioTrayPreview | undefined;
++	tray.on('click', (_event, bounds) => {
++		if (preview) { preview.close(); return; }
++		if (!notices.count) { show(); return; }
++		try {
++			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, onError);
++		} catch (error) { onError(error); }
++	});
+ 	if (isLinux) {
+ 		tray.setContextMenu(menu);
+ 	} else {
+-		tray.on('right-click', () => tray.popUpContextMenu(menu));
++		tray.on('right-click', () => { preview?.close(); tray.popUpContextMenu(menu); });
+ 	}
+-	const lifetime = toDisposable(() => tray.destroy());
+-	let unread = 0;
++	const lifetime = toDisposable(() => { preview?.close(); tray.destroy(); });
+ 	return {
+ 		dispose: () => lifetime.dispose(),
+-		setUnreadCount(count) {
+-			if (tray.isDestroyed() || unread === count) { return; }
++		setNotifications(next, reset) {
++			if (tray.isDestroyed()) { return; }
++			const previousCount = notices.count;
++			notices = next;
++			if (reset) { preview?.close(); }
++			else { preview?.update(next); }
++			const count = next.count;
++			if (previousCount === count) { return; }
+ 			const label = count > 99 ? '99+' : count ? String(count) : '';
+-			const previous = unread > 99 ? '99+' : unread ? String(unread) : '';
+-			unread = count;
++			const previous = previousCount > 99 ? '99+' : previousCount ? String(previousCount) : '';
+ 			if (label !== previous) {
+ 				if (isMacintosh) { tray.setTitle(label ? ` ${label}` : ''); }
+ 				else { tray.setImage(label ? withBadge(image, label) : image); }
+diff --git a/src/vs/platform/windows/electron-main/studioTrayPreview.ts b/src/vs/platform/windows/electron-main/studioTrayPreview.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..46b8c34da84ee16a263a0431cfc47fe68d15334e
+--- /dev/null
++++ b/src/vs/platform/windows/electron-main/studioTrayPreview.ts
+@@ -0,0 +1,111 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { BrowserWindow, Rectangle, screen } from 'electron';
++import { pathToFileURL } from 'url';
++import { FileAccess } from '../../../base/common/network.js';
++import { isMacintosh } from '../../../base/common/platform.js';
++import { getNLSLanguage } from '../../../nls.js';
++import type { IStudioTrayNotifications, IStudioTrayPreview } from '../common/studioTrayNotifications.js';
++
++function previewBounds(anchor: Rectangle, workArea: Rectangle, rows: number): Rectangle {
++	const gap = 6;
++	const width = Math.min(360, workArea.width - gap * 2);
++	const height = Math.min(49 + Math.min(5, Math.max(rows, 1)) * 73, workArea.height - gap * 2);
++	const bottom = workArea.y + workArea.height;
++	const below = anchor.y + anchor.height + gap;
++	const above = anchor.y - height - gap;
++	const preferBelow = below + height <= bottom || bottom - below > anchor.y - workArea.y;
++	return {
++		x: Math.max(workArea.x + gap, Math.min(anchor.x + Math.round((anchor.width - width) / 2), workArea.x + workArea.width - width - gap)),
++		y: Math.max(workArea.y + gap, Math.min(preferBelow ? below : above, bottom - height - gap)),
++		width,
++		height,
++	};
++}
++
++export class StudioTrayPreview {
++	private readonly window: BrowserWindow;
++	private readonly anchor: Rectangle;
++	private readonly labels: IStudioTrayPreview['labels'];
++	private readonly language = getNLSLanguage() ?? 'en';
++	private ready = false;
++	private marking = false;
++
++	constructor(anchor: Rectangle | undefined, private notices: IStudioTrayNotifications, markAll: () => Promise<boolean>, onClose: () => void, onError: (error: unknown) => void) {
++		const url = pathToFileURL(FileAccess.asFileUri('vs/platform/windows/electron-browser/studioTrayPreview.html').fsPath).href;
++		this.anchor = anchor && anchor.width > 0 && anchor.height > 0 ? anchor : { ...screen.getCursorScreenPoint(), width: 0, height: 0 };
++		this.labels = this.language.toLowerCase().startsWith('zh') ? {
++			title: '未读通知', readAll: '全部已读', reading: '正在标记…', noPreview: '暂时没有可预览的内容。', failed: '未能将全部通知标为已读，请重试。',
++		} : {
++			title: 'Unread notifications', readAll: 'Mark all as read', reading: 'Marking…', noPreview: 'No preview available.', failed: 'Could not mark all notifications as read. Try again.',
++		};
++		const win = this.window = new BrowserWindow({
++			...this.bounds(),
++			title: this.labels.title, show: false, frame: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
++			skipTaskbar: true, alwaysOnTop: true, type: isMacintosh ? 'panel' : undefined,
++			webPreferences: {
++				preload: FileAccess.asFileUri('vs/platform/windows/electron-browser/preload-studioTrayPreview.js').fsPath,
++				sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false,
++			},
++		});
++		win.on('closed', onClose);
++		win.on('blur', () => this.close());
++		win.webContents.on('render-process-gone', () => this.close());
++		win.webContents.on('will-frame-navigate', event => event.preventDefault());
++		win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
++		win.webContents.on('before-input-event', (event, input) => {
++			if (input.type === 'keyDown' && input.key === 'Escape') {
++				event.preventDefault();
++				this.close();
++			} else if (input.type === 'keyDown' && input.key.toLowerCase() === 'c' && (isMacintosh ? input.meta : input.control) && !input.alt && !input.shift) {
++				event.preventDefault();
++				win.webContents.copy();
++			}
++		});
++		win.webContents.ipc.handle('vscode:studioTray:readAll', async event => {
++			if (!this.ready || !win.isVisible() || !event.senderFrame || event.senderFrame !== win.webContents.mainFrame || event.senderFrame.url !== url || this.marking || !this.notices.count) {
++				return false;
++			}
++			this.marking = true;
++			try {
++				const success = await markAll();
++				if (success && !this.notices.count) { this.close(); }
++				return success;
++			} finally { this.marking = false; }
++		});
++		void win.loadURL(url).then(() => {
++			if (!win.isDestroyed()) {
++				this.ready = true;
++				this.render();
++				win.show();
++			}
++		}, error => {
++			if (!win.isDestroyed()) { onError(error); this.close(); }
++		});
++	}
++
++	private bounds(): Rectangle {
++		const { x, y, width, height } = this.anchor;
++		const display = screen.getDisplayNearestPoint({ x: x + Math.floor(width / 2), y: y + Math.floor(height / 2) });
++		return previewBounds(this.anchor, display.workArea, this.notices.items.length);
++	}
++
++	private render(): void {
++		const state: IStudioTrayPreview = { ...this.notices, language: this.language, labels: this.labels };
++		this.window.setBounds(this.bounds());
++		this.window.webContents.send('vscode:studioTray:preview', state);
++	}
++
++	update(notices: IStudioTrayNotifications): void {
++		this.notices = notices;
++		if (!notices.count && !this.marking) { this.close(); }
++		else if (this.ready && !this.window.isDestroyed()) { this.render(); }
++	}
++
++	close(): void {
++		if (!this.window.isDestroyed()) { this.window.destroy(); }
++	}
++}
+diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
+index c33d7ea9e3f0744e29763ea8abb58b29a3ca1808..94d7c2d8030f8a25f7797ed0e84d287a369bcdee 100644
+--- a/src/vs/platform/windows/electron-main/windows.ts
++++ b/src/vs/platform/windows/electron-main/windows.ts
+@@ -12,6 +12,7 @@ import { URI } from '../../../base/common/uri.js';
+ import { IAuxiliaryWindow } from '../../auxiliaryWindow/electron-main/auxiliaryWindow.js';
+ import { IConfigurationService } from '../../configuration/common/configuration.js';
+ import type { IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
++import type { IStudioTrayNotifications } from '../common/studioTrayNotifications.js';
+ import { NativeParsedArgs } from '../../environment/common/argv.js';
+ import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
+ import { ServicesAccessor, createDecorator } from '../../instantiation/common/instantiation.js';
+@@ -39,7 +40,8 @@ export interface IWindowsMainService {
+ 
+ 	readonly hasStudioLaunchpad: boolean;
+ 	enableStudioLaunchpad(): void;
+-	setStudioUnreadCount(windowId: number, count: number): void;
++	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void;
++	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void;
+ 	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
+ 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
+ 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;
+diff --git a/src/vs/platform/windows/electron-main/windowsMainService.ts b/src/vs/platform/windows/electron-main/windowsMainService.ts
+index 9b1dedbf98d792e4439d90298bf400ac71562b4a..d2d211323686bbebf5f0ff3d512bc70c4eba38b6 100644
+--- a/src/vs/platform/windows/electron-main/windowsMainService.ts
++++ b/src/vs/platform/windows/electron-main/windowsMainService.ts
+@@ -8,6 +8,7 @@ import { app, BrowserWindow, WebContents, shell } from 'electron';
+ import { addUNCHostToAllowlist } from '../../../base/node/unc.js';
+ import { hostname, release, arch } from 'os';
+ import { coalesce, distinct } from '../../../base/common/arrays.js';
++import { DeferredPromise, raceTimeout } from '../../../base/common/async.js';
+ import { CancellationToken } from '../../../base/common/cancellation.js';
+ import { CharCode } from '../../../base/common/charCode.js';
+ import { Emitter, Event } from '../../../base/common/event.js';
+@@ -22,6 +23,7 @@ import { cwd } from '../../../base/common/process.js';
+ import { extUriBiasedIgnorePathCase, isEqual, isEqualAuthority, normalizePath, originalFSPath, removeTrailingPathSeparator } from '../../../base/common/resources.js';
+ import { assertReturnsDefined } from '../../../base/common/types.js';
+ import { URI } from '../../../base/common/uri.js';
++import { generateUuid } from '../../../base/common/uuid.js';
+ import { getNLSLanguage, getNLSMessages, localize } from '../../../nls.js';
+ import { IBackupMainService } from '../../backup/electron-main/backup.js';
+ import { IEmptyWindowBackupInfo } from '../../backup/node/backup.js';
+@@ -61,6 +63,7 @@ import { ResourceSet } from '../../../base/common/map.js';
+ import { VSBuffer } from '../../../base/common/buffer.js';
+ import { resolveAgentsWindowFolder } from './agentsWindow.js';
+ import { createStudioTray, IStudioTray } from './studioTray.js';
++import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../common/studioTrayNotifications.js';
+ import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
+ import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+ 
+@@ -250,8 +253,11 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 	}
+ 
+ 	private registerListeners(): void {
++		this._register(this.lifecycleMainService.onWillLoadWindow(({ window }) => {
++			if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
++		}));
+ 		this._register(this.onDidDestroyWindow(window => {
+-			if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
++			if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
+ 		}));
+ 
+ 		this._register(Event.any(this.onDidSignalReadyWindow, Event.map(this.onDidChangeWindowsCount, () => undefined))(() => {
+@@ -286,16 +292,42 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 	private studioLaunchpadEnabled = false;
+ 	private launchpadOpening?: Promise<ICodeWindow>;
+ 	private studioTray?: IStudioTray;
++	private studioTrayScope?: string;
++	private studioTrayMarkAll?: { readonly windowId: number; readonly requestId: string; readonly result: DeferredPromise<boolean> };
+ 	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
+ 
+-	setStudioUnreadCount(windowId: number, count: number): void {
+-		// The resident launchpad reports an account snapshot, not a per-window delta.
+-		if (this.getWindowById(windowId)?.isStudioLaunchpad) { this.updateStudioUnreadCount(count); }
++	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void {
++		if (!this.getWindowById(windowId)?.isStudioLaunchpad || typeof scope !== 'string' || scope.length > 36 ||
++			!Number.isSafeInteger(notices?.count) || notices.count < 0 || notices.count > 1e9 || !Array.isArray(notices.items)) { return; }
++		const items = notices.items.slice(0, studioTrayPreviewLimit).flatMap(item => typeof item?.title === 'string' ? [{
++			title: item.title.slice(0, 500), detail: typeof item.detail === 'string' ? item.detail.slice(0, 500) : undefined,
++		}] : []);
++		this.updateStudioTrayNotifications({ count: notices.count, items }, scope);
++	}
++
++	private updateStudioTrayNotifications(notices: IStudioTrayNotifications, scope?: string): void {
++		const reset = scope !== this.studioTrayScope;
++		if (reset) {
++			this.studioTrayScope = scope;
++			void this.studioTrayMarkAll?.result.complete(false);
++		}
++		setStudioDockUnreadCount(notices.count);
++		this.studioTray?.setNotifications(notices, reset);
++	}
++
++	private async markAllStudioTrayNotifications(): Promise<boolean> {
++		const window = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady && !window.win?.isDestroyed());
++		if (!window?.win || !this.studioTrayScope || this.studioTrayMarkAll) { return false; }
++		const request = this.studioTrayMarkAll = { windowId: window.id, requestId: generateUuid(), result: new DeferredPromise<boolean>() };
++		try {
++			window.send('vscode:studioTrayMarkAll', request.requestId, this.studioTrayScope);
++			return await raceTimeout(request.result.p, 60_000) === true;
++		} finally { this.studioTrayMarkAll = undefined; }
+ 	}
+ 
+-	private updateStudioUnreadCount(count: number): void {
+-		setStudioDockUnreadCount(count);
+-		this.studioTray?.setUnreadCount(count);
++	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void {
++		const request = this.studioTrayMarkAll;
++		if (request?.windowId === windowId && request.requestId === requestId) { void request.result.complete(success === true); }
+ 	}
+ 
+ 	enableStudioLaunchpad(): void {
+@@ -308,6 +340,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 			this.studioTray = this._register(createStudioTray(
+ 				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
+ 				() => { void this.lifecycleMainService.quit(); },
++				() => this.markAllStudioTrayNotifications(),
++				error => this.logService.warn('Studio could not show its tray notification preview', error),
+ 			));
+ 		} catch (error) {
+ 			this.logService.warn('Studio could not install its tray icon', error);
+@@ -1829,7 +1863,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
+ 	}
+ 
+ 	private onWindowClosed(window: ICodeWindow, disposables: IDisposable): void {
+-		if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
++		if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
+ 
+ 		// Remove from our list so that Electron can clean it up
+ 		this.windows.delete(window.id);
+diff --git a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+index 4fc16610b8be37548fc4475050f83b8c350ab612..abd7b1459b0bea5347101c3be03c04bb37671f70 100644
+--- a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
++++ b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+@@ -32,7 +32,6 @@ const workbenchKey = 'studio.notifications.workbench';
+ CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(INativeHostService).isStudioNotificationWindow());
+ CommandsRegistry.registerCommand('studio.internalGetDesktopNotificationStatus', accessor => accessor.get(INativeHostService).getStudioDesktopNotificationStatus());
+ CommandsRegistry.registerCommand('studio.internalOpenNotificationSettings', accessor => accessor.get(INativeHostService).openStudioNotificationSettings());
+-CommandsRegistry.registerCommand('studio.internalSetUnreadCount', (accessor, count: number) => accessor.get(INativeHostService).setStudioUnreadCount(count));
+ 
+ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async (accessor, notice: DesktopNotice) => {
+ 	if (!safeId(notice?.id) || !safeId(notice.source?.id) || !text(notice.source.label, 80) || !text(notice.title, 120) ||
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 46bc53fafaa33dd541e7883a043bf6302b57624f..f8317429967738cb83770d955dbd016be1f3ad3f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -13,6 +13,7 @@ import { Event } from '../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { Schemas } from '../../base/common/network.js';
+ import { basenameOrAuthority } from '../../base/common/resources.js';
++import { MicrotaskDelay } from '../../base/common/symbols.js';
+ import { URI } from '../../base/common/uri.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+ import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
+@@ -28,6 +29,7 @@ import { FocusMode, INativeHostService } from '../../platform/native/common/nati
+ import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
++import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
+ import { IOverlayWebview, IWebviewService } from '../contrib/webview/browser/webview.js';
+@@ -38,7 +40,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
+ import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
+ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
+-import { InboxAction, LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
++import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { StoreListingDetails } from './studioLaunchpadCards.js';
+ import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+@@ -67,6 +69,11 @@ export class StudioLaunchpad extends Disposable {
+ 	private inboxRevision = 0;
+ 	private noticeRevision = 0;
+ 	private socialUnread = false;
++	private socialTrayNotices: StudioNotice[] = [];
++	private imTrayNotices?: IStudioTrayNotifications;
++	private imTrayRevision = 0;
++	private trayScope = generateUuid();
++	private trayPublished?: string;
+ 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
+ 	private readonly language = getNLSLanguage() ?? 'en';
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+@@ -156,18 +163,14 @@ export class StudioLaunchpad extends Disposable {
+ 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+ 			createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
+ 			readNotice: id => this.notices.read(id),
+-			readAllNotices: async () => {
+-				this.notices.readAll();
+-				if (this.start.state?.platform && this.account?.signedIn) {
+-					++this.noticeRevision;
+-					try { await commands.executeCommand('studio.markAllNoticesRead'); }
+-					finally { this.refreshNotices.schedule(); }
+-				}
+-			},
++			readAllNotices: () => this.markAllNoticesRead(),
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+ 		}));
+ 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
+-		this._register(notices.onDidChange(() => repaintNotices.schedule()));
++		this._register(Event.debounce(notices.onDidChange, () => undefined, MicrotaskDelay)(() => {
++			repaintNotices.schedule();
++			void this.publishTrayNotifications();
++		}));
+ 		layout.mainContainer.append(this.view.element);
+ 		const clearProjectDrop = () => this.view.setProjectDropActive(false);
+ 		this._register(new DragAndDropObserver(this.view.element, {
+@@ -220,20 +223,41 @@ export class StudioLaunchpad extends Disposable {
+ 				this.paint();
+ 			}
+ 			this.refreshInbox.schedule();
++			// The IM listener already debounces pushes. Don't wait on throttled timers in the hidden Launchpad.
++			void this.readImTrayNotices();
+ 			this.view.refreshDirectory();
+ 		}));
++		const onTrayMarkAll = async (_event: unknown, requestId: unknown, scope: unknown) => {
++			if (typeof requestId !== 'string') { return; }
++			let success = false;
++			try {
++				if (scope === this.trayScope) {
++					await this.markAllNoticesRead(true);
++					success = scope === this.trayScope;
++				}
++			} catch { /* The tray reports a retryable error without generating another notification. */ }
++			await native.finishStudioTrayMarkAll(requestId, success).catch(() => undefined);
++		};
++		ipcRenderer.on('vscode:studioTrayMarkAll', onTrayMarkAll);
++		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioTrayMarkAll', onTrayMarkAll)));
+ 		let platform = false, accountRevision = 0;
+ 		const setAccount = (state?: LaunchpadMenuAccount) => {
+ 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
+ 			if (scopeChanged) {
+ 				this.appRequests.clear(); this.view.setInboxActionBusy('add-contact', false); this.view.setInboxActionBusy('create-group', false);
+-				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
++				++this.noticeRevision; this.socialUnread = false; this.socialTrayNotices = []; this.refreshNotices.schedule();
++				++this.imTrayRevision; this.imTrayNotices = undefined;
++				this.trayScope = generateUuid();
+ 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
+ 				this.libraryCategory = undefined;
+ 			}
+ 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+ 				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+-			if (scopeChanged) { this.scheduleLibraryCategory(); }
++			if (scopeChanged) {
++				this.scheduleLibraryCategory();
++				void this.publishTrayNotifications();
++				void this.readImTrayNotices();
++			}
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
+@@ -283,7 +307,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
+ 		for (const part of parts) { part.inert = true; }
+ 		this._register(toDisposable(() => {
+-			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
++			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision; ++this.imTrayRevision;
+ 			this.appRequests.clear();
+ 			this.start.setVisible('launchpad', false);
+ 			for (const part of parts) { part.inert = false; }
+@@ -308,9 +332,9 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private refreshSocialState(): void {
+-		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
++		if (!this.account?.signedIn) { return; }
+ 		this.refreshNotices.schedule();
+-		this.view.refreshSocial();
++		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
+ 	}
+ 
+ 	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
+@@ -568,14 +592,80 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 	private async readNotices(): Promise<void> {
+-		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
++		if (!this.account?.signedIn) { return; }
+ 		const revision = ++this.noticeRevision;
+ 		try {
+ 			const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices');
+-			if (revision === this.noticeRevision && typeof unread === 'boolean' && unread !== this.socialUnread) { this.socialUnread = unread; this.paint(); }
++			if (revision !== this.noticeRevision || typeof unread !== 'boolean') { return; }
++			const feed = unread ? await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices').catch(() => undefined) : undefined;
++			if (revision !== this.noticeRevision) { return; }
++			const changed = unread !== this.socialUnread;
++			this.socialUnread = unread;
++			if (!unread) { this.socialTrayNotices = []; }
++			else if (feed && 'notices' in feed) { this.socialTrayNotices = feed.notices.filter(notice => !notice.read); }
++			if (changed) { this.paint(); }
++			await this.publishTrayNotifications();
+ 		} catch { /* Keep the last known badge while the same account is offline. */ }
+ 	}
+ 
++	private async readImTrayNotices(): Promise<void> {
++		if (!this.account?.signedIn) { return; }
++		const revision = ++this.imTrayRevision;
++		try {
++			const notices = await this.commands.executeCommand<IStudioTrayNotifications | undefined>('studio.getTrayImNotices');
++			if (revision === this.imTrayRevision) {
++				this.imTrayNotices = notices;
++				await this.publishTrayNotifications();
++			}
++		} catch { /* Preserve the last confirmed snapshot on a transient failure. */ }
++	}
++
++	private async publishTrayNotifications(): Promise<void> {
++		const scope = this.trayScope;
++		const im = this.imTrayNotices ?? emptyStudioTrayNotifications;
++		const local = this.notices.unread();
++		// The hosted unread summary describes the same chats as the live IM preview.
++		const social = this.socialTrayNotices.filter(notice => !this.imTrayNotices || !notice.id.startsWith('im-unread:'));
++		const t = (en: string, zh: string) => this.language.startsWith('zh') ? zh : en;
++		const items = [...im.items, ...[...local, ...social].map(notice => ({ title: studioNoticeTitle(notice, t), detail: notice.detail }))].slice(0, studioTrayPreviewLimit);
++		const count = Math.min(1e9, im.count + local.length + (social.length || Number(this.socialUnread && !this.socialTrayNotices.length)));
++		const snapshot = JSON.stringify([scope, count, items]);
++		if (snapshot === this.trayPublished) { return; }
++		this.trayPublished = snapshot;
++		await this.native.setStudioTrayNotifications({ count, items }, scope).catch(() => {
++			if (this.trayPublished === snapshot) { this.trayPublished = undefined; }
++		});
++	}
++
++	private async markAllNoticesRead(includeIm = false): Promise<void> {
++		const scope = this.trayScope;
++		const checkScope = () => { if (scope !== this.trayScope) { throw new Error('The notification account changed'); } };
++		try {
++			this.notices.readAll();
++			if (!this.start.state?.platform || !this.account?.signedIn) { return; }
++			// The hosted summary may be the only IM notice until the first live snapshot arrives.
++			const hasImUnread = this.imTrayNotices ? this.imTrayNotices.count > 0 : this.socialTrayNotices.some(notice => notice.id.startsWith('im-unread:'));
++			if (includeIm && hasImUnread && await this.commands.executeCommand<boolean>('studio.markAllImMessagesRead') !== true) {
++				throw new Error('IM unread messages could not be marked as read');
++			}
++			checkScope();
++			// Run this after IM so a pending hosted summary can't be posted after read-all.
++			await this.commands.executeCommand('studio.markAllNoticesRead');
++			checkScope();
++			++this.noticeRevision;
++			this.socialUnread = false;
++			this.socialTrayNotices = [];
++		} finally {
++			if (scope === this.trayScope) {
++				await this.readImTrayNotices();
++				await this.publishTrayNotifications();
++				this.paint();
++				this.refreshInbox.schedule();
++				this.refreshSocialState();
++			}
++		}
++	}
++
+ 	private paint(): void {
+ 		const state = this.start.state;
+ 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index 614381cd0c93b1caf220fdbb4ef5da015fd582e4..4b874b9700bb2b130d249a62969d81733ce19866 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -23,6 +23,14 @@ export interface StudioFavorite { id: string; title: string; detail?: string; co
+ export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string; time?: number; detail?: string }
+ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[]; directory?: LaunchpadDirectory; directoryUnavailable?: boolean }
+ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
++
++export function studioNoticeTitle(notice: StudioNotice, t: LaunchpadLabel): string {
++	const { id, title } = notice;
++	return id.startsWith('im-unread:') ? t(`${title} unread IM messages`, `${title} 条未读 IM 消息`)
++		: id.startsWith('request:') ? t(`${title} sent you a friend request`, `${title} 请求添加你为好友`)
++			: id.startsWith('friend:') ? t(`${title} accepted your request`, `${title} 已接受好友申请`) : title;
++}
++
+ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+ export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
+ export type InboxAction = 'add-contact' | 'create-group';
+@@ -438,7 +446,7 @@ export class LaunchpadProfile extends Disposable {
+ 				}
+ 				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
+ 				const isRequest = n.id.startsWith('request:');
+-				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : isRequest ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
++				const title = studioNoticeTitle(n, t);
+ 				const detail = n.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : n.source === 'im' ? 'IM' : 'Studio';
+ 				const mark = isRequest ? avatar(n.title, n.avatarUrl) : icon(n.read ? 'mail-read' : 'mail');
+ 				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
+diff --git a/src/vs/workbench/electron-browser/studioNotificationInbox.ts b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+index 23a1d7715fea3f38ec17f2104ffce822db6ed59e..60d55ee1cc8a39df90ff640826bdbc04fdd41480 100644
+--- a/src/vs/workbench/electron-browser/studioNotificationInbox.ts
++++ b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+@@ -50,6 +50,7 @@ export class StudioNotificationInbox extends Disposable {
+ 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
+ 	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
+ 	list(): StudioNotice[] { return this.owned().slice(0, 100); }
++	unread(): StudioNotice[] { return this.owned().filter(notice => !notice.read); }
+ 	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
+ 	readAll(): void {
+ 		for (const notice of this.owned()) {
+diff --git a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+index 54d706c8976e3763577e4a8331d7d214fd132584..8f8f8aea0412b311281e75e00281d19d1c168c4e 100644
+--- a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -212,7 +212,8 @@ export class TestNativeHostService implements INativeHostService {
+ 	async isStudioNotificationWindow(): Promise<boolean> { return false; }
+ 	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> { return { platform: 'linux', appName: 'Studio', permission: 'unsupported' }; }
+ 	async openStudioNotificationSettings(): Promise<boolean> { return false; }
+-	async setStudioUnreadCount(count: number): Promise<void> { }
++	async setStudioTrayNotifications(): Promise<void> { }
++	async finishStudioTrayMarkAll(): Promise<void> { }
+ 
+ 	// Power APIs
+ 	async getSystemIdleState(idleThreshold: number): Promise<SystemIdleState> { return 'unknown'; }

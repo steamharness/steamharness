@@ -61,7 +61,7 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   const empty = panel.getByText(t('No friends or groups yet.', '暂无好友或群聊。'), { exact: true });
   const noMatch = panel.getByText(t('No matching friends or groups.', '没有匹配的好友或群聊。'), { exact: true });
   const names = () => rows.locator('.lp-social-text strong').allTextContents();
-  const readCount = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.getSocialSnapshot').length);
+  const readCount = () => page.evaluate(() => window.actions.filter(([id, , view]) => id === 'studio.getSocialSnapshot' && view !== 'notices').length);
   const actions = () => page.evaluate(() => window.actions.filter(([id]) => id === 'studio.changeSocial').map(([, a]) => a));
   const button = (where, en, zh) => where.getByRole('button', { name: t(en, zh), exact: true });
   const addFriend = button(panel, 'Add friend', '添加好友');

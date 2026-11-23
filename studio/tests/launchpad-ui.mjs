@@ -76,6 +76,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},
     {id:'request:old',title:'Old request',source:'studio',read:true,avatarUrl:'data:image/png;base64,bm90IGFuIGltYWdl'},
     {id:'ordinary',title:'Ordinary Studio notice',source:'studio',read:false}];
+  window.addHostedImNotice = () => {
+    notices.push({id:'im-unread:fixture',title:'2',source:'im',read:false});
+    window.refreshSocial();
+  };
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.listLibraryProjectActions') return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
@@ -106,6 +110,13 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices}) : {people:[],favorites:[],notices:[]};
     }
     if (id === 'studio.hasUnreadNotices') return account.scopeKey === 'a'.repeat(64) && notices.some(notice=>!notice.read);
+    if (id === 'studio.getTrayImNotices') return window.imTrayFixture;
+    if (id === 'studio.markAllImMessagesRead') {
+      if (window.imMarkAllFails === 'offline') return false;
+      if (window.imMarkAllFails) throw new Error('Service unavailable');
+      window.imTrayFixture = {count:0,items:[]};
+      return true;
+    }
     if (id === 'studio.markAllNoticesRead') {
       if (window.markAllFails) throw new Error('Service unavailable');
       if (account.scopeKey === 'a'.repeat(64)) for (const notice of notices) notice.read=true;
@@ -183,6 +194,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   window.openRequests = [];
   window.editProject = (id, dirty) => { windows.find(w=>w.id===id).dirty=dirty; edits.fire({windowId:id,dirty}); };
   const native = {onDidChangeWindowDirty:edits.event, getWindows:async()=>{window.projectReads.windows++; return windows.map(w=>({...w}));}, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
+    setStudioTrayNotifications:async (notices,scope)=>{ window.trayState={...notices,scope}; },
+    finishStudioTrayMarkAll:async (id,success)=>{ window.trayReadResult={id,success}; },
     showItemInFolder:async path=>window.actions.push(['reveal',path]),
     async showMessageBox({message,detail,buttons}) {
       const dialog = document.createElement('dialog'); dialog.className = 'native-message';
@@ -522,6 +535,42 @@ try {
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
     await checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop,
       screenshot: name => page.screenshot({path:fileURLToPath(new URL(stem+'-'+name+'.png',proof))}), loads:()=>loads });
+    if (enhanced) {
+      await page.evaluate(() => {
+        window.updateAccount({status:'authenticated',hasAccount:true,scopeKey:'a'.repeat(64)});
+        window.imTrayFixture={count:2,items:[{title:'Team',detail:'Tray message preview'}]};
+        window.notify('Local Studio notification');
+        window.refreshInbox();
+      });
+      await page.waitForFunction(() => window.trayState?.items.some(item=>item.detail==='Tray message preview') && window.trayState.items.some(item=>item.title==='Local Studio notification'));
+      await page.evaluate(() => {
+        window.imMarkAllFails=true;
+        window.events['vscode:studioTrayMarkAll']({},'failed',window.trayState.scope);
+      });
+      await page.waitForFunction(() => window.trayReadResult?.id==='failed');
+      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [false,2]);
+      await page.evaluate(() => {
+        window.imMarkAllFails=false;
+        window.events['vscode:studioTrayMarkAll']({},'read-all',window.trayState.scope);
+      });
+      await page.waitForFunction(() => window.trayReadResult?.id==='read-all');
+      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [true,0]);
+      await page.evaluate(() => {
+        window.imTrayFixture=undefined;
+        window.imMarkAllFails='offline';
+        window.refreshInbox();
+        window.addHostedImNotice();
+      });
+      await page.waitForFunction(() => window.trayState?.count===1);
+      await page.evaluate(() => window.events['vscode:studioTrayMarkAll']({},'offline',window.trayState.scope));
+      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [false,1], 'a hosted summary must stay unread until IM can be cleared');
+      await page.evaluate(() => {
+        const previousScope=window.trayState.scope;
+        window.updateAccount({scopeKey:'b'.repeat(64)});
+        window.events['vscode:studioTrayMarkAll']({},'old-account',previousScope);
+      });
+      assert.deepEqual(await page.evaluate(() => window.trayReadResult), {id:'old-account',success:false});
+    }
     await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad resources, layout, keyboard actions, window changes, library import, drag and drop, creation${enhanced?', account and settings':''} passed`);
   }
 } finally { await browser.close(); }

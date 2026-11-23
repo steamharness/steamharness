@@ -13,7 +13,7 @@ const script = (await build({ entryPoints: [source], bundle: true, platform: 'no
 })).outputFiles[0].text;
 
 function fixture() {
-  const registry = new Map(), center = [], native = [], cleared = [], focused = [], actions = [], launchpad = [], badges = [];
+  const registry = new Map(), center = [], native = [], cleared = [], focused = [], actions = [], launchpad = [];
   const listeners = new Set(), config = new Map();
   const mainWindow = {};
   let owner = true, focusedWindow = false, actionValid = true, ownership;
@@ -23,7 +23,7 @@ function fixture() {
       focus: async (window, options) => focused.push({ window, options }) },
     native: { isStudioNotificationWindow: async () => ownership ? ownership.promise : owner,
       openStudioLaunchpadInbox: async () => { launchpad.push('inbox'); return true; }, showToast: options => { native.push(options); return nativeResult.promise; },
-      clearToast: async id => { cleared.push(id); }, setStudioUnreadCount: async count => { badges.push(count); },
+      clearToast: async id => { cleared.push(id); },
       getStudioDesktopNotificationStatus: async () => ({ platform: 'macos', appName: 'SteamHarness Dev', permission: 'unknown' }),
       openStudioNotificationSettings: async () => true },
     configuration: { getValue: key => config.get(key),
@@ -52,7 +52,7 @@ function fixture() {
   const accessor = { get: id => services[id] };
   const notice = { id: 'notice-1', source: { id: 'example.source', label: 'Example' }, title: 'Example', message: '2 unread items', actionLabel: 'Open' };
   return {
-    center, native, cleared, focused, actions, nativeResult, notice, launchpad, badges, listeners,
+    center, native, cleared, focused, actions, nativeResult, notice, launchpad, listeners,
     post: () => registry.get('studio.internalPostDesktopNotification')(accessor, notice),
     dismiss: () => registry.get('studio.internalDismissDesktopNotification')(accessor, notice.id),
     run: (id, ...args) => registry.get(id)(accessor, ...args),
@@ -111,13 +111,10 @@ test('closing a workbench notification does not cancel the native channel', asyn
   assert.equal(f.listeners.size, 0);
 });
 
-test('permission and badge commands forward to the native host without assuming authorization', async () => {
+test('permission commands forward to the native host without assuming authorization', async () => {
   const f = fixture();
   assert.equal((await f.run('studio.internalGetDesktopNotificationStatus')).permission, 'unknown');
   assert.equal(await f.run('studio.internalOpenNotificationSettings'), true);
-  await f.run('studio.internalSetUnreadCount', 3);
-  await f.run('studio.internalSetUnreadCount', 0);
-  assert.deepEqual(f.badges, [3, 0]);
 });
 
 test('IM notification clicks open the resident launchpad without refocusing the posting project', async () => {
