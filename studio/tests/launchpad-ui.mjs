@@ -37,6 +37,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { ContextMenuService } from './src/vs/platform/contextview/browser/contextMenuService.ts';
   import { ContextViewService } from './src/vs/platform/contextview/browser/contextViewService.ts';
   import { FileOperationError, FileOperationResult } from './src/vs/platform/files/common/files.ts';
+  import { HoverService } from './src/vs/platform/hover/browser/hoverService.ts';
   import { hostedSidebarHtml } from '../../extensions/studio-workstation/src/project-sidebar-html.ts';
   import { applyRecentMetadata, RECENT_PROJECTS_KEY } from '../../extensions/studio-workstation/src/projects.ts';
   const state = { canCreate: true, platform: window.enhanced, recent: [], recommendations: window.enhanced ? { items:window.storeFixture.recommendations } : undefined };
@@ -294,6 +295,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.notify('Owner not yet known');
     const contextView = new ContextViewService(layout);
     const menus = new ContextMenuService({publicLog2(){}},{error:e=>{throw e;}},contextView,{lookupKeybinding:()=>undefined},{},contextKeys);
+    const hoverConfiguration = {getValue:key=>key==='workbench.hover.delay'?40:undefined};
+    const hoverKeybindings = {lookupKeybinding:()=>undefined,softDispatch:()=>({kind:0})};
+    const accessibility = {isScreenReaderOptimized:()=>false};
+    const hover = new HoverService({createInstance:(Widget,options)=>new Widget(options,hoverKeybindings,hoverConfiguration,{},accessibility)},
+      hoverConfiguration,menus,hoverKeybindings,layout,accessibility);
     const controller = new StudioLaunchpad(notices,start,native,{getRecentlyOpened:async()=>{
       window.projectReads.history++;
       if (window.delayHistory) {
@@ -306,7 +312,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       recent.workspaces=[...entries,...recent.workspaces.filter(row=>!paths.has((row.folderUri??row.workspace.configPath).path))]; historyChange.fire();
     },removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); historyChange.fire();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,{writeText:async text=>window.actions.push(['copy',text])});
+    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])});
     window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.refreshSocial=()=>window.events['vscode:studioSocialChanged']({});
@@ -314,7 +320,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
-    window.stopLaunchpad=()=>{controller.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
+    window.stopLaunchpad=()=>{controller.dispose();hover.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
     window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); historyChange.dispose(); layoutChange.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
@@ -484,7 +490,32 @@ async function checkProjectDrop(page, language) {
   assert.equal(await page.evaluate(()=>window.openRequests.length),count,'dropping folders, links or regular files never opens an editor');
 }
 
+async function checkProjectStatusGuide(page, language) {
+  const zh = language === 'zh-cn';
+  const heading = page.locator('#lp-page-library .lp-rail-heading');
+  const help = heading.getByRole('button', { name: zh ? '项目状态说明' : 'Project status guide' });
+  const guide = page.locator('.monaco-hover .lp-status-guide');
+  await help.hover();
+  await guide.waitFor();
+  assert.deepEqual(await guide.locator('strong').allTextContents(), zh
+    ? ['蓝点：项目已打开', '绿点：任务正在运行', '橙点：已加入对话的 Bot']
+    : ['Blue: project is open', 'Green: a task is running', 'Orange: Bot linked to chat']);
+  assert.equal(await guide.evaluate(node => getComputedStyle(node).userSelect), 'text');
+  await guide.hover();
+  await page.mouse.move(0, 0);
+  await guide.waitFor({ state: 'hidden' });
+  await help.press('Enter');
+  await guide.waitFor();
+  await page.keyboard.press('Escape');
+  await guide.waitFor({ state: 'hidden' });
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, width: 680 });
+  assert.equal(await help.isVisible(), false, 'do not show the legend when the project index is hidden');
+  await page.setViewportSize(viewport);
+}
+
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
+const statusGuideOnly = process.argv.includes('--status-guide-only');
 const profileRowsOnly = process.argv.includes('--profile-rows-only');
 try {
   const project = await browser.newPage();
@@ -575,6 +606,14 @@ try {
     assert.equal(await page.evaluate(() => typeof window.resumeHistory), 'function', 'history has not returned at handoff');
     await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
+    await checkProjectStatusGuide(page, language);
+    if (statusGuideOnly) {
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(`${stem}: project status legend, mouse and keyboard interaction, and narrow layout passed`);
+      continue;
+    }
     if (profileRowsOnly) {
       const t = (en, zh) => language === 'zh-cn' ? zh : en;
       await page.evaluate(() => { window.activateProjects(); if (window.enhanced) { window.prewarm(); } });

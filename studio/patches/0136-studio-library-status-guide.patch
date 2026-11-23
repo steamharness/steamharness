@@ -1,0 +1,110 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 558527a3f4a57d8a5f01eda75799d7ef616d7be7..874444ad2a657d599a77b0f86325c5abdd662954 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -80,2 +80,4 @@
+ .lp-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 12px; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); }
++.lp-rail-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
++.studio-launchpad .lp-rail-help { flex: none; inline-size: 24px; block-size: 24px; padding: 0; }
+ .lp-index-status { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 6px; inline-size: 20px; margin-inline-start: auto; }
+@@ -89,2 +91,6 @@
+ @media (prefers-reduced-motion: reduce) { .lp-index-dot-running::after { animation: none; } }
++.lp-status-guide { display: grid; gap: 8px; inline-size: min(286px, 64vw); margin: 0; padding: 3px 4px; list-style: none; user-select: text; }
++.lp-status-guide li { display: grid; grid-template-columns: 7px minmax(0,1fr); gap: 9px; }
++.lp-status-guide .lp-index-dot { margin-block-start: .4em; }
++.lp-status-guide p { margin: 2px 0 0; color: var(--vscode-descriptionForeground, currentColor); }
+ .lp-index { display: flex; flex-direction: column; gap: 2px; }
+@@ -279,3 +285,3 @@
+ 	.lp-profile-content { padding-top: 16px; }
+-	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
++	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail-heading,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
+ 	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 2506ba196b57bfc49640aa6074d7a0dfaeb4ef4c..8d3fb67c9f331f803d73d24da9dc9585140fb66c 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -27,2 +27,3 @@ import { IExtensionStorageService } from '../../platform/extensionManagement/com
+ import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
++import { IHoverService } from '../../platform/hover/browser/hover.js';
+ import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
+@@ -99,2 +100,3 @@ export class StudioLaunchpad extends Disposable {
+ 		@IContextMenuService contextMenu: IContextMenuService,
++		@IHoverService hoverService: IHoverService,
+ 		@IClipboardService clipboard: IClipboardService,
+@@ -126,3 +128,3 @@ export class StudioLaunchpad extends Disposable {
+ 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
+-			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
++			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index bd1401771796bd11ffe5ffad7a04444087c43bf6..7287ed018960c5a7ad33e7c9f3d1be76987f675a 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -5,4 +5,8 @@
+ 
++import type { IDelayedHoverOptions } from '../../base/browser/ui/hover/hover.js';
++import { HoverPosition } from '../../base/browser/ui/hover/hoverWidget.js';
+ import { IAction, Separator, toAction } from '../../base/common/actions.js';
++import { Disposable } from '../../base/common/lifecycle.js';
+ import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
++import type { IHoverService } from '../../platform/hover/browser/hover.js';
+ import { projectDetails } from '../browser/studioProjectDetails.js';
+@@ -29,2 +33,3 @@ export interface LibraryActions {
+ 	contextMenu: IContextMenuService;
++	hoverService: IHoverService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
+@@ -35,3 +40,3 @@ export interface LibraryActions {
+ 
+-export class LaunchpadLibrary {
++export class LaunchpadLibrary extends Disposable {
+ 	readonly element = element('div', 'lp-library');
+@@ -62,2 +67,3 @@ export class LaunchpadLibrary {
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
++		super();
+ 		const rail = element('aside', 'lp-rail');
+@@ -66,3 +72,13 @@ export class LaunchpadLibrary {
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+-		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
++		const railHeading = element('div', 'lp-rail-heading');
++		const hover: IDelayedHoverOptions = {
++			id: 'studio.library.statusGuide', content: this.statusGuide(),
++			position: { hoverPosition: HoverPosition.RIGHT }, appearance: { showPointer: true },
++			persistence: { hideOnHover: false },
++		};
++		const help = button('', 'question', () => { actions.hoverService.showInstantHover({ ...hover, target: help, trapFocus: true }, true); }, 'lp-rail-help');
++		help.setAttribute('aria-label', t('Project status guide', '项目状态说明'));
++		this._register(actions.hoverService.setupDelayedHover(help, hover));
++		railHeading.append(element('h2', '', t('Library', '仓库')), help);
++		rail.append(railHeading, field, this.index);
+ 		const addFilter = (id: string, label: string) => {
+@@ -147,2 +163,21 @@ export class LaunchpadLibrary {
+ 
++	private statusGuide(): HTMLElement {
++		const t = this.t;
++		const list = element('ul', 'lp-status-guide');
++		const item = (state: 'open' | 'running' | 'linked', label: string, detail?: string) => {
++			const row = element('li'), dot = element('span', `lp-index-dot lp-index-dot-${state}`);
++			dot.setAttribute('aria-hidden', 'true');
++			const text = element('div'); text.append(element('strong', '', label));
++			if (detail) { text.append(element('p', '', detail)); }
++			row.append(dot, text); list.append(row);
++		};
++		item('open', t('Blue: project is open', '蓝点：项目已打开'));
++		item('running', t('Green: a task is running', '绿点：任务正在运行'), t('Replaces the blue dot while a task runs.', '运行时替代蓝点。'));
++		item('linked', t('Orange: Bot linked to chat', '橙点：已加入对话的 Bot'), t(
++			'In Studio Enhanced, this Bot has been added to your IM contacts. The dot does not indicate online status. The Bot runs locally and goes offline when Studio is closed.',
++			'这个 Bot 已添加到增强版的 IM 通讯录，可以在 IM 中直接发消息。橙点不代表在线；Bot 在本机运行，关闭 Studio 后会离线。',
++		));
++		return list;
++	}
++
+ 	async refreshActivity(): Promise<void> {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index 259078a0b29c3cea3384c3b00ebfa67d313ec63d..14f634a323e622e21fa9d9ece7c7a22764d16c5e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -87,3 +87,3 @@ export class StudioLaunchpadView extends Disposable {
+ 		navigation.append(this.tabs);
+-		this.library = new LaunchpadLibrary(t, actions);
++		this.library = this._register(new LaunchpadLibrary(t, actions));
+ 		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));

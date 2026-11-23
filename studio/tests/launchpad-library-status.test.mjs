@@ -10,18 +10,46 @@ const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('studi
 
 function fixture(t, language = 'en') {
   const { window } = new JSDOM('', { runScripts: 'outside-only' });
-  t.after(() => window.close());
   const { LaunchpadLibrary } = window.eval(`${outputFiles[0].text}\nstudio;`);
   const project = (name, extra) => ({ uri: `file:///${name}`, kind: 'folder', path: `/${name}`, name, ...extra });
   let read = async () => [];
-  const library = new LaunchpadLibrary((en, zh) => language === 'zh-cn' ? zh : en, { readActivity: projects => read(projects) });
+  const guide = {};
+  const hoverService = {
+    setupDelayedHover(target, options) {
+      Object.assign(guide, { target, options });
+      return { dispose() { guide.disposed = true; } };
+    },
+    showInstantHover(options, focus) { guide.activation = { options, focus }; },
+  };
+  const library = new LaunchpadLibrary((en, zh) => language === 'zh-cn' ? zh : en, { hoverService, readActivity: projects => read(projects) });
+  t.after(() => { library.dispose(); window.close(); });
   window.document.body.append(library.element);
   const row = p => library.element.querySelector(`.lp-index-row[data-key="index:${p.uri}"]`);
   const status = p => [...row(p).querySelectorAll('.lp-index-dot')].map(dot => dot.title);
-  return { library, project, row, status, window, reader: impl => { read = impl; } };
+  return { library, guide, project, row, status, window, reader: impl => { read = impl; } };
 }
 
 for (const language of ['en', 'zh-cn']) {
+  test(`the library heading opens a localized status guide by hover or activation (${language})`, t => {
+    const { library, guide } = fixture(t, language);
+    const help = library.element.querySelector('.lp-rail-heading > h2 + button');
+    const zh = language === 'zh-cn';
+    assert.equal(help.getAttribute('aria-label'), zh ? '项目状态说明' : 'Project status guide');
+    assert.equal(guide.target, help);
+    const items = [...guide.options.content.querySelectorAll('li')];
+    assert.deepEqual(items.map(li => [li.firstElementChild.classList[1], li.querySelector('strong').textContent]),
+      zh ? [['lp-index-dot-open', '蓝点：项目已打开'], ['lp-index-dot-running', '绿点：任务正在运行'], ['lp-index-dot-linked', '橙点：已加入对话的 Bot']]
+        : [['lp-index-dot-open', 'Blue: project is open'], ['lp-index-dot-running', 'Green: a task is running'], ['lp-index-dot-linked', 'Orange: Bot linked to chat']]);
+    assert.match(items[1].textContent, zh ? /替代蓝点/u : /replaces the blue dot/iu);
+    assert.match(items[2].textContent, zh ? /IM 通讯录.+不代表在线.+本机运行.+关闭 Studio 后会离线/u : /IM contacts.+does not indicate online status.+runs locally.+offline when Studio is closed/u);
+    assert.equal(guide.options.persistence.hideOnHover, false);
+    help.click();
+    assert.equal(guide.activation.options.content, guide.options.content);
+    assert.equal(guide.activation.focus, true);
+    library.dispose();
+    assert.equal(guide.disposed, true);
+  });
+
   test(`repository statuses are independent and live updates do not rebuild the rows (${language})`, async t => {
     const f = fixture(t, language);
     const bot = f.project('bot', { windowId: 12, projectId: 'bot-id', projectType: 'bot' });
