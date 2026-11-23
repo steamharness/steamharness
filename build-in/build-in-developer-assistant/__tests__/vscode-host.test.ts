@@ -41,9 +41,9 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
     },
   };
   const module = await import("../index");
-  return { module, options, connect, approve, getConfig, async prepareInput(context: ExecutorContext): Promise<AgentInput> {
+  return { module, options, connect, approve, getConfig, async prepareInput(context: ExecutorContext, folderContext?: NodeContext["folderContext"]): Promise<AgentInput> {
     const input = await module.executor.createInput(context);
-    return definition?.prepareInput ? definition.prepareInput(input, context as never) : input;
+    return definition?.prepareInput ? definition.prepareInput(input, { ...context, folderContext } as never) : input;
   } };
 }
 
@@ -176,6 +176,20 @@ describe("VS Code assistant host", () => {
     expect(input.systemPrompt).toContain("Current \\u003cproject\\u003e");
     expect(createDeveloperAssistantSystemPrompt(manifest as Parameters<typeof createDeveloperAssistantSystemPrompt>[0]))
       .toContain("Studio VS Code");
+  });
+
+  it("uses the folder Bot directory without inheriting a legacy workspace", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "assistant-folder-bot-"));
+    temporary.push(base);
+    const directory = path.join(base, "selected"), other = path.join(base, "other");
+    await Promise.all([mkdir(directory), mkdir(other)]);
+    const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: other,
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: "" });
+    const input = await host.prepareInput({ projectName: "developer-assistant", projectDir: import.meta.dirname,
+      args: ["--message", "Read my project"], paramValues: {}, config: {}, abortSignal: new AbortController().signal }, { directory });
+    expect(input).toMatchObject({ workdir: directory, allowedDirectories: [directory] });
+    expect(input.systemPrompt).toContain(directory);
+    expect(input.systemPrompt).not.toContain(other);
   });
 
   it.each(["conversation", "openai"])("inherits the user policy for %s input and rejects per-turn permission overrides", async kind => {

@@ -17,7 +17,7 @@ import {
 interface ControllerOptions {
   canRun?(session: ConversationSession): boolean;
   canStart?(): boolean;
-  canDrain?(): boolean;
+  canDrain?(session: ConversationSession): boolean;
   configurationRevision?(): number;
   userSettings?(): UserSettings;
   independent?(session: ConversationSession): (() => void) | Promise<() => void>;
@@ -151,9 +151,10 @@ export class ConversationController {
     }
     this.saving = false;
   }
-  recover(): void {
+  recover(hostSession?: ConversationSession): void {
     if (!this.project.conversation?.recovery?.enabled || this.disposed || this.options.canStart?.() === false) return;
     for (const entry of this.sessions) {
+      if (hostSession ? entry !== hostSession : entry.origin === 'host') continue;
       if (archivedConversation(this.project, entry) || entry.agentOwnerId || entry.recoveryPaused) continue;
       if (entry.agentInterrupted) continue;
       if (entry.activeRunId) continue;
@@ -192,7 +193,7 @@ export class ConversationController {
     catch { return true; }
   }
   async create(force = false): Promise<void> {
-    const blank = force ? undefined : this.sessions.find((entry) => !archivedConversation(this.project, entry) && !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
+    const blank = force ? undefined : this.sessions.find((entry) => !entry.origin && !archivedConversation(this.project, entry) && !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     const next = blank ?? this.blank();
     next.updatedAt = Date.now();
     if (blank) { this.sessions.splice(this.sessions.indexOf(blank), 1); }
@@ -203,7 +204,7 @@ export class ConversationController {
     if (!this.sessions.some((entry) => entry.id === id)) { return; }
     this.activeId = id; this.changed(); await this.persist();
   }
-  async navigate(id: string, updates: ConversationDraftUpdate[], select = true): Promise<void> {
+  async navigate(id: string, updates: ConversationDraftUpdate[], select = true, origin?: ConversationSession['origin']): Promise<void> {
     const known = new Set(this.sessions.map(entry => entry.id));
     for (const update of updates) {
       if (!known.has(update.id) && !update.create) { throw new Error(t("Conversation no longer exists.")); }
@@ -213,7 +214,7 @@ export class ConversationController {
     for (const update of updates) {
       let entry = this.sessions.find(entry => entry.id === update.id);
       // Client-assigned IDs make recovery safe when a navigation response was lost.
-      if (!entry) { entry = this.blank(update.id); this.sessions.push(entry); }
+      if (!entry) { entry = { ...this.blank(update.id), ...(origin && { origin }) }; this.sessions.push(entry); }
       entry.draft = { ...update.draft, attachments: [...update.draft.attachments] };
     }
     if (select) this.activeId = id;
@@ -733,7 +734,7 @@ export class ConversationController {
     const identity = createHash('sha256').update(JSON.stringify([owner.id, info.id])).digest('hex').slice(0, 32);
     const id = this.runtime.isolateAgentConversation && info.forkEntryId !== undefined
       ? `${identity.slice(0, 8)}-${identity.slice(8, 12)}-${identity.slice(12, 16)}-${identity.slice(16, 20)}-${identity.slice(20)}` : undefined;
-    const child = { ...this.blank(id), title: info.title, agentOwnerId: owner.id, agentConversationId: info.id, agent: owner.agent,
+    const child = { ...this.blank(id), origin: owner.origin, title: info.title, agentOwnerId: owner.id, agentConversationId: info.id, agent: owner.agent,
       parameterValues: JSON.parse(JSON.stringify(source.parameterValues ?? {})), toolPermissionPolicies: JSON.parse(JSON.stringify(source.toolPermissionPolicies ?? {})) };
     if (info.forkEntryId !== undefined) {
       child.forkSource = { sessionId: source.id, entryId: info.forkEntryId };
@@ -1096,7 +1097,7 @@ export class ConversationController {
         && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }
   private drain(entry: ConversationSession, explicit = false): void {
-    if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.() === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
+    if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.(entry) === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
       || entry.agentInterrupted || (this.project.conversation?.durable?.enabled ? this.agentBusy(entry) : entry.activeRunId)
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
@@ -1285,7 +1286,7 @@ export class ConversationController {
   }
   async runQueued(entry = this.current): Promise<void> {
     await this.ensureIndependentFork(entry);
-    if (entry.recoveryPaused) { entry.recoveryPaused = false; this.recover(); }
+    if (entry.recoveryPaused) { entry.recoveryPaused = false; this.recover(entry.origin === 'host' ? entry : undefined); }
     if (this.owner(entry).agentInterrupted) await this.agentCommand(entry.id, { type: 'snapshot', requestId: globalThis.crypto.randomUUID() });
     this.drain(entry, true); await this.persist();
   }

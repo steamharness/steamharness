@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { selectProjectEntry } from '@steamharness/project-manifest';
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
@@ -16,7 +16,19 @@ const escape = (value: string) => value.replace(/[&<>"']/g, value => ({'&':'&amp
 /** One public HTTP service; each registered entry owns its controllers and state. */
 export async function startAggregateWebServer(options: WebOptions) {
   const directory = options.host?.assistantProjectDir ?? options.projectDir;
-  const readManifest = () => readProjectManifestFromDirectory(directory);
+  const folderBot = options.host?.folderBot;
+  const readManifest = async () => {
+    if (folderBot && !await realpath(folderBot.directory).then(async resolved => resolved === folderBot.directory && (await stat(resolved)).isDirectory()).catch(() => false)) {
+      throw new Error('The local Bot folder is unavailable or has changed.');
+    }
+    const declaration = await readProjectManifestFromDirectory(directory);
+    if (!folderBot) return declaration;
+    const entry = selectProjectEntry(declaration, options.entryId);
+    if (entry.entryId !== declaration.defaultEntry || entry.type !== 'bot' || entry.folderContext !== true || declaration.projectId !== folderBot.projectId) {
+      throw new Error('The local Bot entry or its folder support has changed.');
+    }
+    return { ...declaration, entries: [entry] };
+  };
   let manifest = await readManifest();
   const selectedId = selectProjectEntry(manifest, options.entryId).entryId;
   const credentials = { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };
@@ -91,6 +103,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
   };
   const server = createServer((request, response) => {
     void (async () => {
+      if (folderBot?.background) { response.writeHead(404); response.end(); return; }
       const url = new URL(request.url ?? '/', origin);
       if (url.pathname === '/') { response.writeHead(302, { Location: `/entries/${manifest.entries.some(item => item.entryId === selectedId) ? selectedId : manifest.defaultEntry}/${url.search}` }); response.end(); return; }
       const match = /^\/entries\/([a-z][a-z0-9_-]{0,63})(\/.*)?$/.exec(url.pathname);
@@ -118,6 +131,10 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
   await new Promise<void>((resolve,reject) => { server.once('error',reject); server.listen(options.port ?? 0,'127.0.0.1',() => { server.off('error',reject); resolve(); }); });
   origin = `http://127.0.0.1:${(server.address() as {port:number}).port}`;
   await Promise.all(manifest.entries.map(entry => launch(entry.entryId)));
+  if (folderBot && !entries.has(selectedId)) {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    throw new Error(failures.get(selectedId) ?? 'The local folder Bot could not start.');
+  }
   const current = () => entries.get(selectedId) ?? entries.values().next().value;
   const project = (): Project => {
     const runtime = current(); if (runtime) return runtime.project;

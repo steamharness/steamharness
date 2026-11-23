@@ -1,6 +1,6 @@
 import type { EntryConversations } from './entry-conversations';
 import type { ConversationController } from './conversation-controller';
-import { sessionRunning, type Project, type Runtime } from './workflow-types';
+import { sessionRunning, type ConversationSession, type Project, type Runtime } from './workflow-types';
 
 const uuid = (s: unknown): s is string =>
   typeof s === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(s);
@@ -12,15 +12,18 @@ export async function hostConversation(
   runtime: Runtime,
   project: Project,
   input: Record<string, unknown>,
+  isolate = false,
 ) {
   const { conversationId, requestId, action } = input;
   if (!uuid(conversationId) || !uuid(requestId)) throw new Error('Invalid background turn.');
   let session = controller.sessions.find((row) => row.id === conversationId);
+  if (isolate && session && session.origin !== 'host') throw new Error('This conversation is not owned by the background host.');
   if (!session && (action === 'ensure' || action === 'submit')) {
     await controller.navigate(
       conversationId,
       [{ id: conversationId, create: true, draft: { text: '', attachments: [] } }],
       false,
+      isolate ? 'host' : undefined,
     );
     session = controller.sessions.find((row) => row.id === conversationId);
     if (typeof input.title === 'string') await controller.rename(conversationId, input.title);
@@ -30,13 +33,20 @@ export async function hostConversation(
     (m) => m.role === 'assistant' && (m.sessionRequestId ?? m.id) === requestId,
   );
   const queued = session.queuedInputs?.some((q) => (q.requestId ?? q.id) === requestId);
+  const unfinished = (message: ConversationSession['messages'][number]) => message.role === 'assistant' &&
+    (message.status === 'running' || message.recovering || message.pendingInput || message.cancelRequested);
+  if (isolate && ['submit', 'recover', 'resolve', 'stop'].includes(String(action)) && (
+    session.messages.some(message => message !== answer && unfinished(message)) ||
+    session.queuedInputs?.some(input => (input.requestId ?? input.id) !== requestId) && !(action === 'stop' && queued)
+  )) throw new Error('Another background request owns this conversation.');
   if (action === 'ensure') return { status: 'ready' };
   if (action === 'turn') {
-    if (!answer) return { status: queued ? 'queued' : 'missing' };
+    if (!answer) return { status: queued ? 'queued' : 'missing', ...(isolate && queued ? { recovering: !sessionRunning(session) } : {}) };
     const pending = answer.pendingInput;
     // Do not project trace data, tool arguments, model requests, report data or parameter defaults.
     return {
       status: session.recoveryPaused && answer.recovering ? 'paused' : answer.status,
+      ...(isolate && answer.recovering && !session.recoveryPaused ? { recovering: true } : {}),
       messageId: answer.id,
       items: (answer.items ?? []).map(({ id, content, contentType, collapsed, metadata, display }) => ({
         id,
@@ -74,6 +84,11 @@ export async function hostConversation(
         ),
       },
     };
+  }
+  if (isolate && action === 'recover' && (answer?.recovering && !session.recoveryPaused && !answer.pendingInput || queued)) {
+    if (queued && !answer) await controller.runQueued(session);
+    else controller.recover(session);
+    return { status: 'ready' };
   }
   if (action === 'submit') {
     if (
@@ -134,7 +149,7 @@ export async function hostConversation(
     );
     return { status: 'resolved' };
   }
-  if (action === 'stop' && answer && (answer.status === 'running' || answer.pendingInput)) {
+  if (action === 'stop' && answer && (isolate ? unfinished(answer) : answer.status === 'running' || answer.pendingInput)) {
     await controller.stop(session);
     return { status: 'stopped' };
   }

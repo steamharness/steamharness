@@ -214,6 +214,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       }
       return { projects, errors };
     },
+    localAssistantDirectory: assistantDirectory,
     inspectAssistant: async (target, folders) => {
       assertAvailable();
       const assistant = { standalone: true, workdir: target.folderPath, roots: [target, ...folders.filter(folder => folder.uri !== target.uri)] };
@@ -238,7 +239,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
       const lease = await hosts.acquire(
       // A headless caller must not lease the CLI that received the embedded page's account.
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount]), project,
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null]), project,
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
@@ -253,7 +254,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         let studioControl: StudioControlConfiguration | undefined;
         const assistantAggregate = project.id === DEVELOPER_ASSISTANT_PROJECT_ID
           && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
-        if (project.assistant || assistantAggregate) {
+        if (!project.folderBot && (project.assistant || assistantAggregate)) {
           const directory = project.assistant ? await assistantDirectory() : project.folderPath;
           const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
             .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
@@ -272,6 +273,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         }
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
           assistantProjectDir: project.assistant ? project.folderPath : undefined,
+          folderBot: project.folderBot,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,

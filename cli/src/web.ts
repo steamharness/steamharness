@@ -15,7 +15,7 @@ import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from '
 export function parseWebArgs(argv: string[]) {
   const online = parseOnlineOptions(argv);
   argv = online.argv;
-  const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, entryId: undefined as string | undefined };
+  const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, folderContext: false, entryId: undefined as string | undefined };
   let projectSet = false;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -24,6 +24,7 @@ export function parseWebArgs(argv: string[]) {
     else if (arg === '--json') { options.json = true; }
     else if (arg === '--inspect') { options.inspect = true; }
     else if (arg === '--host-stdio') { options.hostStdio = true; }
+    else if (arg === '--folder-context') { options.folderContext = true; }
     else if (['--help', '-h'].includes(arg)) { options.help = true; }
     else if (['--port', '--data-dir', '--theme', '--entry'].includes(arg)) {
       const value = argv[++index]; if (!value || value.startsWith('--')) { throw new Error(`${arg} requires a value.`); }
@@ -35,6 +36,7 @@ export function parseWebArgs(argv: string[]) {
     else { options.projectDir = path.resolve(arg); projectSet = true; }
   }
   if (options.hostStdio && online.online.length) throw new Error('Use the host protocol, not --online, when embedding CLI Web.');
+  if (options.folderContext && (!options.hostStdio || !options.entryId || options.release || options.inspect)) throw new Error('Local folder context requires a dedicated stdio host and entry.');
   return { ...options, online: online.online };
 }
 
@@ -57,6 +59,7 @@ export async function main(argv: string[]): Promise<number> {
       const initial = await lines.next();
       if (initial.done || initial.value.length > 256_000) { throw new Error('Web host configuration is missing or too large.'); }
       host = parseHostConfiguration(JSON.parse(initial.value));
+      if (options.folderContext !== !!host.folderBot) throw new Error('The local folder host configuration does not match the requested mode.');
     }
   } catch (error) { input?.close(); throw error; }
   if (options.inspect) {
@@ -74,8 +77,8 @@ export async function main(argv: string[]): Promise<number> {
   } : undefined }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  const hostConversationProtocolVersion = input && host?.surface === 'editor' ? 1 : undefined;
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, hostConversationProtocolVersion, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  const hostConversationProtocolVersion = input && host?.surface === 'editor' && host.folderBot?.background !== false ? 1 : undefined;
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, hostConversationProtocolVersion, folderBotProtocolVersion: host?.folderBot ? 1 : undefined, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {

@@ -3,6 +3,7 @@ import { ConversationController } from '../web/conversation-controller';
 import { EntryConversations, conversationProjection } from '../web/entry-conversations';
 import { hostConversation } from '../web/host-conversation';
 import { randomUUID } from 'node:crypto';
+import { folderBotDataRoot, webProjectDataDirectory } from '../web/project-data-directory';
 import type { Project, Report, Runtime, ConversationSession } from '../web/workflow-types';
 
 function fixture(saved: { sessions?: ConversationSession[] } = {}) {
@@ -90,4 +91,41 @@ it('withdraws just the named queued background request without stopping another 
   expect(await call('turn')).toMatchObject({ status: 'missing' });
   expect(f.runtime.cancel).not.toHaveBeenCalled();
   f.running.get(first)!({ status: 'success' }); await f.controller.idle(); f.controller.dispose();
+});
+
+it('persists folder Bot history as host-owned and only recovers the requested IM turn', async () => {
+  const conversationId = randomUUID(), requestId = randomUUID(), other = randomUUID(), otherRequest = randomUUID();
+  const session = (id: string, runId: string): ConversationSession => ({ id, title: 'IM', origin: 'host',
+    messages: [{ id: runId, runId, role: 'assistant', content: 'partial', status: 'running', args: ['--message', 'hello'] }] });
+  const f = fixture({ sessions: [session(conversationId, requestId), session(other, otherRequest)] });
+  f.project.conversation!.recovery!.startup = 'automatic';
+  for (const session of f.controller.sessions) session.recoveryPaused = false;
+  const call = (action: string, overrides = {}) => hostConversation(f.controller, f.api, f.runtime, f.project, { conversationId, requestId, action, ...overrides }, true);
+  f.controller.recover();
+  expect(f.runtime.run).not.toHaveBeenCalled();
+  expect(await call('turn')).toMatchObject({ recovering: true });
+  await expect(call('recover', { requestId: otherRequest })).rejects.toThrow('Another background request');
+  await call('recover');
+  await vi.waitFor(() => expect([...f.running.keys()]).toEqual([requestId]));
+  f.running.get(requestId)!({ status: 'success' }); await f.controller.idle();
+  const created = randomUUID();
+  await call('ensure', { conversationId: created });
+  const saved = structuredClone(f.controller.sessions);
+  expect(saved.find(session => session.id === created)).toMatchObject({ origin: 'host' });
+  f.controller.dispose();
+  const reopened = fixture({ sessions: saved });
+  await reopened.controller.create();
+  expect(reopened.controller.current.origin).toBeUndefined();
+  await expect(hostConversation(reopened.controller, reopened.api, reopened.runtime, reopened.project,
+    { conversationId: reopened.controller.current.id, requestId, action: 'submit', text: 'hello' }, true)).rejects.toThrow('not owned');
+  reopened.controller.dispose();
+});
+
+it('uses separate data roots for two instances of the same entry', () => {
+  const project = randomUUID(), first = randomUUID(), second = randomUUID();
+  const root = process.cwd();
+  const local = webProjectDataDirectory(root, project, 'agent');
+  const locations = [first, second].map(id => webProjectDataDirectory(folderBotDataRoot(root, id), project, 'agent'));
+  expect(new Set([local, ...locations]).size).toBe(3);
+  expect(() => folderBotDataRoot(root, '../other')).toThrow('identity');
 });

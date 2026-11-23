@@ -174,6 +174,8 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   await Promise.all([activateInternalLayer(context, output, account, sidebar, {
     inspect: (paths, options) => launcher.inspect(paths, options),
     start: (...args) => launcher.start(...args),
+    localAssistantDirectory: launcher.localAssistantDirectory,
+    readSidebarEntries: launcher.readSidebarEntries,
     async avatar(uri) { return (await icons.resolveMany([uri]))[0]?.avatarUrl; },
   }), recent.reconcile().then(rememberCurrentWorkspace)]);
   const workflows = await activateProject(context, launcher, output, account, icons, sidebar);

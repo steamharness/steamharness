@@ -53,7 +53,16 @@ export interface ParamRequest {
   trigger: { kind: 'init' | 'input' } | { kind: 'param'; paramName: string };
 }
 
+/** A scope supplied by the trusted desktop host, not by a project's workspace settings. */
+export interface LocalFolderBotScope {
+  id: string;
+  directory: string;
+  background: boolean;
+  permissionCeiling?: 'read-only' | 'workspace' | 'auto';
+}
+
 export interface Project extends Parameters {
+  folderBot?: LocalFolderBotScope;
   distribution?: 'source' | 'release';
   sourceUri?: string;
   releasePreview?: boolean;

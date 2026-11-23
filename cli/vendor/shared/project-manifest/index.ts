@@ -30,6 +30,8 @@ export interface ProjectEntry {
   entry: string;
   /** Configuration definition JSON, relative to root. */
   configuration?: string;
+  /** Opt in to a directory supplied by a local host independently of the source directory. */
+  folderContext?: boolean;
   schedulePresets?: unknown[];
   webApp?: ProjectWebApp;
 }
@@ -114,7 +116,7 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
     let entry = registration;
     if (registration.root !== ".") {
       const child = record(children[registration.root as string], `${registration.root}/${PROJECT_MANIFEST_FILE}`);
-      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "schedulePresets", "webApp"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
+      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "folderContext", "schedulePresets", "webApp"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
       entry = { ...child, entryId: registration.entryId, root: registration.root };
     }
     return normalizeProjectEntry(entry, `entries[${index}]`);
@@ -134,7 +136,7 @@ export function readProjectManifest(value: unknown, children: Record<string, unk
 
 export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectEntry {
   const item = record(value, field);
-  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "schedulePresets", "webApp"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
+  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "folderContext", "schedulePresets", "webApp"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
   if (!isProjectEntryId(item.entryId)) throw new Error(`${field}.entryId must be an identifier and cannot use a reserved artifact or filesystem name.`);
   if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, bot, or kanban.`);
   if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 256) throw new Error(`${field}.name is required.`);
@@ -149,10 +151,11 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   if (filename.split("/")[0]?.toLowerCase() === "dist" && !filename.startsWith(buildDirectory + "/")) throw new Error(`${field}.entry must use ${buildDirectory}/ within the reserved artifact directory.`);
   if (item.type === "kanban" ? !/\.html$/i.test(entry) : !/\.[cm]?[jt]sx?$/i.test(entry)) throw new Error(`${field}.entry must be ${item.type === "kanban" ? "an HTML artifact" : "an executable module"}.`);
   const configuration = item.configuration === undefined ? undefined : normalizeEntryPath(item.configuration, `${field}.configuration`);
+  if (item.folderContext !== undefined && (item.type !== "bot" || typeof item.folderContext !== "boolean")) throw new Error(`${field}.folderContext must be a boolean on a Bot entry.`);
   if (item.schedulePresets !== undefined && !Array.isArray(item.schedulePresets)) throw new Error(`${field}.schedulePresets must be an array.`);
   const webApp = item.webApp === undefined ? undefined : normalizeProjectWebApp(item.webApp);
   if (webApp && item.type !== "kanban") throw new Error("webApp requires a Kanban entry.");
-  return { ...(webApp ? { webApp } : {}), entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
+  return { ...(webApp ? { webApp } : {}), entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.folderContext === undefined ? {} : { folderContext: item.folderContext }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
 }
 
 export function selectProjectEntry<T extends { entryId: string }>(manifest: { entries: T[]; defaultEntry: string }, entryId = manifest.defaultEntry): T {

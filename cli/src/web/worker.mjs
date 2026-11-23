@@ -156,6 +156,7 @@ try {
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
 } = await import(coreUrl);
   const core = await import(coreUrl);
+  if (request.folderBot && core.LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION !== 1) throw new Error('Update the project SDK to run a local folder Bot.');
   // IPC callbacks execute outside the async scope that registered the listener.
   // Re-enter the same run snapshot for every command and its asynchronous work.
   const connection = (url, token) => url && token ? { serverUrl: url, accessToken: token } : undefined;
@@ -349,6 +350,7 @@ try {
       }
       const running = runLocalProjectWithReport({
         runtimeHost: request.runtimeHost,
+        folderContext: request.folderBot && { directory: request.folderBot.directory, projectId: request.folderBot.projectId, permissionCeiling: request.folderBot.permissionCeiling },
         entryConversationHost,
         entryCall: request.entryCall,
         readOnly: request.readOnly === true,

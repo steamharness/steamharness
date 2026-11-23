@@ -59,6 +59,8 @@ Bot 记忆开关的默认值按最终发行入口和配置定义生成，支持 
 
 完整操作见[使用 CLI Web](/cli/web)。
 
+本地宿主可用 `--folder-context` 运行支持[文件夹上下文](/core-api/overview)的 Bot。它需要 `--host-stdio`、指定默认 Bot 的 `--entry`，以及由宿主通过标准输入提供的本机目录；不能与 `--release` 或 `--inspect` 同用。直接在终端启动 CLI Web 不需要这个选项。
+
 在 Bot 对话里问「当前运行环境是什么？」可以查本轮的 Core、CLI 和项目版本。[`runtime_info` 工具](/core-api/agent/context#自带工具)会区分 CLI、CLI Web 和 Studio。Agent 还会返回工作目录；[LLM Bot](/core-api/define-bot) 不返回本机路径。
 
 ## 检查与输出

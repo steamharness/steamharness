@@ -8,6 +8,8 @@ export interface SidebarProjectEntry {
   title: string;
   localizedNames?: Record<string, string>;
   type: SidebarProjectType;
+  defaultEntry?: boolean;
+  folderContext?: boolean;
 }
 
 export interface SidebarItem {

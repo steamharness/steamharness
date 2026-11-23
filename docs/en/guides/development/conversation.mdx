@@ -32,6 +32,8 @@ export default executor;
 
 Register the entry with `type: "bot"` in `steamharness.json`. Keep the project UUID and entry ID created by the project template.
 
+If the Bot can work with files outside its source directory, set `"folderContext": true` on its entry. For an aggregate project, put the field in that entry's own `steamharness.json`. When a local host supplies a folder, `prepareInput(input, context)` can read its canonical absolute path from `context.folderContext?.directory`. Otherwise the field is `undefined`. The built-in Agent tools use this location as their working directory. The field does not change the project source directory or confine tools to the supplied folder.
+
 For model-only replies, replace the entry declaration with the following. Both engines use the same model settings, so no separate LLM credential is needed.
 
 ```ts

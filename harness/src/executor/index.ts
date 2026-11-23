@@ -1,4 +1,5 @@
 import { isDefinedBot } from "../agent/bot";
+import { folderPermissionCeiling, validateLocalFolderContext, type LocalFolderHostContext } from "./folder-context";
 import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
@@ -29,6 +30,7 @@ import type {
 } from "../types/index";
 import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
+export { LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION, type LocalFolderHostContext } from "./folder-context";
 import type { AccessActor } from "@steamharness/project-access";
 import { createExecutorResources, type EntryDeclaration } from "./entry-resources";
 import type { ToolPermissionContext } from "../tool-permissions/index";
@@ -165,6 +167,8 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  /** Trusted host input for one opted-in Bot entry. Never supplied by conversation parameters. */
+  folderContext?: LocalFolderHostContext;
   /** Optional diagnostic identity supplied by the trusted launcher. */
   runtimeHost?: import("../runtime-info").ProjectRuntimeHost;
   /** Require an author-declared read-only Workflow operation. Not a JavaScript sandbox. */
@@ -787,6 +791,7 @@ async function runLocalProjectWithReportInternal(
   let projectName = options.projectName ?? readLocalProjectName(projectDir);
   assertLocalProjectIsExecutable(projectDir, projectName, options.entryId, options.env);
   const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
+  const folderContext = validateLocalFolderContext(projectStorageDeclaration.registration, options.folderContext, projectStorageDeclaration.projectId);
   const args = options.args ?? [];
   const env = options.env ?? process.env;
   const startedAt = new Date();
@@ -952,11 +957,13 @@ async function runLocalProjectWithReportInternal(
       reporter,
       userInput: options.userInput,
     });
-    const context: RunContext = {
+    const context: RunContext & { [folderPermissionCeiling]?: LocalFolderHostContext['permissionCeiling'] } = {
       ...extraContext,
       config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       ...createExecutorResources(projectStorageDeclaration, { ...options, runId, conversationId: conversation.conversationId, abortSignal: abortController.signal }, () => context),
+      folderContext,
+      [folderPermissionCeiling]: options.folderContext?.permissionCeiling,
       conversation,
       tokenUsage,
       userInput,

@@ -112,6 +112,7 @@ export async function startProjectCli(options: {
   projectDir: string; dataDir: string; nodePath: string; theme: 'dark' | 'light'; locale?: string; port?: number;
   surface: 'editor' | 'assistant'; platform?: boolean; assistant?: Project['assistant']; signal?: AbortSignal;
   authRoot?: string;
+  folderBot?: Project['folderBot'];
   assistantProjectDir?: string;
   expectedProjectId?: string;
   webAppEntries?: import("@steamharness/project-manifest").ProjectEntry[];
@@ -124,7 +125,7 @@ export async function startProjectCli(options: {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(undefined, undefined);
-  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
+  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir, ...(options.folderBot ? ['--folder-context'] : [])],
     { cwd: options.projectDir, env: { ...environment(options.studioControl, options.runtime, options.authRoot), STEAMHARNESS_WEB_HOST: 'studio' }, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.studioControl?.token].filter((token): token is string => !!token));
@@ -218,6 +219,7 @@ export async function startProjectCli(options: {
             const message = JSON.parse(line) as WebReady;
             if (message.type !== 'ready') { continue; }
             const url = new URL(message.url);
+            if (options.folderBot && message.folderBotProtocolVersion !== 1) throw new Error('Update the project CLI and SDK to run a local folder Bot.');
             if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
@@ -226,7 +228,7 @@ export async function startProjectCli(options: {
         }
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
-      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, resourceProjects: options.resourceProjects ?? [] })}\n`);
+      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [] })}\n`);
     });
     webAppConfigurations = ready.webAppConfigurations ?? {};
     readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;

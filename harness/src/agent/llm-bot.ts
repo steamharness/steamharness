@@ -19,6 +19,7 @@ import { readRuntimeLocaleSafe } from "./plan";
 import { createAgentProjectInput, resolveAgentImageFiles } from "./project";
 import { inheritConversationModelParams } from "./project-executor";
 import { applyAgentProjectFixedValues } from "./project-params";
+import { applyFolderAgentInput } from "../executor/folder-context";
 import { readAgentSystemCredentials, selectAgentSystemLLM } from "./system-llm";
 import type { AgentInput, AgentOutputPayload } from "./types";
 
@@ -89,14 +90,14 @@ export function createLLMBot<Input extends AgentInput>(
         typeof saved.metadata?.toolCallCount === "number" ? saved.metadata.toolCallCount : 0);
       await replayBotOutput(output, input, context);
     } else {
-      const resolved = await resolveAgentImageFiles(input, context, NODE);
+      const resolved = await resolveAgentImageFiles(context.folderContext ? { ...input, workdir: context.folderContext.directory, allowedDirectories: undefined } : input, context, NODE);
       const executor = inputContexts.get(input);
       const prepared = options.prepareInput ? await options.prepareInput({ ...resolved, requestId }, {
         ...context, args: executor?.args ?? [], paramValues: executor?.paramValues ?? {},
       }) : resolved;
       if (!prepared || typeof prepared.prompt !== "string") throw new HarnessError({ type: "input_validation", message: "Bot prepareInput must return an input with a prompt." });
       context.abortSignal?.throwIfAborted();
-      const finalInput = applyAgentProjectFixedValues(prepared, params);
+      const finalInput = applyFolderAgentInput(applyAgentProjectFixedValues(prepared, params), context);
       const route = await resolveProvider(finalInput, llm, context.abortSignal);
       const provider = route.provider;
       if (!(provider instanceof PiAiLLMProvider)) throw new HarnessError({ type: "provider_call", message: "LLM Bots require a pi-ai provider." });

@@ -14,6 +14,25 @@ export interface WebHostConfiguration {
   assistantProjectDir?: string;
   resourceProjects?: string[];
   userSettings?: UserSettings;
+  folderBot?: FolderBotHost;
+}
+
+export interface FolderBotHost {
+  id: string;
+  projectId: string;
+  directory: string;
+  background: boolean;
+  permissionCeiling?: UserSettings['agent']['permissionPolicy'];
+}
+
+function parseFolderBot(value: unknown): FolderBotHost {
+  const item = value as Partial<FolderBotHost> | undefined;
+  const uuid = (id: unknown): id is string => typeof id === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id);
+  if (!item || !uuid(item.id) || !uuid(item.projectId) || typeof item.directory !== 'string' || !path.isAbsolute(item.directory) ||
+    typeof item.background !== 'boolean' || (item.background ? !['read-only', 'workspace', 'auto'].includes(item.permissionCeiling ?? '') : item.permissionCeiling !== undefined)) {
+    throw new Error('Invalid local folder Bot host.');
+  }
+  return { id: item.id, projectId: item.projectId, directory: item.directory, background: item.background, permissionCeiling: item.permissionCeiling };
 }
 
 export function parseHostResourceProjects(value: unknown): string[] {
@@ -69,9 +88,11 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     throw new Error('A dedicated assistant project and its workspace are required.');
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
+  const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);
+  if (folderBot && configuration.surface !== 'editor') throw new Error('A local folder Bot requires the editor host.');
   const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
-    connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true,
+    connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true, folderBot,
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

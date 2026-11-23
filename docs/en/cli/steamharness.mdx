@@ -57,6 +57,8 @@ Source windows show the version declared in source. Opening a release project sh
 
 ## CLI Web
 
+Local hosts can use `--folder-context` to run a Bot that supports [folder context](/en/core-api/overview). This flag requires `--host-stdio`, `--entry` pointing to the default Bot, and a local directory passed by the host on standard input. It cannot be combined with `--release` or `--inspect`. Leave it out when starting CLI Web from a terminal.
+
 See [Use CLI Web](/en/cli/web).
 
 Ask a Bot, “What runtime am I using?” to check the Core, CLI and project versions. The [`runtime_info` tool](/en/core-api/agent/context#your-own-tools) distinguishes direct CLI runs, CLI Web, and Studio. Agents also report the working directory; [LLM Bots](/en/core-api/define-bot) omit local paths.

@@ -44,7 +44,7 @@ import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
-import { projectDataDirectory } from './project-data-directory';
+import { folderBotDataRoot, projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import { hostConversation } from './host-conversation';
 import type { EntryConversationSnapshot } from 'steamharness';
@@ -116,7 +116,9 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
 
 async function startProjectWebServer(options: WebOptions, credentials: { capability: string; cookie: string }, identityChanged: () => void) {
   const projectDir = await realpath(path.resolve(options.projectDir));
-  const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
+  const folderBot = options.host?.folderBot;
+  const baseStorageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
+  const storageDir = folderBot ? folderBotDataRoot(baseStorageDir, folderBot.id) : baseStorageDir;
   assertProjectDataDirectory(projectDir, storageDir);
   const clients = new Set<ServerResponse>();
   const entryObservers = new Set<() => void>();
@@ -148,7 +150,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
   const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, folderBot, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
   } });
@@ -172,7 +174,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       throw Object.assign(new Error('The requested Kanban file is unavailable.'), { code: 'KANBAN_FILE_UNAVAILABLE' });
     },
     run: (request, emit, onModelRequest) => {
-      const input = { ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) };
+      const settings = hydrateUserSettings(request.userSettings, userSettings);
+      const input = { ...request, userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
     resolveParams: (...args) => executor.resolveParams(...args),
@@ -214,6 +217,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       storageReady = false; storageError = String((error as Error).message); broadcast();
     }) : undefined;
   const conversationHistory = ownership ? new ConversationHistory(() => runtimePersistence, ownership) : undefined;
+  const isHostConversation = (id: string) => controller?.sessions.some(session => session.id === id && session.origin === 'host') === true;
+  const selectAccess = (clientId: string, id: string) => isHostConversation(id) ? ownership!.selectHostHistory(clientId) : ownership!.select(clientId, id);
+  const assertLocalConversation = (id: string) => {
+    if (isHostConversation(id)) throw new Error(t('Read-only IM history. Continue this conversation in IM.'));
+  };
+  const backgroundAdmissions = new Set<string>();
   const workflowHistory = project.projectType === 'workflow' ? new WorkflowHistory(() => runtimePersistence, error => {
     storageReady = false; storageError = error.message;
     for (const run of projectController?.runs ?? []) if (run.status === 'running') runtime.cancel(run.id);
@@ -271,7 +280,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (clientId && selected) rememberSelection(clientId, selected.id);
     return publicState({ stateRevision: ++stateRevision,
       ...(selected ? { activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} } : {}),
-      ...(ownership && selected && clientId ? { conversationAccess: ownership.select(clientId, selected.id) } : {}) });
+      ...(ownership && selected && clientId ? { conversationAccess: selectAccess(clientId, selected.id) } : {}) });
   };
   const state = (clientId?: string) => ({ ...sharedState(), ...clientState(clientId) });
   const writeFrame = (client: ServerResponse, data: string) => {
@@ -342,9 +351,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   project.agentModelPolicy = configurations.state.agentModelPolicy;
   applyUserSettings();
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
-    canRun: session => ownership?.execute(session.id) ?? true,
+    canRun: session => (!folderBot || (folderBot.background ? session.origin === 'host' && backgroundAdmissions.has(session.id) : !session.origin)) && (ownership?.execute(session.id) ?? true),
     canStart: () => storageReady,
-    canDrain: () => storageReady,
+    canDrain: session => storageReady && !session.origin,
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
     independent: session => ownership?.independent(session.id) ?? (() => undefined),
@@ -689,6 +698,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const writable: ConversationDraftUpdate[] = [];
         for (const update of updates) {
           const session = controller.sessions.find(session => session.id === update.id);
+          if (isHostConversation(update.id)) continue;
           try {
             await ownership?.assertWritable(update.id, message.clientId);
             if (ownership) held.push(await ownership.hold(update.id));
@@ -697,14 +707,16 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           catch (error) { if (!session || JSON.stringify(update.draft) !== JSON.stringify(session.draft)) throw error; }
         }
         await refreshHistory();
-        await conversationController.navigate(message.id, writable);
+        await conversationController.navigate(message.id, writable.filter(update => !isHostConversation(update.id)));
         rememberSelection(message.clientId, message.id);
       }
       return reply();
     }
     if (ownership && (message.type === 'ready' || message.type === 'select')) {
+      // IM history can arrive from another process and must never take a page writer.
+      if (folderBot) await refreshHistory();
       const selectedId = message.type === 'select' ? String(message.id) : selections.get(message.clientId ?? '') ?? controller.activeId;
-      if (controller.sessions.some(session => session.id === selectedId)) await ownership.acquire(selectedId);
+      if (!isHostConversation(selectedId) && controller.sessions.some(session => session.id === selectedId)) await ownership.acquire(selectedId);
     }
     await refreshHistory();
     const replies: Message[] = [];
@@ -714,9 +726,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (ownership && !readOnly.includes(message.type) && !(message.type === 'session-action' && message.action === 'export')) {
       const target = message.type === 'session-action' ? controller.sessions.find(session => session.id === message.id) : current;
       if (target) {
+        assertLocalConversation(target.id);
         await ownership.assertWritable(target.id, message.clientId);
         held.push(await ownership.hold(target.id));
         await refreshHistory();
+        assertLocalConversation(target.id);
         current = controller.sessions.find(session => session.id === current.id)!;
       }
     }
@@ -748,6 +762,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         break;
       }
       case 'agent-open': {
+        assertLocalConversation(current.id);
         if (!Number.isSafeInteger(message.conversationId)) throw new Error('Invalid agent conversation.');
         if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) throw new Error(t('Task state changed. Refresh the trace and try again.'));
         const sessionId = await controller.openAgentConversation(current.id, message.conversationId);
@@ -842,7 +857,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         break;
       }
       case 'new':
-        if (!ownership || !message.clientId || !ownership.select(message.clientId, current.id).readOnly) await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references));
+        if (!isHostConversation(current.id) && (!ownership || !message.clientId || !selectAccess(message.clientId, current.id).readOnly)) await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references));
         await controller.create(true);
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
@@ -1030,7 +1045,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (storageReady) conversationController?.recover();
       const signature = JSON.stringify([...clients].map(client => {
         const id = clientIds.get(client) ?? '', selected = selections.get(id) ?? controller.activeId;
-        return [id, selected, ownership!.select(id, selected)];
+        return [id, selected, selectAccess(id, selected)];
       }));
       if (signature !== accessSignature) { accessSignature = signature; broadcast(); }
     }).catch(error => process.stderr.write(`Conversation history: ${String(error)}\n`)).finally(() => { refreshingHistory = false; });
@@ -1041,13 +1056,18 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
     hostTurn: async (input: Record<string, unknown>) => {
       const id = input.conversationId;
-      if (options.host?.surface !== 'editor' || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
+      if (options.host?.surface !== 'editor' || folderBot?.background === false || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
+      const admit = !!folderBot && ['submit', 'resolve', 'recover'].includes(String(input.action));
       if (input.action !== 'turn') await ownership?.assertWritable(id);
       const release = input.action !== 'turn' ? await ownership?.hold(id) : undefined;
       try {
         await refreshHistory();
-        return redactProjectData(await hostConversation(controller, entryConversations, runtime, project, input), [...sensitiveTokens]);
-      } finally { release?.(); }
+        if (admit) {
+          if (!isHostConversation(id) && (input.action !== 'submit' || controller.sessions.some(session => session.id === id))) throw new Error('Background conversation unavailable.');
+          backgroundAdmissions.add(id);
+        }
+        return redactProjectData(await hostConversation(controller, entryConversations, runtime, project, input, !!folderBot), [...sensitiveTokens]);
+      } finally { if (admit) backgroundAdmissions.delete(id); release?.(); }
     },
     // Only the Studio stdio control channel can call this, never a Web client.
     readModelRequest: (sessionId: string, messageId: string, executionId: string) => {
@@ -1084,12 +1104,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (call.action === 'list' || call.action === 'snapshot') return entryConversations.invoke(call.action, call.input, call.abortSignal);
       const id = call.input.conversationId;
       if (typeof id !== 'string' || !id.trim() || id.length > 200) throw new Error('Invalid conversation id.');
+      if (folderBot) { await refreshHistory(); assertLocalConversation(id); }
       await ownership?.assertWritable(id);
       const release = await ownership?.hold(id);
       try {
         // Refresh an acquired owner before creating or preparing a session, as
         // native controls do. Later polling must preserve this in-flight object.
         await refreshHistory();
+        if (folderBot && (isHostConversation(id) || folderBot.background)) throw new Error('Conversation is not editable by this entry.');
         return await entryConversations.invoke(call.action, call.input, call.abortSignal);
       }
       finally { release?.(); }
@@ -1107,6 +1129,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const check = () => { if (closed || epoch !== authRevision || configuration !== parameterRevision) throw Object.assign(new Error('The conversation view expired. Reopen it.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); };
       await refreshHistory();
       check();
+      assertLocalConversation(id);
       if (!controller.sessions.some(session => session.id === id)) {
         await ownership?.assertWritable(id);
         const release = await ownership?.hold(id);

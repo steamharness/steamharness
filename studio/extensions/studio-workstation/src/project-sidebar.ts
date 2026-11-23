@@ -17,6 +17,13 @@ const viewId = (id: string) => `studio.sidebar.${id}`;
 const localFolder = (uri: vscode.Uri) => uri.scheme === 'file' && !uri.query && !uri.fragment;
 const typeLabel = (type: SidebarProjectEntry['type']) => type === 'bot' ? t('Bot') : type === 'kanban' ? t('Kanban') : t('Workflow');
 
+interface SidebarAssistantOverride {
+  title: string;
+  load(signal: AbortSignal): Promise<Project>;
+  check(): Promise<void>;
+  onDidChange?(listener: () => void): { dispose(): void };
+}
+
 export class ProjectSidebar implements vscode.Disposable {
   private readonly change = new vscode.EventEmitter<void>();
   readonly onDidChange = this.change.event;
@@ -27,6 +34,7 @@ export class ProjectSidebar implements vscode.Disposable {
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
+  private assistantOverride?: SidebarAssistantOverride;
   private disposed = false;
   private visibleTabs = '';
   private getProjects: () => Project[] = () => [];
@@ -50,6 +58,10 @@ export class ProjectSidebar implements vscode.Disposable {
     });
     if (this.started) void this.sync();
     return { dispose: () => { if (this.resident?.id === project.id) this.resident.close(); this.builtin.delete(project.id); void this.sync(); } };
+  }
+
+  overrideAssistant(project: SidebarAssistantOverride): void {
+    if (!this.started) this.assistantOverride = project;
   }
 
   /** One in-flight or ready preview per account scope, not per navigation. */
@@ -105,10 +117,15 @@ export class ProjectSidebar implements vscode.Disposable {
   start(assistant: vscode.WebviewViewProvider, getProjects: () => Project[], mount: NonNullable<ProjectSidebar['mountProject']>): Promise<void> {
     this.getProjects = getProjects;
     this.mountProject = mount;
-    this.builtin.set('assistant', { item: { id: 'assistant', title: t('Project Assistant'), type: 'bot', builtin: true, visible: true }, viewId: 'studio.developerAssistant', provider: assistant });
+    const override = this.assistantOverride;
+    this.builtin.set('assistant', { item: { id: 'assistant', title: override?.title ?? t('Project Assistant'), type: 'bot', builtin: true, visible: true }, viewId: 'studio.developerAssistant', provider: override ? {
+      resolveWebviewView: view => { view.title = override.title; this.bindSidebarProject(view, 'assistant', override); },
+    } : assistant });
     this.started = true;
     if (this.launcher.readSidebarEntries) void vscode.commands.executeCommand('studio.internalWatchSidebarTrust').then(undefined, () => undefined);
-    return this.sync();
+    return this.sync().then(async () => {
+      if (override && !this.disposed) await vscode.commands.executeCommand('studio.developerAssistant.focus');
+    }).catch(error => this.output.appendLine(`[sidebar] ${String(error)}`));
   }
 
   private preferences(): SidebarPreferences {
@@ -232,7 +249,27 @@ export class ProjectSidebar implements vscode.Disposable {
   }
 
   private bindProject(view: vscode.WebviewView, saved: SavedSidebarEntry): void {
-    this.mounts.get(saved.id)?.close();
+    this.bindSidebarProject(view, saved.id, {
+      title: saved.title,
+      async check() {
+        if (!vscode.workspace.isTrusted || !await vscode.commands.executeCommand<boolean>(trustCommand, vscode.Uri.file(saved.directory).toString())) {
+          throw new Error(t('Trust this project folder before running it.'));
+        }
+      },
+      load: async signal => {
+        const entry = await this.validate(saved);
+        signal.throwIfAborted();
+        const result = await this.launcher.inspect([entry.directory], { signal });
+        const project = result.projects.find(candidate => candidate.id === entry.projectId && candidate.entryId === entry.entryId && candidate.projectType === entry.type && candidate.folderPath === entry.directory);
+        if (!project) throw new Error(result.errors[0] || t('The project entry could not be opened.'));
+        await this.validate(entry);
+        return { ...project, uri: vscode.Uri.file(entry.directory).toString() };
+      },
+    });
+  }
+
+  private bindSidebarProject(view: vscode.WebviewView, id: string, source: SidebarAssistantOverride): void {
+    this.mounts.get(id)?.close();
     let closed = false, opening: AbortController | undefined, conversation: AssistantConversation | undefined;
     const lifecycle: vscode.Disposable[] = [];
     const status = (message: string, retry = false) => {
@@ -244,14 +281,9 @@ export class ProjectSidebar implements vscode.Disposable {
       const attempt = opening = new AbortController();
       status(t('Opening project entry...'));
       try {
-        const entry = await this.validate(saved);
+        const project = await source.load(attempt.signal);
         attempt.signal.throwIfAborted();
-        const result = await this.launcher.inspect([entry.directory], { signal: attempt.signal });
-        const project = result.projects.find(candidate => candidate.id === entry.projectId && candidate.entryId === entry.entryId && candidate.projectType === entry.type && candidate.folderPath === entry.directory);
-        if (!project) throw new Error(result.errors[0] || t('The project entry could not be opened.'));
-        await this.validate(entry);
-        attempt.signal.throwIfAborted();
-        const running = await this.mountProject!({ ...project, uri: vscode.Uri.file(entry.directory).toString() }, view, attempt.signal);
+        const running = await this.mountProject!(project, view, attempt.signal);
         if (closed || attempt.signal.aborted || opening !== attempt) { await running.dispose(); return; }
         conversation = running;
         void running.closed.then(() => {
@@ -259,7 +291,7 @@ export class ProjectSidebar implements vscode.Disposable {
         });
       } catch (error) {
         if (!attempt.signal.aborted && !closed) {
-          this.output.appendLine(`[sidebar] ${saved.title}: ${String(error)}`);
+          this.output.appendLine(`[sidebar] ${source.title}: ${String(error)}`);
           status(error instanceof Error ? error.message : t('The project entry could not be opened.'), true);
         }
       } finally { if (opening === attempt) opening = undefined; }
@@ -269,19 +301,19 @@ export class ProjectSidebar implements vscode.Disposable {
         if (closed) return;
         closed = true; stop();
         for (const listener of lifecycle) listener.dispose();
-        if (this.mounts.get(saved.id) === current) this.mounts.delete(saved.id);
+        if (this.mounts.get(id) === current) this.mounts.delete(id);
       },
       recheck: async () => {
         if (!opening && !conversation) return;
-        try {
-          if (!vscode.workspace.isTrusted || !await vscode.commands.executeCommand<boolean>(trustCommand, vscode.Uri.file(saved.directory).toString())) throw new Error();
-        } catch { if (!closed) { stop(); status(t('Trust this project folder before running it.'), true); } }
+        try { await source.check(); }
+        catch (error) { if (!closed) { stop(); status(error instanceof Error ? error.message : t('The project entry could not be opened.'), true); } }
       },
     };
-    this.mounts.set(saved.id, current);
+    this.mounts.set(id, current);
     view.webview.options = { enableScripts: true, localResourceRoots: [] };
     lifecycle.push(view.onDidDispose(current.close), view.onDidChangeVisibility(() => { if (view.visible) void mount(); }),
       view.webview.onDidReceiveMessage(value => { if (value?.type === 'studio-sidebar-action') void mount(); }));
+    if (source.onDidChange) lifecycle.push(source.onDidChange(() => { void current.recheck(); }));
     void mount();
   }
 

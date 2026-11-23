@@ -8,6 +8,14 @@ function fixture(scope?: (id: string) => string) {
   const owner = () => { const value = new ConversationOwnership(() => persistence, scope); owners.push(value); return value; };
   return { persistence, owner };
 }
+it('switches to read-only IM history without taking a writer or retaining the previous one', async () => {
+  const f = fixture(), local = f.owner(), remote = f.owner();
+  await local.assertWritable('draft', 'page'); local.select('page', 'draft');
+  expect(local.selectHostHistory('page')).toEqual({ readOnly: true, reason: 'host' });
+  expect(local.owns('draft')).toBe(false);
+  await remote.assertWritable('im-history');
+  expect(local.owns('im-history')).toBe(false);
+});
 it('admits one process and one page per conversation while allowing independent conversations', async () => {
   const f = fixture(), one = f.owner(), two = f.owner();
   await one.assertWritable('same', 'page-a');

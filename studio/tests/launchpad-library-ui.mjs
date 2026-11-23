@@ -229,6 +229,25 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     const closed=popup.waitForEvent('close'); await page.evaluate(()=>{window.guest=true;window.signOut();}); await closed;
     assert.equal(await latest.isVisible(),false);
     assert.equal(await profile.getByText('Saved message').count(),0); await profile.getByRole('button',{name:t('Sign in','登录'),exact:true}).click();
+    // Folder Bot creation is local and stays available when signed out.
+    await tab('library').click();
+    const botOpenRequests = () => page.evaluate(() => window.openRequests.flatMap(req => req.openables.filter(item=>item.path.startsWith('/profile/Folder Bot '))));
+    for (const number of [1, 2]) {
+      await row('Imported folder').click();
+      await detail.getByRole('button',{name:t('Open with Bot…','用 Bot 打开…')}).click();
+      await row(`Folder Bot ${number}`).waitFor();
+      assert.deepEqual(await request(), {openables:[{kind:'workspaceUri',path:`/profile/Folder Bot ${number}.code-workspace`}],forceNewWindow:true});
+    }
+    await row('Folder Bot 1').click();
+    const focused = await page.evaluate(() => window.actions.filter(([id])=>id==='focus').length);
+    await detail.getByRole('button',{name:t('Switch to window','切换到项目窗口')}).click();
+    await page.waitForFunction(count=>window.actions.filter(([id])=>id==='focus').length===count+1,focused);
+    assert.deepEqual(await botOpenRequests(), [1,2].map(number=>({kind:'workspaceUri',path:`/profile/Folder Bot ${number}.code-workspace`})));
+    for (const number of [1, 2]) {
+      await row(`Folder Bot ${number}`).click({button:'right'});
+      await choose('Remove folder Bot…','移除分身…');
+      await row(`Folder Bot ${number}`).waitFor({state:'detached'});
+    }
   } else {
     assert.ok(!await home.locator('.lp-latest-notice').isVisible()); await tab('profile').click();
     const profile=home.locator('#lp-page-profile'); assert.equal(await profile.getByRole('tab').count(),1);

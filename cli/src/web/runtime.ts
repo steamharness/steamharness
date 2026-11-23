@@ -13,6 +13,7 @@ import { createSecretStreamRedactor } from './runtime-log';
 import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
 import type { AggregateEntryCall } from './entry-conversations';
 import { CLI_VERSION } from '../version';
+import type { FolderBotHost } from './host-config';
 
 // Set by the Studio launcher for its private stdio host, not by page requests.
 export const WEB_HOST_ENV = 'STEAMHARNESS_WEB_HOST';
@@ -35,7 +36,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => Partial<WebConnection> | undefined,
-  options: { entryId?: string; hostKind?: 'cli-web' | 'studio'; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown> } = {}): Runtime {
+  options: { entryId?: string; hostKind?: 'cli-web' | 'studio'; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown>; folderBot?: FolderBotHost } = {}): Runtime {
   const runtimeHost = { kind: options.hostKind ?? 'cli-web', cliVersion: CLI_VERSION };
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
@@ -170,7 +171,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId,
+    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, folderBot: options.folderBot, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId,
       actor, runtimeHost, captureModelRequest: Boolean(onModelRequest) }));
   });
   const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal,

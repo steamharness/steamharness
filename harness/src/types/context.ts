@@ -102,9 +102,15 @@ export interface NodeExecutionHooks {
   ): Promise<void> | void;
 }
 
+export interface FolderContext {
+  readonly directory: string;
+}
+
 export interface NodeContext {
   projectId: string;
   entryId: string;
+  /** Present only for opted-in Bots launched with a trusted local folder. */
+  readonly folderContext?: FolderContext;
   /** Identity of the project entry and host executing this run. */
   runtimeInfo?: import("../runtime-info").ProjectRuntimeInfo;
   config: import("../configuration").ConfigurationValues;

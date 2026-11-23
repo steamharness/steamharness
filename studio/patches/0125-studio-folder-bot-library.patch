@@ -1,0 +1,240 @@
+diff --git a/src/vs/workbench/browser/studioProjectDetails.ts b/src/vs/workbench/browser/studioProjectDetails.ts
+index 9a4778cdcba918599eb5a35104d49414f1215220..ef1ffa56d7dc9c9f204ba541c59d4ebf3b87853d 100644
+--- a/src/vs/workbench/browser/studioProjectDetails.ts
++++ b/src/vs/workbench/browser/studioProjectDetails.ts
+@@ -35,7 +35,7 @@ export interface StudioProjectDetails {
+ }
+ 
+ export function glyph(p: StudioProjectDetails): string {
+-	return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder');
++	return studioProjectIcon(p.projectType) ?? (p.kind === 'workspace' ? 'project' : p.distribution ? 'package' : 'folder');
+ }
+ 
+ export function projectMark(p: StudioProjectDetails): HTMLElement {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index e28a67f2da703e7d14bcc3b85a527864a72a0be0..dd69d3bc83a5e753ef83d8819b8d98a699a26ce8 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -43,7 +43,7 @@ import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWi
+ import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from './studioLaunchpadProfile.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { StoreListingDetails } from './studioLaunchpadCards.js';
+-import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
++import type { LibraryDetailAction, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
+ import './media/studioLaunchpad.css';
+ 
+ type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
+@@ -63,6 +63,8 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly editsSinceSnapshot = new Map<number, boolean>();
+ 	private inbox?: LaunchpadInbox;
+ 	private libraryCategory?: LibraryProjectCategory;
++	private libraryExtras = { projects: [] as LaunchpadProject[], hiddenUris: [] as string[] };
++	private readonly openingManaged = new Set<string>();
+ 	private account?: LaunchpadState['account'];
+ 	private windowRevision = 0;
+ 	private libraryCategoryRevision = 0;
+@@ -77,7 +79,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly noticeReads = this._register(new Throttler());
+ 	private readonly language = getNLSLanguage() ?? 'en';
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+-	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryCategory(), 100));
++	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryProducts(), 100));
+ 
+ 	constructor(
+ 		private readonly notices: StudioNotificationInbox,
+@@ -121,16 +123,29 @@ export class StudioLaunchpad extends Disposable {
+ 			importProjects: () => run(this.pickProjectsToImport()),
+ 			project: (project, entryId) => run(this.openProject(project, entryId)),
+ 			remove: project => run(this.removeProject(project)),
+-			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
++			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
+ 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
+ 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
+ 			cover: project => this.cover(project),
+-			detailActions: async project => this.start.state?.platform && !project.missing && project.uri.startsWith('file:') ? await commands.executeCommand<{ id: string; label: string }[]>('studio.listLibraryProjectActions', project) ?? [] : [],
++			detailActions: async project => {
++				if (!this.start.state?.platform || !project.uri.startsWith('file:') || (project.missing && !project.managed)) { return []; }
++				const [local, remote] = await Promise.all([
++					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listFolderBotActions', project).catch(() => undefined),
++					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listLibraryProjectActions', project).catch(() => undefined),
++				]);
++				return [...(local ?? []), ...(remote ?? [])];
++			},
+ 			runDetailAction: async (project, id) => {
+ 				if (!this.start.state?.platform) { return; }
+ 				try {
++					const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id).catch(error => {
++						if (id === 'create-folder-bot') { throw error; }
++						return undefined;
++					});
++					if (local?.workspace) { await this.openManagedWorkspace(local.workspace); return; }
++					if (id === 'create-folder-bot') { return; }
+ 					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
+ 					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser, undefined, project.name); }
+ 				} catch (error) { notifications.error(error); }
+@@ -216,6 +231,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLibraryProjectCategoryChanged', () => this.scheduleLibraryCategory()));
++		this._register(CommandsRegistry.registerCommand('studio.internalForgetFolderBotWindow', (_accessor, uri: string) => this.workspaces.removeRecentlyOpened([URI.parse(uri)])));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+ 			++this.inboxRevision;
+ 			if (reset && !this.account?.hasAccount) {
+@@ -486,6 +502,11 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async openProject(project: LaunchpadProject, entryId?: string): Promise<void> {
++		if (project.managed) {
++			const result = await this.commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, 'open-folder-bot');
++			if (result?.workspace) { await this.openManagedWorkspace(result.workspace); }
++			return;
++		}
+ 		const uri = URI.parse(project.uri);
+ 		if (uri.scheme === 'file') {
+ 			let present: boolean;
+@@ -511,7 +532,20 @@ export class StudioLaunchpad extends Disposable {
+ 		});
+ 	}
+ 
++	private async openManagedWorkspace(value: string): Promise<void> {
++		const uri = URI.parse(value);
++		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
++		this.openingManaged.add(value);
++		try {
++			const windows = await this.native.getWindows({ includeAuxiliaryWindows: false });
++			const live = windows.find(window => isWorkspaceIdentifier(window.workspace) && URI.revive(window.workspace.configPath).toString() === value);
++			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }
++			else { await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true }); }
++		} finally { this.openingManaged.delete(value); }
++	}
++
+ 	private async removeProject(project: LaunchpadProject): Promise<void> {
++		if (project.managed) { await this.commands.executeCommand('studio.runFolderBotAction', project.uri, 'remove-folder-bot'); return; }
+ 		const zh = this.language.startsWith('zh');
+ 		const { response } = await this.native.showMessageBox({ type: 'question', message: zh ? `移除「${project.name}」的打开记录？` : `Remove “${project.name}” from open history?`,
+ 			detail: zh ? '仅移除记录，不会删除本机文件。' : 'This removes only the history entry, not the files on disk.',
+@@ -568,13 +602,17 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private scheduleLibraryCategory(): void {
+ 		++this.libraryCategoryRevision;
+-		if (this.start.state?.platform && this.account?.signedIn) { this.refreshLibraryCategory.schedule(); }
++		if (this.start.state?.platform) { this.refreshLibraryCategory.schedule(); }
+ 		else { this.refreshLibraryCategory.cancel(); }
+ 	}
+ 
+-	private async readLibraryCategory(): Promise<void> {
++	private async readLibraryProducts(): Promise<void> {
+ 		const revision = this.libraryCategoryRevision;
+-		const uris = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && p.uri.startsWith('file:')).map(p => p.uri))];
++		const extra = await this.commands.executeCommand<typeof this.libraryExtras>('studio.listLibraryExtraProjects').catch(() => undefined);
++		if (revision !== this.libraryCategoryRevision) { return; }
++		if (extra && JSON.stringify(extra) !== JSON.stringify(this.libraryExtras)) { this.libraryExtras = extra; this.paint(); }
++		if (!this.account?.signedIn) { return; }
++		const uris = [...new Set([...this.recent.filter(p => p.kind === 'folder'), ...this.windows.filter(p => p.kind === 'folder'), ...this.libraryExtras.projects].filter(p => p.uri.startsWith('file:')).map(p => p.uri))];
+ 		const category = await this.commands.executeCommand<LibraryProjectCategory | null | undefined>('studio.getLibraryProjectCategory', uris).catch(() => undefined);
+ 		// Undefined means temporarily unavailable; null explicitly removes the optional category.
+ 		if (revision !== this.libraryCategoryRevision || category === undefined) { return; }
+@@ -678,12 +716,16 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private paint(): void {
+ 		const state = this.start.state;
++		const extra = new Map(this.libraryExtras.projects.map(project => [project.uri, project]));
++		const hidden = new Set(this.libraryExtras.hiddenUris);
+ 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
+ 		const live = new Map<string, LaunchpadProject>();
+ 		for (const window of this.windows) {
+ 			if (!live.has(window.uri) || window.dirty) { live.set(window.uri, window); }
+ 		}
+ 		const enrich = (row: LaunchpadProject, window?: LaunchpadProject): LaunchpadProject => {
++			const managed = extra.get(row.uri);
++			if (managed) { return { ...managed, windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty }; }
+ 			const info = metadata.get(row.uri);
+ 			const saved = this.savedProjects.get(row.uri);
+ 			// Once inspected, an absent field is authoritative (e.g. a plain folder replacing a release).
+@@ -693,7 +735,9 @@ export class StudioLaunchpad extends Disposable {
+ 				name: details.projectName || info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
+ 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+-		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
++		const history = new Map(this.recent.filter(row => !hidden.has(row.uri)).map(row => [row.uri, row]));
++		for (const row of this.libraryExtras.projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
++		this.view.update({ windows: this.windows.filter(row => !hidden.has(row.uri)).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+ 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
+ 			libraryCategory: this.libraryCategory });
+ 	}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index a0e657de030e4d143aea70e625e3cb20756a6751..f2a4799b7b4c07722d365f939ee9b6d09ea1d33c 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -18,6 +18,7 @@ export interface LibraryArtwork {
+ 
+ export interface LaunchpadProject extends StudioProjectDetails {
+ 	artwork?: LibraryArtwork;
++	managed?: true;
+ }
+ 
+ export interface StoreListing {
+@@ -34,6 +35,7 @@ export function storeArtwork(p: StoreListing, cover?: string | Promise<string |
+ 
+ export function openProjectLabel(p: LaunchpadProject, t: StudioLabel): string {
+ 	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
++	if (p.managed) { return t('Open Bot workspace', '打开 Bot 工作区'); }
+ 	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
+ 	switch (p.distribution) {
+ 		case 'source': return t('Open in IDE', '在 IDE 中打开');
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 9b1bb7fd18e8cc098702c26fa7a32cdaa3184c19..14cd031f77a3c521cbde65e1ed42a114c0414b72 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -14,6 +14,7 @@ export interface LibraryProjectCategory {
+ 	emptyLabel: string;
+ 	projectUris: string[];
+ }
++export interface LibraryDetailAction { id: string; label: string; icon?: string }
+ 
+ export interface LibraryActions {
+ 	create(): void;
+@@ -24,7 +25,7 @@ export interface LibraryActions {
+ 	copyPath(p: LaunchpadProject): void;
+ 	contextMenu: IContextMenuService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
+-	detailActions?(p: LaunchpadProject): Promise<{ id: string; label: string }[]>;
++	detailActions?(p: LaunchpadProject): Promise<LibraryDetailAction[]>;
+ 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
+ }
+ 
+@@ -110,7 +111,7 @@ export class LaunchpadLibrary {
+ 		items.push(new Separator());
+ 		if (p.uri.startsWith('file:') && !p.missing) { items.push(action('reveal', t('Show in file manager', '在文件管理器中显示'), () => this.actions.reveal(p))); }
+ 		items.push(action('copyPath', t('Copy path', '复制路径'), () => this.actions.copyPath(p)));
+-		if (this.history.has(p.uri)) { items.push(new Separator(), action('forget', t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
++		if (p.managed || this.history.has(p.uri)) { items.push(new Separator(), action('forget', p.managed ? t('Remove folder Bot…', '移除分身…') : t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
+ 		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
+ 	}
+ 
+@@ -152,6 +153,7 @@ export class LaunchpadLibrary {
+ 		if (selected) {
+ 			const canRun = !!selected.distribution && !selected.missing;
+ 			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
++			open.disabled = !!(selected.managed && selected.missing);
+ 			open.dataset.key = 'open:' + selected.uri;
+ 			const more = button('', 'ellipsis', () => this.manage(selected, more), 'studio-project-action lp-outline lp-tool');
+ 			more.dataset.key = 'more:' + selected.uri;
+@@ -168,12 +170,14 @@ export class LaunchpadLibrary {
+ 				if (detail.parentElement !== this.content) { return; }
+ 				const controls = detail.querySelector('.lp-detail-actions');
+ 				for (const item of items.slice(0, 4)) {
+-					const action = button(item.label, '', () => {
++					const action = button(item.label, item.icon ?? '', () => {
+ 						action.disabled = true;
+ 						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
+ 					}, 'studio-project-action lp-outline');
++					action.dataset.key = `action:${selected.uri}:${item.id}`;
+ 					controls?.insertBefore(action, controls.lastElementChild);
+ 				}
++				if (focus?.startsWith('action:') && (document.activeElement === document.body || !document.activeElement?.isConnected)) { restoreFocus(); }
+ 			}).catch(() => undefined); return;
+ 		}
+ 		this.content.replaceChildren();

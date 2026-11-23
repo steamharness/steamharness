@@ -663,6 +663,7 @@ function initialize(): void {
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
     accessNotice.hidden = !readOnly() || !oldEngine() && state.conversationAccess?.reason === 'pending';
     accessNotice.textContent = oldEngine() ? t('This conversation belongs to a different Bot engine.')
+      : state.conversationAccess?.reason === 'host' ? t('Read-only IM history. Continue this conversation in IM.')
       : t('This conversation is open or running in another window. You can read it here or start a new conversation.');
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();

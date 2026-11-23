@@ -1,12 +1,13 @@
 const readHostEnvironment = (key: string) => process.env[key];
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type {
   AgentInput,
   AgentToolSet,
 } from "steamharness";
 import { createDeveloperAssistantSystemPrompt, type DeveloperAssistantHost } from "./assistant-prompt";
 import { steamharness } from "./workflow-runtime";
-import { loadDeveloperAssistantWorkspaceManifest } from "./workspace-manifest";
+import { loadDeveloperAssistantWorkspaceManifest, parseDeveloperAssistantWorkspaceManifest } from "./workspace-manifest";
 import { createStudioControlTools } from "./studio-control-mcp";
 import type {
   DeveloperAssistantPermissionPolicy,
@@ -155,9 +156,14 @@ export const executor = steamharness.defineBot<AgentInput>({
     },
   ],
 
-  async prepareInput(input) {
-    const workdir = readAssistantWorkdir();
-    const manifest = await loadDeveloperAssistantWorkspaceManifest(workdir, readHostEnvironment(ASSISTANT_WORKSPACE_MANIFEST_ENV));
+  async prepareInput(input, context) {
+    const workdir = context.folderContext?.directory ?? readAssistantWorkdir();
+    const manifestPath = readHostEnvironment(ASSISTANT_WORKSPACE_MANIFEST_ENV);
+    const target = { kind: "folder", folderId: pathToFileURL(workdir).href };
+    const manifest = context.folderContext && !manifestPath ? parseDeveloperAssistantWorkspaceManifest({
+      schemaVersion: 2, primaryTarget: target, warnings: [], roots: [{ target, rootPath: workdir,
+        name: path.basename(workdir) || workdir, role: "primary", depth: 0 }],
+    }, workdir) : await loadDeveloperAssistantWorkspaceManifest(workdir, manifestPath);
     const permissionPolicy = readDeveloperAssistantPermissionPolicy(input.permissionPolicy);
     return { ...input, workdir, permissionPolicy,
       allowedDirectories: [workdir, ...manifest.roots.filter(root => root.role === "linked").map(root => root.rootPath)],

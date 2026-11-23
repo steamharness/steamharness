@@ -74,6 +74,7 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
 | `entries` | `EntriesContext` | List entries and invoke aggregate Workflows with authorization checks. |
 | `projectId` / `entryId` | `string` | Aggregate and current window identity. |
+| `folderContext` | `FolderContext \| undefined` | Folder supplied by a local host to a Bot entry that declares `folderContext: true`. Read `folderContext.directory` for the canonical absolute path. |
 | `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
 | `tokenUsage` | `TokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it records platform usage, run reports, and runtime events. |
 | `userInput` | `UserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|
@@ -83,6 +84,14 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 | `timers` | `TimerContext \| undefined` |Business timing node context;`createTimerNode` start timing,`endTimer` end timing.|
 | `toolPermissions` | `ToolPermissionContext \| undefined` |The tool permission context for the current run. Parses by executor `tools` default and host override values for `createToolApprovalGate()` or custom tool call logic to determine enablement, automatic approval, and manual approval.|
 | `abortSignal` | `AbortSignal \| undefined` |Interrupt execution and provider calls.|
+
+### Folder context for local Bots
+
+Set `"folderContext": true` in the Bot entry declaration in `steamharness.json`. For an entry in its own subdirectory, use the entry manifest in that directory, not the reference in the root manifest. Regular runs do not need this field.
+
+A local host can pass `folderContext: { directory, projectId?, permissionCeiling? }` to `runLocalProjectWithReport`. `directory` must be an existing absolute directory with symbolic links resolved. Use `projectId` to pin the source project identity. Do not take this directory from conversation parameters. Read it in `prepareInput(input, context)` or in a node's `context.folderContext`. Core still loads the entry and configuration from the source project and does not change the process working directory.
+
+In this mode, Core uses `folderContext.directory` as the working directory for Bot tools. An explicit project permission policy takes precedence. An omitted policy or `inherit` reads the host's user setting. The host can reject a policy above the approved level with `permissionCeiling`. This is not an OS sandbox and does not restrict custom tools written by the project.
 
 ## Payload Constraint
 

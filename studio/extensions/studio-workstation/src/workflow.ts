@@ -229,8 +229,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         session.readModelRequest ? target => session.readModelRequest!(project.entryId, target) : undefined);
       let traceBinding = bindTrace();
       const clipboardBinding = bindProjectClipboard(panel.webview);
-      const pickerBinding = bindProjectPathPicker(panel.webview, vscode.Uri.file(project.folderPath));
-      const pathOpenBinding = bindProjectPathOpen(panel.webview, vscode.Uri.file(project.assistant?.workdir ?? project.folderPath));
+      const workingDirectory = vscode.Uri.file(project.folderBot?.directory ?? project.assistant?.workdir ?? project.folderPath);
+      const pickerBinding = bindProjectPathPicker(panel.webview, workingDirectory);
+      const pathOpenBinding = bindProjectPathOpen(panel.webview, workingDirectory);
       const browserOpenBinding = bindProjectBrowserOpen(panel.webview);
       const downloadBinding = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
       const fileIconsBinding = fileIcons.bind(panel.webview);

@@ -74,6 +74,7 @@ const steamharness = globalThis.steamharness as RuntimeApi;
 | `providers` | `ProviderRegistry` | LLM provider 注册表和绑定表。 |
 | `entries` | `EntriesContext` | 列出注册入口、调用聚合内 Workflow，重新校验用户权限。 |
 | `projectId` / `entryId` | `string` | 聚合身份与当前窗口身份。 |
+| `folderContext` | `FolderContext \| undefined` | 本机宿主为已声明 `folderContext: true` 的 Bot 注入的目录。读取 `folderContext.directory` 可获得规范化的绝对路径。 |
 | `conversation` | `ConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |
 | `tokenUsage` | `TokenUsageContext` | token 用量统计入口。未启用时 `report()` 是 no-op；启用后写入运行报告并发出 runtime event。 |
 | `userInput` | `UserInputContext \| undefined` | 用户输入和工具审批的等待/恢复入口。本地宿主 会按宿主能力注入。 |
@@ -83,6 +84,14 @@ const steamharness = globalThis.steamharness as RuntimeApi;
 | `timers` | `TimerContext \| undefined` | 业务计时节点上下文；`createTimerNode` 启动计时，`endTimer` 结束计时。 |
 | `toolPermissions` | `ToolPermissionContext \| undefined` | 当前 run 的工具权限上下文。按 executor `tools` 默认值和宿主覆盖值解析，供 `createToolApprovalGate()` 或自定义工具调用逻辑判断启用、自动批准和人工审批。 |
 | `abortSignal` | `AbortSignal \| undefined` | 中断执行和 provider 调用。 |
+
+### 本机 Bot 的文件夹上下文
+
+在 `steamharness.json` 的 Bot 入口声明中设置 `"folderContext": true`。如果入口独立放在子目录，请写在子目录的入口清单中，而不是根清单的入口引用上。普通运行不需要这个字段。
+
+本机宿主可以向 `runLocalProjectWithReport` 传入 `folderContext: { directory, projectId?, permissionCeiling? }`。`directory` 必须是已解析符号链接的现有绝对目录，`projectId` 可用于固定项目身份。不接受会话参数提供的目录。Bot 可在 `prepareInput(input, context)` 和节点的 `context.folderContext` 中读取该目录；项目入口和配置仍从源项目加载，不会切换进程的当前目录。
+
+在这种运行模式下，Core 将 Bot 工具的工作目录设为 `folderContext.directory`。未配置权限或使用 `inherit` 时，读取宿主用户设置；项目显式配置的权限优先。宿主可用 `permissionCeiling` 拒绝超出授权的工具策略。它不是操作系统沙箱，也不约束项目自行编写的工具。
 
 ## Payload 约束
 

@@ -26,6 +26,15 @@ describe("aggregate project manifest", () => {
     expect(manifest.entries[1]!.projectCard?.icon).toBe('database');
     expect(manifest.entries[2]!.projectCard).toBeUndefined();
   });
+  it("reads folder context from either Bot entry declaration and rejects it on other entry types", () => {
+    const root = { ...pkg(), entries: [{ ...entry('agent', 'bot'), folderContext: true }] };
+    expect(selectProjectEntry(readProjectManifest(root)).folderContext).toBe(true);
+    const child = { ...root, entries: [{ entryId: 'agent', root: 'assistant' }] };
+    expect(selectProjectEntry(readProjectManifest(child, { assistant: { type: 'bot', name: 'Assistant', entry: 'index.ts', folderContext: true } })).folderContext).toBe(true);
+    for (const invalid of [{ ...entry('agent'), folderContext: true }, { ...entry('agent', 'bot'), folderContext: 'true' }]) {
+      expect(() => readProjectManifest({ ...root, entries: [invalid] })).toThrow('folderContext');
+    }
+  });
   it("rejects entry versions and invalid icon declarations", () => {
     for (const invalid of [{ version: '2.0.0' }, { projectCard: { icon: 'invalid' } },
       { projectCard: { iconColor: 'red' } }, { projectCard: { iconBackgroundColor: 'url(javascript:alert(1))' } }]) {

@@ -22,6 +22,7 @@ export interface WebReady {
   traceProtocolVersion?: number;
   traceModelRequestProtocolVersion?: number;
   hostConversationProtocolVersion?: number;
+  folderBotProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
   runtime?: { harnessVersion: string; harnessPath: string };
@@ -67,6 +68,7 @@ export interface Launcher {
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
   openHostedSidebar?: OpenHostedSidebar;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  localAssistantDirectory?(): Promise<string>;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean }): Promise<WebSession>;

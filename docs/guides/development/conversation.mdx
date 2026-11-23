@@ -32,6 +32,8 @@ export default executor;
 
 入口在 `steamharness.json` 中注册为 `type: "bot"`。保留创建项目时生成的项目 UUID 和入口 ID。
 
+如果 Bot 能在源码目录之外处理文件，在该 Bot 的入口声明中加上 `"folderContext": true`。聚合项目把这个字段写在对应入口的独立 `steamharness.json` 中。本机宿主传入目录时，`prepareInput(input, context)` 可从 `context.folderContext?.directory` 读取规范化的绝对路径；没有传入时，该字段为 `undefined`。Agent Bot 的内置工具使用该目录作为工作目录。这个字段不会改变项目源码目录，也不会把工具限制在该目录内。
+
 如果只需模型回答，把入口声明替换为以下代码。两种引擎使用相同的模型设置，不必为 LLM 另配凭据。
 
 ```ts

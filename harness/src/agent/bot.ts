@@ -25,6 +25,7 @@ import { AGENT_ANSWER_ITEM_ID } from "./output-items";
 import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration";
 import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
 import { createLLMBot } from "./llm-bot";
+import { applyFolderAgentInput } from "../executor/folder-context";
 
 export interface BotInputContext extends NodeContext {
   readonly args: string[];
@@ -163,14 +164,14 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     const key = `steamharness.bot.input:${requestId}`;
     const persist = !!options.prepareInput && input.hostInput === undefined;
     const saved = persist ? (await context.conversation.getValue()).values[key] as Input | undefined : undefined;
-    if (saved && reuse) return applyAgentProjectFixedValues(saved, params) as Input;
+    if (saved && reuse) return applyFolderAgentInput(applyAgentProjectFixedValues(saved, params) as Input, context);
     const executor = inputContexts.get(input) ?? ownerContexts.get(ownerKey(context));
-    const parsed = await resolveAgentImageFiles(input, context, `${options.name ?? "bot"}-input`);
+    const parsed = await resolveAgentImageFiles(context.folderContext ? { ...input, workdir: context.folderContext.directory, allowedDirectories: undefined } : input, context, `${options.name ?? "bot"}-input`);
     const prepared = options.prepareInput ? await withBotRequest(requestId, () => options.prepareInput!(parsed, {
       ...context, args: executor?.args ?? [], paramValues: executor?.paramValues ?? {} }), context) : parsed;
     if (!prepared || typeof prepared.prompt !== "string") invalid("Bot prepareInput must return an AgentInput with a prompt.");
     context.abortSignal?.throwIfAborted();
-    const result = { ...applyAgentProjectFixedValues(prepared, params), requestId } as Input;
+    const result = applyFolderAgentInput({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context);
     if (persist) await context.conversation.setValue(key, result);
     return result;
   }

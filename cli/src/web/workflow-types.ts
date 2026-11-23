@@ -288,6 +288,7 @@ export interface ConversationMessage {
 export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
+  origin?: 'host';
   engine?: NonNullable<Project['conversation']>['engine'];
   agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;

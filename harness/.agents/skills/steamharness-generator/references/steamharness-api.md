@@ -1399,6 +1399,10 @@ Native tool 用 `steamharness.readAgentWorkContext(api, ctx)` 获取获授权的
 
 ## 本地 Bot 入口控制
 
+Bot 需要处理独立于源码的本机文件夹时，把 `folderContext: true` 放在 Bot 的入口声明中。独立子入口在子目录清单声明此字段。宿主通过 `runLocalProjectWithReport({ folderContext: { directory, projectId?, permissionCeiling? } })` 提供已解析的本机绝对目录；项目在 `prepareInput(input, context)` 或节点中读取 `context.folderContext?.directory`。该字段可缺省，普通启动须保留原行为。不要从聊天参数接受目标目录，不要用 `process.cwd()` 代表它。
+
+Core 将该目录设为 Bot 内置工具的工作目录。项目显式权限优先，未设置或 `inherit` 时使用宿主用户设置。`permissionCeiling` 超限时拒绝执行，不是沙箱，也不能限制自定义工具。
+
 CLI Web / Studio 的聚合宿主提供 `context.entries.conversations.get(entryId)`。目标必须是已登记的 Conversation，所有操作复用原生控制器、执行 owner、持久输入队列及 Core 历史，不创建第二份执行会话：
 
 ```ts

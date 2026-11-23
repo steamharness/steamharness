@@ -1,7 +1,7 @@
 import type { RuntimeHistoryLease, RuntimePersistence } from 'steamharness/runtime-storage';
 import { t } from './localization';
 
-export interface ConversationAccess { readOnly: boolean; reason?: 'pending' | 'opened' | 'running' }
+export interface ConversationAccess { readOnly: boolean; reason?: 'pending' | 'opened' | 'running' | 'host' }
 interface Owner { lease: RuntimeHistoryLease; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
 const ownershipConflict = () => Object.assign(new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.')), { code: 'CONVERSATION_OWNED_ELSEWHERE' });
 
@@ -89,6 +89,13 @@ export class ConversationOwnership {
     const writer = owner.clients.get(id);
     if (writer && writer !== this.writer(clientId)) return { readOnly: true, reason: owner.running ? 'running' : 'opened' };
     owner.clients.set(id, this.writer(clientId)); return { readOnly: false };
+  }
+  selectHostHistory(clientId: string): ConversationAccess {
+    clearTimeout(this.disconnects.get(clientId)); this.disconnects.delete(clientId);
+    const previous = this.selections.get(clientId);
+    this.selections.delete(clientId);
+    if (previous) this.releaseClient(previous, clientId);
+    return { readOnly: true, reason: 'host' };
   }
   async assertWritable(id: string, clientId?: string): Promise<void> {
     const owner = await this.acquire(id), writer = owner?.clients.get(id);

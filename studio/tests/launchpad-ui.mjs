@@ -82,6 +82,21 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
+    if (id === 'studio.listLibraryExtraProjects') return { projects: [...folderBots], hiddenUris: [...removedFolderBots] };
+    if (id === 'studio.listFolderBotActions') return args[0].kind==='folder' && args[0].name==='Imported folder' ? [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…',icon:'hubot'}] : [];
+    if (id === 'studio.runFolderBotAction' && args[1] === 'create-folder-bot') {
+      const name = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+name+'.code-workspace').toString();
+      folderBots.push({uri,name,kind:'workspace',managed:true,path:URI.parse(args[0]).fsPath,projectType:'bot'});
+      kernelCommand('LibraryProjectCategoryChanged');
+      return {workspace:uri};
+    }
+    if (id === 'studio.runFolderBotAction' && args[1] === 'open-folder-bot') return {workspace:args[0]};
+    if (id === 'studio.runFolderBotAction' && args[1] === 'remove-folder-bot') {
+      folderBots.splice(folderBots.findIndex(bot=>bot.uri===args[0]),1);
+      removedFolderBots.push(args[0]);
+      kernelCommand('LibraryProjectCategoryChanged');
+      return;
+    }
     if (id === 'studio.listLibraryProjectActions') return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
     if (id === 'studio.runLibraryProjectAction') return {};
     if (id === 'studio.getLibraryProjectCategory') {
@@ -192,6 +207,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   window.delayProjects = () => {start.state=undefined; startEvent.fire();};
   const windows = [{ id:23, dirty:false, workspace:{id:'folder',uri:folders[0]} },{id:24,dirty:true,workspace:{id:'bot',uri:folders[2]}},{id:25,dirty:false,workspace:{id:'third',uri:folders[3]}}];
+  const folderBots = [], removedFolderBots = [];
   const edits = new Emitter();
   window.projectReads = { windows:0, history:0, stats:0 };
   window.openRequests = [];
@@ -211,6 +227,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       const openables=entries.map(entry=>{const kind=Object.keys(entry)[0]; return {kind,path:entry[kind].path};});
       window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow,...(opts.studioProjectEntry ? {studioProjectEntry:opts.studioProjectEntry} : {})});
       window.actions.push(['open',openables[0].kind,opts.forceNewWindow]);
+      if (openables[0].path.startsWith('/profile/Folder Bot ')) {
+        windows.push({id:windows.length+100,dirty:false,workspace:{id:openables[0].path,configPath:entries[0].workspaceUri}});
+        changed();
+      }
     }};
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['pickPaths',opts]); return window.selectedPaths?.map(path=>URI.file(path)); } };

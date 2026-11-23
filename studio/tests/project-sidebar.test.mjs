@@ -81,7 +81,7 @@ function fixture(t, initial, options = {}) {
     },
   };
   const module = { exports: {} };
-  runInNewContext(bundle.text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, AbortController, URL, setTimeout, clearTimeout });
+  runInNewContext(bundle.text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, AbortController, Error, URL, setTimeout, clearTimeout });
   const sidebar = new module.exports.ProjectSidebar({ subscriptions: [], globalState: { get: () => [] } }, {
     readSidebarEntries: async directory => { calls.push(['manifest', directory]); return options.read?.(directory) ?? [{ ...board, directory }]; },
     inspect: async (directories, metadata) => {
@@ -100,6 +100,23 @@ function fixture(t, initial, options = {}) {
   });
   return { ...module.exports, sidebar, start, output, calls, tabs, commands, views, sessions, revoke: () => { trusted = false; commands.get('studio.internalSidebarTrustChanged')(); }, prefs: () => prefs };
 }
+
+test('a host workspace replaces the default assistant and stops its mount on invalidation', async t => {
+  const f = fixture(t, {}), changed = emitter(), view = createView();
+  let trusted = true;
+  const project = { id: projectId, entryId: 'main', projectType: 'bot', folderBot: { id: projectId, directory: '/folder', background: false } };
+  f.sidebar.overrideAssistant({ title: 'Folder Assistant', onDidChange: changed.event,
+    check: async () => { if (!trusted) throw new Error('No longer trusted'); }, load: async () => project });
+  await f.start();
+  const assistant = f.views.get('studio.developerAssistant');
+  assistant.resolveWebviewView(view);
+  await flush();
+  assert.equal(view.title, 'Folder Assistant');
+  assert.equal(f.sessions[0].project, project);
+  trusted = false; changed.fire(); await flush();
+  assert.equal(f.sessions[0].disposed, true);
+  assert.match(view.webview.html, /No longer trusted/);
+});
 
 test('launchpad shares a warming preview across clicks, and replaces it on account change', async t => {
   const auth = new AbortController(), ready = deferred();
