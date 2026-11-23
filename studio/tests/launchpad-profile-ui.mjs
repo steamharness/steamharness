@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
 
+async function checkBotBadge(row) {
+  await row.locator('.lp-avatar img').evaluate(img => img.decode());
+  const badge = row.locator('.lp-social-badge');
+  assert.deepEqual(await badge.evaluate(el => ({
+    label: el.textContent,
+    image: !!el.querySelector('img'),
+    neutralIcon: !!el.querySelector('.codicon-robot') &&
+      getComputedStyle(el.querySelector('.codicon-robot')).color === getComputedStyle(el).color,
+  })), { label: 'Bot', image: false, neutralIcon: true });
+}
+
 async function checkRecentToolbar({ page, panel, names, t, openWindow, screenshot }) {
   const search = panel.getByRole('button', { name: t('Search recent chats', '搜索最近会话'), exact: true });
   const create = panel.getByRole('button', { name: t('Start a group chat', '发起群聊'), exact: true });
@@ -8,6 +19,7 @@ async function checkRecentToolbar({ page, panel, names, t, openWindow, screensho
   const noMatch = panel.getByText(t('No matching chats.', '没有匹配的会话。'), { exact: true });
   const viewport = page.viewportSize();
   const allNames = await names();
+  await checkBotBadge(panel.locator('.lp-conversation-open').filter({ hasText: 'Build Bot' }));
   for (const width of [viewport.width, 360]) {
     await page.setViewportSize({ ...viewport, width });
     const [heading, searchBox, createBox] = await Promise.all([panel.getByRole('heading').boundingBox(), search.boundingBox(), create.boundingBox()]);
@@ -81,7 +93,10 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await page.evaluate(() => window.socialFailure = undefined); await retry.click();
   const alice = rows.filter({ hasText: 'Alice' }); await alice.locator('img').evaluate(img => img.decode());
   const group = rows.filter({ hasText: 'Unlisted group' });
-  await group.waitFor(); assert.deepEqual(await names(), ['Alice', 'Unlisted group']);
+  const directoryNames = ['Alice', 'Build Bot', 'Unlisted group'];
+  await group.waitFor(); assert.deepEqual(await names(), directoryNames);
+  await checkBotBadge(rows.filter({ hasText: 'Build Bot' }));
+  assert.equal(await alice.locator('.lp-social-badge').count(), 0);
   const friendRow = alice.getByRole('button');
   const friendWindow = await openWindow(friendRow, 'alice', 'Enter');
   await frame.getByText('group-team', { exact: true }).waitFor();
@@ -92,11 +107,11 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await (await openWindow(group.getByRole('button'), 'group_unlisted')).close();
   const beforeBurst = await readCount();
   await page.evaluate(() => { window.socialFailure = 'offline'; for (let i = 0; i < 5; i++) window.refreshSocial(); });
-  await retry.waitFor(); assert.deepEqual(await names(), ['Alice', 'Unlisted group']); assert.equal(await readCount(), beforeBurst + 1);
+  await retry.waitFor(); assert.deepEqual(await names(), directoryNames); assert.equal(await readCount(), beforeBurst + 1);
   await page.evaluate(() => window.socialFailure = undefined); await retry.click(); await retry.waitFor({ state: 'hidden' });
   await page.evaluate(() => { window.directoryFailure = true; window.refreshSocial(); });
   await statusText(/Could not refresh groups|暂时无法刷新群聊/).waitFor();
-  assert.deepEqual(await names(), ['Alice', 'Unlisted group'], 'a directory outage retains the cached groups and friends');
+  assert.deepEqual(await names(), directoryNames, 'a directory outage retains the cached groups and friends');
   await page.evaluate(() => window.directoryFailure = false); await retry.click(); await retry.waitFor({ state: 'hidden' });
   await search.fill('Unlisted'); await group.waitFor(); assert.deepEqual(await names(), ['Unlisted group']);
   for (const keyword of ['Visitor', 'Dana', 'Outgoing', 'Former friend']) {
@@ -147,7 +162,7 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await accept.click(); await accept.waitFor({ state: 'detached' });
   await decline.click(); await decline.waitFor({ state: 'detached' });
   assert.deepEqual(await actions(), [{ action: 'accept-invite', id: 'first' }, { action: 'decline-invite', id: 'second' }]);
-  await friends.click(); await rows.filter({ hasText: 'Dana' }).waitFor(); assert.deepEqual(await names(), ['Alice', 'Dana', 'Unlisted group']);
+  await friends.click(); await rows.filter({ hasText: 'Dana' }).waitFor(); assert.deepEqual(await names(), ['Alice', 'Build Bot', 'Dana', 'Unlisted group']);
   await screenshot('profile-friends');
   await page.setViewportSize({ width: 360, height: 640 });
   await page.waitForFunction(() => document.querySelector('.lp-profile-nav').getAttribute('aria-orientation') === 'horizontal');

@@ -1,0 +1,28 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index b6acfc5b878..cb07f6b120d 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -189,8 +189,8 @@
+ .lp-social-row > :is(.lp-avatar,.codicon) { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: var(--lp-side); }
+ .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
+ .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
+-.lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px 1px 3px; color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
+-.lp-social-badge img { width: 15px; height: 15px; border-radius: 3px; }
++.lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px; color: var(--lp-muted); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
++.lp-social-badge .codicon { font-size: 13px; }
+ .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
+ .lp-conversation-row { border-bottom: 1px solid var(--lp-line); }
+ .studio-launchpad .lp-conversation-open { display: flex; gap: 10px; width: 100%; min-height: 56px; padding: 7px 8px; justify-content: flex-start; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index e7df3616de5..614381cd0c9 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -241,7 +241,7 @@ export class LaunchpadProfile extends Disposable {
+ 		};
+ 		if (identity.badge) {
+ 			const badge = element('span', 'lp-social-badge');
+-			if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
++			if (identity.badge === 'Bot') { badge.append(icon('robot')); }
+ 			badge.append(identity.badge); badges.append(badge);
+ 		}
+ 		if (group) { statusIcon('organization', t('Group chat', '群聊')); }

@@ -70,7 +70,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   const imPreview = { url:'http://127.0.0.1:4321/app', nonce:'fixture', microphone:false };
   window.prewarm = () => kernelCommand('PrepareLaunchpadApp','account-key',{port:4321});
-  const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
+  const people = [{id:'alice',name:'Alice',relation:'friend',avatarUrl:chatAvatar},{id:'build-bot',name:'Build Bot',relation:'friend',badge:'Bot',avatarUrl:chatAvatar},{id:'visitor',name:'Visitor'},
     {id:'dana',name:'Dana',relation:'incoming'},{id:'erin',name:'Erin',relation:'incoming'},{id:'sent',name:'Outgoing',relation:'outgoing'},{id:'removed',name:'Former friend',relation:'removed'}];
   const notices = [{id:'request:first',inviteId:'first',title:'Dana',source:'studio',read:true,avatarUrl:chatAvatar},
     {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},
