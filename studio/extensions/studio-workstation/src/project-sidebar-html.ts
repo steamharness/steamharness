@@ -27,7 +27,13 @@ window.addEventListener('message',event=>{
   if(event.source===frame.contentWindow){
     if(event.origin!==origin||event.data?.nonce!==nonce)return;
     if(event.data.type==='steamharness:web-app-account')host.postMessage({type:'studio-sidebar-account'});
-    ${titlebarOverlay ? `if(event.data.type==='steamharness:web-app-titlebar-request')host.postMessage({type:'studio-launchpad-titlebar-request'});` : ''}
+    ${titlebarOverlay ? `if(event.data.type==='steamharness:web-app-titlebar-request')host.postMessage({type:'studio-launchpad-titlebar-request'});
+    if(event.data.type==='steamharness:web-app-titlebar-controls'){
+      const {width,left,height,controls}=event.data;
+      if(width===frame.clientWidth&&Array.isArray(controls)&&controls.length<=32){
+        host.postMessage({type:'studio-launchpad-titlebar-controls',width,left,height,controls});
+      }
+    }` : ''}
     ${route !== undefined ? `
     if(event.data.type==='steamharness:web-app-ready')host.postMessage({type:'studio-launchpad-ready'});
     if(event.data.type==='steamharness:web-app-close')host.postMessage({type:'studio-launchpad-close'});

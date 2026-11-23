@@ -20,6 +20,7 @@ const { outputFiles } = await build({ stdin: { contents: `
   export { LifecycleMainService } from './src/vs/platform/lifecycle/electron-main/lifecycleMainService.ts';
   export { AuxiliaryWindowsMainService } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts';
   export { AuxiliaryWindow } from './src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts';
+  export { chatTitlebarDragRegions } from './src/vs/workbench/electron-browser/studioChatTitlebarDrag.ts';
   export { createStudioTray } from './src/vs/platform/windows/electron-main/studioTray.ts';`, resolveDir: fileURLToPath(kernel) },
   tsconfig: fileURLToPath(new URL('src/tsconfig.json', kernel)), bundle: true, packages: 'external', platform: 'node', format: 'cjs', write: false,
   define: { 'globalThis._VSCODE_FILE_ROOT': JSON.stringify(new URL('out/', kernel).href) } });
@@ -29,7 +30,7 @@ const loadKernel = platform => {
     id => id === 'electron' ? electron : require(id), Object.create(process, { platform: { value: platform } }));
   return { electron, ...module.exports };
 };
-const { electron, CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, createStudioTray } = loadKernel(process.platform);
+const { electron, CodeWindow, WindowMode, URI, Event, WindowsMainService, LaunchMainService, LifecycleMainService, AuxiliaryWindowsMainService, chatTitlebarDragRegions, createStudioTray } = loadKernel(process.platform);
 
 function mockWindow(isStudioLaunchpad) {
   const win = new EventEmitter();
@@ -169,6 +170,38 @@ test('only opted-in macOS windows owned by the launchpad overlay their native bu
     assert.equal(service.createWindow({ features }, parent).titleBarStyle, 'default');
     assert.equal(service.createWindow(overlay).titleBarStyle, 'default');
     assert.equal(service.createWindow({ features: overlay.features + ',window-frameless=yes' }, parent).titleBarStyle, 'default');
+  }
+});
+
+test('the chat titlebar drags across the full width except for buttons and selectable text', () => {
+  const height = 38;
+  for (const width of [390, 1120]) {
+    for (const controls of [
+      [{ x: 92, y: 10, width: 145, height: 19 }, { x: width - 40, y: 6, width: 30, height: 28 }],
+      [{ x: 92, y: 6, width: 30, height: 28 }, { x: 130, y: 10, width: 98, height: 19 }],
+      // Nested interactive elements may report overlapping rectangles.
+      [{ x: 92, y: 6, width: 30, height: 28 }, { x: 112, y: 8, width: 20, height: 21 }],
+      [],
+    ]) {
+      const regions = chatTitlebarDragRegions(width, height, controls);
+      const contains = (rect, x, y) => rect.x <= x && x < rect.x + rect.width && rect.y <= y && y < rect.y + rect.height;
+      let mismatch;
+      for (let y = 0; y < height && !mismatch; y++) {
+        for (let x = 0; x < width; x++) {
+          const count = regions.filter(rect => contains(rect, x, y)).length;
+          if (count !== Number(!controls.some(rect => contains(rect, x, y)))) { mismatch = { x, y, count }; break; }
+        }
+      }
+      assert.equal(mismatch, undefined, `incorrect drag coverage: ${JSON.stringify({ width, controls, mismatch })}`);
+    }
+  }
+});
+
+test('the chat titlebar rejects out-of-bounds or malformed control rectangles', () => {
+  const bar = { x: 0, y: 0, width: 390, height: 38 };
+  assert.deepEqual(chatTitlebarDragRegions(390, 38, [bar]), []);
+  for (const control of [null, { ...bar, x: -1 }, { ...bar, height: 39 }, { ...bar, width: 1.5 }]) {
+    assert.equal(chatTitlebarDragRegions(390, 38, [control]), undefined);
   }
 });
 

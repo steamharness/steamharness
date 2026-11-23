@@ -1,0 +1,140 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index d55177d0baec7b54c07ce90bf12bae932c8bb1fa..b6acfc5b8781b05cfff045ad6752e6cf33951a82 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -223,8 +223,10 @@
+ .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+-.studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: 5px; -webkit-app-region: drag; }
+-.studio-chat-titlebar-drag::after { content: ''; position: absolute; inset: 0 auto auto 0; width: var(--studio-chat-titlebar-left, 92px); height: var(--studio-chat-titlebar-height, 38px); -webkit-app-region: drag; }
++.studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
++.studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
++.studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }
++.studio-chat-titlebar-drag:not(.has-layout)::after { content: ''; inset: 0 auto 0 0; width: var(--studio-chat-titlebar-left, 92px); }
+ @container lp-command (max-width: 180px) {
+ 	.lp-command-label { display: none; }
+ 	.lp-command-short { display: inline; }
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index da41a001a3d33dfe94232d607e2730a7076a13de..376552b092b7d3272c19b7ce8b4d0d725f62e269 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -11,9 +11,10 @@ import { isMacintosh } from '../../base/common/platform.js';
+ import { URI } from '../../base/common/uri.js';
+ import { INativeHostService } from '../../platform/native/common/native.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+-import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT } from '../../platform/window/common/window.js';
++import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, IRectangle } from '../../platform/window/common/window.js';
+ import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
++import { chatTitlebarDragRegions } from './studioChatTitlebarDrag.js';
+ 
+ export interface LaunchpadApp { port: number; accountUrl?: string }
+ export interface LaunchpadAppView { id: string; title: string; html: string; titlebarOverlay?: boolean }
+@@ -67,11 +68,12 @@ export class StudioChatWindow extends Disposable {
+ 			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
+ 			life.add(window);
+ 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
+-			const syncTitlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
++			const titlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
+ 			life.add(webview.onMessage(({ message }) => {
+ 				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
+ 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
+-				else if (message?.type === 'studio-launchpad-titlebar-request') { syncTitlebar?.(); }
++				else if (message?.type === 'studio-launchpad-titlebar-request') { titlebar?.sync(); }
++				else if (message?.type === 'studio-launchpad-titlebar-controls') { titlebar?.update(message); }
+ 				else if (message?.type === 'studio-launchpad-close') { close(); }
+ 				else if (message?.type === 'studio-launchpad-open-conversation') {
+ 					const { conversation, user, closeSource } = message;
+@@ -89,23 +91,46 @@ export class StudioChatWindow extends Disposable {
+ 		}
+ 	}
+ 
+-	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore): () => void {
++	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore) {
+ 		// Draggable regions in a cross-origin iframe don't reach the owning native window.
+ 		const drag = host.appendChild($('.studio-chat-titlebar-drag'));
+ 		drag.setAttribute('aria-hidden', 'true');
+ 		const overlay = (target.navigator as Navigator & { windowControlsOverlay?: EventTarget }).windowControlsOverlay;
++		let left = 0, height = 0, renderedWidth = 0;
++		const clear = () => {
++			renderedWidth = 0;
++			drag.classList.remove('has-layout');
++			drag.replaceChildren();
++		};
+ 		const sync = () => {
+ 			const zoom = getZoomFactor(target), area = getWCOTitlebarAreaRect(target);
+-			const left = area && area.width > 0 ? Math.ceil(area.x) + 8 : isFullscreen(target) ? 12 : Math.ceil(92 / zoom);
+-			const height = Math.max(34, Math.ceil(COMPACT_AUXILIARY_TITLEBAR_HEIGHT / zoom), Math.ceil(area?.height ?? 0) + 2);
++			const nextLeft = area && area.width > 0 ? Math.ceil(area.x) + 8 : isFullscreen(target) ? 12 : Math.ceil(92 / zoom);
++			const nextHeight = Math.max(34, Math.ceil(COMPACT_AUXILIARY_TITLEBAR_HEIGHT / zoom), Math.ceil(area?.height ?? 0) + 2);
++			if (left !== nextLeft || height !== nextHeight) { clear(); }
++			left = nextLeft; height = nextHeight;
+ 			host.style.setProperty('--studio-chat-titlebar-height', `${height}px`);
+ 			host.style.setProperty('--studio-chat-titlebar-left', `${left}px`);
+ 			void webview.postMessage({ type: 'studio-launchpad-titlebar', left, height });
+ 		};
+ 		const refresh = life.add(new RunOnceScheduler(sync, 0));
++		life.add(addDisposableListener(target, 'resize', () => {
++			if (renderedWidth && renderedWidth !== host.clientWidth) { clear(); }
++			refresh.schedule();
++		}));
+ 		if (overlay) { life.add(addDisposableListener(overlay, 'geometrychange', () => refresh.schedule())); }
+ 		life.add(onDidChangeZoomLevel(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
+ 		life.add(onDidChangeFullscreen(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
+-		return sync;
++		return { sync, update: (layout: { width: number; left: number; height: number; controls: IRectangle[] }) => {
++			if (layout.width !== host.clientWidth || layout.left !== left || layout.height !== height) { return; }
++			const regions = chatTitlebarDragRegions(layout.width, height, layout.controls);
++			if (!regions) { clear(); return; }
++			drag.replaceChildren(...regions.map(region => {
++				const area = $('div.studio-chat-titlebar-drag-region');
++				Object.assign(area.style, { left: `${region.x}px`, top: `${region.y}px`, width: `${region.width}px`, height: `${region.height}px` });
++				return area;
++			}));
++			renderedWidth = layout.width;
++			drag.classList.add('has-layout');
++		} };
+ 	}
+ }
+diff --git a/src/vs/workbench/electron-browser/studioChatTitlebarDrag.ts b/src/vs/workbench/electron-browser/studioChatTitlebarDrag.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a7ca0287400e5de583f29fc72d2a1f895977c1c
+--- /dev/null
++++ b/src/vs/workbench/electron-browser/studioChatTitlebarDrag.ts
+@@ -0,0 +1,35 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import type { IRectangle } from '../../platform/window/common/window.js';
++
++/** Cover the titlebar without intercepting the embedded controls. */
++export function chatTitlebarDragRegions(width: number, height: number, controls: readonly IRectangle[]): IRectangle[] | undefined {
++	if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || height > 256
++		|| !Array.isArray(controls) || controls.length > 32) {
++		return undefined;
++	}
++	let regions: IRectangle[] = [{ x: 0, y: 0, width, height }];
++	for (const control of controls) {
++		if (!control || ![control.x, control.y, control.width, control.height].every(Number.isSafeInteger)
++			|| control.x < 0 || control.y < 0 || control.width <= 0 || control.height <= 0
++			|| control.x + control.width > width || control.y + control.height > height) {
++			return undefined;
++		}
++		regions = regions.flatMap(region => {
++			const left = Math.max(region.x, control.x), top = Math.max(region.y, control.y);
++			const right = Math.min(region.x + region.width, control.x + control.width);
++			const bottom = Math.min(region.y + region.height, control.y + control.height);
++			if (left >= right || top >= bottom) { return [region]; }
++			return [
++				{ x: region.x, y: region.y, width: region.width, height: top - region.y },
++				{ x: region.x, y: bottom, width: region.width, height: region.y + region.height - bottom },
++				{ x: region.x, y: top, width: left - region.x, height: bottom - top },
++				{ x: right, y: top, width: region.x + region.width - right, height: bottom - top },
++			].filter(rect => rect.width > 0 && rect.height > 0);
++		});
++	}
++	return regions;
++}
