@@ -1,4 +1,33 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow";
+
+function providerHttpError(message: AssistantMessage): { status: number; detail: string } | undefined {
+  if (message.stopReason !== "error" || !message.errorMessage) return;
+  const text = message.errorMessage;
+  // Pi's adapters flatten SDK HTTP errors into a diagnostic string.
+  const prefix = /^(?:[^\r\n]*?\bAPI error \(([45]\d{2})\):\s*|(?:HTTP )?([45]\d{2})(?=[:\s]|$)[:\s]*)/i.exec(text);
+  if (prefix) return { status: Number(prefix[1] ?? prefix[2]), detail: text.slice(prefix[0].length) };
+  const status = /; HTTP ([45]\d{2})(?=;|$)/.exec(text);
+  if (status) return { status: Number(status[1]), detail: text };
+}
+
+export function providerParameterError(message: AssistantMessage): { param: string; message: string } | undefined {
+  const error = providerHttpError(message);
+  if (error?.status !== 400) return;
+  try {
+    // Responses-compatible endpoints return either a top-level error or an error envelope.
+    const body = JSON.parse(error.detail.replace(/^400\s+/, ""));
+    const detail = body?.error ?? body;
+    if (typeof detail?.param === "string" && detail.param.trim() && typeof detail.message === "string") {
+      return { param: detail.param, message: detail.message };
+    }
+  } catch { /* An unclassified provider failure still uses the retry budget. */ }
+}
+
+export function isInvalidModelRequest(message: AssistantMessage): boolean {
+  // Let Durable handle context overflow with its existing compaction path.
+  return !!providerParameterError(message) && !isContextOverflow(message);
+}
 
 /** Preserve provider diagnostics and distinguish caller cancellation from provider aborts. */
 export function normalizeAssistantError(message: AssistantMessage, signal?: AbortSignal): AssistantMessage {

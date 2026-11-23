@@ -73,6 +73,8 @@ try {
 
 Enabling search adds the provider tool beside existing local tools. The model decides whether to call it. The endpoint and model must support that native tool; this path does not support OpenAI Chat Completions. Context summarization requests do not add search tools.
 
+If a Responses endpoint explicitly rejects `web_search_call.action.sources` in `include` before output starts, the agent resends the request once without that value. The search tool stays enabled, and the endpoint can still return citations with its answer.
+
 The `web_search` event carries `search: { id, status, query?, sources, error? }`, where status is `running`, `success`, or `failed`. The `sources` event carries `sources: { url, title?, citedText? }[]`. Search records, citations, and provider content needed for follow-up requests are saved with assistant messages. Valid history is replayed even when search is disabled on the next run; native content is only replayed for the same provider and model. Anthropic `pause_turn` responses resume automatically, with at most 3 continuations before an error.
 
 Convenience Agent projects expose automatic, on, and off choices under model settings: `--web-search ""`, `--web-search true`, and `--web-search false`. Projects with static inline parameters must declare this parameter themselves.

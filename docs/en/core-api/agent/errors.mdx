@@ -24,6 +24,7 @@ For an ordinary Agent, wait for the current `run()` to finish before calling aga
 | Situation | Handling |
 | --- | --- |
 | Model error before output | At most 10 additional requests, exponential backoff, and at most eight seconds per wait |
+| Provider identifies a rejected request parameter in an HTTP 400 response | Keep the original error without resending the same request. Context overflow and search parameter compatibility are handled separately |
 | Failure after partial text | Keep committed text and tool results; durable execution continues with at most 10 connection recoveries |
 | `max_output_tokens` reached | Continue from preserved text with a separate budget of two; exhaustion asks for a larger `maxTokens` or a smaller request |
 | Tool-use stop reason with no tool block | Continue as `lost-call`, sharing the connection budget |

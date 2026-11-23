@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { normalizeAssistantError } from "./stream-error";
+import { isInvalidModelRequest, normalizeAssistantError } from "./stream-error";
 import { ProjectConfigurationError } from "../configuration";
 
 /** One initial model request plus at most ten fallback requests. */
@@ -23,7 +23,7 @@ export async function retryAgentConfigurationAccess(check: () => Promise<void>, 
   }
 }
 
-/** Retry decisions use the response state, never provider-specific error text. */
+/** Apply the fallback budget, except when the provider rejects a request parameter. */
 export async function retryAssistantResponse(
   produce: () => Promise<AssistantMessage>, signal?: AbortSignal, baseDelayMs = 500,
 ): Promise<AssistantMessage> {
@@ -32,7 +32,7 @@ export async function retryAssistantResponse(
     // The caller catches only provider errors inside produce. Host callbacks
     // (usage accounting, storage and observers) must still reject immediately.
     const message = normalizeAssistantError(await produce(), signal);
-    if (message.stopReason !== "error" || attempt >= AGENT_PROVIDER_MAX_RETRIES) return message;
+    if (message.stopReason !== "error" || isInvalidModelRequest(message) || attempt >= AGENT_PROVIDER_MAX_RETRIES) return message;
     if (!await waitBeforeRetry(attempt + 1, signal, baseDelayMs)) return { ...message, stopReason: "aborted" };
   }
 }

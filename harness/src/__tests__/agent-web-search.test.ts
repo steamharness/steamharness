@@ -16,6 +16,7 @@ import type { AgentStreamEvent } from "../agent/types";
 type Json = Record<string, any>;
 const SOURCE = "https://example.test/source";
 const ANSWER = "A sourced answer.";
+const SEARCH_SOURCES = "web_search_call.action.sources";
 const apis = ["openai-responses", "anthropic-messages"] as const;
 const attributes = { reasoning: false, input: ["text"] as const, contextWindow: 100_000, maxTokens: 1024, webSearch: true };
 const input = (prompt: string, requestId: string) => ({ prompt, requestId, errCode: 0, errMessage: "" });
@@ -188,6 +189,63 @@ for (const api of apis) {
     assert.ok(requests[2]!.tools.some((tool: Json) => tool.type?.startsWith("web_search")), "Per-run changes enable search without losing history");
   });
 }
+
+test("Responses retries only the rejected sources include and retains citations, tools, and other includes", async () => {
+  const pi = await runtime("openai-responses"), requests: Json[] = [];
+  const options = {
+    onPayload: (payload: unknown) => ({ ...(payload as Json), include: ["reasoning.encrypted_content"] }),
+    fetch: async (_url: unknown, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      requests.push(request);
+      if (request.include?.includes(SEARCH_SOURCES)) return Response.json({ code: "InvalidParameter",
+        message: `The parameter \`include\` specified in the request are not valid: unknown type: ${SEARCH_SOURCES}. Request id: reproduction`,
+        param: "include", type: "BadRequest" }, { status: 400 });
+      const stream = events("openai-responses", String(requests.length));
+      delete stream.find(event => event.type === "response.output_item.done")!.item.action.sources;
+      return new Response(sse(stream), { headers: { "content-type": "text/event-stream" } });
+    },
+  };
+  const context = { messages: [{ role: "user" as const, content: "Search", timestamp: 0 }],
+    tools: [{ name: "read", description: "Read local file", parameters: { type: "object", properties: {} } }] };
+  const answer = await pi.models.streamSimple(pi.model, context, options).result() as AgentSearchMessage;
+  assert.equal(answer.stopReason, "stop", answer.errorMessage);
+  assert.deepEqual(requests.map(request => request.include), [["reasoning.encrypted_content", SEARCH_SOURCES], ["reasoning.encrypted_content"]]);
+  assert.ok(requests[1]!.tools.some((tool: Json) => tool.type === "web_search"));
+  assert.ok(requests[1]!.tools.some((tool: Json) => tool.name === "read"));
+  assert.deepEqual(requests[1], { ...requests[0], include: ["reasoning.encrypted_content"] });
+  assert.equal(answer.projectWebSearch?.sources[0]?.url, SOURCE);
+  await pi.models.streamSimple(pi.model, context, options).result();
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests[2]!.include, ["reasoning.encrypted_content"]);
+});
+
+for (const rejectedSources of [false, true]) test(`Responses permanent 400 stops Durable retries (sources rejected=${rejectedSources})`, { timeout: 5000 }, async t => {
+  const requests: Json[] = [];
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    requests.push(request);
+    const error = rejectedSources && request.include?.includes(SEARCH_SOURCES)
+      ? { param: "include", message: `Unknown type: ${SEARCH_SOURCES}` }
+      : { param: "tools", message: "The selected model does not support web_search" };
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: "InvalidParameter", ...error } }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const agent = await createAgentRuntime({ provider: "search-test", model: "search-model", apiKey: "offline-key",
+    apiKind: "openai-responses", baseUrl: `http://127.0.0.1:${address.port}`, modelAttributes: attributes,
+    retryDelayMs: 0, effort: "off", compaction: { ...DEFAULT_AGENT_COMPACTION_SETTINGS, enabled: false } });
+  t.after(() => agent.close());
+  const emitted: AgentStreamEvent[] = [];
+  await assert.rejects(async () => { for await (const event of agent.run(input("Search", "request"))) emitted.push(event); }, /does not support web_search/);
+  assert.ok(!emitted.some(event => event.type === "retry"));
+  assert.equal(requests.length, rejectedSources ? 2 : 1);
+  if (rejectedSources) assert.equal(requests[1]!.include?.includes(SEARCH_SOURCES) ?? false, false);
+});
 
 async function localAgent(t: TestContext, respond: (attempt: number) => Json[]) {
   const requests: Json[] = [];

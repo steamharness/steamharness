@@ -30,7 +30,7 @@ import type { AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries, type AgentToolCatalog } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
-import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
+import { createAssistantErrorMessage, isInvalidModelRequest, normalizeAssistantError } from "./stream-error";
 import { AGENT_PROVIDER_MAX_RETRIES, retryAgentConfigurationAccess } from "./provider-retry";
 import { agentSleepResult, agentSleepSeconds, waitForAgentSleep } from "./tools";
 import { withEnvironmentByteReads } from "./environment-read";
@@ -415,6 +415,7 @@ export class DurableAgent {
             message.content = message.content.filter(block => block.type !== "toolCall");
           }
           if (message.stopReason === "error") {
+            if (isInvalidModelRequest(message)) return { retry: false as const };
             const root = (await harness.conversation(api.conversationId, context))!;
             const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
             const failures = await root.commit(async tx => Number((await tx.doc(RunDoc, root.id, logicalRequestId, null))

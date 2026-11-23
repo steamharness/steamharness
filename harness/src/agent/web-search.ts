@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { Api, AssistantMessage, Context, Model, MutableModels, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { HarnessError } from "../workflow/errors";
 import type { AgentSearchSource, AgentWebSearch } from "./types";
-import { createAssistantErrorMessage } from "./stream-error";
+import { createAssistantErrorMessage, providerParameterError } from "./stream-error";
 
 type RecordValue = Record<string, unknown>;
 type SearchApi = "openai-responses" | "anthropic-messages";
 type PiAi = typeof import("@earendil-works/pi-ai");
+const SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources";
 
 export const AGENT_SEARCH_RESUME_PROMPT = "Continue the paused provider web search.";
 
@@ -47,6 +48,7 @@ export function resolveAgentWebSearch(api: string, requested: boolean | undefine
 export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
   model: Model<Api>; apiKind: string; enabled: boolean;
 }): MutableModels {
+  let sourcesUnsupported = false;
   return new Proxy(models, {
     get(target, key) {
       if (key !== "streamSimple") {
@@ -54,12 +56,13 @@ export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
         return typeof value === "function" ? value.bind(target) : value;
       }
       return (model: Model<Api>, context: Context, options?: AgentSearchStreamOptions) => {
-        const sameModel = model.provider === settings.model.provider && model.id === settings.model.id;
+        const sameModel = model.provider === settings.model.provider && model.id === settings.model.id && model.baseUrl === settings.model.baseUrl;
         const api = sameModel ? settings.apiKind : model.api;
         if (api !== "openai-responses" && api !== "anthropic-messages") return target.streamSimple(model, context, options);
         const requestContext = api === "anthropic-messages" ? withSearchPlaceholders(context, model) : context;
         const collector = new SearchCollector(api, options?.onAgentWebSearch, context, model);
-        const source = target.streamSimple(model, requestContext, {
+        let requestedSources = false;
+        const request = () => target.streamSimple(model, requestContext, {
           ...options,
           onPayload: async (payload, requestModel) => {
             const replacement = await options?.onPayload?.(payload, requestModel);
@@ -74,7 +77,14 @@ export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
               }
               body.tools = tools;
               if (api === "openai-responses") {
-                body.include = [...new Set([...(Array.isArray(body.include) ? body.include : []), "web_search_call.action.sources"])];
+                const include = Array.isArray(body.include) ? body.include : [];
+                requestedSources = !sourcesUnsupported;
+                if (requestedSources) body.include = [...new Set([...include, SEARCH_SOURCES_INCLUDE])];
+                else if (include.includes(SEARCH_SOURCES_INCLUDE)) {
+                  const remaining = include.filter(field => field !== SEARCH_SOURCES_INCLUDE);
+                  if (remaining.length) body.include = remaining;
+                  else delete body.include;
+                }
               }
             }
             return body;
@@ -88,21 +98,34 @@ export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
         void (async () => {
           let last: AssistantMessage | undefined;
           try {
-            for await (const event of source) {
-              const message = event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial;
+            for (;;) {
+              requestedSources = false;
+              const source = request();
+              let message: AssistantMessage | undefined;
+              for await (const event of source) {
+                if (event.type === "done" || event.type === "error") {
+                  message = event.type === "done" ? event.message : event.error;
+                  break;
+                }
+                last = event.partial;
+                collector.attach(last);
+                stream.push(event);
+              }
+              message ??= await Promise.race([source.result(), Promise.resolve(undefined)]);
+              if (!message) throw new Error(`The model stream ended without a terminal event (${model.provider}).`);
+              // Only renegotiate a rejected request. Never replay an accepted stream or drop the search tool.
+              if (requestedSources && !last && !options?.signal?.aborted && rejectedSearchSources(message)) {
+                sourcesUnsupported = true;
+                continue;
+              }
               last = message;
-              if (event.type === "done" || event.type === "error") await collector.finish(message);
+              await collector.finish(message);
               collector.attach(message);
-              stream.push(event);
-              if (event.type === "done" || event.type === "error") { stream.end(message); return; }
+              if (message.stopReason === "error" || message.stopReason === "aborted") stream.push({ type: "error", reason: message.stopReason, error: message });
+              else stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
+              stream.end(message);
+              return;
             }
-            const message = await Promise.race([source.result(), Promise.resolve(undefined)]);
-            if (!message) throw new Error(`The model stream ended without a terminal event (${model.provider}).`);
-            await collector.finish(message);
-            collector.attach(message);
-            if (message.stopReason === "error" || message.stopReason === "aborted") stream.push({ type: "error", reason: message.stopReason, error: message });
-            else stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
-            stream.end(message);
           } catch (error) {
             const message = createAssistantErrorMessage(model, error, options?.signal, last);
             // An observer failure must still resolve the consumer's stream.
@@ -116,6 +139,12 @@ export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
       };
     },
   });
+}
+
+function rejectedSearchSources(message: AssistantMessage): boolean {
+  const detail = providerParameterError(message);
+  return detail?.param === "include" &&
+    /\b(?:unknown|unsupported|invalid) (?:type|value)\s*:?\s*[`"']?web_search_call\.action\.sources(?=[`"'\s]|[.,;:](?:\s|$)|$)/i.test(detail.message);
 }
 
 class SearchCollector {

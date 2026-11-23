@@ -13,7 +13,7 @@ import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
 import { HarnessError } from "../workflow/errors";
 import { withAgentWebSearch, resolveAgentWebSearch } from "./web-search";
-import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
+import { createAssistantErrorMessage, isInvalidModelRequest, normalizeAssistantError } from "./stream-error";
 import { AGENT_PROVIDER_MAX_RETRIES, waitBeforeRetry } from "./provider-retry";
 export { AGENT_PROVIDER_MAX_RETRIES, waitBeforeRetry } from "./provider-retry";
 
@@ -364,7 +364,7 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
       stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
       stream.end(message); return;
     }
-    if (contentSent || attempt >= budget || message.stopReason === "aborted" || signal?.aborted) {
+    if (contentSent || attempt >= budget || message.stopReason === "aborted" || signal?.aborted || isInvalidModelRequest(message)) {
       stream.push({ type: "error", reason: message.stopReason, error: message });
       stream.end(message); return;
     }

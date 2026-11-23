@@ -73,6 +73,8 @@ try {
 
 开启会在已有本地工具之外添加提供方的搜索工具，由模型决定是否调用。它不强制每轮搜索，也不把搜索交给本地工具执行。端点和所选模型须实际支持该原生工具；OpenAI Chat Completions 协议不支持这条路径。上下文压缩的摘要请求不添加搜索工具。
 
+如果 Responses 端点在开始输出前明确拒绝 `include` 中的 `web_search_call.action.sources`，Agent 只移除这一个值并重发一次。搜索工具保持启用，端点仍可随答案返回引文。
+
 `web_search` 事件包含 `search: { id, status, query?, sources, error? }`，状态为 `running`、`success` 或 `failed`。`sources` 事件包含 `sources: { url, title?, citedText? }[]`。搜索记录、引用及续聊需要的提供方内容随 assistant 消息保存；关闭下一轮搜索后仍会回传有效历史，切换提供方或模型时不会跨模型回传原生内容。Anthropic 的 `pause_turn` 自动续接，最多 3 次，超出后报错。
 
 便捷 Agent 项目的「模型设置」提供自动、开启、关闭三种选择，对应 `--web-search ""`、`--web-search true`、`--web-search false`。静态内联参数的项目需自行声明该参数。
