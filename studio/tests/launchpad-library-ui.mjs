@@ -177,9 +177,26 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   assert.deepEqual(await page.evaluate(()=>window.actions.filter(([id])=>id==='pickPaths').at(-1)[1]),{
     title:importLabel,openLabel:t('Import','导入'),canSelectFolders:true,canSelectFiles:false,canSelectMany:true,availableFileSystems:['file']});
   assert.equal(await find.inputValue(),'no matching folder'); assert.equal(await page.evaluate(()=>window.actions.some(([id])=>id==='import')),false);
-  await page.evaluate(()=>{window.selectedPaths=['/projects/Imported folder'];window.delayHistory=true;}); await importProject.click();
+  await page.evaluate(()=>{
+    window.selectedPaths=['/projects/Imported folder'];window.delayHistory=true;
+    if (window.enhanced) window.folderDetailImGate=new Promise(resolve=>window.resumeFolderDetailIm=resolve);
+  }); await importProject.click();
   await page.waitForFunction(()=>typeof window.resumeHistory==='function'); await page.evaluate(()=>window.resumeHistory());
   await detail.getByRole('heading',{name:'Imported folder',exact:true}).waitFor(); assert.equal(await find.inputValue(),'');
+  if (enhanced) {
+    const withBot = detail.getByRole('button',{name:t('Open with Bot…','用 Bot 打开…'),exact:true});
+    await page.waitForFunction(()=>window.actions.some(([id,project])=>id==='studio.listLibraryProjectActions' && project.name==='Imported folder'));
+    await withBot.waitFor(); // The account action has not resolved.
+    await withBot.focus();
+    await page.evaluate(()=>{window.holdFolderActions=true;window.updateAccount({scopeKey:'b'.repeat(64)});});
+    await page.waitForFunction(()=>typeof window.resumeFolderActions==='function');
+    assert.ok(await withBot.isVisible());
+    assert.equal(await withBot.evaluate(button=>document.activeElement===button),true);
+    await page.evaluate(()=>{
+      window.holdFolderActions=false;window.resumeFolderActions();window.resumeFolderDetailIm();
+      window.updateAccount({scopeKey:'a'.repeat(64)});
+    });
+  }
   await tab('library').click(); await importProject.click(); await detail.getByRole('heading',{name:'Imported folder',exact:true}).waitFor();
   assert.equal(await openCount(),oldOpens,'import and reimport do not launch or focus a project');
   await detail.getByRole('button',{name:t('Open in new window','在新窗口打开')}).click();

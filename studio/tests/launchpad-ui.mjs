@@ -83,7 +83,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
     if (id === 'studio.listLibraryExtraProjects') return { projects: [...folderBots], hiddenUris: [...removedFolderBots] };
-    if (id === 'studio.listFolderBotActions') return args[0].kind==='folder' && args[0].name==='Imported folder' ? [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…',icon:'hubot'}] : [];
+    if (id === 'studio.listFolderBotActions') {
+      if (args[0].kind!=='folder' || args[0].name!=='Imported folder') return [];
+      if (window.holdFolderActions) await new Promise(resolve=>window.resumeFolderActions=resolve);
+      return [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…',icon:'hubot'}];
+    }
     if (id === 'studio.runFolderBotAction' && args[1] === 'create-folder-bot') {
       const name = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+name+'.code-workspace').toString();
       folderBots.push({uri,name,kind:'workspace',managed:true,path:URI.parse(args[0]).fsPath,projectType:'bot'});
@@ -97,7 +101,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       kernelCommand('LibraryProjectCategoryChanged');
       return;
     }
-    if (id === 'studio.listLibraryProjectActions') return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
+    if (id === 'studio.listLibraryProjectActions') {
+      if (args[0].name==='Imported folder' && window.folderDetailImGate) await window.folderDetailImGate;
+      return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
+    }
     if (id === 'studio.runLibraryProjectAction') return {};
     if (id === 'studio.getLibraryProjectCategory') {
       const projectUris = account.scopeKey === 'a'.repeat(64) ? args[0].filter(uri=>window.libraryCategoryUris.includes(uri)) : [];

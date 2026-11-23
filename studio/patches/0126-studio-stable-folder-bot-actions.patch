@@ -1,0 +1,155 @@
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index dd69d3bc83a5e753ef83d8819b8d98a699a26ce8..cb53d63d1937ff47a58ac424518621aa2d9fa1d5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -129,23 +129,18 @@ export class StudioLaunchpad extends Disposable {
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
+ 			cover: project => this.cover(project),
+-			detailActions: async project => {
++			detailActions: async (project, source) => {
+ 				if (!this.start.state?.platform || !project.uri.startsWith('file:') || (project.missing && !project.managed)) { return []; }
+-				const [local, remote] = await Promise.all([
+-					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listFolderBotActions', project).catch(() => undefined),
+-					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listLibraryProjectActions', project).catch(() => undefined),
+-				]);
+-				return [...(local ?? []), ...(remote ?? [])];
++				return commands.executeCommand<LibraryDetailAction[] | undefined>(source === 'local' ? 'studio.listFolderBotActions' : 'studio.listLibraryProjectActions', project);
+ 			},
+ 			runDetailAction: async (project, id) => {
+ 				if (!this.start.state?.platform) { return; }
+ 				try {
+-					const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id).catch(error => {
+-						if (id === 'create-folder-bot') { throw error; }
+-						return undefined;
+-					});
+-					if (local?.workspace) { await this.openManagedWorkspace(local.workspace); return; }
+-					if (id === 'create-folder-bot') { return; }
++					if (id === 'create-folder-bot') {
++						const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id);
++						if (local?.workspace) { await this.openManagedWorkspace(local.workspace); }
++						return;
++					}
+ 					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
+ 					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser, undefined, project.name); }
+ 				} catch (error) { notifications.error(error); }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 14cd031f77a3c521cbde65e1ed42a114c0414b72..1747a3abf67b71e25c3d764ec60d41333d73f7c1 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -15,6 +15,8 @@ export interface LibraryProjectCategory {
+ 	projectUris: string[];
+ }
+ export interface LibraryDetailAction { id: string; label: string; icon?: string }
++type DetailActionSource = 'local' | 'account';
++interface DetailActionState { key: string; items: LibraryDetailAction[]; loading?: boolean }
+ 
+ export interface LibraryActions {
+ 	create(): void;
+@@ -25,7 +27,7 @@ export interface LibraryActions {
+ 	copyPath(p: LaunchpadProject): void;
+ 	contextMenu: IContextMenuService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
+-	detailActions?(p: LaunchpadProject): Promise<LibraryDetailAction[]>;
++	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
+ 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
+ }
+ 
+@@ -42,6 +44,10 @@ export class LaunchpadLibrary {
+ 	private category?: LibraryProjectCategory;
+ 	private filter = 'all';
+ 	private signature?: string;
++	private actionScope = '';
++	private readonly detailActionStates = new Map<DetailActionSource, DetailActionState>();
++	private readonly runningActions = new Set<string>();
++	private updateDetailButtons?: () => void;
+ 	private projects = new Map<string, LaunchpadProject>();
+ 	private history = new Set<string>();
+ 	private selected?: string;
+@@ -75,6 +81,7 @@ export class LaunchpadLibrary {
+ 		this.createButton.disabled = !canCreate;
+ 		const signature = JSON.stringify([recent, windows, actionScope, category]); if (signature === this.signature) { return; }
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
++		this.actionScope = actionScope;
+ 		this.category = category;
+ 		this.categoryButton.textContent = category?.label ?? '';
+ 		if (!category && this.filter === 'product') {
+@@ -125,6 +132,28 @@ export class LaunchpadLibrary {
+ 		});
+ 	}
+ 
++	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
++		if (source === 'account' && !this.actionScope) { this.detailActionStates.delete(source); return; }
++		const key = JSON.stringify([project.uri, project.kind, project.missing, project.managed, project.projectType, project.distribution, source === 'account' ? this.actionScope : '']);
++		let state = this.detailActionStates.get(source);
++		if (!state || state.key !== key) {
++			state = { key, items: [] };
++			this.detailActionStates.set(source, state);
++		}
++		const pending = !state.loading && this.actions.detailActions?.(project, source);
++		if (pending) {
++			const current = state;
++			current.loading = true;
++			void pending.then(items => {
++				if (items && this.detailActionStates.get(source) === current) {
++					current.items = items;
++					this.updateDetailButtons?.();
++				}
++			}).catch(() => undefined).finally(() => { current.loading = false; });
++		}
++		return state;
++	}
++
+ 	private render(): void {
+ 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
+ 		const category = this.filter === 'product' ? this.category : undefined;
+@@ -166,20 +195,41 @@ export class LaunchpadLibrary {
+ 			}
+ 			const detail = projectDetails(selected, t, { actions, openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
+ 			this.content.replaceChildren(detail); restoreFocus();
+-			void this.actions.detailActions?.(selected).then(items => {
+-				if (detail.parentElement !== this.content) { return; }
+-				const controls = detail.querySelector('.lp-detail-actions');
+-				for (const item of items.slice(0, 4)) {
++			// Local actions resolve independently of IM. Keep confirmed actions while revalidating them.
++			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
++			let rendered = '';
++			this.updateDetailButtons = () => {
++				const items = [...(local?.items ?? []), ...(account?.items ?? [])].slice(0, 4);
++				const signature = JSON.stringify(items);
++				if (rendered === signature) { return; }
++				rendered = signature;
++				const controls = more.parentElement;
++				const focused = document.activeElement instanceof HTMLElement && controls?.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
++				controls?.querySelectorAll('[data-detail-action]').forEach(item => item.remove());
++				for (const item of items) {
++					const key = `action:${selected.uri}:${item.id}`;
+ 					const action = button(item.label, item.icon ?? '', () => {
++						if (this.runningActions.has(key)) { return; }
++						this.runningActions.add(key);
+ 						action.disabled = true;
+-						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
++						void Promise.resolve(this.actions.runDetailAction?.(selected, item.id)).finally(() => {
++							this.runningActions.delete(key);
++							if (this.selected === selected.uri) { this.render(); }
++						});
+ 					}, 'studio-project-action lp-outline');
+-					action.dataset.key = `action:${selected.uri}:${item.id}`;
+-					controls?.insertBefore(action, controls.lastElementChild);
++					action.disabled = this.runningActions.has(key);
++					action.dataset.key = key;
++					action.dataset.detailAction = item.id;
++					controls?.insertBefore(action, more);
++					if (key === focused) { action.focus({ preventScroll: true }); }
+ 				}
+ 				if (focus?.startsWith('action:') && (document.activeElement === document.body || !document.activeElement?.isConnected)) { restoreFocus(); }
+-			}).catch(() => undefined); return;
++			};
++			this.updateDetailButtons();
++			return;
+ 		}
++		this.detailActionStates.clear();
++		this.updateDetailButtons = undefined;
+ 		this.content.replaceChildren();
+ 		if (!rows.length) {
+ 			const message = (!query && category?.emptyLabel) || (query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。'));

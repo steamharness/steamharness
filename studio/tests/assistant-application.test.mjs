@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createAssistantDependencyFixture } from './assistant-dependency-fixture.mjs';
@@ -24,9 +24,12 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const userProject = path.join(directory, 'opened-project');
   await mkdir(userProject);
   await writeFile(path.join(userProject, 'package.json'), JSON.stringify({ id: 'a-different-project', name: 'User project' }));
-  const options = { templateDir, storageDir: path.join(directory, 'storage'), dependencySources: [userProject, source.projectDir] };
-  const [application, concurrent] = await Promise.all([prepareAssistantApplication(options), prepareAssistantApplication(options)]);
+  const overlayTemplate = path.join(directory, 'overlay-template');
+  await symlink(templateDir, overlayTemplate, process.platform === 'win32' ? 'junction' : 'dir');
+  const options = { templateDir: overlayTemplate, storageDir: path.join(directory, 'storage'), dependencySources: [userProject, source.projectDir] };
+  const [application, concurrent] = await Promise.all([prepareAssistantApplication(options), prepareAssistantApplication({ ...options, templateDir })]);
   assert.equal(application, concurrent, 'Two windows can initialize the same independent app safely.');
+  assert.ok((await lstat(application)).isDirectory(), 'Only the template root is followed, not linked into the app cache.');
   assert.notEqual(application, userProject);
   assert.equal(await realpath(path.join(application, 'node_modules')), await realpath(path.join(source.projectDir, 'node_modules')));
   const manifest = JSON.parse(await readFile(path.join(application, 'package.json'), 'utf8'));
