@@ -287,11 +287,26 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           runSignal.throwIfAborted();
           assertAvailable();
         }
-        let projectConnection: Connection | undefined, aiConnection: Connection | undefined, webAppConnection: Connection | undefined;
+        const entries = session.ready.project.entries;
+        const restrictedConfigurations = session.ready.restrictedConfigurationEntries?.some(entryId => entries.some(entry => entry.entryId === entryId));
+        // Hosted Web Apps keep their provider-scoped session. An aggregate with
+        // restricted configurations also needs the project account for role checks.
+        const inheritEmbeddedAccount = embeddedAccount && !entries.some(entry => entry.webApp);
+        const inheritProjectAccount = account.platform && (restrictedConfigurations || inheritEmbeddedAccount);
+        const inheritSystemAi = inheritEmbeddedAccount && !project.folderBot?.background && session.ready.systemAiConnectionProtocolVersion === 2;
+        let projectConnection: Connection | undefined, explicitAiConnection: Connection | undefined, webAppConnection: Connection | undefined;
         let hostedEntry: string | undefined, connectedWebAppEntry: string | undefined, webAppServerUrl: string | undefined;
         let checkingWebAppAccount = 0;
         let checkingWebAppConnection: Connection | undefined;
         const same = (left?: Connection, right?: Connection) => left?.serverUrl === right?.serverUrl && left?.accessToken === right?.accessToken;
+        const syncAuthentication = () => {
+          const currentAi = inheritSystemAi || explicitAiConnection ? account.getAiConnection() : undefined;
+          if (!same(explicitAiConnection, currentAi)) explicitAiConnection = undefined;
+          // Only reuse the login already given to this editor. A separate AI
+          // credential still needs an explicit connection for this project.
+          const sharedAi = inheritSystemAi && same(projectConnection, currentAi) ? projectConnection : undefined;
+          session.updateAuth(projectConnection, explicitAiConnection ?? sharedAi);
+        };
         const syncWebApp = async (connection?: Connection, interactive = false) => {
           const serverUrl = account.getState?.().serverUrl ?? connection?.serverUrl;
           if (runSignal.aborted || !hostedEntry || !interactive && connectedWebAppEntry === hostedEntry && same(webAppConnection, connection) && webAppServerUrl === serverUrl) return;
@@ -316,7 +331,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             const connection = await account.connectAi();
             runSignal.throwIfAborted();
             if (connection && same(connection, account.getAiConnection())) {
-              session.updateAuth(projectConnection, connection); aiConnection = connection;
+              explicitAiConnection = connection;
+              syncAuthentication();
             }
           } else {
             if (purpose === 'web-app' && !project.entries.some(entry => entry.entryId === entryId && entry.webApp)) return;
@@ -333,34 +349,21 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             if (!isCurrent()) return;
             if (!connection) { await vscode.commands.executeCommand('studio.openLogin'); return; }
             if (!same(connection, account.getConnection())) return;
-            if (purpose === 'project') { session.updateAuth(connection, aiConnection); projectConnection = connection; }
+            if (purpose === 'project') { projectConnection = connection; syncAuthentication(); }
             else if (hostedEntry === entryId) await syncWebApp(connection, true);
           }
         };
         if (account.platform) session.connectPlatform = connectPlatform;
-        const entries = session.ready.project.entries;
-        const restrictedConfigurations = session.ready.restrictedConfigurationEntries?.some(entryId => entries.some(entry => entry.entryId === entryId));
-        // Hosted Web Apps keep their provider-scoped session. An aggregate with
-        // restricted configurations also needs the project account for role checks.
-        const inheritEmbeddedAccount = embeddedAccount && !entries.some(entry => entry.webApp);
-        const inheritProjectAccount = account.platform && (restrictedConfigurations || inheritEmbeddedAccount);
-        const revoke = account.onDidChange(state => {
-          if (runSignal.aborted) return;
-          if (state.status !== 'checking') {
-            const current = account.getConnection();
-            const next = inheritProjectAccount ? current : same(projectConnection, current) ? projectConnection : undefined;
-            if (!same(projectConnection, next)) {
-              projectConnection = next; session.updateAuth(projectConnection, aiConnection);
-            }
-          }
-          if (aiConnection && !same(aiConnection, account.getAiConnection())) {
-            aiConnection = undefined; session.updateAuth(projectConnection);
-          }
-          if (state.status !== 'checking' && (!checkingWebAppAccount || !same(checkingWebAppConnection, account.getConnection()))) void syncWebApp(account.getConnection()).catch(webAppFailed);
+        const accountChanged = account.onDidChange(state => {
+          if (runSignal.aborted || state.status === 'checking') return;
+          const current = account.getConnection();
+          projectConnection = inheritProjectAccount || same(projectConnection, current) ? current : undefined;
+          syncAuthentication();
+          if (!checkingWebAppAccount || !same(checkingWebAppConnection, current)) void syncWebApp(current).catch(webAppFailed);
         });
         if (inheritProjectAccount) {
           projectConnection = account.getConnection();
-          if (projectConnection) session.updateAuth(projectConnection);
+          if (projectConnection) syncAuthentication();
           // Restore a saved session in this window without blocking local startup or opening sign-in.
           else if (inheritEmbeddedAccount) void account.connect().catch(() => undefined);
         }
@@ -385,7 +388,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             if (action === retry && !runSignal.aborted && hostedEntry) void session.connectPlatform?.('web-app', hostedEntry);
           });
         });
-        void session.closed.then(() => { revoke.dispose(); webAppErrors?.dispose(); webAppLogin?.dispose(); });
+        void session.closed.then(() => { accountChanged.dispose(); webAppErrors?.dispose(); webAppLogin?.dispose(); });
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         try { session.updateUserSettings(settingsSnapshot()); }

@@ -12,6 +12,7 @@ const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/
   bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const first = { serverUrl: 'https://account.invalid', accessToken: 'first-test-token' };
 const second = { serverUrl: 'https://other-account.invalid', accessToken: 'second-test-token' };
+const separateAi = { serverUrl: 'https://ai.invalid', accessToken: 'ai-test-token' };
 const entries = ['main', 'chat'].map(entryId => ({ entryId, name: entryId, type: 'bot', root: '.', entry: 'index.ts' }));
 
 async function until(read, accept) {
@@ -24,7 +25,7 @@ async function until(read, accept) {
   }
 }
 
-async function fixture(t, { restricted, platform = true, connection = first, restore, hosted = false, trusted = true, embedded = true } = {}) {
+async function fixture(t, { restricted, platform = true, connection = first, ai, aiProtocol = 2, restore, hosted = false, trusted = true, embedded = true } = {}) {
   const projectEntries = hosted ? [...entries,
     { entryId: 'app', name: 'Hosted app', type: 'kanban', root: '.', entry: 'index.html', webApp: { service: 'sample.app' } },
   ] : entries;
@@ -44,6 +45,7 @@ async function fixture(t, { restricted, platform = true, connection = first, res
       if(message.type==='close'){server.close();input.close();process.stdin.pause();}
       if(message.type==='configure')server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({
         type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
+        systemAiConnectionProtocolVersion:${aiProtocol},
         restrictedConfigurationEntries:${JSON.stringify(restricted) ?? 'undefined'},
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),
         project:{id:'configuration-project',name:'Configurations',entries:${JSON.stringify(projectEntries)},defaultEntry:'main'}
@@ -51,15 +53,19 @@ async function fixture(t, { restricted, platform = true, connection = first, res
     });
   `);
   const listeners = new Set(), errors = [], commands = [];
-  let connects = 0;
-  const change = (value, status = value ? 'authenticated' : 'signed-out') => {
-    connection = value;
-    for (const callback of listeners) callback({ status });
+  let connects = 0, aiConnects = 0;
+  let status = connection ? 'authenticated' : 'signed-out';
+  const emit = () => { for (const callback of listeners) callback({ status }); };
+  const change = (value, next = value ? 'authenticated' : 'signed-out') => {
+    connection = value; status = next; emit();
   };
+  const changeAi = value => { ai = value; emit(); };
+  const getAiConnection = () => ai ?? (status === 'authenticated' ? connection : undefined);
   const account = {
-    platform, getConnection: () => connection, getAiConnection: () => undefined,
+    platform, getConnection: () => connection ?? undefined, getAiConnection,
     onDidChange: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; },
     connect: async () => { connects++; if (restore) change(await restore()); return connection; },
+    connectAi: async () => { aiConnects++; return getAiConnection(); },
   };
   const vscode = { env: { language: 'en' }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
     workspace: { isTrusted: trusted, onDidChangeConfiguration: () => ({ dispose() {} }),
@@ -83,25 +89,45 @@ async function fixture(t, { restricted, platform = true, connection = first, res
     await assert.rejects(start(), /Trust the current workspace/);
     return { get connects() { return connects; } };
   }
-  return { ...await start(), start, commands, errors, change, get connects() { return connects; } };
+  return { ...await start(), start, commands, errors, change, changeAi, get connects() { return connects; }, get aiConnects() { return aiConnects; } };
 }
 
 test('a restricted sibling entry receives the signed-in project account without interactive login', async t => {
   const f = await fixture(t, { restricted: ['chat'], hosted: true });
-  assert.deepEqual((await until(f.auth, items => items.length === 1))[0].connection, first);
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0], { type: 'auth', connection: first });
   assert.equal(f.connects, 0); assert.deepEqual(f.commands, []);
 });
 
-test('an enhanced CLI Web session inherits the verified account without a restricted configuration', async t => {
+test('an embedded enhanced CLI Web session reuses its verified account for System AI', async t => {
   const f = await fixture(t);
   const updates = await until(f.auth, items => items.length === 1);
-  assert.deepEqual(updates[0].connection, first);
-  assert.equal(updates[0].systemAiConnection, undefined);
-  assert.equal((await f.read()).messages[0].connection, null, 'The initial process still starts locally');
-  assert.equal(f.connects, 0); assert.deepEqual(f.commands, []); assert.deepEqual(f.errors, []);
+  assert.deepEqual(updates[0], { type: 'auth', connection: first, systemAiConnection: first });
+  const [configure] = (await f.read()).messages;
+  assert.equal(configure.connection, null, 'The initial process still starts locally');
+  assert.equal(configure.systemAiConnection, undefined);
+  assert.equal(f.connects, 0); assert.equal(f.aiConnects, 0); assert.deepEqual(f.commands, []); assert.deepEqual(f.errors, []);
 });
 
-test('CLI Web follows logout and switches Server accounts without restarting', async t => {
+test('an older embedded CLI receives only project authentication', async t => {
+  const f = await fixture(t, { aiProtocol: 1 });
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0], { type: 'auth', connection: first });
+  assert.equal(f.connects, 0); assert.equal(f.aiConnects, 0);
+});
+
+test('a separate AI credential is only passed to a project that explicitly connects it', async t => {
+  const f = await fixture(t, { ai: separateAi });
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0], { type: 'auth', connection: first });
+  assert.equal(f.aiConnects, 0);
+  await f.session.connectPlatform('ai', 'main');
+  const authorized = await until(f.auth, items => items.length === 2);
+  assert.deepEqual(authorized.at(-1), { type: 'auth', connection: first, systemAiConnection: separateAi });
+  f.changeAi(undefined);
+  const fallback = await until(f.auth, items => items.length === 3);
+  assert.deepEqual(fallback.at(-1), { type: 'auth', connection: first, systemAiConnection: first });
+  assert.equal(f.aiConnects, 1);
+});
+
+test('CLI Web updates project and System AI authentication together without restarting', async t => {
   const f = await fixture(t);
   const initial = await until(f.read, value => value.messages.some(message => message.type === 'auth'));
   f.change(undefined, 'checking');
@@ -109,12 +135,14 @@ test('CLI Web follows logout and switches Server accounts without restarting', a
   f.change(first);
   assert.equal((await f.auth()).length, 1);
   f.change(undefined);
-  await until(f.auth, items => items.at(-1)?.connection === null);
+  const signedOut = await until(f.auth, items => items.length === 2);
+  assert.deepEqual(signedOut.at(-1), { type: 'auth', connection: null });
   f.change(second);
-  const replacement = await until(f.auth, items => items.at(-1)?.connection?.accessToken === second.accessToken);
-  assert.deepEqual(replacement.at(-1).connection, second);
+  const replacement = await until(f.auth, items => items.length === 3);
+  assert.deepEqual(replacement.at(-1), { type: 'auth', connection: second, systemAiConnection: second });
   f.change(first);
-  await until(f.auth, items => items.at(-1)?.connection?.accessToken === first.accessToken);
+  const switched = await until(f.auth, items => items.length === 4);
+  assert.deepEqual(switched.at(-1), { type: 'auth', connection: first, systemAiConnection: first });
   assert.equal((await f.read()).pid, initial.pid);
   assert.equal(f.connects, 0); assert.deepEqual(f.commands, []);
 });
@@ -124,7 +152,7 @@ test('a signed-out CLI Web session stays a guest and receives a later verified l
   assert.deepEqual(await f.auth(), []);
   assert.equal(f.connects, 1); assert.deepEqual(f.commands, []);
   f.change(first);
-  await until(f.auth, items => items.at(-1)?.connection?.accessToken === first.accessToken);
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0], { type: 'auth', connection: first, systemAiConnection: first });
 });
 
 test('restoring a saved Studio account does not block opening the CLI Web session', async t => {
@@ -133,7 +161,7 @@ test('restoring a saved Studio account does not block opening the CLI Web sessio
   const f = await fixture(t, { connection: null, restore: () => pending });
   assert.deepEqual(await f.auth(), []);
   restored(first);
-  assert.deepEqual((await until(f.auth, items => items.length === 1))[0].connection, first);
+  assert.deepEqual((await until(f.auth, items => items.length === 1))[0], { type: 'auth', connection: first, systemAiConnection: first });
   assert.equal(f.connects, 1); assert.deepEqual(f.commands, []);
 });
 
@@ -154,7 +182,7 @@ test('an untrusted workspace cannot start a CLI Web session or restore an accoun
 test('a headless runtime cannot inherit the account through an embedded lease of the same project', async t => {
   const f = await fixture(t, { embedded: false });
   const embedded = await f.start(true);
-  await until(embedded.auth, items => items.length === 1);
+  assert.deepEqual((await until(embedded.auth, items => items.length === 1))[0], { type: 'auth', connection: first, systemAiConnection: first });
   assert.notEqual((await embedded.read()).pid, (await f.read()).pid);
   f.change(second);
   await until(embedded.auth, items => items.at(-1)?.connection?.accessToken === second.accessToken);
@@ -171,6 +199,6 @@ test('recovering the aggregate uses the current account', async t => {
   assert.equal(await f.session.reconnect(), true);
   const restored = await until(f.read, value => value.messages.some(message => message.type === 'auth'));
   assert.notEqual(restored.pid, initial.pid);
-  assert.deepEqual(restored.messages.filter(message => message.type === 'auth').at(-1).connection, second);
+  assert.deepEqual(restored.messages.filter(message => message.type === 'auth').at(-1), { type: 'auth', connection: second, systemAiConnection: second });
   assert.equal(f.connects, 0);
 });
