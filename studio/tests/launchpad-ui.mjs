@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
 import { checkLibraryExperience } from './launchpad-library-ui.mjs';
+import { checkProfileRowInteractions } from './launchpad-profile-ui.mjs';
 import { storeFixture } from './launchpad-store-ui.mjs';
 
 // Render the desktop controller, creation dialog and Settings UI with isolated host services.
@@ -76,6 +77,14 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     {id:'request:second',inviteId:'second',title:'Erin',source:'studio',read:false},
     {id:'request:old',title:'Old request',source:'studio',read:true,avatarUrl:'data:image/png;base64,bm90IGFuIGltYWdl'},
     {id:'ordinary',title:'Ordinary Studio notice',source:'studio',read:false}];
+  const favorites = [{id:'saved',title:'Saved message',conversation:'group-team'}];
+  window.seedProfileRowCases = time => {
+    notices.push({id:'profile-direct',title:'A direct chat notice',source:'im',conversation:'solo',time,read:false},
+      {id:'profile-summary',title:'An IM summary',source:'im',time:time-1000,read:false});
+    favorites[0].time = time;
+    favorites.push({id:'saved-content',title:'Favorite without conversation',detail:'Stored message content'});
+    window.refreshSocial();
+  };
   window.addHostedImNotice = () => {
     notices.push({id:'im-unread:fixture',title:'2',source:'im',read:false});
     window.refreshSocial();
@@ -130,7 +139,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       if (window.socialGate) await window.socialGate;
       if (window.socialFailure === 'unsupported') return {unavailable:'unsupported'};
       if (window.socialFailure) throw new Error('Service unavailable');
-      return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices}) : {people:[],favorites:[],notices:[]};
+      return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites,notices}) : {people:[],favorites:[],notices:[]};
     }
     if (id === 'studio.hasUnreadNotices') return args[0] === account.scopeKey && account.scopeKey === 'a'.repeat(64) && notices.some(notice=>!notice.read);
     if (id === 'studio.getTrayImNotices') return args[0] === account.scopeKey ? window.imTrayFixture : undefined;
@@ -150,6 +159,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     if (id === 'studio.changeSocial') {
       const {action,id:key}=args[0];
       if(action==='remove') people.find(p=>p.id===key).relation='removed';
+      else if(action==='read') notices.find(n=>n.id===key).read=true;
+      else if(action==='unfavorite') favorites.splice(favorites.findIndex(f=>f.id===key),1);
       else if(action==='accept-invite'||action==='decline-invite'){
         const n=notices.find(n=>n.inviteId===key); if(!n) throw new Error('Invalid invitation');
         people.find(p=>p.name===n.title).relation=action==='accept-invite'?'friend':'removed'; delete n.inviteId; n.read=true;
@@ -298,7 +309,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,{writeText:async text=>window.actions.push(['copy',text])});
     window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
-    window.refreshSocial=()=>kernelCommand('StudioSocialChanged');
+    window.refreshSocial=()=>window.events['vscode:studioSocialChanged']({});
     window.closeProject=id=>{ if (id===undefined) windows.length=0; else windows.splice(windows.findIndex(w=>w.id===id),1); changed(); };
     window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
@@ -474,6 +485,7 @@ async function checkProjectDrop(page, language) {
 }
 
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
+const profileRowsOnly = process.argv.includes('--profile-rows-only');
 try {
   const project = await browser.newPage();
   await project.route('http://127.0.0.1:4321/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
@@ -563,6 +575,18 @@ try {
     assert.equal(await page.evaluate(() => typeof window.resumeHistory), 'function', 'history has not returned at handoff');
     await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
+    if (profileRowsOnly) {
+      const t = (en, zh) => language === 'zh-cn' ? zh : en;
+      await page.evaluate(() => { window.activateProjects(); if (window.enhanced) { window.prewarm(); } });
+      await page.getByRole('button', { name: t('Studio notifications', 'Studio 通知'), exact: true }).click();
+      await checkProfileRowInteractions({ page, profile: page.locator('#lp-page-profile'), t, enhanced,
+        screenshot: name => page.screenshot({ path: fileURLToPath(new URL(stem+'-'+name+'.png',proof)) }) });
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(`${stem}: profile list row navigation, menus, dates and unread indicators passed`);
+      continue;
+    }
     await checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop,
       screenshot: name => page.screenshot({path:fileURLToPath(new URL(stem+'-'+name+'.png',proof))}), loads:()=>loads });
     if (enhanced) {

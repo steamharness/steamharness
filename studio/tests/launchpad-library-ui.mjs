@@ -220,7 +220,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     await page.evaluate(()=>{window.imError='';window.socialFailure='unsupported';window.socialGate=new Promise(resolve=>window.resumeSocial=resolve);});
     await tab('profile').click(); const profile=home.locator('#lp-page-profile');
     await profile.getByRole('tab',{name:t('Recent chats','最近会话'),exact:true}).click();
-    const team=profile.locator('.lp-conversation-open').filter({hasText:'Team'});
+    const team=profile.locator('.lp-profile-entry').filter({hasText:'Team'});
     await team.locator('.lp-avatar img').evaluate(img=>img.decode());
     assert.equal(await team.locator('button').count(), 0);
     assert.equal(await team.locator('.lp-conversation-meta time').count(), 1);

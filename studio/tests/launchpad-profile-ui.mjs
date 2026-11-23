@@ -24,7 +24,7 @@ async function checkRecentToolbar({ page, panel, names, t, openWindow, screensho
   const noMatch = panel.getByText(t('No matching chats.', '没有匹配的会话。'), { exact: true });
   const viewport = page.viewportSize();
   const allNames = await names();
-  await checkBotBadge(panel.locator('.lp-conversation-open').filter({ hasText: 'Build Bot' }));
+  await checkBotBadge(panel.locator('.lp-profile-entry').filter({ hasText: 'Build Bot' }));
   for (const width of [viewport.width, 360]) {
     await page.setViewportSize({ ...viewport, width });
     const [heading, searchBox, createBox] = await Promise.all([panel.getByRole('heading').boundingBox(), search.boundingBox(), create.boundingBox()]);
@@ -145,8 +145,12 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   assert.equal(await oldRequest.locator('.lp-avatar').textContent(), 'O');
   await rows.filter({ hasText: 'Ordinary Studio notice' }).locator('.codicon-mail').waitFor();
   await screenshot('profile-notification-avatars');
-  const accept = button(rows.filter({ hasText: 'Dana' }), 'Accept', '接受'), decline = button(rows.filter({ hasText: 'Erin' }), 'Decline', '拒绝');
-  assert.equal(await button(oldRequest, 'Decline', '拒绝').count(), 0);
+  const requestDetails = page.getByRole('dialog', { name: t('Notification details', '通知详情') });
+  const accept = button(requestDetails, 'Accept', '接受');
+  await oldRequest.getByRole('button').press('Enter');
+  await requestDetails.waitFor();
+  assert.equal(await button(requestDetails, 'Decline', '拒绝').count(), 0);
+  await page.keyboard.press('Escape');
   const markAll = button(panel, 'Mark all as read', '全部已读');
   const bell = button(page, 'Studio notifications', 'Studio 通知');
   const latest = page.locator('.lp-latest-notice');
@@ -157,15 +161,16 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   await statusText(/Could not mark all|未能将所有通知标为已读/).waitFor();
   await page.evaluate(() => { window.markAllFails = false; });
   await markAll.click();
-  await panel.locator('li.lp-unread').first().waitFor({ state: 'detached' });
+  await panel.locator('.lp-notice-dot').first().waitFor({ state: 'detached' });
   await page.waitForFunction(() => !document.querySelector('.lp-has-unread'));
   assert.equal(await markAll.isDisabled(), true);
   assert.equal(await bell.isVisible(), true);
   await latest.getByText('Team: Review the plan').waitFor();
   assert.deepEqual(await actions(), [], 'marking notices does not respond to friend requests');
-  assert.ok(await accept.isVisible() && await decline.isVisible());
-  await accept.click(); await accept.waitFor({ state: 'detached' });
-  await decline.click(); await decline.waitFor({ state: 'detached' });
+  await rows.filter({ hasText: 'Dana' }).getByRole('button').click();
+  await accept.click(); await requestDetails.waitFor({ state: 'hidden' });
+  await rows.filter({ hasText: 'Erin' }).getByRole('button').press('Shift+F10');
+  await menu('Decline', '拒绝').click({ delay: 150 });
   assert.deepEqual(await actions(), [{ action: 'accept-invite', id: 'first' }, { action: 'decline-invite', id: 'second' }]);
   await friends.click(); await rows.filter({ hasText: 'Dana' }).waitFor(); assert.deepEqual(await names(), ['Alice', 'Build Bot', 'Dana', 'Unlisted group']);
   await screenshot('profile-friends');
@@ -190,4 +195,95 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   assert.deepEqual(await names(), []); assert.equal(await search.inputValue(), '');
   await page.evaluate(() => window.updateAccount({scopeKey:'a'.repeat(64)})); await panel.getByText('Dana',{exact:true}).waitFor();
   await favorites.click(); await panel.getByText('Saved message').waitFor(); assert.equal(await addFriend.isVisible(), false); await screenshot('profile');
+}
+
+export async function checkProfileRowInteractions({ page, profile, t, enhanced, screenshot }) {
+  const tab = (en, zh) => profile.getByRole('tab', { name: t(en, zh), exact: true });
+  const panel = profile.getByRole('tabpanel'), rows = panel.getByRole('listitem');
+  const row = text => rows.filter({ hasText: text });
+  const entry = text => row(text).getByRole('button');
+  const menu = (en, zh) => page.getByRole('menuitem', { name: t(en, zh), exact: true });
+  const unread = where => where.getByRole('img', { name: t('Unread', '未读'), exact: true });
+  const notice = page.getByRole('dialog', { name: t('Notification details', '通知详情') });
+  const preview = 'A long Studio error with an unbroken path_'.repeat(10);
+  const date = await page.evaluate(title => {
+    window.notify(title);
+    const record = window.localNotices().find(n => n.title === title);
+    return new Date(Number(record.id.split('-')[0])).toISOString();
+  }, preview);
+  const local = row('A long Studio error');
+  await unread(local).waitFor();
+  assert.equal(await local.locator('time').getAttribute('datetime'), date, 'local history recovers its original time from the stored ID');
+  assert.equal(await local.getByRole('button').count(), 1);
+  const viewport = page.viewportSize();
+  for (const width of [viewport.width, 360]) {
+    await page.setViewportSize({ ...viewport, width });
+    const [text, time, dot] = await Promise.all([local.locator('strong').boundingBox(), local.locator('time').boundingBox(), unread(local).boundingBox()]);
+    assert.ok(text && time && dot && text.x + text.width <= time.x && time.x + time.width <= dot.x && dot.x + dot.width <= width);
+    assert.ok(await local.locator('strong').evaluate(el => el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis'));
+    await screenshot(`profile-notifications-${width}`);
+  }
+  await page.setViewportSize(viewport);
+  await entry('A long Studio error').press('Enter');
+  await notice.getByText(preview.trim(), { exact: true }).waitFor();
+  await local.locator('.lp-notice-dot').waitFor({ state: 'detached' });
+  await page.keyboard.press('Escape');
+  assert.ok(await entry('A long Studio error').evaluate(el => el === document.activeElement), 'closing after a read repaint restores row focus');
+  await page.evaluate(() => window.notify('Read from the context menu'));
+  const mark = row('Read from the context menu'); await unread(mark).waitFor();
+  await mark.getByRole('button').click({ button: 'right' });
+  await menu('Mark as read', '标为已读').click({ delay: 150 });
+  await unread(mark).waitFor({ state: 'detached' });
+  assert.equal(await notice.isVisible(), false);
+  if (!enhanced) return;
+
+  const time = 1741000000000;
+  await page.evaluate(value => window.seedProfileRowCases(value), time);
+  const direct = row('A direct chat notice'), summary = row('An IM summary');
+  await unread(direct).waitFor();
+  assert.equal(await direct.locator('time').getAttribute('datetime'), new Date(time).toISOString());
+  assert.equal(await row('Old request').locator('time').count(), 0, 'a notice without a timestamp does not acquire a fake one');
+  assert.equal(await direct.getByRole('button').count(), 1);
+  assert.equal(await summary.getByRole('button').count(), 1);
+  const openChat = async (control, id) => {
+    const opening = page.waitForEvent('popup'); await control.click();
+    const popup = await opening;
+    await popup.frameLocator('iframe').frameLocator('#project-frame').getByText(id, { exact: true }).waitFor();
+    await popup.close();
+  };
+  await openChat(direct.getByRole('button'), 'solo');
+  await unread(direct).waitFor({ state: 'detached' });
+  await summary.getByRole('button').click();
+  assert.equal(await tab('Recent chats', '最近会话').getAttribute('aria-selected'), 'true');
+  await entry('Team').press('Shift+F10'); await menu('Remove star', '取消星标').waitFor(); await page.keyboard.press('Escape');
+  await tab('Notifications', '通知').click(); await unread(summary).waitFor({ state: 'detached' });
+
+  const request = entry('Erin'); await request.click();
+  await notice.getByRole('button', { name: t('Accept', '接受'), exact: true }).waitFor();
+  assert.ok(await notice.getByRole('button', { name: t('Decline', '拒绝'), exact: true }).isVisible());
+  assert.equal(await page.evaluate(() => window.actions.filter(([id, action]) => id === 'studio.changeSocial' && /-invite$/.test(action.action)).length), 0);
+  await page.keyboard.press('Escape');
+  await panel.getByRole('button', { name: t('Mark all as read', '全部已读'), exact: true }).click();
+  await panel.locator('.lp-notice-dot').first().waitFor({ state: 'detached' });
+  await entry('Dana').click();
+  await notice.getByRole('button', { name: t('Accept', '接受'), exact: true }).click();
+  await request.press('Shift+F10'); await menu('Decline', '拒绝').click({ delay: 150 });
+  assert.deepEqual(await page.evaluate(() => window.actions.filter(([id, action]) => id === 'studio.changeSocial' && /-invite$/.test(action.action)).map(([, action]) => action)), [
+    { action: 'accept-invite', id: 'first' }, { action: 'decline-invite', id: 'second' },
+  ]);
+
+  await tab('Favorites', '收藏').click();
+  const saved = row('Saved message');
+  assert.equal(await saved.locator('time').getAttribute('datetime'), new Date(time).toISOString());
+  assert.equal(await saved.getByRole('button').count(), 1);
+  await openChat(saved.getByRole('button'), 'group-team');
+  const stored = entry('Favorite without conversation'); await stored.press('Space');
+  await page.getByRole('dialog', { name: t('Favorite details', '收藏详情') }).getByText('Stored message content').waitFor();
+  await page.keyboard.press('Escape');
+  await saved.getByRole('button').press('Shift+F10');
+  await menu('Remove from favorites', '取消收藏').click({ delay: 150 });
+  await saved.waitFor({ state: 'detached' }); await stored.waitFor();
+  await tab('Contacts & friends', '通讯录与好友').click();
+  await entry('Dana').waitFor();
+  await entry('Alice').click({ button: 'right' }); await menu('View friend info', '查看好友资料').waitFor(); await page.keyboard.press('Escape');
 }
