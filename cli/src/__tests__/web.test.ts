@@ -913,7 +913,57 @@ describe('steamharness web', () => {
     unavailable = false; revoked = true;
     expect((await post({ type: 'verify' })).ok).toBe(true);
     await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'expired' }));
-    expect(stop).toHaveBeenCalledOnce();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('attaches the Studio account without cancelling idle Agent history', async () => {
+    const { app, cookie, runtime } = await fixture({ surface: 'editor', platform: true });
+    app.project.conversation = { engine: 'agent', durable: { enabled: true }, recovery: { enabled: true } };
+    const { current } = app.controller!;
+    current.messages.push({ role: 'assistant', content: 'Previous answer', status: 'success' });
+    current.agent = { version: 1, ownerId: 'previous-owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
+      configuration: { version: 0, provider: 'fixture', model: 'model', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
+      tasks: [], history: [], contexts: [], receipts: [], records: [], usage: [], turns: [], conversations: [{ id: 1, title: 'Main', background: false }] };
+    await app.controller!.persist();
+    vi.mocked(runtime.cancelConversation).mockRejectedValue(new Error('Could not open saved Agent state'));
+    const realFetch = globalThis.fetch;
+    const serverUrl = 'https://steamharness.test';
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input) === `${serverUrl}/api/auth/me`
+      ? Promise.resolve(Response.json({ errCode: 0, data: { profile: { userId: 'studio', email: null, displayName: 'Studio account' } } }))
+      : realFetch(input, options));
+
+    await app.setHostConnection({ serverUrl, accessToken: 'studio-token' });
+
+    expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Studio account' } });
+    expect(runtime.cancelConversation).not.toHaveBeenCalled();
+    expect(app.controller!.sessions).toContainEqual(expect.objectContaining({ id: current.id, messages: current.messages, agent: current.agent }));
+  });
+
+  it('reports a runtime cleanup failure and stops the live task before retrying the same Studio account', async () => {
+    const { app, cookie, post, runtime } = await fixture({ surface: 'editor', platform: true });
+    let finish!: (report: Report) => void;
+    vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(runtime.cancel).mockImplementation(() => finish({ status: 'failed' }));
+    const stop = vi.spyOn(app.controller!, 'stop').mockRejectedValueOnce(new Error('Could not stop the previous run'));
+    const realFetch = globalThis.fetch;
+    const serverUrl = 'https://steamharness.test';
+    const verify = vi.fn(() => Response.json({ errCode: 0, data: { profile: { userId: 'studio', email: null, displayName: 'Studio account' } } }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => String(input) === `${serverUrl}/api/auth/me` ? verify() : realFetch(input, options));
+    const connection = { serverUrl, accessToken: 'studio-token' };
+
+    try {
+      expect((await post({ type: 'send', text: 'Running before sign-in', params: {}, attachments: [] })).status).toBe(200);
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      await app.setHostConnection(connection);
+      expect(await accountState(app, cookie)).toMatchObject({ status: 'error', error: t('Sign-in failed.') });
+      expect(verify).not.toHaveBeenCalled();
+
+      await app.setHostConnection(connection);
+      expect(stop).toHaveBeenCalledTimes(2);
+      expect(runtime.cancel).toHaveBeenCalledOnce();
+      expect(verify).toHaveBeenCalledOnce();
+      expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Studio account' } });
+    } finally { finish?.({ status: 'failed' }); await app.controller!.idle(); }
   });
 
   it('an older host verification cannot replace a newer injected account', async () => {

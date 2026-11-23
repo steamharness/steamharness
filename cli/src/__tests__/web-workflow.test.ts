@@ -275,10 +275,12 @@ describe('SteamHarness Web routing and history', () => {
     expect(JSON.parse(exported.messages[0].content).params.apiKey).toBe('project-key');
   });
 
-  it('keeps the newest authenticated account when an older identity is still stopping a task', async () => {
+  it.each([false, true])('keeps the newest authenticated account when an older stop finishes (fails: %s)', async fails => {
     const { app, state } = await service();
     let release!: () => void;
-    vi.spyOn(app.projectController!, 'stop').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(app.projectController!, 'stop').mockImplementationOnce(() => new Promise((resolve, reject) => {
+      release = () => fails ? reject(new Error('Old task failed to stop')) : resolve();
+    }));
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
       if (!String(url).startsWith('https://steamharness.test')) { return realFetch(url, options); }

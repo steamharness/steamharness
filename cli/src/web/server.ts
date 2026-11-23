@@ -27,7 +27,7 @@ import { KanbanController } from './kanban-controller';
 import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
 import { createWebRuntime, cliRoot, WEB_HOST_ENV, type WebConnection } from './runtime';
-import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
+import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, messageSettled, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
 import { sharedWebLogin, signOutCliAccount } from './account-auth';
@@ -128,7 +128,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const runtimeConnection = () => ({ ...connection, aiServerUrl: aiConnection?.serverUrl, aiAccessToken: aiConnection?.accessToken });
   let account: AccountState = { status: 'signed-out', serverUrl: defaultServerUrl(), revision: 0 };
   let signedOut = false;
-  let authIdentity = '';
+  let authIdentity: string | undefined = '';
   const browserLogin = sharedWebLogin(credentials ?? options);
   const unsubscribeLogin = browserLogin.subscribe(error => {
     if (hostManaged || !projectOnline) return;
@@ -427,7 +427,16 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
   const stopForAuthentication = async () => {
-    for (const session of conversationController?.sessions ?? []) { await conversationController!.stop(session); }
+    if (conversationController) {
+      const executing = conversationController.executingIds;
+      for (const session of conversationController.sessions) {
+        // Stop only local work. Stopping idle or read-only history can reopen
+        // saved Agent state or isolate a fork owned by another window.
+        const pending = ownership?.owns(session.id) && (sessionRunning(session) || session.agentCommands?.length
+          || session.messages.some(message => !messageSettled(message) || message.recovering));
+        if (executing.has(session.id) || pending) await conversationController.stop(session);
+      }
+    }
     if (projectController) { await projectController.stop('Workflow login changed.'); }
   };
   const resetRuntimeStorage = () => {
@@ -466,6 +475,23 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     }
     })().finally(() => { if (storageInitialization?.promise === initializing) storageInitialization = undefined; });
     storageInitialization = { epoch, promise: initializing }; return initializing;
+  };
+  const prepareRuntimeForAuthentication = async (epoch: number, resetStorage: boolean): Promise<boolean> => {
+    try {
+      await stopForAuthentication();
+      if (epoch !== authEpoch) return false;
+      if (resetStorage) await resetRuntimeStorage();
+      return epoch === authEpoch;
+    } catch {
+      if (epoch === authEpoch) {
+        // Even the same credentials must retry the unfinished runtime transition.
+        authIdentity = undefined;
+        account = { ...account, status: 'error', user: undefined, expiresAt: undefined, error: t('Sign-in failed.'), revision: account.revision + 1 };
+        process.stderr.write('Workflow web authentication failed while updating local runtime state.\n');
+        broadcast();
+      }
+      return false;
+    }
   };
   const refreshAuth = async (force = false) => {
     if ((browserLogin.busy) && !force) { return; }
@@ -510,9 +536,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       projectActions?.invalidate();
       if (authenticationInitialized) {
         kanbanController?.authenticationChanged();
-        await stopForAuthentication();
-        if (epoch !== authEpoch) return;
-        await resetRuntimeStorage();
+        if (!await prepareRuntimeForAuthentication(epoch, true)) return;
       }
       if (epoch !== authEpoch) { return; }
     }
@@ -540,7 +564,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         connection = undefined;
         resources.clear();
         if (wasAuthenticated) kanbanController?.authenticationChanged();
-        if (!changed && wasAuthenticated) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
+        if (!changed && wasAuthenticated) {
+          authRevision++; parameterStates.clear(); projectActions?.invalidate();
+          if (!await prepareRuntimeForAuthentication(epoch, false)) return;
+        }
         if (epoch !== authEpoch) { return; }
         account = { ...account, status: unauthorized ? 'expired' : 'error', user: undefined, expiresAt: undefined, error: String((error as Error).message), revision: account.revision + 1 };
       }
@@ -1235,7 +1262,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await kanbanController?.setWebAppBinding(value[project.entryId]);
     },
     setHostConnection: async (value: WebConnection | undefined, ai?: PlatformConnections['ai']) => {
-      if (hostManaged && JSON.stringify([value, ai]) === JSON.stringify([hostConnection, hostAiConnection])) { return; }
+      if (hostManaged && authIdentity !== undefined && JSON.stringify([value, ai]) === JSON.stringify([hostConnection, hostAiConnection])) { return; }
       const projectChanged = !hostManaged || value?.serverUrl !== hostConnection?.serverUrl || value?.accessToken !== hostConnection?.accessToken;
       if (projectChanged) { authEpoch++; authCheck?.abort(); resources.clear(); }
       hostConnection = value;
