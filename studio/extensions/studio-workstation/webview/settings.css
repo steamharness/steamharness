@@ -185,9 +185,10 @@
 .settings-model-provider > small::before { content: '·'; margin-right: 8px; }
 .settings-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-model-row .settings-model-actions { justify-content: flex-end; flex-wrap: nowrap; gap: 2px; }
-.settings-model-row .icon-button { width: 28px; height: 28px; min-height: 28px; flex-basis: 28px; }
+.settings-model-row .icon-button { width: 28px; height: 28px; min-height: 28px; flex: 0 0 28px; }
 .settings-model-delete:hover:not(:disabled) { color: var(--vscode-errorForeground); }
-.settings-model-confirm.icon-button { width: auto; height: auto; flex: 0 1 auto; padding: 4px 6px; color: var(--vscode-errorForeground); font-size: 11px; }
+/* Keep the armed delete label on one line: the actions cell scrolls instead of stacking the text. */
+.settings-model-confirm.icon-button { width: auto; height: auto; flex: 0 0 auto; padding: 4px 6px; color: var(--vscode-errorForeground); font-size: 11px; white-space: nowrap; }
 .settings-model-dialog { width: min(640px, calc(100vw - 32px)); max-width: none; max-height: min(760px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-foreground); box-shadow: 0 16px 64px var(--vscode-widget-shadow, #0005); font: inherit; }
 .settings-model-dialog::backdrop { background: #0007; }
 .settings-model-form { display: flex; flex-direction: column; gap: 0; max-width: none; max-height: inherit; min-width: 0; margin: 0; }

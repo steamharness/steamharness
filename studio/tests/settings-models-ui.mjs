@@ -164,7 +164,12 @@ try {
     await viewport.evaluate(element => { element.scrollLeft = element.scrollWidth; });
     const remove = pane.locator('[data-model-id="long-model"]').getByRole('button', { name: zh ? '删除' : 'Delete', exact: true });
     const beforeDelete = (await last()).requestId; await remove.click(); assert.equal((await last()).requestId, beforeDelete);
-    await pane.locator('[data-model-id="long-model"]').getByRole('button', { name: zh ? '确认删除' : 'Confirm delete', exact: true }).click();
+    const armedRow = pane.locator('[data-model-id="long-model"]');
+    const confirm = armedRow.getByRole('button', { name: zh ? '确认删除' : 'Confirm delete', exact: true });
+    const confirmBox = await confirm.boundingBox();
+    assert.ok(confirmBox.height <= 30, 'The armed delete label stays on one line instead of stacking in the actions column');
+    assert.ok((await armedRow.boundingBox()).height <= 40, 'The armed delete label does not grow the row');
+    await confirm.click();
     const deleted = await last(); assert.equal(deleted.action, 'delete');
     state = { ...state, revision: 5, entries: state.entries.filter(model => model.id !== long.id) };
     await send({ type: 'settings-models-result', requestId: deleted.requestId, state });
