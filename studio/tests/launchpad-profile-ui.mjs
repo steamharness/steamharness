@@ -3,12 +3,17 @@ import assert from 'node:assert/strict';
 async function checkBotBadge(row) {
   await row.locator('.lp-avatar img').evaluate(img => img.decode());
   const badge = row.locator('.lp-social-badge');
-  assert.deepEqual(await badge.evaluate(el => ({
-    label: el.textContent,
-    image: !!el.querySelector('img'),
-    neutralIcon: !!el.querySelector('.codicon-robot') &&
-      getComputedStyle(el.querySelector('.codicon-robot')).color === getComputedStyle(el).color,
-  })), { label: 'Bot', image: false, neutralIcon: true });
+  assert.deepEqual(await badge.evaluate(el => {
+    const mark = el.querySelector('.lp-social-badge-icon');
+    const style = mark && getComputedStyle(mark);
+    return {
+      label: el.textContent,
+      image: !!el.querySelector('img'),
+      glyph: !!style?.maskImage.includes('data:image/svg+xml,'),
+      neutral: style?.backgroundColor === getComputedStyle(el).color,
+      decorative: mark?.getAttribute('aria-hidden') === 'true',
+    };
+  }), { label: 'Bot', image: false, glyph: true, neutral: true, decorative: true });
 }
 
 async function checkRecentToolbar({ page, panel, names, t, openWindow, screenshot }) {

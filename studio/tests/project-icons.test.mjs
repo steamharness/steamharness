@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 import { runInNewContext } from 'node:vm';
 import { applyRecentMetadata, projectTypeIcons, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
-import { studioProjectCardIcon, studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
+import { studioProjectCardIcon, studioProjectGlyphMask, studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
@@ -73,6 +73,20 @@ test('project identity surfaces share the Lucide card glyphs instead of legacy c
   assert.match(glyphs.kanban, /M12 13.5V19/);
   assert.equal(studioProjectCardIcon('__proto__'), undefined);
   assert.equal(studioProjectCardIcon('aggregate'), undefined);
+});
+
+test('the monochrome Bot mask uses the project card glyph without its tile', t => {
+  const svg = uri => {
+    const { window } = new JSDOM(decodeURIComponent(uri.split(',')[1]), { contentType: 'image/svg+xml' });
+    t.after(() => window.close());
+    return window.document.documentElement;
+  };
+  const mask = svg(studioProjectGlyphMask('bot'));
+  const glyph = svg(studioProjectCardIcon('bot')).querySelector('g');
+  assert.equal(mask.getAttribute('viewBox'), '0 0 24 24');
+  assert.equal(mask.getAttribute('fill'), 'none');
+  assert.deepEqual(Array.from(mask.children, node => node.outerHTML), Array.from(glyph.children, node => node.outerHTML));
+  assert.equal(studioProjectGlyphMask('__proto__'), undefined);
 });
 
 test('a Bot workspace without an avatar uses the same project card icon as a Bot project', async t => {

@@ -1,0 +1,59 @@
+diff --git a/src/vs/workbench/common/studioProjectIcons.ts b/src/vs/workbench/common/studioProjectIcons.ts
+index 471c714bb8d7a65524fe99a9bee587c8c4119952..c14f14ac9a6f1561c26ccd0ae3d2af49348c9a46 100644
+--- a/src/vs/workbench/common/studioProjectIcons.ts
++++ b/src/vs/workbench/common/studioProjectIcons.ts
+@@ -37,3 +37,10 @@ export function studioProjectCardIcon(projectType: string | undefined): string |
+ 	if (!glyph) { return undefined; }
+ 	return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="${glyph.background}"/><g transform="translate(14 14) scale(1.5)" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${glyph.paths.join('')}</g></svg>`)}`;
+ }
++
++/** The same project glyph without its colored tile, for a theme-colored mask. */
++export function studioProjectGlyphMask(projectType: string): string | undefined {
++	const glyph = projectCardGlyphs[projectType];
++	if (!glyph) { return undefined; }
++	return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph.paths.join('')}</svg>`)}`;
++}
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index cb07f6b120dcbfd7dd1284521152192d304a91e1..55db9df7697936d1896de0f3df160144e6f5dfa9 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -190,7 +190,7 @@
+ .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
+ .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
+ .lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px; color: var(--lp-muted); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
+-.lp-social-badge .codicon { font-size: 13px; }
++.lp-social-badge-icon { width: 13px; height: 13px; flex: none; background-color: currentColor; mask: center / contain no-repeat; }
+ .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
+ .lp-conversation-row { border-bottom: 1px solid var(--lp-line); }
+ .studio-launchpad .lp-conversation-open { display: flex; gap: 10px; width: 100%; min-height: 56px; padding: 7px 8px; justify-content: flex-start; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+index 4b874b9700bb2b130d249a62969d81733ce19866..781e5aa48fadd947797fda7e0ac59c05e450c8cf 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadProfile.ts
+@@ -8,9 +8,12 @@ import { IAction, Separator, toAction } from '../../base/common/actions.js';
+ import { RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
++import { studioProjectGlyphMask } from '../common/studioProjectIcons.js';
+ import { picture } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel, LaunchpadPicker } from './studioLaunchpadPicker.js';
+ 
++const botBadgeMask = studioProjectGlyphMask('bot');
++
+ export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
+ interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
+ interface ConversationState { id: string; peerId?: string; unread: number; time?: number; pinned?: boolean; starred?: boolean; muted?: boolean }
+@@ -249,7 +252,12 @@ export class LaunchpadProfile extends Disposable {
+ 		};
+ 		if (identity.badge) {
+ 			const badge = element('span', 'lp-social-badge');
+-			if (identity.badge === 'Bot') { badge.append(icon('robot')); }
++			if (identity.badge === 'Bot' && botBadgeMask) {
++				const mark = element('span', 'lp-social-badge-icon');
++				mark.setAttribute('aria-hidden', 'true');
++				mark.style.maskImage = `url("${botBadgeMask}")`;
++				badge.append(mark);
++			}
+ 			badge.append(identity.badge); badges.append(badge);
+ 		}
+ 		if (group) { statusIcon('organization', t('Group chat', '群聊')); }
