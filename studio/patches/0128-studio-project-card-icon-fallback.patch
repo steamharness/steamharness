@@ -1,0 +1,14 @@
+diff --git a/src/vs/workbench/browser/studioProjectDetails.ts b/src/vs/workbench/browser/studioProjectDetails.ts
+index ef1ffa56d7dc9c9f204ba541c59d4ebf3b87853d..2aa01df467c4f4cdd8b8da655300ba1f482d4028 100644
+--- a/src/vs/workbench/browser/studioProjectDetails.ts
++++ b/src/vs/workbench/browser/studioProjectDetails.ts
+@@ -39,7 +39,8 @@ export function glyph(p: StudioProjectDetails): string {
+ }
+ 
+ export function projectMark(p: StudioProjectDetails): HTMLElement {
+-	return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p));
++	const source = p.avatarUrl?.startsWith('data:image/') ? p.avatarUrl : studioProjectCardIcon(p.projectType);
++	return source ? picture(source) : icon(glyph(p));
+ }
+ 
+ export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {

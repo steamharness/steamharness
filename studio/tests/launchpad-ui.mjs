@@ -86,7 +86,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     if (id === 'studio.listFolderBotActions') {
       if (args[0].kind!=='folder' || args[0].name!=='Imported folder') return [];
       if (window.holdFolderActions) await new Promise(resolve=>window.resumeFolderActions=resolve);
-      return [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…',icon:'hubot'}];
+      return [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…'}];
     }
     if (id === 'studio.runFolderBotAction' && args[1] === 'create-folder-bot') {
       const name = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+name+'.code-workspace').toString();

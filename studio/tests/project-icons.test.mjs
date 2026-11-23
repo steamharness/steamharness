@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import { JSDOM } from 'jsdom';
 import { runInNewContext } from 'node:vm';
 import { applyRecentMetadata, projectTypeIcons, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
 import { studioProjectCardIcon, studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/studioProjectIcons.ts';
@@ -72,6 +73,22 @@ test('project identity surfaces share the Lucide card glyphs instead of legacy c
   assert.match(glyphs.kanban, /M12 13.5V19/);
   assert.equal(studioProjectCardIcon('__proto__'), undefined);
   assert.equal(studioProjectCardIcon('aggregate'), undefined);
+});
+
+test('a Bot workspace without an avatar uses the same project card icon as a Bot project', async t => {
+  const bundle = await build({ entryPoints: ['upstream/vscode/src/vs/workbench/browser/studioProjectDetails.ts'], bundle: true,
+    format: 'iife', globalName: 'studioDetails', loader: { '.css': 'empty' }, write: false });
+  const { window } = new JSDOM('', { runScripts: 'outside-only' });
+  t.after(() => window.close());
+  const { projectMark, projectDetails } = window.eval(`${bundle.outputFiles[0].text}\nstudioDetails`);
+  const bot = { kind: 'workspace', projectType: 'bot', uri: 'file:///bot.code-workspace', name: 'Bot', path: '/folder' };
+  const standardAvatar = studioProjectCardIcon('bot');
+  assert.equal(projectMark(bot).getAttribute('src'), standardAvatar);
+  assert.equal(projectDetails(bot, en => en, { actions: [] }).querySelector('.lp-detail-mark img')?.getAttribute('src'), standardAvatar);
+  const customAvatar = studioProjectCardIcon('workflow');
+  assert.equal(projectMark({ ...bot, avatarUrl: customAvatar }).getAttribute('src'), customAvatar);
+  assert.ok(projectMark({ kind: 'folder' }).classList.contains('codicon-folder'));
+  assert.ok(projectMark({ kind: 'workspace' }).classList.contains('codicon-project'));
 });
 
 test('the kernel and shared project avatars stay byte-identical for every project type', async () => {
