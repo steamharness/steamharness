@@ -1026,7 +1026,9 @@ Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, c
 
 `onCompleted({ requestId, output }, context)` 接收成功结果的只读快照，返回 void。按 requestId 幂等保存业务回执，不修改输出或再次运行模型。Core 持久化结果与通知状态；通知失败单独报告，恢复只补通知。持久宿主的后续消息也经过输入钩子与完成通知。`conversationId`、会话历史及 `context.entries.conversations` 继续表示会话。
 
-独立 Workflow 需要 Agent 节点时仍可使用 `steamharness.createAgentNode`，脚本嵌入使用 `steamharness.createAgent`；这些能力不创建另一种 Bot 执行协议。Bot 项目示例见 `assets/examples/bot/index.ts`。
+独立 Workflow 用 `steamharness.createAgentNode` 创建节点，再在 `run(input, context)` 里调用 `await steamharness.runStreamNode(node, input, context)`。节点发送标准输出项，返回的 `output` 是 `AgentOutputPayload`，可继续处理 `output.items` 或直接作为入口结果。需要工具时在 Workflow 的 `defineEntrypoint({ tools: [...] })` 中声明权限，再在节点选项中允许对应工具。
+
+普通 Workflow 不开启 `context.conversation`，也不需要改成 Bot。`plan` 模式返回计划，不开放 `ask_user` 或计划审批续跑；业务输入用 `createUserInputNode` 单独收集。无节点上下文的脚本用 `steamharness.createAgent`。Bot 项目示例见 `assets/examples/bot/index.ts`。
 
 输入字段（`AgentInput`）：`prompt`、`images`、`workdir`、`allowedDirectories`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`agent`、`permissionPolicy`、`contextWindow`、`compact`、`hostInput`、`requestId`、`planResume`、`askResume`。
 
@@ -1036,7 +1038,7 @@ Bot 的最终答案 item 固定为 `agent-answer`；OpenAI 适配器使用相同
 - `systemPrompt` 是本轮的系统提示词，逐轮生效并覆盖 `AgentProjectOptions.systemPrompt`。plan 模式下 plan 提示词仍在前，这段内容追加在后，所以 plan 的只读约束不能靠它改掉。
 - `images` 取 `{ data, mimeType }`（`data` 为 base64），会随 prompt 一起真正发给模型。
 - `effort` 取 `off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`（也接受 `ultra`，等同 `max`）；超出模型支持范围时自动收敛到该模型支持的档位。**空字符串表示「交给模型决定」**，pi 用「不指定任何档位」来表达它——也就是 `off`：OpenAI 类端点因此收不到 `reasoningEffort`，与内置 OpenCode 项目的「Model default」一致；对 Anthropic 这一类则会把 `thinking` 显式关掉，想保留推理就挑一个具体档位。完全不传（`undefined`）才表示「没有选择」，本轮沿用运行时/项目自己的档位，无法识别的档位名同样回落到它。
-- `agent` 取 `"build"`（默认，直接执行）或 `"plan"`（只调研并给出计划）。plan 模式结束后运行会暂停，通过 `user_input_required` 请求批准；批准后按同一 `requestId` 恢复执行。
+- `agent` 取 `"build"`（默认，直接执行）或 `"plan"`（只调研并给出计划）。在启用会话且宿主提供用户输入时，plan 模式结束后通过 `user_input_required` 请求批准；批准后按原运行恢复执行。
   plan 模式下这一轮的正文**就是计划**，因此它只渲染成一条 `Plan` 行，不会再出现在主回答正文里（两处都渲染会让同一段文字显示两遍）；plan 轮的 conversation 消息取这条 Plan 行的内容。
   plan 轮的批准请求与内置 OpenCode 项目一致：一个 `decision` 单选（按计划执行 / 先不执行，各自带说明）加一个 `instructions` 文本框（补充要求，可选）。批准后会暂停并在**同一会话**里以 build 模式带着计划原文继续执行——计划会随恢复提示一起重发，中途发生压缩也不会丢。**拒绝不会结束会话**：它保持 plan 模式，把补充要求与这份计划一起交回计划 agent 修订一版（因此不会改动任何文件，但会再产生一轮模型调用）。待批准的计划存在 conversation value `agent.pendingPlanApproval` 里，恢复时按它取回。
 - `permissionPolicy` 取 `"inherit"`、`"read-only"`、`"workspace"`（省略时默认）或 `"auto"`；`inherit` 按上文优先级解析用户快照，底层仍只有三个具体权限：`read-only` 隐藏写入与命令工具；`workspace` 在工作区内自动批准编辑和命令，读写与检索类工具（`read` / `write` / `edit` / `ls` / `grep` / `find`）只能落在工作区与 `allowedDirectories` 内；`auto` 批准一切未被显式拒绝的权限，包括工作区之外的路径。**三者都不会为内置工具弹出审批**——内置工具声明为 `autoApprove: true`，策略只决定「暴露哪些工具」和「工具能走多远」，宿主审批门只对宿主自己声明的工具生效。
@@ -1316,6 +1318,8 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 默认 `createAgentProjectParams()` 与小助手自动继承同一份契约，提供 `id:"model", summary:["model"]` 与 `id:"effort", summary:["effort"]` 两个 Quick 分组。模型菜单按来源分组，底部“添加模型”打开用户设置；effort 独立选择，不改变模型。自定义项目可继续组合任意合法 Quick 字段。
 
 `UserSettings.agent.models` 是有序的 `UserAgentModel` 列表，公共字段为 `id/name/model`；系统项保存 `{source:"system",credentialId}`，三方项保存 `{source:"third-party",apiKind,baseUrl,apiKey}`。注入时校验、复制并冻结。默认和 `modelSource:"user-settings"` 按宿主能力选源：Studio 提供列表（空数组也算），只用设置模型，项目配置隐藏 AI；独立 CLI Web 省略此属性，自动退化为项目模型。`modelSource:"project"` 始终只用项目模型，添加保留系统／第三方两种来源。不合并或引用设置与项目模型；system-only 限制及显式 endpoint/models/resolvedModel 语义保持。
+
+给项目档位配置系统 AI 时，Studio Control 的 `get_configurations` 普通查询可加 `includeModelCatalog:true`。使用目标聚合项目与 `entryId`，从返回的 `systemModelCatalog.entries` 选择订阅及模型；订阅项 `id` 对应配置的 `credentialId`，模型子项 `id` 对应 `model`。只把引用追加到目标档位的 `STEAMHARNESS_AGENT_MODELS`，用 `manage_configurations` 按 `revision` 保存并读回。不要从其它项目复制模型配置；目录不提供 API Key。
 
 `createAgentProjectParams()` 与 `{modelSource:"user-settings"}` 生成 `userSetting:{key:"agent.model",mode:"default"}`；Studio 保留绑定及空覆盖标记，添加模型打开设置；CLI Web 回退时显示项目控件并打开项目配置。显式 `{modelSource:"project"}` 始终使用项目控件。参数列表、默认值、配置字段及实际请求使用同一来源。模型 ID `inherit` 是普通 ID。直接 Agent 将连接与继承权限冻结到同一创建快照；新任务采用新设置。项目的 `allowThirdParty:false` 同时约束两种模式。
 

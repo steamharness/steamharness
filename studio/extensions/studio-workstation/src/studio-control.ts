@@ -7,6 +7,8 @@ import { readProjectDocument } from './project-catalog';
 import { selectProjectEntry } from '@steamharness/project-manifest';
 import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import type { StudioControlPermissionPolicy } from './studio-control-bridge';
+import type { AgentModelCatalogEntry } from './user-model-types';
+import { AGENT_MODELS_CONFIGURATION_KEY } from '../../../../shared/project-configuration/agent-models';
 import { t } from './localization';
 
 const views: Record<string, string> = {
@@ -30,6 +32,9 @@ export function studioControlWorkspaceAvailable(scope: NonNullable<Project['assi
 
 export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, _context: Pick<vscode.ExtensionContext, 'globalState'>, services?: {
   configuration(input: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
+  systemModelCatalog?(signal: AbortSignal): Promise<{
+    entries: AgentModelCatalogEntry[]; unavailable?: boolean; defaultModel?: { credentialId: string; model: string };
+  }>;
   kanban?(input: { projectDir: string; projectId: string; entryId: string; call?: unknown }, signal: AbortSignal): Promise<unknown>;
 }) {
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
@@ -55,7 +60,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return candidate;
     };
     const keys: Record<string, string[]> = {
-      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'entryId', 'target', 'id', 'export', 'preview'],
+      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'entryId', 'target', 'id', 'export', 'preview', 'includeModelCatalog'],
       'studio.configurations.manage': ['storage', 'projectDir', 'projectId', 'entryId', 'target', 'call'],
       'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'entryId', 'target'],
       'studio.state.get': [], 'studio.entries.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
@@ -99,6 +104,8 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         if(input.storage==='local'&&requestedTarget!==undefined)throw new Error(t('Use target only for Server configurations.'));
         if(input.preview!==undefined&&typeof input.preview!=='boolean'||input.preview===true&&input.export===true)throw new Error(t('Invalid configuration action.'));
         if(input.export!==undefined&&typeof input.export!=='boolean')throw new Error(t('Invalid configuration action.'));
+        if (input.includeModelCatalog !== undefined && (typeof input.includeModelCatalog !== 'boolean'
+          || input.includeModelCatalog && (input.export === true || input.preview === true))) throw new Error(t('Invalid configuration action.'));
         const entryId = requiredString('entryId');
         if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new Error(t('Invalid project entry identifier.'));
         const target: Record<string,unknown> = {storage:input.storage,entryId,...(requestedTarget?{target:requestedTarget}:{})};
@@ -138,7 +145,18 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           if(['get','export'].includes(String(action)))throw new Error(t('Use the configuration query tool for reads.'));
           if(!['create','duplicate','rename','save','select','delete','field.save','field.delete','import','publication.save','publication.preview'].includes(String(action)) || !Number.isSafeInteger(revision) || Number(revision)<0)throw new Error(t('Invalid configuration action.'));
         }
-        return services.configuration({...target,call},signal);
+        const state = await services.configuration({...target,call},signal);
+        if (input.includeModelCatalog !== true || !state || typeof state !== 'object' || !('fields' in state)
+          || !Array.isArray(state.fields) || !state.fields.some(field => field?.name === AGENT_MODELS_CONFIGURATION_KEY && field.control === 'ai-models')) return state;
+        assertAvailable();
+        const catalog = await services.systemModelCatalog?.(signal).catch(() => undefined);
+        assertAvailable();
+        // Copy only references. The account provider and request credentials remain in the host.
+        const entries = (catalog?.entries ?? []).map(({ id, name, models }) => ({ id, name, models: models.map(({ id, name }) => ({ id, name })) }));
+        const preferred = catalog?.defaultModel;
+        const defaultModel = preferred && entries.some(entry => entry.id === preferred.credentialId && entry.models.some(model => model.id === preferred.model))
+          ? { credentialId: preferred.credentialId, model: preferred.model } : undefined;
+        return { ...state, systemModelCatalog: { entries, unavailable: !catalog || catalog.unavailable === true, ...(defaultModel ? { defaultModel } : {}) } };
       }
 
       case 'studio.state.get': {

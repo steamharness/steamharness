@@ -51,6 +51,11 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const userModelsChanged = account.onDidChangeUserModels?.(syncUserSettings);
   const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
   const configurationService = {
+    systemModelCatalog: async (signal: AbortSignal) => {
+      const catalog = await account.getSystemModelCatalog(AbortSignal.any([signal, controller.signal]));
+      const preferred = account.getUserAgentModels()[0];
+      return { ...catalog, ...(preferred?.source === 'system' ? { defaultModel: { credentialId: preferred.credentialId, model: preferred.model } } : {}) };
+    },
     kanban: (input: { projectDir: string; projectId: string; entryId: string; call?: unknown }, signal: AbortSignal) =>
       readStudioKanbanDiagnostics(kanbanSessions, input, AbortSignal.any([signal, controller.signal])),
     configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {

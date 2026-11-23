@@ -236,6 +236,7 @@ export class AccountController implements vscode.Disposable {
     return this.platform && state.status === 'authenticated' ? accountScopeKey(state, this.digest) : undefined;
   }
   getUserAgentModels() { return this.userModels.models(); }
+  getSystemModelCatalog(signal: AbortSignal) { return this.userModels.catalog(signal); }
   registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
   getAiConnection(): Connection | undefined {

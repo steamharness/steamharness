@@ -151,7 +151,8 @@ interface PendingAskState {
 }
 
 async function readPendingAskState(context: NodeContext): Promise<PendingAskState | undefined> {
-  const state = await context.conversation?.getValue();
+  if (!context.conversation?.enabled) return undefined;
+  const state = await context.conversation.getValue();
   const value = state?.values?.[PENDING_ASK_STATE_KEY];
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
@@ -177,7 +178,8 @@ async function readPendingAskState(context: NodeContext): Promise<PendingAskStat
 }
 
 async function readPendingPlanState(context: NodeContext): Promise<PendingPlanState | undefined> {
-  const state = await context.conversation?.getValue();
+  if (!context.conversation?.enabled) return undefined;
+  const state = await context.conversation.getValue();
   const value = state?.values?.[PENDING_PLAN_STATE_KEY];
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
@@ -248,17 +250,18 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const system = await resolveAgentSystemAIInput({ ...input,
       requestId: input.requestId ?? `${String(context.metadata?.["runId"] ?? randomUUID())}:${this.name}`,
     }, this.options, context.abortSignal);
-    const planResume = await resolvePlanResume(context, system.input);
-    // A run parks on one thing at a time: a plan awaiting approval, or a
-    // question awaiting an answer.
-    const askResume = planResume === undefined
-      ? await resolveAskResume(context, system.input)
-      : undefined;
-    const runInput: AgentInput = planResume ?? askResume ?? system.input;
-    if (planResume?.planResume !== undefined) runInput.requestId = `${system.input.requestId}:plan:${planResume.planResume.requestId}`;
+    let runInput: AgentInput;
     let runtime: AgentRuntime;
-    try { runtime = await this.resolveRuntime(runInput, context); }
-    catch (error) { await system.close(); throw error; }
+    try {
+      const planResume = await resolvePlanResume(context, system.input);
+      // A run parks on either a plan awaiting approval or a question awaiting an answer.
+      runInput = planResume ?? await resolveAskResume(context, system.input) ?? system.input;
+      if (planResume?.planResume !== undefined) runInput.requestId = `${system.input.requestId}:plan:${planResume.planResume.requestId}`;
+      runtime = await this.resolveRuntime(runInput, context);
+    } catch (error) {
+      await closeIgnoringFailure(system.close);
+      throw error;
+    }
     let toolSet: AgentToolSet | undefined;
     let unbind: (() => void) | undefined;
     try {
@@ -304,10 +307,9 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     // A plan resume switches this run to build, which the caller's input does
     // not say, so the effective mode is recorded for the payload to read back.
     recordAgentRunMode(input, mode);
-    // Planning is where a run confirms what it is about to do, so it is the
-    // only mode that stops a tool call to ask the user. A build turn executes
-    // the plan it was handed, and a tool that would have asked runs instead.
-    if (context.toolPermissions !== undefined) {
+    // Conversation build turns execute the agreed plan. A standalone Workflow
+    // keeps its entrypoint's approval policy, including for downstream nodes.
+    if (context.conversation?.enabled && context.toolPermissions !== undefined) {
       context.toolPermissions.requiresUserApproval = mode === "plan";
     }
     // The declared id wins over the derived one: a host that reads the answer
@@ -721,10 +723,8 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     return createAgentRuntime({
       ...runtimeOptions,
       modelResolved: true,
-      // The runtime offers the asking tool only while planning, and only when
-      // this hook is present: without a host that can park a run there is
-      // nothing to ask with.
-      askUser: (request) => requestAgentAskAnswers(context, request),
+      // Restarting a parked turn requires the original question and its identity.
+      askUser: context.conversation?.enabled ? request => requestAgentAskAnswers(context, request) : undefined,
     });
   }
 }
@@ -758,20 +758,14 @@ export function createNodeAgentHost(
       }, botRequestId ? { ...context, metadata: { ...context.metadata, botRequestId } } : context);
     },
 
-    async approvePlan(request) {
-      const userInput = context.userInput;
-      if (userInput === undefined) {
-        return { approved: true, requestId: request.requestId };
-      }
-
-      const approval = await requestAgentPlanApproval(userInput, {
-        requestId: request.requestId,
-        plan: request.plan,
-        context,
-      });
-
-      return approval;
-    },
+    // Without a conversation, a plan is the output, not a checkpoint for a subsequent turn.
+    ...(context.conversation?.enabled && {
+      async approvePlan(request) {
+        const userInput = context.userInput;
+        if (userInput === undefined) return { approved: true, requestId: request.requestId };
+        return requestAgentPlanApproval(userInput, { requestId: request.requestId, plan: request.plan, context });
+      },
+    }),
 
     async reportUsage(usage) {
       await context.tokenUsage.report({

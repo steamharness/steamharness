@@ -155,12 +155,17 @@ Use the same local storage without a UI through JSON input/output:
 printf '%s' '{"action":"get"}' | steamharness configuration ./my-project
 ```
 
-Studio Control exposes `get_configurations`, `manage_configurations` and `open_configurations`. Each tool accepts an `input` JSON string. Local requests specify `storage: "local"` and `projectDir`. Server requests specify `storage: "server"`, `projectId` and `target` (`draft`, `latest`, or a version). The panel can be closed.
+Studio Control exposes `get_configurations`, `manage_configurations` and `open_configurations`. Each tool accepts an `input` JSON string with `entryId`. For local projects, pass `storage: "local"` and the aggregate project's `projectDir`. For Server projects, pass `storage: "server"`, `projectId` and `target` (`draft`, `latest`, or a version). You can read and save configurations without opening the panel.
+
+To add a system model to a project, pass `includeModelCatalog: true` in a regular `get_configurations` query. If the entry has an AI models field, `systemModelCatalog` lists the current AI account's subscriptions and models and may include its default system model. It returns names and IDs, not keys, and does not start sign-in.
+
+When saving with `manage_configurations`, use the subscription ID as `credentialId` and the model ID as `model`, along with the profile ID and `revision` from the query. Read back the same profile to confirm the change. New runs pick up the saved configuration. If the entry uses Studio Settings models, select the model there; changing a project profile does not switch its model source.
 
 ```json
 {
   "storage": "local",
   "projectDir": "/projects/my-project",
+  "entryId": "main",
   "call": { "action": "save", "revision": 3, "id": "profile-id", "values": { "enabled": true }, "unset": ["API_KEY"] }
 }
 ```

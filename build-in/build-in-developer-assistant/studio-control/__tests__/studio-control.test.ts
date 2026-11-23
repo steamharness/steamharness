@@ -28,6 +28,7 @@ describe("Studio Control workflow", () => {
 
   it.each([
     ["get_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace"})}, "studio.configurations.get", {storage:"local",projectDir:"/workspace"}],
+    ["get_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace",entryId:"video",includeModelCatalog:true})}, "studio.configurations.get", {storage:"local",projectDir:"/workspace",entryId:"video",includeModelCatalog:true}],
     ["manage_configurations", {input:JSON.stringify({storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}})}, "studio.configurations.manage", {storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}}],
     ["open_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace"})}, "studio.configurations.open", {storage:"local",projectDir:"/workspace"}],
     ["get_kanban_diagnostics", {input:JSON.stringify({projectDir:"/workspace",entryId:"map-2d"})}, "studio.kanban.diagnostics", {projectDir:"/workspace",entryId:"map-2d"}],

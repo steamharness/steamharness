@@ -80,6 +80,8 @@ Core 统一解析文本、图片与 OpenAI 宿主输入。`prepareInput(input, c
 - Bot workflow 使用 `context.conversation.getValue()`、`context.conversation.setValue(key, value)` 和 `context.conversation.appendMessage(...)`；不要使用旧的 `getState()` API。
 - Bot 自动提供持久输入队列和恢复；后续输入按原生会话控制协议处理，不能通过项目配置关闭。
 - 项目需要 Agent 对话时使用 `steamharness.defineBot`；输入处理放在 `prepareInput`，业务回执放在只读 `onCompleted`。参数继承与字段定制见 API 参考的 Bot 契约。
+- Workflow 需要一段 Agent 执行时，用 `steamharness.createAgentNode` 和 `runStreamNode`；读取 `output.items` 交给下游节点，或直接返回 `output`。保持入口为 Workflow，不为了使用 Agent 改成 Bot。普通 Workflow 不启用持久对话，`plan` 模式返回计划，业务问答另用 `createUserInputNode`。需要工具时在 `defineEntrypoint` 注册，再通过节点选项允许调用。
+- 需要项目档位选择 Agent 模型时，明确设 `modelSource: "project"`。若要继承 Studio 设置则保留默认模式，不要求用户填写隐藏的项目模型字段。验证模型调用前先在目标入口确认实际来源和档位；Studio 中可通过配置工具查询系统模型目录、按版本写入引用并读回，无需复制其它项目的模型或索取系统 AI 密钥。
 - 如果 workflow 业务逻辑需要 LLM，使用全局 LLM helper，例如 `steamharness.createLLMProviderRef(...)`、`steamharness.createLLMProviderFromConfig()`、`steamharness.getServerLLMCredentials(...)`、`steamharness.createLLMStreamNode(...)` 和 `steamharness.createQuestionClassifierNode(...)`。用户从 SteamHarness Server 账户配置中选择 provider/model 时，优先使用 `getServerLLMCredentials`，不要把真实上游 Key 写入 workflow 参数或环境变量。联网搜索必须在 `credential.modelDetails` 中找到当前模型，并检查其 `capabilities.webSearch`；只有明确为 `true` 时才能调用 `createProvider({ model, webSearch: true })`，workflow 不要自行按模型 ID 推断。只接受 HTTP base URL 的 agent SDK 使用凭据对象的 `startLLMProxyBridge({ signal })`，并在 `finally` 中关闭桥；兼容方法 `startOpenAIProxyBridge()` 仅用于 OpenAI Responses。
 
 ## 依赖安装与环境

@@ -5,11 +5,11 @@ description: "Create a streaming node that runs an agent as a workflow node."
 
 # createAgentNode
 
-Integrate an Agent into a workflow with `steamharness.createAgentNode()` and execute it through `runStreamNode`. The node uses context-provided tool approval, user input, and usage reporting, and emits standard `OutputItemStreamChunk` output.
+Use `steamharness.createAgentNode()` to add an Agent to a Workflow. `runStreamNode` emits `OutputItemStreamChunk` values and returns an `AgentOutputPayload` when the node finishes. Read `output.items` in a later node or return `output` directly from the entrypoint. A regular Workflow does not need a Bot conversation.
 
 Reach for it when you need to arrange nodes around the agent. When the whole project is an agent, [defineBot](./define-bot.mdx) does more for you.
 
-Without an explicit endpoint or injected model collection, the node uses the current project configuration `STEAMHARNESS_AGENT_MODELS` list. `model` selects an entry ID and omission selects the first entry. System subscriptions are authorized for the current account; third-party entries use their saved connection. See [Project configurations](/en/concepts/project-configuration).
+`modelSource: "project"` selects from `STEAMHARNESS_AGENT_MODELS` in the current profile. The default and `"user-settings"` use user settings in Studio and fall back to the project list only when the host provides no user model list. The lists are not merged. `model` selects an entry ID from the active list; omit it to use the first entry. System models use the current account, and third-party models use their saved connection. See [Project configurations](/en/concepts/project-configuration).
 
 When the model field declares `allowThirdParty: false`, the node only selects system models and rejects explicit endpoints, API keys and injected model collections. The policy is stored in `ProjectConfigurationSnapshot.agentModelPolicy`; resumed runs retain their original snapshot.
 
@@ -18,12 +18,17 @@ When the model field declares `allowThirdParty: false`, the node only selects sy
 ## Example
 
 ```ts
-const agentNode = steamharness.createAgentNode({ name: "agent", provider: "anthropic", permissionPolicy: "workspace" });
-const result = await steamharness.runStreamNode(agentNode, input, context);
+const agentNode = steamharness.createAgentNode({
+  name: "describe-image", modelSource: "project", permissionPolicy: "read-only", tools: [],
+});
 
-return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
+// Inside the Workflow's run(input, context), where input is an AgentInput.
+const { output } = await steamharness.runStreamNode(agentNode, input, context);
+if (!output) throw new Error("Agent output is missing.");
+return output;
 ```
 
+Before running, add a model to the entry's project configuration. To analyze images, select a model that accepts image input and pass `{ data, mimeType }` entries in `input.images`, with Base64-encoded `data`. To use tools such as `read`, register them in the Workflow's `defineEntrypoint({ tools: [...] })` and allow them in the node's `tools` list.
 
 ### Construct sessions from authorized configuration
 
@@ -42,6 +47,7 @@ const node = steamharness.createAgentNode({
   workdir?: string,
   systemPrompt?: string,
   provider?: string,
+  modelSource?: "user-settings" | "project",
   model?: string,
   baseUrl?: string,
   apiKey?: string,
@@ -154,7 +160,9 @@ A conversation run creates a plan card only after the runtime emits a final `pla
 
 ## Pause and resume
 
-Tool approval, questions and plan approval pause through `user_input_required` carrying a `request`. Hosts persist resolved answers and resume with the original `runId`, arguments and request identity. Tools continue their original durable intent; questions use `askResume`, and plan decisions use a distinct stable continuation identity. Decisions belong to their original run and cannot approve a new run.
+A regular Workflow keeps `context.conversation.enabled === false`. Its Agent node follows the entrypoint's tool permissions. In `plan` mode it returns the plan without offering `ask_user` or waiting for plan approval. Use [createUserInputNode](./create-user-input-node.mdx) separately if the Workflow needs to collect user input.
+
+When a conversation is enabled, tool approval, questions and plan approval can pause through `user_input_required` carrying a `request`. The host saves answers and resumes with the original `runId`, arguments, and request identity. Tools continue from their original durable intent, questions use `askResume`, and plan decisions have their own continuation identity. New runs cannot reuse old approvals.
 
 Bot enables recovery through `defineBot`. Hosts recover the durable session after worker interruption. To stop stored work, persist the cancellation intent, stop and join the worker, then call `cancelStoredAgentConversation({ persistence, conversationId })` from `steamharness/agent`.
 

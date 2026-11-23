@@ -307,6 +307,71 @@ test('configuration operations work with the panel closed and keep explicit targ
   await f.execute('studio.configurations.open',{entryId:'main',storage:'local',projectDir:f.workdir});
   assert.equal(calls.at(-1).open,true);
 });
+
+test('project model setup reads safe catalogue references and saves the chosen profile without opening a panel', async t => {
+  const key = 'STEAMHARNESS_AGENT_MODELS';
+  const fields = [{ name: key, control: 'ai-models', allowThirdParty: false }];
+  let profile = { id: 'profile', values: { [key]: [], unrelated: true } };
+  let revision = 0, catalogueReads = 0;
+  const f = await fixture(t, {
+    configuration: async ({ call }) => {
+      if (call.action === 'save') {
+        assert.equal(call.id, profile.id);
+        assert.equal(call.revision, revision++);
+        profile = { ...profile, values: { ...profile.values, ...call.values } };
+      } else assert.equal(call.action, 'get');
+      return { fields, revision, activeConfigurationId: profile.id, configurations: [profile] };
+    },
+    systemModelCatalog: async signal => {
+      assert.equal(signal, f.controller.signal);
+      catalogueReads++;
+      return { entries: [{ id: 'plan', name: 'Subscription', apiKey: 'not-for-tools', models: [{ id: 'vision', name: 'Vision', token: 'not-for-tools' }] }],
+        defaultModel: { credentialId: 'plan', model: 'vision', apiKey: 'not-for-tools' }, accessToken: 'not-for-tools' };
+    },
+  });
+  await saveManifest(f.workdir, manifest(ids[0]));
+  await saveManifest(f.outside, manifest(ids[1]));
+  const target = { entryId: 'main', storage: 'local', projectDir: f.workdir };
+  const query = { ...target, includeModelCatalog: true };
+  assert.equal((await f.execute('studio.configurations.get', target)).systemModelCatalog, undefined);
+  await assert.rejects(f.execute('studio.configurations.get', { ...query, projectDir: f.outside }), /registered workspace/);
+  await assert.rejects(f.execute('studio.configurations.get', { ...query, export: true }), /Invalid configuration/);
+  assert.equal(catalogueReads, 0);
+
+  const state = await f.execute('studio.configurations.get', query, 'read-only');
+  assert.deepEqual(structuredClone(state.systemModelCatalog), {
+    entries: [{ id: 'plan', name: 'Subscription', models: [{ id: 'vision', name: 'Vision' }] }],
+    unavailable: false, defaultModel: { credentialId: 'plan', model: 'vision' },
+  });
+  const { id: credentialId, models: [model] } = state.systemModelCatalog.entries[0];
+  const selected = { id: 'project-model', name: model.name, source: 'system', credentialId, model: model.id };
+  const save = { ...target, call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [key]: [selected] } } };
+  await assert.rejects(f.execute('studio.configurations.manage', save, 'read-only'), /Read-only/);
+  await f.execute('studio.configurations.manage', save);
+  const updated = await f.execute('studio.configurations.get', target);
+  assert.equal(updated.revision, 1);
+  assert.deepEqual(updated.configurations[0].values, { [key]: [selected], unrelated: true });
+  assert.equal(catalogueReads, 1);
+  assert.equal(f.events.length, 0);
+});
+
+test('model catalogue failures preserve the configuration and entries without an AI field never load the catalogue', async t => {
+  let fields = [], catalogueReads = 0;
+  const f = await fixture(t, {
+    configuration: async () => ({ revision: 3, fields }),
+    systemModelCatalog: async () => { catalogueReads++; throw new Error('Private connection diagnostics'); },
+  });
+  await saveManifest(f.workdir, manifest(ids[0]));
+  const query = { entryId: 'main', storage: 'local', projectDir: f.workdir, includeModelCatalog: true };
+  assert.equal((await f.execute('studio.configurations.get', query)).systemModelCatalog, undefined);
+  assert.equal(catalogueReads, 0);
+  fields = [{ name: 'STEAMHARNESS_AGENT_MODELS', control: 'ai-models' }];
+  const result = await f.execute('studio.configurations.get', query);
+  assert.equal(result.revision, 3);
+  assert.deepEqual(structuredClone(result.systemModelCatalog), { entries: [], unavailable: true });
+  assert.equal(catalogueReads, 1);
+});
+
 test('configuration errors preserve the underlying conflict code',async t=>{
   const f=await fixture(t,{configuration:async()=>{throw Object.assign(new Error('Configuration changed'),{code:'CONFIGURATION_CONFLICT'});}});
   await saveManifest(f.workdir,manifest(ids[0]));
