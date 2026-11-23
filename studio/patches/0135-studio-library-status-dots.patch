@@ -1,0 +1,167 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 0ccaa9c25bd997b10b326f9c2473264bb017cecd..558527a3f4a57d8a5f01eda75799d7ef616d7be7 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -78,6 +78,15 @@
+ .lp-scroll:hover,.lp-scroll:focus-within { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+ .lp-library { display: grid; grid-template-columns: clamp(168px,21%,270px) minmax(0,1fr); }
+ .lp-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 12px; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); }
++.lp-index-status { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 6px; inline-size: 20px; margin-inline-start: auto; }
++.lp-index-dot { position: relative; flex: none; inline-size: 7px; block-size: 7px; border-radius: 50%; background: currentColor; }
++.lp-index-dot-open { color: var(--vscode-charts-blue,#3b82f6); }
++.lp-index-dot-linked { color: var(--vscode-charts-orange,#e77b27); }
++.lp-index-dot-running { color: var(--vscode-charts-green,#23a559); }
++.lp-index-dot-running::after { content: ''; position: absolute; inset: 0; border: 1px solid currentColor; border-radius: inherit; pointer-events: none; animation: lp-index-breathe 1.8s ease-in-out infinite; }
++@keyframes lp-index-breathe { 0%,100% { opacity: .7; transform: scale(1); } 55% { opacity: 0; transform: scale(2.3); } }
++.monaco-reduce-motion .lp-index-dot-running::after { animation: none; }
++@media (prefers-reduced-motion: reduce) { .lp-index-dot-running::after { animation: none; } }
+ .lp-index { display: flex; flex-direction: column; gap: 2px; }
+ .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
+ .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 7832895887c4a58828d03521c3d6ac6c707c804b..2506ba196b57bfc49640aa6074d7a0dfaeb4ef4c 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -129,6 +129,7 @@ export class StudioLaunchpad extends Disposable {
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
+ 			cover: project => this.cover(project),
++			readActivity: projects => commands.executeCommand<string[] | undefined>('studio.internalReadLibraryActivity', projects),
+ 			detailActions: async (project, source) => {
+ 				if (!this.start.state?.platform || !project.uri.startsWith('file:') || (project.missing && !project.managed)) { return []; }
+ 				return commands.executeCommand<LibraryDetailAction[] | undefined>(source === 'local' ? 'studio.listFolderBotActions' : 'studio.listLibraryProjectActions', project);
+@@ -313,6 +314,8 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); }));
+ 		const poll = mainWindow.setInterval(() => this.refreshSocialState(), 60_000);
+ 		this._register(toDisposable(() => { ++this.noticeRevision; mainWindow.clearInterval(poll); }));
++		const activityPoll = mainWindow.setInterval(() => this.view.refreshLibraryActivity(), 1000);
++		this._register(toDisposable(() => mainWindow.clearInterval(activityPoll)));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+ 			if (document.hidden) { clearProjectDrop(); }
+ 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 1747a3abf67b71e25c3d764ec60d41333d73f7c1..bd1401771796bd11ffe5ffad7a04444087c43bf6 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -15,6 +15,7 @@ export interface LibraryProjectCategory {
+ 	projectUris: string[];
+ }
+ export interface LibraryDetailAction { id: string; label: string; icon?: string }
++type ActivityProject = Pick<LaunchpadProject, 'uri' | 'projectId' | 'distribution' | 'managed'>;
+ type DetailActionSource = 'local' | 'account';
+ interface DetailActionState { key: string; items: LibraryDetailAction[]; loading?: boolean }
+ 
+@@ -27,6 +28,7 @@ export interface LibraryActions {
+ 	copyPath(p: LaunchpadProject): void;
+ 	contextMenu: IContextMenuService;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
++	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
+ 	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
+ 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
+ }
+@@ -53,6 +55,9 @@ export class LaunchpadLibrary {
+ 	private selected?: string;
+ 	private pendingSelection?: string;
+ 	private homeScroll = 0;
++	private linkedProjects = new Set<string>();
++	private activeProjects = new Set<string>();
++	private readingActivity = false;
+ 
+ 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
+ 		const rail = element('aside', 'lp-rail');
+@@ -83,14 +88,22 @@ export class LaunchpadLibrary {
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
+ 		this.actionScope = actionScope;
+ 		this.category = category;
++		this.linkedProjects = new Set(category?.projectUris);
+ 		this.categoryButton.textContent = category?.label ?? '';
+ 		if (!category && this.filter === 'product') {
+ 			this.filter = 'all';
+ 			if (document.activeElement === this.categoryButton) { this.filters.querySelector<HTMLButtonElement>('[data-id="all"]')?.focus(); }
+ 		}
+ 		this.categoryButton.hidden = !category;
++		const previously = this.projects;
+ 		this.projects = new Map(recent.map(p => [p.uri, p]));
+ 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
++		for (const uri of this.activeProjects) {
++			const current = this.projects.get(uri), prior = previously.get(uri);
++			if (!current || current.missing || current.projectId !== prior?.projectId || current.distribution !== prior?.distribution || current.managed !== prior?.managed) {
++				this.activeProjects.delete(uri);
++			}
++		}
+ 		if (this.pendingSelection && this.projects.has(this.pendingSelection)) { this.show(this.pendingSelection); }
+ 		else if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
+ 	}
+@@ -132,6 +145,50 @@ export class LaunchpadLibrary {
+ 		});
+ 	}
+ 
++	async refreshActivity(): Promise<void> {
++		if (!this.actions.readActivity || this.readingActivity || !this.projects.size) { return; }
++		const projects = this.projects;
++		const candidates = [...projects.values()].filter(p => !p.missing && (p.projectId || p.managed))
++			.map(({ uri, projectId, distribution, managed }) => ({ uri, projectId, distribution, managed }));
++		this.readingActivity = true;
++		try {
++			const active = candidates.length ? await this.actions.readActivity(candidates) : [];
++			if (!Array.isArray(active) || this.projects !== projects || !this.element.isConnected) { return; }
++			const next = new Set(active.filter(uri => projects.has(uri)));
++			if (next.size === this.activeProjects.size && [...next].every(uri => this.activeProjects.has(uri))) { return; }
++			this.activeProjects = next;
++			this.updateIndexStatuses();
++		} catch { /* Retain the previous snapshot if the extension host is temporarily unavailable. */ }
++		finally { this.readingActivity = false; }
++	}
++
++	private updateIndexStatuses(): void {
++		const t = this.t;
++		for (const row of this.index.querySelectorAll<HTMLButtonElement>('.lp-index-row[data-key]')) {
++			const p = this.projects.get(row.dataset.key!.slice('index:'.length));
++			if (!p) { continue; }
++			const dots: { state: string; label: string }[] = [];
++			if (!p.missing && this.activeProjects.has(p.uri)) { dots.push({ state: 'running', label: t('Task running', '任务正在运行') }); }
++			else if (p.windowId !== undefined) { dots.push({ state: 'open', label: t('Open', '已打开') }); }
++			if (!p.missing && this.linkedProjects.has(p.uri)) { dots.push({ state: 'linked', label: t('Bot linked to chat', 'Bot 已加入对话') }); }
++			let status = row.querySelector('.lp-index-status');
++			if (!status) {
++				status = element('span', 'lp-index-status');
++				status.setAttribute('aria-hidden', 'true');
++				row.append(status);
++			}
++			const description = dots.map(dot => dot.label).join(' · ');
++			if (row.getAttribute('aria-description') === (description || null)) { continue; }
++			if (description) { row.setAttribute('aria-description', description); }
++			else { row.removeAttribute('aria-description'); }
++			status.replaceChildren(...dots.map(({ state, label }) => {
++				const dot = element('span', `lp-index-dot lp-index-dot-${state}`);
++				dot.title = label;
++				return dot;
++			}));
++		}
++	}
++
+ 	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
+ 		if (source === 'account' && !this.actionScope) { this.detailActionStates.delete(source); return; }
+ 		const key = JSON.stringify([project.uri, project.kind, project.missing, project.managed, project.projectType, project.distribution, source === 'account' ? this.actionScope : '']);
+@@ -179,6 +236,7 @@ export class LaunchpadLibrary {
+ 		const selected = this.selected && this.projects.get(this.selected);
+ 		this.toolbar.hidden = !!selected;
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
++		this.updateIndexStatuses();
+ 		if (selected) {
+ 			const canRun = !!selected.distribution && !selected.missing;
+ 			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadView.ts b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+index f339f58bfa7ef5154396b364d1c624f3d0d92bb6..259078a0b29c3cea3384c3b00ebfa67d313ec63d 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadView.ts
+@@ -127,6 +127,9 @@ export class StudioLaunchpadView extends Disposable {
+ 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
+ 	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
+ 	closePicker(): void { this.picker.close(); }
++	refreshLibraryActivity(): void {
++		if (this.active === 'library' && !this.element.hidden && !document.hidden) { void this.library.refreshActivity(); }
++	}
+ 	refreshSocial(): void { void this.profile.refresh(); }
+ 	refreshDirectory(): void { this.profile.refreshDirectory(); }
+ 	showSocial(section: 'activity' | 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
