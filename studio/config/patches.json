@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "7cc32eacfb248c5045633fc1ebfa4213ba9e1fb0",
+  "commit": "3526ed7e37872b3e46409bd407fb3b13d97a53fc",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -80,7 +80,12 @@
     "0075-studio-steam-header-alignment.patch": "e52a0f0ffb0b2008aeba3a9845addc0b5363a77e5460409fc74ac2717d562c80",
     "0076-studio-release-startup.patch": "293470675ec69862e1c7bc6a3868787228dd1226ba76fc4b1988caa9f6c36e6d",
     "0077-studio-mode-render-lifecycle.patch": "d6b6cb66952dfab7113928c008972e4bf4508203797126eb19350b35ac854c19",
+    "0078-studio-start-recommendations.patch": "4bd1cd1f8b126cb388f9abed7a2c74d112c6636d5c5e6fa72c4b82c9cf61d8c5",
     "0079-studio-narrow-titlebar.patch": "c0b76449a3240739ac08defd84e1082fb902dfa6112367f1e3cd7ecb98037d36",
+    "0080-studio-web-app-microphone.patch": "4b149040356137bd9a2aa42b1372be877247f59338e84e7be5344d4eaff50e6a",
+    "0081-studio-retire-server-resources.patch": "1d624596b24cf0b1c50c617706a946604c36487abd3f579f69ce1cc4928be9f5",
+    "0082-studio-versioned-release-notes.patch": "50482b07b657a6ef4a7a50825a7addece7a45c7bee9ed4964b3343656a3a62ab",
+    "0083-studio-explicit-platform-tools.patch": "38815b55b867f5f518d1534caec7bd66850723cd392c685b421e2d57992567d2",
     "0084-studio-launchpad-account-settings.patch": "51d96960ed8b45eff04e8ab7abb5f55a05ada3a9df3f4cedaf2b83f32a5fbe55",
     "0085-studio-launchpad-recent-order.patch": "dfcb5ea7a1b04e2af506686fa9c25b59f86c7ac3037b06ea5a7f092f68d23caa",
     "0086-studio-launchpad-folder-drop.patch": "c8d30bc71e5067776103e53ccd41914853689561df469b8398a0865fb4326fa0",
@@ -101,8 +106,11 @@
     "0101-studio-launchpad-icon-contrast.patch": "01a3ad4b33f5191fce219333b1fac0977fa246ee7a5097dff34c5ec3050acc38",
     "0102-studio-launchpad-request-avatars.patch": "6899c55d14a276d12ace1e874f9ee14b5ca7a1e7306ec03d29145e4f16fb3b8b",
     "0103-studio-launchpad-back-icon-alignment.patch": "584fa248399725c2370446fb221ea1aa87f58d25ddd40e557854dc5e8f27a3bd",
+    "0104-studio-library-product-actions.patch": "f8c52dbbb36ee1deda83f4c74453677f8a428d834137b670f6123d9a0db1d2fb",
+    "0105-studio-launchpad-identity-badges.patch": "8f84af0aaaa727cbea3654bcac288b5a499cbefa57c8583cc4168231e07193d6",
     "0106-studio-launchpad-hide-server-status.patch": "3490e7f7ae533a1089090c97664f8f027dd92340d25aca207e35746b0ab65344",
     "0107-studio-project-type-icons.patch": "06ec245eff8fc4776e6145a644309f3c301db0085037a92f26e68232e2ba9555",
+    "0108-studio-launchpad-add-contacts.patch": "2d76bcacf369865711654a78902580c648917a0bd39822b8ad3b634ca356bd3f",
     "0109-studio-library-project-category.patch": "cd2ffacf3038238228c68f17a5030fe4fcb4e2c5618b44e3032575e4af0b8731",
     "0110-studio-shared-project-details.patch": "5240f1ef05d71aeab4e2892a768142362b7424a1bde24923588f420845bfde57",
     "0111-studio-desktop-notifications.patch": "a177fcab9db30a87b6ac1562350cc9a4bd9744baa8b43c930bcb95eff1960a3c",
@@ -111,6 +119,16 @@
     "0114-studio-add-friend-toolbar.patch": "fc65678f1f3142119478b0aba1cd739feeb28929655c7d8fa4fc1e90e3ff865b",
     "0115-studio-recent-chat-toolbar.patch": "4def1a5be6a512145f4017952995ce1acd21ab1b38c9c6d0190cc8f89aae34b6",
     "0116-studio-launchpad-settings-toolbar.patch": "fcac320e13be5ac90fe33b629874ce6bb51b9dfd42c8fc1573d52a2efa0d10de",
-    "0117-studio-owned-chat-windows.patch": "0a085287f5c2bbc3457b9bc9126fd3e95cf7ee394b3b3b61a10aedab9ce4678d"
+    "0117-studio-owned-chat-windows.patch": "0a085287f5c2bbc3457b9bc9126fd3e95cf7ee394b3b3b61a10aedab9ce4678d",
+    "0118-studio-compact-chat-titlebar.patch": "27352a10df719c3b0abce7bead0b797eebe842a04d0850ae4189fdca2109922c",
+    "0119-studio-full-width-chat-titlebar-drag.patch": "69ee2cc03c972888f8e2b1aeaffbf68a7b7af1dd5cff96850b65c00fcfe17545",
+    "0120-studio-independent-chat-windows.patch": "448d4906a83f60a72938d112a1d5c0249b5651e787b9d24194ea08adae366047",
+    "0121-studio-neutral-bot-badges.patch": "978cf499d7a232e024fc9783b426e3076226d2e46841d5c119cbeb368ca9cb4e",
+    "0122-studio-tray-notification-preview.patch": "1bc42ce5c575da410a765567d2d3c56d9de0ad197095b80a5d0923d5ce07db03",
+    "0123-studio-tray-notification-reliability.patch": "7d8a826813c267fb9539a534008a41d98bbda6aef7ff65b017d18d8f13676739",
+    "0124-studio-skip-empty-notifications-center.patch": "db488c35fcd8fd176e49d8ddc8141665d24b955f902ebe60ac100306592c71d9",
+    "0125-studio-folder-bot-library.patch": "c0d729894f14f8ac5ae11df34f0ae4acf49f3a9396851592df5a6067427e04ca",
+    "0126-studio-stable-folder-bot-actions.patch": "98c5869dea4e9a8aa587f117870cabb14b4c08282b5c8f8fae79aacc55f31533",
+    "0127-studio-workbench-notification-read.patch": "c9f59694ea9548d39969bfc0f9b09239a4202b0068e07fd7052ed15ecb8d2f4a"
   }
 }
