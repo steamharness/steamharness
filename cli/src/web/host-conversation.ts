@@ -46,7 +46,8 @@ export async function hostConversation(
     // Do not project trace data, tool arguments, model requests, report data or parameter defaults.
     return {
       status: session.recoveryPaused && answer.recovering ? 'paused' : answer.status,
-      ...(isolate && answer.recovering && !session.recoveryPaused ? { recovering: true } : {}),
+      ...(isolate && answer.recovering && !session.activeRunId && !session.recoveryPaused ? { recovering: true } : {}),
+      ...(isolate && answer.cancelRequested ? { stopping: true } : {}),
       messageId: answer.id,
       items: (answer.items ?? []).map(({ id, content, contentType, collapsed, metadata, display }) => ({
         id,
@@ -141,6 +142,7 @@ export async function hostConversation(
     answer.pendingInput?.requestId === input.pendingId &&
     input.messageId === answer.id
   ) {
+    if (isolate && answer.pendingInput?.metadata?.type === 'tool-approval') throw new Error('This tool approval must not be resolved by the background host.');
     await controller.resume(
       answer.id,
       answer.pendingInput!.requestId,

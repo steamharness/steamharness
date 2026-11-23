@@ -378,7 +378,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (auth !== authRevision || configuration !== parameterRevision) throw new Error('The entry configuration or identity changed.');
     return { params, states: resolved.params, configurationSelection };
   }) : undefined;
-  const refreshHistory = async () => {
+  const refreshHistory = async (restoreHostId?: string) => {
     const epoch = storageEpoch;
     const acquired = ownership?.takeAcquired() ?? new Set<string>();
     for (const id of controller?.executingIds ?? []) acquired.delete(id);
@@ -389,14 +389,22 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const merged = history.sessions.map(session => {
       if (ownership!.owns(session.id) && !acquired.has(ownership!.scope(session.id)) && local.has(session.id)) return local.get(session.id)!;
       delete session.activeRunId;
-      for (const message of session.messages) if (message.status === 'running' && message.runId && message.args && project.conversation?.recovery?.enabled) message.recovering = true;
+      if (!folderBot?.background) for (const message of session.messages) if (message.status === 'running' && message.runId && message.args && project.conversation?.recovery?.enabled) message.recovering = true;
       return session;
     });
     for (const session of controller.sessions) if (!merged.some(item => item.id === session.id) && ownership!.owns(session.id)) merged.push(session);
     if (!merged.length) return;
     controller.sessions.splice(0, controller.sessions.length, ...merged);
-    controller.restoreAgentState(merged.filter(session => session !== local.get(session.id)));
+    const reloaded = merged.filter(session => session !== local.get(session.id));
+    controller.restoreAgentState(reloaded);
     if (!merged.some(session => session.id === controller.activeId)) controller.activeId = merged[0].id;
+    const restored = reloaded.find(session => session.id === restoreHostId && session.origin === 'host');
+    if (restored) {
+      // Only the background host holding this conversation's lock can settle
+      // an interrupted run; a read-only window may be observing a live run.
+      controller.restoreInterruptedSessions([restored]);
+      await controller.persist();
+    }
     broadcast();
   };
   const workspace: WorkspaceContract = { version: 1, runs: [], drafts: {} };
@@ -1038,7 +1046,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   conversationController?.recover();
   let refreshingHistory = false;
   let accessSignature = '';
-  const historyPoll = conversationHistory ? setInterval(() => {
+  const historyPoll = conversationHistory && !folderBot?.background ? setInterval(() => {
     if (refreshingHistory || !clients.size && !project.conversation?.recovery?.enabled) return;
     refreshingHistory = true;
     void refreshHistory().then(() => {
@@ -1057,17 +1065,22 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     hostTurn: async (input: Record<string, unknown>) => {
       const id = input.conversationId;
       if (options.host?.surface !== 'editor' || folderBot?.background === false || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
+      const restore = folderBot?.background === true;
       const admit = !!folderBot && ['submit', 'resolve', 'recover'].includes(String(input.action));
-      if (input.action !== 'turn') await ownership?.assertWritable(id);
-      const release = input.action !== 'turn' ? await ownership?.hold(id) : undefined;
+      if (restore || input.action !== 'turn') await ownership?.assertWritable(id);
+      const release = restore || input.action !== 'turn' ? await ownership?.hold(id) : undefined;
       try {
-        await refreshHistory();
+        await refreshHistory(restore ? id : undefined);
         if (admit) {
           if (!isHostConversation(id) && (input.action !== 'submit' || controller.sessions.some(session => session.id === id))) throw new Error('Background conversation unavailable.');
           backgroundAdmissions.add(id);
         }
         return redactProjectData(await hostConversation(controller, entryConversations, runtime, project, input, !!folderBot), [...sensitiveTokens]);
-      } finally { if (admit) backgroundAdmissions.delete(id); release?.(); }
+      } finally {
+        if (admit) backgroundAdmissions.delete(id);
+        release?.();
+        if (restore) broadcast();
+      }
     },
     // Only the Studio stdio control channel can call this, never a Web client.
     readModelRequest: (sessionId: string, messageId: string, executionId: string) => {

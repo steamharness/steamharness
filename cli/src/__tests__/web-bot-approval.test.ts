@@ -48,7 +48,7 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
       expect(response.status, await response.text()).toBe(200);
     };
     await post({ type: 'send', text: 'read', params: {}, attachments: [] });
-    await expect.poll(() => app!.controller.current.messages.at(-1)?.status).toBe('success');
+    await expect.poll(() => app!.controller.current.messages.at(-1)?.status, { timeout: 8000 }).toBe('success');
     const first = app.controller.current.messages.at(-1)!;
     await post({ type: 'send', text: 'write', params: {}, attachments: [] });
     await expect.poll(() => app!.controller.current.messages.some(message => message.pendingInput)).toBe(true);

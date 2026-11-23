@@ -68,11 +68,23 @@ export class ConversationController {
     // Durable turns may have committed after the last Web message checkpoint.
     // Reconcile them before deciding which messages need execution recovery.
     this.restoreAgentState();
-    for (const entry of this.sessions) {
+    this.restoreInterruptedSessions(this.sessions);
+    // Legacy histories could retain the first ID even after navigating elsewhere.
+    const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
+    this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
+    if (archivedConversation(project, this.current)) {
+      const next = this.blank();
+      this.sessions.push(next);
+      this.activeId = next.id;
+    }
+  }
+  /** Called for persisted sessions that no live execution in this process owns. */
+  restoreInterruptedSessions(sessions: ConversationSession[]): void {
+    for (const entry of sessions) {
       entry.createdAt ??= entry.messages[0]?.createdAt ?? 0;
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
       delete entry.activeRunId;
-      if (archivedConversation(project, entry)) continue;
+      if (archivedConversation(this.project, entry)) continue;
       entry.queuedInputs ??= [];
       if (entry.queuedInputs.length) entry.queuePaused = true;
       const agent = this.project.conversation?.durable?.enabled
@@ -95,24 +107,16 @@ export class ConversationController {
         if (message.status === 'running') {
           if (interrupted) { message.status = 'aborted'; message.recovering = false; message.error = t('Run interrupted'); continue; }
           if (message.cancelRequested) { message.status = 'aborted'; message.pendingInput = undefined; }
-          else if (project.conversation?.recovery?.enabled && (message.runId && message.args
+          else if (this.project.conversation?.recovery?.enabled && (message.runId && message.args
             || agent?.turns.some(turn => turn.requestId === message.sessionRequestId
               && turn.conversationId === (message.sessionConversationId ?? entry.agentConversationId ?? agent.conversationId)
               && pendingAgentInput(turn)))) {
             message.recovering = true; message.error = undefined;
-            if (project.conversation?.recovery?.startup === "manual") { entry.recoveryPaused = true; entry.queuePaused = true; }
+            if (this.project.conversation?.recovery?.startup === "manual") { entry.recoveryPaused = true; entry.queuePaused = true; }
           }
           else { message.status = message.pendingInput ? 'waiting_for_input' : 'aborted'; message.error = t("Run interrupted"); }
         }
       }
-    }
-    // Legacy histories could retain the first ID even after navigating elsewhere.
-    const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
-    this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
-    if (archivedConversation(project, this.current)) {
-      const next = this.blank();
-      this.sessions.push(next);
-      this.activeId = next.id;
     }
   }
   replace(saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }): void {
@@ -1096,7 +1100,7 @@ export class ConversationController {
       || !!entry.agentCommands?.some(({ command }) => command.type === 'submit' && (command.targetId ?? id) === id
         && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }
-  private drain(entry: ConversationSession, explicit = false): void {
+  private drain(entry: ConversationSession, explicit = false): void | Promise<void> {
     if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.(entry) === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
       || entry.agentInterrupted || (this.project.conversation?.durable?.enabled ? this.agentBusy(entry) : entry.activeRunId)
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
@@ -1104,11 +1108,10 @@ export class ConversationController {
     if (input) {
       if (this.project.conversation?.durable?.enabled) {
         this.draining.add(entry.id); const queued = { ...input, hostQueued: true }; delete input.hostQueued; delete input.configurationPending;
-        void this.send(input, entry, true, input.requestId ?? input.id).catch(error => {
+        return this.send(input, entry, true, input.requestId ?? input.id).catch(error => {
           if (!entry.queuedInputs?.some(item => item.id === queued.id)) (entry.queuedInputs ??= []).unshift(queued);
           entry.queuePaused = true; this.options.log(String(error));
         }).finally(() => { this.draining.delete(entry.id); this.changed(); void this.persist().catch(error => this.options.log(String(error))); this.drain(entry); });
-        return;
       }
       try { this.start(entry, input); }
       catch (error) { entry.queuedInputs!.unshift(input); this.options.log(String(error)); this.changed(); }
@@ -1148,7 +1151,7 @@ export class ConversationController {
       await this.runtime.cancelConversation(this.project, entry.id);
       // A confirmation checkpoint can outlive its worker. No callback remains to retire it after cancel.
       for (const session of stoppedSessions) for (const answer of session.messages) {
-        if (!answer.pendingInput && !answer.submittingInput) continue;
+        if (!answer.pendingInput && !answer.submittingInput && !answer.cancelRequested) continue;
         delete answer.pendingInput; delete answer.submittingInput; delete answer.cancelRequested;
         answer.status = 'aborted'; answer.error = t('Stopped'); answer.recovering = false;
         this.finishDuration(answer);
@@ -1288,7 +1291,9 @@ export class ConversationController {
     await this.ensureIndependentFork(entry);
     if (entry.recoveryPaused) { entry.recoveryPaused = false; this.recover(entry.origin === 'host' ? entry : undefined); }
     if (this.owner(entry).agentInterrupted) await this.agentCommand(entry.id, { type: 'snapshot', requestId: globalThis.crypto.randomUUID() });
-    this.drain(entry, true); await this.persist();
+    const draining = this.drain(entry, true);
+    if (entry.origin === 'host') await draining;
+    await this.persist();
   }
   async reorderQueued(ids: string[], entry = this.current): Promise<void> {
     const queue = entry.queuedInputs ?? [];

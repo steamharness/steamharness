@@ -6,8 +6,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startWebServer } from './web-test-storage';
-import type { Project, Report, Runtime } from '../web/workflow-types';
+import { startWebServer, temporaryRuntimePersistence } from './web-test-storage';
+import { encodeSession } from '../web/conversation-history';
+import type { ConversationSession, Project, Report, Runtime } from '../web/workflow-types';
 
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
@@ -23,6 +24,8 @@ async function fixture(options: {
   id?: unknown; connection?: WebConnection; platform?: boolean; savedServer?: string; fail?: boolean; webApp?: boolean;
   configurationChanged?: Parameters<typeof startWebServer>[0]['onWebAppConfigurationChanged'];
   restrictedEntry?: string;
+  folderHistory?: ConversationSession[];
+  recovery?: 'manual' | 'automatic';
 } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
@@ -37,6 +40,7 @@ async function fixture(options: {
   }
   const entries = ([['agent', 'bot'], ['assistant', 'bot'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'dist/steamharness/entries/board/build/board/index.html' : 'index.ts', configuration: 'configuration.json', ...(type === 'kanban' && options.webApp ? { webApp: { service: 'sample.app' } } : {}),
+    ...(entryId === 'agent' && options.folderHistory && { folderContext: true }),
   }));
   let id: string = randomUUID();
   const pkg = { id, name: 'Aggregate test', version: "0.1.0", entries, defaultEntry: 'agent' };
@@ -64,6 +68,12 @@ async function fixture(options: {
       : { version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
   const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: 'dist/steamharness/entries/board/build/board', entry: 'index.html', ...(options.webApp ? { webApp: { service: 'sample.app' } } : {}) } } : {}) }));
+  const storage = temporaryRuntimePersistence(history, 'agent');
+  for (const session of options.folderHistory ?? []) {
+    const lease = await storage.acquire(session.id);
+    try { await lease.write(encodeSession(session, 0)); } finally { await lease.close(); }
+  }
+  if (options.recovery) projects[0].conversation = { recovery: { enabled: true, startup: options.recovery } };
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => options.fail ? ({ projects: [], errors: ['Runtime unavailable'] }) : ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
     run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
@@ -71,7 +81,9 @@ async function fixture(options: {
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, onWebAppConfigurationChanged: options.configurationChanged, ...(options.connection || options.platform !== undefined ? { host: { surface: 'editor' as const, platform: options.platform, connection: options.connection } } : {}) }); apps.push(app); return app; };
+  const folderBot = options.folderHistory && { id: randomUUID(), directory, projectId: id, background: true, permissionCeiling: 'read-only' as const };
+  const host = folderBot || options.connection || options.platform !== undefined ? { surface: 'editor' as const, platform: options.platform, connection: options.connection, folderBot } : undefined;
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, onWebAppConfigurationChanged: options.configurationChanged, host }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const call = async (entryId: string, message: object) => {
@@ -82,8 +94,31 @@ async function fixture(options: {
     }
     const body = await response.json(); expect(response.status, JSON.stringify(body)).toBe(200); return body.messages[0];
   };
-  return { directory, entries, runtime, active, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
+  return { directory, entries, runtime, active, storage, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
 }
+
+it.each(['disabled', 'manual', 'automatic'] as const)('settles interrupted IM history using %s recovery without replaying from a history read', async recovery => {
+  const conversationId = randomUUID(), requestId = randomUUID();
+  const f = await fixture({ recovery: recovery === 'disabled' ? undefined : recovery, folderHistory: [{ id: conversationId, title: 'IM', origin: 'host',
+    activeRunId: requestId, messages: [{ id: requestId, runId: requestId, args: ['--message', 'hello'], role: 'assistant', content: '', status: 'running' }] }] });
+  const turn = (action: string) => f.app.hostTurn('agent', { conversationId, requestId, action });
+  const previousOwner = await f.storage.acquire(conversationId);
+  try { await expect(turn('turn')).rejects.toThrow(); } finally { await previousOwner.close(); }
+  if (recovery === 'disabled') {
+    expect(await turn('turn')).toMatchObject({ status: 'aborted' });
+    expect((await f.storage.list('conversation'))[0].messages[0].value.status).toBe('aborted');
+  } else if (recovery === 'manual') {
+    expect(await turn('turn')).toMatchObject({ status: 'paused' });
+  } else {
+    expect(await turn('turn')).toMatchObject({ status: 'running', recovering: true });
+  }
+  expect(f.runtime.run).not.toHaveBeenCalled();
+  if (recovery === 'automatic') {
+    await turn('recover');
+    await vi.waitFor(() => expect(f.runtime.run).toHaveBeenCalledOnce());
+    expect(await turn('turn')).not.toHaveProperty('recovering', true);
+  }
+});
 
 it('announces restricted entries before account connection and restores Build only after a verified role', async () => {
   const plain = await fixture({ platform: true });
