@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 const { outputFiles: [bundle] } = await build({ stdin: { contents: `
   export { ProjectSidebar } from './project-sidebar';
   export { bindHostedSidebar } from './project-sidebar-view';
+  export { hostedSidebarHtml } from './project-sidebar-html';
   export { readSidebarProjectEntries } from './project-sidebar-node';`,
   resolveDir: fileURLToPath(new URL('../extensions/studio-workstation/src/', import.meta.url)) },
   platform: 'node', format: 'cjs', bundle: true, external: ['vscode'], write: false });
@@ -246,6 +247,61 @@ test('packaged previews wait for visibility, recover missing files and discard s
   activeMount.resolve(preview); await flush();
   assert.match(view.webview.html, /<iframe/);
   view.dispose(); assert.equal(closed, 2);
+});
+
+test('only the focused standalone frame can request clipboard edits; replies come from its webview host', t => {
+  const { hostedSidebarHtml } = fixture(t);
+  const origin = 'http://127.0.0.1:32123', hostOrigin = 'vscode-webview://fixture', nonce = 'fixture';
+  const preview = { url: `${origin}/fixture`, nonce };
+  assert.doesNotMatch(hostedSidebarHtml('en', 'Sidebar', preview), /web-app-clipboard|vscode-webview-exec-command/);
+  const html = hostedSidebarHtml('en', 'Chat', preview, '/chat');
+  assert.match(html, /allow="microphone 'none'"/);
+  const events = [], listeners = {};
+  const addEventListener = (type, listener) => { listeners[type] = listener; };
+  const frame = {
+    contentWindow: { postMessage: (message, targetOrigin) => events.push(['frame', message, targetOrigin]) },
+    dispatchEvent: event => events.push(['event', event.type, event.detail]),
+    clientWidth: 500, clientHeight: 400, getBoundingClientRect: () => ({ left: 2, top: 3 }),
+  };
+  const parent = {}, document = { activeElement: frame, getElementById: () => frame, hasFocus: () => focused };
+  let focused = true;
+  runInNewContext(html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1], {
+    acquireVsCodeApi: () => ({ postMessage: message => events.push(['host', message]) }),
+    document, addEventListener, CustomEvent, window: { parent, origin: hostOrigin, addEventListener },
+  });
+  const send = (type, requestId, data = {}, event = {}) => listeners.message({
+    origin, source: frame.contentWindow, data: { type: `steamharness:web-app-${type}`, version: 1, nonce, requestId, ...data }, ...event,
+  });
+  send('clipboard', 'copy-1', { text: 'draft' }, { source: {} });
+  send('clipboard', 'copy-1', { text: 'draft' }, { origin: 'http://foreign.test' });
+  send('clipboard', 'copy-1', { text: 'draft', nonce: 'invalid' });
+  send('paste', 'paste-1', { version: 0 });
+  send('paste', '');
+  focused = false;
+  send('paste', 'paste-1');
+  focused = true; document.activeElement = {};
+  send('paste', 'paste-1');
+  assert.deepEqual(events, []);
+  document.activeElement = frame;
+  send('clipboard', 'copy-1', { text: 'draft' });
+  send('paste', 'paste-1');
+  send('contextmenu', 'menu-1', { x: 13, y: 17, editable: true, selection: false });
+  const clipboardData = { text: 'native' };
+  const edit = new CustomEvent('vscode-webview-exec-command', { cancelable: true, detail: { command: 'paste', requestId: 'paste-1', clipboard: clipboardData } });
+  listeners['vscode-webview-exec-command'](edit);
+  assert.equal(edit.defaultPrevented, true);
+  const data = { type: 'studio-web-app-contextmenu-action', requestId: 'menu-1', command: 'paste' };
+  listeners.message({ origin: hostOrigin, source: {}, data });
+  listeners.message({ origin: hostOrigin, source: parent, data });
+  listeners.message({ origin: hostOrigin, source: parent, data: { type: 'studio-web-app-clipboard-result', requestId: 'copy-1', ok: true } });
+  assert.deepEqual(clone(events), [
+    ['host', { type: 'studio-web-app-clipboard', requestId: 'copy-1', text: 'draft' }],
+    ['event', 'vscode-webview-paste', { requestId: 'paste-1' }],
+    ['host', { type: 'studio-web-app-contextmenu', requestId: 'menu-1', x: 15, y: 20, editable: true, selection: false }],
+    ['frame', { type: 'steamharness:web-app-edit', version: 1, nonce, command: 'paste', requestId: 'paste-1', clipboardData }, origin],
+    ['frame', { type: 'steamharness:web-app-contextmenu-action', version: 1, nonce, requestId: 'menu-1', command: 'paste' }, origin],
+    ['frame', { type: 'steamharness:web-app-clipboard-result', version: 1, nonce, requestId: 'copy-1', ok: true }, origin],
+  ]);
 });
 
 test('history discovery uses the project contract without executing entries and rejects escaped files', async t => {

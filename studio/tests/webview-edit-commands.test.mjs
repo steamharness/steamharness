@@ -54,27 +54,27 @@ test('native copy reads text, readonly input selections and same-origin preview 
 });
 
 const electronSource = await readFile(new URL('../upstream/vscode/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts', import.meta.url), 'utf8');
-const copyMethod = electronSource.slice(electronSource.indexOf('\tpublic override copy()'), electronSource.indexOf('\tpublic override paste()'));
+const copyMethod = electronSource.slice(electronSource.indexOf('\tpublic override copy()'), electronSource.indexOf('\tpublic override paste('));
 const copyHandler = electronSource.match(/this\._register\(this\.on\('did-copy', async text => \{([\s\S]*?)\n\t\t\}\)\);/)[1];
 test('Studio copy uses the native clipboard and reports failures, ignoring empty, unfocused and foreign requests', async () => {
   const copies = [], commands = [], errors = []; let standardCopies = 0;
   const code = ts.transpileModule(`new (class extends Base { ${copyMethod} async receive(text) { ${copyHandler} } })()`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const view = runInNewContext(code, { Base: class { copy() { standardCopies++; } }, notificationService: { error: error => errors.push(error.message) } });
-  Object.assign(view, { extension: { id: { value: 'studio.studio-workstation' } }, isFocused: true, execCommand: command => commands.push(command),
+  Object.assign(view, { useNativeClipboard: true, isFocused: true, execCommand: command => commands.push(command),
     _nativeHostService: { writeClipboardText: async text => { copies.push(text); if (text === 'denied') { throw new Error('Native copy denied'); } } } });
   view.copy(); await view.receive('Visible text'); await view.receive('denied'); await view.receive(''); await view.receive(123);
   view.isFocused = false; await view.receive('background'); view.isFocused = true;
-  view.extension.id.value = 'other.extension'; view.copy(); await view.receive('foreign');
+  view.useNativeClipboard = false; view.copy(); await view.receive('foreign');
   assert.deepEqual(JSON.parse(JSON.stringify(commands)), [{ command: 'copy' }]);
   assert.deepEqual(copies, ['Visible text', 'denied']); assert.deepEqual(errors, ['Native copy denied']); assert.equal(standardCopies, 1);
 });
-const pasteMethods = electronSource.slice(electronSource.indexOf('\tpublic override paste()'), electronSource.indexOf('\n\t/**\n\t * Webviews expose'));
+const pasteMethods = electronSource.slice(electronSource.indexOf('\tpublic override paste('), electronSource.indexOf('\n\t/**\n\t * Webviews expose'));
 const pasteCode = ts.transpileModule(`new (class extends Base {${pasteMethods}\n})()`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function nativePasteFixture() {
   const commands = [], reads = []; let standardPastes = 0;
   const view = runInNewContext(pasteCode, { Base: class { paste() { standardPastes++; } } });
-  Object.assign(view, { element: {}, extension: { id: { value: 'studio.studio-workstation' } }, isFocused: true,
+  Object.assign(view, { element: { ownerDocument: { hasFocus: () => true } }, useNativeClipboard: true, isFocused: true,
     execCommand: command => commands.push(command),
     _nativeHostService: { readClipboardText: async () => { reads.push('text'); return 'native text'; }, readImage: async () => { reads.push('image'); return new Uint8Array([1, 2, 3]); } } });
   return { view, commands, reads, standardPastes: () => standardPastes };
@@ -86,7 +86,7 @@ test('Studio paste reads text and image from the native host without changing ot
   view.paste(); await settle();
   assert.deepEqual(reads, ['text', 'image']);
   assert.deepEqual(JSON.parse(JSON.stringify(commands)), [{ command: 'paste', clipboard: { text: 'native text', image: { 0: 1, 1: 2, 2: 3 } } }]);
-  view.extension.id.value = 'other.extension'; view.paste(); await settle();
+  view.useNativeClipboard = false; view.paste(); await settle();
   assert.deepEqual(reads, ['text', 'image']); assert.equal(standardPastes(), 1);
 });
 
@@ -95,6 +95,14 @@ test('late native clipboard data cannot paste into an unfocused, replaced or dis
     const { view, commands } = nativePasteFixture();
     view.paste(); change(view); await settle(); assert.deepEqual(commands, []);
   }
+});
+
+test('standalone paste preserves the originating request and drops results after its window loses focus', async () => {
+  const { view, commands } = nativePasteFixture();
+  view.paste('composer-1'); await settle();
+  assert.equal(commands.pop().requestId, 'composer-1');
+  view.paste('composer-2'); view.element.ownerDocument.hasFocus = () => false; await settle();
+  assert.deepEqual(commands, []);
 });
 
 test('native clipboard failures retain the standard paste fallback without an unhandled rejection', async () => {

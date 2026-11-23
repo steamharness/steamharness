@@ -1,0 +1,274 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/pre/index.html b/src/vs/workbench/contrib/webview/browser/pre/index.html
+index 9cb1b2ffe62daefd46d344884db3e88ba4230467..a210b7521eb5579db4fa449249ccdfa60ced005f 100644
+--- a/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-ZeqMNjSz2deq6uofl/jzH/n9wgLXytk87cOCLOVG7Qo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-tHU/0z09eV3s9+3DWUqizRixqyCr0f7+JsmdW1reE5E=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -1179,9 +1179,10 @@
+ 					contentWindow.addEventListener('click', handleInnerClick);
+ 					contentWindow.addEventListener('auxclick', handleAuxClick);
+ 					contentWindow.addEventListener('keydown', handleInnerKeydown);
+-					contentWindow.addEventListener('vscode-webview-paste', () => {
++					contentWindow.addEventListener('vscode-webview-paste', event => {
+ 						if (onElectron) {
+-							hostMessaging.postMessage('did-paste', undefined);
++							const requestId = event instanceof contentWindow.CustomEvent ? event.detail?.requestId : undefined;
++							hostMessaging.postMessage('did-paste', typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128 ? { requestId } : undefined);
+ 						}
+ 					});
+ 					contentWindow.addEventListener('keyup', handleInnerKeyup);
+diff --git a/src/vs/workbench/contrib/webview/browser/webview.ts b/src/vs/workbench/contrib/webview/browser/webview.ts
+index c1722b803b0ffc956e6b6bd14469e4208ba0075b..f50cf170ceea25789f39f3c51d43cb72f67ffa68 100644
+--- a/src/vs/workbench/contrib/webview/browser/webview.ts
++++ b/src/vs/workbench/contrib/webview/browser/webview.ts
+@@ -98,6 +98,8 @@ export interface WebviewOptions {
+ 	readonly enableFindWidget?: boolean;
+ 	/** Leave native menu handling alone for webviews with their own desktop window. */
+ 	readonly preserveNativeMenuShortcuts?: boolean;
++	/** Route clipboard commands through the Studio host for webviews with their own desktop window. */
++	readonly nativeClipboard?: boolean;
+ 
+ 	/**
+ 	 * Disable the service worker used for loading local resources in the webview.
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+index 9a1b3d9cce0ae97036633f9c0724762278c9d8e4..b8eba5f2cb88a37c5f421f88d59495a8b8b4b048 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -98,6 +98,9 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 	private _encodedWebviewOrigin: string | undefined;
+ 
+ 	protected get platform(): string { return 'browser'; }
++	protected get useNativeClipboard(): boolean {
++		return this._options.nativeClipboard === true || this.extension?.id.value === 'studio.studio-workstation';
++	}
+ 
+ 	private static readonly _supportsTransferableStreams = new Lazy<boolean>(() => {
+ 		try {
+@@ -271,10 +274,10 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		this._register(this.on('did-keydown', (data) => {
+ 			this.handleKeyEvent('keydown', data);
+ 		}));
+-		this._register(this.on('did-paste', () => {
+-			if (this.extension?.id.value === 'studio.studio-workstation' && this.isActiveElement()) {
++		this._register(this.on('did-paste', (data) => {
++			if (this.useNativeClipboard && this.isActiveElement()) {
+ 				this.handleFocusChange(true);
+-				this.paste();
++				this.paste(data?.requestId);
+ 			}
+ 		}));
+ 
+@@ -794,7 +797,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		this.execCommand('copy');
+ 	}
+ 
+-	public paste() {
++	public paste(_requestId?: string) {
+ 		this.execCommand('paste');
+ 	}
+ 
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+index 7193ed106c1875de1c81425a96fa472ec1f77666..80bafe2ccd224a1c1b5cdeb7dbec34b583cc84b2 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+@@ -39,7 +39,7 @@ export type FromWebviewMessage = {
+ 	'no-csp-found': void;
+ 	'did-keydown': KeyEvent;
+ 	'did-keyup': KeyEvent;
+-	'did-paste': void;
++	'did-paste': { requestId: string } | undefined;
+ 	'did-copy': string;
+ 	'did-context-menu': { clientX: number; clientY: number; context: { [key: string]: unknown } };
+ 	'drag-start': void;
+@@ -63,7 +63,7 @@ interface UpdateContentEvent {
+ export type ToWebviewMessage = {
+ 	'focus': void;
+ 	'message': { message: any; transfer?: ArrayBuffer[] };
+-	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array } };
++	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array }; requestId?: string };
+ 	'did-load-resource':
+ 	| { id: number; status: 401 | 404; path: string }
+ 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }
+diff --git a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+index cc5994672653a5661eebee3e48cb2d6c830cda60..c54ef83bdc691c308fefc9c0fa73e6f637f456dd 100644
+--- a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+@@ -65,7 +65,7 @@ export class ElectronWebviewElement extends WebviewElement {
+ 
+ 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
+ 		this._register(this.on('did-copy', async text => {
+-			if (this.extension?.id.value !== 'studio.studio-workstation' || !this.isFocused || typeof text !== 'string' || !text) {
++			if (!this.useNativeClipboard || !this.isFocused || typeof text !== 'string' || !text) {
+ 				return;
+ 			}
+ 			try {
+@@ -108,24 +108,24 @@ export class ElectronWebviewElement extends WebviewElement {
+ 	}
+ 
+ 	public override copy(): void {
+-		if (this.extension?.id.value === 'studio.studio-workstation') {
++		if (this.useNativeClipboard) {
+ 			this.execCommand({ command: 'copy' });
+ 		} else {
+ 			super.copy();
+ 		}
+ 	}
+ 
+-	public override paste(): void {
+-		if (this.extension?.id.value !== 'studio.studio-workstation') {
++	public override paste(requestId?: string): void {
++		if (!this.useNativeClipboard) {
+ 			super.paste();
+ 			return;
+ 		}
+-		void this.pasteWithHostClipboard();
++		void this.pasteWithHostClipboard(requestId);
+ 	}
+ 
+-	private async pasteWithHostClipboard(): Promise<void> {
++	private async pasteWithHostClipboard(requestId?: string): Promise<void> {
+ 		const element = this.element;
+-		if (!element) {
++		if (!element || !this.isFocused || (requestId && !element.ownerDocument.hasFocus())) {
+ 			return;
+ 		}
+ 		try {
+@@ -134,11 +134,11 @@ export class ElectronWebviewElement extends WebviewElement {
+ 				this._nativeHostService.readClipboardText(),
+ 				this._nativeHostService.readImage()
+ 			]);
+-			if (this.element === element && this.isFocused) {
+-				this.execCommand({ command: 'paste', clipboard: { text, image } });
++			if (this.element === element && this.isFocused && (!requestId || element.ownerDocument.hasFocus())) {
++				this.execCommand({ command: 'paste', clipboard: { text, image }, requestId });
+ 			}
+ 		} catch {
+-			if (this.element === element && this.isFocused) {
++			if (!requestId && this.element === element && this.isFocused) {
+ 				super.paste();
+ 			}
+ 		}
+diff --git a/src/vs/workbench/electron-browser/studioChatWindow.ts b/src/vs/workbench/electron-browser/studioChatWindow.ts
+index 8ae2114565dc9c648aa772e01945f80e15d9261d..8f65eafc1027d1822be8717fe811a5c65ffa2942 100644
+--- a/src/vs/workbench/electron-browser/studioChatWindow.ts
++++ b/src/vs/workbench/electron-browser/studioChatWindow.ts
+@@ -5,10 +5,13 @@
+ 
+ import { getWCOTitlebarAreaRect, getZoomFactor, isFullscreen, onDidChangeFullscreen, onDidChangeZoomLevel } from '../../base/browser/browser.js';
+ import { $, addDisposableListener } from '../../base/browser/dom.js';
++import { toAction } from '../../base/common/actions.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+ import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
+ import { isMacintosh } from '../../base/common/platform.js';
+ import { URI } from '../../base/common/uri.js';
++import { isIMenuItem, MenuId, MenuRegistry } from '../../platform/actions/common/actions.js';
++import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+ import { INativeHostService } from '../../platform/native/common/native.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, IRectangle } from '../../platform/window/common/window.js';
+@@ -27,7 +30,7 @@ export class StudioChatWindow extends Disposable {
+ 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
+ 
+ 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
+-		private readonly native: INativeHostService,
++		private readonly native: INativeHostService, private readonly contextMenu: IContextMenuService,
+ 		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
+ 
+ 	prepare(key: string, app: LaunchpadApp): boolean {
+@@ -61,16 +64,17 @@ export class StudioChatWindow extends Disposable {
+ 			window.window.document.title = view.title;
+ 			// Auxiliary windows adopt workbench elements from the main document.
+ 			const host = window.container.appendChild($('.studio-chat-window'));
+-			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: { preserveNativeMenuShortcuts: true }, extension: undefined,
++			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: { preserveNativeMenuShortcuts: true, nativeClipboard: true }, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+ 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
+ 			const close = () => { if (this.chats.get(view.id) === chat) { this.chats.deleteAndLeak(view.id)?.dispose(); } };
++			const isCurrent = () => this.chats.get(view.id) === chat && this.prepared === prepared;
+ 			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
+ 			life.add(window);
+ 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
+ 			const titlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
+ 			life.add(webview.onMessage(({ message }) => {
+-				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
++				if (!isCurrent()) { return; }
+ 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
+ 				else if (message?.type === 'studio-launchpad-titlebar-request') { titlebar?.sync(); }
+ 				else if (message?.type === 'studio-launchpad-titlebar-controls') { titlebar?.update(message); }
+@@ -82,6 +86,25 @@ export class StudioChatWindow extends Disposable {
+ 					} else if (typeof user === 'string') { void this.openConversation(undefined, user); }
+ 				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
+ 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
++				} else if (message?.type === 'studio-web-app-clipboard') {
++					const { requestId, text } = message;
++					if (validRequestId(requestId) && typeof text === 'string' && text.length > 0 && text.length <= 1_000_000 && window.window.document.hasFocus()) {
++						void this.native.writeClipboardText(text).then(() => {
++							if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId, ok: true }); }
++						}, () => {
++							if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId, ok: false }); }
++						});
++					}
++				} else if (message?.type === 'studio-web-app-contextmenu' && window.window.document.hasFocus()) {
++					const { requestId, x, y, editable, selection } = message;
++					if (validRequestId(requestId) && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= host.clientWidth && y <= host.clientHeight
++						&& typeof editable === 'boolean' && typeof selection === 'boolean') {
++						this.showClipboardMenu(host, x, y, editable, selection, command => {
++							if (isCurrent() && window.window.document.hasFocus()) {
++								void webview.postMessage({ type: 'studio-web-app-contextmenu-action', requestId, command });
++							}
++						});
++					}
+ 				}
+ 			}));
+ 			webview.mountTo(host, window.window); deadline.schedule(); webview.setHtml(view.html); return chat;
+@@ -91,6 +114,22 @@ export class StudioChatWindow extends Disposable {
+ 		}
+ 	}
+ 
++	private showClipboardMenu(host: HTMLElement, x: number, y: number, editable: boolean, selection: boolean, run: (command: 'copy' | 'paste') => void): void {
++		const actions = MenuRegistry.getMenuItems(MenuId.WebviewContext).filter(isIMenuItem).flatMap(({ command }) => {
++			const edit = command.id === 'editor.action.clipboardCopyAction' && (editable || selection) ? 'copy'
++				: command.id === 'editor.action.clipboardPasteAction' && editable ? 'paste' : undefined;
++			if (!edit) {
++				return [];
++			}
++			// Use the existing localized labels, but bind the actions to the chat that opened the menu.
++			return [toAction({ id: command.id, label: typeof command.title === 'string' ? command.title : command.title.value, enabled: edit === 'paste' || selection, run: () => run(edit) })];
++		});
++		if (actions.length) {
++			const rect = host.getBoundingClientRect();
++			this.contextMenu.showContextMenu({ getActions: () => actions, getAnchor: () => ({ x: rect.left + x, y: rect.top + y }) });
++		}
++	}
++
+ 	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore) {
+ 		// Draggable regions in a cross-origin iframe don't reach the owning native window.
+ 		const drag = host.appendChild($('.studio-chat-titlebar-drag'));
+@@ -134,3 +173,7 @@ export class StudioChatWindow extends Disposable {
+ 		} };
+ 	}
+ }
++
++function validRequestId(id: unknown): id is string {
++	return typeof id === 'string' && id.length > 0 && id.length <= 128;
++}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 8d3fb67c9f331f803d73d24da9dc9585140fb66c..7ccfc60e14c59bed2a92516eaec2a8c81d898d70 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -102,7 +102,7 @@ export class StudioLaunchpad extends Disposable {
+ 		@IClipboardService clipboard: IClipboardService,
+ 	) {
+ 		super();
+-		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native,
++		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
+ 			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+ 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];

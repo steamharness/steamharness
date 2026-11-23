@@ -58,6 +58,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts',
     'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts',
     'src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts', 'src/vs/base/common/product.ts',
+    'src/vs/workbench/contrib/webview/browser/webview.ts', 'src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts',
+    'src/vs/workbench/contrib/webview/browser/pre/index.html', 'src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts',
     'src/vs/workbench/contrib/update/browser/update.contribution.ts', 'src/vs/workbench/contrib/update/browser/update.ts',
     'build/checker/tsconfig.electron-browser.json', 'build/next/resources.ts', 'build/next/standalone.ts', 'build/next/test/standalone.test.ts',
     'src/vs/platform/native/common/native.ts', 'src/vs/platform/native/electron-main/nativeHostMainService.ts',
@@ -77,6 +79,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   await applyPatches(ROOT, upstream);
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(upstream, file)))), before);
   await fs.appendFile(path.join(upstream, files[2]), '\n// staged local edit\n');
+  assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioChatWindow.ts'), 'utf8'), /nativeClipboard: true/u);
   git(upstream, ['add', '--', files[2]]);
   await fs.appendFile(path.join(upstream, files[2]), '// unstaged local edit\n');
   await fs.writeFile(path.join(upstream, 'notes.txt'), 'untracked work\n');
