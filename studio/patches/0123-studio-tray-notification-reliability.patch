@@ -1,0 +1,195 @@
+diff --git a/src/vs/platform/windows/electron-main/studioTray.ts b/src/vs/platform/windows/electron-main/studioTray.ts
+index b1638471c535d4b136404d53d958667dea89f335..ea4dc35e944132b366bb008bfd43776906290d08 100644
+--- a/src/vs/platform/windows/electron-main/studioTray.ts
++++ b/src/vs/platform/windows/electron-main/studioTray.ts
+@@ -67,12 +67,13 @@ export function createStudioTray(show: () => void, quit: () => void, markAll: ()
+ 	tray.setToolTip('SteamHarness Studio');
+ 	let notices = emptyStudioTrayNotifications;
+ 	let preview: StudioTrayPreview | undefined;
++	const openLaunchpadInstead = (error: unknown) => { onError(error); show(); };
+ 	tray.on('click', (_event, bounds) => {
+ 		if (preview) { preview.close(); return; }
+ 		if (!notices.count) { show(); return; }
+ 		try {
+-			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, onError);
+-		} catch (error) { onError(error); }
++			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, openLaunchpadInstead);
++		} catch (error) { openLaunchpadInstead(error); }
+ 	});
+ 	if (isLinux) {
+ 		tray.setContextMenu(menu);
+diff --git a/src/vs/platform/windows/electron-main/studioTrayPreview.ts b/src/vs/platform/windows/electron-main/studioTrayPreview.ts
+index 46b8c34da84ee16a263a0431cfc47fe68d15334e..acaf7dce35fc4045ac519df498f8981006fd0e84 100644
+--- a/src/vs/platform/windows/electron-main/studioTrayPreview.ts
++++ b/src/vs/platform/windows/electron-main/studioTrayPreview.ts
+@@ -53,7 +53,14 @@ export class StudioTrayPreview {
+ 		});
+ 		win.on('closed', onClose);
+ 		win.on('blur', () => this.close());
+-		win.webContents.on('render-process-gone', () => this.close());
++		const fail = (error: unknown) => {
++			if (!win.isDestroyed()) { this.close(); onError(error); }
++		};
++		win.webContents.on('preload-error', (_event, _path, error) => fail(error));
++		win.webContents.on('render-process-gone', (_event, { reason }) => {
++			if (this.ready) { this.close(); }
++			else { fail(new Error(`Studio tray preview renderer exited: ${reason}`)); }
++		});
+ 		win.webContents.on('will-frame-navigate', event => event.preventDefault());
+ 		win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+ 		win.webContents.on('before-input-event', (event, input) => {
+@@ -71,20 +78,19 @@ export class StudioTrayPreview {
+ 			}
+ 			this.marking = true;
+ 			try {
+-				const success = await markAll();
+-				if (success && !this.notices.count) { this.close(); }
+-				return success;
+-			} finally { this.marking = false; }
++				return await markAll();
++			} finally {
++				this.marking = false;
++				if (!this.notices.count) { this.close(); }
++			}
+ 		});
+ 		void win.loadURL(url).then(() => {
+ 			if (!win.isDestroyed()) {
+-				this.ready = true;
+ 				this.render();
+ 				win.show();
++				this.ready = true;
+ 			}
+-		}, error => {
+-			if (!win.isDestroyed()) { onError(error); this.close(); }
+-		});
++		}).catch(fail);
+ 	}
+ 
+ 	private bounds(): Rectangle {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index f8317429967738cb83770d955dbd016be1f3ad3f..e28a67f2da703e7d14bcc3b85a527864a72a0be0 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -6,7 +6,7 @@
+ import { DataTransfers } from '../../base/browser/dnd.js';
+ import { addDisposableListener, DragAndDropObserver } from '../../base/browser/dom.js';
+ import { mainWindow } from '../../base/browser/window.js';
+-import { RunOnceScheduler } from '../../base/common/async.js';
++import { RunOnceScheduler, Throttler } from '../../base/common/async.js';
+ import { encodeBase64 } from '../../base/common/buffer.js';
+ import { CancellationTokenSource } from '../../base/common/cancellation.js';
+ import { Event } from '../../base/common/event.js';
+@@ -74,7 +74,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private imTrayRevision = 0;
+ 	private trayScope = generateUuid();
+ 	private trayPublished?: string;
+-	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
++	private readonly noticeReads = this._register(new Throttler());
+ 	private readonly language = getNLSLanguage() ?? 'en';
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+ 	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryCategory(), 100));
+@@ -148,7 +148,7 @@ export class StudioLaunchpad extends Disposable {
+ 				if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
+ 				return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
+ 			},
+-			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
++			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.queueNoticeRefresh(); },
+ 			changeConversation: async action => {
+ 				await commands.executeCommand('studio.changeLaunchpadConversation', action);
+ 				this.refreshInbox.schedule(); this.view.refreshDirectory();
+@@ -245,7 +245,7 @@ export class StudioLaunchpad extends Disposable {
+ 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
+ 			if (scopeChanged) {
+ 				this.appRequests.clear(); this.view.setInboxActionBusy('add-contact', false); this.view.setInboxActionBusy('create-group', false);
+-				++this.noticeRevision; this.socialUnread = false; this.socialTrayNotices = []; this.refreshNotices.schedule();
++				++this.noticeRevision; this.socialUnread = false; this.socialTrayNotices = [];
+ 				++this.imTrayRevision; this.imTrayNotices = undefined;
+ 				this.trayScope = generateUuid();
+ 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
+@@ -257,6 +257,7 @@ export class StudioLaunchpad extends Disposable {
+ 				this.scheduleLibraryCategory();
+ 				void this.publishTrayNotifications();
+ 				void this.readImTrayNotices();
++				this.queueNoticeRefresh();
+ 			}
+ 		};
+ 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+@@ -333,10 +334,15 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private refreshSocialState(): void {
+ 		if (!this.account?.signedIn) { return; }
+-		this.refreshNotices.schedule();
++		this.queueNoticeRefresh();
+ 		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
+ 	}
+ 
++	private queueNoticeRefresh(): void {
++		// Hidden renderers throttle timers; coalesce concurrent refreshes without waiting on one.
++		if (this.account?.signedIn && !this._store.isDisposed) { void this.noticeReads.queue(() => this.readNotices()); }
++	}
++
+ 	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
+ 		const close = document.createElement('button');
+ 		close.type = 'button';
+@@ -592,12 +598,13 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 	private async readNotices(): Promise<void> {
+-		if (!this.account?.signedIn) { return; }
++		const account = this.account?.signedIn ? this.account.scopeKey : undefined;
++		if (!account) { return; }
+ 		const revision = ++this.noticeRevision;
+ 		try {
+-			const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices');
++			const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices', account);
+ 			if (revision !== this.noticeRevision || typeof unread !== 'boolean') { return; }
+-			const feed = unread ? await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices').catch(() => undefined) : undefined;
++			const feed = unread ? await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account).catch(() => undefined) : undefined;
+ 			if (revision !== this.noticeRevision) { return; }
+ 			const changed = unread !== this.socialUnread;
+ 			this.socialUnread = unread;
+@@ -609,10 +616,11 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async readImTrayNotices(): Promise<void> {
+-		if (!this.account?.signedIn) { return; }
++		const account = this.account?.signedIn ? this.account.scopeKey : undefined;
++		if (!account) { return; }
+ 		const revision = ++this.imTrayRevision;
+ 		try {
+-			const notices = await this.commands.executeCommand<IStudioTrayNotifications | undefined>('studio.getTrayImNotices');
++			const notices = await this.commands.executeCommand<IStudioTrayNotifications | undefined>('studio.getTrayImNotices', account);
+ 			if (revision === this.imTrayRevision) {
+ 				this.imTrayNotices = notices;
+ 				await this.publishTrayNotifications();
+@@ -639,24 +647,26 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private async markAllNoticesRead(includeIm = false): Promise<void> {
+ 		const scope = this.trayScope;
+-		const checkScope = () => { if (scope !== this.trayScope) { throw new Error('The notification account changed'); } };
++		const checkScope = () => { if (scope !== this.trayScope || this._store.isDisposed) { throw new Error('The notification account changed'); } };
+ 		try {
+ 			this.notices.readAll();
+ 			if (!this.start.state?.platform || !this.account?.signedIn) { return; }
++			const account = this.account.scopeKey;
++			if (!account) { throw new Error('The notification account is unavailable'); }
+ 			// The hosted summary may be the only IM notice until the first live snapshot arrives.
+ 			const hasImUnread = this.imTrayNotices ? this.imTrayNotices.count > 0 : this.socialTrayNotices.some(notice => notice.id.startsWith('im-unread:'));
+-			if (includeIm && hasImUnread && await this.commands.executeCommand<boolean>('studio.markAllImMessagesRead') !== true) {
++			if (includeIm && hasImUnread && await this.commands.executeCommand<boolean>('studio.markAllImMessagesRead', account) !== true) {
+ 				throw new Error('IM unread messages could not be marked as read');
+ 			}
+ 			checkScope();
+ 			// Run this after IM so a pending hosted summary can't be posted after read-all.
+-			await this.commands.executeCommand('studio.markAllNoticesRead');
++			await this.commands.executeCommand('studio.markAllNoticesRead', account);
+ 			checkScope();
+ 			++this.noticeRevision;
+ 			this.socialUnread = false;
+ 			this.socialTrayNotices = [];
+ 		} finally {
+-			if (scope === this.trayScope) {
++			if (scope === this.trayScope && !this._store.isDisposed) {
+ 				await this.readImTrayNotices();
+ 				await this.publishTrayNotifications();
+ 				this.paint();

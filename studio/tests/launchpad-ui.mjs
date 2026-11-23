@@ -103,21 +103,24 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       return window.storeFixture.items.find(p=>p.id===args[0]);
     }
     if (id === 'studio.getSocialSnapshot') {
+      if (args[1] === 'notices' && args[2] !== account.scopeKey) throw new Error('Wrong notice account');
       const owned = account.scopeKey === 'a'.repeat(64);
       if (window.socialGate) await window.socialGate;
       if (window.socialFailure === 'unsupported') return {unavailable:'unsupported'};
       if (window.socialFailure) throw new Error('Service unavailable');
       return owned ? structuredClone({people:people.filter(p=>p.name.toLowerCase().includes(args[0].toLowerCase())),favorites:[{id:'saved',title:'Saved message',conversation:'group-team'}],notices}) : {people:[],favorites:[],notices:[]};
     }
-    if (id === 'studio.hasUnreadNotices') return account.scopeKey === 'a'.repeat(64) && notices.some(notice=>!notice.read);
-    if (id === 'studio.getTrayImNotices') return window.imTrayFixture;
+    if (id === 'studio.hasUnreadNotices') return args[0] === account.scopeKey && account.scopeKey === 'a'.repeat(64) && notices.some(notice=>!notice.read);
+    if (id === 'studio.getTrayImNotices') return args[0] === account.scopeKey ? window.imTrayFixture : undefined;
     if (id === 'studio.markAllImMessagesRead') {
+      if (args[0] !== (window.serviceAccountScope ?? account.scopeKey)) return false;
       if (window.imMarkAllFails === 'offline') return false;
       if (window.imMarkAllFails) throw new Error('Service unavailable');
       window.imTrayFixture = {count:0,items:[]};
       return true;
     }
     if (id === 'studio.markAllNoticesRead') {
+      if (args[0] !== (window.serviceAccountScope ?? account.scopeKey)) throw new Error('Wrong notice account');
       if (window.markAllFails) throw new Error('Service unavailable');
       if (account.scopeKey === 'a'.repeat(64)) for (const notice of notices) notice.read=true;
       return;
@@ -543,6 +546,12 @@ try {
         window.refreshInbox();
       });
       await page.waitForFunction(() => window.trayState?.items.some(item=>item.detail==='Tray message preview') && window.trayState.items.some(item=>item.title==='Local Studio notification'));
+      await page.evaluate(async () => {
+        window.serviceAccountScope='b'.repeat(64);
+        await window.events['vscode:studioTrayMarkAll']({},'account-update-pending',window.trayState.scope);
+        delete window.serviceAccountScope;
+      });
+      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.imTrayFixture.count]), [false,2], 'a newer account in the extension host cannot be cleared by the old tray');
       await page.evaluate(() => {
         window.imMarkAllFails=true;
         window.events['vscode:studioTrayMarkAll']({},'failed',window.trayState.scope);
@@ -556,15 +565,17 @@ try {
       await page.waitForFunction(() => window.trayReadResult?.id==='read-all');
       assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [true,0]);
       await page.evaluate(() => {
+        Object.defineProperty(document,'hidden',{configurable:true,value:true});
         window.imTrayFixture=undefined;
         window.imMarkAllFails='offline';
         window.refreshInbox();
         window.addHostedImNotice();
       });
-      await page.waitForFunction(() => window.trayState?.count===1);
+      await page.waitForFunction(() => window.trayState?.count===1 && window.trayState.items.length === 1);
       await page.evaluate(() => window.events['vscode:studioTrayMarkAll']({},'offline',window.trayState.scope));
       assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [false,1], 'a hosted summary must stay unread until IM can be cleared');
       await page.evaluate(() => {
+        delete document.hidden;
         const previousScope=window.trayState.scope;
         window.updateAccount({scopeKey:'b'.repeat(64)});
         window.events['vscode:studioTrayMarkAll']({},'old-account',previousScope);

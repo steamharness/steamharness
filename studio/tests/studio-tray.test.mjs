@@ -19,7 +19,7 @@ const snapshot = (count, ...items) => ({ count, items });
 
 function fixture(platform, language, markAll = async () => true) {
   const icons = [], titles = [], tooltips = [];
-  const panels = [], actions = [];
+  const panels = [], actions = [], errors = [];
   const workArea = { x: -1440, y: 25, width: 1440, height: 875 };
   const original = {
     getSize: () => ({ width: 16, height: 16 }),
@@ -68,8 +68,8 @@ function fixture(platform, language, markAll = async () => true) {
   };
   const module = { exports: {} };
   runInNewContext(code, { module, Buffer, require: filename => modules[path.basename(filename)] });
-  const tray = module.exports.createStudioTray(() => actions.push('launchpad'), () => actions.push('quit'), markAll, error => { throw error; });
-  return { tray, icon, panels, actions, icons, titles, tooltips, original };
+  const tray = module.exports.createStudioTray(() => actions.push('launchpad'), () => actions.push('quit'), markAll, error => { errors.push(error); });
+  return { tray, icon, panels, actions, icons, titles, tooltips, original, errors };
 }
 
 test('the macOS menu bar shows a localized tooltip and clears its title at zero unread', () => {
@@ -155,6 +155,49 @@ test('right click keeps the original menu and dismisses the preview', async () =
   icon.menu[0].click(); icon.menu[2].click();
   assert.deepEqual(actions, ['launchpad', 'quit']);
   assert.equal(fixture('linux', 'en').icon.menu.length, 3);
+});
+
+test('a broken preload closes the empty preview and opens the Launchpad without clearing unread', async () => {
+  const { tray, icon, panels, actions, errors } = fixture('mac', 'en');
+  tray.setNotifications(snapshot(1, { title: 'Unread message' }));
+  icon.emit('click', {});
+  const [panel] = panels;
+  const error = new Error('Could not load preload');
+  panel.webContents.emit('preload-error', {}, '/preview.js', error);
+  await setImmediate();
+  assert.deepEqual({ visible: panel.isVisible(), destroyed: panel.isDestroyed(), actions, errors },
+    { visible: false, destroyed: true, actions: ['launchpad'], errors: [error] });
+  icon.emit('click', {});
+  await setImmediate();
+  assert.equal(panels[1].state.count, 1);
+});
+
+test('a failure sending the initial preview also opens the Launchpad', async () => {
+  const { tray, icon, panels, actions, errors } = fixture('mac', 'en');
+  tray.setNotifications(snapshot(1));
+  icon.emit('click', {});
+  const [panel] = panels;
+  const error = new Error('Could not send the preview');
+  panel.webContents.send = () => { throw error; };
+  await setImmediate();
+  assert.deepEqual({ destroyed: panel.isDestroyed(), actions, errors },
+    { destroyed: true, actions: ['launchpad'], errors: [error] });
+});
+
+test('a failed acknowledgement does not leave an empty popup after an independent read', async () => {
+  const result = Promise.withResolvers();
+  const { tray, icon, panels, actions } = fixture('mac', 'en', () => result.promise);
+  tray.setNotifications(snapshot(1));
+  icon.emit('click', {});
+  await setImmediate();
+  const [panel] = panels;
+  const marked = panel.mark({ senderFrame: panel.webContents.mainFrame });
+  tray.setNotifications(snapshot(0));
+  result.resolve(false);
+  assert.equal(await marked, false);
+  assert.equal(panel.isDestroyed(), true);
+  icon.emit('click', {});
+  assert.deepEqual(actions, ['launchpad']);
 });
 
 test('the sandboxed preview renders literal text and provides a localized retry state', async () => {

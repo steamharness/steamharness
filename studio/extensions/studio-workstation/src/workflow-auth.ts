@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { registerProjectConnectionStatus } from './workflow-connection-status';
 import { AccountSections } from './account-sections';
 import type { AccountSectionProvider } from './account-section-types';
-import { accountMenuState } from './account-menu-state';
+import { accountMenuState, accountScopeKey } from './account-menu-state';
 import { settingsState, settingsViewState, updateSetting } from './settings';
 import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
 import type { ProjectSidebar } from './project-sidebar';
@@ -61,7 +61,7 @@ export class AccountController implements vscode.Disposable {
   private readonly lifetime = new AbortController();
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
-    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, digest?: (value: string) => string) {
+    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, private readonly digest?: (value: string) => string) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
@@ -230,6 +230,10 @@ export class AccountController implements vscode.Disposable {
   getState(): AccountState {
     const state = this.account.getState();
     return { ...state, aiServerUrl: this.aiSession?.serverUrl, aiConfigured: !!this.getAiConnection() };
+  }
+  getAccountScopeKey(): string | undefined {
+    const state = this.account.getState();
+    return this.platform && state.status === 'authenticated' ? accountScopeKey(state, this.digest) : undefined;
   }
   getUserAgentModels() { return this.userModels.models(); }
   registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }

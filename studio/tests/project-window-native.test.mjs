@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -112,21 +112,22 @@ test('the project-window patch reproduces the kernel changes repeatedly without 
   }
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
-  await mkdir(path.join(fixture, 'patches'));
-  const patch = path.join(fixture, 'patches/0034-studio-project-window-choice.patch');
-  await copyFile(path.join(ROOT, 'patches/0034-studio-project-window-choice.patch'), patch);
-  const entryPatchName = '0110-studio-shared-project-details.patch';
-  const entryPatch = path.join(fixture, 'patches', entryPatchName);
-  const details = await readFile(path.join(ROOT, 'patches', entryPatchName), 'utf8');
-  await writeFile(entryPatch, details.split(/(?=^diff --git )/m).filter(part => files.some(file => part.startsWith(`diff --git a/${file} b/${file}\n`))).join(''));
-  const applied = file => {
-    try { git(['apply', '--reverse', '--check', file]); return true; } catch { return false; }
-  };
-  if (!applied(entryPatch)) { git(['apply', entryPatch]); }
+  const patchDirectory = path.join(ROOT, 'patches');
+  const fixturePatches = path.join(fixture, 'patches');
+  await mkdir(fixturePatches);
+  // Later patches can change the context of the project-window hunks in shared host files.
+  const patches = [];
+  for (const name of (await readdir(patchDirectory)).filter(name => name.endsWith('.patch')).sort()) {
+    const content = await readFile(path.join(patchDirectory, name), 'utf8');
+    const relevant = content.split(/(?=^diff --git )/m).filter(part => files.some(file => part.startsWith(`diff --git a/${file} b/${file}\n`))).join('');
+    if (!relevant) continue;
+    const patch = path.join(fixturePatches, name);
+    await writeFile(patch, relevant);
+    patches.push(patch);
+  }
   const bytes = () => Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8')));
   const expected = await bytes();
-  git(['apply', '--reverse', entryPatch]);
-  if (applied(patch)) { git(['apply', '--reverse', patch]); }
+  for (const patch of patches.reverse()) git(['apply', '--reverse', patch]);
   git(['add', '--all']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'kernel fixture']);

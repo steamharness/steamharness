@@ -9,6 +9,7 @@ import type { Launcher } from './workflow-cli-types';
 
 interface LayerAccount {
   getState?: () => { serverUrl: string };
+  getAccountScopeKey?: () => string | undefined;
   getAiConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   onDidChange?: (listener: () => unknown) => vscode.Disposable;
