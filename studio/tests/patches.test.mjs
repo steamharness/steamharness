@@ -63,7 +63,11 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/platform/native/common/native.ts', 'src/vs/platform/native/electron-main/nativeHostMainService.ts',
     'src/vs/platform/windows/electron-main/studioTray.ts', 'src/vs/platform/windows/electron-main/studioTrayPreview.ts', 'src/vs/platform/windows/electron-main/windows.ts',
     'src/vs/platform/windows/electron-main/windowsMainService.ts', 'src/vs/workbench/electron-browser/studioDesktopNotifications.ts',
-    'src/vs/workbench/electron-browser/studioNotificationInbox.ts', 'src/vs/workbench/test/electron-browser/workbenchTestServices.ts']);
+    'src/vs/workbench/electron-browser/studioNotificationInbox.ts', 'src/vs/workbench/test/electron-browser/workbenchTestServices.ts',
+    'src/vs/platform/notification/common/notification.ts', 'src/vs/workbench/common/notifications.ts',
+    'src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts', 'src/vs/workbench/browser/parts/notifications/notificationsCenter.ts',
+    'src/vs/workbench/browser/parts/notifications/notificationsCommands.ts', 'src/vs/workbench/browser/parts/notifications/notificationsViewer.ts',
+    'src/vs/workbench/test/browser/notificationsToasts.test.ts']);
   const index = path.join(upstream, '.git/index');
   await applyPatches(ROOT, upstream);
   assert.doesNotMatch(await fs.readFile(path.join(upstream, files[0]), 'utf8'), /\{ id: '(?:databases|kv|knowledge)'/u);

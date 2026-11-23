@@ -1,0 +1,387 @@
+diff --git a/src/vs/platform/native/common/native.ts b/src/vs/platform/native/common/native.ts
+index 698c95b3ff0..8f1007ac299 100644
+--- a/src/vs/platform/native/common/native.ts
++++ b/src/vs/platform/native/common/native.ts
+@@ -289,6 +289,7 @@ export interface ICommonNativeHostService {
+ 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
+ 	openStudioLaunchpadInbox(): Promise<boolean>;
+ 	openStudioLaunchpadStore(): Promise<boolean>;
++	notifyStudioSocialChanged(): Promise<void>;
+ 
+ 	openAgentsWindow(options?: IOpenAgentsWindowOptions): Promise<void>;
+ 
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index 4a93e160b44..e346e6db8ec 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -293,6 +293,11 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 		return true;
+ 	}
+ 
++	async notifyStudioSocialChanged(): Promise<void> {
++		const launchpad = this.windowsMainService.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
++		launchpad?.send('vscode:studioSocialChanged');
++	}
++
+ 	openWindow(windowId: number | undefined, options?: IOpenEmptyWindowOptions): Promise<void>;
+ 	openWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
+ 	openWindow(windowId: number | undefined, arg1?: IOpenEmptyWindowOptions | IWindowOpenable[], arg2?: IOpenWindowOptions): Promise<void> {
+diff --git a/src/vs/platform/notification/common/notification.ts b/src/vs/platform/notification/common/notification.ts
+index aa66bdfa81a..c7b13606668 100644
+--- a/src/vs/platform/notification/common/notification.ts
++++ b/src/vs/platform/notification/common/notification.ts
+@@ -153,6 +153,9 @@ export interface INotification extends INotificationProperties {
+ 	 */
+ 	readonly message: NotificationMessage;
+ 
++	/** Called on explicit interactions with the message, not when the notification is hidden or removed by the system. */
++	readonly onDidAcknowledge?: () => void;
++
+ 	/**
+ 	 * The source of the notification appears as additional information.
+ 	 */
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts b/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
+index f8f1cbbe74a..6d1673fda1a 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
+@@ -181,7 +181,7 @@ function getActionsFromNotification(notification: INotificationViewItem, accessi
+ 	}
+ 	actions.push({
+ 		id: 'clearNotification', label: localize('clearNotification', "Clear Notification"), tooltip: localize('clearNotification', "Clear Notification"), run: () => {
+-			notification.close();
++			notification.dismiss();
+ 			accessibilitySignalService.playSignal(AccessibilitySignal.clear);
+ 		}, enabled: true, class: ThemeIcon.asClassName(Codicon.clearAll)
+ 	});
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationsCenter.ts b/src/vs/workbench/browser/parts/notifications/notificationsCenter.ts
+index 6529c49d7ac..4c667c2b66e 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationsCenter.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsCenter.ts
+@@ -459,7 +459,7 @@ export class NotificationsCenter extends Themable implements INotificationsCente
+ 		// Close all
+ 		for (const notification of [...this.model.notifications] /* copy array since we modify it from closing */) {
+ 			if (!notification.hasActiveProgress) {
+-				notification.close();
++				notification.dismiss();
+ 			}
+ 			this.accessibilitySignalService.playSignal(AccessibilitySignal.clear);
+ 		}
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts b/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
+index cbcb420f748..93dfef8cc7c 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
+@@ -136,7 +136,7 @@ export function registerNotificationCommands(center: INotificationsCenterControl
+ 			const accessibilitySignalService = accessor.get(IAccessibilitySignalService);
+ 			const notification = getNotificationFromContext(accessor.get(IListService), args);
+ 			if (notification && !notification.hasActiveProgress) {
+-				notification.close();
++				notification.dismiss();
+ 				accessibilitySignalService.playSignal(AccessibilitySignal.clear);
+ 			}
+ 		}
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts b/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
+index 3370360204d..70724038734 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { IListVirtualDelegate, IListRenderer } from '../../../../base/browser/ui/list/list.js';
+-import { clearNode, addDisposableListener, EventType, EventHelper, $, isEventLike } from '../../../../base/browser/dom.js';
++import { clearNode, addDisposableListener, EventType, EventHelper, $, getWindow, isEventLike } from '../../../../base/browser/dom.js';
+ import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+ import { URI } from '../../../../base/common/uri.js';
+ import { localize } from '../../../../nls.js';
+@@ -398,7 +398,7 @@ export class NotificationTemplateRenderer extends Disposable {
+ 			if (!notification.hasActiveProgress && e.button === 1 /* Middle Button */) {
+ 				EventHelper.stop(e, true);
+ 
+-				notification.close();
++				notification.dismiss();
+ 			}
+ 		}));
+ 
+@@ -406,6 +406,14 @@ export class NotificationTemplateRenderer extends Disposable {
+ 		this.renderSeverity(notification);
+ 
+ 		// Message
++		if (notification.acknowledge) {
++			this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
++				const selection = getWindow(this.template.message).getSelection();
++				if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
++					notification.acknowledge?.();
++				}
++			}));
++		}
+ 		const messageCustomHover = this.inputDisposables.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), this.template.message, ''));
+ 		const messageOverflows = this.renderMessage(notification, messageCustomHover);
+ 
+diff --git a/src/vs/workbench/common/notifications.ts b/src/vs/workbench/common/notifications.ts
+index c01b52985a6..7d51a17048a 100644
+--- a/src/vs/workbench/common/notifications.ts
++++ b/src/vs/workbench/common/notifications.ts
+@@ -324,6 +324,7 @@ export interface INotificationViewItem {
+ 	readonly onDidChangeVisibility: Event<boolean>;
+ 	readonly onDidChangeContent: Event<INotificationViewItemContentChangeEvent>;
+ 	readonly onDidClose: Event<void>;
++	readonly acknowledge?: () => void;
+ 
+ 	expand(): void;
+ 	collapse(skipEvents?: boolean): void;
+@@ -336,6 +337,7 @@ export interface INotificationViewItem {
+ 	updateVisibility(visible: boolean): void;
+ 
+ 	close(): void;
++	dismiss(): void;
+ 
+ 	equals(item: INotificationViewItem): boolean;
+ }
+@@ -510,7 +512,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 			}
+ 		}
+ 
+-		return new NotificationViewItem(notification.id, severity, notification.sticky, priority, message, parseLegacyLinks, notification.source, notification.progress, actions);
++		return new NotificationViewItem(notification.id, severity, notification.sticky, priority, message, parseLegacyLinks, notification.source, notification.progress, actions, notification.onDidAcknowledge);
+ 	}
+ 
+ 	private static parseNotificationMessage(input: NotificationMessage, parseLegacyLinks = false): INotificationMessage | undefined {
+@@ -580,7 +582,8 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		private readonly parseLegacyLinks: boolean,
+ 		private _source: string | INotificationSource | undefined,
+ 		progress: INotificationProgressProperties | undefined,
+-		actions?: INotificationActions
++		actions?: INotificationActions,
++		readonly acknowledge?: () => void
+ 	) {
+ 		super();
+ 
+@@ -739,6 +742,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		}
+ 
+ 		this._expanded = true;
++		this.acknowledge?.();
+ 		this._onDidChangeExpansion.fire();
+ 	}
+ 
+@@ -768,6 +772,11 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		this.dispose();
+ 	}
+ 
++	dismiss(): void {
++		this.acknowledge?.();
++		this.close();
++	}
++
+ 	equals(other: INotificationViewItem): boolean {
+ 		if (this.hasProgress || other.hasProgress) {
+ 			return false;
+diff --git a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+index abd7b1459b0..d22c72dece9 100644
+--- a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
++++ b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+@@ -32,6 +32,7 @@ const workbenchKey = 'studio.notifications.workbench';
+ CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(INativeHostService).isStudioNotificationWindow());
+ CommandsRegistry.registerCommand('studio.internalGetDesktopNotificationStatus', accessor => accessor.get(INativeHostService).getStudioDesktopNotificationStatus());
+ CommandsRegistry.registerCommand('studio.internalOpenNotificationSettings', accessor => accessor.get(INativeHostService).openStudioNotificationSettings());
++CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', accessor => accessor.get(INativeHostService).notifyStudioSocialChanged());
+ 
+ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async (accessor, notice: DesktopNotice) => {
+ 	if (!safeId(notice?.id) || !safeId(notice.source?.id) || !text(notice.source.label, 80) || !text(notice.title, 120) ||
+@@ -58,6 +59,7 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 	if (!native && !workbench) { return true; }
+ 	const lifetime = new DisposableStore();
+ 	let closed = false;
++	let activating = false;
+ 	let handle: INotificationHandle | undefined;
+ 	const clearNative = () => {
+ 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
+@@ -71,24 +73,36 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 		handle?.close();
+ 		clearNative();
+ 	};
+-	const closeIfIdle = () => { if (!handle && !native) { close(); } };
++	const closeIfIdle = () => { if (!handle && !native && !activating) { close(); } };
++	const acknowledge = () => {
++		if (!closed) {
++			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined);
++		}
++	};
+ 	const activate = async (focus: boolean) => {
+-		if (closed) { return; }
+-		const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
+-		if (!target || closed) { return; }
+-		if (target === 'launchpadInbox') {
+-			if (!await nativeHost.openStudioLaunchpadInbox()) { return; }
+-		} else if (focus) {
+-			await host.focus(mainWindow, { mode: FocusMode.Force });
++		if (closed || activating) { return; }
++		activating = true;
++		try {
++			const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
++			if (!target || closed) { return; }
++			if (target === 'launchpadInbox') {
++				if (!await nativeHost.openStudioLaunchpadInbox()) { return; }
++			} else if (focus) {
++				await host.focus(mainWindow, { mode: FocusMode.Force });
++			}
++			close();
++		} finally {
++			activating = false;
++			closeIfIdle();
+ 		}
+-		close();
+ 	};
+ 	live.set(source.id, { id, close });
+ 	if (workbench) {
+ 		// The normal workbench notification model handles its own Do Not Disturb and source filters.
+ 		handle = notifications.notify({
+ 			id, source, message: NotificationText.concat(message), severity: Severity.Info,
+-			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
++			onDidAcknowledge: acknowledge,
++			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => { acknowledge(); return activate(false); } })] },
+ 		});
+ 		lifetime.add(handle.onDidClose(() => { handle = undefined; closeIfIdle(); }));
+ 	}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index cb53d63d193..9b94e765854 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -224,7 +224,9 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) => Array.from(this.appRequests.values()).includes(requestId) && this.chat.show(key, view)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
+-		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
++		const socialChanged = () => this.refreshSocialState();
++		ipcRenderer.on('vscode:studioSocialChanged', socialChanged);
++		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioSocialChanged', socialChanged)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLibraryProjectCategoryChanged', () => this.scheduleLibraryCategory()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalForgetFolderBotWindow', (_accessor, uri: string) => this.workspaces.removeRecentlyOpened([URI.parse(uri)])));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
+diff --git a/src/vs/workbench/test/browser/notificationsToasts.test.ts b/src/vs/workbench/test/browser/notificationsToasts.test.ts
+index f428a723a58..85a4f664d0a 100644
+--- a/src/vs/workbench/test/browser/notificationsToasts.test.ts
++++ b/src/vs/workbench/test/browser/notificationsToasts.test.ts
+@@ -5,9 +5,11 @@
+ 
+ import assert from 'assert';
+ import { Dimension, getWindow } from '../../../base/browser/dom.js';
++import { timeout } from '../../../base/common/async.js';
+ import { Event } from '../../../base/common/event.js';
+ import { DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
+ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
++import { runWithFakedTimers } from '../../../base/test/common/virtualScheduling/index.js';
+ import { Severity } from '../../../platform/notification/common/notification.js';
+ import { NotificationsToasts } from '../../browser/parts/notifications/notificationsToasts.js';
+ import { NotificationsModel } from '../../common/notifications.js';
+@@ -64,6 +66,27 @@ suite('NotificationsToasts', () => {
+ 		};
+ 	}
+ 
++	test('acknowledges a message click or explicit dismissal, but not selecting text or timing out', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
++		const { container, model, toasts } = await createToasts();
++		const visible = Event.toPromise(toasts.onDidChangeVisibility);
++		let acknowledged = 0;
++		model.addNotification({ severity: Severity.Info, message: 'New message', onDidAcknowledge: () => acknowledged++ });
++		await visible;
++		const message = container.querySelector<HTMLElement>('.notification-list-item-message')!;
++		const selection = getWindow(message).getSelection()!;
++		selection.selectAllChildren(message);
++		message.click();
++		assert.strictEqual(acknowledged, 0);
++		selection.removeAllRanges();
++		message.click();
++		assert.strictEqual(acknowledged, 1);
++
++		await timeout(10_001);
++		assert.deepStrictEqual([toasts.isVisible, acknowledged], [false, 1]);
++		model.notifications[0].dismiss();
++		assert.deepStrictEqual([model.notifications.length, acknowledged], [0, 2]);
++	}));
++
+ 	test('shows one toast for rapidly added duplicate notifications', async () => {
+ 		const { container, model, toasts } = await createToasts();
+ 		const toastVisible = Event.toPromise(toasts.onDidChangeVisibility);
+diff --git a/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts b/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts
+new file mode 100644
+index 00000000000..f794750aa6e
+--- /dev/null
++++ b/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts
+@@ -0,0 +1,66 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import assert from 'assert';
++import { DeferredPromise } from '../../../base/common/async.js';
++import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
++import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
++import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
++import { TestConfigurationService } from '../../../platform/configuration/test/common/testConfigurationService.js';
++import { TestInstantiationService } from '../../../platform/instantiation/test/common/instantiationServiceMock.js';
++import { INativeHostService } from '../../../platform/native/common/native.js';
++import { INotification, INotificationService } from '../../../platform/notification/common/notification.js';
++import { NotificationsModel } from '../../common/notifications.js';
++import '../../electron-browser/studioDesktopNotifications.js';
++import { IHostService } from '../../services/host/browser/host.js';
++
++suite('StudioDesktopNotifications', () => {
++	const disposables = ensureNoDisposablesAreLeakedInTestSuite();
++
++	test('details acknowledges and opens even after the workbench closes the toast; programmatic cleanup does not acknowledge', async () => {
++		const model = disposables.add(new NotificationsModel());
++		const services = disposables.add(new TestInstantiationService());
++		const config = new TestConfigurationService({ 'studio.notifications.desktop': false });
++		disposables.add(config.onDidChangeConfigurationEmitter);
++		services.stub(IConfigurationService, config);
++		const target = new DeferredPromise<'launchpadInbox'>();
++		const calls: unknown[] = [];
++		services.stub(ICommandService, {
++			executeCommand: async <R>(command: string, ...args: unknown[]): Promise<R | undefined> => {
++				calls.push([command, ...args]);
++				return command === 'studio.internalDesktopNotificationAction' ? target.p as Promise<R> : undefined;
++			}
++		});
++		services.stub(INotificationService, { notify: (notification: INotification) => model.addNotification(notification) });
++		services.stub(INativeHostService, {
++			isStudioNotificationWindow: async () => true,
++			openStudioLaunchpadInbox: async () => { calls.push('open inbox'); return true; }
++		});
++		services.stub(IHostService, {});
++		const post = (id: string) => services.invokeFunction(CommandsRegistry.getCommand('studio.internalPostDesktopNotification')!.handler, {
++			id, source: { id: 'test-source', label: 'Test' }, title: 'Notification', message: 'New message', actionLabel: 'Details',
++		});
++		const dismiss = (id: string) => services.invokeFunction(CommandsRegistry.getCommand('studio.internalDismissDesktopNotification')!.handler, id);
++		try {
++			await post('old');
++			await post('current'); // Replaces the previous notification without acknowledging it.
++			const item = model.notifications[0];
++			const opening = item.actions!.primary![0].run();
++			item.close(); // The primary button automatically closes its notification, without waiting for the action.
++			await target.complete('launchpadInbox');
++			await opening;
++			await post('cleared');
++			dismiss('cleared');
++			assert.deepStrictEqual({ calls, openNotifications: model.notifications.length }, {
++				calls: [['studio.internalAcknowledgeDesktopNotification', 'current'], ['studio.internalDesktopNotificationAction', 'current'], 'open inbox'],
++				openNotifications: 0,
++			});
++		} finally {
++			dismiss('old');
++			dismiss('current');
++			dismiss('cleared');
++		}
++	});
++});
+diff --git a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+index 8f8f8aea041..4f496cd29f8 100644
+--- a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -100,6 +100,7 @@ export class TestNativeHostService implements INativeHostService {
+ 	async getNativeWindowHandle(windowId: number): Promise<VSBuffer | undefined> { return undefined; }
+ 	async openStudioLaunchpadInbox(): Promise<boolean> { return false; }
+ 	async openStudioLaunchpadStore(): Promise<boolean> { return false; }
++	async notifyStudioSocialChanged(): Promise<void> { }
+ 
+ 	openWindow(options?: IOpenEmptyWindowOptions): Promise<void>;
+ 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
