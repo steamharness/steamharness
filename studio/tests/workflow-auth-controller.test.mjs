@@ -278,10 +278,19 @@ test('the login serializer ignores persisted form data and keeps one login tab p
 
 test('successful login updates the shared session and returns to the existing account settings tab', async t => {
   const f = await fixture(t, { signedIn: false });
+  let deviceRequest;
+  f.fetch = (url, options) => {
+    if (url.endsWith('/device/start')) deviceRequest = JSON.parse(options.body);
+  };
   f.commands.get('studio.openSettings')({ section: 'editor' }); const settings = f.panel;
   await f.commands.get('studio.openLogin')(); const login = f.panel;
   await login.message({ type: 'ready' });
   await login.message({ type: 'login', serverUrl: 'https://server.example.test' });
+  assert.equal(deviceRequest.clientName, 'SteamHarness Studio');
+  assert.equal(deviceRequest.source, 'desktop');
+  assert.equal(deviceRequest.context.clientKind, 'studio');
+  assert.equal(deviceRequest.context.channel, 'dev');
+  assert.match(deviceRequest.context.state, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(login.disposed, true); assert.equal(f.panel, settings);
   assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'account');
   assert.equal(f.controller.getState().status, 'authenticated');
@@ -290,6 +299,24 @@ test('successful login updates the shared session and returns to the existing ac
   assert.equal((await f.provider.getSessions([], {}))[0].accessToken, 'test-token');
   assert.doesNotMatch(JSON.stringify(f.messages), /fixture-password|test-token/);
   await f.commands.get('studio.openLogin')(); assert.equal(f.panel, settings); assert.equal(f.panels.length, 2);
+});
+
+test('Studio Web polls for approval and signs in without requesting a desktop callback', async t => {
+  const f = await fixture(t, { signedIn: false, uiKind: 2 });
+  let deviceRequest;
+  f.fetch = (url, options) => {
+    if (url.endsWith('/device/start')) deviceRequest = JSON.parse(options.body);
+  };
+  await f.commands.get('studio.openLogin')(); const login = f.panel;
+  await login.message({ type: 'ready' });
+  await login.message({ type: 'login' });
+
+  assert.deepEqual(deviceRequest, { clientName: 'SteamHarness Studio Web', source: 'desktop' });
+  assert.deepEqual(f.opened, ['http://127.0.0.1:7126/login/device?user_code=ABCD-1234']);
+  assert.ok(f.requestUrls.some(url => url.endsWith('/device/token')));
+  assert.equal(f.controller.getState().status, 'authenticated');
+  assert.equal(login.disposed, true);
+  assert.equal(f.panel.type, 'studio.settings');
 });
 
 test('failed login enables another attempt and the login panel cannot write settings', async t => {

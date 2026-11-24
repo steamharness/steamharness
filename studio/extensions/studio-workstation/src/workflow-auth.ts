@@ -41,7 +41,7 @@ export class AccountController implements vscode.Disposable {
   private loginPanel?: vscode.WebviewPanel;
   private loginBusy = false;
   private loginAbort?: AbortController;
-  private pendingLogin?: { state: string; client: ServerAuthClient; started: DeviceStart };
+  private pendingLogin?: { state?: string; client: ServerAuthClient; started: DeviceStart };
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private sidebar?: ProjectSidebar;
@@ -98,7 +98,7 @@ export class AccountController implements vscode.Disposable {
       ...(platform ? [
       vscode.window.registerUriHandler({ handleUri: uri => {
         const pending = this.pendingLogin;
-        if (uri.scheme !== studioProtocols[studioAuthChannel] || uri.authority !== 'studio.studio-workstation' || uri.path !== '/auth/callback' || uri.fragment || !pending) return;
+        if (uri.scheme !== studioProtocols[studioAuthChannel] || uri.authority !== 'studio.studio-workstation' || uri.path !== '/auth/callback' || uri.fragment || !pending?.state) return;
         const query = new URLSearchParams(uri.query);
         if (query.size !== 1 || query.get('state') !== pending.state) return;
         this.publishLogin();
@@ -444,9 +444,16 @@ export class AccountController implements vscode.Disposable {
   }
 
   private async signInWithBrowser(serverUrl: string, signal: AbortSignal): Promise<void> {
-    const client = new ServerAuthClient(serverUrl, fetch, locale()), state = base64State();
+    const client = new ServerAuthClient(serverUrl, fetch, locale());
+    const desktop = vscode.env.uiKind === vscode.UIKind.Desktop;
+    const state = desktop ? base64State() : undefined;
     await this.account.login(serverUrl, async () => {
-      const started = await client.start({ clientName: 'SteamHarness Studio', source: 'desktop', context: { clientKind: 'studio', channel: studioAuthChannel, state } }, signal);
+      const started = await client.start({
+        clientName: desktop ? 'SteamHarness Studio' : 'SteamHarness Studio Web',
+        source: 'desktop',
+        // A Studio device context requests a native app link. Web only needs polling.
+        context: state ? { clientKind: 'studio', channel: studioAuthChannel, state } : undefined,
+      }, signal);
       this.pendingLogin = { client, started, state }; this.publishLogin();
       try {
         signal.throwIfAborted();
