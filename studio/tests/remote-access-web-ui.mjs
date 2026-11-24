@@ -37,6 +37,108 @@ const until = async (read, description, timeout = 45_000) => {
 const post = (origin, route, body) => fetch(`${origin}/_studio/web/${route}`, { method: 'POST',
   headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+async function checkLocalProfile(home, zh = false) {
+  await home.getByRole('tab', { name: zh ? '我的' : 'My Studio', exact: true }).click();
+  const profile = home.locator('#lp-page-profile');
+  await profile.getByText(zh ? '本机用户' : 'Local profile', { exact: true }).waitFor();
+  await profile.getByRole('tab', { name: zh ? '通知' : 'Notifications', exact: true }).waitFor();
+  assert.equal(await profile.getByRole('button', { name: zh ? '登录' : 'Sign in', exact: true }).count(), 0);
+  await home.getByRole('tab', { name: zh ? '仓库' : 'Library', exact: true }).click();
+}
+
+// Simulate the platform commands, without using a real account or the private extension.
+async function registerPlatformProfile(vscode) {
+  const { registerCommand, executeCommand } = vscode.commands;
+  const account = signedIn => signedIn
+    ? { status: 'authenticated', hasAccount: true, name: 'Fixture account', scopeKey: 'a'.repeat(64) }
+    : { status: 'signed-out', hasAccount: false, name: 'Not signed in' };
+  let current = account(false);
+  const publish = signedIn => executeCommand('studio.internalUpdateAccountMenuState', current = account(signedIn));
+  registerCommand('studio.internalGetAccountMenuState', () => current);
+  registerCommand('studio.launchpadSignIn', () => publish(true));
+  registerCommand('studio-test.profile.signOut', () => publish(false));
+  registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: [{ id: 'fixture-chat', name: 'Fixture chat', unread: 0, preview: 'Hello' }] }));
+  registerCommand('studio.getSocialSnapshot', () => ({ people: [{ id: 'friend', name: 'Fixture friend', relation: 'friend' }], favorites: [{ id: 'favorite', title: 'Fixture favorite' }], notices: [] }));
+  registerCommand('studio.getLaunchpadDirectory', () => ({ groups: [], conversations: [] }));
+  registerCommand('studio.hasUnreadNotices', () => false);
+  registerCommand('studio.openLaunchpadInbox', async (requestId, conversation) => {
+    if (conversation !== 'fixture-chat') return 'Unexpected conversation';
+    if (!await executeCommand('studio.internalPrepareLaunchpadApp', 'fixture', {})) return 'Unable to prepare the fixture';
+    return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: conversation, title: 'Fixture chat',
+      html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-fixture'"><h1>Fixture conversation</h1>
+      <script nonce="fixture">acquireVsCodeApi().postMessage({type:'studio-launchpad-ready'});</script>`,
+    });
+  });
+  await executeCommand('studio.internalUpdateStartState', { version: 1, platform: true, labels: {}, hasWorkspace: false, projects: [], recent: [], pending: [], canCreate: false, busy: false });
+  await publish(false);
+}
+
+async function checkPlatformProfile(page) {
+  const profile = page.locator('#lp-page-profile');
+  await page.locator('.studio-launchpad').getByRole('tab', { name: 'My Studio', exact: true }).click({ timeout: 60_000 });
+  await profile.getByRole('button', { name: 'Sign in', exact: true }).click({ timeout: 60_000 });
+  await profile.getByText('Fixture account', { exact: true }).waitFor();
+  await profile.getByRole('tab', { name: 'Contacts & friends', exact: true }).click();
+  await profile.getByText('Fixture friend', { exact: true }).waitFor();
+  await profile.getByRole('tab', { name: 'Favorites', exact: true }).click();
+  await profile.getByText('Fixture favorite', { exact: true }).waitFor();
+  await profile.getByRole('tab', { name: 'Recent chats', exact: true }).click();
+  const chat = profile.getByRole('button', { name: 'Fixture chat Hello' });
+  await chat.click();
+  const surface = page.locator('.studio-launchpad-settings[aria-label="Fixture chat"]');
+  await surface.waitFor();
+  const back = page.getByRole('button', { name: 'Back to Launchpad', exact: true });
+  await back.click();
+  await chat.waitFor();
+  await chat.click();
+  await surface.waitFor();
+  await writeFile(path.join(directory, 'profile-commands.json'), JSON.stringify('studio-test.profile.signOut'));
+  await surface.waitFor({ state: 'detached' });
+  await profile.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+  assert.equal(await chat.count(), 0);
+  console.log('[OK] Platform profile sign-in state · contacts · favorites · open/back · sign-out cleanup');
+}
+
+async function runPlatformProfile(context) {
+  const state = path.join(directory, 'profile-server');
+  const extensions = path.join(state, 'extensions');
+  const fixture = path.join(extensions, 'studio.studio-workstation-999.0.0');
+  await mkdir(fixture, { recursive: true });
+  // Override the built-in extension only in this isolated server profile.
+  await writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'studio-workstation', publisher: 'studio', version: '999.0.0',
+    engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
+  await writeFile(path.join(fixture, 'extension.cjs'), `const vscode=require('vscode'), fs=require('node:fs/promises');
+    exports.activate=async(context)=>{
+      await (${registerPlatformProfile.toString()})(vscode);
+      const signal=${JSON.stringify(path.join(directory, 'profile-commands.json'))};
+      const timer=setInterval(async()=>{
+        try{await fs.unlink(signal);}catch{return;}
+        await vscode.commands.executeCommand('studio-test.profile.signOut');
+      },100);
+      context.subscriptions.push({dispose:()=>clearInterval(timer)});
+    };`);
+  const port = await availablePort(), origin = `http://127.0.0.1:${port}`;
+  let startupError;
+  const runner = runManagedWeb({ directory: state, storage: path.join(state, 'runs'),
+    config: await webConfig({}, port), prepare: async () => ({ upstream: upstream.directory, args: [
+      '--server-data-dir', state, '--extensions-dir', extensions, '--disable-workspace-trust', '--telemetry-level', 'off',
+    ] }) }).catch(error => { startupError = error; });
+  const registry = path.join(state, 'instance.json');
+  const page = await context.newPage();
+  try {
+    await until(async () => { if (startupError) throw startupError; return readJson(registry).catch(() => undefined); }, 'Profile fixture did not start.');
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await checkPlatformProfile(page).catch(async error => {
+      const screen = await page.locator('body').innerText().catch(() => '');
+      throw new Error(`Platform profile failed: ${screen.slice(0, 1500)}`, { cause: error });
+    });
+  } finally {
+    await page.close();
+    if (await readJson(registry).catch(() => undefined)) await post(origin, 'manage', { action: 'stop' }).catch(() => undefined);
+    await runner;
+  }
+}
+
 function reverseProxy(tls, port) {
   const sockets = new Set();
   const agent = new http.Agent({ keepAlive: true, maxSockets: 16, maxFreeSockets: 6 });
@@ -201,6 +303,8 @@ try {
   await localPage.goto(local, { waitUntil: 'domcontentloaded' });
   await waitForBrowserExtensionHost(localPage);
   await localPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  await checkLocalProfile(localPage.locator('.studio-launchpad'));
+  await runPlatformProfile(localContext);
   assert.equal(await localPage.locator('.studio-mode-toggle').isVisible(), false);
   await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = await until(async () => {
@@ -262,6 +366,7 @@ try {
       await waitForBrowserExtensionHost(page);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
+      await checkLocalProfile(home, zh);
       console.log(`[OK] ${name}: paired, reached Launchpad and restored session on reload`);
       if (zh) {
         await page.setViewportSize({ width: 390, height: 844 });
@@ -382,5 +487,5 @@ try {
   if (runner) await runner;
   await proxy?.close();
   if (model) await close(model);
-  await rm(directory, { recursive: true, force: true });
+  await rm(directory, { recursive: true, force: true, maxRetries: 3 });
 }

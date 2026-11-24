@@ -24,7 +24,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { StudioProjectCreateDialog } from './src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts';
   import { URI } from './src/vs/base/common/uri.ts';
   import { decodeBase64, VSBuffer } from './src/vs/base/common/buffer.ts';
-  import { StudioNotificationInbox } from './src/vs/workbench/electron-browser/studioNotificationInbox.ts';
+  import { StudioNotificationInbox } from './src/vs/workbench/browser/studioNotificationInbox.ts';
   import { NotificationService } from './src/vs/workbench/services/notification/common/notificationService.ts';
   import { Severity } from './src/vs/platform/notification/common/notification.ts';
   import { InMemoryStorageService, StorageScope, StorageTarget } from './src/vs/platform/storage/common/storage.ts';

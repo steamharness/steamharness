@@ -54,7 +54,8 @@ export class SettingsRemoteAccess {
   }
 
   private run(input: Action): void {
-    if (this.request) return;
+    // User actions can supersede a read-only poll; handle() ignores the stale reply.
+    if (this.request && (this.request.action !== 'status' || input.action === 'status')) return;
     const id = String(++this.sequence);
     this.request = { id, action: input.action };
     this.nextRefresh = Date.now() + 5000;
