@@ -7,7 +7,7 @@ const projectDir = path.resolve(process.cwd());
 const CORE_TOOL_NAMES = [
   "workflow-ui_present_card",
   "skill",
-  "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search",
+  "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search", "memory_link", "memory_unlink",
 ];
 const RUN_SCOPED_CORE_TOOL_NAMES = ["workflow-kv_kv_store"];
 const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls", "sleep", "runtime_info"];

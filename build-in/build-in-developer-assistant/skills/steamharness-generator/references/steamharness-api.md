@@ -1012,11 +1012,15 @@ Bot 项目记忆默认开启。`memory: { enabled: false }` 定义新配置的�
 
 该字段通常无需写入 `configuration.json`；显式声明时必须为 `boolean`，缺少 `defaultValue` 时继承入口实际导出的 Bot 默认值。静态读取支持别名与相对模块重导出，不读取无关 Bot 的默认值。宿主可调用 `readProjectConfigurationDefinition(projectDir, entryId?, { sourceEntry?, configurationFile? })` 检查替代源码入口与配置文件；覆盖路径相对已注册入口根目录，不能越界，检查不会执行项目代码。发行打包使用最终入口与配置的默认值，并保留配置版本及档位。
 
-Core 自动提供 `memory_save({ category, key, content })`、`memory_get({ category?, key?, query?, limit?, offset? })`、`memory_search({ keywords, match?, category?, limit?, offset? })`、`memory_update({ category, key, content, expectedRevision })` 和 `memory_delete({ category, key, expectedRevision })`。`agent.extraTools` 与每轮 `agent.createTools` 提供的业务工具会同时保留，两处均不得声明同名记忆工具。先读取最新 `revision` 再修改或删除；同分类同键的新建拒绝覆盖，版本冲突须重读。Plan 和只读模式只提供 `memory_get` 与 `memory_search`，工具继续经过宿主权限与审批。
+Core 自动提供 `memory_save`、`memory_get`、`memory_search`、`memory_update`、`memory_delete`、`memory_link` 和 `memory_unlink`。`agent.extraTools` 与每轮 `agent.createTools` 提供的业务工具会同时保留，两处均不得声明同名记忆工具。Plan 和只读模式只提供 `memory_get` 与 `memory_search`，工具继续经过宿主权限与审批。
+
+创建条目用 `category`、`key`，并填写正文 `content`、显示名称 `title`、简述 `summary` 或 JSON 属性 `properties`；同分类同键的新建拒绝覆盖。读写可使用稳定 `id` 或旧的 `category` 加 `key`。`memory_update` 只修改传入字段，按顶层键合并属性，用 `removeProperties` 删除属性；`content`、`title` 和 `summary` 可传 `null` 清空。属性序列化总长上限 4,000 字符。`memory_get` 和 `memory_search` 支持 `where` 对顶层属性做精确匹配。
+
+会独立变化的对象应单独存储。用 `memory_link({ sourceId, targetId, relation, expectedRevision })` 引用目标的 `id`，不要在多条正文中重复存储它的当前名称或状态。`memory_get({ id, relations: "outgoing" })` 读取一层关联的当前属性，`"incoming"` 查询谁引用它；需要关联正文时再按 ID 读取。通过 `memory_unlink` 解除指定关系。被引用的条目不能直接删除。更新、删除和关系写入要先读取要修改的条目的 `revision`（关系写入用来源条目的版本），遇到冲突先重读。
 
 记忆按项目 UUID 与 Bot 入口隔离，同一入口的会话共享；分类与键再区分独立事实，不得把所有内容塞进同一条。`memory_get` 无筛选时只列分类，分类或 `query` 返回摘要（默认 10 条、最多 20 条），分类加键读取全文。
 
-Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条相关摘要；追加输入、中途补充和恢复执行沿用该机制，后续模型请求刷新已修改或删除的结果。只有 `memory_search` 已启用且自动审批时才后台检索，不弹确认。模型可用 `memory_search` 进一步缩小范围：`keywords` 最多 12 个、每个最多 80 字符、合计最多 500 字符；`match` 为 `any`（默认）或 `all`，按命中词数及相关性排序，支持中文子串。默认 5 条、最多 10 条，每条最多 240 字符且优先截取命中位置，总返回不超过 6,000 字符；有后续页时返回 `nextOffset`，不能遍历全部记忆。
+Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条相关摘要；追加输入、中途补充和恢复执行沿用该机制，后续模型请求刷新已修改或删除的结果。只有 `memory_search` 已启用且自动审批时才后台检索，不弹确认。模型可用 `memory_search` 进一步缩小范围：`keywords` 最多 12 个、每个最多 80 字符、合计最多 500 字符；`match` 为 `any`（默认）或 `all`，匹配分类、键、名称、简述和正文，支持中文子串。默认 5 条、最多 10 条，正文摘录最多 240 字符且优先截取命中位置，总返回不超过 6,000 字符；有后续页时返回 `nextOffset`，不要遍历全部记忆。
 
 内置提示要求模型静默判断长期记忆价值：确认有用的项目事实、决策、流程、偏好后自动存储，先查重，信息变化时更新，确认失效或要求忘记时删除。不等待用户说“记住”，不例行询问或播报操作；排除凭据、完整会话、临时进度、猜测和明确要求不保留的信息，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
 

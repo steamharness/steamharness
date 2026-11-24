@@ -3,7 +3,7 @@ export * from "./history";
 export { createLocalRuntimePersistence, type LocalRuntimePersistenceOptions } from "./local";
 export { copyRuntimePersistence } from "./backup";
 export { createMemoryRuntimePersistence, SnapshotMemoryStorage } from "./memory";
-export type { BotMemoryScope, BotMemoryStore, BotMemoryRequest, BotMemoryEntry, BotMemorySummary, BotMemoryAddress } from "./bot-memory";
+export type { BotMemoryScope, BotMemoryStore, BotMemoryRequest, BotMemoryEntry, BotMemorySummary, BotMemoryAddress, BotMemoryProperties } from "./bot-memory";
 export { createServerAgentStorage, ServerAgentStorage, type ServerAgentStorageOptions } from "./server";
 
 // Keep persisted delta semantics aligned with the bundled runtime. This helper

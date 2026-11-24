@@ -97,27 +97,36 @@ Core provides these tools alongside business tools supplied by `agent.extraTools
 
 | Tool | Arguments and result |
 | --- | --- |
-| `memory_save` | `category`, `key`, `content`. Creates an entry and returns its revision. An existing category/key is never overwritten. |
-| `memory_get` | No filters lists categories. `category` or `query` returns entry summaries. `category` and `key` reads a full entry, returning `memory: null` when absent. |
-| `memory_search` | A `keywords` array, with optional `category`, `match` (`any` by default, or `all`), `limit` and `offset`. Returns summaries ranked by keyword coverage and relevance, including Chinese substring matches. |
-| `memory_update` | `category`, `key`, `content`, `expectedRevision`. Replaces an entry's content and returns a new revision. |
-| `memory_delete` | `category`, `key`, `expectedRevision`. Deletes only the specified entry. |
+| `memory_save` | Pass `category`, `key`, and at least one of `content`, `title`, `summary`, or nonempty `properties`. Returns a stable `id` and `revision`. It does not overwrite an existing category/key. |
+| `memory_get` | Read one entry by `id` or by `category` and `key`. Optionally set `relations` to `"outgoing"` or `"incoming"`. Returns `memory: null` if the entry is missing. `category`, `query` or `where` lists summaries. With no filters, the tool lists categories. |
+| `memory_search` | Pass `keywords` and optionally `category`, `where`, `match`, `limit` and `offset`. Matches keywords against category, key, title, summary and body, then ranks results by keyword coverage and relevance. |
+| `memory_update` | Select an entry by `id` or by `category` and `key`. Pass `expectedRevision` and only the fields to change. Returns the new revision. |
+| `memory_delete` | Select an entry by `id` or by `category` and `key`, and pass `expectedRevision`. Deletion is blocked while other memories reference the entry. Deletion removes its outgoing links but keeps their targets. |
+| `memory_link` / `memory_unlink` | Pass `sourceId`, `targetId`, `relation` (for example, `depends_on`) and the source's `expectedRevision`. Adds or removes one directed link and returns the source's new revision. |
+
+### Structured memories and links
+
+Give objects that change independently their own entries. For example, store the release center's `title` and `properties: { status: "live" }` on one entry. The deployment procedure and release notes can each link to its `id`. Update the release center once and both links return its current name and status. Text already written into other entries does not change; use it for dated historical facts when needed.
+
+`properties` is a JSON object with a limit of 4,000 serialized characters per entry. Updates replace individual top-level values and leave other keys alone. Use `removeProperties` to remove keys. A property can store `null`; for `title`, `summary` and `content`, passing `null` clears the field. `where` requires an exact match on every supplied top-level key. It accepts strings, numbers, booleans and `null`; a missing key does not match `null`.
+
+In `memory_get`, `outgoing` lists the entries this memory references, and `incoming` lists the entries that reference it. Results include current properties but not the bodies of linked entries, and expand only one level. The default is 5 links with a maximum of 10 per page. Use `nextOffset` when another page is available. Before deleting a referenced entry, inspect incoming links and remove the links that should no longer exist.
 
 At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog.
 
-`memory_search` returns up to 5 entries by default, with a maximum `limit` of 10. Each excerpt contains at most 240 characters around a matching passage, and the complete search result stays within 6,000 characters. Pass up to 12 keywords, each at most 80 characters and at most 500 characters combined. `any` matches one or more keywords; `all` requires every keyword. Matching is literal and supports Chinese.
+`memory_search` returns up to 5 entries by default, with a maximum `limit` of 10. Each excerpt contains at most 240 characters around a matching passage, and the complete search result stays within 6,000 characters. Pass up to 12 keywords, each at most 80 characters and at most 500 characters combined. `any` (the default) matches one or more keywords; `all` requires every keyword. Matching is literal and supports Chinese.
 
-Search results include the category, key, revision and matched keywords. Use `memory_get` to read a relevant entry in full, up to 8,000 characters. When more results exist, `nextOffset` provides the next `offset`. Prefer narrower keywords over paging through every memory.
+Search results include `id`, category, key, revision and matched keywords, plus the title and summary if set. Use `memory_get` to read a relevant entry in full. A body can contain up to 8,000 characters. When more results exist, `nextOffset` provides the next `offset`. Prefer narrower keywords over paging through every memory.
 
-Category and summary lists from `memory_get` still accept `limit` (default 10, maximum 20) and `offset`. Its `query` accepts up to 12 whitespace-separated terms that must all match. These summaries contain the first 240 characters of content.
+Category and summary lists from `memory_get` accept `limit` (default 10, maximum 20) and `offset`. `query` accepts up to 12 whitespace-separated terms that must all match. Excerpts take the first 240 characters of the body.
 
-Before an update or deletion, read the entry's `revision` and pass it as `expectedRevision`. On a version conflict, retrieve the latest entry before deciding what to change. Tools retain host permission and approval checks. Plan and read-only runs offer `memory_get` and `memory_search` only.
+Before updating, deleting or changing a link, read the entry being modified and pass its `revision` as `expectedRevision`. On a version conflict, retrieve the latest entry before deciding what to change. Tools retain host permission and approval checks. Plan and read-only runs offer `memory_get` and `memory_search` only.
 
 Core's built-in guidance tells the Bot to maintain memory silently. It judges whether confirmed project facts, decisions, procedures or preferences will help future conversations and saves them without waiting for a request to remember. It checks for duplicates, updates changed facts and deletes facts confirmed obsolete or explicitly forgotten, without routine confirmation or memory announcements.
 
 The model decides what to retain from the conversation; it does not copy every message. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress, guesses and information the user explicitly asks not to retain should not be stored.
 
-Memories persist in SQLite on the execution host across its conversations and restarts. There is no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
+Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 
 ## Skills and host previews
 

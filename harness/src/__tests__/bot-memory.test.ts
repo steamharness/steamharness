@@ -200,6 +200,47 @@ for (const enabled of [true, false]) test(`configured extra tools cannot replace
   });
 });
 
+test("separate Bot conversations can create, link, read and unlink a structured memory through the offered tools", async t => {
+  const ai = await import("@earendil-works/pi-ai");
+  const faux = ai.fauxProvider({ models: [{ id: "memory-relations", contextWindow: 100_000, maxTokens: 1_000 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const resources = createTestResources();
+  const definition = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "memory-relations")!, tools: [], permissionPolicy: "auto" } });
+  const run = (requestId: string) => {
+    const execution = context(persistence, resources, requestId);
+    execution.toolPermissions = createProjectToolPermissionContext({ definitions: definition.tools, projectName: "bot", runId: requestId });
+    return definition.workflow.run({ ...input, requestId }, execution);
+  };
+  const call = (name: string, args: Parameters<typeof ai.fauxToolCall>[1]) => ai.fauxAssistantMessage([ai.fauxToolCall(name, args)], { stopReason: "toolUse" });
+  faux.setResponses([
+    call("memory_save", { category: "procedures", key: "deploy", content: "Follow the linked service." }),
+    call("memory_save", { category: "services", key: "release", title: "Old service", properties: { status: "testing" } }),
+    ai.fauxAssistantMessage("Saved"),
+  ]);
+  assert.equal((await run("save-structure")).errCode, 0);
+  const store = persistence.botMemory!(resources);
+  const source = (await store.execute({ action: "get", category: "procedures", key: "deploy" })).memory as BotMemoryEntry;
+  const target = (await store.execute({ action: "get", category: "services", key: "release" })).memory as BotMemoryEntry;
+  assert.equal(target.properties.status, "testing");
+  const relation = { sourceId: source.id, targetId: target.id, relation: "depends_on" };
+  faux.setResponses([
+    call("memory_link", { ...relation, expectedRevision: source.revision }),
+    call("memory_update", { id: target.id, expectedRevision: target.revision, title: "Release center", properties: { status: "live" } }),
+    call("memory_get", { id: source.id, relations: "outgoing" }),
+    request => {
+      const payload = JSON.stringify(request.messages.at(-1));
+      assert.match(payload, /Release center/); assert.match(payload, /live/); assert.doesNotMatch(payload, /Old service|testing/);
+      const result = request.messages.at(-1) as { content: { text: string }[] };
+      const { memory } = JSON.parse(result.content[0]!.text) as { memory: BotMemoryEntry };
+      return call("memory_unlink", { ...relation, expectedRevision: memory.revision });
+    },
+    ai.fauxAssistantMessage("Updated"),
+  ]);
+  assert.equal((await run("relate-structure")).errCode, 0);
+  assert.deepEqual((await store.execute({ action: "get", id: target.id, relations: "incoming" })).relations, []);
+});
+
 test("separate Bot conversations retrieve the same project memory while a disabled switch blocks calls", async t => {
   const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
   const resources = createTestResources(), first = context(persistence, resources), second = context(persistence, resources, "chat-two");
@@ -275,12 +316,13 @@ for (const mode of ["enabled", "disabled", "source-disabled", "source-disabled-u
       agent: { models, resolvedModel: models.getModel("faux", "memory-test")!, tools: [], permissionPolicy: mode === "read-only" ? "read-only" : "workspace", ...{ retryDelayMs: 0 } },
       prepareInput(value) { return { ...value, systemPrompt: "Custom prepared persona." }; },
     });
-    if (mode === "host-disabled") run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools!.map(tool => tool.name === "memory_save" ? { ...tool, enabled: false } : tool), projectName: "bot", runId: "disabled-tool" });
+    const disabledTools = new Set(["memory_save", "memory_link", "memory_unlink"]);
+    if (mode === "host-disabled") run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools!.map(tool => disabledTools.has(tool.name) ? { ...tool, enabled: false } : tool), projectName: "bot", runId: "disabled-tool" });
     const output = await bot.workflow.run({ ...input, agent: mode === "plan" ? "plan" : "build" }, run);
     assert.equal(output.errCode, 0); assert.ok(requests.length > 0);
     assert.match(requests[0]!, /Custom prepared persona/);
     const active = mode !== "disabled" && mode !== "source-disabled";
-    const expected = !active ? [] : mode === "plan" || mode === "read-only" ? ["memory_get", "memory_search"] : BOT_MEMORY_TOOL_NAMES.filter(name => mode !== "host-disabled" || name !== "memory_save");
+    const expected = !active ? [] : mode === "plan" || mode === "read-only" ? ["memory_get", "memory_search"] : BOT_MEMORY_TOOL_NAMES.filter(name => mode !== "host-disabled" || !disabledTools.has(name));
     assert.deepEqual(offered[0]!.filter(name => name.startsWith("memory_")), expected);
     if (active) assert.match(requests[0]!, /Memories belong only to this Bot project and entry/);
     else assert.doesNotMatch(requests[0]!, /Project memory is available/);
