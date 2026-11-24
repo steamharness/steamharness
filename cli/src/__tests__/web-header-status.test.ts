@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { updateRunningCount } from '../web/ui/history-status';
 import type { ConversationSession, Project } from '../web/workflow-types';
 
-const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
+const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn(), reloadProject: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
 
@@ -115,9 +115,19 @@ it('groups the assistant name and running count beside the workspace while prese
   expect(document.querySelector<HTMLElement>('#assistant-folder')!.hidden).toBe(true);
 });
 
-it('orders conversation toolbar actions as new conversation, project windows, then remaining controls', async () => {
+it('places project reload immediately before the conversation avatar and prevents duplicate requests', async () => {
   await renderConversation();
   const actions = document.querySelector('.toolbar-actions')!;
-  expect([...actions.children].map(element => element.id || element.className)).toEqual(['new', 'aggregate-navigation', 'project-info']);
+  expect([...actions.children].map(element => element.id || element.className)).toEqual(['new', 'aggregate-navigation', 'project-toolbar-buttons']);
   expect(actions.querySelector('.aggregate-navigation > .entry-windows-button')).not.toBeNull();
+  const button = actions.querySelector<HTMLButtonElement>('#project-reload')!;
+  expect(button.nextElementSibling?.id).toBe('project-info');
+  let fail!: (error: Error) => void;
+  host.reloadProject.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  button.click(); button.click();
+  expect(button.getAttribute('aria-busy')).toBe('true');
+  expect(host.reloadProject).toHaveBeenCalledOnce();
+  fail(new Error('Project is busy.')); await vi.advanceTimersByTimeAsync(0);
+  expect(document.querySelector('#error')!.textContent).toBe('Project is busy.');
+  expect(button.disabled).toBe(false);
 });

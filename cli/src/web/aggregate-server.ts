@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import { selectProjectEntry } from '@steamharness/project-manifest';
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
@@ -34,8 +35,13 @@ export async function startAggregateWebServer(options: WebOptions) {
   const credentials = { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };
   const entries = new Map<string, EntryHost>(), failures = new Map<string, string>();
   const starting = new Map<string, Promise<void>>();
+  let activeCalls = 0;
+  const trackCall = async (call: () => Promise<unknown>) => {
+    activeCalls++;
+    try { return await call(); } finally { activeCalls--; }
+  };
   const invokeEntry = async (call: AggregateEntryCall): Promise<unknown> => {
-    if (closing || resetting) throw new Error('The aggregate execution host changed.');
+    if (closing || replacing) throw new Error('The aggregate execution host changed.');
     call.abortSignal?.throwIfAborted();
     if (call.projectId !== manifest.projectId) throw new Error("The aggregate project identity changed.");
     selectProjectEntry(manifest, call.sourceEntryId);
@@ -43,9 +49,9 @@ export async function startAggregateWebServer(options: WebOptions) {
     if (target.type !== (call.action === 'workflow' || call.action === 'workflow-control' ? 'workflow' : 'bot')) throw new Error('The entry does not support this operation.');
     const runtime = entries.get(call.entryId);
     if (!runtime) throw new Error('The target entry is unavailable.');
-    return runtime.invokeEntry(call);
+    return trackCall(() => runtime.invokeEntry(call));
   };
-  let origin = '', closing = false, resetting: Promise<void> | undefined;
+  let origin = '', closing = false, replacing = false, resetting: Promise<void> | undefined;
   let host = options.host;
   const catalog = () => ({ projectId: manifest.projectId, name: manifest.name, defaultEntry: manifest.defaultEntry, entries: manifest.entries.map(entry => {
     const running = entries.get(entry.entryId);
@@ -59,16 +65,16 @@ export async function startAggregateWebServer(options: WebOptions) {
       try {
         const runtime = await startEntryWebServer({ ...options, runtimePersistence: options.runtimePersistenceForEntry?.(entryId) ?? options.runtimePersistence, host, projectDir: directory, entryId,
           mount: { openConversationView: (source, target, emit) => {
-            if (closing || resetting || source.projectId !== manifest.projectId) throw new Error('The aggregate host changed.');
+            if (closing || replacing || source.projectId !== manifest.projectId) throw new Error('The aggregate host changed.');
             selectProjectEntry(manifest, source.entryId);
             if (selectProjectEntry(manifest, target.entryId).type !== 'bot') throw new Error('The target is not a Bot.');
             const runtime = entries.get(target.entryId);
             if (!runtime) throw Object.assign(new Error('Conversation entry unavailable.'), { code: 'ENTRY_RUNTIME_UNAVAILABLE' });
             return runtime.openConversationView(source, target, emit);
-          }, origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset, invokeEntry,
+          }, origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset, reloadProject: () => reload(entryId), invokeEntry,
             subscribeConversation(sourceEntryId, targetId, conversationId, listener) {
               selectProjectEntry(manifest, sourceEntryId);
-              if (closing || resetting || selectProjectEntry(manifest, targetId).type !== 'bot') throw new Error('The conversation entry is unavailable.');
+              if (closing || replacing || selectProjectEntry(manifest, targetId).type !== 'bot') throw new Error('The conversation entry is unavailable.');
               const target = entries.get(targetId);
               if (!target) throw new Error('The conversation entry is unavailable.');
               return target.subscribeConversation(conversationId, listener);
@@ -79,16 +85,45 @@ export async function startAggregateWebServer(options: WebOptions) {
     })().finally(() => starting.delete(entryId));
     starting.set(entryId, pending); return pending;
   };
-  const reset = () => {
-    if (closing || resetting) return;
-    resetting = (async () => {
+  const busyError = () => new Error(t('The project is busy or waiting for input. Try again when it is idle.'));
+  const assertIdle = () => {
+    if (activeCalls > 0 || [...entries.values()].some(entry => entry.reloadBusy)) throw busyError();
+  };
+  const reload = async (requestedEntry?: string) => {
+    if (closing || resetting) throw new Error(t('The project is already reloading. Try again shortly.'));
+    if (requestedEntry) assertIdle();
+    else replacing = true;
+    const operation = (async () => {
+      // An invalid declaration must not take the current project offline.
+      const next = await readManifest();
       await Promise.all([...starting.values()]);
+      if (requestedEntry) {
+        // Let ordinary requests (including draft writes) settle without cancelling any runs.
+        const deadline = new AbortController();
+        const timeout = delay(5_000, 'timeout', { signal: deadline.signal, ref: false }).catch(() => undefined);
+        try {
+          for (;;) {
+            assertIdle();
+            const requests = [...entries.values()].flatMap(entry => entry.pendingMessages);
+            if (requests.length === 0) break;
+            if (await Promise.race([Promise.allSettled(requests), timeout]) === 'timeout') throw busyError();
+          }
+        } finally { deadline.abort(); }
+      }
+      replacing = true;
       await Promise.all([...entries.values()].map(entry => entry.close()));
       entries.clear(); failures.clear();
-      manifest = await readManifest();
+      manifest = next;
       if (!closing) await Promise.all(manifest.entries.map(entry => launch(entry.entryId)));
-    })().finally(() => { resetting = undefined; });
-    void resetting.catch(error => process.stderr.write(`Aggregate project reload: ${String(error)}\n`));
+      return requestedEntry && !next.entries.some(entry => entry.entryId === requestedEntry) ? next.defaultEntry : undefined;
+    })().finally(() => { replacing = false; resetting = undefined; });
+    // Host updates and shutdown wait for the attempt, not its browser-facing result.
+    resetting = operation.then(() => undefined, () => undefined);
+    return operation;
+  };
+  const reset = () => {
+    if (closing || resetting) return;
+    void reload().catch(error => process.stderr.write(`Aggregate project reload: ${String(error)}\n`));
   };
   const recovery = (entryId: string) => {
     const entry = selectProjectEntry(manifest, entryId);
@@ -147,8 +182,8 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
     invokeEntry,
     hostTurn: async (entryId: string, input: Record<string, unknown>) => {
       const target = entries.get(entryId);
-      if (closing || resetting || !target || selectProjectEntry(manifest,entryId).type !== 'bot') throw new Error('Conversation entry unavailable.');
-      return target.hostTurn(input);
+      if (closing || replacing || !target || selectProjectEntry(manifest,entryId).type !== 'bot') throw new Error('Conversation entry unavailable.');
+      return trackCall(() => target.hostTurn(input));
     },
     get manifest() { return manifest; }, get project() { return project(); },
     get configurations() { return current()?.configurations; }, get controller() { return current()?.controller; },

@@ -17,7 +17,7 @@ import { acquireHostKeyboard } from './host-keyboard';
 import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
-interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean } }
+export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; reloadProject?(draft?: Message): Promise<void> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -356,6 +356,16 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   return {
     keyboard,
     editing: { get enabled() { return editHost; } },
+    reloadProject: async (draft) => {
+      if (draft) await connection.request(draft);
+      const reply = (await connection.request({ type: 'project-reload' })).find(message => message.type === 'project-reloaded');
+      if (!reply) throw new Error(t('Project reload is unavailable.'));
+      if (typeof reply.entryId === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(reply.entryId)) {
+        const fallback = new URL(`../${reply.entryId}/`, location.href);
+        fallback.search = location.search;
+        location.replace(fallback.href);
+      } else location.reload();
+    },
     postMessage: async (message) => {
       if (message.type === 'open-account') { accountPanel?.open(); return; }
       if (message.type === 'open-project-create') { void projectCreation.open(); return; }

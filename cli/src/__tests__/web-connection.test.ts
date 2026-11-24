@@ -58,6 +58,21 @@ it('sends Stop on a healthy connection without waiting for host recovery', async
   fixture.listeners.get('pagehide')!();
 });
 
+it('accepts the project reload acknowledgement after the old event stream disconnects without replaying the action', async () => {
+  const fixture = await connectionFixture(200);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  let finish!: (response: Response) => void, signal!: AbortSignal;
+  fixture.fetcher.mockImplementationOnce((_url, options) => new Promise(resolve => { finish = resolve; signal = options.signal; }));
+  const reloading = fixture.connection.request({ type: 'project-reload' });
+  fixture.source()!.onerror!();
+  expect(fixture.updates.at(-1)).toBe('reconnecting');
+  expect(signal.aborted).toBe(false);
+  finish(Response.json({ messages: [{ type: 'project-reloaded' }] }));
+  await expect(reloading).resolves.toEqual([{ type: 'project-reloaded' }]);
+  expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
+  fixture.listeners.get('pagehide')!();
+});
+
 it('recovers an expired control endpoint once if the host exits before the event stream notices', async () => {
   const recover = vi.fn(async () => 'b'.repeat(64));
   const fixture = await connectionFixture(200, true, recover);

@@ -238,7 +238,8 @@ export class BrowserConnection {
     const controller = new AbortController();
     const control = message.type === 'stop' || message.type === 'workflow-stop' || message.type === 'agent-command' && message.command?.type === 'cancel';
     const signal = control && this.recoverHost ? AbortSignal.any([controller.signal, AbortSignal.timeout(AGENT_COMMAND_REQUEST_TIMEOUT_MS + 10_000)]) : controller.signal;
-    this.requests.set(controller, control);
+    // Reload closes the old event stream before its HTTP acknowledgement arrives.
+    this.requests.set(controller, control || message.type === 'project-reload');
     try {
       // Only explicit cancellation can cross process recovery. A failed send or
       // tool action is never replayed by this transport.
@@ -248,7 +249,7 @@ export class BrowserConnection {
       const body = { ...message, ...(this.applicationId ? { applicationId: this.applicationId } : {}), clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
-        : message.type === 'project-server-check' ? 180_000
+        : ['project-server-check', 'project-reload'].includes(message.type) ? 180_000
         : ['kanban-bridge', 'resource-bridge'].includes(message.type) && message.call?.operation?.startsWith('files.') ? 125_000
         : message.type === 'kanban-bridge' && ['entries.runEntrypoint', 'conversations.viewMessage'].includes(message.call?.operation) ? AGENT_COMMAND_REQUEST_TIMEOUT_MS
         : control || ['send', 'agent-command', 'queue-promote', 'queue-remove'].includes(message.type) ? AGENT_COMMAND_REQUEST_TIMEOUT_MS : 60_000;
@@ -281,10 +282,9 @@ export class BrowserConnection {
     } finally { this.requests.delete(controller); }
   }
 
-  private abortRequests(includeControls = false): void {
-    for (const [controller, control] of this.requests) {
-      // Stopping remains independent of event-stream recovery.
-      if (includeControls || !control) { controller.abort(); this.requests.delete(controller); }
+  private abortRequests(includeIndependent = false): void {
+    for (const [controller, independent] of this.requests) {
+      if (includeIndependent || !independent) { controller.abort(); this.requests.delete(controller); }
     }
   }
 

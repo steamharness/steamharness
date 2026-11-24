@@ -38,7 +38,7 @@ import type { ConnectionState } from './connection';
 import { StateRevisions } from './state-revisions';
 import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from './ui';
 import { conversationHistoryStatus, updateHistoryStatus, updateConversationRunningCount } from './history-status';
-import { narrowMenuDismiss, projectInfoButton } from './toolbar';
+import { bindProjectReload, narrowMenuDismiss, projectToolbarButtons } from './toolbar';
 import { updateProjectAvatar, updateUserAvatar } from './avatar';
 import './style.css';
 import {
@@ -82,7 +82,7 @@ function initialize(): void {
           <button id="conversation-source" class="conversation-source" hidden></button>
         </div>
       </div>
-      <div class="toolbar-actions"><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
+      <div class="toolbar-actions"><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectToolbarButtons(!embeddedConversation)}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
@@ -1580,6 +1580,7 @@ function initialize(): void {
   });
   sendButton.addEventListener('click', send);
   document.querySelector('#new')!.addEventListener('click', () => navigate());
+  bindProjectReload(vscode, showError, () => { if (draftTimer !== undefined && !readOnly()) saveDraft(false); });
   document.querySelector('#project-info')!.addEventListener('click', () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project); } });
   document.querySelector('#cancel-queue-edit')!.addEventListener('click', () => post({ type: 'queue-cancel-edit' }));
   document.querySelector('#parameter-login')!.addEventListener('click', () => vscode.postMessage({ type: 'login' }));

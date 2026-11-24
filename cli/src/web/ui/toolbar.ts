@@ -1,4 +1,5 @@
 import { t } from '../localization';
+import type { Host } from './host';
 import { iconHtml } from './ui';
 
 /**
@@ -9,6 +10,31 @@ import { iconHtml } from './ui';
 
 export function projectInfoButton(): string {
   return `<button id="project-info" class="icon-button" title="${t("Project information")}" aria-label="${t("Project information")}" aria-haspopup="dialog" aria-controls="project-information-dialog">${iconHtml('package')}</button>`;
+}
+
+export function projectToolbarButtons(refresh = true): string {
+  if (!refresh) return projectInfoButton();
+  const label = t('Reload project');
+  return `<div class="project-toolbar-buttons"><button id="project-reload" type="button" class="icon-button" title="${label}" aria-label="${label}">${iconHtml('refresh')}</button>${projectInfoButton()}</div>`;
+}
+
+export function bindProjectReload(host: Host, showError: (message: string) => void, saveDraft?: () => Record<string, unknown> | void): void {
+  const button = document.getElementById('project-reload') as HTMLButtonElement | null;
+  if (!button) return;
+  if (!host.reloadProject) { button.disabled = true; return; }
+  const update = (busy: boolean) => {
+    button.disabled = busy;
+    button.setAttribute('aria-busy', String(busy));
+    button.title = t(busy ? 'Reloading project...' : 'Reload project');
+    button.setAttribute('aria-label', button.title);
+  };
+  button.onclick = async () => {
+    if (button.disabled || !host.reloadProject) return;
+    update(true);
+    try { await host.reloadProject(saveDraft?.() ?? undefined); }
+    catch (error) { showError(error instanceof Error ? error.message : String(error)); }
+    finally { update(false); }
+  };
 }
 
 /**

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateProjectValues, type Project } from '../web/workflow-types';
 import type { RunRecord } from '../web/workflow-workspace';
 
-const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
+const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn(), reloadProject: vi.fn() }));
 const fileOptions = vi.hoisted(() => ({ current: undefined as { pasteFile(name: string): void } | undefined }));
 vi.mock('../web/ui/aggregate', () => ({ mountAggregateToolbar: () => ({ update() {} }) }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
@@ -11,7 +11,6 @@ vi.mock('../web/ui/output-follow', () => ({ OutputFollow: class { setScope() {} 
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} close() {} skillsResult() {} } }));
 vi.mock('../web/ui/project-configurations', () => ({ projectConfigurationsButton: () => '', mountProjectConfigurations: () => {} }));
-vi.mock('../web/ui/toolbar', () => ({ aiUsageButton: () => '', toolPermissionsButton: () => '', projectInfoButton: () => '', narrowMenuDismiss: () => () => {} }));
 
 class Element {
   hidden = true;
@@ -94,6 +93,17 @@ async function fixture() {
 }
 
 describe('Workflow request alerts', () => {
+  it('places project reload directly before the avatar and saves the current form before reloading', async () => {
+    const { element } = await fixture();
+    expect(element('#app').innerHTML).toMatch(/id="project-reload"[^]*?<\/button><button id="project-info"/);
+    const raw = element('raw-args'); raw.value = '["edited"]'; raw.events.get('input')!({ preventDefault() {} });
+    host.reloadProject.mockRejectedValueOnce(new Error('Project is busy.'));
+    element('project-reload').click();
+    expect(host.reloadProject).toHaveBeenCalledWith(expect.objectContaining({ type: 'workflow-draft', entrypointId: 'theme', rawArgs: '["edited"]' }));
+    await vi.waitFor(() => expect(element('error').textContent).toBe('Project is busy.'));
+    expect(element('project-reload').disabled).toBe(false);
+  });
+
   it('clears a clipboard read alert before retrying and ignores a late failure from the earlier read', async () => {
     const { element, emit, request, fail } = await fixture();
     fileOptions.current!.pasteFile('image'); const first = request('attach'); fail(first, 'Clipboard denied');

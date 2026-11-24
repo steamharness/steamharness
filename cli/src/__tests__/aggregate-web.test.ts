@@ -262,6 +262,103 @@ it('serves mixed and repeated entry types through one host and isolates drafts, 
   expect((await f.state('board')).project.projectType).toBe('kanban');
 });
 
+it.each(['workflow', 'board', 'agent'])('reloads the project from %s, rereads the declaration and keeps persisted drafts', async entryId => {
+  const f = await fixture(), initial = await f.state(entryId), board = await f.state('board');
+  await f.call('agent', { type: 'draft', text: 'Keep my Bot draft', attachments: [] });
+  await f.call('workflow', { type: 'workflow-draft', entrypointId: 'operation', inputMode: 'raw', rawArgs: '["keep"]' });
+  const manifestPath = path.join(f.directory, 'steamharness.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, name: 'Reloaded name' }));
+  const url = new URL(f.app.url);
+  expect((await fetch(`${url.origin}/entries/${entryId}/api/message`, { method: 'POST', body: '{"type":"project-reload"}' })).status).toBe(401);
+  expect((await f.state(entryId)).aggregate.name).toBe('Aggregate test');
+  expect(await f.call(entryId, { type: 'project-reload' })).toEqual({ type: 'project-reloaded' });
+  expect(f.app.url).toBe(url.href);
+  const refreshed = await f.state(entryId);
+  expect(refreshed.serverInstanceId).not.toBe(initial.serverInstanceId);
+  expect(refreshed.aggregate.name).toBe('Reloaded name');
+  expect((await f.state('board')).kanban.preview.nonce).not.toBe(board.kanban.preview.nonce);
+  expect((await f.state('workflow')).drafts.operation.rawArgs).toBe('["keep"]');
+  expect(JSON.stringify(await f.state('agent'))).toContain('Keep my Bot draft');
+});
+
+it('keeps the existing host on invalid declarations and can retry after they are fixed', async () => {
+  const f = await fixture(), before = await f.state('agent');
+  const manifestPath = path.join(f.directory, 'steamharness.json'), manifest = await readFile(manifestPath, 'utf8');
+  await writeFile(manifestPath, '{');
+  const invalid = await f.post('agent', { type: 'project-reload' });
+  expect(invalid.status).toBe(400);
+  expect((await invalid.json()).message).toBeTruthy();
+  expect(f.runtime.dispose).not.toHaveBeenCalled();
+  expect((await f.state('agent')).serverInstanceId).toBe(before.serverInstanceId);
+  await writeFile(manifestPath, manifest);
+  expect(await f.call('agent', { type: 'project-reload' })).toEqual({ type: 'project-reloaded' });
+});
+
+it('does not reload any entry while another entry is running or waiting for approval', async () => {
+  const f = await fixture(), before = await f.state('board');
+  await f.call('workflow', { type: 'workflow-run', entrypointId: 'operation', params: {} });
+  await vi.waitFor(() => expect(f.active.has('workflow')).toBe(true));
+  const rejectReload = async () => {
+    const reply = await f.post('board', { type: 'project-reload' });
+    expect(reply.status).toBe(400);
+    expect((await reply.json()).message).toContain('busy or waiting for input');
+    expect((await f.state('board')).serverInstanceId).toBe(before.serverInstanceId);
+    expect(f.runtime.cancel).not.toHaveBeenCalled();
+    expect(f.runtime.dispose).not.toHaveBeenCalled();
+  };
+  await rejectReload();
+  f.active.get('workflow')!.finish({ status: 'waiting_for_input', pendingUserInput: { requestId: 'gate', nodeName: 'gate', title: 'Approve?', params: [] } });
+  await vi.waitFor(async () => expect((await f.state('workflow')).occupiedRun?.status).toBe('waiting_for_input'));
+  await rejectReload();
+});
+
+it('waits for an ordinary Web request to finish before reloading an idle project', async () => {
+  const f = await fixture();
+  const configurations = f.app.configurations!;
+  const originalRefresh = configurations.refresh.bind(configurations);
+  const refresh = vi.spyOn(configurations, 'refresh');
+  let finish!: () => void;
+  const pendingRead = new Promise<void>(resolve => { finish = resolve; });
+  refresh.mockImplementationOnce(async () => {
+    await pendingRead;
+    return originalRefresh();
+  });
+  const reading = f.state('agent');
+  await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  const reloading = f.post('board', { type: 'project-reload' });
+  try {
+    expect(await Promise.race([reloading, new Promise(resolve => setTimeout(() => resolve('pending'), 100))])).toBe('pending');
+  } finally { finish(); }
+  await reading;
+  const reply = await reloading;
+  expect(reply.status).toBe(200);
+  expect((await reply.json()).messages).toEqual([{ type: 'project-reloaded' }]);
+});
+
+it('allows the host to close while a manual reload fails', async () => {
+  const f = await fixture();
+  const read = vi.spyOn(await import('@steamharness/project-manifest/node'), 'readProjectManifestFromDirectory');
+  let finish!: () => void;
+  const pendingRead = new Promise<void>(resolve => { finish = resolve; });
+  read.mockImplementationOnce(async () => {
+    await pendingRead;
+    throw new Error('Invalid project declaration');
+  });
+  const reloading = f.post('agent', { type: 'project-reload' });
+  let closing: Promise<void>;
+  try {
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    closing = f.app.close();
+  } finally { finish(); }
+  try {
+    await expect(closing).resolves.toBeUndefined();
+    const reply = await reloading;
+    expect(reply.status).toBe(400);
+    expect(await reply.json()).toMatchObject({ message: 'Invalid project declaration' });
+  } finally { apps.splice(apps.indexOf(f.app), 1); }
+});
+
 it('keeps parallel entries running while navigating and cancels only the requested entry', async () => {
   const f = await fixture();
   for (const entry of ['agent', 'assistant']) await f.call(entry, { type: 'send', text: entry, params: {}, attachments: [] });
@@ -385,7 +482,7 @@ it('discovers local entries and embeds one existing controller without exposing 
   expect(snapshot.sessions[0].draft.text).toContain('Native draft');
   expect(JSON.stringify(snapshot)).not.toContain(privateKey);
   expect(snapshot.configurations).toBeUndefined();
-  for (const message of [{ type: 'send', sessionId: agent.activeId, text: 'Forged', params: {} }, { type: 'project-configuration', call: { action: 'save' } }])
+  for (const message of [{ type: 'send', sessionId: agent.activeId, text: 'Forged', params: {} }, { type: 'project-configuration', call: { action: 'save' } }, { type: 'project-reload' }])
     expect((await bridge('conversations.viewMessage', { viewId, message })).ok).toBe(false);
   await bridge('conversations.closeView', { viewId });
   expect((await bridge('conversations.viewMessage', { viewId, message: { type: 'ready' } })).error.code).toBe('KANBAN_BRIDGE_SESSION_INVALID');

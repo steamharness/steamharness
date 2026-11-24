@@ -73,6 +73,9 @@ it.each(['en', 'zh-CN'] as const)('connects the real Kanban host without a sideb
   expect(document.getElementById('project-menu')).toBeNull();
   const account = document.querySelector<HTMLButtonElement>('.toolbar-actions > #web-account')!;
   expect(account).not.toBeNull(); expect(account.hidden).toBe(true);
+  const reload = document.querySelector<HTMLButtonElement>('.toolbar-actions #project-reload')!;
+  expect(reload.nextElementSibling?.id).toBe('project-info');
+  expect(reload.title).toBe(language === 'en' ? 'Reload project' : '刷新项目');
   sources[0].onopen!(); sendState(1);
   expect(account.hidden).toBe(false);
   expect(document.getElementById('connection-status')!.hidden).toBe(true);
@@ -175,6 +178,19 @@ it('offers retry when an iframe fails to become ready and recovers on a fresh pr
   expect(status.hidden).toBe(true);
 });
 
+it('requests a full project reload from the toolbar and leaves the current preview open on failure', async () => {
+  const { sendState, fetcher } = await fixture('en'); sendState(1);
+  const button = document.querySelector<HTMLButtonElement>('#project-reload')!;
+  fetcher.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ messages: [], message: 'Invalid declaration.' }) });
+  button.click();
+  expect(button.disabled).toBe(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toMatchObject({ type: 'project-reload' });
+  expect(document.querySelector('#error')?.textContent).toBe('Invalid declaration.');
+  expect(document.querySelector<HTMLIFrameElement>('#kanban-preview')!.src).toContain('/kanban/first/index.html');
+  expect(button.disabled).toBe(false);
+});
+
 it.each(['en', 'zh-CN'] as const)('keeps the map mounted and stabilizes connection feedback through repeated interruptions (%s)', async language => {
   const { sources, sendState } = await fixture(language);
   sendState(1);
@@ -266,7 +282,7 @@ it.each(['en', 'zh-CN'] as const)('mounts Kanban and keeps it running regardless
     expect(document.getElementById('preview-stage')!.hidden).toBe(false);
     window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
     expect(frame.src).toContain('/kanban/local/index.html');
-    expect(document.querySelector<HTMLButtonElement>('#refresh')!.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>('#project-reload')!.disabled).toBe(false);
   }
   expect(fetcher.mock.calls.some(([, options]) => JSON.parse(options?.body ?? '{}').type === 'project-server-check')).toBe(false);
 });

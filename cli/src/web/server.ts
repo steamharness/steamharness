@@ -53,6 +53,7 @@ import { conversationViewHtml, conversationViewClientId, scopeConversationViewMe
 
 type Message = Record<string, any>;
 export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void;
+  reloadProject?(): Promise<string | undefined>;
   openConversationView?: OpenConversationView;
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
   subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
@@ -85,6 +86,8 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => current.handle(request, response),
     get running() { return current.running; },
+    get reloadBusy() { return current.reloadBusy; },
+    get pendingMessages() { return current.pendingMessages; },
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
     readModelRequest: (sessionId: string, messageId: string, executionId: string) => restarting ? undefined : current.readModelRequest(sessionId, messageId, executionId),
@@ -619,6 +622,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
+    if (message.type === 'project-reload') {
+      if (!options.mount?.reloadProject) throw new Error(t('Project reload is unavailable.'));
+      return [{ type: 'project-reloaded', entryId: await options.mount.reloadProject() }];
+    }
     if (message.type === 'login' || message.type === 'cancel-login') {
       if (!projectOnline) throw new Error('Run workspace login, then start web with --online project.');
       if (hostManaged) { throw new Error(t('Manage this account through Studio.')); }
@@ -971,6 +978,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     } finally { for (const release of held) release(); }
   };
   let mutations = Promise.resolve();
+  let closing: Promise<void> | undefined;
+  const pendingMessages = new Set<Promise<void>>();
   const server = createServer((request, response) => {
     void (async () => {
       response.setHeader('X-Content-Type-Options', 'nosniff'); response.setHeader('Referrer-Policy', 'no-referrer');
@@ -1017,6 +1026,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             }
           }
           await refreshHistory();
+          if (closing) { json(response, 503, { message: t('The project is already reloading. Try again shortly.') }); return; }
           const disconnectKanban = kanbanController?.methods.connect(clientId);
           clientIds.set(response, clientId);
           response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeState(response); clients.add(response);
@@ -1028,13 +1038,18 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         }
         if (url.pathname === '/api/message' && request.method === 'POST') {
           const message = await readBody(request);
+          if (closing) { json(response, 503, { message: t('The project is already reloading. Try again shortly.') }); return; }
+          if (message.type === 'project-reload') {
+            json(response, 200, { messages: await handleMessage(message) }); return;
+          }
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
           const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'verify', 'logout', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
-          await task;
+          pendingMessages.add(task);
+          try { await task; } finally { pendingMessages.delete(task); }
           if (replacementId) { response.once('finish', identityChanged); }
           json(response, 200, { messages: messages.map(message => message.type === 'state' || message.type === 'project-configuration-result' || message.type === 'project-configuration-upload-result' ? message : redactProjectData(message, [...sensitiveTokens], false)) }); return;
         }
@@ -1086,7 +1101,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     }).catch(error => process.stderr.write(`Conversation history: ${String(error)}\n`)).finally(() => { refreshingHistory = false; });
   }, 1_000) : undefined;
   historyPoll?.unref();
-  let closing: Promise<void> | undefined;
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
     hostTurn: async (input: Record<string, unknown>) => {
@@ -1244,6 +1258,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return () => { entryObservers.delete(notify); };
     },
     get running() { return projectController?.runs.some(run => run.status === "running") || conversationController?.sessions.some(sessionRunning) || false; },
+    get reloadBusy() {
+      return browserLogin.busy || !!projectController?.running || !!conversationController?.hasRuns
+        || !!conversationController?.sessions.some(session => sessionRunning(session) || session.messages.some(message => !!message.pendingInput));
+    },
+    get pendingMessages() { return [...pendingMessages]; },
     origin, url: `${origin}${options.mount?.basePath ?? ""}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
     setHostUserSettings: async (value: UserSettings) => {
       const settings = parseUserSettings(value);

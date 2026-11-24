@@ -17,7 +17,7 @@ import { ConversationTools } from './conversation-tools';
 import { updateProjectAvatar } from './avatar';
 import { iconHtml, iconButton, escapeHtml } from './ui';
 import { runStatusLabels as statusLabels, workflowHistoryStatus, updateHistoryStatus, updateRunningCount } from './history-status';
-import { narrowMenuDismiss, projectInfoButton } from './toolbar';
+import { bindProjectReload, narrowMenuDismiss, projectToolbarButtons } from './toolbar';
 import { projectParameters, projectParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
 import type { Draft, RunRecord } from '../workflow-workspace';
 import type { AccountState } from '../workflow-auth-client';
@@ -41,7 +41,7 @@ const app = document.querySelector<HTMLElement>('#app')!;
 const host = acquireProjectHost();
 app.classList.add('workflow-app');
 app.innerHTML = `
-  <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span>${projectInfoButton()}</div></header>
+  <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span>${projectToolbarButtons()}</div></header>
   <aside id="project-menu" class="project-menu" aria-label="${t("Runs")}"><div class="menu-heading"><span>${t("Runs")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" aria-label="${t("Search runs")}" title="${t("Search runs")}">${iconHtml('search')}</button><button id="new" class="icon-button" aria-label="${t("New run")}" title="${t("New run")}">${iconHtml('add')}</button><button id="hide-menu" class="icon-button" aria-label="${t("Hide runs")}" title="${t("Hide runs")}">${iconHtml('chevron-left')}</button></div></div><section id="run-history"><nav id="run-list"></nav><div id="empty-history" class="no-history">${t("No runs")}</div><button id="load-more-history" class="all-history" hidden>${iconHtml('chevron-down')}<span>${t("Load more")}</span></button></section></aside>
   <main><div id="error" class="error" role="alert" hidden></div><div id="active-run" class="workflow-active" hidden><button id="show-active" class="workflow-active-link"></button><button id="stop-active" class="icon-button" title="${t("Stop run")}" aria-label="${t("Stop run")}">${iconHtml('debug-stop')}</button></div>
     <div id="workspace-scroll" class="workspace-scroll"><section id="entrypoints" class="workflow-entrypoints" aria-label="${t("Workflow entrypoint")}"></section>
@@ -340,6 +340,12 @@ element('delete-run').onclick = async () => {
 for (const name of ['result', 'flow', 'logs']) { element(`tab-${name}`).onclick = () => changeTab(name); }
 element('zoom-in').onclick = () => zoom(scale + 0.1); element('zoom-out').onclick = () => zoom(scale - 0.1); element('fit-graph').onclick = fitGraph;
 element('close-node').onclick = () => element<HTMLDialogElement>('node-dialog').close();
+bindProjectReload(host, message => renderRequestError(element('error'), message), () => {
+  if (!state || !editTimer) return;
+  clearTimeout(editTimer);
+  return { type: 'workflow-draft', projectUri: state.project.uri, entrypointId,
+    params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode };
+});
 element('project-info').onclick = () => { if (state) { fields.close(); dialogs.projectInfo(state.project); } };
 addEventListener('message', event => {
   if (event.source !== null && event.source !== window.parent) return;

@@ -8,7 +8,7 @@ import { requestAction } from './action-dialog';
 import { ConversationTools } from './conversation-tools';
 import { updateProjectAvatar } from './avatar';
 import { iconHtml, iconButton } from './ui';
-import { narrowMenuDismiss, projectInfoButton } from './toolbar';
+import { bindProjectReload, narrowMenuDismiss, projectToolbarButtons } from './toolbar';
 import {
   createKanbanMethodSession, parseKanbanBridgeCall, createKanbanBridgeError,
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE, KANBAN_ENTRY_BRIDGE_REQUEST_TIMEOUT_MS,
@@ -23,7 +23,7 @@ interface KanbanState { revision: number; configurations: {id:string;name:string
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
-<header class="toolbar"><div class="project-title"><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button><button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
+<header class="toolbar"><div class="project-title"><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectToolbarButtons()}</div></header>
 <main><div id="error" class="error" hidden role="alert"></div><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status" data-error="false">${iconHtml('loading')}<span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
 <dialog id="dimensions-dialog" class="conversation-dialog"><header><h2>${t("Preview size")}</h2><button id="close-dimensions" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><form class="dialog-body"><label>${t("Width")}<input id="preview-width" type="number" min="160" max="4096" required></label><label>${t("Height")}<input id="preview-height" type="number" min="96" max="4096" required></label><div class="dimension-actions"><button id="reset-dimensions" type="button">${iconHtml('discard')}${t("Reset")}</button><button type="submit">${iconHtml('check')}${t("Apply")}</button></div></form></dialog>
 <dialog id="methods-dialog" class="conversation-dialog"><header><h2>${t("Page methods")}</h2><button id="close-methods" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body"><select id="method-name" aria-label="${t("Page methods")}"></select><p id="method-description"></p><pre id="method-schema"></pre><label class="method-input">${t("Parameters JSON")}<textarea id="method-args" rows="5">{}</textarea></label><button id="invoke-method" type="button">${iconHtml('play')}${t("Execute")}</button><pre id="method-result" role="status"></pre></div></dialog>`;
@@ -70,7 +70,7 @@ function request(message: Message): Promise<Message> {
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
-  for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
+  element<HTMLButtonElement>('retry-preview').disabled = !connected || working;
   element<HTMLButtonElement>('methods').disabled = !connected || !methodSession?.getState().ready;
   element<HTMLButtonElement>('invoke-method').disabled = !connected || methodWorking || !methodSession?.getState().methods.length;
   element('preview-offline').hidden = connected;
@@ -147,7 +147,8 @@ async function refreshPreview(): Promise<void> {
   catch (error) { showError(error); }
   finally { working = false; controls(); }
 }
-element('refresh').onclick = element('retry-preview').onclick = () => { void refreshPreview(); };
+element('retry-preview').onclick = () => { void refreshPreview(); };
+bindProjectReload(host, showError);
 element('dimensions').onclick = () => { if (mode === 'fullscreen') { return; } element<HTMLInputElement>('preview-width').value = String(sizes[mode].width); element<HTMLInputElement>('preview-height').value = String(sizes[mode].height); element<HTMLDialogElement>('dimensions-dialog').showModal(); };
 element('close-dimensions').onclick = () => element<HTMLDialogElement>('dimensions-dialog').close();
 element('dimensions-dialog').querySelector('form')!.onsubmit = event => { event.preventDefault(); if (mode === 'fullscreen') { return; } sizes[mode] = { width: Number(element<HTMLInputElement>('preview-width').value), height: Number(element<HTMLInputElement>('preview-height').value) }; layoutPreview(); persist(); element<HTMLDialogElement>('dimensions-dialog').close(); };

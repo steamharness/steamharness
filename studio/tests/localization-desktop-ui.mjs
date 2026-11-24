@@ -15,7 +15,7 @@ const chinese = await fs.readFile(path.join(root, 'extensions/studio-workstation
 const nlsEnglish = JSON.parse(await fs.readFile(path.join(root, 'extensions/studio-workstation/package.nls.json'), 'utf8'));
 const nlsChinese = JSON.parse(await fs.readFile(path.join(root, 'extensions/studio-workstation/package.nls.zh-cn.json'), 'utf8'));
 const nativeChinese = Object.fromEntries(Object.entries(nlsEnglish).map(([key, value]) => [value, nlsChinese[key]]));
-const cliChinese = { 'Send': '\u53d1\u9001', 'Refresh Kanban': '\u5237\u65b0\u770b\u677f',
+const cliChinese = { 'Send': '\u53d1\u9001', 'Reload project': '\u5237\u65b0\u9879\u76ee',
   'New configuration': '\u65b0\u5efa\u914d\u7f6e', 'Phone': '\u624b\u673a', 'Page methods': '\u9875\u9762\u65b9\u6cd5' };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -102,6 +102,7 @@ async function verify(language) {
     assert.ok((await runButton.getAttribute('aria-label'))?.includes(t('Run Project')));
     await runButton.click();
     const projectFrame = await frameFor('#workflow-title'); await projectFrame.locator('#workflow-form[aria-busy=false]').waitFor();
+    assert.equal(await projectFrame.locator('#project-reload:has(+ #project-info)').getAttribute('title'), t('Reload project'));
     assert.equal((await projectFrame.locator('#run').innerText()).trim(), t('Run'));
     await projectFrame.locator('#input-mode [data-mode=raw]').click();
     await projectFrame.locator('#raw-args').fill(JSON.stringify(['--subject', '\u4e2d\u6587\u6267\u884c\u53c2\u6570', '--rounds', '2', '--delay', '5', '--review', 'false']));
@@ -122,6 +123,7 @@ async function verify(language) {
     await field(projectName(projects[1])).locator('.label-name').click();
     const conversation = await frameFor('body[data-surface=editor] #message');
     await conversation.locator('#message:not([disabled])').waitFor();
+    assert.equal(await conversation.locator('#project-reload:has(+ #project-info)').getAttribute('title'), t('Reload project'));
     assert.equal(await conversation.locator('#send').getAttribute('aria-label'), t('Send'));
     assert.equal(await conversation.locator('#history-toggle').getAttribute('title'), t('Search conversations'));
     await conversation.locator('#message').fill('\u5bf9\u8bdd\u539f\u6587'); await conversation.locator('#send').click();
@@ -133,7 +135,7 @@ async function verify(language) {
     await field(projectName(projects[2])).locator('.label-name').click();
     const kanban = await frameFor('#kanban-title');
     await kanban.locator('#preview-status').waitFor({ state: 'hidden' });
-    assert.equal(await kanban.locator('#refresh').getAttribute('title'), t('Refresh Kanban'));
+    assert.equal(await kanban.locator('#project-reload:has(+ #project-info)').getAttribute('title'), t('Reload project'));
     assert.equal(await kanban.locator('#create').getAttribute('title'), t('New configuration'));
     assert.equal(await kanban.locator('[data-mode=phone]').getAttribute('title'), t('Phone'));
     await kanban.locator('#methods').click();
