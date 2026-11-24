@@ -4,6 +4,47 @@ import { checkStoreExperience } from './launchpad-store-ui.mjs';
 import { checkLaunchpadContrast } from './launchpad-contrast-ui.mjs';
 import { checkLaunchpadBackButton } from './launchpad-back-button-ui.mjs';
 
+export const primaryFolderBotName = 'Folder Bot 1 · Standard agent development';
+
+async function checkDetailActionLayout(page, detail, screenshot) {
+  const viewport = page.viewportSize();
+  try {
+    for (const width of [1440, 360]) {
+      await page.setViewportSize({ ...viewport, width });
+      const layout = await detail.evaluate(article => {
+        const frame = article.parentElement.getBoundingClientRect(), content = article.getBoundingClientRect();
+        const headerActions = [...article.querySelectorAll('.lp-detail-actions > button')];
+        const actions = headerActions.map(button => button.getBoundingClientRect());
+        const controls = [...headerActions, ...article.querySelectorAll('.lp-detail-secondary button')].map(button => button.getBoundingClientRect());
+        const mark = article.querySelector('.lp-detail-mark').getBoundingClientRect();
+        const identity = article.querySelector('.lp-detail-identity').getBoundingClientRect();
+        const isSingleLine = heading => heading.offsetHeight <= Math.ceil(parseFloat(getComputedStyle(heading).lineHeight));
+        return {
+          gutters: [content.left - frame.left, frame.right - content.right],
+          oneLineTitle: isSingleLine(article.querySelector('h1')),
+          oneLineGroupLabels: [...article.querySelectorAll('.lp-detail-action-group:not([hidden]) > h2')].every(isSingleLine),
+          equalActionHeights: actions.every(rect => rect.height === actions.at(-1).width),
+          sameRow: actions.every(rect => rect.top === actions[0].top),
+          actionsBelowTitle: actions.every(rect => rect.top >= Math.max(mark.bottom, identity.bottom)),
+          fit: controls.every(rect => rect.left >= content.left - 1 && rect.right <= content.right + 1),
+          headingPaired: mark.right <= identity.left && mark.bottom > identity.top && identity.bottom > mark.top,
+        };
+      });
+      const [left, right] = layout.gutters;
+      assert.ok(left >= -1 && right >= -1 && Math.abs(left - right) <= 1, `Details must be centered at ${width}px: ${left}, ${right}`);
+      assert.ok(layout.fit && layout.headingPaired && layout.equalActionHeights && layout.oneLineGroupLabels, `Actions and title must fit at ${width}px: ${JSON.stringify(layout)}`);
+      if (width === 1440) {
+        assert.ok(left > 0 && layout.sameRow && layout.oneLineTitle, 'Wide details must leave room for the heading and keep header actions in a single row');
+      } else {
+        assert.ok(layout.actionsBelowTitle, 'Narrow details must wrap the action group below the title and icon');
+      }
+      await screenshot?.(width);
+    }
+  } finally {
+    await page.setViewportSize(viewport);
+  }
+}
+
 export async function checkFolderBotStartup({ page, enhanced }) {
   const library = page.locator('#lp-page-library');
   const index = library.locator('.lp-index');
@@ -29,18 +70,24 @@ export async function checkFolderBotStartup({ page, enhanced }) {
   await index.getByRole('button', { name: 'Project 2 · Local assistant', exact: true }).waitFor({ state: 'detached' });
 }
 
-export async function checkFolderBotBranches({ page, language, enhanced }) {
+export async function checkFolderBotBranches({ page, language, enhanced, screenshot }) {
   const t = (en, zh) => language === 'zh-cn' ? zh : en;
   const home = page.locator('.studio-launchpad'), library = home.locator('#lp-page-library');
   const index = library.locator('.lp-index'), row = name => index.getByRole('button', { name, exact: true });
   const detail = library.locator('.lp-project-details');
   const action = name => detail.getByRole('button', { name, exact: true });
-  const withBot = action(t('Open with Bot…', '用 Bot 打开…'));
+  const botName = number => number === 1 ? primaryFolderBotName : `Folder Bot ${number}`;
+  const botGroup = detail.getByRole('region', { name: t('Bot instances', 'Bot 分身'), exact: true });
+  const imGroup = detail.getByRole('region', { name: t('IM integration', 'IM 集成'), exact: true });
+  const withBot = botGroup.getByRole('button', { name: t('Open with Bot…', '用 Bot 打开…'), exact: true });
   const libraryTab = home.locator('#lp-tab-library');
   const choose = (en, zh) => page.getByRole('menuitem', { name: t(en, zh), exact: true }).click({ delay: 150 });
   await row('Project 8').click();
+  await detail.getByText(t('Source · IDE', '源码 · IDE'), { exact: true }).waitFor();
+  assert.deepEqual(await detail.locator('.lp-detail-actions > button').allTextContents(), [t('Run project', '运行项目'), t('Switch to window', '切换到项目窗口'), '']);
+  await checkDetailActionLayout(page, detail);
   if (!enhanced) {
-    assert.equal(await withBot.count(), 0);
+    assert.equal(await detail.locator('.lp-detail-secondary').isVisible(), false);
     assert.equal(await index.locator('.lp-index-toggle').count(), 0);
     await libraryTab.click();
     return;
@@ -52,11 +99,12 @@ export async function checkFolderBotBranches({ page, language, enhanced }) {
     await row(name).click();
     await withBot.waitFor();
   }
+  assert.equal(await imGroup.count(), 0, 'IM actions require a signed-in account but local Bot actions do not');
   const workspace = number => `/profile/Folder Bot ${number}.code-workspace`;
   const create = async (parent, number) => {
     await row(parent).click();
     await withBot.click();
-    const instance = row(`Folder Bot ${number}`);
+    const instance = row(botName(number));
     await instance.waitFor();
     assert.equal(await instance.locator('xpath=..').getAttribute('aria-labelledby'), await row(parent).getAttribute('id'));
     assert.ok((await instance.boundingBox()).x > (await row(parent).boundingBox()).x);
@@ -76,7 +124,7 @@ export async function checkFolderBotBranches({ page, language, enhanced }) {
   await toggle.press('Enter');
   assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
   assert.equal(await toggle.getAttribute('aria-label'), `${t('Expand Bot instances', '展开 Bot 分身')}: Project 2`);
-  assert.equal(await row('Folder Bot 1').count(), 0);
+  assert.equal(await row(botName(1)).count(), 0);
   assert.equal(await opens(), before);
   await detail.getByRole('heading', { name: 'Project 2', exact: true }).waitFor();
 
@@ -85,11 +133,11 @@ export async function checkFolderBotBranches({ page, language, enhanced }) {
   const find = library.getByRole('searchbox');
   await find.fill('Folder Bot 1');
   assert.equal(await branch.locator('.lp-index-children').getByRole('button').count(), 1);
-  assert.ok(await row('Folder Bot 1').isVisible());
+  assert.ok(await row(botName(1)).isVisible());
   await find.fill('');
   assert.equal(await toggle.getAttribute('aria-expanded'), 'false', 'clearing the query restores the previous collapse state');
   await toggle.click();
-  await row('Folder Bot 1').click();
+  await row(botName(1)).click();
   assert.equal(await withBot.count(), 0);
   const focused = await opens();
   await action(t('Switch to window', '切换到项目窗口')).click();
@@ -100,31 +148,46 @@ export async function checkFolderBotBranches({ page, language, enhanced }) {
   await libraryTab.click();
   const filter = (en, zh) => library.getByRole('button', { name: t(en, zh), exact: true });
   await filter('Folders', '文件夹').click();
-  assert.ok(await row('Folder Bot 1').isVisible());
+  assert.ok(await row(botName(1)).isVisible());
   assert.equal(await row('Folder Bot 3').count(), 0);
   await filter('Source', '源码').click();
   assert.ok(await row('Folder Bot 3').isVisible());
-  assert.equal(await row('Folder Bot 1').count(), 0);
+  assert.equal(await row(botName(1)).count(), 0);
 
-  await page.evaluate(() => {
+  await page.evaluate(name => {
     window.updateAccount({ status: 'authenticated', hasAccount: true, scopeKey: 'a'.repeat(64) });
-    window.setLibraryCategory(['Folder Bot 1']);
-  });
+    window.setLibraryCategory([name]);
+  }, botName(1));
   await filter('Linked projects', '已关联项目').click();
-  await library.locator('.lp-product .lp-library-card').getByText('Folder Bot 1', { exact: true }).waitFor();
-  assert.deepEqual(await index.locator('.lp-index-row').allTextContents(), ['Project 2', 'Folder Bot 1']);
+  await library.locator('.lp-product .lp-library-card').getByText(botName(1), { exact: true }).waitFor();
+  assert.deepEqual(await index.locator('.lp-index-row').allTextContents(), ['Project 2', botName(1)]);
   assert.equal(await library.locator('.lp-product .lp-library-card').count(), 1, 'the parent is context, not itself linked');
   await filter('All', '全部').click();
+
+  await row(botName(2)).click();
+  await imGroup.getByRole('button', { name: t('Add to IM contacts', '添加到 IM 通讯录'), exact: true }).waitFor();
+
+  await row(botName(1)).click();
+  const review = imGroup.getByRole('button', { name: t('Review IM permissions…', '确认 IM 权限…'), exact: true });
+  await review.waitFor();
+  assert.deepEqual(await imGroup.getByRole('button').allTextContents(), [
+    t('Open Bot chat', '打开 Bot 对话'), t('Review IM permissions…', '确认 IM 权限…'), t('Unlink from IM…', '解除 IM 绑定…'),
+  ]);
+  assert.equal(await botGroup.count(), 0, 'an existing instance has an IM section but no create-Bot section');
+  assert.deepEqual(await detail.locator('.lp-detail-actions > button').allTextContents(), [t('Switch to window', '切换到项目窗口'), '']);
+  await checkDetailActionLayout(page, detail, width => screenshot(`folder-bot-details-${width}`));
+  await review.click();
+  await page.waitForFunction(() => window.actions.some(([id, uri, action]) => id === 'studio.runLibraryProjectAction' && uri.endsWith('/Folder%20Bot%201.code-workspace') && action === 'review-folder-permission'));
 
   await row('Project 2').click({ button: 'right' });
   await choose('Remove from history…', '移除打开记录…');
   await page.locator('.native-message').getByRole('button', { name: t('Remove record', '移除记录'), exact: true }).click();
   await row('Project 2').waitFor({ state: 'detached' });
-  for (const number of [1, 2]) assert.ok(await index.locator(':scope > .lp-index-row').getByText(`Folder Bot ${number}`, { exact: true }).isVisible());
+  for (const number of [1, 2]) assert.ok(await index.locator(':scope > .lp-index-row').getByText(botName(number), { exact: true }).isVisible());
   for (const number of [1, 2, 3]) {
-    await row(`Folder Bot ${number}`).click({ button: 'right' });
+    await row(botName(number)).click({ button: 'right' });
     await choose('Remove folder Bot…', '移除分身…');
-    await row(`Folder Bot ${number}`).waitFor({ state: 'detached' });
+    await row(botName(number)).waitFor({ state: 'detached' });
   }
   assert.equal(await index.locator('.lp-index-toggle').count(), 0);
   await libraryTab.click();
@@ -184,7 +247,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   const choose = (en,cn) => page.getByRole('menuitem',{name:t(en,cn),exact:true}).click({delay:150});
   const before = await openCount();
   await source.click(); await detail.getByRole('heading',{name:'Project 8',exact:true}).waitFor();
-  const productAction=detail.getByRole('button',{name:t('Fixture action','示例操作'),exact:true});
+  const productAction=detail.getByRole('region',{name:t('IM integration','IM 集成'),exact:true}).getByRole('button',{name:t('Fixture action','示例操作'),exact:true});
   if(enhanced){await productAction.click();assert.ok(await page.evaluate(()=>window.actions.some(([id,uri,key])=>id==='studio.runLibraryProjectAction' && uri.startsWith('file:') && key==='fixture')));}
   else {assert.equal(await productAction.count(),0);assert.equal(await page.evaluate(()=>window.actions.some(([id])=>id==='studio.listLibraryProjectActions')),false);}
   await checkActionsHidden();
@@ -199,25 +262,10 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await page.evaluate(()=>window.editProject(23,false)); await detail.getByText(t('Open','已打开'),{exact:true}).waitFor();
   assert.equal(await openCount(),before,'browsing the library must not open or focus a project');
   if (enhanced) await productAction.waitFor();
-  const viewport = page.viewportSize();
-  for (const width of [1440, 360]) {
-    await page.setViewportSize({ ...viewport, width });
-    const layout = await detail.evaluate(article => {
-      const frame = article.parentElement.getBoundingClientRect(), content = article.getBoundingClientRect();
-      const actions = [...article.querySelectorAll('.lp-detail-actions > button')].map(button => button.getBoundingClientRect());
-      return { gutters: [content.left - frame.left, frame.right - content.right], heights: actions.map(rect => rect.height),
-        menuWidth: actions.at(-1).width, sameRow: actions.every(rect => rect.top === actions[0].top),
-        fit: actions.every(rect => rect.left >= content.left - 1 && rect.right <= content.right + 1) };
-    });
-    const [left, right] = layout.gutters;
-    assert.ok(left >= -1 && right >= -1 && Math.abs(left - right) <= 1, `Details must be centered at ${width}px: ${left}, ${right}`);
-    assert.ok(layout.fit && layout.heights.every(height => height === layout.menuWidth), `Header actions must fit and match the square menu height at ${width}px: ${JSON.stringify(layout)}`);
-    if (width === 1440) {
-      assert.ok(left > 0 && layout.sameRow, 'Wide details must have even gutters and a single row of actions');
-      await screenshot('project-details');
-    }
-  }
-  await page.setViewportSize(viewport);
+  assert.deepEqual(await detail.locator('.lp-detail-actions > button').allTextContents(), [t('Run project','运行项目'),t('Switch to window','切换到项目窗口'),'']);
+  await checkDetailActionLayout(page, detail, async width => {
+    if (width === 1440) await screenshot('project-details');
+  });
   const request = () => page.evaluate(()=>window.openRequests.at(-1));
   const expectEntry = async (path, studioProjectEntry) => assert.deepEqual(await request(), {openables:[{kind:'folderUri',path}],forceNewWindow:true,studioProjectEntry});
   await detail.getByRole('button',{name:t('Switch to window','切换到项目窗口')}).click(); await expectEntry('/projects/Project 8',{});
@@ -310,7 +358,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
   await page.waitForFunction(()=>typeof window.resumeHistory==='function'); await page.evaluate(()=>window.resumeHistory());
   await detail.getByRole('heading',{name:'Imported folder',exact:true}).waitFor(); assert.equal(await find.inputValue(),'');
   if (enhanced) {
-    const withBot = detail.getByRole('button',{name:t('Open with Bot…','用 Bot 打开…'),exact:true});
+    const withBot = detail.getByRole('region',{name:t('Bot instances','Bot 分身'),exact:true}).getByRole('button',{name:t('Open with Bot…','用 Bot 打开…'),exact:true});
     await page.waitForFunction(()=>window.actions.some(([id,project])=>id==='studio.listLibraryProjectActions' && project.name==='Imported folder'));
     await withBot.waitFor(); // The account action has not resolved.
     await withBot.focus();
@@ -373,7 +421,7 @@ export async function checkLibraryExperience({ page, language, enhanced, checkEd
     assert.equal(await latest.isVisible(),false);
     assert.equal(await profile.getByText('Saved message').count(),0); await profile.getByRole('button',{name:t('Sign in','登录'),exact:true}).click();
     await tab('library').click();
-    await checkFolderBotBranches({ page, language, enhanced });
+    await checkFolderBotBranches({ page, language, enhanced, screenshot });
   } else {
     assert.ok(!await home.locator('.lp-latest-notice').isVisible()); await tab('profile').click();
     const profile=home.locator('#lp-page-profile'); assert.equal(await profile.getByRole('tab').count(),1);

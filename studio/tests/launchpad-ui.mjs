@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
-import { checkFolderBotBranches, checkFolderBotStartup, checkLibraryExperience } from './launchpad-library-ui.mjs';
+import { checkFolderBotBranches, checkFolderBotStartup, checkLibraryExperience, primaryFolderBotName } from './launchpad-library-ui.mjs';
 import { checkProfileRowInteractions } from './launchpad-profile-ui.mjs';
 import { checkStudioNoticeAcknowledgement, checkTrayClearRead } from './launchpad-profile-ui.mjs';
 import { storeFixture } from './launchpad-store-ui.mjs';
@@ -111,7 +111,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       return [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…'}];
     }
     if (id === 'studio.runFolderBotAction' && args[1] === 'create-folder-bot') {
-      const name = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+name+'.code-workspace').toString();
+      const file = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+file+'.code-workspace').toString();
+      const name = folderBots.length === 0 ? ${JSON.stringify(primaryFolderBotName)} : file;
       folderBots.push({uri,name,kind:'workspace',managed:true,parentUri:args[0],path:URI.parse(args[0]).fsPath,projectType:'bot'});
       kernelCommand('LibraryProjectCategoryChanged');
       return {workspace:uri};
@@ -125,6 +126,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     }
     if (id === 'studio.listLibraryProjectActions') {
       if (args[0].name==='Imported folder' && window.folderDetailImGate) await window.folderDetailImGate;
+      if (args[0].managed && args[0].name === ${JSON.stringify(primaryFolderBotName)}) return [
+        { id: 'contact', label: zh ? '打开 Bot 对话' : 'Open Bot chat', icon: 'comment-discussion' },
+        { id: 'review-folder-permission', label: zh ? '确认 IM 权限…' : 'Review IM permissions…', icon: 'shield' },
+        { id: 'unbind-folder-bot', label: zh ? '解除 IM 绑定…' : 'Unlink from IM…', icon: 'debug-disconnect' },
+      ];
+      if (args[0].managed) return [{ id: 'bind', label: zh ? '添加到 IM 通讯录' : 'Add to IM contacts', icon: 'comment-discussion' }];
       return args[0].name==='Project 8' ? [{id:'fixture',label:zh?'示例操作':'Fixture action'}] : [];
     }
     if (id === 'studio.runLibraryProjectAction') return {};
@@ -784,7 +791,8 @@ try {
     }
     if (folderBotsOnly) {
       await checkFolderBotStartup({ page, enhanced });
-      await checkFolderBotBranches({ page, language, enhanced });
+      await checkFolderBotBranches({ page, language, enhanced,
+        screenshot: name => page.screenshot({ path: fileURLToPath(new URL(stem+'-'+name+'.png', proof)) }) });
       await page.evaluate(() => window.cleanup());
       assert.deepEqual(errors, []);
       await page.close();
