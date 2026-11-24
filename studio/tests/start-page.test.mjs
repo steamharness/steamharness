@@ -30,6 +30,7 @@ function fixture(t, options = {}) {
   const vscode = {
     EventEmitter: Emitter, env: { language: options.language ?? 'en' }, ProgressLocation: { Notification: 15 },
     ThemeIcon: class { constructor(id) { this.id = id; } },
+    extensions: { getExtension: name => name === 'vscode.typescript-language-features' ? { isActive: options.typescriptActive === true } : undefined },
     Uri: { file: uri, parse: value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value) : value, toString: () => value }),
       joinPath: (parent, ...parts) => uri(path.join(parent.fsPath, ...parts)) },
     commands: { registerCommand: (name, callback) => { commands.set(name, callback); return { dispose: () => commands.delete(name) }; },
@@ -39,6 +40,7 @@ function fixture(t, options = {}) {
           f.dialog = args[0];
           return f.name === undefined ? undefined : { name: f.name, parentDirectory: f.parent, templateId: f.dialog.templateId ?? f.dialog.templates[0].id };
         }
+        if (name === 'typescript.reloadProjects') { return options.reloadTypeScript?.(); }
         return name === 'vscode.openFolder' ? f.open?.(...args) : commands.get(name)?.(...args);
       } },
     workspace: { isTrusted: options.trusted ?? true, workspaceFolders: (options.folders ?? []).map(directory => ({ uri: uri(directory) })),
@@ -172,21 +174,34 @@ test('creation opens the project before installation and hands progress, logs an
   assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Creating Project');
   assert.equal(f.savedSetups()[0].installOnOpen, true);
   assert.deepEqual((await f.state()).pending, []);
-  const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath],
+  const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath], typescriptActive: true,
     install: () => new Promise((_resolve, reject) => { failInstall = () => reject(new Error('offline registry')); }) });
   await until(() => failInstall, 'The new project window did not start installation');
+  assert.equal(target.calls.some(([name]) => name === 'typescript.reloadProjects'), false);
   assert.equal((await target.state()).installing, id); assert.equal(target.savedSetups()[0].installOnOpen, false);
   assert.equal(target.progress.length, 1); assert.equal(target.installs[0], opened[1].fsPath);
   assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Creating Project');
   failInstall(); await until(async () => !(await target.state()).busy, 'Installation did not finish');
   assert.equal((await target.state()).pending[0].status, 'failed');
+  assert.equal(target.calls.some(([name]) => name === 'typescript.reloadProjects'), false);
   await target.execute('studio.showProjectSetupLog', id); assert.match(target.logDocument.getText(), /install log/);
   assert.equal(target.logDocument.uri.scheme, 'file'); assert.equal(path.basename(target.logDocument.uri.fsPath), 'installation.log');
   target.manifestId = 'changed'; await target.execute('studio.retryProjectSetup', id); assert.match(target.errors.at(-1), /identity changed/);
   target.manifestId = id; target.install = undefined; await target.execute('studio.retryProjectSetup', id);
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id); assert.equal(f.created, 1);
   assert.equal(target.calls.some(([name]) => name === 'vscode.openFolder'), false);
+  assert.equal(target.calls.filter(([name]) => name === 'typescript.reloadProjects').length, 1);
   assert.ok(target.calls.some(([name]) => name === 'studio.refreshProjects'));
+});
+
+test('a rejected TypeScript reload does not fail an otherwise successful project setup', async t => {
+  const f = fixture(t); await f.execute('studio.createProject', 'workflow');
+  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], typescriptActive: true,
+    reloadTypeScript: async () => { throw new Error('TypeScript command unavailable'); } });
+  await until(async () => !(await target.state()).busy, 'Setup did not settle');
+  assert.ok(target.calls.some(([name]) => name === 'typescript.reloadProjects'));
+  assert.equal((await target.state()).pending.length, 0);
+  assert.deepEqual(target.warnings, []);
 });
 
 test('validation errors remain separate from dependency installation and retries retain a persistent file log', async t => {
@@ -240,10 +255,11 @@ for (const template of templateCatalog) for (const newWindow of [true, false]) {
     assert.equal(f.registrations, undefined); assert.deepEqual(f.installs, []);
     assert.equal(f.savedSetups()[0].entryFile, template.entryFile);
     f.controller.dispose();
-    const target = fixture(t, { templates, projectType: template.projectType, storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
+    const target = fixture(t, { templates, projectType: template.projectType, storage: f.storage, folders: [opened[1].fsPath], manifestId: '', typescriptActive: true });
     await until(() => target.remembered, 'Template setup did not complete in its project window');
     assert.equal(target.created, undefined); assert.equal(target.registrations, 1);
     assert.deepEqual(target.installs, [opened[1].fsPath]); assert.deepEqual(target.errors, []);
+    assert.equal(target.calls.filter(([name]) => name === 'typescript.reloadProjects').length, template.entryFile.endsWith('.ts') ? 1 : 0);
     assert.equal((await target.state()).pending.length, 0);
   });
 }

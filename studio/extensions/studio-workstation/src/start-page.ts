@@ -364,6 +364,11 @@ export class StudioStartController implements vscode.Disposable {
               signal.throwIfAborted();
               project = { ...project, dependenciesInstalled: true };
               this.appendInstallationLog(`\n${t('Dependencies installed successfully.')}\n`);
+              // The editor may have cached missing imports while dependencies were still installing.
+              if (/\.(?:[cm]?ts|tsx)$/i.test(project.entryFile) && this.isProjectWindow(project)
+                && vscode.extensions.getExtension('vscode.typescript-language-features')?.isActive) {
+                void vscode.commands.executeCommand('typescript.reloadProjects').then(undefined, () => undefined);
+              }
             }
             if (project.projectId === '') {
               stage = 'registration';
