@@ -11,6 +11,7 @@ import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
 import { publicServiceUrls } from '../../shared/service-urls/index.ts';
 import { copyAssistantTemplate } from './assistant-template.mjs';
 import { overlayExtensionBuildPlugin } from './extension-overlay.mjs';
+import { buildBuiltinProjectRelease, stageBuiltinKanban } from './builtin-project-release.mjs';
 
 export async function buildExtension({ watch = false } = {}) {
   const directory = path.join(ROOT, 'extensions/studio-workstation');
@@ -64,16 +65,24 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.cp(path.join(codicons, 'dist'), path.join(directory, 'dist/codicons'), { recursive: true });
   const assistantSource = await builtinProjectDirectory('developer-assistant');
   const assistantOutput = path.join(directory, 'dist/developer-assistant');
-  await copyAssistantTemplate(assistantSource, assistantOutput);
+  await buildBuiltinProjectRelease(path.join(assistantOutput, 'project'), assistantSource, async stage => {
+    await copyAssistantTemplate(assistantSource, stage, { includeSkills: false });
+    const manifest = await readJSON(path.join(stage, 'package.json'));
+    delete manifest.scripts;
+    await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify(manifest));
+  });
+  await fs.rm(path.join(assistantOutput, 'skills'), { recursive: true, force: true });
+  await fs.cp(path.join(assistantSource, 'skills'), path.join(assistantOutput, 'skills'), { recursive: true });
+  // Remove the old source template after successfully producing its replacement.
+  for (const name of await fs.readdir(assistantOutput)) {
+    if (name !== 'project' && name !== 'skills') await fs.rm(path.join(assistantOutput, name), { recursive: true, force: true });
+  }
   await fs.rm(path.join(directory, 'dist/studio-control'), { recursive: true, force: true });
   const analysisSource = await builtinProjectDirectory('analysis');
   await promisify(execFile)(process.execPath, [path.join(analysisSource, 'scripts/build.mjs')], { cwd: analysisSource });
   const analysisOutput = path.join(directory, 'dist/analysis');
-  await fs.rm(analysisOutput, { recursive: true, force: true });
-  await fs.mkdir(analysisOutput, { recursive: true });
-  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'dist/steamharness/build/main']) {
-    await fs.cp(path.join(analysisSource, name), path.join(analysisOutput, name), { recursive: true });
-  }
+  await buildBuiltinProjectRelease(analysisOutput, assistantSource, stage =>
+    stageBuiltinKanban(stage, analysisSource, path.join(analysisSource, 'dist/steamharness/build/main'), 'main'));
   for (const name of ['runtime', 'workflow-ui.js', 'workflow-ui.css']) {
     await fs.rm(path.join(directory, 'dist', name), { recursive: true, force: true });
   }

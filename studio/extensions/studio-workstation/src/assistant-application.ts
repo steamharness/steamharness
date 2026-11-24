@@ -1,13 +1,14 @@
 import { t } from './localization';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { readProjectReleaseSync } from '@steamharness/project-manifest/release-node';
 import { resolveProjectCli } from './workflow-cli-process';
 
 const assistantId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
 export const ANALYSIS_PROJECT_ID = '6cbe3c24-2707-4f31-a553-94edbe866eb1';
 
-interface BuiltinApplicationOptions { templateDir: string; storageDir: string; dependencySources: string[] }
+interface BuiltinApplicationOptions { templateDir: string; storageDir: string; dependencySources: string[]; releaseStorageDir?: string }
 
 export function prepareAssistantApplication(options: BuiltinApplicationOptions): Promise<string> {
   return prepareBuiltinApplication(options, assistantId);
@@ -17,11 +18,16 @@ export function prepareAnalysisApplication(options: BuiltinApplicationOptions): 
   return prepareBuiltinApplication(options, ANALYSIS_PROJECT_ID);
 }
 
-async function prepareBuiltinApplication(options: BuiltinApplicationOptions, projectId: string): Promise<string> {
+export async function prepareBuiltinApplication(options: BuiltinApplicationOptions, projectId: string): Promise<string> {
   // The extended Dev build links the template root into its extension overlay.
   const template = await realpath(options.templateDir);
-  const manifest = JSON.parse(await readFile(path.join(template, 'package.json'), 'utf8'));
-  const project = JSON.parse(await readFile(path.join(template, 'steamharness.json'), 'utf8'));
+  const nested = path.join(template, 'project');
+  const hasNestedRelease = (await stat(nested).catch(() => undefined))?.isDirectory();
+  const projectRoot = hasNestedRelease ? nested : template;
+  const release = readProjectReleaseSync(projectRoot);
+  if (hasNestedRelease && !release || !release && projectId !== assistantId && projectId !== ANALYSIS_PROJECT_ID) throw new Error('Invalid built-in release.');
+  const manifest = JSON.parse(await readFile(path.join(projectRoot, 'package.json'), 'utf8'));
+  const project = JSON.parse(await readFile(path.join(projectRoot, 'steamharness.json'), 'utf8'));
   if (project.id !== projectId) { throw new Error('Invalid built-in project.'); }
   let dependencies: { directory: string; harnessVersion: string; cliVersion: string } | undefined;
   for (const source of options.dependencySources) {
@@ -31,7 +37,8 @@ async function prepareBuiltinApplication(options: BuiltinApplicationOptions, pro
       const cli = await resolveProjectCli(source);
       const directory = await realpath(path.join(source, 'node_modules'));
       const harness = JSON.parse(await readFile(path.join(directory, 'steamharness', 'package.json'), 'utf8'));
-      if (harness.name === 'steamharness' && typeof harness.version === 'string') {
+      if (harness.name === 'steamharness' && typeof harness.version === 'string'
+        && (!release || manifest.devDependencies?.steamharness === harness.version && manifest.devDependencies?.['@steamharness/cli'] === cli.version)) {
         dependencies = { directory, harnessVersion: harness.version, cliVersion: cli.version }; break;
       }
     } catch { /* Only the independent assistant's installations are eligible. */ }
@@ -47,22 +54,31 @@ async function prepareBuiltinApplication(options: BuiltinApplicationOptions, pro
     }
   };
   await fingerprint(template);
-  const directory = path.join(options.storageDir, 'apps', digest.digest('hex').slice(0, 24));
-  try { await resolveProjectCli(directory); return directory; } catch { /* Create this immutable template version once. */ }
+  const directory = path.join((release ? options.releaseStorageDir : undefined) ?? path.join(options.storageDir, 'apps'), digest.digest('hex').slice(0, 24));
+  const projectDirectory = hasNestedRelease ? path.join(directory, 'project') : directory;
+  const verify = async () => {
+    if (await realpath(path.join(projectDirectory, 'node_modules')) !== dependencies.directory) throw new Error('Unexpected built-in project runtime.');
+    if (release && readProjectReleaseSync(projectDirectory)?.buildId !== release.buildId) throw new Error('Invalid installed built-in release.');
+    await resolveProjectCli(projectDirectory);
+  };
+  try { await verify(); return projectDirectory; } catch { /* Create this immutable template version once. */ }
   await mkdir(path.dirname(directory), { recursive: true });
   const staging = await mkdtemp(path.join(path.dirname(directory), 'prepare-'));
   try {
     await cp(template, staging, { recursive: true });
+    const root = hasNestedRelease ? path.join(staging, 'project') : staging;
     // The app owns its runtime. No dependency is resolved from an opened folder.
-    await symlink(dependencies.directory, path.join(staging, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
-    const installed = { ...manifest, scripts: undefined, dependencies: undefined,
-      devDependencies: { 'steamharness': dependencies.harnessVersion, '@steamharness/cli': dependencies.cliVersion } };
-    await writeFile(path.join(staging, 'package.json'), `${JSON.stringify(installed, null, 2)}\n`);
+    await symlink(dependencies.directory, path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+    if (!release) {
+      const installed = { ...manifest, scripts: undefined, dependencies: undefined,
+        devDependencies: { 'steamharness': dependencies.harnessVersion, '@steamharness/cli': dependencies.cliVersion } };
+      await writeFile(path.join(root, 'package.json'), `${JSON.stringify(installed, null, 2)}\n`);
+    }
     try { await rename(staging, directory); }
     catch (error) {
-      try { await resolveProjectCli(directory); }
+      try { await verify(); }
       catch { throw error; }
     }
   } finally { await rm(staging, { recursive: true, force: true }); }
-  return directory;
+  return projectDirectory;
 }

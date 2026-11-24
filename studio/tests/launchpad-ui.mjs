@@ -23,7 +23,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { StudioLaunchpad } from './src/vs/workbench/electron-browser/studioLaunchpad.ts';
   import { StudioProjectCreateDialog } from './src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts';
   import { URI } from './src/vs/base/common/uri.ts';
-  import { decodeBase64 } from './src/vs/base/common/buffer.ts';
+  import { decodeBase64, VSBuffer } from './src/vs/base/common/buffer.ts';
   import { StudioNotificationInbox } from './src/vs/workbench/electron-browser/studioNotificationInbox.ts';
   import { NotificationService } from './src/vs/workbench/services/notification/common/notificationService.ts';
   import { Severity } from './src/vs/platform/notification/common/notification.ts';
@@ -97,6 +97,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   };
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
+    if (id === 'studio.internalListBuiltinProjects') return { projects: window.builtinErrors ? [builtin] : [] };
     if (id === 'studio.listLibraryExtraProjects') {
       if (startupBot && window.holdFolderBotStartup) {
         await new Promise(resolve => { window.resumeFolderBotStartup = resolve; });
@@ -223,6 +224,15 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const profileStorage = URI.file('/var/studio/User/globalStorage');
   const workstationStorage = URI.joinPath(profileStorage, 'studio.studio-workstation');
   const canonicalWorkstationStorage = workstationStorage.with({ path: '/private' + workstationStorage.path });
+  const builtinUri = URI.joinPath(canonicalWorkstationStorage, 'workflow', 'builtin-apps', 'a'.repeat(24), 'project');
+  const builtin = { uri: builtinUri.toString(), path: builtinUri.fsPath, kind: 'folder', distribution: 'release', projectType: 'bot',
+    projectId: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: zh ? '小助手' : 'Project Assistant' };
+  window.seedBuiltinHistory = () => {
+    window.builtinErrors = [];
+    recent.workspaces.unshift({ folderUri: builtinUri }, { folderUri: URI.joinPath(workstationStorage, 'workflow', 'builtin-apps', 'b'.repeat(24)) });
+    historyChange.fire();
+    return builtin.path;
+  };
   const startupOrdinary = URI.file('/projects/folder-bots/035a4096-66aa-496b-8ebc-f94288f3bc76.code-workspace');
   let startupBot, startupRemoved;
   window.seedFolderBotStartup = () => {
@@ -285,8 +295,13 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     },
     openWindow:async (entries,opts)=>{
       const openables=entries.map(entry=>{const kind=Object.keys(entry)[0]; return {kind,path:entry[kind].path};});
-      window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow,...(opts.studioProjectEntry ? {studioProjectEntry:opts.studioProjectEntry} : {})});
+      window.openRequests.push({openables,forceNewWindow:opts.forceNewWindow,...(opts.studioProjectEntry ? {studioProjectEntry:opts.studioProjectEntry} : {}),
+        ...(opts.noRecentEntry ? {noRecentEntry:true} : {})});
       window.actions.push(['open',openables[0].kind,opts.forceNewWindow]);
+      if (openables[0].path === builtinUri.path) {
+        windows.push({ id: 60, workspace: { id: 'builtin', uri: builtinUri } });
+        changed();
+      }
       if (openables[0].path.startsWith('/profile/Folder Bot ')) {
         windows.push({id:windows.length+100,dirty:false,workspace:{id:openables[0].path,configPath:entries[0].workspaceUri}});
         changed();
@@ -295,7 +310,14 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['pickPaths',opts]); return window.selectedPaths?.map(path=>URI.file(path)); } };
   const opener = {open:async (uri,opts)=>window.actions.push(['external',uri.toString(),opts.openExternal])};
-  const files = {readFile:async()=>({value:decodeBase64(window.coverBytes)}), realpath: async uri => uri.toString() === workstationStorage.toString() ? canonicalWorkstationStorage : undefined, stat: async uri=>{
+  const files = {readFile:async uri=>{
+    if (uri.path === builtinUri.path + '/steamharness.json') return {value:VSBuffer.fromString(JSON.stringify({id:builtin.projectId, name:builtin.name, version:'1.0.0', defaultEntry:'main', distribution:{kind:'release',version:1}}))};
+    if (uri.path === builtinUri.path + '/steamharness.release.json') {
+      if (window.builtinReleaseMissing) throw new FileOperationError('Missing', FileOperationResult.FILE_NOT_FOUND);
+      return {value:VSBuffer.fromString(JSON.stringify({kind:'steamharness.project.release',version:1,projectId:builtin.projectId,projectVersion:'1.0.0',entries:[{entryId:'main'}]}))};
+    }
+    return {value:decodeBase64(window.coverBytes)};
+  }, realpath: async uri => uri.toString() === workstationStorage.toString() ? canonicalWorkstationStorage : undefined, stat: async uri=>{
     window.projectReads.stats++;
     if (uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND);
     const isFile=uri.path===workspace.path||uri.path==='/projects/notes.txt'||uri.path.endsWith('/'+window.coverName);
@@ -359,7 +381,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       recent.workspaces=[...entries,...recent.workspaces.filter(row=>!paths.has((row.folderUri??row.workspace.configPath).path))]; historyChange.fire();
     },removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); historyChange.fire();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])},
+    }},layout,commands,dialogs,{error:e=>{if(window.builtinErrors && /built-in project release|内置项目的发行文件/.test(e.message)) window.builtinErrors.push(e.message); else throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])},
     {profiles: [{ globalStorageHome: profileStorage.with({ scheme: 'vscode-userdata' }) }]});
     window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
@@ -569,11 +591,85 @@ async function checkProjectStatusGuide(page, language) {
   await page.setViewportSize(viewport);
 }
 
+async function checkBuiltinProjects(page, language, screenshot) {
+  const t = (en, zh) => language === 'zh-cn' ? zh : en;
+  const name = t('Project Assistant', '小助手');
+  const library = page.locator('#lp-page-library');
+  const path = await page.evaluate(() => { const value = window.seedBuiltinHistory(); window.activateProjects(); return value; });
+  const index = library.getByRole('region', { name: t('Built-in projects', '内置项目'), exact: true });
+  const row = index.getByRole('button', { name, exact: true });
+  const cards = library.locator('.lp-builtins');
+  await row.waitFor();
+  await library.locator('.lp-recent').waitFor();
+  assert.ok(await index.evaluate(section => section === section.parentElement.firstElementChild));
+  assert.equal(await library.locator('.lp-rail .lp-index-row', { hasText: name }).count(), 1);
+  assert.equal(await library.locator('.lp-index-row', { hasText: 'b'.repeat(24) }).count(), 0, 'Old built-in versions are not workspace history.');
+  assert.equal(await library.locator('.lp-recent, .lp-all').getByText(name, { exact: true }).count(), 0);
+  await screenshot();
+
+  const search = library.getByRole('searchbox', { name: t('Find a project', '查找项目') });
+  await search.fill('Project 8');
+  assert.equal(await index.count(), 0);
+  await search.fill(name);
+  await cards.getByText(name, { exact: true }).waitFor();
+  await search.fill('');
+  await library.getByRole('button', { name: t('Source', '源码'), exact: true }).click();
+  assert.equal(await cards.count(), 0);
+  assert.ok(await row.isVisible(), 'The pinned section remains available above the filtered project index.');
+  await library.getByRole('button', { name: t('Installed', '已安装'), exact: true }).click();
+  await cards.getByText(name, { exact: true }).waitFor();
+
+  await row.click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  const reveal = t('Show in file manager', '在文件管理器中显示');
+  const copy = t('Copy path', '复制路径');
+  const steam = t('Open in Steam mode', '在 Steam 模式打开');
+  await menu.getByRole('menuitem', { name: steam, exact: true }).waitFor();
+  assert.equal(await menu.getByRole('menuitem', { name: /Remove|移除|\bIDE\b/ }).count(), 0);
+  await menu.getByRole('menuitem', { name: reveal, exact: true }).click({ delay: 150 });
+  await page.waitForFunction(() => window.actions.some(([id]) => id === 'reveal'));
+  assert.deepEqual(await page.evaluate(() => window.actions.findLast(([id]) => id === 'reveal')), ['reveal', path]);
+
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, width: 680 });
+  assert.equal(await row.isVisible(), false);
+  await cards.getByText(name, { exact: true }).click();
+  const details = library.locator('.lp-project-details');
+  const open = details.getByRole('button', { name: steam, exact: true });
+  await open.waitFor();
+  assert.equal(await details.getByRole('button', { name: /\bIDE\b|Open with Bot|用 Bot 打开/ }).count(), 0);
+  await details.getByRole('button', { name: t('Project actions', '项目操作'), exact: true }).click();
+  await menu.getByRole('menuitem', { name: copy, exact: true }).click({ delay: 150 });
+  await page.waitForFunction(() => window.actions.some(([id]) => id === 'copy'));
+  assert.deepEqual(await page.evaluate(() => window.actions.findLast(([id]) => id === 'copy')), ['copy', path]);
+
+  await page.evaluate(() => { window.builtinReleaseMissing = true; });
+  await open.click();
+  await page.waitForFunction(() => window.builtinErrors.length === 1);
+  assert.match(await page.evaluate(() => window.builtinErrors[0]), language === 'zh-cn' ? /内置项目的发行文件不可用/ : /built-in project release is unavailable/);
+  assert.deepEqual(await page.evaluate(() => window.openRequests), [], 'Missing release files must not open an IDE.');
+  await page.evaluate(() => { window.builtinReleaseMissing = false; });
+  await open.evaluate(button => { button.click(); button.click(); });
+  const focus = details.getByRole('button', { name: t('Switch to window', '切换到项目窗口'), exact: true });
+  await focus.waitFor();
+  assert.deepEqual(await page.evaluate(() => window.openRequests), [{openables:[{kind:'folderUri',path}],forceNewWindow:true,studioProjectEntry:{},noRecentEntry:true}]);
+  await focus.click();
+  await page.waitForFunction(() => window.actions.some(([id, windowId]) => id === 'focus' && windowId === 60));
+  assert.equal(await page.evaluate(() => window.openRequests.length), 1);
+
+  await page.setViewportSize(viewport);
+  await page.evaluate(() => window.clearHistory());
+  await row.waitFor();
+  assert.ok(await row.isVisible());
+  assert.equal(await page.evaluate(() => window.actions.some(([id]) => id === 'forget')), false);
+}
+
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 const statusGuideOnly = process.argv.includes('--status-guide-only');
 const folderBotsOnly = process.argv.includes('--folder-bots-only');
 const profileRowsOnly = process.argv.includes('--profile-rows-only');
 const notificationsOnly = process.argv.includes('--notifications-only');
+const builtinProjectsOnly = process.argv.includes('--builtin-projects-only');
 try {
   const project = await browser.newPage();
   await project.route('http://127.0.0.1:4321/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
@@ -671,6 +767,14 @@ try {
     await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
     await checkProjectStatusGuide(page, language);
+    if (builtinProjectsOnly) {
+      await checkBuiltinProjects(page, language, () => page.screenshot({ path: fileURLToPath(new URL(stem+'-builtin-projects.png', proof)) }));
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(stem + ': built-in library grouping, menu, and release window actions passed');
+      continue;
+    }
     if (statusGuideOnly) {
       await page.evaluate(() => window.cleanup());
       assert.deepEqual(errors, []);

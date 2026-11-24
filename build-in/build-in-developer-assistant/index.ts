@@ -1,5 +1,6 @@
 const readHostEnvironment = (key: string) => process.env[key];
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type {
   AgentInput,
@@ -17,7 +18,9 @@ const ASSISTANT_WORKDIR_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR";
 const ASSISTANT_WORKSPACE_MANIFEST_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST";
 const DEFAULT_DEVELOPER_ASSISTANT_PERMISSION_POLICY = "inherit";
 const STEAMHARNESS_NAME = "developer-assistant";
-const SKILLS_DIRECTORY = path.join(import.meta.dirname, "skills");
+const bundledSkills = path.resolve(import.meta.dirname, "../../../skills");
+const SKILLS_DIRECTORY = path.basename(path.dirname(import.meta.dirname)) === "entries" && existsSync(bundledSkills)
+  ? bundledSkills : path.join(import.meta.dirname, "skills");
 
 // One gate for the process: it is stateless apart from the run it is handed,
 // and every tool it guards is addressed by the id the host granted.

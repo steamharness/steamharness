@@ -95,7 +95,7 @@ exports.run = async () => {
   }
   assert.ok(fs.existsSync(path.join(assistantRecordDir, 'assistant.json')), 'Opening the assistant must start its own CLI.');
   const assistantConfiguration = JSON.parse(fs.readFileSync(path.join(assistantRecordDir, 'assistant.json'), 'utf8'));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(assistantConfiguration.assistantProjectDir, 'package.json'), 'utf8')).id, 'a3aca697-b086-459b-84e4-d357ad2d9fb2');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(assistantConfiguration.assistantProjectDir, 'steamharness.json'), 'utf8')).id, 'a3aca697-b086-459b-84e4-d357ad2d9fb2');
   assert.equal(assistantConfiguration.assistant.standalone, true);
   assert.equal(assistantConfiguration.assistant.workdir, projectDir, 'Assistant tools must use the currently opened folder.');
   assert.equal(assistantConfiguration.assistant.roots[0].folderPath, projectDir);

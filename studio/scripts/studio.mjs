@@ -1,9 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ROOT, assertRuntime, assertUpstream, builtinProjectDirectory, exists, git, prepareDistribution, readJSON, resolveMonorepoRoot, run } from './distribution.mjs';
 import { buildExtension } from './build-extension.mjs';
+import { builtinProjectCompiler } from './builtin-project-release.mjs';
 import { electronEnvironment, electronVersion, ensureElectronTypes } from './downloads.mjs';
 import { devElectronIsSigned } from './electron-cache.mjs';
 import { ensureDefaultExtensions } from './default-extensions.mjs';
@@ -126,8 +127,15 @@ async function main() {
       if (!await exists(path.join(ROOT, lock.path, '.git'))) {
         await run('git', ['submodule', 'update', '--init', '--depth', '1', lock.path], ROOT);
       }
-      for (const builtin of ['developer-assistant', 'analysis']) {
-        await builtinProjectDirectory(builtin);
+      const assistantSource = await builtinProjectDirectory('developer-assistant');
+      await builtinProjectDirectory('analysis');
+      if (!await builtinProjectCompiler(assistantSource).catch(() => undefined)) {
+        const monorepo = await resolveMonorepoRoot();
+        const pnpm = spawnSync('pnpm', ['--version'], { cwd: monorepo, shell: process.platform === 'win32', stdio: 'ignore' }).status === 0;
+        const tool = pnpm ? 'pnpm' : 'corepack';
+        const invoke = (args) => run(tool, pnpm ? args : ['pnpm', ...args], monorepo);
+        await invoke(['install', '--frozen-lockfile']);
+        await invoke(['run', 'build']);
       }
       const { upstream } = await prepare();
       const electronEnv = await electronEnvironment(upstream);
@@ -209,7 +217,8 @@ async function main() {
         `--extensionTestsPath=${path.join(ROOT, 'tests/extension-host.cjs')}`,
         ...args, ROOT,
       ] : command === 'workflow' && !args.length ? [await resolveMonorepoRoot()] : args;
-      const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture() : undefined;
+      const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture(
+        (await readJSON(path.join(ROOT, 'extensions/studio-workstation/dist/developer-assistant/project/package.json'))).devDependencies) : undefined;
       try {
         await launch(upstream, 'code', [
           ...directoryArgs,

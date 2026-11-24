@@ -72,6 +72,8 @@ export interface Launcher {
   openHostedSidebar?: OpenHostedSidebar;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   localAssistantDirectory?(): Promise<string>;
+  listBuiltinProjectDirectories?(): Promise<{ directories: string[]; pending?: boolean }>;
+  isBuiltinProjectDirectory?(directory: string): boolean;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean }): Promise<WebSession>;

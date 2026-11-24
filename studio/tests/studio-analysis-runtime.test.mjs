@@ -70,9 +70,11 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     }
   `);
   const current = { id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Current', uri: pathToFileURL(path.join(directory, 'current')).href, projectType: 'workflow' };
-  let imports = [{ id: current.id, name: 'Imported', uri: current.uri }];
+  const builtin = { id: '6cbe3c24-2707-4f31-a553-94edbe866eb1', name: 'Built-in', projectType: 'kanban',
+    uri: pathToFileURL(path.join(storage, 'workflow', 'builtin-apps', 'a'.repeat(24))).href };
+  let imports = [{ id: current.id, name: 'Imported', uri: current.uri }, builtin];
   const vscode = {
-    env: { language: 'zh-cn' }, window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
+    env: { language: 'zh-cn', uiKind: 1 }, UIKind: { Desktop: 1 }, window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
     Uri: { file: filename => ({ fsPath: filename, toString: () => pathToFileURL(filename).href }),
       parse: value => ({ scheme: new URL(value).protocol.slice(0, -1), fsPath: fileURLToPath(value) }) },
     workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, workspaceFolders: [], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
@@ -82,10 +84,10 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   let userId = 'analysis-user';
-  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
+  const runtime = module.exports.createProjectRuntime({ subscriptions: [], extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
     globalState: { get: () => imports } }, { getConnection: () => undefined, getState: () => ({ user: { userId } }), onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
-  runtime.updateAnalysisProjects([current]);
+  runtime.updateAnalysisProjects([current, builtin]);
   const project = await runtime.inspectAnalysis(); assert.equal(project.builtin, 'analysis'); assert.equal(project.projectType, 'kanban');
   assert.notEqual(project.folderPath, template); assert.equal(await readFile(path.join(project.folderPath, 'dist/steamharness/build/main/index.html'), 'utf8'), await readFile(path.join(template, 'dist/steamharness/build/main/index.html'), 'utf8'));
   assert.ok((await readFile(path.join(project.folderPath, 'dist/steamharness/build/main/assets/analysis.js'))).length > 1000);

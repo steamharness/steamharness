@@ -81,7 +81,8 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   const rememberCurrentWorkspace = async (): Promise<void> => {
     const now = Date.now();
     const opened: RecentProject[] = (vscode.workspace.workspaceFolders ?? [])
-      .filter((folder) => ['file', 'vscode-remote'].includes(folder.uri.scheme))
+      .filter(folder => ['file', 'vscode-remote'].includes(folder.uri.scheme) &&
+        (folder.uri.scheme !== 'file' || !launcher.isBuiltinProjectDirectory?.(folder.uri.fsPath)))
       .map((folder) => ({ uri: folder.uri.toString(), label: folder.name, kind: 'folder', lastOpened: now }));
     const workspaceFile = vscode.workspace.workspaceFile;
     if (workspaceFile && ['file', 'vscode-remote'].includes(workspaceFile.scheme)) {
@@ -148,6 +149,17 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     }
   });
   register('studio.internalDetectProjectTypes', (uris: string[]) => icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : []));
+  const listBuiltinProjectDirectories = launcher.listBuiltinProjectDirectories;
+  if (listBuiltinProjectDirectories) context.subscriptions.push(vscode.commands.registerCommand('studio.internalListBuiltinProjects', async () => {
+    const { directories, pending } = await listBuiltinProjectDirectories();
+    const uris = directories.map(directory => vscode.Uri.file(directory));
+    const metadata = new Map((await icons.resolveMany(uris.map(uri => uri.toString()))).map(project => [project.uri, project]));
+    const projects = uris.flatMap(uri => {
+      const project = metadata.get(uri.toString());
+      return project?.distribution === 'release' && project.projectName ? [{ ...project, kind: 'folder', path: uri.fsPath, name: project.projectName }] : [];
+    });
+    return { projects, pending };
+  }));
   const readLibraryActivity = launcher.readLibraryActivity;
   if (readLibraryActivity) {
     context.subscriptions.push(vscode.commands.registerCommand('studio.internalReadLibraryActivity', readLibraryActivity));

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 
-export async function createAssistantDependencyFixture() {
+export async function createAssistantDependencyFixture({ '@steamharness/cli': cliVersion = '1.2.3', steamharness: harnessVersion = '2.3.4' } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'studio-assistant-runtime-'));
   const projectDir = path.join(root, 'build-in', 'build-in-developer-assistant');
   const cli = path.join(projectDir, 'node_modules/@steamharness/cli');
@@ -11,8 +11,8 @@ export async function createAssistantDependencyFixture() {
   await mkdir(path.join(cli, 'dist'), { recursive: true });
   await mkdir(path.join(core, 'dist'), { recursive: true });
   await writeFile(path.join(projectDir, 'steamharness.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Independent assistant' }));
-  await writeProjectFixture(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.2.3', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
-  await writeProjectFixture(path.join(core, 'package.json'), JSON.stringify({ name: 'steamharness', version: '2.3.4' }));
+  await writeProjectFixture(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: cliVersion, type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
+  await writeProjectFixture(path.join(core, 'package.json'), JSON.stringify({ name: 'steamharness', version: harnessVersion }));
   await writeFile(path.join(cli, 'dist/index.js'), `
     import { createServer } from 'node:http';
     import { createInterface } from 'node:readline';
@@ -49,7 +49,7 @@ export async function createAssistantDependencyFixture() {
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
           writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:${JSON.stringify(harnessVersion)},harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

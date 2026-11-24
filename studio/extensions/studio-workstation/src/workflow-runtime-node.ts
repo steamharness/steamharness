@@ -13,7 +13,7 @@ import type { Launcher, WebSession } from './workflow-cli-types';
 import { startLegacyLocalFrame } from './workflow-legacy-frame';
 import { readUserSettings, USER_PERMISSION_SETTING } from './user-settings';
 import type { AccountController } from './workflow-auth';
-import { prepareAssistantApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
+import { prepareAssistantApplication, prepareAnalysisApplication, prepareBuiltinApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
 import { assistantWorkspaceAvailable, createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 import type { Project } from './workflow-types';
 import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorkspaceAvailable } from './studio-control';
@@ -80,6 +80,11 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
   };
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language, process.env.STEAMHARNESS_PROJECT_PACKAGE_DIR);
+  const releaseStorageDir = path.join(context.globalStorageUri.fsPath, 'workflow', 'builtin-apps');
+  const isBuiltinProjectDirectory = (directory: string): boolean => {
+    const relative = path.relative(releaseStorageDir, directory);
+    return /^[a-f0-9]{24}(?:[\\/]project)?$/.test(relative);
+  };
   let assistantApplication: Promise<string> | undefined;
   const assistantDirectory = (): Promise<string> => {
     return assistantApplication ??= realpath(context.extensionUri.fsPath).then(extensionDirectory => {
@@ -87,6 +92,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return prepareAssistantApplication({
         templateDir: path.join(extensionDirectory, 'dist', 'developer-assistant'),
         storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant'),
+        releaseStorageDir,
         dependencySources: [path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'runtime'),
           path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(studioRoot, '..'), 'build-in', 'build-in-developer-assistant'),
           path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.join(studioRoot, '..', 'workflow'), 'build-in', 'build-in-developer-assistant'),
@@ -98,8 +104,26 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const analysisDirectory = (): Promise<string> => analysisApplication ??= realpath(context.extensionUri.fsPath)
     .then(async extensionDirectory => prepareAnalysisApplication({
       templateDir: path.join(extensionDirectory, 'dist', 'analysis'),
-      storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'analysis'), dependencySources: [await assistantDirectory()],
+      storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'analysis'), releaseStorageDir, dependencySources: [await assistantDirectory()],
     })).catch(error => { analysisApplication = undefined; throw error; });
+  const additionalApplications = new Map<string, Promise<string>>();
+  const listBuiltinProjectDirectories = async () => {
+    const additional = account.platform ? await vscode.commands.executeCommand<{ directory: string; projectId: string; pending?: boolean }[]>(
+      'studio.internalListAdditionalBuiltinProjects').then(rows => rows ?? [], () => []) : [];
+    const applications = additional.filter(row => path.isAbsolute(row.directory) && !row.pending).map(({ directory, projectId }) => {
+      let application = additionalApplications.get(directory);
+      if (!application) {
+        application = assistantDirectory().then(dependencies => prepareBuiltinApplication({ templateDir: directory,
+          storageDir: releaseStorageDir, releaseStorageDir, dependencySources: [dependencies] }, projectId))
+          .catch(error => { additionalApplications.delete(directory); throw error; });
+        additionalApplications.set(directory, application);
+      }
+      return application;
+    });
+    const results = await Promise.allSettled([assistantDirectory(), analysisDirectory(), ...applications]);
+    return { directories: results.flatMap(result => result.status === 'fulfilled' && isBuiltinProjectDirectory(result.value) ? [result.value] : []),
+      pending: additional.some(row => row.pending) };
+  };
   let analysisProjects: Project[] = [];
   let readingAnalysis: Promise<unknown> | undefined;
   const readAnalysis = (): Promise<unknown> => readingAnalysis ??= (async () => {
@@ -107,11 +131,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     const reader = await import(pathToFileURL(path.join(path.dirname(cli.entry), 'web', 'local-analysis.mjs')).href);
     for (let attempt = 0; attempt < 3; attempt++) {
       assertAvailable();
-      const projects = studioAnalysisProjects(context, analysisProjects);
+      const scopedProjects = () => studioAnalysisProjects(context, analysisProjects).filter(project => !isBuiltinProjectDirectory(project.folderPath));
+      const projects = scopedProjects();
       const result = await reader.readLocalStudioAnalysis({ storageDir: webDataDirectory,
         projects, locale: vscode.env.language });
       assertAvailable();
-      if (JSON.stringify(projects) === JSON.stringify(studioAnalysisProjects(context, analysisProjects))) { return result; }
+      if (JSON.stringify(projects) === JSON.stringify(scopedProjects())) { return result; }
     }
     throw new Error('Studio project scope changed while reading analysis.');
   })().finally(() => { readingAnalysis = undefined; });
@@ -229,6 +254,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return { projects, errors };
     },
     localAssistantDirectory: assistantDirectory,
+    listBuiltinProjectDirectories: !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop ? listBuiltinProjectDirectories : undefined,
+    isBuiltinProjectDirectory,
     inspectAssistant: async (target, folders) => {
       assertAvailable();
       const assistant = { standalone: true, workdir: target.folderPath, roots: [target, ...folders.filter(folder => folder.uri !== target.uri)] };
@@ -257,6 +284,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
+      const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
+        .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
+      // A launch from the library uses the release's own folder, never an unrelated open workspace.
+      const ownFolder = !project.assistant && project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.distribution === 'release'
+        && isBuiltinProjectDirectory(project.folderPath) && roots.find(root => root.folderPath === project.folderPath);
+      const assistant = project.assistant ?? (ownFolder ? { standalone: true, workdir: ownFolder.folderPath, roots: [ownFolder] } : undefined);
       if (project.assistant?.standalone) {
         if (project.folderPath !== await assistantDirectory()) { throw new Error('Invalid standalone assistant scope.'); }
         assertAvailable(); assertAssistantWorkspace(project.assistant);
@@ -270,9 +303,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
         if (!project.folderBot && (project.assistant || assistantAggregate)) {
           const directory = project.assistant ? await assistantDirectory() : project.folderPath;
-          const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
-            .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
-          const scope = project.assistant ?? { workdir: directory, roots };
+          const scope = assistant ?? { workdir: directory, roots };
           if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
           bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
@@ -286,7 +317,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           studioControl = { url: bridge.url, token: bridge.token };
         }
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
-          assistantProjectDir: project.assistant ? project.folderPath : undefined,
+          assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
@@ -294,7 +325,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           resourceProjects: options?.resourceProjects,
           dataDir: webDataDirectory,
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
-          surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant: project.assistant,
+          surface: assistant ? 'assistant' : surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant,
           studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
         if (runSignal.aborted || !vscode.workspace.isTrusted) {
           await session.close();

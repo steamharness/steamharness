@@ -31,12 +31,12 @@ test('creation defers local ID allocation to the project window regardless of ac
     } }] });
   const account = { platform: true, getConnection: () => assert.fail('ID allocation does not read the account') };
   const module = { exports: {} };
-  const vscode = { env: { language: 'en' }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
+  const vscode = { env: { language: 'en', uiKind: 1 }, UIKind: { Desktop: 1 }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
   runInNewContext(allocationRuntime.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
     fetch: () => assert.fail('ID allocation does not contact the platform'),
   });
-  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());
+  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory }, subscriptions: [] }, account); t.after(() => runtime.dispose());
   const input = { name: 'Created', templateId: 'workflow-starter', parentDirectory: directory };
   assert.equal((await runtime.createProject(input)).id, '');
   assert.match(await runtime.registerProject(directory, new AbortController().signal), /^[a-f0-9-]{36}$/);
@@ -70,7 +70,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const target = { uri: pathToFileURL(workdir).href, folderPath: workdir, name: 'Opened folder' };
   const disposable = { dispose() {} };
   const vscode = {
-    env: { language: 'en', appName: 'Studio' }, version: '1.140.0', extensions: { all: [] },
+    env: { language: 'en', appName: 'Studio', uiKind: 1 }, UIKind: { Desktop: 1 }, version: '1.140.0', extensions: { all: [] },
     Uri: { file: filename => ({ toString: () => pathToFileURL(filename).href }) },
     workspace: { onDidChangeConfiguration: () => disposable, isTrusted: true, workspaceFolders: [{ uri: { scheme: 'file', fsPath: workdir, toString: () => target.uri }, name: target.name }], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
     window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
@@ -81,7 +81,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } },
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   });
-  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage } },
+  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage }, subscriptions: [] },
     { getConnection: () => undefined, onDidChange: () => disposable });
   t.after(() => runtime.dispose());
   const failed = await runtime.inspectAssistant(target, [target]);

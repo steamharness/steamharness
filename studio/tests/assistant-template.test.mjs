@@ -46,5 +46,5 @@ test('assistant bundles resolve every registered entry', async t => {
   }
   assert.equal(await readFile(path.join(destination, 'skills/SKILL.md'), 'utf8'), files['skills/SKILL.md']);
   const names = await readdir(destination);
-  for (const excluded of ['.env', 'vitest.config.ts', 'stale.ts']) assert.equal(names.includes(excluded), false);
+  for (const excluded of ['.env', 'config.json', 'vitest.config.ts', 'stale.ts']) assert.equal(names.includes(excluded), false);
 });
