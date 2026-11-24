@@ -17,11 +17,16 @@ const viewId = (id: string) => `studio.sidebar.${id}`;
 const localFolder = (uri: vscode.Uri) => uri.scheme === 'file' && !uri.query && !uri.fragment;
 const typeLabel = (type: SidebarProjectEntry['type']) => type === 'bot' ? t('Bot') : type === 'kanban' ? t('Kanban') : t('Workflow');
 
-interface SidebarAssistantOverride {
+interface SidebarProjectSource {
   title: string;
   load(signal: AbortSignal): Promise<Project>;
   check(): Promise<void>;
   onDidChange?(listener: () => void): { dispose(): void };
+}
+
+interface WorkspaceSidebarProject extends SidebarProjectSource {
+  id: string;
+  type: SidebarProjectEntry['type'];
 }
 
 export class ProjectSidebar implements vscode.Disposable {
@@ -34,7 +39,8 @@ export class ProjectSidebar implements vscode.Disposable {
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
-  private assistantOverride?: SidebarAssistantOverride;
+  private assistantOverride?: { project: SidebarProjectSource; exclusive: boolean };
+  private workspaceProjects = new Map<string, WorkspaceSidebarProject>();
   private disposed = false;
   private visibleTabs = '';
   private getProjects: () => Project[] = () => [];
@@ -60,8 +66,14 @@ export class ProjectSidebar implements vscode.Disposable {
     return { dispose: () => { if (this.resident?.id === project.id) this.resident.close(); this.builtin.delete(project.id); void this.sync(); } };
   }
 
-  overrideAssistant(project: SidebarAssistantOverride): void {
-    if (!this.started) this.assistantOverride = project;
+  overrideAssistant(project: SidebarProjectSource, { exclusive = false } = {}): void {
+    if (!this.started) this.assistantOverride = { project, exclusive };
+  }
+
+  /** Insert window-supplied projects after the assistant without editing global settings. */
+  setWorkspaceProjects(projects: readonly WorkspaceSidebarProject[]): Promise<void> {
+    this.workspaceProjects = new Map(projects.map(project => [`workspace-${project.id}`, project]));
+    return this.sync();
   }
 
   /** One in-flight or ready preview per account scope, not per navigation. */
@@ -117,7 +129,7 @@ export class ProjectSidebar implements vscode.Disposable {
   start(assistant: vscode.WebviewViewProvider, getProjects: () => Project[], mount: NonNullable<ProjectSidebar['mountProject']>): Promise<void> {
     this.getProjects = getProjects;
     this.mountProject = mount;
-    const override = this.assistantOverride;
+    const override = this.assistantOverride?.project;
     this.builtin.set('assistant', { item: { id: 'assistant', title: override?.title ?? t('Project Assistant'), type: 'bot', builtin: true, visible: true }, viewId: 'studio.developerAssistant', provider: override ? {
       resolveWebviewView: view => { view.title = override.title; this.bindSidebarProject(view, 'assistant', override); },
     } : assistant });
@@ -133,9 +145,13 @@ export class ProjectSidebar implements vscode.Disposable {
     return readSidebarPreferences(vscode.workspace.getConfiguration('studio').inspect(setting)?.globalValue);
   }
 
-  get canAdd(): boolean { return this.started && !!this.launcher.readSidebarEntries && vscode.workspace.isTrusted; }
+  get canAdd(): boolean { return this.started && !this.assistantOverride?.exclusive && !!this.launcher.readSidebarEntries && vscode.workspace.isTrusted; }
 
   items(preferences = this.preferences()): SidebarItem[] {
+    if (this.assistantOverride?.exclusive) {
+      const assistant = this.builtin.get('assistant');
+      return assistant ? [assistant.item] : [];
+    }
     const builtins = ['assistant', ...[...this.builtin.keys()].filter(id => id !== 'assistant')].filter(id => this.builtin.has(id) && !this.builtin.get(id)?.hosted?.standalone);
     const projects = this.launcher.readSidebarEntries ? preferences.projects : [];
     const items = new Map<string, SidebarItem>(projects.map(entry => [entry.id, { id: entry.id, directory: entry.directory, title: sidebarEntryTitle(entry, vscode.env.language),
@@ -148,7 +164,11 @@ export class ProjectSidebar implements vscode.Disposable {
     const run = this.syncQueue.then(async () => {
       if (!this.started || this.disposed) return;
       const preferences = this.preferences();
-      const items = this.items(preferences).filter(item => item.visible);
+      let items = this.items(preferences).filter(item => item.visible);
+      if (!this.assistantOverride?.exclusive && this.workspaceProjects.size) {
+        const projects: SidebarItem[] = [...this.workspaceProjects].map(([id, { title, type }]) => ({ id, title, type, builtin: false, visible: true }));
+        items = [...items.filter(item => item.id === 'assistant'), ...projects, ...items.filter(item => item.id !== 'assistant')];
+      }
       const retained = new Set(items.map(item => item.id));
       for (const [id, provider] of this.providers) {
         if (!retained.has(id)) { this.mounts.get(id)?.close(); this.providers.delete(id); provider.dispose(); }
@@ -157,9 +177,12 @@ export class ProjectSidebar implements vscode.Disposable {
         if (this.providers.has(item.id)) continue;
         const builtin = this.builtin.get(item.id);
         const saved = preferences.projects.find(entry => entry.id === item.id);
-        if (!builtin && !saved) continue;
         this.providers.set(item.id, vscode.window.registerWebviewViewProvider(builtin?.viewId ?? viewId(item.id), builtin?.provider ?? {
-          resolveWebviewView: view => this.bindProject(view, saved!),
+          resolveWebviewView: view => {
+            const project = this.workspaceProjects.get(item.id);
+            if (project) this.bindSidebarProject(view, item.id, project);
+            else if (saved) this.bindProject(view, saved);
+          },
         }, { webviewOptions: { retainContextWhenHidden: true } }));
       }
       const tabs = items.map(item => ({ id: tabId(item.id), viewId: this.builtin.get(item.id)?.viewId ?? viewId(item.id), title: item.title,
@@ -177,7 +200,7 @@ export class ProjectSidebar implements vscode.Disposable {
 
   edit(edit: SidebarEdit): Promise<void> {
     const run = this.editQueue.then(async () => {
-      if (!this.started || this.disposed) return;
+      if (!this.started || this.disposed || this.assistantOverride?.exclusive) return;
       let preferences = this.preferences();
       const previous = preferences;
       if (edit.action === 'add') {
@@ -268,7 +291,7 @@ export class ProjectSidebar implements vscode.Disposable {
     });
   }
 
-  private bindSidebarProject(view: vscode.WebviewView, id: string, source: SidebarAssistantOverride): void {
+  private bindSidebarProject(view: vscode.WebviewView, id: string, source: SidebarProjectSource): void {
     this.mounts.get(id)?.close();
     let closed = false, opening: AbortController | undefined, conversation: AssistantConversation | undefined;
     const lifecycle: vscode.Disposable[] = [];

@@ -102,13 +102,19 @@ function fixture(t, initial, options = {}) {
   return { ...module.exports, sidebar, start, output, calls, tabs, commands, views, sessions, revoke: () => { trusted = false; commands.get('studio.internalSidebarTrustChanged')(); }, prefs: () => prefs };
 }
 
-test('a host workspace replaces the default assistant and stops its mount on invalidation', async t => {
-  const f = fixture(t, {}), changed = emitter(), view = createView();
+test('an exclusive workspace shows only its project and stops its mount on invalidation', async t => {
+  const prefs = { order: [projectId, 'builtin-chat', 'assistant'], projects: [{ ...board, id: projectId, visible: true }] };
+  const f = fixture(t, prefs), changed = emitter(), view = createView();
   let trusted = true;
   const project = { id: projectId, entryId: 'main', projectType: 'bot', folderBot: { id: projectId, directory: '/folder', background: false } };
   f.sidebar.overrideAssistant({ title: 'Folder Assistant', onDidChange: changed.event,
-    check: async () => { if (!trusted) throw new Error('No longer trusted'); }, load: async () => project });
+    check: async () => { if (!trusted) throw new Error('No longer trusted'); }, load: async () => project }, { exclusive: true });
   await f.start();
+  assert.deepEqual(f.tabs[0].map(tab => [tab.viewId, tab.title]), [['studio.developerAssistant', 'Folder Assistant']]);
+  assert.deepEqual([...f.views.keys()], ['studio.developerAssistant']);
+  assert.equal(f.sidebar.canAdd, false);
+  await f.sidebar.edit({ action: 'remove', id: projectId });
+  assert.deepEqual(f.prefs(), prefs);
   const assistant = f.views.get('studio.developerAssistant');
   assistant.resolveWebviewView(view);
   await flush();
@@ -117,6 +123,45 @@ test('a host workspace replaces the default assistant and stops its mount on inv
   trusted = false; changed.fire(); await flush();
   assert.equal(f.sessions[0].disposed, true);
   assert.match(view.webview.html, /No longer trusted/);
+});
+
+test('workspace projects follow the assistant, mount lazily and detach without changing global preferences', async t => {
+  const prefs = { order: [projectId, 'builtin-chat', 'assistant'], projects: [{ ...board, id: projectId, visible: true }] };
+  const f = fixture(t, prefs);
+  const entry = (id, title, load = async () => ({ id: projectId, folderBot: { id } })) => ({ id, title, type: 'bot', load, check: async () => {} });
+  const first = entry('first', 'First Bot'), second = entry('second', 'Second Bot');
+  const assistant = 'studio.developerAssistant', firstView = 'studio.sidebar.workspace-first', secondView = 'studio.sidebar.workspace-second';
+  await f.sidebar.setWorkspaceProjects([first, second]);
+  await f.start();
+  assert.deepEqual(f.tabs[0].map(tab => tab.viewId), [assistant, firstView, secondView, `studio.sidebar.${projectId}`, 'studio.fixture']);
+  assert.deepEqual(f.tabs[0].slice(1, 3).map(tab => [tab.title, tab.icon]), [['First Bot', 'hubot'], ['Second Bot', 'hubot']]);
+  const hidden = createView(false), visible = createView();
+  f.views.get(firstView).resolveWebviewView(hidden);
+  f.views.get(secondView).resolveWebviewView(visible);
+  await flush();
+  assert.deepEqual(f.sessions.map(session => session.project.folderBot.id), ['second']);
+  visible.setVisible(false); visible.setVisible(true); await flush();
+  assert.equal(f.sessions.length, 1);
+
+  const started = deferred();
+  const pending = entry('pending', 'Pending Bot', signal => {
+    started.resolve(signal);
+    return new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+  });
+  const existing = f.views.get(firstView);
+  await f.sidebar.setWorkspaceProjects([pending, first]);
+  assert.equal(f.views.get(firstView), existing);
+  assert.equal(f.views.has(secondView), false);
+  assert.equal(f.sessions[0].disposed, true);
+  const pendingView = 'studio.sidebar.workspace-pending';
+  f.views.get(pendingView).resolveWebviewView(createView());
+  const signal = await started.promise;
+  await f.sidebar.setWorkspaceProjects([]);
+  assert.equal(signal.aborted, true);
+  assert.equal(f.views.has(pendingView), false);
+  assert.equal(f.sessions.length, 1);
+  assert.deepEqual(f.tabs.at(-1).map(tab => tab.viewId), [`studio.sidebar.${projectId}`, 'studio.fixture', assistant]);
+  assert.deepEqual(f.prefs(), prefs);
 });
 
 test('launchpad shares a warming preview across clicks, and replaces it on account change', async t => {

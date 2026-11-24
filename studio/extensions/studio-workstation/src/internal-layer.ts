@@ -18,6 +18,7 @@ interface LayerAccount {
 }
 
 type LayerProjects = Pick<Launcher, 'inspect' | 'start' | 'localAssistantDirectory' | 'readSidebarEntries'> & { avatar(uri: string): Promise<string | undefined> };
+type LayerSidebar = Pick<ProjectSidebar, 'registerHosted' | 'prepareHostedInLaunchpad' | 'showHostedInLaunchpad' | 'overrideAssistant' | 'setWorkspaceProjects'>;
 
 interface InternalLayer {
   platform?: boolean;
@@ -31,7 +32,7 @@ interface InternalLayer {
     uploads: { registerProvider: typeof registerProjectUploadProvider };
     webApps: { registerProvider: typeof registerWebAppProvider };
     startPage: { registerRecommendationsProvider: typeof registerStartRecommendationsProvider };
-    sidebar: Pick<ProjectSidebar, 'registerHosted' | 'prepareHostedInLaunchpad' | 'showHostedInLaunchpad' | 'overrideAssistant'>;
+    sidebar: LayerSidebar;
   }) => Promise<void> | void;
 }
 
@@ -67,7 +68,7 @@ export async function activateInternalLayer(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
   account: LayerAccount,
-  sidebar: Pick<ProjectSidebar, 'registerHosted' | 'prepareHostedInLaunchpad' | 'showHostedInLaunchpad' | 'overrideAssistant'>,
+  sidebar: LayerSidebar,
   projects?: LayerProjects,
 ): Promise<void> {
   try {

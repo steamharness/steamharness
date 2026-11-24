@@ -76,6 +76,19 @@ test('native project tab registration does not reopen a collapsed sidebar', () =
   assert.deepEqual(ids(f.listed()), [assistant.id, board.id, bot.id, 'other-view']);
 });
 
+test('native workspace projects keep their supplied order and fall back to the assistant after removal', () => {
+  const first = { ...tab('studio-sidebar.workspace-first', 'hubot'), title: 'First Bot' };
+  const second = { ...tab('studio-sidebar.workspace-second', 'hubot'), title: 'Second Bot' };
+  const f = fixture({ saved: second.id });
+  f.sync([assistant, first, second]);
+  assert.deepEqual(ids(f.listed()), [assistant.id, first.id, second.id, 'other-view']);
+  assert.deepEqual(f.opens, [{ id: second.id, focus: false }]);
+  f.sync([assistant, first]);
+  assert.deepEqual(ids(f.listed()), [assistant.id, first.id, 'other-view']);
+  assert.deepEqual(f.opens.at(-1), { id: assistant.id, focus: false });
+  assert.deepEqual(f.registered, [assistant.id, first.id, second.id]);
+});
+
 test('initial layout does not replace a saved tab before projects register', async () => {
   const text = await readFile(new URL('browser/layout.ts', root), 'utf8');
   const source = ts.createSourceFile('layout.ts', text, ts.ScriptTarget.Latest, true);
