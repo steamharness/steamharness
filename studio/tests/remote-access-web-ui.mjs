@@ -112,7 +112,7 @@ async function checkLibraryReload(page, zh = false) {
 // Exercise the real account controller with a fixture for the private social commands.
 async function registerPlatformProfile(vscode) {
   const { registerCommand, executeCommand } = vscode.commands;
-  const chats = [{ id: 'fixture-chat', name: 'Fixture chat', unread: 0, preview: 'Hello' },
+  const chats = [{ id: 'fixture-chat', name: 'Fixture chat', group: true, unread: 0, preview: 'Hello' },
     { id: 'another-chat', name: 'Another chat', unread: 0, preview: 'Hi' }];
   registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: chats }));
   registerCommand('studio.getSocialSnapshot', () => ({ people: [{ id: 'friend', name: 'Fixture friend', relation: 'friend' }], favorites: [{ id: 'favorite', title: 'Fixture favorite' }], notices: [] }));
@@ -123,7 +123,9 @@ async function registerPlatformProfile(vscode) {
     if (!chat) return 'Unexpected conversation';
     if (!await executeCommand('studio.internalPrepareLaunchpadApp', 'fixture', {})) return 'Unable to prepare the fixture';
     return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: conversation, title: chat.name,
-      html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-fixture'"><h1>${chat.name}</h1>
+      html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-fixture'; script-src 'nonce-fixture'">
+      <style nonce="fixture">body{margin:0;padding:0;height:100vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto}main{overflow:auto}</style>
+      <h1>${chat.name}</h1><main>${chat.preview}</main><footer><textarea aria-label="Message"></textarea></footer>
       <script nonce="fixture">acquireVsCodeApi().postMessage({type:'studio-launchpad-ready'});</script>`,
     });
   });
@@ -160,14 +162,28 @@ async function checkPlatformProfile(page, issuer) {
   await profile.getByRole('tab', { name: 'Recent chats', exact: true }).click();
   const chat = profile.getByRole('button', { name: 'Fixture chat Hello' });
   const url = page.url();
+  const webview = tab => tab.locator('.studio-chat-window > iframe.webview');
+  const content = tab => webview(tab).contentFrame().frameLocator('#active-frame');
+  const fillsViewport = tab => webview(tab).evaluate(frame => {
+    const bounds = frame.getBoundingClientRect();
+    const { innerWidth, innerHeight } = frame.ownerDocument.defaultView;
+    return bounds.left === 0 && bounds.top === 0 && bounds.width === innerWidth && bounds.height === innerHeight;
+  });
   const waitForChat = async (tab, title) => {
     // The preview runs inside the webview, not in the Launchpad document or a navigated URL.
     await tab.locator(`.studio-chat-window[aria-label="${title}"]`).waitFor();
+    await content(tab).getByRole('heading', { name: title, exact: true }).waitFor();
     await until(async () => (await tab.title()) === title, `The IM tab did not take the title ${title}.`);
     assert.equal(tab.url(), 'about:blank');
+    await until(() => fillsViewport(tab), `The IM tab did not fill the browser viewport: ${title}.`, 5_000);
   };
   const first = await openTab(page, () => chat.click());
   await waitForChat(first, 'Fixture chat');
+  const narrow = { width: 420, height: 680 };
+  await first.setViewportSize(narrow);
+  await until(async () => await fillsViewport(first) && await content(first).locator('footer').evaluate((composer, height) =>
+    composer.getBoundingClientRect().bottom === height && composer.previousElementSibling.getBoundingClientRect().height > 0, narrow.height),
+  'The message area and composer did not follow the resized IM tab.', 5_000);
   const second = await openTab(page, () => profile.getByRole('button', { name: 'Another chat Hi' }).click());
   await waitForChat(second, 'Another chat');
   assert.equal(await first.locator('.studio-chat-window[aria-label="Fixture chat"]').isVisible(), true);
@@ -177,6 +193,7 @@ async function checkPlatformProfile(page, issuer) {
   assert.equal(await second.locator('.studio-chat-window').isVisible(), true);
   const reopened = await openTab(page, () => chat.click());
   await waitForChat(reopened, 'Fixture chat');
+  console.log('[OK] IM group chat fills its tab and resizes · separate conversations · Launchpad stays open');
   const closed = Promise.all([second.waitForEvent('close'), reopened.waitForEvent('close')]);
   await writeFile(path.join(directory, 'profile-commands.json'), 'logout');
   await closed;

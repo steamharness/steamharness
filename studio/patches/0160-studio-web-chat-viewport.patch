@@ -1,0 +1,37 @@
+diff --git a/src/vs/workbench/browser/media/studioLaunchpad.css b/src/vs/workbench/browser/media/studioLaunchpad.css
+index 87106604afc982e1aeafc1bbf35b5ed1847552a9..d5a06fe728a9a30267a051ae1cb136da46030ef7 100644
+--- a/src/vs/workbench/browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/browser/media/studioLaunchpad.css
+@@ -260,7 +260,6 @@
+ .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+-.studio-chat-loading { display: grid; place-items: center; height: 100%; color: var(--vscode-descriptionForeground); background: var(--vscode-editor-background); }
+ .studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }
+diff --git a/src/vs/workbench/browser/studioWebLaunchpadApp.ts b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+index bade614ad8f8f923749357e074bb62d23ea94138..eddfa62ea2af611d1de994a5efd8aa963f51b398 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpadApp.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+@@ -70,6 +70,10 @@ export class StudioWebLaunchpadApp extends Disposable {
+ 			life.add(addDisposableListener(window.window, 'pagehide', () => this.close(id)));
+ 			window.window.document.title = title || 'IM';
+ 			tab.loading = window.container.appendChild(element('div', 'studio-chat-loading', this.t('Opening IM…', '正在打开 IM…')));
++			Object.assign(tab.loading.style, {
++				position: 'fixed', inset: '0', display: 'grid', placeItems: 'center',
++				color: 'var(--vscode-descriptionForeground)', background: 'var(--vscode-editor-background)',
++			});
+ 			tab.loading.setAttribute('role', 'status');
+ 			return true;
+ 		} catch { this.close(id); return false; }
+@@ -93,7 +97,8 @@ export class StudioWebLaunchpadApp extends Disposable {
+ 		const surface = element('div', 'studio-chat-window');
+ 		surface.setAttribute('role', 'document');
+ 		surface.setAttribute('aria-label', view.title);
+-		surface.style.visibility = 'hidden';
++		// An auxiliary tab may not have the workbench CSS. Size the webview against the tab's viewport directly.
++		Object.assign(surface.style, { position: 'fixed', inset: '0', overflow: 'hidden', background: 'var(--vscode-editor-background)', visibility: 'hidden' });
+ 		life.add(toDisposable(() => surface.remove()));
+ 		let shown = false;
+ 		const fail = () => { if (shown) { this.close(id); } else { void ready.complete(false); } };
