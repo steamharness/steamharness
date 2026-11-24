@@ -180,7 +180,7 @@ export function mergeExtensionManifest(base, overlay) {
   } };
 }
 
-export async function prepareDistribution(root = ROOT) {
+export async function prepareDistribution(root = ROOT, { linkBuiltinExtension = true } = {}) {
   const upstream = await assertUpstream(root);
   const productFile = path.join(upstream.directory, 'product.json');
   const stateFile = path.join(root, '.studio/product-state.json');
@@ -262,11 +262,11 @@ export async function prepareDistribution(root = ROOT) {
   if (webCurrent !== webGenerated) {
     await fs.writeFile(webOverridesFile, `${webGenerated}\n`);
   }
-  if (!linked) {
+  if (linkBuiltinExtension && !linked) {
     if (linkExists) await fs.unlink(link);
     await fs.symlink(process.platform === 'win32' ? targetSource : path.relative(path.dirname(link), targetSource), link,
       process.platform === 'win32' ? 'junction' : 'dir');
   }
   await fs.writeFile(stateFile, `${JSON.stringify({ commit: upstream.commit, sha256: digest(generated), webSha256: digest(webGenerated) }, null, 2)}\n`);
-  return { upstream, product };
+  return { upstream, product, extensionSource: targetSource };
 }

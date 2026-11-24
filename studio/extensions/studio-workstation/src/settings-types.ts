@@ -46,6 +46,7 @@ export interface SettingsState {
   studioVersion: string;
   vscodeVersion: string;
   providers: SettingsProvider[];
+  remoteAccess?: boolean;
   sidebar?: { items: SidebarItem[]; canAdd: boolean };
   nodeRuntime?: { source?: 'bundled' | 'local' | 'host'; version?: string; path?: string; error?: string };
   desktopNotificationStatus?: {

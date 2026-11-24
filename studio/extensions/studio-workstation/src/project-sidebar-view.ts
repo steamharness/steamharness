@@ -36,7 +36,7 @@ export function bindHostedSidebar(view: vscode.WebviewView, project: HostedSideb
       if (disposed || controller.signal.aborted || attempt !== controller) { void preview.close(); return; }
       try {
         const port = Number(new URL(preview.url).port);
-        view.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: port, extensionHostPort: port }] };
+        view.webview.options = { enableScripts: true, localResourceRoots: [], ...(vscode.env.uiKind === vscode.UIKind.Web ? {} : { portMapping: [{ webviewPort: port, extensionHostPort: port }] }) };
         view.webview.html = hostedSidebarHtml(vscode.env.language, project.title, preview);
         active = preview; failures = 0; statusHtml = '';
       } catch (error) { void preview.close(); throw error; }

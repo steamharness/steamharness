@@ -1,0 +1,103 @@
+diff --git a/src/server-main.ts b/src/server-main.ts
+index 435631a6a73..f16bfbacf30 100644
+--- a/src/server-main.ts
++++ b/src/server-main.ts
+@@ -7,6 +7,7 @@ import './bootstrap-server.js'; // this MUST come before other imports as it cha
+ import * as path from 'node:path';
+ import * as fs from 'node:fs';
+ import * as http from 'node:http';
++import { timingSafeEqual } from 'node:crypto';
+ import type { AddressInfo } from 'node:net';
+ import * as os from 'node:os';
+ import * as readline from 'node:readline';
+@@ -51,6 +52,24 @@ if (shouldSpawnCli) {
+ 	});
+ } else {
+ 	installServerProcessExitDiagnostics();
++	const studioGatewayKey = process.env['STEAMHARNESS_STUDIO_WEB_BACKEND_KEY'];
++	delete process.env['STEAMHARNESS_STUDIO_WEB_BACKEND_KEY'];
++	if (studioGatewayKey && process.connected) {
++		process.once('disconnect', () => process.exit(0));
++	}
++	function fromStudioGateway(req: http.IncomingMessage): boolean {
++		if (!studioGatewayKey) {
++			return true;
++		}
++		const supplied = req.headers['x-steamharness-gateway'];
++		delete req.headers['x-steamharness-gateway'];
++		if (typeof supplied !== 'string') {
++			return false;
++		}
++		const key = Buffer.from(studioGatewayKey);
++		const candidate = Buffer.from(supplied);
++		return candidate.length === key.length && timingSafeEqual(candidate, key);
++	}
+ 
+ 	let _remoteExtensionHostAgentServer: IServerAPI | null = null;
+ 	let _remoteExtensionHostAgentServerPromise: Promise<IServerAPI> | null = null;
+@@ -89,6 +108,10 @@ if (shouldSpawnCli) {
+ 
+ 	let address: string | AddressInfo | null = null;
+ 	const server = http.createServer(async (req, res) => {
++		if (!fromStudioGateway(req)) {
++			res.writeHead(403).end();
++			return;
++		}
+ 		if (firstRequest) {
+ 			firstRequest = false;
+ 			perf.mark('code/server/firstRequest');
+@@ -97,6 +120,10 @@ if (shouldSpawnCli) {
+ 		return remoteExtensionHostAgentServer.handleRequest(req, res);
+ 	});
+ 	server.on('upgrade', async (req, socket) => {
++		if (!fromStudioGateway(req)) {
++			socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
++			return;
++		}
+ 		if (firstWebSocket) {
+ 			firstWebSocket = false;
+ 			perf.mark('code/server/firstWebSocket');
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioWebAccess.contribution.ts b/src/vs/workbench/contrib/studioStart/browser/studioWebAccess.contribution.ts
+new file mode 100644
+index 00000000000..bdb65176a04
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/studioWebAccess.contribution.ts
+@@ -0,0 +1,26 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { mainWindow } from '../../../../base/browser/window.js';
++import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
++
++// Run from the workbench origin rather than granting its cookie to the extension host or a webview.
++CommandsRegistry.registerCommand('studio.internalWebAccess', async (_accessor, route: string, input: { action?: string }) => {
++	if (route !== 'manage' && route !== 'preview') {
++		return { error: 'unavailable' };
++	}
++	try {
++		const result = await fetch(`/_studio/web/${route}`, {
++			method: 'POST', redirect: 'error', credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10_000),
++			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
++		});
++		if (result.status === 401 || result.ok && route === 'manage' && input.action === 'logout') {
++			mainWindow.location.replace('/pair');
++		}
++		return await result.json();
++	} catch {
++		return { error: 'unavailable' };
++	}
++});
+diff --git a/src/vs/workbench/workbench.web.main.ts b/src/vs/workbench/workbench.web.main.ts
+index ae70f3428ee..9025e5b3c96 100644
+--- a/src/vs/workbench/workbench.web.main.ts
++++ b/src/vs/workbench/workbench.web.main.ts
+@@ -157,6 +157,7 @@ import './contrib/welcomeBanner/browser/welcomeBanner.contribution.js';
+ 
+ // Webview
+ import './contrib/webview/browser/webview.web.contribution.js';
++import './contrib/studioStart/browser/studioWebAccess.contribution.js';
+ 
+ // Extensions Management
+ import './contrib/extensions/browser/extensions.web.contribution.js';

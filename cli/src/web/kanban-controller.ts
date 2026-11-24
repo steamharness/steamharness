@@ -53,6 +53,7 @@ export class KanbanController {
     }
   }
   state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.project.kanban?.webApp ? this.webApp?.url ?? "about:blank" : this.preview.url, nonce: this.preview.nonce, webApp: !!this.project.kanban?.webApp, permissions: this.project.kanban?.webApp?.permissions ?? [], accountUrl: this.binding?.accountUrl } }; }
+  get hostedPreview() { return this.webApp; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();

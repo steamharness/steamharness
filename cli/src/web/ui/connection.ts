@@ -1,4 +1,12 @@
 const entryBase = () => document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content ?? '';
+const studioMount = () => /^\/p\/[\w-]{43}(?=\/|$)/.exec(entryBase())?.[0] ?? '';
+const sessionKey = () => `steamharness-web-session${studioMount()}`;
+
+function mountedPath(path: string): string {
+  const base = entryBase(), mount = studioMount();
+  if (!path.startsWith('/') || path.startsWith('//') || mount && path.startsWith(`${mount}/`)) return path;
+  return path.startsWith('/entries/') ? mount + path : base + path;
+}
 import { t } from '../localization';
 import { AGENT_COMMAND_REQUEST_TIMEOUT_MS } from '../agent-command-retry';
 import { iconHtml } from './ui';
@@ -35,8 +43,8 @@ export class BrowserConnection {
     private readonly recoverHost?: () => Promise<string | undefined>, private returnTicket?: string) {
     const hash = new URLSearchParams(location.hash.slice(1));
     const query = new URLSearchParams(location.search);
-    this.token = hash.get('session') ?? query.get('session') ?? sessionStorage.getItem('steamharness-web-session');
-    if (this.token) sessionStorage.setItem('steamharness-web-session', this.token);
+    this.token = hash.get('session') ?? query.get('session') ?? sessionStorage.getItem(sessionKey());
+    if (this.token) sessionStorage.setItem(sessionKey(), this.token);
     if (hash.has('session') || query.has('session')) {
       const url = new URL(location.href);
       if (query.has('session')) url.searchParams.delete('session');
@@ -132,7 +140,7 @@ export class BrowserConnection {
     if (!token || this.closed) return false;
     const changed = token !== this.token;
     this.token = token;
-    sessionStorage.setItem('steamharness-web-session', token);
+    sessionStorage.setItem(sessionKey(), token);
     return changed;
   }
 
@@ -290,14 +298,23 @@ export class BrowserConnection {
 
   private headers(): Record<string, string> { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
   fileUrl(path: string): string {
-    if (path.startsWith('/') && !path.startsWith('/entries/')) path = entryBase() + path;
+    path = mountedPath(path);
     if (!this.token) { return path; }
     const url = new URL(path, location.href); url.searchParams.set('session', this.token); return `${url.pathname}${url.search}${url.hash}`;
   }
   private publicFiles(value: any): any {
     if (Array.isArray(value)) { return value.map(entry => this.publicFiles(entry)); }
     if (!value || typeof value !== 'object') { return value; }
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
-      key === 'previewUrl' && typeof entry === 'string' && entry.includes('/api/file/') ? this.fileUrl(entry) : this.publicFiles(entry)]));
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
+      if (key === 'previewUrl' && typeof entry === 'string' && entry.includes('/api/file/')) return [key, this.fileUrl(entry)];
+      if (key === 'url' && studioMount() && typeof entry === 'string') {
+        if (/^(?:\/entries\/[a-z0-9_-]+)?\/(?:kanban|resource-assets|resource)\//.test(entry)) return [key, mountedPath(entry)];
+        if (value.webApp === true && /^http:\/\/127\.0\.0\.1:\d+\/[\w-]{32}\//.test(entry)) {
+          const url = new URL(entry);
+          return [key, `${entryBase()}/studio-app${url.pathname}${url.search}${url.hash}`];
+        }
+      }
+      return [key, this.publicFiles(entry)];
+    }));
   }
 }

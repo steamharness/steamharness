@@ -88,3 +88,5 @@ Business output using `activity-record` appears as separate cards with a title, 
 Platform credentials are not read by default. Use `--online project` for protected project configuration, or `--online ai` for System AI. Each option requires a Server connection and its own login. Repeat the flag to enable both.
 
 Hosts embedding CLI Web can read `restrictedConfigurationEntries` in the `--json` startup response to identify entries with role restrictions, then supply a project account through the host protocol. The list grants no permissions; visible configurations still depend on the current project role verified by Server.
+
+When CLI Web starts with `--host-stdio`, `studioPreviewProtocolVersion: 1` in the `ready` response indicates support for Studio Web preview URLs. The field does not change how standalone CLI Web is accessed.

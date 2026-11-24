@@ -1,5 +1,6 @@
 import { SettingsModels } from './settings-models';
 import { SettingsSidebar } from './settings-sidebar';
+import { SettingsRemoteAccess } from './settings-remote-access';
 import { t } from './localization';
 import { renderAccountSections } from './account-sections';
 import { SettingsDropdown } from './settings-dropdown';
@@ -59,6 +60,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
           </section>
         </section>
         <section id="settings-models" class="settings-panel" aria-label="${t('Models')}" hidden></section>
+        <section id="settings-remote-access" class="settings-panel" aria-label="${t('Remote Access')}" hidden></section>
         <section id="settings-sidebar" class="settings-panel" aria-label="${t('Right Sidebar')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
@@ -68,6 +70,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     </div>`;
   const find = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#${id}`)!;
   const navigation = find<HTMLElement>('settings-navigation');
+  const remoteAccess = new SettingsRemoteAccess(find('settings-remote-access'), message => vscode.postMessage(message));
   const search = find<HTMLInputElement>('settings-search');
   const target = find<HTMLButtonElement>('settings-target');
   const main = find<HTMLElement>('settings-main');
@@ -117,6 +120,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       ...(snapshot?.sidebar ? [{ id: 'sidebar', label: t('Right Sidebar'), icon: 'layout-sidebar-right' }] : []),
       { id: 'models', label: t('Models'), icon: 'sparkle' },
       { id: 'permissions', label: t('Permissions'), icon: 'shield' },
+      ...(snapshot?.remoteAccess ? [{ id: 'remote-access', label: t('Remote Access'), icon: 'remote' }] : []),
       ...(snapshot?.items.some(item => item.section === 'notifications') ? [{ id: 'notifications', label: t('Notifications'), icon: 'bell' }] : []),
       ...(snapshot?.providers ?? []).map(provider => ({ id: `provider:${provider.id}`, label: provider.title, icon: provider.icon ?? 'extensions' })),
       { id: 'about', label: t('About'), icon: 'info' },
@@ -368,7 +372,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const selected = categories().find(category => category.id === view.section) ?? categories().find(category => category.id === 'general')!;
     const activeSection = selected.id;
     let matches = 0;
-    for (const section of ['general', 'editor', 'permissions', 'notifications', 'models', 'sidebar', 'account', 'provider', 'about']) {
+    for (const section of ['general', 'editor', 'permissions', 'notifications', 'models', 'sidebar', 'remote-access', 'account', 'provider', 'about']) {
       const pane = find<HTMLElement>(`settings-${section}`);
       let visible = searching ? false : section === (activeSection.startsWith('provider:') ? 'provider' : activeSection);
       if (section === 'general' || section === 'editor' || section === 'permissions' || section === 'notifications') {
@@ -407,6 +411,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         matches += matching.length;
       }
       pane.hidden = !visible;
+      if (section === 'remote-access') remoteAccess.setActive(visible);
     }
     for (const node of [...sections.children] as HTMLElement[]) {
       node.hidden = searching ? !(snapshot?.providers.find(provider => provider.id === node.dataset.provider)?.title.toLocaleLowerCase().includes(query)) : `provider:${node.dataset.provider}` !== activeSection;
@@ -460,6 +465,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   window.addEventListener('message', event => {
     const message = event.data;
     if (models.handle(message)) { return; }
+    if (remoteAccess.handle(message)) { return; }
     if (message.type === 'settings') {
       snapshot = message.state;
       view.target = snapshot?.target;

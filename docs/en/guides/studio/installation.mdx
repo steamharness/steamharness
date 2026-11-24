@@ -37,7 +37,28 @@ Source setup needs access to package registries and download hosts. Fix the erro
 npm run dev:web
 ```
 
-The command prints a local address for development. Files and terminals belong to the machine running the service.
+On the machine running Studio, open the printed `localhost` or `127.0.0.1` address. No pairing is required. You can also choose **Settings → Remote Access → Start Studio Web** in the desktop build from source. Studio picks a local port from `3030` to `3040` by default. To choose a port and project, run `npm run dev:web -- --port 3050 --default-folder <project-directory>`.
+
+The browser and desktop use the same project files and run history on the host. The browser keeps its own sign-in, editor settings, and extensions; it does not mirror the desktop window. If Studio cannot embed a project, follow its prompt to update the project's SteamHarness CLI.
+
+The browser needs access to `*.vscode-cdn.net` to load Webviews such as Settings and project panels.
+
+### Pair another device
+
+1. Configure HTTPS using the table below, then restart the source launcher. Use separate hostnames for the remote workbench and project previews.
+2. On the host, open **Settings → Remote Access**, start the service, select the remote address, and choose **Generate pairing code**.
+3. On the other device, open the remote workbench, enter the code, and confirm. A QR scan or pairing link fills in the code but still requires confirmation.
+
+A code works once and expires after five minutes. Generating a new code invalidates the previous one. A browser session lasts for 30 days and survives service restarts. Revoking a device on the host or signing out that browser immediately closes its workbench and preview connections. Stopping the service disconnects all devices without revoking them.
+
+Pair only devices you trust. A paired device can access the host's files and terminal. Studio does not forward the desktop tray or operating-system notifications to the browser.
+
+| Mode | Startup variables (prefix `STEAMHARNESS_STUDIO_WEB_`) | Network setup |
+| --- | --- | --- |
+| HTTPS reverse proxy | `PROXY_ORIGIN`, `PROXY_PREVIEW_ORIGIN`, `PROXY_PORT` (default `3041`) | Terminate TLS at the proxy and forward both HTTPS origins to `127.0.0.1:3041` or your chosen port. Preserve the original `Host`, WebSocket upgrades, and streamed responses. Do not forward traffic to the pairing-free local port. |
+| LAN HTTPS | `LAN_HOST`, `LAN_ORIGIN`, `LAN_PREVIEW_ORIGIN`, `TLS_CERT_FILE`, `TLS_KEY_FILE` | Set `LAN_HOST` to the host's LAN IPv4 address. The device must be able to reach both origins and trust the certificate covering them. Studio listens for HTTPS on the ports in those origins. |
+
+For example, set `PROXY_ORIGIN` to `https://studio.example.test` and `PROXY_PREVIEW_ORIGIN` to `https://studio-preview.example.test`. Preview URLs carry temporary access credentials. Do not share them or log their full request paths at the proxy. Without HTTPS configuration, Studio listens locally only; it does not fall back to remote HTTP.
 
 ## Change the display language
 

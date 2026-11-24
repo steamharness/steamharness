@@ -31,13 +31,15 @@ import { readSidebarProjectEntries } from './project-sidebar-node';
 import { readRunningLibraryProjects } from './library-activity';
 import { ProjectUsageService } from './project-usage-service';
 import type { ManagedUsageTarget } from './project-usage-types';
+import { usingStudioWeb, studioPreview } from './remote-access-node';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
   const kanbanSessions = new Map<WebSession, StudioKanbanHost>();
   const controller = new AbortController();
   const authRoot = path.join(context.globalStorageUri.fsPath, 'workflow', 'isolated-auth', randomUUID());
-  const webDataDirectory = path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
+  const browser = usingStudioWeb();
+  const webDataDirectory = (browser && process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR) || path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
   const usage = new ProjectUsageService(webDataDirectory, path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'),
     account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined);
   context.subscriptions.push(usage);
@@ -235,10 +237,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       if (!project) { throw new Error(result.errors.join('\n') || 'Studio Analysis project is unavailable.'); }
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
-    readSidebarEntries: vscode.env.remoteName ? undefined : readSidebarProjectEntries,
-    readLibraryActivity: vscode.env.remoteName ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
-    readProjectUsage: vscode.env.remoteName || vscode.env.uiKind !== vscode.UIKind.Desktop ? undefined : input => usage.request(input),
-    openHostedSidebar: async (...args) => (await import('./hosted-sidebar-preview')).openHostedSidebar(...args),
+    readSidebarEntries: vscode.env.remoteName && !browser ? undefined : readSidebarProjectEntries,
+    readLibraryActivity: vscode.env.remoteName && !browser ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
+    readProjectUsage: browser || !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop ? input => usage.request(input) : undefined,
+    previewWeb: browser ? studioPreview : undefined,
+    openHostedSidebar: async (...args) => {
+      const preview = await (await import('./hosted-sidebar-preview')).openHostedSidebar(...args);
+      if (!browser) return preview;
+      try {
+        const remote = await studioPreview(preview.url, 'hosted');
+        if (args[2].aborted) { await remote.dispose(); args[2].throwIfAborted(); }
+        return { ...preview, url: remote.url.href, close: async () => { await remote.dispose(); await preview.close(); } };
+      } catch (error) { await preview.close(); throw error; }
+    },
     inspect: async (paths, options) => {
       assertAvailable();
       const runtime = await selectedRuntime();

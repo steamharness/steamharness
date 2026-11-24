@@ -27,6 +27,7 @@
   "win32TunnelMutex": "studio-tunnel",
   "reportIssueUrl": "https://github.com/GRCmade/steamharness/issues/new",
   "enableTelemetry": false,
+  "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/stable/8a14f0cc1b08d531eb83255ea3764ae22aa932b5/out/vs/workbench/contrib/webview/browser/pre/",
   "showAccounts": true,
   "disabledWorkbenchViews": [
     "workbench.panel.markers.view",

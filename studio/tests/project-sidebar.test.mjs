@@ -45,7 +45,7 @@ function fixture(t, initial, options = {}) {
   let prefs = initial, trusted = true;
   const uri = url => ({ scheme: url.protocol.slice(0, -1), query: url.search, fragment: url.hash, path: url.pathname, fsPath: url.protocol === 'file:' ? fileURLToPath(url) : '', toString: () => url.href });
   const vscode = {
-    env: { language: options.language ?? 'en' }, ConfigurationTarget: { Global: 1 }, ProgressLocation: { Notification: 15 }, EventEmitter: class { constructor() { return emitter(); } }, FileType: { Directory: 2, File: 1 },
+    env: { language: options.language ?? 'en', uiKind: options.uiKind ?? 1 }, UIKind: { Desktop: 1, Web: 2 }, ConfigurationTarget: { Global: 1 }, ProgressLocation: { Notification: 15 }, EventEmitter: class { constructor() { return emitter(); } }, FileType: { Directory: 2, File: 1 },
     Uri: { file: path => uri(pathToFileURL(path)), parse: value => uri(new URL(value)), joinPath: (value, part) => uri(new URL(part, `${value}/`)) },
     workspace: {
       workspaceFolders: [], isTrusted: true, onDidChangeConfiguration: configuration.event,
@@ -292,6 +292,18 @@ test('packaged previews wait for visibility, recover missing files and discard s
   activeMount.resolve(preview); await flush();
   assert.match(view.webview.html, /<iframe/);
   view.dispose(); assert.equal(closed, 2);
+});
+
+test('hosted sidebars use the browser preview address without port mapping', async t => {
+  const f = fixture(t, undefined, { uiKind: 2 }), view = createView();
+  const url = 'https://preview.example.test/p/fixture/index.html';
+  f.bindHostedSidebar(view, { title: 'Fixture', getState: () => ({ binding: { service: 'fixture' } }), onDidChange: () => disposable }, async () => ({
+    url, nonce: 'fixture', close: async () => {},
+  }), f.output);
+  await flush();
+  assert.match(view.webview.html, /src="https:\/\/preview\.example\.test\/p\/fixture\/index\.html"/);
+  assert.equal(view.webview.options.portMapping, undefined);
+  view.dispose();
 });
 
 test('only the focused standalone frame can request clipboard edits; replies come from its webview host', t => {

@@ -3,6 +3,7 @@ import { assertProjectDataDirectory } from "@steamharness/project-manifest/node"
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
+import { studioPreviewMount } from './studio-preview-mount';
 import { EntryWorkflows } from './entry-workflows';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
@@ -987,6 +988,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       // SSH forwards TCP without rewriting the browser's loopback Host header.
       const forwarded = !!options.host && ['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname) && !host.username && !host.password && host.pathname === '/' && !host.search && !host.hash;
       const url = new URL(request.url ?? '/', origin);
+      if (options.host && options.mount && studioPreviewMount(request) && url.pathname.startsWith('/studio-app/')) {
+        const hosted = kanbanController?.hostedPreview;
+        const pathname = url.pathname.slice('/studio-app'.length);
+        if (!hosted || !pathname.startsWith(`/${kanbanController!.preview.nonce}/`)) { response.writeHead(404).end(); return; }
+        request.url = pathname + url.search;
+        return hosted.handle(request, response, origin, `${options.mount.basePath}/studio-app`);
+      }
       const resourceAsset = url.pathname.startsWith('/kanban/') || url.pathname.startsWith('/resource-assets/');
       const sandboxAsset = resourceAsset && ['GET', 'HEAD'].includes(request.method ?? '') && request.headers.origin === 'null';
       if (request.headers.host !== new URL(origin).host && !forwarded || request.headers.origin && request.headers.origin !== (forwarded ? host.origin : origin) && !sandboxAsset) { json(response, 403, { message: 'Invalid request origin.' }); return; }
@@ -1063,10 +1071,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (request.method !== 'GET' && request.method !== 'HEAD') { json(response, 405, { message: 'Method not allowed.' }); return; }
       if (url.pathname === '/favicon.ico') { response.writeHead(204); response.end(); return; }
       if (url.pathname === '/' || /^\/resource\/[a-f\d-]{36}$/.test(url.pathname)) {
+        const base = (options.host ? studioPreviewMount(request) : '') + (options.mount?.basePath ?? '');
         const ancestors = options.host ? "'self' vscode-webview: vscode-file: https://*.vscode-cdn.net https://*.vscode-webview.net http://127.0.0.1:* http://localhost:*" : "'self' vscode-webview:";
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-src 'self' https: http:; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}; form-action 'self'` });
         const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isProject ? 'workflow-workspace' : 'workflow-ui';
-        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><meta name="steamharness-base" content="${options.mount?.basePath ?? ""}"><title>Workflow</title><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/codicons/codicon.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/${ui}.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}" data-platform="${platformUi}"><div id="app"></div><script src="${options.mount?.basePath ?? ""}/assets/${ui}.js" defer></script></body></html>`); return;
+        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><meta name="steamharness-base" content="${base}"><title>Workflow</title><link rel="stylesheet" href="${base}/assets/codicons/codicon.css"><link rel="stylesheet" href="${base}/assets/${ui}.css"><link rel="stylesheet" href="${base}/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}" data-platform="${platformUi}"><div id="app"></div><script src="${base}/assets/${ui}.js" defer></script></body></html>`); return;
       }
       const assets: Record<string, string> = { '/assets/workflow-ui.js': 'application/javascript', '/assets/workflow-ui.css': 'text/css', '/assets/theme.css': 'text/css', '/assets/codicons/codicon.css': 'text/css', '/assets/codicons/codicon.ttf': 'font/ttf' };
       assets['/assets/workflow-workspace.js'] = 'application/javascript'; assets['/assets/workflow-workspace.css'] = 'text/css';

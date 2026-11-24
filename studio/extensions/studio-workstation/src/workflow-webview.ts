@@ -1,6 +1,6 @@
 export interface ProjectWindowChrome { active: boolean; projectUri?: string; height: number; left: number; right: number; revision: number }
 
-export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
@@ -36,7 +36,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,clipboardImageVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,browserOpenVersion:1,downloadVersion:1,userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,clipboardImageVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
@@ -73,7 +73,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             }
           }
           if(message?.type==='workflow-drop-target'&&message.version===1){vscode.postMessage(message);}
-          else if(['workflow-open-entry','workflow-trace','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-picker','workflow-path-open','workflow-browser-open','workflow-download','workflow-user-settings','workflow-file-icons',...(${platform}?['workflow-server-project','workflow-account']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(message.type==='workflow-project-upload'?{type:message.type,version:1}:message);
+          else if(['workflow-open-entry','workflow-trace','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-picker','workflow-path-open','workflow-browser-open','workflow-user-settings','workflow-file-icons',...(${nativeDownload}?['workflow-download']:[]),...(${platform}?['workflow-server-project','workflow-account']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(message.type==='workflow-project-upload'?{type:message.type,version:1}:message);
           return;
         }
         if(event.data?.type!=='workflow-host')return;

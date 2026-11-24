@@ -8,6 +8,8 @@ import { builtinProjectCompiler } from './builtin-project-release.mjs';
 import { electronEnvironment, electronVersion, ensureElectronTypes } from './downloads.mjs';
 import { devElectronIsSigned } from './electron-cache.mjs';
 import { ensureDefaultExtensions } from './default-extensions.mjs';
+import { desktopWebControl, runManagedWeb, webBuiltins, workspaceArgs } from './web/launcher.mjs';
+import { webConfig } from './web/config.mjs';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const [command = 'help', ...args] = process.argv.slice(2);
@@ -31,10 +33,10 @@ function resolveDesktopUserDataDir(preferred) {
   return path.join(os.homedir(), '.studio', 'desktop-user-data');
 }
 
-async function prepare() {
+async function prepare(options) {
   await assertRuntime();
   await buildExtension();
-  const result = await prepareDistribution();
+  const result = await prepareDistribution(ROOT, options);
   console.log(`Prepared ${result.product.nameLong} on VS Code ${result.upstream.ref}.`);
   return result;
 }
@@ -75,6 +77,12 @@ async function launch(upstream, script, launchArgs, environment = {}) {
 }
 
 const hasFlag = (flag) => args.some((argument) => argument === flag || argument.startsWith(`${flag}=`));
+const flagValue = flag => {
+  const index = args.findIndex(argument => argument === flag || argument.startsWith(`${flag}=`));
+  return index < 0 ? undefined : args[index] === flag ? args[index + 1] : args[index].slice(flag.length + 1);
+};
+const webDirectory = () => path.join(ROOT, process.env.STEAMHARNESS_STUDIO_INTERNAL === '1' ? '.studio/web-internal-server-data' : '.studio/web-server-data');
+const projectWebData = profile => path.join(profile, 'User/globalStorage/studio.studio-workstation/workflow/web');
 
 async function doctor() {
   let failed = false;
@@ -219,50 +227,47 @@ async function main() {
       ] : command === 'workflow' && !args.length ? [await resolveMonorepoRoot()] : args;
       const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture(
         (await readJSON(path.join(ROOT, 'extensions/studio-workstation/dist/developer-assistant/project/package.json'))).devDependencies) : undefined;
+      const profile = path.resolve(process.env.VSCODE_APPDATA || flagValue('--user-data-dir') || resolveDesktopUserDataDir(path.join(ROOT, '.studio/desktop-user-data')));
+      const remote = testing ? undefined : await desktopWebControl({ directory: webDirectory(), storage: projectWebData(profile) });
       try {
         await launch(upstream, 'code', [
           ...directoryArgs,
           '--disable-telemetry',
           '--disable-workspace-trust',
           ...desktopArgs,
-        ], assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {});
-      } finally { await assistantFixture?.dispose(); }
+        ], { ...remote?.env, ...(assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {}) });
+      } finally { await remote?.close(); await assistantFixture?.dispose(); }
       break;
     }
     case 'workflow:web':
     case 'web': {
-      const { upstream } = await prepare();
-      await requireDependencies(upstream);
-      await build(upstream);
-      await run(npm, ['run', 'download-builtin-extensions'], upstream.directory);
-      const extensionsDirectory = path.join(ROOT, '.studio/web-extensions');
-      const defaults = [
-        '--server-data-dir', path.join(ROOT, '.studio/web-server-data'),
-        '--extensions-dir', extensionsDirectory,
-        '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'),
-        '--telemetry-level', 'off',
-        '--disable-workspace-trust',
-      ];
-      await ensureDefaultExtensions(extensionsDirectory, (extension) =>
-        launch(upstream, 'code-server', [...defaults, '--install-extension', extension]));
-      if (!hasFlag('--host')) {
-        defaults.push('--host', '127.0.0.1');
-      }
-      if (!hasFlag('--port') && !hasFlag('--socket-path')) {
-        defaults.push('--port', '3030-3040');
-      }
+      const { port, serverArgs } = workspaceArgs(args);
       if (command === 'workflow:web' && !hasFlag('--default-folder') && !hasFlag('--default-workspace')) {
-        defaults.push('--default-folder', await resolveMonorepoRoot());
+        serverArgs.push(`--default-folder=${await resolveMonorepoRoot()}`);
       }
-      console.log('Studio Web URL and connection token will be printed by the server.');
-      await launch(upstream, 'code-server', [...defaults, ...args]);
+      const directory = webDirectory();
+      const config = await webConfig(process.env, port);
+      const storage = process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR || projectWebData(resolveDesktopUserDataDir(path.join(ROOT, '.studio/desktop-user-data')));
+      await runManagedWeb({ directory, storage, config, prepare: async () => {
+        const { upstream, extensionSource } = await prepare({ linkBuiltinExtension: false });
+        await requireDependencies(upstream);
+        await build(upstream);
+        await run(npm, ['run', 'download-builtin-extensions'], upstream.directory);
+        const extensionsDirectory = path.join(directory, 'extensions');
+        const defaults = ['--server-data-dir', directory, '--extensions-dir', extensionsDirectory,
+          '--builtin-extensions-dir', await webBuiltins(directory, upstream.directory, extensionSource), '--telemetry-level', 'off', '--disable-workspace-trust'];
+        await ensureDefaultExtensions(extensionsDirectory, extension => run(process.execPath,
+          [path.join(upstream.directory, 'out/server-main.js'), ...defaults, '--install-extension', extension],
+          upstream.directory, { NODE_ENV: 'development', VSCODE_DEV: '1' }));
+        return { upstream: upstream.directory, args: [...defaults, ...serverArgs] };
+      } });
       break;
     }
     case 'doctor':
       await doctor();
       break;
     case 'help':
-      console.log('Studio commands: setup, prepare, electron, build, watch, dev [VS Code arguments], web [server arguments], doctor, test:desktop');
+      console.log('Studio commands: setup, prepare, electron, build, watch, dev [VS Code arguments], web [--port port] [--default-folder path | --default-workspace path], doctor, test:desktop');
       break;
     default:
       throw new Error(`Unknown Studio command: ${command}`);

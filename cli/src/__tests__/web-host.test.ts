@@ -38,7 +38,7 @@ it('processes logout and close while an earlier host authentication is pending',
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
-    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: ['chat'], userSettingsProtocolVersion: 1, webAppProtocolVersion: 1 });
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, entriesProtocolVersion: 1, systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: ['chat'], userSettingsProtocolVersion: 1, webAppProtocolVersion: 1, studioPreviewProtocolVersion: 1 });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host?.userSettings).toEqual({ agent: { permissionPolicy: 'auto' } });
     expect(vi.mocked(startWebServer).mock.calls[0][0].host).toMatchObject({ connection, systemAiConnection });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());

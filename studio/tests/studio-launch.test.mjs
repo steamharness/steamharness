@@ -4,6 +4,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { test } from 'node:test';
 import ts from 'typescript';
+import { workspaceArgs } from '../scripts/web/launcher.mjs';
 
 const source = ts.createSourceFile('studio.mjs', await readFile(new URL('../scripts/studio.mjs', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const functions = ['build', 'main'].map(name => {
@@ -31,6 +32,15 @@ function launch(command, failure, args = []) {
     ensureDefaultExtensions: async () => {},
     resolveDesktopUserDataDir: value => value,
     resolveMonorepoRoot: async () => '/monorepo',
+    desktopWebControl: async () => ({ env: {}, async close() {} }),
+    flagValue: flag => args.find(argument => argument.startsWith(`${flag}=`))?.slice(flag.length + 1) ?? args[args.indexOf(flag) + 1],
+    webDirectory: () => '/source/.studio/web-server-data', projectWebData: profile => path.join(profile, 'web'),
+    webBuiltins: async () => '/builtins', workspaceArgs,
+    webConfig: async () => ({}),
+    runManagedWeb: async ({ prepare }) => {
+      const settings = await prepare();
+      await context.launch(upstream, 'managed-web', settings.args);
+    },
     hasFlag: flag => args.some(argument => argument === flag || argument.startsWith(`${flag}=`)),
     run: async (_executable, args, directory) => {
       if (args[0] !== 'run' || args[1] !== 'build-fast') return;
@@ -62,7 +72,7 @@ test('explicit folder and workspace arguments still reach the launcher', async (
   const web = launch('web', undefined, ['--default-workspace', '/my-project.code-workspace']);
   await Promise.all([desktop.run(), web.run()]);
   assert.equal(desktop.launches[0].args.at(-1), '/my-project');
-  assert.deepEqual([...web.launches[0].args.slice(-2)], ['--default-workspace', '/my-project.code-workspace']);
+  assert.equal(web.launches[0].args.at(-1), '--default-workspace=/my-project.code-workspace');
 });
 
 test('workflow development shortcuts still open the monorepo by default', async () => {
@@ -70,7 +80,13 @@ test('workflow development shortcuts still open the monorepo by default', async 
   const web = launch('workflow:web');
   await Promise.all([desktop.run(), web.run()]);
   assert.equal(desktop.launches[0].args.at(-1), '/monorepo');
-  assert.deepEqual([...web.launches[0].args.slice(-2)], ['--default-folder', '/monorepo']);
+  assert.equal(web.launches[0].args.at(-1), '--default-folder=/monorepo');
+});
+
+test('the Web launcher does not accept upstream authentication or bind overrides', () => {
+  for (const args of [['--without-connection-token'], ['--connection-token=x'], ['--host=0.0.0.0'], ['--socket-path=example']]) {
+    assert.throws(() => workspaceArgs(args));
+  }
 });
 
 for (const args of [['--user-data-dir', '/custom-profile'], ['--user-data-dir=/custom-profile']]) {

@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { Socket } from 'node:net';
+import { studioPreviewMount } from './studio-preview-mount';
 
 /** The host resolves public assets; the proxy owns the isolated origin and session bootstrap. */
 export interface WebAppAssets {
@@ -60,8 +61,10 @@ export class WebAppPreview {
     this.binding = binding;
     this.onLogin = onLogin;
     this.server.on('connection', socket => { this.sockets.add(socket); socket.on('close', () => this.sockets.delete(socket)); });
-    this.server.on('upgrade', (req, socket, head) => {
-      if (!this.authorized(req) || !this.binding || this.binding.login || !this.apiPath(req.url)) { socket.destroy(); return; }
+    this.server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head));
+  }
+  handleUpgrade(req: IncomingMessage, socket: NodeJS.ReadWriteStream & { destroy(): void }, head: Buffer, origin = this.origin): void {
+      if (!this.authorized(req, origin) || !this.binding || this.binding.login) { socket.destroy(); return; }
       const upstream = this.proxyRequest(req);
       upstream.on('upgrade', (response, peer, upstreamHead) => {
         if (this.closed) { peer.destroy(); socket.destroy(); return; }
@@ -70,20 +73,20 @@ export class WebAppPreview {
         if (head.length) peer.write(head); if (upstreamHead.length) socket.write(upstreamHead);
         peer.pipe(socket); socket.pipe(peer);
         socket.on('error', () => peer.destroy()); peer.on('error', () => socket.destroy());
+        socket.once('close', () => peer.destroy()); peer.once('close', () => socket.destroy());
       });
       upstream.on('response', () => socket.destroy()); upstream.on('error', () => socket.destroy()); upstream.end();
-    });
   }
   async start(): Promise<void> {
     await new Promise<void>((resolve, reject) => { this.server.once('error', reject); this.server.listen(0, '127.0.0.1', () => { this.server.off('error', reject); resolve(); }); });
     this.origin = `http://127.0.0.1:${(this.server.address() as { port: number }).port}`;
   }
   get url(): string { return `${this.origin}/${this.preview().nonce}/${this.preview().artifact.entry}`; }
-  private validOrigin(req: IncomingMessage): boolean {
-    return req.headers.host === new URL(this.origin).host && (!req.headers.origin || req.headers.origin === this.origin) ;
+  private validOrigin(req: IncomingMessage, origin: string): boolean {
+    return req.headers.host === new URL(origin).host && (!req.headers.origin || req.headers.origin === origin);
   }
-  private authorized(req: IncomingMessage): boolean {
-    return !this.closed && this.validOrigin(req) && !!this.apiPath(req.url);
+  private authorized(req: IncomingMessage, origin: string): boolean {
+    return !this.closed && this.validOrigin(req, origin) && !!this.apiPath(req.url);
   }
   private apiPath(url: string | undefined): string | undefined {
     const prefix = `/${this.preview().nonce}`;
@@ -106,19 +109,19 @@ export class WebAppPreview {
     this.pending.add(upstream); upstream.on('close', () => this.pending.delete(upstream)); upstream.on('timeout', () => upstream.destroy());
     return upstream;
   }
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async handle(req: IncomingMessage, res: ServerResponse, origin = this.origin, entryBase = ''): Promise<void> {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (this.closed || !this.validOrigin(req)) { res.writeHead(403); res.end(); return; }
+    if (this.closed || !this.validOrigin(req, origin)) { res.writeHead(403); res.end(); return; }
     const url = new URL(req.url ?? '/', this.origin);
     if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.headers['sec-fetch-dest'] === 'iframe' && url.pathname === `/${this.preview().nonce}/${this.preview().artifact.entry}`)) { res.writeHead(403); res.end(); return; }
     if (url.pathname === `/${this.preview().nonce}/host/login`) {
       if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
-      if (req.headers.origin !== this.origin || req.headers['content-type'] !== 'application/json') { res.writeHead(403); res.end(); return; }
+      if (req.headers.origin !== origin || req.headers['content-type'] !== 'application/json') { res.writeHead(403); res.end(); return; }
       if (this.binding && !this.binding.login || !this.onLogin) { res.writeHead(409); res.end(); return; }
       this.onLogin(); res.writeHead(202, { 'Content-Type': 'application/json' }); res.end('{}'); return;
     }
     if (this.apiPath(req.url)) {
-      if (!this.authorized(req)) { res.writeHead(401); res.end(); return; }
+      if (!this.authorized(req, origin)) { res.writeHead(401); res.end(); return; }
       if (!this.binding || this.binding.login) { res.writeHead(503); res.end(JSON.stringify({ error: { code: 'HOST_SIGNED_OUT', message: 'Sign in to the host to connect this application.' } })); return; }
       const upstream = this.proxyRequest(req);
       upstream.on('response', response => {
@@ -142,7 +145,8 @@ export class WebAppPreview {
     delete (headers as Record<string, string>)['Access-Control-Allow-Origin'];
     let content = asset.content;
     if (url.pathname === prefix + preview.artifact.entry) {
-      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze({...${json({ protocolVersion: 1, managed: true, apiBase: `/${preview.nonce}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, login: this.binding?.login, nonce: preview.nonce, notifications: preview.hostNotifications ? 'host' : undefined })},requestLogin:()=>fetch(${json(`/${preview.nonce}/host/login`)},{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(response=>{if(!response.ok)throw new Error('Sign-in is unavailable. Refresh the application and retry.');})})});</script>`;
+      const base = studioPreviewMount(req) + entryBase + `/${preview.nonce}`;
+      const bootstrap = `<script nonce="${preview.nonce}">localStorage.removeItem('auth-state');Object.defineProperty(window,'steamHarnessWebApp',{value:Object.freeze({...${json({ protocolVersion: 1, managed: true, apiBase: `${base}/api`, session: this.binding?.bootstrap ?? null, accountUrl: this.binding?.accountUrl, login: this.binding?.login, nonce: preview.nonce, notifications: preview.hostNotifications ? 'host' : undefined })},requestLogin:()=>fetch(${json(`${base}/host/login`)},{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(response=>{if(!response.ok)throw new Error('Sign-in is unavailable. Refresh the application and retry.');})})});</script>`;
       const html = String(content);
       content = /<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, match => match + bootstrap) : bootstrap + html;
     }

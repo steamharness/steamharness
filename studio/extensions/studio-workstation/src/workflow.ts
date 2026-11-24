@@ -200,31 +200,47 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     let frameReady!: () => void;
     const ready = new Promise<void>(resolve => { frameReady = resolve; });
     let closed = false;
+    let preview: Awaited<ReturnType<NonNullable<Launcher['previewWeb']>>> | undefined;
+    let previewRevision = 0, retiredPreview = Promise.resolve();
+    const retirePreview = () => {
+      previewRevision++;
+      if (preview) { retiredPreview = preview.dispose(); preview = undefined; }
+      return retiredPreview;
+    };
+    const mountPreview = async () => {
+      if (!launcher.previewWeb) return;
+      const revision = ++previewRevision;
+      await retiredPreview;
+      if (session.ready.studioPreviewProtocolVersion !== 1) throw new Error(t("Update this project's SteamHarness CLI to run it in Studio Web."));
+      const mounted = await launcher.previewWeb(session.ready.url, 'project');
+      if (closed || revision !== previewRevision) { await mounted.dispose(); throw new Error(t('The project is no longer open.')); }
+      return preview = mounted;
+    };
     const close = (): Promise<void> => {
       if (closed) { return session.closed; }
       closed = true; sessions.delete(session); sessionSources.delete(session); sessionStops.delete(session);
       if ('reveal' in panel) { workspaces.delete(panel); }
       for (const listener of listeners.splice(0)) { listener.dispose(); }
-      const settled = session.close().finally(() => { if (settling.get(projectWindowKey(project)) === settled) { settling.delete(projectWindowKey(project)); } });
+      const stopping = launcher.previewWeb ? retirePreview().finally(() => session.close()) : session.close();
+      const settled = stopping.finally(() => { if (settling.get(projectWindowKey(project)) === settled) { settling.delete(projectWindowKey(project)); } });
       settling.set(projectWindowKey(project), settled); updateEntry(); return settled;
     };
     sessionStops.set(session, async () => { await close(); if ('reveal' in panel) { panel.dispose(); } });
     listeners.push(panel.onDidDispose(() => void close()));
     try {
       const localAddress = new URL(session.ready.url);
-      if (!account.platform && session.ready.systemAiConnectionProtocolVersion !== 2 && launcher.startLegacyLocalFrame) {
+      const initialPreview = await mountPreview();
+      if (!preview && !account.platform && session.ready.systemAiConnectionProtocolVersion !== 2 && launcher.startLegacyLocalFrame) {
         const legacy = await launcher.startLegacyLocalFrame(localAddress);
         if (closed) { legacy.dispose(); throw new Error('Workflow workspace has closed.'); }
         listeners.push(legacy);
         localAddress.port = String(legacy.port);
       }
-      const local = vscode.Uri.parse(localAddress.href);
-      const external = await vscode.env.asExternalUri(local);
-      const address = new URL(external.toString());
+      let address = initialPreview?.url ?? new URL((await vscode.env.asExternalUri(vscode.Uri.parse(localAddress.href))).toString());
       address.hash = new URL(session.ready.url).hash;
       signal?.throwIfAborted();
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
-      panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(localAddress.port), extensionHostPort: Number(localAddress.port) }] };
+      panel.webview.options = { enableScripts: true, localResourceRoots: [], ...(preview ? {} : { portMapping: [{ webviewPort: Number(localAddress.port), extensionHostPort: Number(localAddress.port) }] }) };
       const bindTrace = () => trace.bind(project, session.ready.traceProtocolVersion, panel.webview,
         session.readModelRequest ? target => session.readModelRequest!(project.entryId, target) : undefined);
       let traceBinding = bindTrace();
@@ -236,8 +252,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const downloadBinding = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
       const fileIconsBinding = fileIcons.bind(panel.webview);
       const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
-        if (closed) { throw new Error(t('Unable to open the resource.')); }
-        await openCard(result, project, session, address, 'viewColumn' in panel ? panel.viewColumn : undefined);
+        if (closed || launcher.previewWeb && !preview) { throw new Error(t('Unable to open the resource.')); }
+        await openCard(result, project, session, address, 'viewColumn' in panel ? panel.viewColumn : undefined, preview?.mount);
       });
       const resolveHostedEntry = async (entryId: string): Promise<Project> => {
         if (!project.entries.some(entry => entry.entryId === entryId)) throw new Error('Unknown project entry.');
@@ -255,10 +271,22 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const openHostedEntry = (entryId: string) => resolveHostedEntry(entryId).then(target => {
         if (!closed) return createWorkspace(target, undefined, undefined, undefined, undefined, true, target.projectType === 'bot' ? 'new' : undefined);
       });
+      let remounting: Promise<void> | undefined;
+      const remount = (): Promise<void> => {
+        if (remounting) return remounting;
+        if (closed || preview || !launcher.previewWeb) return Promise.resolve();
+        return remounting = mountPreview().then(mounted => {
+          if (mounted && !closed && preview === mounted) {
+            address = mounted.url;
+            renderFrame();
+          }
+        }).finally(() => { remounting = undefined; });
+      };
       const reconnect = (message: Record<string, any>, webview: vscode.Webview) => {
         if (message.type !== 'workflow-reconnect' || message.version !== 1 || typeof message.requestId !== 'string' || message.requestId.length > 64) return false;
         void (session.reconnect?.() ?? Promise.resolve(false)).then(async () => {
           if (!closed) {
+            await remount();
             const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
             await webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, ...(token ? { token } : {}) } });
           }
@@ -310,7 +338,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         if (account.platform && message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !browserOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform);
+      const renderFrame = () => { panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb); };
+      renderFrame();
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
         workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close });
@@ -321,12 +350,16 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         traceBinding.dispose(); traceBinding = bindTrace();
         const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
         if (entry?.close === close) entry.running = true;
-        const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
-        void panel.webview.postMessage({ type: 'workflow-host', recovery: { ...(token ? { token } : {}) } });
+        if (launcher.previewWeb) void remount().catch(error => output.appendLine(`SteamHarness Web recovery: ${String(error)}`));
+        else {
+          const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
+          void panel.webview.postMessage({ type: 'workflow-host', recovery: { ...(token ? { token } : {}) } });
+        }
         updateEntry();
       }));
       listeners.push(vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() })),
         session.onExit(exit => {
+          void retirePreview();
           traceBinding.dispose();
           if (!closed) {
             const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
@@ -392,7 +425,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (!project) { throw new Error(t('This project entry is no longer available. Refresh the project windows and try again.')); }
     await createWorkspace(project, undefined, undefined, undefined, undefined, true, project.projectType === 'bot' ? 'new' : undefined);
   };
-  const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL, sourceColumn?: vscode.ViewColumn): Promise<void> => {
+  const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL, sourceColumn?: vscode.ViewColumn, mount?: string): Promise<void> => {
     const { card, project } = result;
     if (result.action === 'open' || result.action === 'project') {
       if (card.kind === 'file' && project?.folderPath) {
@@ -410,8 +443,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const preview = result.action === 'window' ? sideResourcePreview.open(card.title, sourceColumn)
       : vscode.window.createWebviewPanel('studio.resourcePreview', card.title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
     for (const listener of resourceBindings.get(preview) ?? []) listener.dispose();
-    const url = new URL(result.url, origin); url.hash = new URL(session.ready.url).hash;
-    preview.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(origin.port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
+    const url = new URL(mount ? mount + result.url : result.url, origin); url.hash = new URL(session.ready.url).hash;
+    preview.webview.options = { enableScripts: true, localResourceRoots: [], ...(mount ? {} : { portMapping: [{ webviewPort: Number(origin.port), extensionHostPort: Number(new URL(session.ready.url).port) }] }) };
     preview.iconPath = new vscode.ThemeIcon('preview');
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),

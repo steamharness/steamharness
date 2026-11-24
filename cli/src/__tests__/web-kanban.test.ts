@@ -6,7 +6,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as core from 'steamharness';
-import { startEntryWebServer as startWebServer } from './web-test-storage';
+import { startEntryWebServer as startWebServer, startWebServer as startAggregateWeb } from './web-test-storage';
+import { createServer } from 'node:http';
 import { configurationTemplatePath } from '@steamharness/project-configuration';
 import { webProjectDataDirectory } from '../web/project-data-directory';
 import type { Project, Runtime } from '../web/workflow-types';
@@ -122,6 +123,39 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 }
 
 describe('Kanban CLI Web workspace', () => {
+  it('keeps hosted app assets and its scoped API under the Studio preview mount', async () => {
+    const { directory, dataDir, runtime } = await fixture({ noParams: true, webApp: true });
+    const app = await startAggregateWeb({ projectDir: directory, dataDir: path.join(dataDir, 'studio-web'), runtime,
+      host: { surface: 'editor', platform: true } });
+    const service = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ path: req.url, scoped: req.headers.authorization === 'Bearer scoped-fixture' }));
+    });
+    try {
+      await new Promise<void>(resolve => service.listen(0, '127.0.0.1', resolve));
+      const endpoint = `http://127.0.0.1:${(service.address() as { port: number }).port}/api`;
+      await app.setHostWebApps({ main: { service: 'sample.chat', apiBaseUrl: endpoint, bootstrap: { token: 'scoped-fixture' } } });
+      const page = new URL(app.url), token = new URLSearchParams(page.hash.slice(1)).get('session');
+      const mount = `/p/${'a'.repeat(43)}`, headers = { 'X-SteamHarness-Preview-Mount': mount };
+      const response = await fetch(new URL('api/message', page), { method: 'POST', headers: { ...headers,
+        Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'ready' }) });
+      expect(response.ok).toBe(true);
+      const { kanban } = (await response.json()).messages[0];
+      const relative = `studio-app${new URL(kanban.preview.url).pathname}`;
+      const html = await fetch(new URL(relative, page), { headers });
+      expect(html.status).toBe(200);
+      expect(await html.text()).toContain(`"apiBase":"${mount}${page.pathname}studio-app/${kanban.preview.nonce}/api"`);
+      expect(await (await fetch(new URL('board.js', html.url), { headers })).text()).toContain('assetLoaded');
+      const api = new URL('api/ping', html.url);
+      expect(await (await fetch(api, { headers: { ...headers, Authorization: 'Bearer scoped-fixture' } })).json()).toEqual({ path: '/api/ping', scoped: true });
+      expect((await fetch(api)).status).toBe(404);
+    } finally {
+      await app.close();
+      service.closeAllConnections();
+      await new Promise<void>(resolve => service.close(() => resolve()));
+    }
+  });
+
   it('retires application origins and scoped sessions when the host account or server changes', async () => {
     const { app, state } = await fixture({ noParams: true, webApp: true });
     const original = fetch;

@@ -10,6 +10,7 @@ import type { Project } from './workflow-types';
 import { t } from './localization';
 import { sharedWebLogin } from './account-auth';
 import type { AggregateEntryCall } from './entry-conversations';
+import { studioPreviewMount } from './studio-preview-mount';
 
 type EntryHost = Awaited<ReturnType<typeof startEntryWebServer>>;
 const escape = (value: string) => value.replace(/[&<>"']/g, value => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[value]!));
@@ -125,14 +126,14 @@ export async function startAggregateWebServer(options: WebOptions) {
     if (closing || resetting) return;
     void reload().catch(error => process.stderr.write(`Aggregate project reload: ${String(error)}\n`));
   };
-  const recovery = (entryId: string) => {
+  const recovery = (entryId: string, mount: string, nonce: string) => {
     const entry = selectProjectEntry(manifest, entryId);
     const links = manifest.entries.map(item => `<option value="${escape(item.entryId)}"${item.entryId === entryId ? ' selected' : ''}>${escape(item.name)} · ${escape(item.type)}</option>`).join('');
-    return `<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape(manifest.name)} / ${escape(entry.name)}</title><body><main><h1>${escape(manifest.name)} / ${escape(entry.name)}</h1><label>${escape(t('Project window'))} <select>${links}</select></label><p role="alert">${escape(t('This entry could not start. Fix its declaration or dependencies, then try again.'))}</p><pre></pre><button>${escape(t('Check again'))}</button></main><script>
-const prefix='/entries/${entryId}', projectId=${JSON.stringify(manifest.projectId)}, session=new URLSearchParams(location.hash.slice(1)).get('session');
+    return `<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape(manifest.name)} / ${escape(entry.name)}</title><body><main><h1>${escape(manifest.name)} / ${escape(entry.name)}</h1><label>${escape(t('Project window'))} <select>${links}</select></label><p role="alert">${escape(t('This entry could not start. Fix its declaration or dependencies, then try again.'))}</p><pre></pre><button>${escape(t('Check again'))}</button></main><script nonce="${nonce}">
+const mount=${JSON.stringify(mount)}, prefix=mount+'/entries/${entryId}', projectId=${JSON.stringify(manifest.projectId)}, session=new URLSearchParams(location.hash.slice(1)).get('session');
 if(session){history.replaceState(null,'',location.pathname);}
 const auth=session?fetch(prefix+'/api/session',{method:'POST',headers:{Authorization:'Bearer '+session}}):Promise.resolve();
-document.querySelector('select').onchange=event=>{const entryId=event.target.value;if(parent!==window)parent.postMessage({type:'workflow-open-entry',version:1,projectId,entryId},'*');else location.assign('/entries/'+entryId+'/');};
+document.querySelector('select').onchange=event=>{const entryId=event.target.value;if(parent!==window)parent.postMessage({type:'workflow-open-entry',version:1,projectId,entryId},'*');else location.assign(mount+'/entries/'+entryId+'/');};
 document.querySelector('button').onclick=async event=>{event.target.disabled=true;try{await auth;const response=await fetch(prefix+'/api/retry',{method:'POST',headers:session?{Authorization:'Bearer '+session}:{}});const result=await response.json();if(!response.ok)throw new Error(result.message);if(result.ready)location.reload();else document.querySelector('pre').textContent=result.message;}catch(error){document.querySelector('pre').textContent=String(error);}finally{event.target.disabled=false;}};
 </script></body></html>`;
   };
@@ -160,8 +161,22 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
         await resetting; await launch(entryId);
         response.end(JSON.stringify({ready:entries.has(entryId),message:failures.get(entryId)})); return;
       }
-      response.setHeader('Content-Type','text/html; charset=utf-8'); response.end(recovery(entryId));
+      const nonce = randomBytes(16).toString('base64url');
+      response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'`);
+      response.setHeader('Content-Type','text/html; charset=utf-8'); response.end(recovery(entryId, host ? studioPreviewMount(request) : '', nonce));
     })().catch(() => { if (!response.headersSent) response.writeHead(500); response.end(); });
+  });
+  server.on('upgrade', (request, socket, head) => {
+    try {
+      if (!host || folderBot?.background || !studioPreviewMount(request) || !request.url) { socket.destroy(); return; }
+      const url = new URL(request.url, origin);
+      const match = /^\/entries\/([a-z][a-z0-9_-]{0,63})\/studio-app(\/.*)$/.exec(url.pathname);
+      const kanban = match && entries.get(match[1]!)?.kanbanController;
+      const app = kanban && kanban.hostedPreview;
+      if (!match || !app) { socket.destroy(); return; }
+      request.url = match[2] + url.search;
+      app.handleUpgrade(request, socket, head, origin);
+    } catch { socket.destroy(); }
   });
   await new Promise<void>((resolve,reject) => { server.once('error',reject); server.listen(options.port ?? 0,'127.0.0.1',() => { server.off('error',reject); resolve(); }); });
   origin = `http://127.0.0.1:${(server.address() as {port:number}).port}`;

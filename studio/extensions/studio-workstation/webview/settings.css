@@ -51,6 +51,16 @@
 .settings-group > h2 { margin-bottom: 10px; }
 .settings-group > h2, .settings-sidebar-heading > h2 { font-size: 13px; font-weight: 600; }
 .settings-card { min-width: 0; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); overflow: hidden; }
+.remote-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.remote-actions select { max-width: 100%; font: inherit; padding: 5px 8px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); }
+.remote-urls, .remote-pair code { overflow-wrap: anywhere; user-select: text; }
+.remote-pair:not([hidden]) { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; padding: 16px; }
+.remote-pair img { flex: none; width: 128px; height: 128px; background: #fff; }
+.remote-pair > div { flex: 1 1 14rem; min-width: 0; }
+.remote-pair code { display: block; margin-bottom: 8px; }
+.remote-code { font-size: 17px; font-weight: 600; }
+.remote-empty { padding: 12px 16px; margin: 0; }
+.remote-device { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .setting-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 230px); align-items: center; gap: 8px 24px; padding: 20px; min-width: 0; }
 .setting-row + .setting-row { border-top: 1px solid var(--vscode-panel-border); }
 .setting-copy { min-width: 0; }

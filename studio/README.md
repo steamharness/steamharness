@@ -56,13 +56,13 @@ npm run dev -- .
 npm run dev:web
 ```
 
-默认监听 `127.0.0.1`，在 `3030` 到 `3040` 中选择可用端口。使用上游 Web Server 和连接令牌，终端会打印完整访问地址。Web 版支持服务器文件、终端和工作区扩展；工作区文件位于运行服务器的机器上。
+默认只监听回环地址，在 `3030` 到 `3040` 中选择可用端口。终端会打印无需配对的本机地址。浏览器可访问宿主机的工作区文件、终端和项目运行历史，账号、设置和扩展与桌面分开保存。
 
 ```sh
 npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 ```
 
-两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 工作台和嵌入的 CLI Web 可在本机使用，不需要连接 SteamHarness 平台。
+源码版桌面也可以从 **设置 → 远程访问** 启动服务。配置 HTTPS 反代或局域网 HTTPS 后，在同一页生成一次性配对码或撤销设备。详细配置见[安装与启动 Studio](../docs/guides/studio/installation.mdx#浏览器工作站)。
 
 Studio 默认内置 [SQLite3 Editor](https://github.com/yy0931/sqlite3-editor)（GPLv3）。在资源管理器或项目文件卡片中点击 `.sqlite`、`.sqlite3`、`.db` 文件，即可在编辑器中查看数据表、表结构和执行 SQL，无需另装 SQLite。Web 版查看的是服务器上的数据库文件。扩展版本及安装包校验值固定在 `config/default-extensions.json` 中，开发启动与发行打包共用该文件；原始许可证随扩展保留。
 

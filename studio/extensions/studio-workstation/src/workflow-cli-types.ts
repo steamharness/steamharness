@@ -14,6 +14,7 @@ export interface WebReady {
   assistantProtocolVersion?: number;
   accountProtocolVersion?: number;
   webAppProtocolVersion?: number;
+  studioPreviewProtocolVersion?: number;
   webAppConfigurationProtocolVersion?: number;
   webAppLoginProtocolVersion?: number;
   webAppConfigurations?: Record<string, import('./web-app-types').WebAppRequest['configuration']>;
@@ -70,6 +71,7 @@ export interface Launcher {
   readLibraryActivity?(projects: unknown): Promise<string[]>;
   readProjectUsage?(input: unknown): Promise<ProjectUsageSnapshot | undefined> | undefined;
   openHostedSidebar?: OpenHostedSidebar;
+  previewWeb?: (url: string, kind: 'project' | 'hosted') => Promise<{ url: URL; mount: string; dispose(): Promise<void> }>;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   localAssistantDirectory?(): Promise<string>;
   listBuiltinProjectDirectories?(): Promise<{ directories: string[]; pending?: boolean }>;

@@ -15,6 +15,7 @@ import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewSt
 import type { ProjectSidebar } from './project-sidebar';
 import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
+import type { RemoteAccessHandler, RemoteAccessAction } from './remote-access-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account, AuthError, ServerClient, normalizeProjectServerUrl,
@@ -61,7 +62,8 @@ export class AccountController implements vscode.Disposable {
   private readonly lifetime = new AbortController();
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
-    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, private readonly digest?: (value: string) => string) {
+    private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, private readonly digest?: (value: string) => string,
+    private readonly remoteAccess?: RemoteAccessHandler) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
@@ -484,6 +486,7 @@ export class AccountController implements vscode.Disposable {
     const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference, this.hasDesktopNotifications);
     this.viewState.target = state.target;
     state.nodeRuntime = this.runtimeStatus;
+    state.remoteAccess = !!this.remoteAccess;
     state.desktopNotificationStatus = this.desktopNotificationStatus;
     state.sidebar = this.sidebarSnapshot();
     return state;
@@ -544,6 +547,21 @@ export class AccountController implements vscode.Disposable {
         const previous = this.viewState.section;
         this.viewState = settingsViewState(message.state);
         if (this.platform && previous !== 'account' && this.viewState.section === 'account') void this.connect();
+        return;
+      }
+      if (this.remoteAccess && message.type === 'settings-remote-access' && typeof message.requestId === 'string' && message.requestId.length <= 64) {
+        const input = message.input as RemoteAccessAction | { action: 'copy'; value: string } | undefined;
+        if (!input || !['status', 'start', 'stop', 'logout', 'generate', 'revoke', 'copy'].includes(input.action)) return;
+        const generation = pageGeneration;
+        let result: unknown;
+        try {
+          if (input.action === 'copy') {
+            if (typeof input.value !== 'string' || input.value.length > 512) return;
+            await vscode.env.clipboard.writeText(input.value);
+            result = { copied: true };
+          } else result = await this.remoteAccess(input);
+        } catch { result = { error: 'unavailable' }; }
+        if (this.panel === panel && generation === pageGeneration) await panel.webview.postMessage({ type: 'settings-remote-access-result', requestId: message.requestId, result });
         return;
       }
       if (this.sidebar && message.type === 'settings-sidebar' && !sidebarBusy) {
@@ -709,8 +727,8 @@ export class AccountController implements vscode.Disposable {
 }
 
 export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false,
-  serverUrl?: string, digest?: (value: string) => string): Promise<AccountController> {
-  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest);
+  serverUrl?: string, digest?: (value: string) => string, remoteAccess?: RemoteAccessHandler): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest, remoteAccess);
   context.subscriptions.push(account);
   await account.initialize();
   return account;
