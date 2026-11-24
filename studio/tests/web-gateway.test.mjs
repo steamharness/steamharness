@@ -14,6 +14,7 @@ import { openSessions, PAIR_MS, secret, SESSION_SECONDS } from '../scripts/web/s
 
 const workbenchOrigin = 'https://studio.example.test', previewOrigin = 'https://preview.example.test';
 const endpoint = '/_studio/web/';
+const workerFrame = '/oss-dev/static/out/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html';
 const close = server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
 async function freePort() {
   const server = http.createServer();
@@ -64,7 +65,11 @@ test('configuration fails closed on missing or overlapping remote HTTPS settings
 test('the remote listener gates HTTP, upgrades and previews even with a loopback peer', { timeout: 10_000 }, async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'sh-web-gateway-'));
   const proof = secret(), record = [];
-  const upstream = http.createServer((req, res) => { record.push(req.headers); res.end('workbench'); });
+  const upstream = http.createServer((req, res) => {
+    record.push(req.headers);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'" });
+    res.end('workbench');
+  });
   const sockets = new Set();
   const acceptUpgrade = (req, socket) => {
     record.push(req.headers); sockets.add(socket);
@@ -110,11 +115,17 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   }
   assert.equal((await request(workbenchOrigin, '/', { Accept: 'text/html', 'X-Forwarded-Host': new URL(local).host })).headers.get('location'), '/pair');
   assert.equal((await request(workbenchOrigin, '/static/resource')).status, 401);
+  assert.equal((await request(workbenchOrigin, workerFrame)).status, 401);
   const denied = await upgrade(); assert.match(denied.response, /403/); denied.socket.destroy();
   assert.equal(record.length, 0);
   assert.equal((await request(previewOrigin, `/p/${secret()}/`)).status, 404);
   assert.equal((await request(local, '/', { Origin: previewOrigin })).status, 403);
-  assert.equal(await (await request(local, '/')).text(), 'workbench');
+  const localWorkbench = await request(local, '/');
+  assert.equal(await localWorkbench.text(), 'workbench');
+  assert.equal(localWorkbench.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'none'");
+  const localWorker = await request(local, `${workerFrame}?vscode-coi=3`, { 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'iframe' });
+  assert.equal(localWorker.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'self'");
+  assert.equal((await request(local, workerFrame, { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'iframe' })).status, 403);
 
   const { pair } = await (await admin({ action: 'generate', origin: workbenchOrigin })).json();
   assert.ok(pair.link.endsWith(`/pair#code=${pair.code}`));
@@ -129,6 +140,10 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value' })).text(), 'workbench');
   assert.equal(record.at(-1)['x-steamharness-gateway'], proof);
   assert.equal(record.at(-1).cookie, '');
+  const remoteWorker = await request(workbenchOrigin, workerFrame, { Cookie: cookie });
+  assert.equal(remoteWorker.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'self'");
+  const otherFrame = await request(workbenchOrigin, `/other${workerFrame}`, { Cookie: cookie });
+  assert.equal(otherFrame.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'none'");
   assert.equal((await request(workbenchOrigin, endpoint + 'manage', { Cookie: cookie }, { action: 'generate' })).status, 403);
   assert.equal((await request(workbenchOrigin, endpoint + 'manage', { Cookie: cookie }, { action: 'stop' })).status, 403);
 

@@ -24,6 +24,8 @@ const registryFile = path.join(data, 'instance.json');
 const caseFile = path.join(directory, 'fixture-case.txt');
 const close = server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
 const availablePort = async () => { const server = http.createServer(); const port = await listen(server, '127.0.0.1'); await close(server); return port; };
+const waitForBrowserExtensionHost = page => page.frameLocator('iframe.web-worker-ext-host-iframe')
+  .locator('meta[http-equiv="Content-Security-Policy"]').waitFor({ state: 'attached', timeout: 30_000 });
 const readJson = async file => JSON.parse(await readFile(file, 'utf8'));
 const until = async (read, description, timeout = 45_000) => {
   for (const deadline = Date.now() + timeout; Date.now() < deadline;) {
@@ -180,6 +182,7 @@ try {
     if (request.url().includes('.vscode-cdn.net/')) console.error('Webview asset request failed:', new URL(request.url()).pathname, request.failure()?.errorText);
   });
   await localPage.goto(local, { waitUntil: 'domcontentloaded' });
+  await waitForBrowserExtensionHost(localPage);
   const settings = await until(async () => {
     for (const frame of localPage.frames()) {
       if (await frame.getByRole('button', { name: 'Generate pairing code' }).isVisible().catch(() => false)) return frame;
@@ -215,6 +218,7 @@ try {
       await writeFile(caseFile, name);
       await page.getByRole('button', { name: zh ? '确认配对' : 'Confirm pairing' }).click();
       await page.locator('.monaco-workbench').waitFor({ timeout: 60_000 });
+      await waitForBrowserExtensionHost(page);
       const persistedCookie = (await context.cookies()).find(cookie => cookie.name === '__Host-steamharness-studio');
       assert.ok(persistedCookie?.secure && persistedCookie.httpOnly);
       await until(async () => (await readFile(path.join(workspace, `${name}-pty.txt`), 'utf8').catch(() => '')).includes(`${name}-pty`), 'Remote terminal did not write to the host.');

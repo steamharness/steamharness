@@ -1,6 +1,7 @@
 import { request } from 'node:http';
 
 const hopByHop = ['connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade', 'proxy-connection', 'proxy-authenticate', 'proxy-authorization'];
+const webWorkerHostFrame = /^(?:\/[\w-]+)?\/static\/out\/vs\/workbench\/services\/extensions\/worker\/webWorkerExtensionHostIframe\.html$/;
 function filtered(raw) {
   const headers = { ...raw };
   for (const key of [...hopByHop, ...String(headers.connection ?? '').toLowerCase().split(/\s*,\s*/)]) delete headers[key];
@@ -28,7 +29,7 @@ export function relayHeaders(req, { host, proof, mount, upgrade = false }) {
   return headers;
 }
 
-function responseHeaders(res, { mount, ancestor, origin, host }) {
+function responseHeaders(res, { mount, ancestor, origin, host, path }) {
   const headers = filtered(res.headers);
   delete headers['clear-site-data'];
   headers['cache-control'] = 'no-store';
@@ -52,7 +53,9 @@ function responseHeaders(res, { mount, ancestor, origin, host }) {
     }
   } else {
     const policy = headers['content-security-policy'];
-    headers['content-security-policy'] = `${policy ? `${policy}; ` : ''}frame-ancestors 'none'`;
+    // Source builds initialize the browser extension host in this same-origin iframe.
+    const ancestors = String(headers['content-type']).startsWith('text/html') && webWorkerHostFrame.test(new URL(path, origin).pathname) ? 'self' : 'none';
+    headers['content-security-policy'] = `${policy ? `${policy}; ` : ''}frame-ancestors '${ancestors}'`;
     if (origin.startsWith('https:')) headers['strict-transport-security'] = 'max-age=86400';
   }
   return headers;
