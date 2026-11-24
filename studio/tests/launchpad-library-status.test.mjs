@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 
-const kernel = new URL('../upstream/vscode/src/vs/workbench/electron-browser/', import.meta.url);
+const kernel = new URL('../upstream/vscode/src/vs/workbench/browser/', import.meta.url);
 const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('studioLaunchpadLibrary.ts', kernel))],
   bundle: true, platform: 'browser', format: 'iife', globalName: 'studio', loader: { '.css': 'empty' }, write: false });
 

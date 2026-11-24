@@ -53,6 +53,8 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
   const servers = [], sockets = new Set(), active = new Map(), targets = new Map(), leases = new Map();
   const adminKey = secret(), registryKey = secret();
   const localPreviewOrigins = new Map();
+  // The development workbench loads thousands of ES modules. Reuse sockets to its trusted backend only.
+  const workbenchAgent = new http.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 8 });
   const remote = [config.proxy, config.lan].filter(Boolean);
   const entryOrigins = remote.map(entry => ({ url: entry.workbench.origin, preview: entry.preview.origin }));
   let localPort, previewPort, closing, adminPort;
@@ -208,7 +210,7 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
           }
           return json(res, 401, { error: 'pair' });
         }
-        relay(req, res, { port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof }, drop => track(owner, drop));
+        relay(req, res, { port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof, agent: workbenchAgent }, drop => track(owner, drop));
       })().catch(() => { if (!res.headersSent && !res.destroyed) json(res, 400, { error: 'request' }); else res.destroy(); });
     };
     const options = { requestTimeout: 30_000, headersTimeout: 10_000, ...(tls ?? {}) };
@@ -235,6 +237,7 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
     closing = (async () => {
       for (const id of targets.keys()) retireTarget(id);
       for (const id of [...active.keys()]) disconnect(id);
+      workbenchAgent.destroy();
       const stopped = servers.filter(server => server.listening).map(server => new Promise(resolve => server.close(resolve)));
       for (const socket of sockets) socket.destroy();
       await Promise.all([...stopped, sessions.close()]);

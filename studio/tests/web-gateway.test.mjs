@@ -65,8 +65,15 @@ test('configuration fails closed on missing or overlapping remote HTTPS settings
 test('the remote listener gates HTTP, upgrades and previews even with a loopback peer', { timeout: 10_000 }, async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'sh-web-gateway-'));
   const proof = secret(), record = [];
+  const workbenchSockets = new Set();
   const upstream = http.createServer((req, res) => {
     record.push(req.headers);
+    workbenchSockets.add(req.socket);
+    if (req.url === '/events') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: workbench ready\n\n');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'" });
     res.end('workbench');
   });
@@ -140,6 +147,11 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value' })).text(), 'workbench');
   assert.equal(record.at(-1)['x-steamharness-gateway'], proof);
   assert.equal(record.at(-1).cookie, '');
+  const socketsBefore = workbenchSockets.size;
+  for (let index = 0; index < 20; index++) {
+    assert.equal(await (await request(workbenchOrigin, `/static/module-${index}.js`, { Cookie: cookie })).text(), 'workbench');
+  }
+  assert.ok(workbenchSockets.size <= socketsBefore + 1, 'sequential workbench requests should reuse a backend socket');
   const remoteWorker = await request(workbenchOrigin, workerFrame, { Cookie: cookie });
   assert.equal(remoteWorker.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'self'");
   const otherFrame = await request(workbenchOrigin, `/other${workerFrame}`, { Cookie: cookie });
@@ -178,6 +190,8 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const activeMount = new URL(nextUrl.url).pathname;
   const events = (await request(previewOrigin, activeMount + '/events')).body.getReader();
   assert.match(Buffer.from((await events.read()).value).toString(), /ready/);
+  const workbenchEvents = (await request(workbenchOrigin, '/events', { Cookie: cookie })).body.getReader();
+  assert.match(Buffer.from((await workbenchEvents.read()).value).toString(), /workbench ready/);
   const connected = await upgrade(cookie);
   assert.match(connected.response, /101 Switching Protocols/);
   const disconnected = once(connected.socket, 'close');
@@ -185,6 +199,7 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   await admin({ action: 'revoke', id: device.id });
   await disconnected;
   await assert.rejects(events.read());
+  await assert.rejects(workbenchEvents.read());
   assert.equal((await next.registration.read()).done, true);
   assert.equal((await request(previewOrigin, activeMount + '/')).status, 404);
   assert.equal((await request(workbenchOrigin, '/', { Cookie: cookie })).status, 401);

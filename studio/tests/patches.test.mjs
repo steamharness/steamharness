@@ -48,12 +48,12 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   const files = ['src/vs/workbench/browser/parts/studioMode.ts', 'src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts', 'src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css',
     'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
     'src/vs/workbench/browser/studioProjectDetails.ts', 'src/vs/workbench/browser/media/studioProjectDetails.css',
-    'src/vs/workbench/electron-browser/studioLaunchpadView.ts',
+    'src/vs/workbench/browser/studioLaunchpadView.ts',
     'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
     'src/vs/workbench/browser/parts/globalCompositeBar.ts', 'src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts',
-    'src/vs/workbench/common/studioProjectIcons.ts', 'src/vs/workbench/electron-browser/studioLaunchpad.ts', 'src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts',
-    'src/vs/workbench/electron-browser/studioLaunchpadView.ts', 'src/vs/workbench/electron-browser/studioLaunchpadCards.ts',
-    'src/vs/workbench/electron-browser/studioLaunchpadProfile.ts', 'src/vs/workbench/electron-browser/studioLaunchpadPicker.ts', 'src/vs/workbench/electron-browser/media/studioLaunchpad.css',
+    'src/vs/workbench/common/studioProjectIcons.ts', 'src/vs/workbench/electron-browser/studioLaunchpad.ts', 'src/vs/workbench/browser/studioLaunchpadLibrary.ts',
+    'src/vs/workbench/browser/studioLaunchpadCards.ts', 'src/vs/workbench/browser/studioLaunchpadProfile.ts',
+    'src/vs/workbench/browser/studioLaunchpadPicker.ts', 'src/vs/workbench/browser/media/studioLaunchpad.css',
     'src/vs/code/electron-main/app.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
     'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts',
     'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts'];
@@ -81,7 +81,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioLaunchpad.ts'), 'utf8'), /private refreshSocialState\(/u);
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioChatWindow.ts'), 'utf8'), /nativeClipboard: true/u);
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioLaunchpad.ts'), 'utf8'), /!this\.managedWorkspaceUris\.has\(row\.uri\)/u);
-  assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts'), 'utf8'), /lp-index-toggle/u);
+  assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/browser/studioLaunchpadLibrary.ts'), 'utf8'), /lp-index-toggle/u);
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/platform/windows/electron-main/studioTray.ts'), 'utf8'), /Clear Read Notifications/u);
   const before = await Promise.all(files.map(file => fs.readFile(path.join(upstream, file))));
   await applyPatches(ROOT, upstream);

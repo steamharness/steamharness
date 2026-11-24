@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "6eb1c27d0586a8c9037509ec188c694b1bb8face",
+  "commit": "0e7289cc9a1b61a24539b910b6f9a7bf3804ec3a",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -141,6 +141,10 @@
     "0144-studio-steam-tools-hit-area.patch": "910696daa9bf0e9f54ea4e0a1fd2268fc5e4fb05ae99b86678f376cb4d941e4b",
     "0145-studio-inbox-notification-acknowledgement.patch": "60619dbd510e1bdf74367893fc16a8948fd1cb1be821b380444331335e6e3482",
     "0146-studio-tray-clear-read-notifications.patch": "e8334601a0a54f4cc48496f09532e159e2385a7e6e1e0176ada6cc3e053c3351",
-    "0147-studio-library-folder-bots.patch": "d5397d5dc460fbe138efb54ff44dd42e17730a50e7bf57871ee5d5a7ede85b82"
+    "0147-studio-library-folder-bots.patch": "d5397d5dc460fbe138efb54ff44dd42e17730a50e7bf57871ee5d5a7ede85b82",
+    "0148-studio-web-gateway.patch": "7157ae798dc8999824febd5f07ce3f7eb27f8e1292e870c45c4adb1cfa33d6ed",
+    "0149-studio-builtin-library-projects.patch": "c413e300480f29135c1d3aad532852f7728c9648d0722002c4191f7214f9a96a",
+    "0150-studio-detail-action-sections.patch": "65b47135e0c90454c295af32e3560cbd7c485047338737385196e3d07a79fa9f",
+    "0151-studio-web-launchpad.patch": "1da36a826471db6f1013099f5ba8169febe131ec0b2b1071f6c0a886fd6fcaa5"
   }
 }

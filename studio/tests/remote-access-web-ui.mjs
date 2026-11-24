@@ -39,11 +39,15 @@ const post = (origin, route, body) => fetch(`${origin}/_studio/web/${route}`, { 
 
 function reverseProxy(tls, port) {
   const sockets = new Set();
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 16, maxFreeSockets: 6 });
   const server = https.createServer(tls, (req, res) => {
-    const upstream = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, incoming => {
+    const upstream = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers, agent }, incoming => {
+      incoming.on('error', () => res.destroy());
       res.writeHead(incoming.statusCode, incoming.headers); incoming.pipe(res);
     });
-    upstream.on('error', () => res.destroy()); res.once('close', () => upstream.destroy()); req.pipe(upstream);
+    upstream.on('error', () => res.destroy());
+    res.once('close', () => { if (!res.writableFinished) upstream.destroy(); });
+    req.pipe(upstream);
   });
   server.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); });
   server.on('upgrade', (req, socket, head) => {
@@ -58,7 +62,7 @@ function reverseProxy(tls, port) {
     upstream.on('response', incoming => { incoming.destroy(); socket.destroy(); });
     upstream.on('error', () => socket.destroy()); upstream.end();
   });
-  return { server, close: async () => { for (const socket of sockets) socket.destroy(); await close(server); } };
+  return { server, close: async () => { agent.destroy(); for (const socket of sockets) socket.destroy(); await close(server); } };
 }
 
 let model, proxy, runner, browser, local, startupError;
@@ -139,9 +143,8 @@ try {
   await writeFile(path.join(companion, 'extension.cjs'), `const vscode=require('vscode'), fs=require('node:fs/promises');
     exports.activate=async()=>{try{
       await vscode.extensions.getExtension('studio.studio-workstation').activate();
-      await vscode.commands.executeCommand('studio.openSettings',{section:'remote-access'});
       const name=await fs.readFile(${JSON.stringify(caseFile)},'utf8').catch(()=>'');
-      if(!['proxy','lan'].includes(name))return;
+      if(!['proxy','lan'].includes(name)||!vscode.workspace.workspaceFile)return;
       const folder=name=>vscode.workspace.workspaceFolders.find(entry=>entry.name===name).uri;
       const root=folder('workflow');
       for(const project of ${JSON.stringify(examples)}) vscode.commands.registerCommand('studio-test.open.'+project,()=>vscode.commands.executeCommand('studio.internalRunProjectEntry',{uri:folder(project).toString(),entryId:'main'}));
@@ -168,7 +171,7 @@ try {
     STEAMHARNESS_STUDIO_WEB_TLS_CERT_FILE: cert, STEAMHARNESS_STUDIO_WEB_TLS_KEY_FILE: key });
   runner = runManagedWeb({ directory: data, storage: path.join(directory, 'runs'), config, prepare: async () => ({ upstream: upstream.directory,
     args: ['--server-data-dir', data, '--extensions-dir', path.dirname(companion), '--disable-workspace-trust', '--telemetry-level', 'off',
-      '--builtin-extensions-dir', await webBuiltins(data, upstream.directory, path.join(ROOT, 'extensions/studio-workstation')), '--default-workspace', workspaceFile],
+      '--builtin-extensions-dir', await webBuiltins(data, upstream.directory, path.join(ROOT, 'extensions/studio-workstation'))],
   }) }).catch(error => { startupError = error; });
   await until(async () => { if (startupError) throw startupError; return readJson(registryFile).catch(() => undefined); }, 'Studio Web did not start.');
   browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true,
@@ -178,16 +181,36 @@ try {
   const localContext = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
   if (!liveWebviews) await serveLocalWebviewAssets(localContext, upstream);
   const localPage = await localContext.newPage();
+  const aliasPage = await localContext.newPage();
+  await aliasPage.goto(local.replace('127.0.0.1', 'localhost'), { waitUntil: 'domcontentloaded' });
+  await aliasPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  // A direct folder link uses the workbench and does not mount a Launchpad over it.
+  await aliasPage.goto(new URL(`/?folder=${encodeURIComponent(workspace)}`, local).href, { waitUntil: 'domcontentloaded' });
+  await aliasPage.locator('.monaco-workbench:not(.studio-launchpad-window)').waitFor({ timeout: 60_000 });
+  await waitForBrowserExtensionHost(aliasPage);
+  await aliasPage.locator('[id="studio.showLaunchpad"] a').click();
+  await aliasPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  const recent = aliasPage.locator('.lp-library-card').filter({ hasText: path.basename(workspace) }).first();
+  await recent.click();
+  await aliasPage.getByRole('button', { name: 'Open in workbench' }).click();
+  await aliasPage.waitForURL(url => url.searchParams.get('folder') === workspace);
+  await aliasPage.close();
   if (liveWebviews) localPage.on('requestfailed', request => {
     if (request.url().includes('.vscode-cdn.net/')) console.error('Webview asset request failed:', new URL(request.url()).pathname, request.failure()?.errorText);
   });
   await localPage.goto(local, { waitUntil: 'domcontentloaded' });
   await waitForBrowserExtensionHost(localPage);
+  await localPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  assert.equal(await localPage.locator('.studio-mode-toggle').isVisible(), false);
+  await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = await until(async () => {
     for (const frame of localPage.frames()) {
-      if (await frame.getByRole('button', { name: 'Generate pairing code' }).isVisible().catch(() => false)) return frame;
+      if (await frame.getByRole('button', { name: 'Remote Access', exact: true }).isVisible().catch(() => false)) return frame;
     }
-  }, 'The local workbench did not open Remote Access settings.', 60_000);
+  }, 'The local Launchpad did not open Settings.', 60_000);
+  await settings.getByRole('button', { name: 'Remote Access', exact: true }).click();
+  await settings.getByRole('button', { name: 'Generate pairing code' }).waitFor();
+  console.log('[OK] 127.0.0.1 and localhost home · folder URL · recent project · Launchpad Settings');
   let botFailure;
   for (const [index, origin] of remote.entries()) {
     const zh = index === 1;
@@ -196,8 +219,17 @@ try {
     if (!liveWebviews) await serveLocalWebviewAssets(context, upstream);
     try {
       const page = await context.newPage();
+      const loadErrors = [];
+      page.on('pageerror', error => loadErrors.push(error.message));
+      page.on('requestfailed', request => {
+        if (['document', 'script'].includes(request.resourceType())) {
+          loadErrors.push(`${new URL(request.url()).pathname}: ${request.failure()?.errorText}`);
+        }
+      });
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: zh ? '配对 SteamHarness Studio' : 'Pair with SteamHarness Studio' }).waitFor();
+      await page.goto(new URL(`/?workspace=${encodeURIComponent(workspaceFile)}`, origin).href, { waitUntil: 'domcontentloaded' });
+      assert.equal(new URL(page.url()).pathname, '/pair');
       await settings.getByRole('combobox', { name: 'Remote address' }).selectOption(origin);
       await settings.getByRole('button', { name: 'Generate pairing code' }).click();
       const qr = settings.getByRole('img', { name: 'Pairing QR code' });
@@ -214,10 +246,42 @@ try {
         assert.equal((await context.cookies()).some(cookie => cookie.name === '__Host-steamharness-studio'), false);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
         await page.setViewportSize({ width: 1280, height: 900 });
-      } else await page.getByLabel('Pairing code').fill(code);
+      } else {
+        const input = page.getByLabel('Pairing code');
+        await input.fill(`${code[0] === 'A' ? 'B' : 'A'}${code.slice(1)}`);
+        await page.getByRole('button', { name: 'Confirm pairing' }).click();
+        await page.getByText('The code is incorrect, used, or expired.', { exact: false }).waitFor();
+        assert.equal(new URL(page.url()).pathname, '/pair');
+        await input.fill(code);
+      }
       await writeFile(caseFile, name);
       await page.getByRole('button', { name: zh ? '确认配对' : 'Confirm pairing' }).click();
-      await page.locator('.monaco-workbench').waitFor({ timeout: 60_000 });
+      const home = page.locator('.studio-launchpad');
+      await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
+      assert.equal(new URL(page.url()).pathname, '/');
+      await waitForBrowserExtensionHost(page);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
+      console.log(`[OK] ${name}: paired, reached Launchpad and restored session on reload`);
+      if (zh) {
+        await page.setViewportSize({ width: 390, height: 844 });
+        assert.ok(await home.evaluate(element => element.scrollWidth <= element.clientWidth));
+        await page.setViewportSize({ width: 1280, height: 900 });
+      }
+      await home.getByRole('button', { name: zh ? '打开项目…' : 'Open project…' }).click();
+      await home.getByRole('button', { name: zh ? '打开工作区…' : 'Open workspace…' }).click();
+      const picker = page.locator('.quick-input-widget');
+      const input = picker.locator('input').first();
+      await picker.locator('.quick-input-list .monaco-list-row').first().waitFor();
+      await input.fill(path.dirname(workspaceFile) + path.sep);
+      await picker.getByText(path.basename(workspaceFile), { exact: true }).click({ timeout: 10_000 }).catch(async error => {
+        throw new Error(`Workspace picker value: ${await input.inputValue()}\n${(await picker.innerText()).slice(0, 2000)}`, { cause: error });
+      });
+      await page.waitForURL(url => url.searchParams.get('workspace') === workspaceFile);
+      await page.locator('.monaco-workbench:not(.studio-launchpad-window)').waitFor({ timeout: 60_000 }).catch(async error => {
+        const body = await page.locator('body').innerText();
+        throw new Error(`Workspace failed to load: ${body.slice(0, 1000)}\n${loadErrors.slice(-20).join('\n')}`, { cause: error });
+      });
       await waitForBrowserExtensionHost(page);
       const persistedCookie = (await context.cookies()).find(cookie => cookie.name === '__Host-steamharness-studio');
       assert.ok(persistedCookie?.secure && persistedCookie.httpOnly);

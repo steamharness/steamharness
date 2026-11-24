@@ -63,14 +63,19 @@ function responseHeaders(res, { mount, ancestor, origin, host, path }) {
 
 export function relay(req, res, target, track) {
   const upstream = request({ hostname: '127.0.0.1', port: target.port, path: target.path,
-    method: req.method, headers: relayHeaders(req, target), agent: false }, incoming => {
+    method: req.method, headers: relayHeaders(req, target), agent: target.agent ?? false }, incoming => {
     if (res.destroyed) { incoming.destroy(); return; }
     res.writeHead(incoming.statusCode ?? 502, responseHeaders(incoming, target));
     incoming.on('error', () => res.destroy());
     incoming.pipe(res);
   });
   const release = track(() => { res.destroy(); upstream.destroy(); });
-  res.once('close', () => { release(); upstream.destroy(); });
+  res.once('finish', release);
+  res.once('close', () => {
+    if (res.writableFinished) return;
+    release();
+    upstream.destroy();
+  });
   upstream.on('error', () => {
     if (res.headersSent) res.destroy();
     else if (!res.destroyed) { res.writeHead(502, { 'Cache-Control': 'no-store' }); res.end(); }

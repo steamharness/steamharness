@@ -6,9 +6,9 @@ import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
 const bundle = await build({ stdin: { resolveDir: kernel, sourcefile: 'usage-fixture.ts', contents: `
   export { StudioStartView } from './src/vs/workbench/browser/parts/editor/studioStart.ts';
-  export { StudioLaunchpadView } from './src/vs/workbench/electron-browser/studioLaunchpadView.ts';
+  export { StudioLaunchpadView } from './src/vs/workbench/browser/studioLaunchpadView.ts';
   export { projectUsageBridge } from './src/vs/workbench/browser/studioProjectUsage.ts';
-  import './src/vs/workbench/electron-browser/media/studioLaunchpad.css';` },
+  import './src/vs/workbench/browser/media/studioLaunchpad.css';` },
   bundle: true, platform: 'browser', format: 'iife', globalName: 'usageFixture', write: false, outdir: 'unused', loader: { '.woff2': 'dataurl' } });
 const script = bundle.outputFiles.find(file => file.path.endsWith('.js')).text;
 const styles = bundle.outputFiles.find(file => file.path.endsWith('.css')).text;

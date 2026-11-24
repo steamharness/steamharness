@@ -139,7 +139,9 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     }, remove, { title: t('Cancel'), isCloseAffordance: true });
     if (answer === remove) {
       await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri), true);
+      return true;
     }
+    return false;
   });
   register('studio.clearRecentProjects', async () => {
     const clear = t('Clear');

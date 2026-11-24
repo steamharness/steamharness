@@ -30,10 +30,11 @@ const compiled = await build({ stdin: { contents: `
 const chinese = JSON.parse(await readFile(new URL('../extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', import.meta.url), 'utf8'));
 const uri = value => ({ scheme: new URL(value).protocol.slice(0, -1), path: new URL(value).pathname, fsPath: new URL(value).pathname, toString: () => value });
 
-async function fixture(t, language = 'en') {
+async function fixture(t, language = 'en', browser = false) {
   const callbacks = new Map(), storage = new Map(), disposable = { dispose() {} };
   const f = { choice: 'new', dialogs: [], opens: [], warnings: [], warningDialogs: [], errors: [], storage, folders: [uri('file:///projects/demo')] };
   const vscode = {
+    env: { uiKind: browser ? 2 : 1 }, UIKind: { Desktop: 1, Web: 2 },
     EventEmitter: class { event = () => disposable; fire() {} dispose() {} },
     Uri: { parse: uri },
     workspace: { workspaceFolders: [], getConfiguration: () => ({ get: (_key, fallback) => fallback }),
@@ -159,10 +160,12 @@ test('a disposed project view cannot open a window after the dialog resolves', a
   assert.deepEqual(f.opens, []);
 });
 
-test('the launchpad opens projects in a separate window without prompting', async t => {
-  const f = await fixture(t);
-  f.launchpad = true;
-  await f.open(uri('file:///projects/demo'));
-  assert.deepEqual(f.dialogs, []);
-  assert.deepEqual(f.opens, [{ uri: 'file:///projects/demo', options: { forceNewWindow: true, forceReuseWindow: false } }]);
-});
+for (const browser of [false, true]) {
+  test(`the ${browser ? 'web' : 'desktop'} launchpad opens projects ${browser ? 'in the same tab' : 'in a separate window'} without prompting`, async t => {
+    const f = await fixture(t, 'en', browser);
+    f.launchpad = true;
+    await f.open(uri('file:///projects/demo'));
+    assert.deepEqual(f.dialogs, []);
+    assert.deepEqual(f.opens, [{ uri: 'file:///projects/demo', options: { forceNewWindow: !browser, forceReuseWindow: browser } }]);
+  });
+}
