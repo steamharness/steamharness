@@ -134,6 +134,18 @@ describe("steamharness-generator contract", () => {
     }
   });
 
+  it("routes Open with Bot setup to the entry manifest and the bundled contract", async () => {
+    const [taskMap, api] = await Promise.all([
+      readFile(path.join(skillRoot, "references", "task-map.md"), "utf8"),
+      readFile(path.join(skillRoot, "references", "steamharness-api.md"), "utf8"),
+    ]);
+    const row = taskMap.split("\n").find(line => line.includes("「用 Bot 打开」"));
+    expect(row).toContain('"folderContext": true');
+    expect(row).toContain("`steamharness-api.md`「本地 Bot 入口控制」");
+    expect(row).toContain("`get_entries`");
+    expect(api).toMatch(/^## 本地 Bot 入口控制$/m);
+  });
+
   it("keeps the Agent project example statically discoverable", () => {
     const exampleDir = path.join(skillRoot, "assets", "examples", "bot");
     const structure = inspectProjectStructure({

@@ -158,6 +158,27 @@ describe("developer assistant workspace manifest", () => {
     expect(auto).not.toContain("Never access files outside those roots");
   });
 
+  it.each(["auto", "workspace", "read-only"] as const)("uses public SteamHarness source as a fallback under %s", policy => {
+    const primaryTarget = { kind: "folder", folderId: "primary" } as const;
+    const prompt = createDeveloperAssistantSystemPrompt({
+      schemaVersion: 2,
+      primaryTarget,
+      roots: [{ target: primaryTarget, name: "Primary", rootPath: path.resolve("workspace", "primary"), depth: 0, role: "primary" }],
+      warnings: [],
+    }, "vscode", policy);
+
+    const contractPosition = prompt.indexOf("Resolve API contracts from those references");
+    const sourcePosition = prompt.indexOf("https://github.com/steamharness/steamharness");
+    expect(contractPosition).toBeGreaterThanOrEqual(0);
+    expect(sourcePosition).toBeGreaterThan(contractPosition);
+    expect(prompt).toContain("Prefer a verified tag or commit matching the relevant version");
+    expect(prompt).toContain("link to the files you use");
+    expect(prompt).toContain("If you cannot read the source online, link to the repository and say what remains unverified");
+    expect(prompt).toContain("Do not search for a local SteamHarness checkout");
+    expect(prompt).toContain("only when the user explicitly selects it for the task and the permission policy allows it");
+    expect(prompt).toContain("Continue to inspect the user's own project files locally as needed");
+  });
+
   it("rejects mismatched primary directories, duplicate roots, and invalid linked depth", () => {
     const root = path.resolve("workspace", "primary");
     const primaryTarget = { kind: "project", projectId: "project-a" } as const;

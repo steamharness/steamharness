@@ -7,6 +7,7 @@
 | 新建或调整 Workflow 的多个入口 | `steamharness.defineProject`、`defineExecutor`、`defineEntrypoint`；`EntrypointDefinition`、`ExecutorDefinition` | `steamharness-api.md`「Workflow 与 Executor」；`scripts/create_workflow.py` | `steamharness structure` 检查入口与执行序列 |
 | 新建 Bot | `steamharness.defineBot`；`BotDefinition`、`BotExecutorDefinition` | `steamharness-api.md` 的 Bot 契约；`scripts/create_workflow.py --project-type bot` | structure 后进行隔离运行 |
 | 新建有参数与工具的 Bot | `steamharness.defineBot`；`BotDefinition`、`AgentInput`、`AgentOutputPayload` | `assets/examples/bot/index.ts` | structure 检查默认参数和业务工具 |
+| 让现有 Bot 支持 Studio 的「用 Bot 打开」 | 在 Bot 入口清单中加 `"folderContext": true` | `steamharness-api.md`「本地 Bot 入口控制」 | 用 `steamharness structure` 或 Studio Control `get_entries` 确认入口声明 |
 | 在已有 workflow 中嵌入 Agent 节点 | `steamharness.createAgentNode`；`AgentNodeOptions`、`AgentInput` | `steamharness-api.md`「Agent（pi SDK 能力层）」与「节点」 | 对节点做类型检查及运行 smoke |
 | 仅在宿主或测试中构造 Agent executor | `steamharness.defineBot`；`AgentProjectOptions` | `steamharness-api.md`「Agent（pi SDK 能力层）」 | 不把返回对象当作项目的静态声明 |
 | 定义 Workflow 主字段、Conversation Quick/Mode/Auxiliary 或联动 | `ParamDeclaration`、`BotParamDeclaration`、`ParamResolverContext`、`ParamResolveResult` | `references/param-panels.md`；`steamharness-api.md`「参数」 | `structure` 检查 `params` 与 `paramLayout.actions` |
