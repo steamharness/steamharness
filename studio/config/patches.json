@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "e5e9545b1ade52c5ab8c94762a7c3c4414846e81",
+  "commit": "3be1ad67515690770d40d693951e98d9962e78ad",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -146,6 +146,7 @@
     "0149-studio-builtin-library-projects.patch": "c413e300480f29135c1d3aad532852f7728c9648d0722002c4191f7214f9a96a",
     "0150-studio-detail-action-sections.patch": "65b47135e0c90454c295af32e3560cbd7c485047338737385196e3d07a79fa9f",
     "0151-studio-web-launchpad.patch": "1da36a826471db6f1013099f5ba8169febe131ec0b2b1071f6c0a886fd6fcaa5",
-    "0152-studio-standard-bot-icon.patch": "6631a2dd201a6f0fb67f959670a43ec0e72b702e308b508d1e8aa5c74d4c77df"
+    "0152-studio-standard-bot-icon.patch": "6631a2dd201a6f0fb67f959670a43ec0e72b702e308b508d1e8aa5c74d4c77df",
+    "0153-studio-web-launchpad-profile.patch": "219e9a470db661e94a310d50fee7485c8557568b37c84bf784108d93db613e6d"
   }
 }

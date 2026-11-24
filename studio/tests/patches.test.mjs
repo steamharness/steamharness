@@ -69,7 +69,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/platform/windows/common/studioTrayNotifications.ts', 'src/vs/platform/windows/electron-main/studioTray.ts',
     'src/vs/platform/windows/electron-main/studioTrayPreview.ts', 'src/vs/platform/windows/electron-main/windows.ts',
     'src/vs/platform/windows/electron-main/windowsMainService.ts', 'src/vs/workbench/electron-browser/studioDesktopNotifications.ts',
-    'src/vs/workbench/electron-browser/studioNotificationInbox.ts', 'src/vs/workbench/test/electron-browser/workbenchTestServices.ts',
+    'src/vs/workbench/browser/studioNotificationInbox.ts', 'src/vs/workbench/test/electron-browser/workbenchTestServices.ts',
     'src/vs/platform/notification/common/notification.ts', 'src/vs/workbench/common/notifications.ts',
     'src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts', 'src/vs/workbench/browser/parts/notifications/notificationsCenter.ts',
     'src/vs/workbench/browser/parts/notifications/notificationsCommands.ts', 'src/vs/workbench/browser/parts/notifications/notificationsViewer.ts',
