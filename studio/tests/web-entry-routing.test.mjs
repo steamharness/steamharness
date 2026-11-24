@@ -10,13 +10,13 @@ const module = { exports: {} };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
   { module, exports: module.exports, URL, crypto: webcrypto });
 
-function fixture(entryId = 'agent', saved, conversationView) {
+function fixture(entryId = 'agent', saved, conversationView, selection) {
   const origin = 'http://127.0.0.1:4567', received = [], posted = [], handlers = new Map(), frameHandlers = new Map();
   let state;
   const frame = { contentWindow: { postMessage: (message, target) => received.push({ message, target }) },
     addEventListener: (name, callback) => frameHandlers.set(name, callback), dispatchEvent() {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 1200, height: 900 }), setAttribute() {} };
-  const html = module.exports.projectFrameHtml(`${origin}/entries/${entryId}/#session=token`, 'Aggregate / Entry', 'file:///aggregate', 'dark', 'nonce', 'en', undefined, conversationView);
+  const html = module.exports.projectFrameHtml(`${origin}/entries/${entryId}/#session=token`, 'Aggregate / Entry', 'file:///aggregate', 'dark', 'nonce', 'en', undefined, conversationView, false, false, true, selection);
   const code = html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1];
   runInNewContext(code, { URL, document: { getElementById: () => frame, documentElement: { dataset: {} }, activeElement: frame },
     acquireVsCodeApi: () => ({ getState: () => saved, setState: value => { state = JSON.parse(JSON.stringify(value)); }, postMessage: message => posted.push(message) }),
@@ -48,6 +48,20 @@ test('new conversation entry tabs create independent conversations and restore t
   const restored = fixture('agent', first.state(), 'restore');
   assert.equal(restored.url.searchParams.get('conversationId'), conversation);
   assert.equal(restored.url.searchParams.has('createConversation'), false);
+});
+
+test('a new project link overrides the retained tab without creating a second conversation', () => {
+  const original = fixture('agent', undefined, 'new');
+  const selection = { id: '12345678-1234-1234-1234-123456789abc', revision: 'abcdabcd-1234-1234-1234-123456789abc' };
+  const linked = fixture('agent', original.state(), 'restore', selection);
+  assert.equal(linked.url.searchParams.get('conversationId'), selection.id);
+  assert.equal(linked.url.searchParams.get('studioConversation'), selection.id);
+  assert.equal(linked.url.searchParams.has('createConversation'), false);
+  const local = 'abcdabcd-1234-1234-1234-0123456789ab';
+  linked.send({ type: 'workflow-navigation', version: 1, id: local, create: false });
+  const restored = fixture('agent', linked.state(), 'restore', selection);
+  assert.equal(restored.url.searchParams.get('conversationId'), local);
+  assert.equal(restored.url.searchParams.has('studioConversation'), false);
 });
 
 test('each Studio tab forwards its own open requests, host replies and editing without split routing', () => {

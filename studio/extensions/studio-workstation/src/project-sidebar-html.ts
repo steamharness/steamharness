@@ -11,11 +11,12 @@ export function sidebarStatusDocument(lang: string, message: string, label?: str
 <p role="status">${escape(message)}</p>${label ? `<button id="action" type="button">${escape(label)}</button><script nonce="${nonce}">const host=acquireVsCodeApi();document.getElementById('action').addEventListener('click',()=>host.postMessage({type:'studio-sidebar-action'}));</script>` : ''}</html>`;
 }
 
-export function hostedSidebarHtml(lang: string, title: string, preview: HostedSidebarPreview, route?: string, titlebarOverlay = false): string {
+export function hostedSidebarHtml(lang: string, title: string, preview: HostedSidebarPreview, route?: string, titlebarOverlay = false, projectLinks = false): string {
   const nonce = newNonce(), url = new URL(preview.url), origin = url.origin;
   if (route !== undefined) {
     if (!route.startsWith('/') || route.startsWith('//')) throw new Error('Invalid hosted application route');
     url.searchParams.set('studio-language', lang);
+    if (projectLinks) url.searchParams.set('studio-project-links', '1');
     url.hash = route;
   }
   return `<!doctype html><html lang="${escape(lang)}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -52,6 +53,10 @@ window.addEventListener('message',event=>{
     }
     if(event.data.version!==1||document.activeElement!==frame||!document.hasFocus()||!validRequestId(event.data.requestId))return;
     const {type,requestId,text,x,y,editable,selection}=event.data;
+    ${projectLinks ? `if(type==='steamharness:web-app-project-link'){
+      const {link}=event.data;
+      if(typeof link==='string'&&link.length>0&&link.length<=256)host.postMessage({type:'studio-web-app-project-link',requestId,link});
+    }` : ''}
     if(type==='steamharness:web-app-clipboard'){
       if(typeof text==='string'&&text.length>0&&text.length<=1000000)host.postMessage({type:'studio-web-app-clipboard',requestId,text});
     }
@@ -71,6 +76,7 @@ window.addEventListener('message',event=>{
   ${route !== undefined ? `if(event.source===window.parent&&event.origin===window.origin&&validRequestId(event.data?.requestId)){
     const {type,requestId,ok,command}=event.data;
     if(type==='studio-web-app-clipboard-result'&&typeof ok==='boolean')frame.contentWindow?.postMessage({type:'steamharness:web-app-clipboard-result',version:1,nonce,requestId,ok},origin);
+    ${projectLinks ? `if(type==='studio-web-app-project-link-result'&&typeof ok==='boolean')frame.contentWindow?.postMessage({type:'steamharness:web-app-project-link-result',version:1,nonce,requestId,ok},origin);` : ''}
     if(type==='studio-web-app-contextmenu-action'&&['copy','paste'].includes(command))frame.contentWindow?.postMessage({type:'steamharness:web-app-contextmenu-action',version:1,nonce,requestId,command},origin);
   }` : ''}
 });</script></html>`;

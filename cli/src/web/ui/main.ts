@@ -66,6 +66,8 @@ function initialize(): void {
   const viewQuery = new URLSearchParams(embeddedConversation ? `projectView=embedded&conversationId=${encodeURIComponent(embeddedConversation)}` : location.search);
   const conversationView = viewQuery.has('projectView');
   let initialConversation = conversationView ? viewQuery.get('conversationId') : undefined;
+  const linkedConversation = viewQuery.get('studioConversation');
+  let waitingForLinkedConversation = linkedConversation && linkedConversation === initialConversation && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(linkedConversation) ? linkedConversation : undefined;
   const createInitialConversation = viewQuery.get('createConversation') === '1';
   app.dataset.initialized = 'true';
   app.innerHTML = `
@@ -77,7 +79,7 @@ function initialize(): void {
           <div class="project-context">
             <span id="project-identity" class="project-identity" hidden><span id="assistant-folder" hidden></span><span id="project-name" class="project-name"></span></span>
             <span id="running-count" class="running-count" hidden></span>
-            <span id="bot-invocation" class="bot-invocation" title="${t('Read-only IM history. Continue this conversation in IM.')}" hidden>${icon('robot')}${t('Bot invocation · Read-only')}</span>
+            <span id="bot-invocation" class="bot-invocation" title="${t('Read-only IM history. Continue this conversation in IM.')}" hidden>${icon('robot')}<span></span></span>
           </div>
           <button id="conversation-source" class="conversation-source" hidden></button>
         </div>
@@ -407,7 +409,7 @@ function initialize(): void {
 
   function requestParams(trigger: ParamRequest['trigger'], force = false): void {
     clearTimeout(inputTimer); inputTimer = undefined;
-    if (!state || !fields.size || !currentParameters().paramResolver?.enabled) { paramsNeedInit = false; return; }
+    if (!state || hostHistory() || !fields.size || !currentParameters().paramResolver?.enabled) { paramsNeedInit = false; return; }
     if (!connectionAvailable || busy() || state.running || composing || !navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
     const signature = parameterSignature();
     const cached = parameterCache.get(formKey);
@@ -673,7 +675,10 @@ function initialize(): void {
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
-    document.querySelector<HTMLElement>('#bot-invocation')!.hidden = !hostHistory();
+    const invocation = document.querySelector<HTMLElement>('#bot-invocation')!;
+    invocation.hidden = !hostHistory();
+    invocation.querySelector('span')!.textContent = waitingForLinkedConversation && waitingForLinkedConversation === state.activeId
+      ? t('Waiting for Bot conversation') : t('Bot invocation · Read-only');
     accessNotice.hidden = !readOnly() || !oldEngine() && (hostHistory() || state.conversationAccess?.reason === 'pending');
     accessNotice.textContent = oldEngine() ? t('This conversation belongs to a different Bot engine.')
       : t('This conversation is open or running in another window. You can read it here or start a new conversation.');
@@ -861,6 +866,7 @@ function initialize(): void {
 
   function navigate(id?: string): void {
     if (!state) { return; }
+    if (waitingForLinkedConversation && id !== waitingForLinkedConversation) waitingForLinkedConversation = undefined;
     agentNavigation = undefined;
     saveDraft(false);
     let session = id ? state.sessions.find(entry => entry.id === id) : undefined;
@@ -879,7 +885,7 @@ function initialize(): void {
   }
 
   function syncNavigation(): void {
-    if (!state || navigationRequest || !navigator.onLine) { return; }
+    if (!state || waitingForLinkedConversation && waitingForLinkedConversation === state.activeId || navigationRequest || !navigator.onLine) { return; }
     if (!navigationNeeded && (!draftUpdates.size || draftTimer !== undefined)) { return; }
     navigationRequest = { requestId: ++navigationSequence, activeId: state.activeId, updates: [...draftUpdates.values()], refreshParameters: !navigationReady() };
     vscode.postMessage({ type: 'navigate', projectUri: state.project.uri, id: navigationRequest.activeId, requestId: navigationRequest.requestId, updates: navigationRequest.updates });
@@ -913,7 +919,7 @@ function initialize(): void {
           if (update.create) { localSessions.set(update.id, { ...blankSession(update.id), draft: update.draft }); }
         }
         saved.navigation = undefined;
-      } else if (initialConversation) {
+      } else if (initialConversation && !waitingForLinkedConversation) {
         preferredSessionId = initialConversation;
         if (createInitialConversation && !next.sessions.some(session => session.id === initialConversation)) {
           const session = blankSession(initialConversation);
@@ -929,6 +935,12 @@ function initialize(): void {
       if (!sessions.some(session => session.id === entry.id)) { sessions.push({ ...entry, draft: draftUpdates.get(entry.id)?.draft ?? entry.draft }); }
     }
     for (const id of draftUpdates.keys()) { if (!sessions.some(entry => entry.id === id)) { draftUpdates.delete(id); } }
+    if (waitingForLinkedConversation && next.project.projectType === 'bot') {
+      preferredSessionId = waitingForLinkedConversation;
+      const existing = sessions.find(entry => entry.id === preferredSessionId);
+      if (existing) waitingForLinkedConversation = undefined;
+      else sessions.push({ ...blankSession(preferredSessionId), origin: 'host', title: t('Bot conversation') });
+    }
     if (preferredSessionId && !sessions.some(entry => entry.id === preferredSessionId)) { preferredSessionId = undefined; }
     const activeId = preferredSessionId ?? next.activeId;
     const current = sessions.find(entry => entry.id === activeId);

@@ -1,12 +1,16 @@
 export interface ProjectWindowChrome { active: boolean; projectUri?: string; height: number; left: number; right: number; revision: number }
+interface ConversationSelection { id: string; revision: string }
+const projectConversationPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+export const projectConversationId = (value: unknown): value is string => typeof value === 'string' && projectConversationPattern.test(value);
 
-export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true, selection?: ConversationSelection): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
   address.searchParams.set('projectLocale', locale);
   const escape = (value: string): string => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));
-  const literal = (value: string | ProjectWindowChrome | undefined): string => (JSON.stringify(value) ?? 'undefined').replace(/</g, '\\u003c');
+  const literal = (value: string | ProjectWindowChrome | ConversationSelection | undefined): string => (JSON.stringify(value) ?? 'undefined').replace(/</g, '\\u003c');
+  const tracksConversation = !!(conversationView || selection);
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${escape(address.origin)}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
     <style nonce="${nonce}">html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--vscode-editor-background)}iframe{display:block;width:100%;height:100%;border:0}</style></head>
@@ -18,14 +22,22 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
       const entryId=${literal(decodeURIComponent(address.pathname.match(/\/entries\/([^/]+)/)?.[1] ?? ''))};
       const saved=vscode.getState?.(),state={...(saved?.projectUri===${literal(projectUri)}&&saved?.entryId===entryId?saved:{}),projectUri:${literal(projectUri)},entryId};
-      const validId=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
-      const viewId=validId(state.viewId)?state.viewId:validId(state.conversationView?.id)?state.conversationView.id:${literal(globalThis.crypto.randomUUID())};
+      const validId=value=>typeof value==='string'&&${projectConversationPattern}.test(value);
+      const selection=${literal(selection)};
+      const select=validId(selection?.id)&&validId(selection.revision)&&state.selectionRevision!==selection.revision;
+      const viewId=select?selection.revision:validId(state.viewId)?state.viewId:validId(state.conversationView?.id)?state.conversationView.id:${literal(globalThis.crypto.randomUUID())};
+      if(select)state.selectionRevision=selection.revision;
       state.viewId=viewId;
       const address=new URL(${literal(address.href)});address.searchParams.set('projectView',viewId);
-      ${conversationView ? `
-      const previous=state.conversationView?.conversation;
+      ${tracksConversation ? `
+      const previous=select?{id:selection.id,linked:true}:state.conversationView?.conversation;
       state.conversationView={id:viewId,conversation:validId(previous?.id)?previous:${conversationView === 'new' ? '{id:viewId,create:true}' : 'undefined'}};
-      if(state.conversationView.conversation){address.searchParams.set('conversationId',state.conversationView.conversation.id);if(state.conversationView.conversation.create===true)address.searchParams.set('createConversation','1');}
+      const target=state.conversationView.conversation;
+      if(target){
+        address.searchParams.set('conversationId',target.id);
+        if(target.linked===true)address.searchParams.set('studioConversation',target.id);
+        else if(target.create===true)address.searchParams.set('createConversation','1');
+      }
       ` : ''}
       vscode.setState(state);
       addEventListener('vscode-webview-exec-command',event=>{
@@ -48,9 +60,10 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             }
             return;
           }
-          ${conversationView ? `
+          ${tracksConversation ? `
           if(message?.type==='workflow-navigation'&&message.version===1&&validId(message.id)&&typeof message.create==='boolean'){
-            state.conversationView.conversation={id:message.id,create:message.create};vscode.setState(state);
+            const linked=state.conversationView.conversation?.linked===true&&state.conversationView.conversation.id===message.id;
+            state.conversationView.conversation={id:message.id,create:message.create,...(linked?{linked:true}:{})};vscode.setState(state);
           }` : ''}
           if(message?.type==='workflow-window-drag'&&message.version===1&&windowChrome?.active===true){
             const {width,height,regions}=message;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});

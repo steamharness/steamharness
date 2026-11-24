@@ -6,7 +6,7 @@ import { openProjectUserSettings } from './workflow-user-settings';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
 
-export interface AssistantConversation { dispose(): Promise<void>; closed: Promise<void> }
+export interface AssistantConversation { dispose(): Promise<void>; closed: Promise<void>; openConversation?(id: string): void }
 
 export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view?: vscode.WebviewView;

@@ -4,7 +4,7 @@ import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar
 import { projectDisplayName, projectWindowKey, type Project } from './workflow-types';
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
-import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
+import { projectFrameHtml, projectConversationId, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
@@ -60,7 +60,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; session: WebSession; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
+  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; session: WebSession; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void>; openConversation(id: string): void }>();
   const findWorkspace = (project: Project, primary = false) => {
     const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project) && (!primary || entry.panel.viewType === 'studio.project'));
     return candidates.find(entry => entry.panel.active) ?? candidates.find(entry => entry.running) ?? candidates[0];
@@ -166,7 +166,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     clearTimeout(entryTimer);
     entryTimer = setTimeout(updateEntry, 150);
   };
-  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal, toolTab = false, conversationView?: 'new' | 'restore'): Promise<AssistantConversation> => {
+  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal, toolTab = false, conversationView?: 'new' | 'restore', conversationId?: string): Promise<AssistantConversation> => {
     await settling.get(projectWindowKey(project));
     signal?.throwIfAborted();
     if (!projectAvailable(project)) { restored?.dispose(); throw new Error('Workflow workspace is unavailable.'); }
@@ -338,11 +338,17 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         if (account.platform && message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !browserOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      const renderFrame = () => { panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb); };
+      let selection = conversationId ? { id: conversationId, revision: globalThis.crypto.randomUUID() } : undefined;
+      const renderFrame = () => { panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection); };
+      const openConversation = (id: string) => {
+        if (closed || project.projectType !== 'bot' || !projectConversationId(id)) return;
+        selection = { id, revision: globalThis.crypto.randomUUID() };
+        renderFrame();
+      };
       renderFrame();
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
-        workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close });
+        workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close, openConversation });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
@@ -370,7 +376,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           }
         }));
       output.appendLine(`SteamHarness Web: ${projectDisplayName(project)}${session.ready.runtime ? `; Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}` : ''}`);
-      updateEntry(); return { dispose: close, closed: session.closed };
+      updateEntry(); return { dispose: close, closed: session.closed, openConversation };
     } catch (error) { await close(); if ('reveal' in panel) { panel.dispose(); } throw error; }
   };
   const revealProject = (panel: vscode.WebviewPanel, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, reveal = true): Promise<void> => {
@@ -392,7 +398,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       check();
     });
   };
-  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false): Promise<void> => {
+  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false, conversationId?: string): Promise<void> => {
     const primary = viewColumn === vscode.ViewColumn.One && !toolTab;
     signal?.throwIfAborted();
     const selected = target?.releasePreview ? target : target?.builtin === 'analysis' ? target : target?.uri ? findProject(target.uri, target.entryId) : currentProject();
@@ -411,8 +417,11 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       signal?.throwIfAborted();
     }
     const existing = findWorkspace(selected, primary);
-    if (existing?.running) { await revealProject(existing.panel, viewColumn, signal); return; }
-    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab); })(); opening.set(projectWindowKey(selected), created);
+    if (existing?.running) {
+      if (conversationId) existing.openConversation(conversationId);
+      await revealProject(existing.panel, viewColumn, signal); return;
+    }
+    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab, undefined, conversationId); })(); opening.set(projectWindowKey(selected), created);
     try {
       await created; signal?.throwIfAborted();
       const panel = findWorkspace(selected, primary)?.panel;
@@ -458,10 +467,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   };
   const assistant = new AssistantViewProvider(context, launcher, output,
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'), true, context.subscriptions, false);
-  void sidebar.start(assistant, () => provider.projects, async (project, view, signal) => {
+  void sidebar.start(assistant, () => provider.projects, async (project, view, signal, conversationId) => {
     sidebarProjects.add(project);
     try {
-      const running = await createWorkspace(project, undefined, view, undefined, signal, false, project.projectType === 'bot' ? 'restore' : undefined);
+      const running = await createWorkspace(project, undefined, view, undefined, signal, false, project.projectType === 'bot' ? 'restore' : undefined, conversationId);
       void running.closed.then(() => sidebarProjects.delete(project));
       return running;
     } catch (error) {
@@ -649,17 +658,19 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
-    register('studio.internalRunProjectEntry', async ({ uri, entryId }: { uri: string; entryId?: string }) => {
+    register('studio.internalRunProjectEntry', async ({ uri, entryId, conversationId }: { uri: string; entryId?: string; conversationId?: string }) => {
       await initialScan;
       if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
+      if (conversationId !== undefined && !projectConversationId(conversationId)) return;
+      if (conversationId && vscode.workspace.workspaceFile?.toString() === uri && await sidebar.openAssistantConversation(conversationId)) return;
       const select = () => provider.projects.find(project => project.uri === uri && project.entryId === (entryId ?? project.defaultEntry));
       let project = select();
       if (!project) { await refresh(); project = select(); }
-      if (!project || !projectAvailable(project)) { throw new Error(t('The project entry has changed or is no longer available.')); }
+      if (!project || !projectAvailable(project) || conversationId && (project.projectType !== 'bot' || project.defaultEntry !== project.entryId)) { throw new Error(t('The project entry has changed or is no longer available.')); }
       if (lockedWindow || await vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow').then(Boolean, () => false)) {
-        await vscode.commands.executeCommand('studio.internalLaunchProjectEntry', { uri, entryId: project.entryId });
+        await vscode.commands.executeCommand('studio.internalLaunchProjectEntry', { uri, entryId: project.entryId, conversationId });
       } else {
-        await openProject(project);
+        await openProject(project, undefined, undefined, false, conversationId);
       }
     }),
     register('studio.openProjectWindow', (target?: Project) => openProjectWindow(target)),
@@ -672,8 +683,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }),
     vscode.commands.registerCommand('studio.internalUpdateWindowChrome', (chrome: ProjectWindowChrome) => { if (chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); } }),
     vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
-    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string, entryId?: string) => {
+    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string, entryId?: string, conversationId?: string) => {
       const project = projectUri ? findProject(projectUri, entryId) : currentProject();
+      if (conversationId !== undefined && (!projectConversationId(conversationId) || project?.projectType !== 'bot' || project.defaultEntry !== project.entryId)) return false;
       if (!project || !projectAvailable(project)) {
         if (entryId !== undefined) { throw new Error(t('The project entry has changed or is no longer available.')); }
         return false;
@@ -689,7 +701,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         controller.signal.addEventListener('abort', abort, { once: true });
       });
       try {
-        await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal), canceled]);
+        await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal, false, conversationId), canceled]);
         const entry = findWorkspace(project, true);
         if (!entry?.running) { return false; }
         panelClosed = entry.panel.onDidDispose(() => controller.abort());

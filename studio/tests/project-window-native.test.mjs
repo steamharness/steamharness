@@ -96,6 +96,21 @@ test('the native launch request is scoped to the single project folder rather th
   assert.equal(f.studioEntryForFolder(defaultEntry, folder).entryId, undefined);
 });
 
+test('Bot conversation launches keep the default entry and route to the exact folder or managed workspace', () => {
+  const f = fixture();
+  const conversationId = '11aabbcc-1234-1234-1234-abc012345678';
+  const folder = f.URI.file('/projects/chat');
+  const workspace = f.URI.file('/studio/instances/bot.code-workspace');
+  const options = { studioProjectEntry: { conversationId } };
+  const project = f.studioEntryForOpenables([{ folderUri: folder }], options);
+  assert.equal(project.entryId, undefined);
+  assert.equal(f.studioEntryForWorkspace(project, { id: 'project', uri: folder }).conversationId, conversationId);
+  const managed = f.studioEntryForOpenables([{ workspaceUri: workspace }], options);
+  assert.equal(f.studioEntryForWorkspace(managed, { id: 'managed', configPath: workspace }).conversationId, conversationId);
+  assert.equal(f.studioEntryForWorkspace(managed, { id: 'different', configPath: f.URI.file('/another.code-workspace') }), undefined);
+  assert.equal(f.studioEntryForOpenables([{ workspaceUri: workspace }], { studioProjectEntry: { conversationId: 'malformed' } }), undefined);
+});
+
 test('the project-window patch reproduces the kernel changes repeatedly without changing the index', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-project-window-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
@@ -126,8 +141,16 @@ test('the project-window patch reproduces the kernel changes repeatedly without 
     patches.push(patch);
   }
   const bytes = () => Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8')));
-  const expected = await bytes();
-  for (const patch of patches.reverse()) git(['apply', '--reverse', patch]);
+  const expected = await Promise.all(files.map(file => readFile(path.join(source, file), 'utf8')));
+  for (const patch of patches.reverse()) {
+    try { git(['apply', '--reverse', '--check', patch]); }
+    catch {
+      // A new, uncommitted patch may not yet be present in the pinned kernel.
+      git(['apply', '--check', patch]);
+      continue;
+    }
+    git(['apply', '--reverse', patch]);
+  }
   git(['add', '--all']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'kernel fixture']);

@@ -55,7 +55,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/common/studioProjectIcons.ts', 'src/vs/workbench/electron-browser/studioLaunchpad.ts', 'src/vs/workbench/browser/studioLaunchpadLibrary.ts',
     'src/vs/workbench/browser/studioLaunchpadCards.ts', 'src/vs/workbench/browser/studioLaunchpadProfile.ts',
     'src/vs/workbench/browser/studioLaunchpadPicker.ts', 'src/vs/workbench/browser/media/studioLaunchpad.css',
-    'src/vs/code/electron-main/app.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
+    'src/vs/code/electron-main/app.ts', 'src/vs/platform/window/common/studioProjectWindow.ts',
+    'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
     'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts',
     'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts',
     ...launchpadFocusFiles];

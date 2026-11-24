@@ -33,9 +33,11 @@ export interface HostedSidebarProject {
   entryId: string;
   hostNotifications?: boolean;
   standalone?: boolean;
+  resolveProjectLink?(link: string): Promise<HostedProjectLink | undefined>;
   getState(): HostedSidebarState;
   onDidChange(listener: () => void): { dispose(): unknown };
 }
+export interface HostedProjectLink { uri: string; conversationId: string; managed?: boolean }
 
 export interface HostedSidebarPreview { url: string; nonce: string; microphone: boolean; close(): Promise<void> }
 export interface HostedLaunchpadTarget { id: string; route: string; title?: string; titlebarOverlay?: boolean }

@@ -34,17 +34,18 @@ export class ProjectSidebar implements vscode.Disposable {
   readonly onDidChange = this.change.event;
   private readonly builtin = new Map<string, { item: SidebarItem; viewId: string; provider: vscode.WebviewViewProvider; hosted?: HostedSidebarProject }>();
   private readonly providers = new Map<string, { dispose(): void }>();
-  private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void> }>();
+  private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void>; openConversation(id: string): void }>();
   private resident?: { id: string; key: string; signal: AbortSignal; ready: Promise<{ key: string; preview: HostedSidebarPreview; title: string }>; close(): void };
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
   private assistantOverride?: { project: SidebarProjectSource; exclusive: boolean };
+  private assistantConversation?: string;
   private workspaceProjects = new Map<string, WorkspaceSidebarProject>();
   private disposed = false;
   private visibleTabs = '';
   private getProjects: () => Project[] = () => [];
-  private mountProject?: (project: Project, view: vscode.WebviewView, signal: AbortSignal) => Promise<AssistantConversation>;
+  private mountProject?: (project: Project, view: vscode.WebviewView, signal: AbortSignal, conversationId?: string) => Promise<AssistantConversation>;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher, private readonly output: vscode.OutputChannel) {
     context.subscriptions.push(this, vscode.workspace.onDidChangeConfiguration(event => {
@@ -53,6 +54,11 @@ export class ProjectSidebar implements vscode.Disposable {
       for (const mount of this.mounts.values()) void mount.recheck();
     }), vscode.commands.registerCommand('studio.internalReleaseHostedLaunchpadApp', key => {
       if (typeof key === 'string' && this.resident?.key === key) this.resident.close();
+    }), vscode.commands.registerCommand('studio.internalResolveHostedProjectLink', async (key, link) => {
+      const resident = this.resident;
+      if (!resident || resident.key !== key || resident.signal.aborted || typeof link !== 'string' || link.length > 256) return;
+      const target = await this.builtin.get(resident.id)?.hosted?.resolveProjectLink?.(link);
+      if (this.resident === resident && !resident.signal.aborted) return target;
     }));
   }
 
@@ -121,9 +127,20 @@ export class ProjectSidebar implements vscode.Disposable {
     const title = target.title?.trim() || defaultTitle;
     if (!await vscode.commands.executeCommand('studio.internalShowLaunchpadApp', key, requestId, { id: target.id, title,
       ...(target.titlebarOverlay === true && { titlebarOverlay: true }),
-      html: hostedSidebarHtml(vscode.env.language, title, preview, target.route, target.titlebarOverlay === true) })) {
+      html: hostedSidebarHtml(vscode.env.language, title, preview, target.route, target.titlebarOverlay === true,
+        !!this.builtin.get(id)?.hosted?.resolveProjectLink) })) {
       throw new Error(t('The built-in project files are unavailable.'));
     }
+  }
+
+  async openAssistantConversation(id: string): Promise<boolean> {
+    if (!this.assistantOverride?.exclusive || this.disposed) return false;
+    const mounted = this.mounts.get('assistant');
+    if (mounted) mounted.openConversation(id);
+    else this.assistantConversation = id;
+    await this.sync();
+    await vscode.commands.executeCommand('studio.developerAssistant.focus');
+    return true;
   }
 
   start(assistant: vscode.WebviewViewProvider, getProjects: () => Project[], mount: NonNullable<ProjectSidebar['mountProject']>): Promise<void> {
@@ -294,6 +311,8 @@ export class ProjectSidebar implements vscode.Disposable {
   private bindSidebarProject(view: vscode.WebviewView, id: string, source: SidebarProjectSource): void {
     this.mounts.get(id)?.close();
     let closed = false, opening: AbortController | undefined, conversation: AssistantConversation | undefined;
+    let selection = id === 'assistant' ? this.assistantConversation : undefined;
+    if (id === 'assistant') this.assistantConversation = undefined;
     const lifecycle: vscode.Disposable[] = [];
     const status = (message: string, retry = false) => {
       if (!closed) view.webview.html = sidebarStatusHtml(message, retry ? t('Retry') : undefined);
@@ -306,9 +325,12 @@ export class ProjectSidebar implements vscode.Disposable {
       try {
         const project = await source.load(attempt.signal);
         attempt.signal.throwIfAborted();
-        const running = await this.mountProject!(project, view, attempt.signal);
+        const target = selection;
+        const running = await this.mountProject!(project, view, attempt.signal, target);
         if (closed || attempt.signal.aborted || opening !== attempt) { await running.dispose(); return; }
         conversation = running;
+        if (selection && selection !== target) running.openConversation?.(selection);
+        selection = undefined;
         void running.closed.then(() => {
           if (!closed && conversation === running) { conversation = undefined; void running.dispose(); status(t('The project stopped.'), true); }
         });
@@ -330,6 +352,10 @@ export class ProjectSidebar implements vscode.Disposable {
         if (!opening && !conversation) return;
         try { await source.check(); }
         catch (error) { if (!closed) { stop(); status(error instanceof Error ? error.message : t('The project entry could not be opened.'), true); } }
+      },
+      openConversation: (target: string) => {
+        if (conversation?.openConversation) conversation.openConversation(target);
+        else selection = target;
       },
     };
     this.mounts.set(id, current);

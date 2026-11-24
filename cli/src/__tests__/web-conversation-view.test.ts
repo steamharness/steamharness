@@ -48,6 +48,23 @@ async function fixture(query = '', saved?: object) {
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
 
+it('keeps an early Studio link on the exact read-only Bot conversation until history arrives', async () => {
+  const target = 'cccccccc-1111-2222-3333-444444444444';
+  const f = await fixture(`?projectView=${viewId}&conversationId=${target}&studioConversation=${target}&projectLocale=zh-CN`);
+  const other = { ...session('local'), messages: [{ id: 'unrelated', role: 'user' as const, content: 'Other history' }] };
+  f.receive([other], other.id, { readOnly: false });
+  expect(document.querySelector('#bot-invocation')?.textContent).toBe('正在等待 Bot 会话');
+  expect(document.querySelector<HTMLElement>('.composer-area')!.hidden).toBe(true);
+  expect(document.querySelector('#transcript-content')?.textContent).not.toContain('Other history');
+  expect(f.requests()).toEqual([]);
+
+  const arrived = { ...session(target), origin: 'host' as const, messages: [{ id: 'im', role: 'user' as const, content: 'Matched IM history' }] };
+  f.receive([other, arrived], other.id, { readOnly: false });
+  expect(document.querySelector('#bot-invocation')?.textContent).toBe('Bot 调用 · 只读');
+  expect(document.querySelector('#transcript-content')?.textContent).toContain('Matched IM history');
+  expect(f.requests().at(-1)).toMatchObject({ id: target, updates: [] });
+});
+
 it.each([
   ['zh-CN', 'Bot 调用', 'Bot 调用 · 只读'],
   ['en', 'Bot invocation', 'Bot invocation · Read-only'],
