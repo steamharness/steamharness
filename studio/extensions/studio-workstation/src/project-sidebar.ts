@@ -186,7 +186,7 @@ export class ProjectSidebar implements vscode.Disposable {
         }, { webviewOptions: { retainContextWhenHidden: true } }));
       }
       const tabs = items.map(item => ({ id: tabId(item.id), viewId: this.builtin.get(item.id)?.viewId ?? viewId(item.id), title: item.title,
-        icon: item.id === 'assistant' ? 'hubot' : item.builtin ? 'comment-discussion' : projectTypeIcons[item.type] }));
+        icon: item.id === 'assistant' ? projectTypeIcons.bot : item.builtin ? 'comment-discussion' : projectTypeIcons[item.type] }));
       const signature = JSON.stringify(tabs);
       if (signature !== this.visibleTabs) {
         await vscode.commands.executeCommand('studio.internalSyncSidebarTabs', tabs);

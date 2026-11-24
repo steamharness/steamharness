@@ -11,7 +11,7 @@ const compile = async file => ts.transpileModule(await readFile(new URL(file, ro
 const [model, registration] = await Promise.all([compile('common/studioSidebar.ts'), compile('browser/parts/auxiliarybar/studioSidebarTabs.ts')]);
 const ids = values => Array.from(values, value => value.id);
 const tab = (id, icon = 'layout') => ({ id, viewId: `studio.${id}`, title: id, icon });
-const assistant = tab('studio-assistant', 'hubot'), board = tab('studio-sidebar.board'), bot = tab('studio-sidebar.bot', 'hubot');
+const assistant = tab('studio-assistant', 'steamharness-bot'), board = tab('studio-sidebar.board'), bot = tab('studio-sidebar.bot', 'steamharness-bot');
 
 function fixture({ visible = true, saved } = {}) {
   const commands = new Map(), containers = new Map(), views = new Map(), opens = [], registered = [], events = new Set();
@@ -77,8 +77,8 @@ test('native project tab registration does not reopen a collapsed sidebar', () =
 });
 
 test('native workspace projects keep their supplied order and fall back to the assistant after removal', () => {
-  const first = { ...tab('studio-sidebar.workspace-first', 'hubot'), title: 'First Bot' };
-  const second = { ...tab('studio-sidebar.workspace-second', 'hubot'), title: 'Second Bot' };
+  const first = { ...tab('studio-sidebar.workspace-first', 'steamharness-bot'), title: 'First Bot' };
+  const second = { ...tab('studio-sidebar.workspace-second', 'steamharness-bot'), title: 'Second Bot' };
   const f = fixture({ saved: second.id });
   f.sync([assistant, first, second]);
   assert.deepEqual(ids(f.listed()), [assistant.id, first.id, second.id, 'other-view']);

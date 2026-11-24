@@ -80,6 +80,7 @@ test('release chrome displays project identity and filters authoring tools', asy
   };
   dom.window.ResizeObserver = class { observe() {} disconnect() {} };
   const common = { Disposable, DisposableStore, Emitter, $: element, append: (parent, child) => parent.appendChild(child), clearNode: node => node.replaceChildren(),
+    icon: name => element(`span.codicon.codicon-${name}`, { 'aria-hidden': 'true' }), studioBotIcon: 'steamharness-bot',
     addDisposableListener: event, getWindow: () => dom.window, toDisposable: dispose => ({ dispose }),
     CommandsRegistry: { registerCommand: event }, getDefaultHoverDelegate: () => ({}), onDidChangeFullscreen: event, onDidChangeZoomLevel: event,
     Parts: { AUXILIARYBAR_PART: 'tools' } };
@@ -92,6 +93,7 @@ test('release chrome displays project identity and filters authoring tools', asy
   const tools = new native.StudioSteamTools(document.querySelector('#tools'), commands, notifications);
   const before = [...tools.element.querySelectorAll('[data-tool]')].map(node => node.dataset.tool);
   assert.ok(before.includes('editor')); assert.ok(before.includes('assistant'));
+  assert.ok(tools.element.querySelector('[data-tool="assistant"] .codicon-steamharness-bot'));
   native.studioModeState.state = { available: true, releaseOnly: true, project: { name: 'Demo <project>', avatarUrl: 'data:image/svg+xml;base64,PHN2Zy8+' }, labels: {} };
   native.studioModeState.setMode(true, false);
   // State updates are normally published by the extension through the registered command.

@@ -47,7 +47,7 @@ function toolAction(toolName: string, input: Record<string, unknown>): Pick<Agen
   if (matches(tool, 'websearch', 'web_search')) { return { kind: 'web', icon: 'globe', action: t("Search web"), target: query }; }
   if (matches(tool, 'webfetch', 'web_fetch', 'fetch')) { return { kind: 'web', icon: 'globe', action: t("Read web page"), target: first(input, 'url', 'uri') }; }
   if (matches(tool, 'todowrite', 'todo_write', 'todoread', 'todo_read')) { return { kind: 'todo', icon: 'checklist', action: t("Update tasks") }; }
-  if (matches(tool, 'task', 'subtask', 'agent')) { return { kind: 'task', icon: 'hubot', action: t("Run subtask"), target: first(input, 'description', 'title', 'prompt') }; }
+  if (matches(tool, 'task', 'subtask', 'agent')) { return { kind: 'task', icon: 'steamharness-bot', action: t("Run subtask"), target: first(input, 'description', 'title', 'prompt') }; }
   if (matches(tool, 'question')) { return { kind: 'question', icon: 'comment-discussion', action: t("Ask"), target: first(input, 'title', 'question') }; }
   return { kind: 'tool', icon: 'tools', action: t("Call tool"), target: toolName };
 }
@@ -115,8 +115,8 @@ export function agentActivity(item: OutputItem, message?: ConversationMessage): 
       patch: { kind: 'patch', icon: 'diff', action: t("Apply changes") },
       file: { kind: 'file', icon: 'file', action: t("Generated file") },
       todo: { kind: 'todo', icon: 'checklist', action: t("Update tasks") },
-      agent: { kind: 'task', icon: 'hubot', action: t("Run subtask") },
-      subtask: { kind: 'task', icon: 'hubot', action: t("Run subtask") },
+      agent: { kind: 'task', icon: 'steamharness-bot', action: t("Run subtask") },
+      subtask: { kind: 'task', icon: 'steamharness-bot', action: t("Run subtask") },
       error: { kind: 'error', icon: 'error', action: t("Agent run") },
     };
     descriptor = descriptors[String(type)];

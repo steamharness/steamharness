@@ -386,7 +386,7 @@
         "command": "studio.openAssistant",
         "title": "%command.openAssistant%",
         "category": "Project",
-        "icon": "$(hubot)"
+        "icon": "$(steamharness-bot)"
       },
       {
         "command": "studio.newAssistantConversation",

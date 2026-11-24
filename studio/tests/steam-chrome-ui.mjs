@@ -13,7 +13,7 @@ await mkdir(proof, { recursive: true });
 const nativeCss = await readFile(path.join(root, 'studio/upstream/vscode/src/vs/workbench/browser/parts/media/studioMode.css'), 'utf8');
 const source = await readFile(path.join(root, 'studio/upstream/vscode/src/vs/workbench/browser/parts/studioMode.ts'), 'utf8');
 const nativeCode = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, experimentalDecorators: true } }).outputText;
-const webCode = await build({ absWorkingDir: root, stdin: { contents: "export { ProjectWindowChrome } from './cli/src/web/ui/window-chrome'", resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'iife', globalName: 'WebChrome', outfile: 'chrome.js', write: false });
+const webCode = await build({ absWorkingDir: root, stdin: { contents: "export { ProjectWindowChrome } from './cli/src/web/ui/window-chrome'; export { iconHtml } from './cli/src/web/ui/ui'", resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'iife', globalName: 'WebChrome', outfile: 'chrome.js', write: false });
 const webJs = webCode.outputFiles.find(file => file.path.endsWith('.js'))?.text ?? webCode.outputFiles[0].text;
 const iconRoot = path.join(root, 'cli/node_modules/@vscode/codicons/dist');
 const icons = (await readFile(path.join(iconRoot, 'codicon.css'), 'utf8')).replace(/url\([^)]*codicon\.ttf[^)]*\)/g, `url(data:font/ttf;base64,${(await readFile(path.join(iconRoot, 'codicon.ttf'))).toString('base64')})`);
@@ -35,16 +35,20 @@ try {
       ${icons}\n${nativeCss}
       </style><div class="monaco-workbench mac studio-steam-mode"><div id="left"></div><div id="right"></div><iframe></iframe></div>`);
     const frame = page.frames()[1];
-    await frame.setContent(`<style>${icons}\n${baseCss}\n${chromeCss}</style><div id="app"><header class="toolbar"><div class="project-title"><button id="menu" class="icon-button">${glyph('layout-sidebar-left')}</button><h1>Agent</h1></div><div class="toolbar-actions"><button class="icon-button">${glyph('layout')}</button><button class="icon-button">${glyph('add')}</button><button class="icon-button">${glyph('hubot')}</button></div></header><main></main></div>`);
+    await frame.setContent(`<style>${icons}\n${baseCss}\n${chromeCss}</style><div id="app"><header class="toolbar"><div class="project-title"><button id="menu" class="icon-button">${glyph('layout-sidebar-left')}</button><h1>Agent</h1></div><div class="toolbar-actions"><button class="icon-button">${glyph('layout')}</button><button class="icon-button">${glyph('add')}</button><button id="bot" class="icon-button"></button></div></header><main></main></div>`);
     await frame.addScriptTag({ content: webJs });
-    await frame.evaluate(() => { window.chromeFixture = new WebChrome.ProjectWindowChrome(); });
+    await frame.evaluate(() => {
+      document.querySelector('#bot').innerHTML = WebChrome.iconHtml('steamharness-bot');
+      window.chromeFixture = new WebChrome.ProjectWindowChrome();
+    });
     await page.evaluate(({ nativeCode, release, avatar }) => {
       const event = () => ({ dispose() {} });
       class Emitter { listeners = new Set(); event = listener => { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; }; fire(value) { for (const fn of this.listeners) fn(value); } }
       class Disposable { items = []; _register(item) { this.items.push(item); return item; } dispose() { for (const item of this.items.reverse()) item.dispose(); } }
       class DisposableStore extends Disposable { add(item) { return this._register(item); } clear() { this.dispose(); this.items = []; } }
       const $ = (selector, attributes, ...children) => { const [tag, ...classes] = selector.split('.'); const node = document.createElement(tag || 'div'); node.className = classes.join(' '); for (const [key, value] of Object.entries(attributes ?? {})) { if (key === 'hidden') node.hidden = value; else node.setAttribute(key, value); } node.append(...children); return node; };
-      const common = { $, append: (parent, child) => parent.appendChild(child), getWindow: () => window, Emitter, Disposable, DisposableStore,
+      const common = { $, icon: name => $(`span.codicon.codicon-${name}`, { 'aria-hidden': 'true' }), studioBotIcon: 'steamharness-bot',
+        append: (parent, child) => parent.appendChild(child), getWindow: () => window, Emitter, Disposable, DisposableStore,
         addDisposableListener: (target, name, fn) => { target.addEventListener(name, fn); return { dispose: () => target.removeEventListener(name, fn) }; },
         toDisposable: dispose => ({ dispose }), onDidChangeFullscreen: event, onDidChangeZoomLevel: event, CommandsRegistry: { registerCommand: event }, getDefaultHoverDelegate: () => ({}), Parts: { AUXILIARYBAR_PART: 'tools' }, studioLocaleStrings: { loadingProject: 'Loading project...', showTools: 'Show Tools', hideTools: 'Hide Tools' } };
       const module = { exports: {} }, require = () => new Proxy(common, { get: (values, key) => key in values ? values[key] : () => {} });

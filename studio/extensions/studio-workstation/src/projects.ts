@@ -1,5 +1,5 @@
 export type ProjectType = 'workflow' | 'bot' | 'kanban';
-export const projectTypeIcons: Record<ProjectType, string> = { workflow: 'run-all', bot: 'hubot', kanban: 'layout' };
+export const projectTypeIcons: Record<ProjectType, string> = { workflow: 'run-all', bot: 'steamharness-bot', kanban: 'layout' };
 
 /** Keep only the cover filename and version in history, never the image bytes. */
 export interface LibraryArtwork {

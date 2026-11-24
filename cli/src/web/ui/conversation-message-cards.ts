@@ -42,7 +42,7 @@ export class ConversationMessageCards {
         if (view.status.textContent !== (card.status?.label ?? '')) view.status.textContent = card.status?.label ?? '';
         view.status.hidden = !card.status; view.status.dataset.tone = card.status?.tone ?? 'neutral';
         view.icon.style.color = card.iconColor ?? '';
-        updateIcon(view.icon, card.icon === 'bot' ? 'hubot' : card.icon === 'send' ? 'send' : 'comment-discussion');
+        updateIcon(view.icon, card.icon === 'bot' ? 'steamharness-bot' : card.icon === 'send' ? 'send' : 'comment-discussion');
         view.root.classList.toggle('actionable', !!card.action);
         if (card.action) {
           if (!view.action) {

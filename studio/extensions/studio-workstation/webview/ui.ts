@@ -1,8 +1,10 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { projectBotGlyphSvg } from '@steamharness/project-card-metadata/avatar';
 import type { Attachment } from '../src/workflow-types';
 
-export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
+const botGlyph = projectBotGlyphSvg();
+export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true">${name === 'steamharness-bot' ? botGlyph : ''}</span>`;
 export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 export function managedFileForUrl(url: string, files: Attachment[]): Attachment | undefined {
   let value = url;

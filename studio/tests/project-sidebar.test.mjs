@@ -134,7 +134,7 @@ test('workspace projects follow the assistant, mount lazily and detach without c
   await f.sidebar.setWorkspaceProjects([first, second]);
   await f.start();
   assert.deepEqual(f.tabs[0].map(tab => tab.viewId), [assistant, firstView, secondView, `studio.sidebar.${projectId}`, 'studio.fixture']);
-  assert.deepEqual(f.tabs[0].slice(1, 3).map(tab => [tab.title, tab.icon]), [['First Bot', 'hubot'], ['Second Bot', 'hubot']]);
+  assert.deepEqual(f.tabs[0].slice(1, 3).map(tab => [tab.title, tab.icon]), [['First Bot', 'steamharness-bot'], ['Second Bot', 'steamharness-bot']]);
   const hidden = createView(false), visible = createView();
   f.views.get(firstView).resolveWebviewView(hidden);
   f.views.get(secondView).resolveWebviewView(visible);

@@ -32,6 +32,9 @@ it.each(['en', 'zh-CN'] as const)('renders %s controls and activities without tr
   const search = agentActivity({ metadata: { kind: 'agent-part', partType: 'tool' },
     content: { type: 'tool', status: 'success', tool: 'grep', input: { directory: 'src', pattern: 'lookup' } } });
   expect(search?.target).toBe(language === 'en' ? '\u201clookup\u201d in src' : 'src \u4e2d \u201clookup\u201d');
+  const subtask = agentActivity({ metadata: { kind: 'agent-part', partType: 'tool' },
+    content: { type: 'tool', status: 'success', tool: 'subtask', input: { description: 'Fixture task' } } });
+  expect(subtask?.icon).toBe('steamharness-bot');
   expect(t('Please enter {0}.', 'name {1}')).toContain('name {1}');
   const titles = language === 'en' ? ['Summarizing context...', 'Context summary completed', 'Context summary failed']
     : ['上下文总结正在执行中...', '上下文总结已完成', '上下文总结失败'];

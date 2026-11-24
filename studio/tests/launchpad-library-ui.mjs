@@ -98,6 +98,10 @@ export async function checkFolderBotBranches({ page, language, enhanced, screens
   for (const name of ['Project 6', 'folder.code-workspace', 'Project 8']) {
     await row(name).click();
     await withBot.waitFor();
+    const glyph = withBot.locator('.codicon-steamharness-bot');
+    assert.equal(await glyph.getAttribute('aria-hidden'), 'true');
+    assert.match(decodeURIComponent(await glyph.evaluate(node => getComputedStyle(node, '::before').maskImage)), /M12 8V4H8/u);
+    assert.equal(await withBot.locator('.codicon').count(), 1);
   }
   assert.equal(await imGroup.count(), 0, 'IM actions require a signed-in account but local Bot actions do not');
   const workspace = number => `/profile/Folder Bot ${number}.code-workspace`;

@@ -1,0 +1,124 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index a61718d81689828560360498f370c52ce6fd58e4..a082970ed7c3d9545f2f9d0b8e7e26e70a5576c8 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -183,7 +183,7 @@
+ .monaco-workbench .studio-steam-tab[data-icon="database"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-variableForeground); }
+ .monaco-workbench .studio-steam-tab[data-icon="book"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-classForeground); }
+ .monaco-workbench .studio-steam-tab[data-icon="package"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-packageForeground); }
+-.monaco-workbench .studio-steam-tab[data-icon="hubot"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-methodForeground); }
++.monaco-workbench .studio-steam-tab[data-icon="steamharness-bot"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-methodForeground); }
+ .monaco-workbench .studio-steam-tab[data-icon="versions"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-enumForeground); }
+ .monaco-workbench .studio-steam-tab[data-icon="history"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-eventForeground); }
+ .monaco-workbench .studio-steam-tab[data-icon="globe"] .studio-steam-tab-select > .codicon { color: var(--vscode-textLink-foreground); }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 871ec72ba4de0e6dabf4af60a4e295c124a2509e..751fbb209401794de5523af924f1f05fc3d80ccd 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -20,7 +20,9 @@ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+ import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
+ import type { IStudioProjectEntry } from '../../../platform/window/common/studioProjectWindow.js';
+ import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
++import { studioBotIcon } from '../../common/studioProjectIcons.js';
+ import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
++import { icon as studioIcon } from '../studioUiElements.js';
+ 
+ /** Space reserved by the embedded project for the retained native workbench controls. */
+ export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
+@@ -32,7 +34,7 @@ export const studioSteamToolDefinitions = [
+ 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
+ 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+-	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
++	{ id: 'assistant', icon: studioBotIcon, view: 'studio.developerAssistant' },
+ 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
+ 	{ id: 'trace', icon: 'history', view: 'studio.trace' },
+ 	{ id: 'terminal', icon: 'terminal', view: 'terminal' },
+@@ -354,7 +356,7 @@ export class StudioSteamTabs extends Disposable {
+ 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
+ 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
+ 			const icon = getIconRegistry().getIcon(`${tab.icon}-compact`)?.id ?? tab.icon;
+-			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
++			append(button, studioIcon(icon));
+ 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
+ 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
+ 			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
+@@ -403,7 +405,7 @@ export class StudioSteamTools extends Disposable {
+ 		const grid = append(content, $('.studio-steam-tools-grid'));
+ 		for (const { id, icon } of studioSteamToolDefinitions.filter(tool => isStudioSteamToolAvailable(tool.id))) {
+ 			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
+-			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
++			append(button, studioIcon(icon));
+ 			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));
+ 			append(button, $('span.studio-steam-tool-hint', undefined, labels[`${id}Hint`] ?? ''));
+ 			this.buttons.add(addDisposableListener(button, 'click', () => {
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index dcbaf596e465c6acd527d4721d76f146cd9b4e36..ba61d0cc4683fe2bc3a9e57015d72792ad982d57 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -9,6 +9,7 @@ import { IAction, Separator, toAction } from '../../base/common/actions.js';
+ import { Disposable } from '../../base/common/lifecycle.js';
+ import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+ import type { IHoverService } from '../../platform/hover/browser/hover.js';
++import { studioBotIcon } from '../common/studioProjectIcons.js';
+ import { projectDetails } from './studioProjectDetails.js';
+ import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from './studioProjectUsage.js';
+ import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+@@ -277,7 +278,7 @@ export class LaunchpadLibrary extends Disposable {
+ 				const focused = active instanceof HTMLElement && controls.contains(active) ? active.dataset.key : undefined;
+ 				const buttons = items.map(item => {
+ 					const key = `action:${project.uri}:${item.id}`;
+-					const action = button(item.label, item.icon ?? defaultIcon, () => {
++					const action = button(item.label, item.id === 'create-folder-bot' ? studioBotIcon : item.icon ?? defaultIcon, () => {
+ 						if (this.runningActions.has(key)) { return; }
+ 						this.runningActions.add(key);
+ 						action.disabled = true;
+@@ -401,7 +402,7 @@ export class LaunchpadLibrary extends Disposable {
+ 				actions.unshift(run);
+ 			}
+ 			const secondaryActions = element('div', 'lp-detail-secondary');
+-			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), 'hubot');
++			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), studioBotIcon);
+ 			const im = this.detailActionGroup(selected, t('IM integration', 'IM 集成'), 'comment-discussion');
+ 			secondaryActions.append(bot.element, im.element);
+ 			// Local actions resolve independently of IM. Update each group only when its actions change.
+diff --git a/src/vs/workbench/browser/studioUiElements.ts b/src/vs/workbench/browser/studioUiElements.ts
+index 9e7cc9ecd3b13b2b47397cb1fe8d6a90d1aab715..66d0912d1b6365c5a4798948fd02d941619313f3 100644
+--- a/src/vs/workbench/browser/studioUiElements.ts
++++ b/src/vs/workbench/browser/studioUiElements.ts
+@@ -3,6 +3,16 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { createCSSRule } from '../../base/browser/domStylesheets.js';
++import { studioBotIcon, studioProjectGlyphMask } from '../common/studioProjectIcons.js';
++
++const botGlyph = studioProjectGlyphMask('bot');
++if (botGlyph) {
++	// ThemeIcon, buttons and menus share the project-card glyph, tinted by their foreground.
++	createCSSRule(`.codicon.codicon-${studioBotIcon}::before`,
++		`content: ''; display: inline-block; width: 1em; height: 1em; vertical-align: top; background: currentColor; mask: url("${botGlyph}") center / contain no-repeat;`);
++}
++
+ export type StudioLabel = (en: string, zh: string) => string;
+ 
+ export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
+diff --git a/src/vs/workbench/common/studioProjectIcons.ts b/src/vs/workbench/common/studioProjectIcons.ts
+index c14f14ac9a6f1561c26ccd0ae3d2af49348c9a46..bf0abf96591c45e838b4686b1744a7cd8eae3667 100644
+--- a/src/vs/workbench/common/studioProjectIcons.ts
++++ b/src/vs/workbench/common/studioProjectIcons.ts
+@@ -3,11 +3,13 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++export const studioBotIcon = 'steamharness-bot';
++
+ /** Shared project glyphs for native Studio surfaces. */
+ export function studioProjectIcon(projectType: string | undefined): string | undefined {
+ 	switch (projectType) {
+ 		case 'workflow': return 'run-all';
+-		case 'bot': return 'hubot';
++		case 'bot': return studioBotIcon;
+ 		case 'kanban': return 'layout';
+ 		default: return undefined;
+ 	}

@@ -1,16 +1,23 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { projectBotGlyphSvg } from '@steamharness/project-card-metadata/avatar';
 import type { Attachment } from '../workflow-types';
 import { fileLinkTarget } from './output-file-links';
 
-export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
+const botGlyph = projectBotGlyphSvg();
+const iconContent = (name: string) => name === 'steamharness-bot' ? botGlyph : '';
+export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true">${iconContent(name)}</span>`;
 export function updateIcon(root: HTMLElement, name?: string): void {
   if (name === undefined) { if (root.childNodes.length) { root.replaceChildren(); } return; }
   const className = `codicon codicon-${name}`;
   const current = root.firstElementChild;
   // Keep the glyph node so streamed updates do not restart its animation.
   if (current?.classList.contains('codicon') && root.childNodes.length === 1) {
-    if (current.className !== className) { current.className = className; }
+    if (current.className !== className) {
+      const updateContents = name === 'steamharness-bot' || current.classList.contains('codicon-steamharness-bot');
+      current.className = className;
+      if (updateContents) { current.innerHTML = iconContent(name); }
+    }
   } else { root.innerHTML = iconHtml(name); }
 }
 

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
@@ -60,7 +63,25 @@ function fixture(t, history = [], imports = []) {
 
 test('native and extension project icons share the existing template glyphs', () => {
   assert.deepEqual(Object.fromEntries(Object.keys(projectTypeIcons).map(type => [type, studioProjectIcon(type)])), projectTypeIcons);
+  assert.equal(projectTypeIcons.bot, 'steamharness-bot');
   assert.equal(studioProjectIcon('__proto__'), undefined);
+});
+
+test('product UI sources do not select the legacy Hubot glyph', async () => {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const extension = path.join(root, 'studio/extensions/studio-workstation');
+  const workbench = path.join(root, 'studio/upstream/vscode/src/vs/workbench');
+  const directories = [path.join(root, 'cli/src/web'), path.join(extension, 'src'), path.join(extension, 'webview'), workbench];
+  const files = [path.join(extension, 'package.json')];
+  for (const directory of directories) {
+    for (const entry of await readdir(directory, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !/\.(?:ts|js|json|css|html)$/u.test(entry.name)) { continue; }
+      const file = path.join(entry.parentPath, entry.name);
+      if (directory !== workbench || path.relative(workbench, file).split(path.sep).some(segment => /^studio[A-Z-]/u.test(segment))) { files.push(file); }
+    }
+  }
+  const offenders = (await Promise.all(files.map(async file => /\bhubot\b/iu.test(await readFile(file, 'utf8')) ? path.relative(root, file) : undefined))).filter(Boolean);
+  assert.deepEqual(offenders, []);
 });
 
 test('project identity surfaces share the Lucide card glyphs instead of legacy codicons', () => {
@@ -111,6 +132,8 @@ test('the kernel and shared project avatars stay byte-identical for every projec
   for (const type of ['workflow', 'bot', 'kanban']) {
     assert.equal(studioProjectCardIcon(type), module.projectAvatarDataUrl(undefined, type));
   }
+  const contents = svg => svg.slice(svg.indexOf('>') + 1, -'</svg>'.length);
+  assert.equal(contents(module.projectBotGlyphSvg()), contents(decodeURIComponent(studioProjectGlyphMask('bot'))));
 });
 
 test('icons read the default registered entry without analyzing or executing project code', async t => {

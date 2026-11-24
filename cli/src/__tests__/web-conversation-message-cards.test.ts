@@ -12,13 +12,20 @@ it('renders plain cards without navigation and reuses their DOM on status update
     expect(root.getAttribute('aria-label')).toBe('发送给执行员');
     expect(text.textContent).toBe(first.text);
     expect(root.querySelector('img,a,button')).toBeNull();
+    const glyph = root.querySelector('.codicon-steamharness-bot > svg');
+    expect(glyph?.getAttribute('stroke')).toBe('currentColor');
+    expect(glyph?.querySelector('path[d="M12 8V4H8"]')).not.toBeNull();
     const textNode = text.firstChild;
     cards.update([{ ...first, status: { label: '已发送', tone: 'success' } }]);
     expect(cards.root.firstElementChild).toBe(root);
     expect(text.firstChild).toBe(textNode);
+    expect(root.querySelector('svg')).toBe(glyph);
     expect(root.querySelector('.message-card-status')?.textContent).toBe('已发送');
     cards.update([{ ...first, id: 'send-2', requestId: 'turn-2', text: '另一轮发送' }, first]);
     expect(cards.root.children[1]).toBe(root);
+    cards.update([{ ...first, icon: 'send' }]);
+    expect(root.querySelector('.codicon-send')).not.toBeNull();
+    expect(root.querySelector('svg')).toBeNull();
     cards.update([]); expect(cards.root.hidden).toBe(true); expect(cards.root.children).toHaveLength(0);
   } finally { cards.root.remove(); }
 });

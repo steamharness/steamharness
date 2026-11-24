@@ -14,6 +14,11 @@
 - 品牌统一为 **SteamHarness**。npm scope 为 `@steamharness`，运行时 SDK 是裸包 `steamharness`，CLI 命令是 `steamharness`。
 - 运行时 SDK 位于 `harness/` 目录（包名 `steamharness`）；内部仓库通过 `open-sources/` 子模块引用本仓库。
 
+## Bot 图标
+
+- SteamHarness 自有界面中的 Bot、Bot 分身、开发助手和 Agent 子任务统一使用项目卡片的 Lucide `Bot` 图形。按钮、菜单和标签使用跟随主题前景色的单色版本；保留已有的项目自定义头像。
+- 禁止在 SteamHarness 界面中使用 VS Code Codicons 的 `hubot`（包括 `$(hubot)` 和 `codicon-hubot`），也不得将它作为回退。其它 Codicons 与上游 VS Code 图标库不受此规则影响。
+
 ## 逐字节副本
 
 同一份载荷在仓库内有多个副本，任何一份漂移都会让某个消费方更弱：
