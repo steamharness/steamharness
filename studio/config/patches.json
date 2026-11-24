@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "2efc4b5df0d35bcdca79aba45a5d642273d5068e",
+  "commit": "ff04e85a93ac79755359bc8c19c844f0328bfa7a",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -150,6 +150,7 @@
     "0153-studio-web-launchpad-profile.patch": "219e9a470db661e94a310d50fee7485c8557568b37c84bf784108d93db613e6d",
     "0154-studio-web-project-recognition.patch": "abeabbaa6a8fd7560c98b76824fe7e833128ce4410cf84e09e8d508055ab1769",
     "0156-studio-web-resident-launchpad-tabs.patch": "63d7bc41855f41d9d9274b87af0e6069ec5225e7d6653743db1d337ccaba67d7",
-    "0157-studio-launchpad-background-focus.patch": "b72e753488fc9b66b057025a821b88a0bf87eec4d2158fc1cf4bf2f8daf2eb95"
+    "0157-studio-launchpad-background-focus.patch": "b72e753488fc9b66b057025a821b88a0bf87eec4d2158fc1cf4bf2f8daf2eb95",
+    "0158-studio-web-persist-secrets.patch": "97de2b1517afa79971f5f82bb03d82a27684fcc97676a78d7439e8592403eda7"
   }
 }
