@@ -139,5 +139,6 @@ export async function installProjectDependencies(options: { directory: string; s
     catch { options.signal.throwIfAborted(); throw Object.assign(new Error('Install pnpm or npm to prepare project dependencies.'), { code: 'package-manager-missing', cause: error }); }
   }
   options.log(`${manager} install\n`);
-  await run(manager, manager === 'pnpm' ? ['install', '--reporter=append-only'] : ['install', '--no-audit', '--no-fund']);
+  // New projects often share cached registry metadata even before they have a lockfile.
+  await run(manager, manager === 'pnpm' ? ['install', '--prefer-offline', '--reporter=append-only'] : ['install', '--no-audit', '--no-fund']);
 }

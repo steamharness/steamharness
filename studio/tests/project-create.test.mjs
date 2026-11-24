@@ -25,12 +25,14 @@ async function fixture(t, managers) {
   return { directory, env: { ...process.env, PATH: bin }, log: message => { log += message; }, get output() { return log; } };
 }
 
-test('dependency setup prefers pnpm, logs installation, and keeps shell punctuation in cwd', { skip: process.platform === 'win32' }, async t => {
+test('dependency setup prefers pnpm with its cache and keeps shell punctuation in cwd', { skip: process.platform === 'win32' }, async t => {
   const f = await fixture(t, { pnpm: `console.log(process.argv.slice(2).join(' ')); if (!process.argv.includes('--version')) console.log(process.cwd());`,
     npm: 'process.exit(99);' });
   const directory = path.join(f.directory, "project ' $() &"); await mkdir(directory);
   await installProjectDependencies({ ...f, directory, signal: new AbortController().signal });
-  assert.ok(f.output.includes('pnpm install')); assert.ok(f.output.includes(directory)); assert.ok(!/^npm install$/m.test(f.output));
+  assert.match(f.output, /^pnpm install$/m);
+  assert.match(f.output, /^install --prefer-offline --reporter=append-only$/m);
+  assert.ok(f.output.includes(directory)); assert.ok(!/^npm install$/m.test(f.output));
 });
 
 test('missing pnpm falls back to npm and missing both managers reports a recoverable error', { skip: process.platform === 'win32' }, async t => {
