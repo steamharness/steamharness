@@ -63,6 +63,7 @@ import type {
   AgentTurnContinuationKind,
   AgentUsage,
 } from "./types";
+import type { BotFileWorkspace } from "../runtime-storage/bot-files";
 import {
   DEFAULT_AGENT_EFFORT,
   DEFAULT_AGENT_MODE,
@@ -77,8 +78,9 @@ type PiAgentTool = PiAgent["state"]["tools"][number];
 
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   runtimeInfo?: ProjectRuntimeInfo;
-  /** Core-owned guidance for Bot project memory, including custom and prepared personas. */
-  botMemoryPrompt?: string;
+  /** Core-owned guidance retained alongside custom and prepared personas. */
+  botGuidance?: string;
+  botFiles?: BotFileWorkspace;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
@@ -213,7 +215,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     this.options = options;
     void options.sessionSuspend?.then(() => { this.suspended = true; });
     this.connection = readConnection(options);
-    this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy), options.runtimeInfo);
+    this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy), options.runtimeInfo, options.botFiles);
     this.externalTools = [...(options.extraTools ?? []), ...(options.externalTools ?? [])];
   }
 
@@ -388,7 +390,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     this.allTools.splice(
       0,
       this.allTools.length,
-      ...createAgentTools(this.pi, scopeFromOptions(this.options), next.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY, this.options.runtimeInfo),
+      ...createAgentTools(this.pi, scopeFromOptions(this.options), next.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY, this.options.runtimeInfo, this.options.botFiles),
     );
     this.connection = next;
 
@@ -422,7 +424,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         interruptSession: this.options.interruptSession,
         workdir: this.options.workdir,
         storage: this.options.storage,
-        botMemoryPrompt: this.options.botMemoryPrompt,
+        botGuidance: this.options.botGuidance,
         botMemoryRecall: this.options.botMemoryRecall,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
@@ -736,11 +738,13 @@ function createAgentTools(
   scope: AgentToolScope,
   policy: AgentPermissionPolicy,
   runtimeInfo?: ProjectRuntimeInfo,
+  botFiles?: BotFileWorkspace,
 ): PiAgentTool[] {
   return createBuiltinAgentTools({
     Type: pi.Type as TypeboxLike,
     scope: resolveAgentToolScope(policy, scope),
     runtimeInfo,
+    botFiles,
   }) as unknown as PiAgentTool[];
 }
 
@@ -866,7 +870,7 @@ function applyRunConfiguration(
   const systemPrompt = parsed.agent === "plan"
     ? [AGENT_PLAN_SYSTEM_PROMPT, parsed.systemPrompt].filter(isNonEmpty).join("\n\n")
     : parsed.systemPrompt ?? options.systemPrompt ?? defaultAgentSystemPrompt();
-  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, options.botMemoryPrompt].filter(isNonEmpty).join("\n\n");
+  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, options.botGuidance].filter(isNonEmpty).join("\n\n");
 
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.
@@ -876,10 +880,11 @@ function applyRunConfiguration(
   // Built from the run's own scope rather than from the runtime's: a run that
   // names its own `workdir` or `allowedDirectories` means those to be what its
   // tools may touch, and a set built once at construction would ignore both.
+  if (options.botFiles && parsed.agent === "plan") active.delete("bash");
   const allTools = createAgentTools(pi, {
     workdir: parsed.workdir,
     allowedDirectories: parsed.allowedDirectories,
-  }, parsed.permissionPolicy, options.runtimeInfo);
+  }, parsed.permissionPolicy, options.runtimeInfo, options.botFiles);
 
   // Asking the user is planning's own tool: the answer to "which approach?"
   // is what a plan is for, and a build turn is running a plan that was already

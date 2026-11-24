@@ -43,7 +43,7 @@ test("automatic recall follows follow-up and busy steering inputs without persis
   }
   const held = latch(), started = latch(), lease = latch();
   const tools = createBotMemoryTools({ context: run, defaultEnabled: true, readOnly: false, input: { errCode: 0, errMessage: "", prompt: "" } });
-  const instance = new DurableAgent({ models, session: {}, sessionLease: lease.promise, botMemoryPrompt: BOT_MEMORY_SYSTEM_PROMPT,
+  const instance = new DurableAgent({ models, session: {}, sessionLease: lease.promise, botGuidance: BOT_MEMORY_SYSTEM_PROMPT,
     botMemoryRecall: createBotMemoryRecall(run, true), retryDelayMs: 0, initialState: {
       systemPrompt: BOT_MEMORY_SYSTEM_PROMPT, model: models.getModel("faux", "recall")!, thinkingLevel: "off", messages: [],
       tools: [...tools, { name: "hold", label: "Hold", description: "Hold the round", parameters: ai.Type.Object({}),
@@ -110,7 +110,7 @@ test("reopened sessions search the resumed input before model recovery", { timeo
     const models = ai.createModels(); models.setProvider(faux.provider);
     const suspend = latch();
     const instance = new DurableAgent({ models, storage: testAgentStorage(database), session: {}, sessionSuspend: suspend.promise, resumeSession,
-      botMemoryPrompt: BOT_MEMORY_SYSTEM_PROMPT, botMemoryRecall: createBotMemoryRecall(run, true), retryDelayMs: 0,
+      botGuidance: BOT_MEMORY_SYSTEM_PROMPT, botMemoryRecall: createBotMemoryRecall(run, true), retryDelayMs: 0,
       initialState: { systemPrompt: BOT_MEMORY_SYSTEM_PROMPT, model: models.getModel("faux", "recovered-recall")!, thinkingLevel: "off", messages: [],
         tools: createBotMemoryTools({ context: run, defaultEnabled: true, readOnly: true, input: { errCode: 0, errMessage: "", prompt: "" } }) } });
     return { instance, faux, suspend };

@@ -1006,6 +1006,12 @@ Bot 用 `steamharness.defineBot()` 声明。必须显式选择 `engine: "agent"`
 - 本地调试宿主可给 `runLocalProjectWithReport()` 传 `nodeHooks.onLLMBotModelRequest(snapshot)`，查看每次发起的模型请求、工具声明与本轮工具结果。快照不含图片字节或鉴权信息，不进入普通报告或事件；不要给公开客户端暴露提示词、对话或工具数据。
 - 两种引擎都有 `prepareInput` 和 `onCompleted`。LLM 答复先按 `requestId` 保存；重试只补跑失败的完成回调，不重调已完成的模型请求。模型断流则由用户手动重试。
 
+本地宿主提供每个 Bot 实例独立的文件目录，与记忆开关无关。Agent Bot 默认提供 `bot_files_list`、`bot_files_read`、`bot_files_write`、`bot_files_move` 和 `bot_files_delete`；LLM Bot 必须在顶层 `tools` 或宿主工具面板按需启用。保留宿主审批，Plan 和只读模式只提供列目录和读取。不要以项目工具重复实现或覆盖同名的内置工具。
+
+`bot_files_list({})` 返回根路径和按宿主本地日期计算的 `temp/YYYY-MM-DD`、`artifacts/YYYY-MM-DD`；用 `path` 浏览已有日期或子目录。临时文件用 `temp`，交付件用 `artifacts`，源文件仍在项目工作区。其余文件工具只接受区内相对路径：读用 `nextByteOffset` 翻页，写传 `text`（UTF-8 最多 128 KiB，显式 `overwrite` 才能覆盖），移动传 `destination` 且不覆盖，删除限单个文件。文件不随发行包同步，也不会自动创建为对话附件。
+
+本地 `bash` 默认工作目录不变，可传 `directory: "temp" | "artifacts"` 在当天的目录运行。子进程收到 `TMPDIR`、`TMP`、`TEMP` 及绝对路径 `STEAMHARNESS_BOT_TEMP_DIR`、`STEAMHARNESS_BOT_ARTIFACT_DIR`；不读取这些变量的命令显式传输出路径。Core 提示词已说明这些用法，业务 Bot 不用重复写一套。自定义运行存储宿主须提供 `RuntimePersistence.botFiles` 才会启用目录工具；`createLocalRuntimePersistence` 已支持。
+
 以下 Agent 配置只适用于 `engine: "agent"`。
 
 Bot 项目记忆默认开启。`memory: { enabled: false }` 定义新配置的默认关闭值，已保存的项目配置布尔键 `STEAMHARNESS_BOT_MEMORY_ENABLED` 优先；用户可在项目配置界面切换，后续执行生效，已有运行快照保持原值。关闭保留已有条目，但不提供记忆工具与提示词。

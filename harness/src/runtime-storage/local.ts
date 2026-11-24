@@ -13,6 +13,7 @@ import { agentRuntimeSessionKey, type RuntimeHistoryLease, type RuntimePersisten
 import { SnapshotMemoryStorage } from "./memory";
 import { createLocalOutputJournal } from "./output-journal";
 import { createSqliteBotMemoryStore, type BotMemoryStore } from "./bot-memory";
+import { createBotFileWorkspace } from "./bot-files";
 
 export interface LocalRuntimePersistenceOptions {
   /** Host-owned directory, isolated by project/entry and optionally account. */
@@ -26,7 +27,8 @@ const revisionConflict = () => new RuntimeStorageError("RUNTIME_STORAGE_REVISION
 
 /** Local checkpoints are authoritative. Network access is never part of this backend. */
 export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOptions): RuntimePersistence {
-  const directory = path.toNamespacedPath(path.resolve(options.directory));
+  const root = path.resolve(options.directory);
+  const directory = path.toNamespacedPath(root);
   let database: DatabaseSync | undefined;
   let closed = false;
   const leases = new Map<string, RuntimeHistoryLease>();
@@ -68,6 +70,10 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
   const outputs = createLocalOutputJournal(db);
 
   return {
+    botFiles({ projectId, entryId }) {
+      assertOpen();
+      return createBotFileWorkspace(root, digest(JSON.stringify([projectId.toLowerCase(), entryId])));
+    },
     botMemory(scope) {
       assertOpen();
       const key = JSON.stringify([scope.projectId.toLowerCase(), scope.entryId]);

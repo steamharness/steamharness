@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AgentStorageFactory } from "../agent/storage";
 import type { BotMemoryScope, BotMemoryStore } from "./bot-memory";
+import type { BotFileWorkspace } from "./bot-files";
 import type { TokenUsageEntry } from "../token-usage";
 import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryKind, type RuntimeHistoryRecord, type RuntimeWorkspace, type RuntimeWorkspaceInput } from "./contract";
 import { ServerAgentStorage, runtimeStorageRequest, type ServerAgentStorageOptions } from "./server";
@@ -19,6 +20,8 @@ export interface RuntimeHistoryLease {
 export interface RuntimePersistence {
   /** Shared by this Bot's conversations; never keyed by account or conversation ID. */
   botMemory?(scope: BotMemoryScope): BotMemoryStore;
+  /** Optional host-local files. Separate Bot instances must use separate runtime directories. */
+  botFiles?(scope: { projectId: string; entryId: string }): BotFileWorkspace | undefined;
   list(kind: RuntimeHistoryKind): Promise<RuntimeHistoryRecord[]>;
   readRunOutputPage?(runId: string, page?: number, pageSize?: number): Promise<RuntimeOutputPage>;
   readRunOutputTimeline?(runId: string, query?: RuntimeTimelineQuery): Promise<RuntimeOutputTimeline>;

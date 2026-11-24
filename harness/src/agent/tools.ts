@@ -11,6 +11,7 @@ import type { AgentQuestion } from "./types";
 import { pageInteger } from "./result-pages";
 import { setTimeout as delay } from "node:timers/promises";
 import { readAgentRuntimeInfo, readRuntimeInfo, type ProjectRuntimeInfo } from "../runtime-info";
+import { BOT_FILE_AREAS, type BotFileArea, type BotFileWorkspace } from "../runtime-storage/bot-files";
 
 /**
  * The subset of TypeBox this module needs. Passed in by the runtime so the SDK
@@ -149,6 +150,7 @@ export function createBuiltinAgentTools(input: {
   scope: AgentToolScope;
   runtimeInfo?: ProjectRuntimeInfo;
   engine?: "llm";
+  botFiles?: BotFileWorkspace;
 }): AgentTool[] {
   return [
     createReadTool(input),
@@ -337,7 +339,7 @@ function createEditTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
   };
 }
 
-function createBashTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolScope }) {
+function createBashTool({ Type, scope, botFiles }: { Type: TypeboxLike; scope: AgentToolScope; botFiles?: BotFileWorkspace }) {
   return {
     name: "bash",
     label: "Shell",
@@ -345,20 +347,29 @@ function createBashTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
       "Run a shell command in the working directory. Returns combined stdout and stderr.",
       "Commands run with the host process's own privileges and are not confined to the working directory,",
       "so only run what the task actually needs.",
-      "Long output is explicitly truncated. Redirect verbose commands to a file and use read to inspect the complete output.",
+      "Long output is explicitly truncated. Redirect verbose commands to a file to inspect the complete output.",
+      ...(botFiles ? ["For generated files use STEAMHARNESS_BOT_TEMP_DIR or STEAMHARNESS_BOT_ARTIFACT_DIR. Set directory to start the command in today's Bot temp or artifacts directory; otherwise keep the project working directory."] : []),
     ].join(" "),
     parameters: Type.Object({
       command: Type.String({ description: "Command to run." }),
       timeout: Type.Optional(Type.Number({ description: "Timeout in milliseconds." })),
+      ...(botFiles && { directory: Type.Optional(Type.Unsafe({ type: "string", enum: BOT_FILE_AREAS })) }),
     }),
     async execute(
       _toolCallId: string,
-      params: { command: string; timeout?: number },
+      params: { command: string; timeout?: number; directory?: BotFileArea },
       signal?: AbortSignal,
     ) {
-      const result = await runShellCommand(params.command, scope.workdir, {
+      signal?.throwIfAborted();
+      if (params.directory !== undefined && (!botFiles || !BOT_FILE_AREAS.includes(params.directory))) throw new Error("Invalid Bot shell directory.");
+      const locations = await botFiles?.shell();
+      const cwd = locations && params.directory ? locations[params.directory] : scope.workdir;
+      const env = locations && { ...process.env, TMPDIR: locations.temp, TMP: locations.temp, TEMP: locations.temp,
+        STEAMHARNESS_BOT_TEMP_DIR: locations.temp, STEAMHARNESS_BOT_ARTIFACT_DIR: locations.artifacts };
+      const result = await runShellCommand(params.command, cwd, {
         timeoutMs: Math.max(1, Math.trunc(params.timeout ?? DEFAULT_BASH_TIMEOUT_MS)),
         signal,
+        env,
       });
       if (result.exitCode !== 0) {
         throw new Error(
@@ -605,14 +616,14 @@ async function readFileBytePage(file: string, start: number, size: number, limit
 async function runShellCommand(
   command: string,
   cwd: string,
-  options: { timeoutMs: number; signal?: AbortSignal },
+  options: { timeoutMs: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv },
 ): Promise<{ exitCode: number | null; output: string; truncated: boolean }> {
   options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
       shell: true,
-      env: process.env,
+      env: options.env ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
       // Its own process group, so a timeout can take the whole tree with it:
       // the shell is only the parent of whatever the command actually started,

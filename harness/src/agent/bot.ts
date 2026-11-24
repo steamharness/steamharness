@@ -24,6 +24,7 @@ import { HarnessError } from "../workflow/errors";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
 import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration";
 import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
+import { BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES } from "./bot-files";
 import { createLLMBot } from "./llm-bot";
 import { applyFolderAgentInput } from "../executor/folder-context";
 
@@ -115,12 +116,15 @@ export function assertBotLLMOptions(value: unknown): asserts value is BotLLMOpti
 }
 export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | "skills"> & { createSession?: unknown } = {}, overrides: ToolPermissionDefinition[] = []): ToolPermissionDefinition[] {
   normalizeToolPermissionDefinitions(overrides);
-  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
+  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, ...BOT_FILE_TOOL_DEFINITIONS,
+    { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
     ...(agent.session?.subagents || agent.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ...(agent.skills ? [{ name: "skill", label: "Skills", enabled: true, autoApprove: true }] : []),
     ...(agent.session?.toolSearch ? [{ name: "tool_search", label: "Find tools", enabled: true, autoApprove: true }] : []),
     ...(agent.session?.codeMode ? [{ name: "codemode", label: "Code Mode", enabled: true, autoApprove: true }] : [])];
-  return [...new Map([...defaults, ...overrides].map(tool => [tool.name, tool])).values()];
+  const configured = overrides.map(tool => BOT_FILE_TOOL_NAMES.includes(tool.name)
+    ? { ...tool, approvalMode: tool.approvalMode ?? "always" as const } : tool);
+  return [...new Map([...defaults, ...configured].map(tool => [tool.name, tool])).values()];
 }
 
 /** A project supplies policy and hooks; only Core supplies its executable workflow. */

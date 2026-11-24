@@ -104,7 +104,6 @@ export function createLLMBot<Input extends AgentInput>(
       const current = userMessage(finalInput.prompt, finalInput.images);
       const host = readOpenAIConversationHostInput({ hostInput: input.hostInput });
       const messages = host ? hostHistory(host, current) : [...completedHistory(state.messages), current];
-      const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions].filter(Boolean).join("\n\n") || undefined;
       // The ordinary node input is reported even when private model diagnostics are off.
       const nodeInput = { errCode: finalInput.errCode, errMessage: finalInput.errMessage, prompt: finalInput.prompt, requestId,
         provider: finalInput.provider, model: finalInput.model, images: finalInput.images?.map(({ mimeType }) => ({ mimeType })) };
@@ -112,7 +111,8 @@ export function createLLMBot<Input extends AgentInput>(
       const node = createOutputNode<typeof nodeInput, AgentOutputPayload>({ name: NODE, metadata: { type: "llm-stream" },
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
-          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)));
+          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)), finalInput.permissionPolicy);
+          const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions, runner.botFileGuidance].filter(Boolean).join("\n\n") || undefined;
           const round: LLMBotToolRound = { tools: runner.tools, transcript: [] };
           const callIds = new Set<string>();
           try {

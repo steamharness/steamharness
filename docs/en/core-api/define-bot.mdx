@@ -45,7 +45,7 @@ Core saves the completed turn by `requestId` before calling `onCompleted`. When 
 
 Open **Project information → Tools** in Studio or CLI Web to enable tools and set which ones need approval. Only `runtime_info` is enabled and auto-approved by default. Ask, “Where is this Bot running, and what version of Core is it using?” The tool reports the SteamHarness execution host, loaded versions, OS, and project entry, not local absolute paths, credentials, or the model server's location.
 
-File, search, wait, and shell tools are off by default. File tools stay within the current entry directory; `bash` runs with the host process's permissions and is not sandboxed. To add a project tool, declare its name and defaults in top-level `tools`, then return an implementation with the same name from `llm.createTools`. Structure inspection reads the declarations without running the factory.
+File, search, wait, and shell tools are off by default. Ordinary read and write tools stay within the current entry directory; `bot_files_*` tools work in the Bot files directory described below. `bash` runs with the host process's permissions and is not sandboxed. To add a project tool, declare its name and defaults in top-level `tools`, then return an implementation with the same name from `llm.createTools`. Structure inspection reads declarations without running the factory.
 
 The model endpoint must support tool calling. With **Auto-approve** turned off in Studio or CLI Web, each call waits for confirmation. Approval continues the same turn; rejection ends it. Hosts without interactive approval, such as the OpenAI Responses entry or direct CLI runs, can run only auto-approved tools. For a model endpoint without tool support, set `tools: [{ name: "runtime_info", enabled: false }]` and leave the other tools disabled.
 
@@ -127,6 +127,28 @@ Core's built-in guidance tells the Bot to maintain memory silently. It judges wh
 The model decides what to retain from the conversation; it does not copy every message. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress, guesses and information the user explicitly asks not to retain should not be stored.
 
 Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
+
+## Bot files
+
+A Bot can keep drafts, working copies of downloads and intermediate output under `temp/YYYY-MM-DD/`, and save reports and other deliverables under `artifacts/YYYY-MM-DD/`. The date follows local time on the execution host. The host creates directories on the first write or local shell call. Project source stays in the workspace, and other output locations requested by the user still follow the usual permissions.
+
+Files live in the `bot-files` area of local runtime storage. They are not included in project releases or automatically attached to conversations. Conversations for the same Bot instance share these directories; in Studio, the source project and its Bot instances have separate runtime data directories. Existing files are not moved, and temporary files are not deleted just because their date has passed.
+
+Agent Bots provide the following tools by default, independently of the memory setting. For an LLM Bot, enable the tools you need under **Project information → Tools** or in top-level `tools`; they are off by default. Hosts without local Bot file storage do not run these tools.
+
+| Tool | Usage |
+| --- | --- |
+| `bot_files_list` | With no `path`, returns the root and today's two relative paths. Pass `temp` or `artifacts` to list dates, or name a subdirectory. Use `nextOffset` for the next page. |
+| `bot_files_read` | Read UTF-8 text at `path` one page at a time. Continue with `nextByteOffset`. |
+| `bot_files_write` | Pass `path` and `text` to create a file and any missing parent directories. UTF-8 text is limited to 128 KiB. Overwriting requires `overwrite: true`. |
+| `bot_files_move` | Pass `path` and `destination` to move or rename one file, including a binary file. It does not overwrite the destination. |
+| `bot_files_delete` | Delete one file by `path`. It cannot recursively delete directories. |
+
+Except when listing the root or browsing dates, paths look like `temp/YYYY-MM-DD/draft.md`. The file tools reject absolute paths, parent traversal and links to other files. Plan and read-only modes offer listing and reading only, and all tools respect host permissions and approval settings.
+
+Local `bash` still starts in the project workspace by default. Set `directory` to `"temp"` or `"artifacts"` to start in today's corresponding directory. Child processes receive `TMPDIR`, `TMP`, and `TEMP` pointing to today's temporary directory, plus both absolute paths as `STEAMHARNESS_BOT_TEMP_DIR` and `STEAMHARNESS_BOT_ARTIFACT_DIR`. Programs that ignore those variables need an explicit output path.
+
+The built-in prompt guides the Bot to keep intermediate files and deliverables separate, then report the path to a requested deliverable. For example: “Keep the working files in your temporary directory, save the final report under artifacts, and tell me where it is.”
 
 ## Skills and host previews
 

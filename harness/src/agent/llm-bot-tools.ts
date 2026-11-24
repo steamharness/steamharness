@@ -4,13 +4,14 @@ import { createProjectToolPermissionContext, normalizeToolPermissionDefinitions,
 import type { NodeContext } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import { currentBotRequestId } from "./bot-lifecycle";
-import { readAgentToolDefinitions } from "./permission";
+import { BOT_FILES_SYSTEM_PROMPT, BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES, createBotFileTools, resolveBotFiles } from "./bot-files";
+import { readAgentToolDefinitions, resolveAgentPermissionPolicySetting } from "./permission";
 import { BUILTIN_AGENT_TOOL_NAMES, createBuiltinAgentTools } from "./tools";
 import type { AgentTool, AgentToolSet } from "./types";
 
 export function llmBotTools(overrides?: ToolPermissionDefinition[]): ToolPermissionDefinition[] {
   if (overrides !== undefined && !Array.isArray(overrides)) throw new HarnessError({ type: "input_validation", message: "Bot tools must be an array." });
-  const tools = new Map(readAgentToolDefinitions().map(tool => [tool.name, {
+  const tools = new Map([...readAgentToolDefinitions(), ...BOT_FILE_TOOL_DEFINITIONS].map(tool => [tool.name, {
     ...tool,
     ...(tool.name === "runtime_info" ? { description: "查看本轮的项目、宿主与实际运行版本。" } : {}),
     enabled: tool.name === "runtime_info", autoApprove: tool.name === "runtime_info",
@@ -29,16 +30,21 @@ export function llmBotTools(overrides?: ToolPermissionDefinition[]): ToolPermiss
 export async function createLLMBotToolRunner(
   definitions: ToolPermissionDefinition[], context: NodeContext,
   factory?: () => AgentToolSet | AgentTool[] | Promise<AgentToolSet | AgentTool[]>,
+  permissionPolicy?: unknown,
 ) {
   const permissions = context.toolPermissions ?? createProjectToolPermissionContext({ definitions, projectName: "bot", runId: String(context.metadata?.runId ?? "run") });
   const enabled = new Set(definitions.filter(tool => permissions.getTool(tool.name)?.enabled).map(tool => tool.name));
-  const builtinNames = new Set<string>(BUILTIN_AGENT_TOOL_NAMES);
+  const builtinNames = new Set<string>([...BUILTIN_AGENT_TOOL_NAMES, ...BOT_FILE_TOOL_NAMES]);
+  const readOnly = resolveAgentPermissionPolicySetting(permissionPolicy) === "read-only";
+  const files = enabled.has("bash") || BOT_FILE_TOOL_NAMES.some(name => enabled.has(name)) ? resolveBotFiles(context) : undefined;
   const workdir = path.resolve(String(context.metadata?.entryRootDir ?? context.runtimeInfo?.project.directory ?? process.cwd()));
-  const builtin = createBuiltinAgentTools({ Type, scope: { workdir, allowedDirectories: [workdir] }, engine: "llm", runtimeInfo: context.runtimeInfo });
+  const builtin = createBuiltinAgentTools({ Type, scope: { workdir, allowedDirectories: [workdir] }, engine: "llm", runtimeInfo: context.runtimeInfo,
+    botFiles: readOnly ? undefined : files });
+  if (files) builtin.push(...createBotFileTools(files, readOnly));
   const created = factory && [...enabled].some(name => !builtinNames.has(name)) ? await factory() : undefined;
   const set: AgentToolSet | undefined = Array.isArray(created) ? { tools: created } : created;
   try {
-    const active = new Map(builtin.filter(tool => enabled.has(tool.name)).map(tool => [tool.name, tool]));
+    const active = new Map(builtin.filter(tool => enabled.has(tool.name) && !(readOnly && files && tool.name === "bash")).map(tool => [tool.name, tool]));
     for (const tool of set?.tools ?? []) {
       if (!enabled.has(tool.name)) continue;
       if (builtinNames.has(tool.name) || active.has(tool.name)) {
@@ -52,6 +58,7 @@ export async function createLLMBotToolRunner(
 
     return {
       tools,
+      botFileGuidance: files && (active.has("bash") || BOT_FILE_TOOL_NAMES.some(name => active.has(name))) ? BOT_FILES_SYSTEM_PROMPT : undefined,
       close: () => set?.close?.(),
       async execute(call: ToolCall): Promise<{ result: ToolResultMessage; executed: boolean }> {
         context.abortSignal?.throwIfAborted();

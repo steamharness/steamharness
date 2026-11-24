@@ -67,7 +67,7 @@ export interface DurableAgentState {
 }
 
 export interface DurableAgentOptions {
-  botMemoryPrompt?: string;
+  botGuidance?: string;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
@@ -398,9 +398,9 @@ export class DurableAgent {
       if (typeof role?.definition?.systemPrompt !== "string") {
         const prepared = await this.session?.botSystemPromptFor(input.conversationId);
         if (prepared === undefined) return this.state.systemPrompt;
-        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botMemoryPrompt].filter(Boolean).join("\n\n");
+        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botGuidance].filter(Boolean).join("\n\n");
       }
-      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botMemoryPrompt].filter(Boolean).join("\n\n");
+      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botGuidance].filter(Boolean).join("\n\n");
     }, { tag: false });
     this.registry.install(defineExtension({
       name: "workflow",

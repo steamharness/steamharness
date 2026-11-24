@@ -27,6 +27,7 @@ export function createRuntimeStateStorage(options: {
     return backend = createLocalRuntimePersistence({ directory: localDirectory() });
   };
   const persistence: RuntimePersistence = {
+    botFiles: scope => resolve().botFiles?.(scope),
     botMemory(scope) {
       const source = resolve();
       if (source.botMemory) return source.botMemory(scope);
