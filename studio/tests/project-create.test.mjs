@@ -11,6 +11,7 @@ import { resolveMonorepoRoot, readJSON } from '../scripts/distribution.mjs';
 register();
 const { getProjectCardColorContrastRatio } = await import('@steamharness/project-card-metadata');
 const { installProjectDependencies, projectTemplatesRuntime } = await import('../extensions/studio-workstation/src/project-create-node.ts');
+const { readSidebarProjectEntries } = await import('../extensions/studio-workstation/src/project-sidebar-node.ts');
 
 async function fixture(t, managers) {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-package-manager-'));
@@ -131,6 +132,10 @@ test('the shipped template runtime uses the host locale and exact bundled versio
     const bot = await runtime.create({ templateId, name: templateId, parentDirectory: directory });
     assert.equal(bot.projectType, 'bot');
     assert.match(await readFile(path.join(bot.directory, 'index.ts'), 'utf8'), new RegExp(`steamharness\\.defineBot\\(\\{\\s*engine: "${engine}",`, 'u'));
+    const [entry] = await readSidebarProjectEntries(bot.directory);
+    assert.equal(entry.type, 'bot');
+    assert.equal(entry.defaultEntry, true);
+    assert.equal(entry.folderContext, engine === 'agent' ? true : undefined);
   }
   const input = { templateId: 'workflow-starter', name: 'Created', parentDirectory: directory };
   await runtime.validate(input);
@@ -160,7 +165,7 @@ test('the shipped template runtime uses the host locale and exact bundled versio
 
   const bundled = path.join(directory, 'local bundle');
   const local = projectTemplatesRuntime(extension, 'en', bundled);
-  const localInput = { ...input, name: 'Portable', templateId: 'bot-llm' };
+  const localInput = { ...input, name: 'Portable', templateId: 'bot-starter' };
   await assert.rejects(local.create(localInput), { code: 'runtime-packages-unavailable' });
   await mkdir(bundled);
   const packages = {};
@@ -171,7 +176,8 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   await writeFile(path.join(bundled, 'runtime-packages.json'), JSON.stringify({ schemaVersion: 1, packages }));
   const portable = await local.create(localInput);
   const portableManifest = JSON.parse(await readFile(path.join(portable.directory, 'package.json'), 'utf8'));
-  assert.match(await readFile(path.join(portable.directory, 'index.ts'), 'utf8'), /engine: "llm",/u);
+  const [portableEntry] = await readSidebarProjectEntries(portable.directory);
+  assert.equal(portableEntry.folderContext, true);
   assert.deepEqual(portableManifest.steamharnessRuntime, { version: '9.8.7' });
   assert.deepEqual(portableManifest.devDependencies, { steamharness: 'file:./vendor/steamharness/steamharness.tgz', '@steamharness/cli': 'file:./vendor/steamharness/steamharness-cli.tgz' });
   await writeFile(path.join(bundled, 'steamharness-cli.tgz'), 'damaged');

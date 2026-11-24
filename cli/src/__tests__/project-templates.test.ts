@@ -51,6 +51,8 @@ describe('project templates', () => {
       else expect(npm.scripts['run:json']).toBe('steamharness json .');
       expect(manifest).toMatchObject({ id: created.id,
         version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType}] });
+      const folderContext = template.id === 'bot-starter' ? true : undefined;
+      expect(manifest.entries[0].folderContext).toBe(folderContext);
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       const card = manifest.projectCard;
       expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
@@ -62,6 +64,7 @@ describe('project templates', () => {
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
+        expect(project.entries.find(entry => entry.entryId === project.defaultEntry)?.folderContext).toBe(folderContext);
         expect(project.aggregateProjectCard).toMatchObject(card);
         if (template.projectType === 'kanban') { continue; }
         const execute = (round: number) => runtime.run({ project: { ...project, conversation: undefined }, conversationId: 'persistent-chat', runId: `round-${round}`,

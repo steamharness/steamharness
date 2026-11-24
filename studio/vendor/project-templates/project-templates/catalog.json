@@ -21,6 +21,7 @@
     "id": "bot-starter",
     "projectType": "bot",
     "kind": "starter",
+    "folderContext": true,
     "name": {
       "en": "Core Agent",
       "zh-CN": "Core Agent"

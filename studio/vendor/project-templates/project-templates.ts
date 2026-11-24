@@ -17,6 +17,7 @@ export interface ProjectTemplateDefinition {
   files: string[];
   sources?: Record<string, string>;
   entryFile: string;
+  folderContext?: true;
 }
 export type CreateProjectFromTemplateRequest = {
   templateId: string;
@@ -69,6 +70,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
     if (!/^[a-z][a-z0-9-]*$/.test(template.id) || ids.has(template.id) || !['workflow', 'bot', 'kanban'].includes(template.projectType)
       || !['starter', 'example'].includes(template.kind) || !Array.isArray(template.files) || !template.files.every(safeRelative)
       || !(template.files.includes(template.entryFile) || template.entryFile === 'dist/steamharness/build/main/index.html' && template.files.includes('build.mjs')) || Object.values(template.sources ?? {}).some(source => !safeRelative(source))
+      || (template.folderContext !== undefined && (template.projectType !== 'bot' || template.folderContext !== true))
       || ['en', 'zh-CN'].some(locale => !template.name?.[locale as 'en'] || !template.description?.[locale as 'en'])) {
       throw new ProjectTemplateError('invalid-template', 'Invalid project template catalog.');
     }
@@ -110,7 +112,8 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   };
   const projectManifest = {
     id: "", name, version: "0.1.0",
-      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json' }],
+      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json',
+        ...(template.folderContext === true && { folderContext: true }) }],
       defaultEntry: 'main',
       projectCard,
       projectInfo,
