@@ -39,6 +39,7 @@ const until = async (read, description, timeout = 45_000) => {
 };
 const post = (origin, route, body) => fetch(`${origin}/_studio/web/${route}`, { method: 'POST',
   headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const openTab = async (page, open) => (await Promise.all([page.waitForEvent('popup', { timeout: 30_000 }), open()]))[0];
 
 async function checkLocalProfile(home, zh = false) {
   await home.getByRole('tab', { name: zh ? '我的' : 'My Studio', exact: true }).click();
@@ -82,15 +83,18 @@ async function registerPlatformProfile(vscode) {
   registerCommand('studio.internalGetAccountMenuState', () => current);
   registerCommand('studio.launchpadSignIn', () => publish(true));
   registerCommand('studio-test.profile.signOut', () => publish(false));
-  registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: [{ id: 'fixture-chat', name: 'Fixture chat', unread: 0, preview: 'Hello' }] }));
+  const chats = [{ id: 'fixture-chat', name: 'Fixture chat', unread: 0, preview: 'Hello' },
+    { id: 'another-chat', name: 'Another chat', unread: 0, preview: 'Hi' }];
+  registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: chats }));
   registerCommand('studio.getSocialSnapshot', () => ({ people: [{ id: 'friend', name: 'Fixture friend', relation: 'friend' }], favorites: [{ id: 'favorite', title: 'Fixture favorite' }], notices: [] }));
   registerCommand('studio.getLaunchpadDirectory', () => ({ groups: [], conversations: [] }));
   registerCommand('studio.hasUnreadNotices', () => false);
   registerCommand('studio.openLaunchpadInbox', async (requestId, conversation) => {
-    if (conversation !== 'fixture-chat') return 'Unexpected conversation';
+    const chat = chats.find(item => item.id === conversation);
+    if (!chat) return 'Unexpected conversation';
     if (!await executeCommand('studio.internalPrepareLaunchpadApp', 'fixture', {})) return 'Unable to prepare the fixture';
-    return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: conversation, title: 'Fixture chat',
-      html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-fixture'"><h1>Fixture conversation</h1>
+    return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: conversation, title: chat.name,
+      html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-fixture'"><h1>${chat.name}</h1>
       <script nonce="fixture">acquireVsCodeApi().postMessage({type:'studio-launchpad-ready'});</script>`,
     });
   });
@@ -109,19 +113,30 @@ async function checkPlatformProfile(page) {
   await profile.getByText('Fixture favorite', { exact: true }).waitFor();
   await profile.getByRole('tab', { name: 'Recent chats', exact: true }).click();
   const chat = profile.getByRole('button', { name: 'Fixture chat Hello' });
-  await chat.click();
-  const surface = page.locator('.studio-launchpad-settings[aria-label="Fixture chat"]');
-  await surface.waitFor();
-  const back = page.getByRole('button', { name: 'Back to Launchpad', exact: true });
-  await back.click();
-  await chat.waitFor();
-  await chat.click();
-  await surface.waitFor();
+  const url = page.url();
+  const waitForChat = async (tab, title) => {
+    // The preview runs inside the webview, not in the Launchpad document or a navigated URL.
+    await tab.locator(`.studio-chat-window[aria-label="${title}"]`).waitFor();
+    await until(async () => (await tab.title()) === title, `The IM tab did not take the title ${title}.`);
+    assert.equal(tab.url(), 'about:blank');
+  };
+  const first = await openTab(page, () => chat.click());
+  await waitForChat(first, 'Fixture chat');
+  const second = await openTab(page, () => profile.getByRole('button', { name: 'Another chat Hi' }).click());
+  await waitForChat(second, 'Another chat');
+  assert.equal(await first.locator('.studio-chat-window[aria-label="Fixture chat"]').isVisible(), true);
+  assert.equal(page.url(), url);
+  assert.equal(await chat.isVisible(), true);
+  await first.close();
+  assert.equal(await second.locator('.studio-chat-window').isVisible(), true);
+  const reopened = await openTab(page, () => chat.click());
+  await waitForChat(reopened, 'Fixture chat');
+  const closed = Promise.all([second.waitForEvent('close'), reopened.waitForEvent('close')]);
   await writeFile(path.join(directory, 'profile-commands.json'), JSON.stringify('studio-test.profile.signOut'));
-  await surface.waitFor({ state: 'detached' });
+  await closed;
   await profile.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.equal(await chat.count(), 0);
-  console.log('[OK] Platform profile sign-in state · contacts · favorites · open/back · sign-out cleanup');
+  console.log('[OK] Platform profile · two IM tabs · Launchpad stays in place · sign-out cleanup');
 }
 
 async function runPlatformProfile(context) {
@@ -309,9 +324,11 @@ try {
   browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true,
     env: browserEnvironment,
     proxy: browserProxy ? { server: browserProxy, bypass: '.example.test,localhost,127.0.0.1' } : undefined,
-    args: [...(liveWebviews ? [] : ['--no-proxy-server']), '--host-resolver-rules=MAP *.example.test 127.0.0.1'] });
+    // The fixture maps the HTTPS workbench and preview origins onto loopback.
+    args: [...(liveWebviews ? [] : ['--no-proxy-server', '--disable-features=LocalNetworkAccessChecks']), '--host-resolver-rules=MAP *.example.test 127.0.0.1'] });
   const localContext = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
   if (!liveWebviews) await serveLocalWebviewAssets(localContext, upstream);
+  await runPlatformProfile(localContext);
   const localPage = await localContext.newPage();
   const aliasPage = await localContext.newPage();
   await aliasPage.goto(local.replace('127.0.0.1', 'localhost'), { waitUntil: 'domcontentloaded' });
@@ -320,13 +337,21 @@ try {
   await aliasPage.goto(new URL(`/?folder=${encodeURIComponent(workspace)}`, local).href, { waitUntil: 'domcontentloaded' });
   await aliasPage.locator('.monaco-workbench:not(.studio-launchpad-window)').waitFor({ timeout: 60_000 });
   await waitForBrowserExtensionHost(aliasPage);
-  await aliasPage.locator('[id="studio.showLaunchpad"] a').click();
-  await aliasPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
-  const recent = aliasPage.locator('.lp-library-card').filter({ hasText: path.basename(workspace) }).first();
+  const aliasLaunchpad = await openTab(aliasPage, () => aliasPage.locator('[id="studio.showLaunchpad"] a').click());
+  await aliasLaunchpad.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  const appDetails = aliasLaunchpad.locator('.lp-project-details');
+  const recent = aliasLaunchpad.locator('.lp-library-card').filter({ hasText: path.basename(workspace) }).first();
   await recent.click();
-  await aliasPage.getByRole('button', { name: 'Open in workbench' }).click();
-  await aliasPage.waitForURL(url => url.searchParams.get('folder') === workspace);
+  const launchpadUrl = aliasLaunchpad.url();
+  const projectTab = await openTab(aliasLaunchpad, () => appDetails.getByRole('button', { name: 'Open in workbench' }).click());
+  await projectTab.waitForURL(url => url.searchParams.get('folder') === workspace);
+  await projectTab.locator('[id="studio.showLaunchpad"] a').click();
+  assert.equal(aliasLaunchpad.url(), launchpadUrl);
+  assert.equal(await appDetails.getByRole('button', { name: 'Open in workbench' }).isVisible(), true);
+  assert.equal(new URL(aliasPage.url()).searchParams.get('folder'), workspace);
+  await projectTab.close();
   await aliasPage.close();
+  await aliasLaunchpad.close();
   if (liveWebviews) localPage.on('requestfailed', request => {
     if (request.url().includes('.vscode-cdn.net/')) console.error('Webview asset request failed:', new URL(request.url()).pathname, request.failure()?.errorText);
   });
@@ -346,7 +371,6 @@ try {
   await localPage.locator('.lp-library-card[data-key^="all:"]').filter({ hasText: importedBot.name }).click({ timeout: 60_000 });
   await checkImportedBot(localPage);
   console.log('[OK] Import without opening · source Bot details and icon · plain folder · reload');
-  await runPlatformProfile(localContext);
   assert.equal(await localPage.locator('.studio-mode-toggle').isVisible(), false);
   await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = await until(async () => {
@@ -356,7 +380,7 @@ try {
   }, 'The local Launchpad did not open Settings.', 60_000);
   await settings.getByRole('button', { name: 'Remote Access', exact: true }).click();
   await settings.getByRole('button', { name: 'Generate pairing code' }).waitFor();
-  console.log('[OK] 127.0.0.1 and localhost home · folder URL · recent project · Launchpad Settings');
+  console.log('[OK] 127.0.0.1 and localhost home · project opens in a new tab · Launchpad Settings');
   let botFailure;
   for (const [index, origin] of remote.entries()) {
     const zh = index === 1;
@@ -364,18 +388,11 @@ try {
     const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: zh ? 'zh-CN' : 'en-US', viewport: { width: 1280, height: 900 } });
     if (!liveWebviews) await serveLocalWebviewAssets(context, upstream);
     try {
-      const page = await context.newPage();
-      const loadErrors = [];
-      page.on('pageerror', error => loadErrors.push(error.message));
-      page.on('requestfailed', request => {
-        if (['document', 'script'].includes(request.resourceType())) {
-          loadErrors.push(`${new URL(request.url()).pathname}: ${request.failure()?.errorText}`);
-        }
-      });
-      await page.goto(origin, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('heading', { name: zh ? '配对 SteamHarness Studio' : 'Pair with SteamHarness Studio' }).waitFor();
-      await page.goto(new URL(`/?workspace=${encodeURIComponent(workspaceFile)}`, origin).href, { waitUntil: 'domcontentloaded' });
-      assert.equal(new URL(page.url()).pathname, '/pair');
+      const launchpad = await context.newPage();
+      await launchpad.goto(origin, { waitUntil: 'domcontentloaded' });
+      await launchpad.getByRole('heading', { name: zh ? '配对 SteamHarness Studio' : 'Pair with SteamHarness Studio' }).waitFor();
+      await launchpad.goto(new URL(`/?workspace=${encodeURIComponent(workspaceFile)}`, origin).href, { waitUntil: 'domcontentloaded' });
+      assert.equal(new URL(launchpad.url()).pathname, '/pair');
       await settings.getByRole('combobox', { name: 'Remote address' }).selectOption(origin);
       await settings.getByRole('button', { name: 'Generate pairing code' }).click();
       const qr = settings.getByRole('img', { name: 'Pairing QR code' });
@@ -385,56 +402,83 @@ try {
       const link = await settings.locator('[data-pair] code').last().innerText();
       assert.equal(link, `${origin}/pair#code=${code}`);
       if (zh) {
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.goto(link, { waitUntil: 'domcontentloaded' });
-        await until(async () => await page.getByLabel('配对码').inputValue() === code, 'The pairing link did not fill the code.');
-        assert.equal(new URL(page.url()).hash, '');
+        await launchpad.setViewportSize({ width: 390, height: 844 });
+        await launchpad.goto(link, { waitUntil: 'domcontentloaded' });
+        await until(async () => await launchpad.getByLabel('配对码').inputValue() === code, 'The pairing link did not fill the code.');
+        assert.equal(new URL(launchpad.url()).hash, '');
         assert.equal((await context.cookies()).some(cookie => cookie.name === '__Host-steamharness-studio'), false);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-        await page.setViewportSize({ width: 1280, height: 900 });
+        assert.equal(await launchpad.evaluate(() => document.documentElement.scrollWidth), 390);
+        await launchpad.setViewportSize({ width: 1280, height: 900 });
       } else {
-        const input = page.getByLabel('Pairing code');
+        const input = launchpad.getByLabel('Pairing code');
         await input.fill(`${code[0] === 'A' ? 'B' : 'A'}${code.slice(1)}`);
-        await page.getByRole('button', { name: 'Confirm pairing' }).click();
-        await page.getByText('The code is incorrect, used, or expired.', { exact: false }).waitFor();
-        assert.equal(new URL(page.url()).pathname, '/pair');
+        await launchpad.getByRole('button', { name: 'Confirm pairing' }).click();
+        await launchpad.getByText('The code is incorrect, used, or expired.', { exact: false }).waitFor();
+        assert.equal(new URL(launchpad.url()).pathname, '/pair');
         await input.fill(code);
       }
       await writeFile(caseFile, name);
-      await page.getByRole('button', { name: zh ? '确认配对' : 'Confirm pairing' }).click();
-      const home = page.locator('.studio-launchpad');
+      await launchpad.getByRole('button', { name: zh ? '确认配对' : 'Confirm pairing' }).click();
+      const home = launchpad.locator('.studio-launchpad');
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
-      assert.equal(new URL(page.url()).pathname, '/');
-      await waitForBrowserExtensionHost(page);
-      await page.reload({ waitUntil: 'domcontentloaded' });
+      assert.equal(new URL(launchpad.url()).pathname, '/');
+      await waitForBrowserExtensionHost(launchpad);
+      await launchpad.reload({ waitUntil: 'domcontentloaded' });
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       await checkLocalProfile(home, zh);
       console.log(`[OK] ${name}: paired, reached Launchpad and restored session on reload`);
-      await importFolder(page, importedSource, zh);
-      await checkImportedBot(page, zh);
+      await importFolder(launchpad, importedSource, zh);
+      await checkImportedBot(launchpad, zh);
       console.log(`[OK] ${name}: imported unopened folder as a source Bot`);
       if (zh) {
-        await page.setViewportSize({ width: 390, height: 844 });
+        await launchpad.setViewportSize({ width: 390, height: 844 });
         assert.ok(await home.evaluate(element => element.scrollWidth <= element.clientWidth));
-        await page.setViewportSize({ width: 1280, height: 900 });
+        await launchpad.setViewportSize({ width: 1280, height: 900 });
       }
       await home.getByRole('button', { name: zh ? '打开项目…' : 'Open project…' }).click();
       await home.getByRole('button', { name: zh ? '打开工作区…' : 'Open workspace…' }).click();
-      const picker = page.locator('.quick-input-widget');
+      const picker = launchpad.locator('.quick-input-widget');
       const input = picker.locator('input').first();
       await picker.locator('.quick-input-list .monaco-list-row').first().waitFor();
       await input.fill(path.dirname(workspaceFile) + path.sep);
-      await picker.getByText(path.basename(workspaceFile), { exact: true }).click({ timeout: 10_000 }).catch(async error => {
+      const launchpadUrl = launchpad.url();
+      const page = await openTab(launchpad, () => picker.getByText(path.basename(workspaceFile), { exact: true }).click({ timeout: 10_000 })).catch(async error => {
         throw new Error(`Workspace picker value: ${await input.inputValue()}\n${(await picker.innerText()).slice(0, 2000)}`, { cause: error });
+      });
+      const loadErrors = [];
+      page.on('pageerror', error => loadErrors.push(error.message));
+      page.on('requestfailed', request => {
+        if (['document', 'script'].includes(request.resourceType())) {
+          loadErrors.push(`${new URL(request.url()).pathname}: ${request.failure()?.errorText}`);
+        }
       });
       await page.waitForURL(url => url.searchParams.get('workspace') === workspaceFile);
       await page.locator('.monaco-workbench:not(.studio-launchpad-window)').waitFor({ timeout: 60_000 }).catch(async error => {
         const body = await page.locator('body').innerText();
         throw new Error(`Workspace failed to load: ${body.slice(0, 1000)}\n${loadErrors.slice(-20).join('\n')}`, { cause: error });
       });
+      assert.equal(launchpad.url(), launchpadUrl);
+      await checkImportedBot(launchpad, zh);
       await waitForBrowserExtensionHost(page);
       const persistedCookie = (await context.cookies()).find(cookie => cookie.name === '__Host-steamharness-studio');
       assert.ok(persistedCookie?.secure && persistedCookie.httpOnly);
+      await home.getByRole('tab', { name: zh ? '仓库' : 'Library', exact: true }).click();
+      await importFolder(launchpad, workspace, zh);
+      const details = home.locator('.lp-project-details');
+      const run = details.getByRole('button', { name: zh ? /^打开入口:/ : 'Run project', exact: !zh });
+      const runTab = await openTab(launchpad, () => run.click());
+      try {
+        await runTab.waitForURL(url => url.searchParams.get('folder') === workspace);
+        await until(async () => {
+          for (const frame of runTab.frames()) {
+            if (frame.url().startsWith(previews[index] + '/p/') && frame.url().includes('/entries/main/') &&
+                await frame.locator(workflowReady).isVisible().catch(() => false)) return frame;
+          }
+        }, 'The project entry did not connect in the new tab.');
+        assert.equal(launchpad.url(), launchpadUrl);
+        assert.equal(await run.isVisible(), true);
+      } finally { await runTab.close(); }
+      console.log(`[OK] ${name}: ${zh ? 'selected entry' : 'default project entry'} ran in a new tab without replacing Launchpad`);
       await until(async () => (await readFile(path.join(workspace, `${name}-pty.txt`), 'utf8').catch(() => '')).includes(`${name}-pty`), 'Remote terminal did not write to the host.');
       assert.equal(await readFile(path.join(workspace, `${name}-edit.txt`), 'utf8'), `${name}-workbench`);
       const projectFrame = (selector, exclude) => until(async () => {

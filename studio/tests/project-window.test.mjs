@@ -161,11 +161,11 @@ test('a disposed project view cannot open a window after the dialog resolves', a
 });
 
 for (const browser of [false, true]) {
-  test(`the ${browser ? 'web' : 'desktop'} launchpad opens projects ${browser ? 'in the same tab' : 'in a separate window'} without prompting`, async t => {
+  test(`the ${browser ? 'web' : 'desktop'} launchpad opens projects ${browser ? 'in a new tab' : 'in a separate window'} without prompting`, async t => {
     const f = await fixture(t, 'en', browser);
     f.launchpad = true;
     await f.open(uri('file:///projects/demo'));
     assert.deepEqual(f.dialogs, []);
-    assert.deepEqual(f.opens, [{ uri: 'file:///projects/demo', options: { forceNewWindow: !browser, forceReuseWindow: browser } }]);
+    assert.deepEqual(f.opens, [{ uri: 'file:///projects/demo', options: { forceNewWindow: true, forceReuseWindow: false } }]);
   });
 }

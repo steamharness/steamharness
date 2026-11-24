@@ -7,10 +7,9 @@ export interface ProjectWindowOptions {
 }
 
 export async function chooseProjectWindow(message = t('Where would you like to open the project?')): Promise<ProjectWindowOptions | undefined> {
-  // Desktop keeps the resident window; the web Launchpad navigates in its own tab.
+  // Keep the Launchpad in place on both desktop and web.
   if (await vscode.commands.executeCommand<boolean>('studio.internalIsLaunchpad').then(value => value === true, () => false)) {
-    const browser = vscode.env.uiKind === vscode.UIKind.Web;
-    return { forceNewWindow: !browser, forceReuseWindow: browser };
+    return { forceNewWindow: true, forceReuseWindow: false };
   }
   const newWindow = t('Open in New Window'), currentWindow = t('Open in Current Window');
   const target = await vscode.window.showInformationMessage(message, { modal: true }, newWindow, currentWindow);

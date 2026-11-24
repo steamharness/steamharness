@@ -1,0 +1,670 @@
+diff --git a/src/vs/code/browser/workbench/studioWebProjectEntry.ts b/src/vs/code/browser/workbench/studioWebProjectEntry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9497b3e3a5a3597228572ee8a567b00dd405611
+--- /dev/null
++++ b/src/vs/code/browser/workbench/studioWebProjectEntry.ts
+@@ -0,0 +1,27 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import type { IStudioProjectEntry } from '../../../platform/window/common/studioProjectWindow.js';
++
++const storageKey = 'studio.web.projectEntry';
++
++// The run request goes to the new tab, not into the project URL. Shared links and reloads must not run it.
++export function writeStudioWebProjectEntry(storage: Storage, href: string, entryId: string | undefined): void {
++	storage.setItem(storageKey, JSON.stringify({ href, entryId }));
++}
++
++export function takeStudioWebProjectEntry(target: Pick<Window, 'sessionStorage'>, href: string, folderUri: string): IStudioProjectEntry | undefined {
++	try {
++		const storage = target.sessionStorage;
++		const raw = storage.getItem(storageKey);
++		if (raw === null) { return undefined; }
++		storage.removeItem(storageKey);
++		const entry = JSON.parse(raw) as { href?: string; entryId?: string } | null;
++		if (entry?.href === href && (entry.entryId === undefined || typeof entry.entryId === 'string')) {
++			return { uri: folderUri, entryId: entry.entryId };
++		}
++	} catch { /* The workspace still opens if browser storage is unavailable. */ }
++	return undefined;
++}
+diff --git a/src/vs/code/browser/workbench/workbench.ts b/src/vs/code/browser/workbench/workbench.ts
+index 7ca9f576d4469c698b492c1ee48f8e2c58e9b423..ce7a8e94524cc38183f3af6d1d9d1a6c6bbb7b7d 100644
+--- a/src/vs/code/browser/workbench/workbench.ts
++++ b/src/vs/code/browser/workbench/workbench.ts
+@@ -18,10 +18,11 @@ import { URI, UriComponents } from '../../../base/common/uri.js';
+ import product from '../../../platform/product/common/product.js';
+ import { ISecretStorageProvider } from '../../../platform/secrets/common/secrets.js';
+ import { isFolderToOpen, isWorkspaceToOpen } from '../../../platform/window/common/window.js';
+-import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
++import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
+ import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
+ import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
+ import { create } from '../../../workbench/workbench.web.main.internal.js';
++import { takeStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
+ 
+ interface ISecretStorageCrypto {
+ 	seal(data: string): Promise<string>;
+@@ -491,22 +492,36 @@ class WorkspaceProvider implements IWorkspaceProvider {
+ 	) {
+ 	}
+ 
+-	async open(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<boolean> {
+-		if (options?.reuse && !options.payload && this.isSame(this.workspace, workspace)) {
++	async open(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<boolean> {
++		const projectEntry = this.config.studioWeb && workspace && isFolderToOpen(workspace) ? options?.studioProjectEntry : undefined;
++		const reuse = options?.reuse && !this.studioLaunchpad && !projectEntry;
++		if (reuse && !options?.payload && this.isSame(this.workspace, workspace)) {
+ 			return true; // return early if workspace and environment is not changing and we are reusing window
+ 		}
+ 
+ 		const targetHref = this.createTargetUrl(workspace, options);
+ 		if (targetHref) {
+-			if (options?.reuse) {
++			if (reuse) {
+ 				mainWindow.location.href = targetHref;
+ 				return true;
++			} else if (projectEntry) {
++				const tab = mainWindow.open('', '_blank');
++				if (!tab) { return false; }
++				try {
++					const href = new URL(targetHref).href;
++					writeStudioWebProjectEntry(tab.sessionStorage, href, projectEntry.entryId);
++					tab.location.replace(href);
++					return true;
++				} catch {
++					tab.close();
++					return false;
++				}
+ 			} else {
+ 				let result;
+-				if (isStandalone()) {
++				if (!this.config.studioWeb && isStandalone()) {
+ 					result = mainWindow.open(targetHref, '_blank', 'toolbar=no'); // ensures to open another 'standalone' window!
+ 				} else {
+-					result = mainWindow.open(targetHref);
++					result = mainWindow.open(targetHref, '_blank');
+ 				}
+ 
+ 				return !!result;
+@@ -622,9 +637,14 @@ function readCookie(name: string): string | undefined {
+ 
+ 	// Create workbench
+ 	const workspaceProvider = WorkspaceProvider.create(config);
++	const workspace = workspaceProvider.workspace;
++	const folder = config.studioWeb && workspace && isFolderToOpen(workspace) ? workspace.folderUri : undefined;
++	const studioProjectEntry = folder?.scheme === Schemas.vscodeRemote && folder.authority === config.remoteAuthority
++		? takeStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
+ 	create(mainWindow.document.body, {
+ 		...config,
+ 		studioLaunchpad: workspaceProvider.studioLaunchpad,
++		studioProjectEntry,
+ 		windowIndicator: config.windowIndicator ?? { label: '$(remote)', tooltip: `${product.nameShort} Web` },
+ 		settingsSyncOptions: config.settingsSyncOptions ? { enabled: config.settingsSyncOptions.enabled, } : undefined,
+ 		workspaceProvider,
+diff --git a/src/vs/workbench/browser/media/studioLaunchpad.css b/src/vs/workbench/browser/media/studioLaunchpad.css
+index 2b4d0791aaff16e309dc09972089094cc82b3cfb..028b8d1fe14ddae107a27acdbdb54517d91c0a69 100644
+--- a/src/vs/workbench/browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/browser/media/studioLaunchpad.css
+@@ -251,6 +251,7 @@
+ .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
++.studio-chat-loading { display: grid; place-items: center; height: 100%; color: var(--vscode-descriptionForeground); background: var(--vscode-editor-background); }
+ .studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index ba61d0cc4683fe2bc3a9e57015d72792ad982d57..21bb67272052bbc8278fc27f71b6a57ea6faefc8 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -29,13 +29,13 @@ export interface LibraryActions {
+ 	create(): void;
+ 	importProjects(): void;
+ 	project(p: LaunchpadProject, entryId?: string): void;
++	runProject?(p: LaunchpadProject, entryId?: string): void;
+ 	remove(p: LaunchpadProject): void;
+ 	reveal?(p: LaunchpadProject): void;
+ 	copyPath(p: LaunchpadProject): void;
+ 	contextMenu: IContextMenuService;
+ 	hoverService: IHoverService;
+ 	usage?: ProjectUsageBridge;
+-	canRunEntries?: boolean;
+ 	openLabel?(p: LaunchpadProject): string;
+ 	cover(p: LaunchpadProject): Promise<string | undefined>;
+ 	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
+@@ -388,7 +388,11 @@ export class LaunchpadLibrary extends Disposable {
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
+ 		this.updateIndexStatuses();
+ 		if (selected) {
+-			const canRun = this.actions.canRunEntries !== false && !!selected.distribution && !selected.missing;
++			const canRun = !!selected.distribution && !selected.missing;
++			const runProject = (entryId?: string) => {
++				if (this.actions.runProject) { this.actions.runProject(selected, entryId); }
++				else { this.actions.project(selected, entryId); }
++			};
+ 			const open = button(this.actions.openLabel?.(selected) ?? openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun && !selected.builtin ? 'lp-outline' : 'lp-primary'}`);
+ 			open.disabled = !!(selected.managed && selected.missing);
+ 			open.dataset.key = 'open:' + selected.uri;
+@@ -397,7 +401,7 @@ export class LaunchpadLibrary extends Disposable {
+ 			more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
+ 			const actions = [open, more];
+ 			if (canRun && !selected.builtin) {
+-				const run = button(t('Run project', '运行项目'), 'play', () => this.actions.project(selected), 'studio-project-action lp-primary');
++				const run = button(t('Run project', '运行项目'), 'play', () => runProject(), 'studio-project-action lp-primary');
+ 				run.dataset.key = 'run:' + selected.uri;
+ 				actions.unshift(run);
+ 			}
+@@ -415,7 +419,7 @@ export class LaunchpadLibrary extends Disposable {
+ 			this.updateDetailActions();
+ 			const usage = this.projectUsage(selected);
+ 			const detail = projectDetails(selected, t, { actions, secondaryActions, usage: usage?.element,
+-				openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
++				openEntry: canRun ? runProject : undefined });
+ 			this.content.replaceChildren(detail); restoreFocus();
+ 			usage?.setVisible(this.visible);
+ 			return;
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index 0412cf2f224dff3f9b00aab2aa93cd949d44ba18..4b5bc1521d18d1da11a54f3f1bd792fba3a6b7a4 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -21,10 +21,10 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
+ import { ILabelService } from '../../platform/label/common/label.js';
+ import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+-import { IStorageService, WillSaveStateReason } from '../../platform/storage/common/storage.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
++import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { IHostService } from '../services/host/browser/host.js';
+ import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
+ import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
+@@ -44,15 +44,23 @@ type RecentProject = StudioStartState['recent'][number];
+ 
+ export class StudioWebLaunchpadNavigation extends Disposable {
+ 
+-	constructor(@IStatusbarService statusbar: IStatusbarService, @IStorageService storage: IStorageService) {
++	constructor(@IStatusbarService statusbar: IStatusbarService, @INotificationService notifications: INotificationService) {
+ 		super();
+ 		const title = studioLabel('Studio Launchpad', 'Studio 启动台');
+-		this._register(CommandsRegistry.registerCommand('studio.showLaunchpad', async () => {
+-			await storage.flush(WillSaveStateReason.SHUTDOWN);
++		this._register(CommandsRegistry.registerCommand('studio.showLaunchpad', () => {
++			try {
++				const launchpad: Window | null = mainWindow.opener;
++				if (launchpad && !launchpad.closed && launchpad.document.querySelector('.studio-web-launchpad-window')) {
++					launchpad.focus();
++					return;
++				}
++			} catch { /* The opener may have navigated away. */ }
+ 			const home = new URL(mainWindow.location.href);
+ 			home.search = '?launchpad=1';
+ 			home.hash = '';
+-			mainWindow.location.assign(home);
++			if (!mainWindow.open(home.href, '_blank')) {
++				notifications.warn(studioLabel('The browser blocked the Launchpad tab. Allow pop-ups for this site and try again.', '浏览器拦截了启动台标签页。请允许此站点打开弹出式窗口后重试。'));
++			}
+ 		}));
+ 		this._register(statusbar.addEntry({ name: title, text: '$(home) ' + title, ariaLabel: title, tooltip: title, command: 'studio.showLaunchpad' },
+ 			'studio.showLaunchpad', StatusbarAlignment.LEFT, 100));
+@@ -70,7 +78,7 @@ export class StudioWebLaunchpad extends Disposable {
+ 	private accountRevision = 0;
+ 	private inbox?: LaunchpadInbox;
+ 	private inboxRevision = 0;
+-	private inboxRequest?: { id: string; target: string; action?: InboxAction };
++	private readonly inboxRequests = new Map<string, string>();
+ 	private socialUnread = false;
+ 	private noticeRevision = 0;
+ 	private projects: LaunchpadProject[] = [];
+@@ -97,6 +105,7 @@ export class StudioWebLaunchpad extends Disposable {
+ 		@IHoverService hoverService: IHoverService,
+ 		@IWebviewService webviews: IWebviewService,
+ 		@IWebviewViewService webviewViews: IWebviewViewService,
++		@IAuxiliaryWindowService windows: IAuxiliaryWindowService,
+ 	) {
+ 		super();
+ 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
+@@ -106,12 +115,11 @@ export class StudioWebLaunchpad extends Disposable {
+ 			workspace: () => run(this.pickAndOpen('workspace')),
+ 			create: () => run(commands.executeCommand('studio.createProject')),
+ 			importProjects: () => run(this.importFolders()),
+-			project: project => run(this.openProject(project)),
++			project: project => run(this.openProject(project, project.builtin ? {} : undefined)),
++			runProject: (project, entryId) => run(this.openProject(project, { entryId })),
+ 			remove: project => run(this.removeProject(project)),
+ 			copyPath: project => run(clipboard.writeText(project.path)),
+-			// The browser opens the workbench first. Project entries can be run from there.
+-			canRunEntries: false,
+-			openLabel: () => studioLabel('Open in workbench', '在工作台打开'),
++			openLabel: project => project.builtin ? studioLabel('Open in new tab', '在新标签页打开') : studioLabel('Open in workbench', '在工作台打开'),
+ 			contextMenu, hoverService,
+ 			cover: async () => undefined,
+ 			settings: () => openSettings('general'),
+@@ -163,7 +171,7 @@ export class StudioWebLaunchpad extends Disposable {
+ 		this._register(toDisposable(() => {
+ 			++this.revision;
+ 			++this.accountRevision; ++this.inboxRevision; ++this.noticeRevision;
+-			this.inboxRequest = undefined;
++			this.inboxRequests.clear();
+ 			start.setVisible('launchpad', false);
+ 			for (const part of parts) { part.inert = false; }
+ 			this.view.element.remove();
+@@ -180,20 +188,18 @@ export class StudioWebLaunchpad extends Disposable {
+ 			this.refreshProfile();
+ 		};
+ 		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, hideHome, message => notifications.error(message), webviews, webviewViews));
+-		this.app = this._register(new StudioWebLaunchpadApp(root, studioLabel, webviews, opener, clipboard, hideHome, showHome,
++		this.app = this._register(new StudioWebLaunchpadApp(windows, studioLabel, webviews, opener, clipboard,
+ 			(conversation, user) => run(this.openInbox(conversation, user))));
+-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => {
+-			this.clearInboxRequest(); this.app.dismiss();
+-			return this.settings.show(title, this.view.element.classList.contains('lp-pointer'));
+-		}));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) =>
++			this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { showHome(); } }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => {
+-			this.clearInboxRequest(); this.app.dismiss(); showHome(); this.view.select('store'); return true;
++			showHome(); this.view.select('store'); return true;
+ 		}));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) =>
+ 			!!this.account?.signedIn && this.app.prepare(key, app?.accountUrl)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[1]) =>
+-			this.app.show(key, view, () => this.inboxRequest?.id === id)));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[2]) =>
++			this.app.show(key, id, view)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.app.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshProfile()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', () => {
+@@ -252,7 +258,10 @@ export class StudioWebLaunchpad extends Disposable {
+ 		if (changed) {
+ 			++this.inboxRevision; ++this.noticeRevision;
+ 			this.inbox = undefined; this.socialUnread = false;
+-			this.clearInboxRequest(); this.app.reset(); this.refreshProfile();
++			this.inboxRequests.clear();
++			this.view.setInboxActionBusy('add-contact', false);
++			this.view.setInboxActionBusy('create-group', false);
++			this.app.reset(); this.refreshProfile();
+ 		}
+ 		this.paint();
+ 	}
+@@ -292,26 +301,28 @@ export class StudioWebLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private clearInboxRequest(): void {
+-		const action = this.inboxRequest?.action;
+-		this.inboxRequest = undefined;
+-		if (action) { this.view.setInboxActionBusy(action, false); }
+-	}
+-
+ 	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<void> {
+ 		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
+-		if (!this.account?.signedIn || !target || this.inboxRequest?.target === target) { return; }
+-		this.clearInboxRequest();
+-		const request = this.inboxRequest = { id: generateUuid(), target, action };
++		if (!this.account?.signedIn || !target || this.inboxRequests.has(target)) { return; }
++		const id = generateUuid();
++		this.inboxRequests.set(target, id);
+ 		this.view.closePicker();
+ 		if (action) { this.view.setInboxActionBusy(action, true); }
++		let opened = false;
+ 		try {
+-			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', request.id, conversation, user, action, title).catch(() => undefined);
+-			if (result !== true && this.inboxRequest === request) {
++			// Open the tab while the click still has user activation, not after the gateway round trip.
++			if (!await this.app.open(id, title)) { return; }
++			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', id, conversation, user, action, title).catch(() => undefined);
++			opened = result === true;
++			if (!opened && this.app.isOpen(id)) {
+ 				this.notifications.warn(typeof result === 'string' ? result : studioLabel('Could not open IM', '无法打开 IM'));
+ 			}
+ 		} finally {
+-			if (this.inboxRequest === request) { this.clearInboxRequest(); }
++			if (!opened) { this.app.close(id); }
++			if (this.inboxRequests.get(target) === id) {
++				this.inboxRequests.delete(target);
++				if (action) { this.view.setInboxActionBusy(action, false); }
++			}
+ 		}
+ 	}
+ 
+@@ -402,11 +413,11 @@ export class StudioWebLaunchpad extends Disposable {
+ 		});
+ 		const uri = selection?.[0];
+ 		if (uri?.scheme === Schemas.vscodeRemote && uri.authority === this.authority && !this._store.isDisposed) {
+-			await this.host.openWindow([folder ? { folderUri: uri } : { workspaceUri: uri }], { forceReuseWindow: true });
++			await this.host.openWindow([folder ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true });
+ 		}
+ 	}
+ 
+-	private async openProject(project: LaunchpadProject): Promise<void> {
++	private async openProject(project: LaunchpadProject, entry?: { entryId?: string }): Promise<void> {
+ 		const uri = URI.parse(project.uri);
+ 		try {
+ 			const stat = await this.files.stat(uri);
+@@ -416,7 +427,9 @@ export class StudioWebLaunchpad extends Disposable {
+ 			this.notifications.warn(studioLabel(`Project not found: ${project.path}`, `找不到项目：${project.path}`));
+ 			return;
+ 		}
+-		if (!this._store.isDisposed) { await this.host.openWindow([project.kind === 'folder' ? { folderUri: uri } : { workspaceUri: uri }], { forceReuseWindow: true }); }
++		if (!this._store.isDisposed) {
++			await this.host.openWindow([project.kind === 'folder' ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: entry });
++		}
+ 	}
+ 
+ 	private async removeProject(project: LaunchpadProject): Promise<void> {
+diff --git a/src/vs/workbench/browser/studioWebLaunchpadApp.ts b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+index 2da1fd7554ca34916dad4d91597d74ac7036d30d..bade614ad8f8f923749357e074bb62d23ea94138 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpadApp.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+@@ -3,77 +3,109 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { mainWindow } from '../../base/browser/window.js';
++import { addDisposableListener } from '../../base/browser/dom.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { URI } from '../../base/common/uri.js';
+ import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+-import { button, element, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
++import { element, LaunchpadLabel } from './studioLaunchpadPicker.js';
+ 
+ interface LaunchpadAppView { id: string; title: string; html: string }
++interface ChatTab extends IDisposable {
++	readonly life: DisposableStore;
++	window?: IAuxiliaryWindow;
++	loading?: HTMLElement;
++	key?: string;
++}
+ 
+-/** The extension supplies a gateway-scoped preview, so no desktop port mapping or native window is needed. */
++/** The launchpad owns the gateway preview; each conversation gets its own browser tab. */
+ export class StudioWebLaunchpadApp extends Disposable {
+ 
+ 	private prepared?: { key: string; accountUrl?: string };
+-	private readonly current = this._register(new MutableDisposable<DisposableStore>());
+-	private readonly pending = this._register(new MutableDisposable<DisposableStore>());
++	private readonly tabs = this._register(new DisposableMap<string, ChatTab>());
+ 
+ 	constructor(
+-		private readonly container: HTMLElement,
++		private readonly windows: IAuxiliaryWindowService,
+ 		private readonly t: LaunchpadLabel,
+ 		private readonly webviews: IWebviewService,
+ 		private readonly opener: IOpenerService,
+ 		private readonly clipboard: IClipboardService,
+-		private readonly onOpen: () => void,
+-		private readonly onBack: () => void,
+ 		private readonly openConversation: (conversation?: string, user?: string) => void,
+ 	) { super(); }
+ 
+ 	prepare(key: string, accountUrl: string | undefined): boolean {
+-		if (this.prepared?.key !== key) { this.reset(); this.prepared = { key, accountUrl }; }
++		if (this.prepared?.key !== key) {
++			if (this.prepared) { this.clear(this.prepared.key); }
++			this.prepared = { key, accountUrl };
++		}
+ 		return true;
+ 	}
+ 
+-	clear(key: string): void { if (this.prepared?.key === key) { this.reset(); } }
+-
+-	dismiss(): void { this.pending.clear(); this.current.clear(); }
++	clear(key: string): void {
++		if (this.prepared?.key !== key) { return; }
++		this.prepared = undefined;
++		for (const [id, tab] of this.tabs) {
++			if (tab.key === key) { this.close(id); }
++		}
++	}
+ 
+ 	reset(): void {
+ 		this.prepared = undefined;
+-		const wasOpen = !!this.current.value;
+-		this.dismiss();
+-		if (wasOpen) { this.onBack(); }
++		this.tabs.clearAndDisposeAll();
+ 	}
+ 
+-	async show(key: string, view: LaunchpadAppView, isRequested: () => boolean): Promise<boolean> {
+-		const prepared = this.prepared;
+-		if (!prepared || prepared.key !== key || !view?.id || this._store.isDisposed || !isRequested()) { return false; }
++	async open(id: string, title?: string): Promise<boolean> {
++		if (this._store.isDisposed) { return false; }
+ 		const life = new DisposableStore();
+-		this.pending.value = life;
++		const tab: ChatTab = { life, dispose: () => life.dispose() };
++		this.tabs.set(id, tab);
++		try {
++			const window = await this.windows.open({ asTab: true });
++			if (life.isDisposed || window.window.closed) { window.dispose(); this.close(id); return false; }
++			tab.window = window;
++			life.add(window);
++			life.add(addDisposableListener(window.window, 'pagehide', () => this.close(id)));
++			window.window.document.title = title || 'IM';
++			tab.loading = window.container.appendChild(element('div', 'studio-chat-loading', this.t('Opening IM…', '正在打开 IM…')));
++			tab.loading.setAttribute('role', 'status');
++			return true;
++		} catch { this.close(id); return false; }
++	}
++
++	isOpen(id: string): boolean {
++		const tab = this.tabs.get(id);
++		return !!tab?.window && !tab.life.isDisposed && !tab.window.window.closed;
++	}
++
++	close(id: string): void { this.tabs.deleteAndLeak(id)?.dispose(); }
++
++	async show(key: string, id: string, view: LaunchpadAppView): Promise<boolean> {
++		const prepared = this.prepared, tab = this.tabs.get(id), window = tab?.window;
++		if (!prepared || prepared.key !== key || !view?.id || !tab || !window || tab.key || !this.isOpen(id)) { return false; }
++		tab.key = key;
++		const life = tab.life;
++		const isCurrent = () => this.prepared === prepared && this.isOpen(id);
+ 		const ready = new DeferredPromise<boolean>();
+ 		life.add(toDisposable(() => { void ready.complete(false); }));
+-		const surface = element('div', 'studio-launchpad-settings');
++		const surface = element('div', 'studio-chat-window');
+ 		surface.setAttribute('role', 'document');
+ 		surface.setAttribute('aria-label', view.title);
+ 		surface.style.visibility = 'hidden';
+-		const close = () => {
+-			if (this.pending.value === life) { this.pending.clear(); }
+-			if (this.current.value === life) { this.current.clear(); this.onBack(); }
+-		};
+-		const back = button(this.t('Back to Launchpad', '返回启动台'), 'chevron-left', close, 'studio-launchpad-app-close');
+-		life.add(toDisposable(() => { surface.remove(); back.remove(); }));
++		life.add(toDisposable(() => surface.remove()));
++		let shown = false;
++		const fail = () => { if (shown) { this.close(id); } else { void ready.complete(false); } };
+ 		try {
+ 			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: {}, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [] } }));
+-			const deadline = life.add(new RunOnceScheduler(close, 20_000));
+-			life.add(webview.onFatalError(close));
++			const deadline = life.add(new RunOnceScheduler(fail, 20_000));
++			life.add(webview.onFatalError(fail));
+ 			life.add(webview.onMessage(({ message }) => {
+ 				if (message?.type === 'studio-launchpad-ready') { void ready.complete(true); }
+-				if (this.current.value !== life) { return; }
+-				if (message?.type === 'studio-launchpad-close') { close(); }
++				if (!shown || !isCurrent()) { return; }
++				if (message?.type === 'studio-launchpad-close') { this.close(id); }
+ 				else if (message?.type === 'studio-launchpad-open-conversation') {
+ 					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
+ 					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
+@@ -82,22 +114,22 @@ export class StudioWebLaunchpadApp extends Disposable {
+ 					if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }).catch(() => undefined); }
+ 				} else if (message?.type === 'studio-web-app-clipboard' && webview.isFocused && typeof message.requestId === 'string' &&
+ 					message.requestId.length <= 128 && typeof message.text === 'string' && message.text.length > 0 && message.text.length <= 1_000_000) {
+-					const reply = (ok: boolean) => { if (this.current.value === life) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId: message.requestId, ok }); } };
++					const reply = (ok: boolean) => { if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId: message.requestId, ok }); } };
+ 					void this.clipboard.writeText(message.text).then(() => reply(true), () => reply(false));
+ 				}
+ 			}));
+-			this.container.append(surface);
+-			webview.mountTo(surface, mainWindow);
++			window.container.append(surface);
++			webview.mountTo(surface, window.window);
+ 			deadline.schedule();
+ 			webview.setHtml(view.html);
+-			if (!await ready.p || this.pending.value !== life || this.prepared !== prepared || !isRequested()) { close(); return false; }
++			if (!await ready.p || !isCurrent()) { return false; }
+ 			deadline.cancel();
+-			this.current.value = this.pending.clearAndLeak();
+-			this.onOpen();
++			shown = true;
++			window.window.document.title = view.title;
++			tab.loading?.remove();
++			tab.loading = undefined;
+ 			surface.style.visibility = '';
+-			this.container.append(back);
+-			back.focus({ preventScroll: true });
+ 			return true;
+-		} catch { close(); return false; }
++		} catch { return false; }
+ 	}
+ }
+diff --git a/src/vs/workbench/browser/web.api.ts b/src/vs/workbench/browser/web.api.ts
+index 2fabde983793bbc3705df9262289df17672c74a3..70cad2f151000bf7b4ade556724a9e42fe9dc704 100644
+--- a/src/vs/workbench/browser/web.api.ts
++++ b/src/vs/workbench/browser/web.api.ts
+@@ -16,6 +16,7 @@ import type { TunnelProviderFeatures } from '../../platform/tunnel/common/tunnel
+ import type { IProgress, IProgressCompositeOptions, IProgressDialogOptions, IProgressNotificationOptions, IProgressOptions, IProgressStep, IProgressWindowOptions } from '../../platform/progress/common/progress.js';
+ import type { ITextEditorOptions } from '../../platform/editor/common/editor.js';
+ import type { IFolderToOpen, IWorkspaceToOpen } from '../../platform/window/common/window.js';
++import type { IStudioProjectEntry } from '../../platform/window/common/studioProjectWindow.js';
+ import type { EditorGroupLayout } from '../services/editor/common/editorGroupsService.js';
+ import type { IEmbedderTerminalOptions } from '../services/terminal/common/embedderTerminalService.js';
+ import type { IAuthenticationProvider } from '../services/authentication/common/authentication.js';
+@@ -150,6 +151,7 @@ export interface IWorkbenchConstructionOptions {
+ 	/** Set by the managed SteamHarness Studio Web host. */
+ 	readonly studioWeb?: boolean;
+ 	readonly studioLaunchpad?: boolean;
++	readonly studioProjectEntry?: IStudioProjectEntry;
+ 
+ 	//#region Connection related configuration
+ 
+@@ -412,6 +414,12 @@ export interface IWorkbenchConstructionOptions {
+  */
+ export type IWorkspace = IWorkspaceToOpen | IFolderToOpen | undefined;
+ 
++export interface IWorkspaceOpenOptions {
++	readonly reuse?: boolean;
++	readonly payload?: object;
++	readonly studioProjectEntry?: Pick<IStudioProjectEntry, 'entryId'>;
++}
++
+ export interface IWorkspaceProvider {
+ 
+ 	/**
+@@ -441,7 +449,7 @@ export interface IWorkspaceProvider {
+ 	 *
+ 	 * @returns true if successfully opened, false otherwise.
+ 	 */
+-	open(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<boolean>;
++	open(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<boolean>;
+ }
+ 
+ export interface IResourceUriProvider {
+diff --git a/src/vs/workbench/browser/web.main.ts b/src/vs/workbench/browser/web.main.ts
+index 4db6a5ddf285646b02477e34334a3b79d024d746..7de895ae0b4975594b84dd707d6750e82babc4a4 100644
+--- a/src/vs/workbench/browser/web.main.ts
++++ b/src/vs/workbench/browser/web.main.ts
+@@ -11,6 +11,7 @@ import { ConsoleLogInAutomationLogger } from '../../platform/log/browser/log.js'
+ import { Disposable, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
+ import { BrowserWorkbenchEnvironmentService, IBrowserWorkbenchEnvironmentService } from '../services/environment/browser/environmentService.js';
+ import { Workbench } from './workbench.js';
++import { initializeStudioReleaseProject } from './parts/studioMode.js';
+ import { RemoteFileSystemProviderClient } from '../services/remote/common/remoteFileSystemProviderClient.js';
+ import { IWorkbenchEnvironmentService } from '../services/environment/common/environmentService.js';
+ import { IProductService } from '../../platform/product/common/productService.js';
+@@ -133,6 +134,10 @@ export class BrowserMain extends Disposable {
+ 		// Init services and wait for DOM to be ready in parallel
+ 		const [services] = await Promise.all([this.initServices(), domContentLoaded(getWindow(this.domElement))]);
+ 
++		if (this.configuration.studioWeb && this.configuration.studioProjectEntry) {
++			initializeStudioReleaseProject(undefined, true, this.configuration.studioProjectEntry);
++		}
++
+ 		// Create Workbench
+ 		const workbench = this.createWorkbench(this.domElement, services.serviceCollection, services.logService);
+ 		const studioLaunchpad = this.configuration.studioWeb && this.configuration.studioLaunchpad;
+diff --git a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+index 7996c38a033c07e92082d42cce9d873554f23b9f..5df063184162b11a5eccefc18092638b0a745cfd 100644
+--- a/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
++++ b/src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts
+@@ -45,6 +45,8 @@ export enum AuxiliaryWindowMode {
+ export interface IAuxiliaryWindowOpenOptions {
+ 	readonly bounds?: Partial<IRectangle>;
+ 	readonly compact?: boolean;
++	/** In a browser, open a regular tab instead of requesting a popup window. */
++	readonly asTab?: boolean;
+ 
+ 	readonly mode?: AuxiliaryWindowMode;
+ 	readonly zoomLevel?: number;
+@@ -390,7 +392,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
+ 			options?.backgroundColor && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(options.backgroundColor) ? `window-background-color=${options.backgroundColor}` : undefined,
+ 		]);
+ 
+-		const auxiliaryWindow = mainWindow.open(isFirefox ? '' /* FF immediately fires an unload event if using about:blank */ : 'about:blank', undefined, features.join(','));
++		const auxiliaryWindow = mainWindow.open(isFirefox ? '' /* FF immediately fires an unload event if using about:blank */ : 'about:blank', undefined, isWeb && options?.asTab ? '' : features.join(','));
+ 		if (!auxiliaryWindow && isWeb) {
+ 			return (await this.dialogService.prompt({
+ 				type: Severity.Warning,
+diff --git a/src/vs/workbench/services/host/browser/browserHostService.ts b/src/vs/workbench/services/host/browser/browserHostService.ts
+index cb5a941a39586102162ab254b0af0af4e2f35958..4250b7654c784cb18622740ed6897d3b99c4c0fc 100644
+--- a/src/vs/workbench/services/host/browser/browserHostService.ts
++++ b/src/vs/workbench/services/host/browser/browserHostService.ts
+@@ -12,7 +12,7 @@ import { IConfigurationService } from '../../../../platform/configuration/common
+ import { IWindowSettings, IWindowOpenable, IOpenWindowOptions, isFolderToOpen, isWorkspaceToOpen, isFileToOpen, IOpenEmptyWindowOptions, IPathData, IFileToOpen, IOpenedMainWindow, IOpenedAuxiliaryWindow } from '../../../../platform/window/common/window.js';
+ import { isResourceEditorInput, pathsToEditors } from '../../../common/editor.js';
+ import { whenEditorClosed } from '../../../browser/editor.js';
+-import { IWorkspace, IWorkspaceProvider } from '../../../browser/web.api.js';
++import { IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../browser/web.api.js';
+ import { IFileService } from '../../../../platform/files/common/files.js';
+ import { ILabelService, Verbosity } from '../../../../platform/label/common/label.js';
+ import { EventType, ModifierKeyEmitter, addDisposableListener, addDisposableThrottledListener, detectFullscreen, disposableWindowInterval, getActiveDocument, getActiveWindow, getWindowId, onDidRegisterWindow, trackFocus, getWindows as getDOMWindows } from '../../../../base/browser/dom.js';
+@@ -250,7 +250,9 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 	}
+ 
+ 	private async doOpenWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void> {
+-		if (shouldChooseProjectWindow(toOpen, options)) {
++		if (this.environmentService.options?.studioLaunchpad) {
++			options = { ...options, forceNewWindow: true, forceReuseWindow: false };
++		} else if (shouldChooseProjectWindow(toOpen, options)) {
+ 			const labels = projectWindowLabels();
+ 			const { result } = await this.dialogService.prompt<boolean>({
+ 				type: Severity.Info, message: labels.message,
+@@ -278,7 +280,8 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 				} else if (options?.removeMode) {
+ 					foldersToRemove.push(openable.folderUri);
+ 				} else {
+-					this.doOpen({ folderUri: openable.folderUri }, { reuse: this.shouldReuse(options, false /* no file */), payload });
++					const studioProjectEntry = this.environmentService.options?.studioWeb && toOpen.length === 1 ? options?.studioProjectEntry : undefined;
++					this.doOpen({ folderUri: openable.folderUri }, { reuse: this.shouldReuse(options, false /* no file */), payload, studioProjectEntry });
+ 				}
+ 			}
+ 
+@@ -496,7 +499,10 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 		});
+ 	}
+ 
+-	private async doOpen(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<void> {
++	private async doOpen(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<void> {
++		if (options?.reuse && (this.environmentService.options?.studioLaunchpad || options.studioProjectEntry)) {
++			options = { ...options, reuse: false };
++		}
+ 
+ 		// When we are in a temporary workspace and are asked to open a local folder
+ 		// we swap that folder into the workspace to avoid a window reload. Access
