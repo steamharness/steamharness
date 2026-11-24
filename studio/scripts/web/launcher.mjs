@@ -121,7 +121,8 @@ export async function runManagedWeb({ directory, storage, config, prepare }) {
     const direct = await fetch(`http://127.0.0.1:${port}/version`, { redirect: 'manual', signal: AbortSignal.timeout(4000) });
     await direct.body?.cancel();
     if (direct.status !== 403) throw new Error('Studio Web backend is missing gateway protection. Rebuild the VS Code kernel.');
-    gateway = await startGateway({ config, directory, workbench: port, proof, stop });
+    const webviewDirectory = path.join(settings.upstream, 'out/vs/workbench/contrib/webview/browser/pre');
+    gateway = await startGateway({ config, directory, workbench: port, webviewDirectory, proof, stop });
     controller.signal.throwIfAborted();
     await writePrivate(registry, gateway.registry);
     await writePrivate(descriptor, gateway.admin);

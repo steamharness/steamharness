@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "2299161325f872a3d337ca2d139d36744bf21a8b",
+  "commit": "2b72bad7038b5a8620e70efeed660e432391dce3",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -154,6 +154,9 @@
     "0157-studio-launchpad-background-focus.patch": "b72e753488fc9b66b057025a821b88a0bf87eec4d2158fc1cf4bf2f8daf2eb95",
     "0158-studio-web-persist-secrets.patch": "97de2b1517afa79971f5f82bb03d82a27684fcc97676a78d7439e8592403eda7",
     "0159-studio-web-library-loading.patch": "17a3aa9ab76439476e53df144b49b22842466c944c76f6e1b558641da5f7a31e",
-    "0160-studio-web-chat-viewport.patch": "4eab2c8c6e5707c4b7f2750815e22ebecd088a0b2570d437e96982a5411bae73"
+    "0160-studio-web-chat-viewport.patch": "4eab2c8c6e5707c4b7f2750815e22ebecd088a0b2570d437e96982a5411bae73",
+    "0161-studio-web-profile-avatar.patch": "dafe167e225ab4002834d6356dd39f4792dfcc9efd7e333498310180579869ce",
+    "0162-studio-loopback-webview-assets.patch": "d05cf167482d04c221379b363ad58ff400ca38a14c7338a6f2317d2edda1028d",
+    "0163-studio-web-source-language-startup.patch": "a14f3fe10f2cc2c65f9da8830ee0d8db334ac23fda2b89c15c56d1c29fdc1954"
   }
 }

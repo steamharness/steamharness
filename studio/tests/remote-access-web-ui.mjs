@@ -52,12 +52,18 @@ async function checkLocalProfile(home, zh = false) {
 }
 
 async function importFolder(page, folder, zh = false) {
+  await page.bringToFront(); // Return to the Launchpad in the headless browser after opening an IDE tab.
   await page.locator('.studio-launchpad').getByRole('button', { name: zh ? '导入项目' : 'Import project', exact: true }).click();
   const picker = page.locator('.quick-input-widget');
   await picker.locator('.quick-input-list .monaco-list-row').first().waitFor();
   const input = picker.locator('input').first();
   await input.fill(path.dirname(folder) + path.sep);
-  await picker.getByText(path.basename(folder), { exact: true }).click();
+  const row = picker.getByText(path.basename(folder), { exact: true });
+  await row.click();
+  // The picker enters the folder asynchronously before the confirmation can accept it.
+  await row.waitFor({ state: 'hidden' });
+  await picker.locator('.quick-input-list .monaco-list-row').first().waitFor();
+  assert.equal(path.resolve(await input.inputValue()), folder);
   await picker.getByRole('button', { name: zh ? '导入' : 'Import', exact: true }).click();
   await picker.waitFor({ state: 'hidden' });
 }
@@ -133,13 +139,26 @@ async function registerPlatformProfile(vscode) {
 }
 
 async function openProfile(page) {
-  await page.locator('.studio-launchpad').getByRole('tab', { name: 'My Studio', exact: true }).click({ timeout: 60_000 });
-  return page.locator('#lp-page-profile');
+  const home = page.locator('.studio-launchpad');
+  // The regression only affected accounts after platform mode was enabled.
+  await home.getByRole('button', { name: 'Web console', exact: true }).waitFor({ timeout: 60_000 });
+  await home.getByRole('tab', { name: 'Library', exact: true }).click();
+  const url = page.url(), tabs = page.context().pages().length;
+  await home.getByRole('button', { name: 'Studio account', exact: true }).click();
+  const profile = home.locator('#lp-page-profile');
+  assert.deepEqual({
+    selected: await home.getByRole('tab', { name: 'My Studio', exact: true }).getAttribute('aria-selected'),
+    visible: await profile.isVisible(),
+    settings: await page.locator('.studio-launchpad-settings').isVisible(),
+    url: page.url(), tabs: page.context().pages().length,
+  }, { selected: 'true', visible: true, settings: false, url, tabs }, 'The account avatar should open My Studio in the current Launchpad.');
+  return profile;
 }
 
 async function checkPlatformProfile(page, issuer) {
   const signIn = profile => profile.getByRole('button', { name: 'Sign in', exact: true });
   let profile = await openProfile(page);
+  console.log('[OK] Platform avatar switches to My Studio without opening Settings or a new tab');
   const approval = await openTab(page, () => signIn(profile).click({ timeout: 60_000 }));
   await approval.getByRole('button', { name: 'Approve test sign-in' }).click();
   await profile.getByText('Fixture account', { exact: true }).waitFor();
@@ -358,6 +377,7 @@ try {
   await writeFile(path.join(importedSource, 'index.ts'), `throw new Error('Import must not execute the project');`);
   await writeFile(workspaceFile, JSON.stringify({ folders: examples.map(name => ({ path: name })), settings: { 'git.enabled': false, 'workbench.startupEditor': 'none' } }));
   // Record only the disposable Workflow CLI process so recovery can be exercised without touching other sessions.
+  await writeFile(caseFile, 'local');
   const workflowCli = path.join(workspace, 'node_modules/@steamharness/cli');
   await mkdir(workflowCli, { recursive: true });
   await writeFile(path.join(workflowCli, 'package.json'), JSON.stringify({ name: cliManifest.name, version: cliManifest.version, bin: './fixture.mjs' }));
@@ -438,7 +458,8 @@ try {
     // The fixture maps the HTTPS workbench and preview origins onto loopback.
     args: [...(liveWebviews ? [] : ['--no-proxy-server', '--disable-features=LocalNetworkAccessChecks']), '--host-resolver-rules=MAP *.example.test 127.0.0.1'] });
   const localContext = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
-  if (!liveWebviews) await serveLocalWebviewAssets(localContext, upstream);
+  // Local shells and real webview workers must load even if the CDN is unreachable.
+  await localContext.route(/^https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\//u, route => route.abort());
   await runPlatformProfile(localContext);
   const localPage = await localContext.newPage();
   const aliasPage = await localContext.newPage();
@@ -462,10 +483,21 @@ try {
   assert.equal(new URL(aliasPage.url()).searchParams.get('folder'), workspace);
   await projectTab.close();
   await aliasPage.close();
+  const runLocal = appDetails.getByRole('button', { name: 'Run project', exact: true });
+  const localRunTab = await openTab(aliasLaunchpad, () => runLocal.click());
+  try {
+    await localRunTab.waitForURL(url => url.searchParams.get('folder') === workspace);
+    await until(async () => {
+      for (const frame of localRunTab.frames()) {
+        if (!frame.url().startsWith('http://127.0.0.1:')) continue;
+        const url = new URL(frame.url());
+        if (url.port !== String(localPort) && url.pathname.includes('/entries/main/') &&
+            await frame.locator(workflowReady).isVisible().catch(() => false)) return frame;
+      }
+    }, 'The local Workflow did not connect with CDN webview assets unavailable.');
+  } finally { await localRunTab.close(); }
+  console.log('[OK] Run project loads a live preview in a new tab without the external WebView CDN');
   await aliasLaunchpad.close();
-  if (liveWebviews) localPage.on('requestfailed', request => {
-    if (request.url().includes('.vscode-cdn.net/')) console.error('Webview asset request failed:', new URL(request.url()).pathname, request.failure()?.errorText);
-  });
   await localPage.goto(local, { waitUntil: 'domcontentloaded' });
   await waitForBrowserExtensionHost(localPage);
   await localPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
@@ -486,6 +518,9 @@ try {
       if (await frame.getByRole('button', { name: 'Remote Access', exact: true }).isVisible().catch(() => false)) return frame;
     }
   }, 'The local Launchpad did not open Settings.', 60_000);
+  const settingsUrl = new URL(settings.url());
+  assert.match(settingsUrl.host, new RegExp(`^[0-9a-v]{52}\\.localhost:${localPort}$`, 'u'));
+  assert.equal(await settings.evaluate(() => !!navigator.serviceWorker.controller), true);
   await settings.getByRole('button', { name: 'Remote Access', exact: true }).click();
   await settings.getByRole('button', { name: 'Generate pairing code' }).waitFor();
   console.log('[OK] 127.0.0.1 and localhost home · project opens in a new tab · Launchpad Settings');
@@ -495,6 +530,15 @@ try {
     const name = zh ? 'lan' : 'proxy';
     const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: zh ? 'zh-CN' : 'en-US', viewport: { width: 1280, height: 900 } });
     if (!liveWebviews) await serveLocalWebviewAssets(context, upstream);
+    let automaticLanguageLookup = false;
+    if (zh) await context.route('**/extensionquery', route => {
+      const filter = route.request().postDataJSON()?.filters?.find(item => item.criteria?.some(criterion => criterion.value === 'lp-zh-cn'));
+      if (!filter) return route.continue();
+      // Per-extension translation lookups only ask for five results. The
+      // automatic lookup instead makes remote activation wait for a download.
+      automaticLanguageLookup ||= filter.pageSize !== 5;
+      return route.abort();
+    });
     try {
       const launchpad = await context.newPage();
       await launchpad.goto(origin, { waitUntil: 'domcontentloaded' });
@@ -531,12 +575,14 @@ try {
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       assert.equal(new URL(launchpad.url()).pathname, '/');
       await waitForBrowserExtensionHost(launchpad);
+      await home.locator('.lp-library-loading').waitFor({ state: 'hidden', timeout: 60_000 });
       await launchpad.reload({ waitUntil: 'domcontentloaded' });
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       await checkLocalProfile(home, zh);
       console.log(`[OK] ${name}: paired, reached Launchpad and restored session on reload`);
       await importFolder(launchpad, importedSource, zh);
       await checkImportedBot(launchpad, zh);
+      assert.equal(automaticLanguageLookup, false, 'Launchpad startup must not look up its built-in language in the extension gallery.');
       console.log(`[OK] ${name}: imported unopened folder as a source Bot`);
       if (zh) {
         await checkLibraryReload(launchpad, zh);
@@ -611,9 +657,21 @@ try {
         finally { await revoked.close(); }
       };
       if (!zh) {
+        const rawArgs = JSON.stringify(['--subject', subject, '--review', 'false', '--delay', '1']);
+        const messageUrl = new URL('api/message', previewUrl).href;
         await frame.locator('#input-mode [data-mode=raw]').click();
-        await frame.locator('#raw-args').fill(JSON.stringify(['--subject', subject, '--review', 'false', '--delay', '1']));
-        await frame.locator('#run').click();
+        // Wait for the resolver for this edit, not a readiness update for an earlier draft.
+        const [resolved] = await Promise.all([
+          page.waitForResponse(response => {
+            const request = response.request();
+            if (response.url() !== messageUrl || request.method() !== 'POST') return false;
+            const body = request.postDataJSON();
+            return body?.type === 'resolve' && body.rawArgs === rawArgs;
+          }),
+          frame.locator('#raw-args').fill(rawArgs),
+        ]);
+        assert.equal(resolved.ok(), true);
+        await frame.locator('#workflow-form[aria-busy=false] #run').click();
         await frame.locator('#run-output h2').filter({ hasText: subject }).waitFor();
         await frame.locator('#app[data-run-state=idle]').waitFor();
         await frame.locator('#tab-result').click();

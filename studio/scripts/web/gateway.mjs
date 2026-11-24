@@ -4,6 +4,7 @@ import qrcode from 'qrcode-generator';
 import { equalSecret, isSecret, openSessions, secret, SESSION_SECONDS } from './sessions.mjs';
 import { pairPage } from './pair-page.mjs';
 import { relay, relayUpgrade } from './relay.mjs';
+import { isLocalWebviewHost, serveLocalWebview } from './webview.mjs';
 
 const cookie = '__Host-steamharness-studio';
 const route = '/_studio/web/';
@@ -49,7 +50,7 @@ const workbenchOrigin = (req, origin) => {
   return true;
 };
 
-export async function startGateway({ config, directory, workbench, proof, stop, now = Date.now }) {
+export async function startGateway({ config, directory, workbench, webviewDirectory, proof, stop, now = Date.now }) {
   const servers = [], sockets = new Set(), active = new Map(), targets = new Map(), leases = new Map();
   const adminKey = secret(), registryKey = secret();
   const localPreviewOrigins = new Map();
@@ -156,7 +157,8 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
     if (req.headers.origin !== undefined && req.headers.origin !== entry.origin && !(req.headers.origin === 'null' && resource)) return;
     if (upgrade && req.headers.origin !== entry.origin || !['GET', 'HEAD'].includes(req.method) && req.headers.origin !== entry.origin) return;
     const host = `127.0.0.1:${lease.target.port}`;
-    return { id: `lease:${id}`, port: lease.target.port, host, origin: entry.origin, ancestor: lease.origin, mount: `/p/${id}`, path: match[2] + url.search };
+    const webviewPort = webviewDirectory && localPreviewOrigins.has(lease.origin) ? localPort : undefined;
+    return { id: `lease:${id}`, port: lease.target.port, host, origin: entry.origin, ancestor: lease.origin, webviewPort, mount: `/p/${id}`, path: match[2] + url.search };
   }
 
   function select(req, entries) {
@@ -164,10 +166,13 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
     return entries.get(req.headers.host?.toLowerCase());
   }
 
-  function publicServer(entries, tls) {
+  function publicServer(entries, { tls, localWorkbench = false } = {}) {
     const handler = (req, res) => {
       void (async () => {
         const entry = select(req, entries), url = requestUrl(req);
+        if (url && localWorkbench && webviewDirectory && isLocalWebviewHost(req, localPort)) {
+          return serveLocalWebview(req, res, url, webviewDirectory, localPreviewOrigins);
+        }
         if (!entry || !url) return json(res, 403, { error: 'origin' });
         if (entry.previewOnly) {
           const target = previewTarget(req, entry, url, false);
@@ -210,7 +215,8 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
           }
           return json(res, 401, { error: 'pair' });
         }
-        relay(req, res, { port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof, agent: workbenchAgent }, drop => track(owner, drop));
+        const webviewPort = entry.local && webviewDirectory ? localPort : undefined;
+        relay(req, res, { port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof, webviewPort, agent: workbenchAgent }, drop => track(owner, drop));
       })().catch(() => { if (!res.headersSent && !res.destroyed) json(res, 400, { error: 'request' }); else res.destroy(); });
     };
     const options = { requestTimeout: 30_000, headersTimeout: 10_000, ...(tls ?? {}) };
@@ -250,7 +256,7 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
     const previewServer = publicServer(localPreviews);
     previewPort = await listen(previewServer, '127.0.0.1');
     for (let port = config.local.first; port <= config.local.last; port++) {
-      try { localPort = await listen(publicServer(localEntries), '127.0.0.1', port); break; }
+      try { localPort = await listen(publicServer(localEntries, { localWorkbench: true }), '127.0.0.1', port); break; }
       catch (error) { if (error.code !== 'EADDRINUSE') throw error; }
     }
     if (!localPort) throw new Error('No Studio Web local port is available.');
@@ -262,7 +268,7 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
     }
     // `localhost` may resolve to IPv6 first. Do not expose other interfaces.
     for (const [entries, port] of [[localEntries, localPort], [localPreviews, previewPort]]) {
-      try { await listen(publicServer(entries), '::1', port); }
+      try { await listen(publicServer(entries, { localWorkbench: entries === localEntries }), '::1', port); }
       catch (error) { if (!['EADDRINUSE', 'EADDRNOTAVAIL', 'EAFNOSUPPORT'].includes(error.code)) throw error; }
     }
     for (const entry of remote) {
@@ -270,7 +276,7 @@ export async function startGateway({ config, directory, workbench, proof, stop, 
         [entry.preview.host, { origin: entry.preview.origin, previewOnly: true }]]);
       for (const port of entry.ports ?? [entry.port]) {
         const allowed = entry.tls ? new Map([...entries].filter(([host]) => Number(new URL(`https://${host}`).port || 443) === port)) : entries;
-        await listen(publicServer(allowed, entry.tls), entry.host, port);
+        await listen(publicServer(allowed, { tls: entry.tls }), entry.host, port);
       }
     }
     const admin = attach(http.createServer({ requestTimeout: 10_000 }, (req, res) => {

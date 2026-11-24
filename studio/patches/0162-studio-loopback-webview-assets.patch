@@ -1,0 +1,46 @@
+diff --git a/src/vs/server/node/webClientServer.ts b/src/vs/server/node/webClientServer.ts
+index 6c591fcf3b55d97bc1ed29218681db96256a8ddc..a847313a9da17a3b026df9eacf8b5acb37918fa7 100644
+--- a/src/vs/server/node/webClientServer.ts
++++ b/src/vs/server/node/webClientServer.ts
+@@ -141,14 +141,15 @@ export function createNlsUrl(nlsBaseUrl: string, commit: string | undefined, ver
+ 	return `${nlsBaseUrl}${commit}/${version}/${encodeURIComponent(locale)}/nls.messages.js`;
+ }
+ 
+-export function createWorkbenchContentSecurityPolicy(scriptNonce: string, nlsBaseUrl: string | undefined, remoteAuthority: string, useTestResolver: boolean): string {
++export function createWorkbenchContentSecurityPolicy(scriptNonce: string, nlsBaseUrl: string | undefined, remoteAuthority: string, useTestResolver: boolean, webviewPort?: number): string {
++	const webviewSource = webviewPort ? `http://*.localhost:${webviewPort}` : 'https://*.vscode-cdn.net';
+ 	return [
+ 		'default-src \'self\';',
+ 		'img-src \'self\' https: data: blob:;',
+ 		'media-src \'self\';',
+ 		`script-src 'self' 'unsafe-eval' ${nlsBaseUrl ?? ''} blob: 'nonce-${scriptNonce}' '${webWorkerExtensionHostIframeScriptSHA}' 'sha256-/r7rqQ+yrxt57sxLuQ6AMYcy/lUpvAIzHjIJt/OeLWU=' ${useTestResolver ? '' : `http://${remoteAuthority}`};`,  // the sha is the same as in src/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html
+ 		'child-src \'self\';',
+-		`frame-src 'self' https://*.vscode-cdn.net data:;`,
++		`frame-src 'self' ${webviewSource} data:;`,
+ 		'worker-src \'self\' data: blob:;',
+ 		'style-src \'self\' \'unsafe-inline\';',
+ 		'connect-src \'self\' ws: wss: https:;',
+@@ -416,9 +417,14 @@ export class WebClientServer {
+ 		const cookies = cookie.parse(req.headers.cookie || '');
+ 		const locale = (cookies['vscode.nls.locale'] || req.headers['accept-language']?.split(',')[0] || 'en').toLowerCase();
+ 		const studioWeb = !!process.env['STEAMHARNESS_STUDIO_WEB_REGISTRY'];
++		// The trusted gateway supplies this only on its loopback Workbench listener.
++		const requestedWebviewPort = studioWeb ? getFirstHeader('x-steamharness-webview-port') : undefined;
++		const loopbackPort = /^(?:localhost|127\.0\.0\.1):([1-9]\d{0,4})$/.exec(remoteAuthority)?.[1];
++		const webviewPort = loopbackPort && loopbackPort === requestedWebviewPort ? Number(loopbackPort) : undefined;
+ 		const workbenchWebConfiguration = {
+ 			remoteAuthority,
+ 			studioWeb: studioWeb || undefined,
++			webviewEndpoint: webviewPort ? `http://{{uuid}}.localhost:${webviewPort}/_studio/webview/` : undefined,
+ 			serverBasePath: basePath,
+ 			_wrapWebWorkerExtHostInIframe,
+ 			developmentOptions: { enableSmokeTestDriver: this._environmentService.args['enable-smoke-test-driver'] ? true : undefined, logLevel: this._logService.getLevel() },
+@@ -480,7 +486,7 @@ export class WebClientServer {
+ 			return void res.end('Not found');
+ 		}
+ 
+-		const cspDirectives = createWorkbenchContentSecurityPolicy(scriptNonce, WORKBENCH_NLS_BASE_URL, remoteAuthority, useTestResolver);
++		const cspDirectives = createWorkbenchContentSecurityPolicy(scriptNonce, WORKBENCH_NLS_BASE_URL, remoteAuthority, useTestResolver, webviewPort);
+ 
+ 		const headers: http.OutgoingHttpHeaders = {
+ 			'Content-Type': 'text/html',

@@ -8,7 +8,7 @@ function filtered(raw) {
   return headers;
 }
 
-export function relayHeaders(req, { host, proof, mount, upgrade = false }) {
+export function relayHeaders(req, { host, proof, mount, webviewPort, upgrade = false }) {
   const headers = filtered(req.headers);
   for (const key of Object.keys(headers)) {
     if (/^(forwarded$|x-forwarded-|x-original-|x-steamharness-)/.test(key)) delete headers[key];
@@ -22,14 +22,15 @@ export function relayHeaders(req, { host, proof, mount, upgrade = false }) {
     delete headers['sec-fetch-site'];
     if (headers.origin && headers.origin !== 'null') headers.origin = `http://${host}`;
     headers['x-steamharness-preview-mount'] = mount;
-  } else if (headers.cookie) {
-    headers.cookie = headers.cookie.split(';').filter(value => !value.trimStart().startsWith('__Host-steamharness-studio=')).join(';');
+  } else {
+    if (webviewPort) headers['x-steamharness-webview-port'] = String(webviewPort);
+    if (headers.cookie) headers.cookie = headers.cookie.split(';').filter(value => !value.trimStart().startsWith('__Host-steamharness-studio=')).join(';');
   }
   if (upgrade) { headers.connection = 'Upgrade'; headers.upgrade = 'websocket'; }
   return headers;
 }
 
-function responseHeaders(res, { mount, ancestor, origin, host, path }) {
+function responseHeaders(res, { mount, ancestor, origin, host, path, webviewPort }) {
   const headers = filtered(res.headers);
   delete headers['clear-site-data'];
   headers['cache-control'] = 'no-store';
@@ -47,7 +48,8 @@ function responseHeaders(res, { mount, ancestor, origin, host, path }) {
     if (String(headers['content-type']).startsWith('text/html')) {
       const directives = String(headers['content-security-policy'] ?? "default-src 'none'").split(';').filter(rule => !/^\s*(?:frame-ancestors|base-uri)\b/i.test(rule)).map(rule => /^\s*connect-src\s.*ws:\/\/127\.0\.0\.1:\d+/.test(rule)
         ? rule.replace(/ws:\/\/127\.0\.0\.1:\d+/, origin.replace(/^http/, 'ws')) : rule);
-      directives.push(`frame-ancestors 'self' ${ancestor} https://*.vscode-cdn.net`, "base-uri 'none'");
+      const webview = webviewPort ? `http://*.localhost:${webviewPort}` : 'https://*.vscode-cdn.net';
+      directives.push(`frame-ancestors 'self' ${ancestor} ${webview}`, "base-uri 'none'");
       headers['content-security-policy'] = directives.join('; ');
       if (!headers['permissions-policy']) headers['permissions-policy'] = 'camera=(), geolocation=()';
     }

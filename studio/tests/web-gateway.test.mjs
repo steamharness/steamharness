@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
@@ -97,7 +97,12 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const localPort = await freePort(), proxyPort = await freePort();
   const config = await webConfig({ STEAMHARNESS_STUDIO_WEB_LOCAL_PORT: String(localPort), STEAMHARNESS_STUDIO_WEB_PROXY_PORT: String(proxyPort),
     STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previewOrigin });
-  const gateway = await startGateway({ config, directory: dir, workbench, proof, stop() {} });
+  const webviewDirectory = path.join(dir, 'webview');
+  await mkdir(webviewDirectory);
+  await writeFile(path.join(webviewDirectory, 'index.html'), 'webview shell');
+  await writeFile(path.join(webviewDirectory, 'fake.html'), 'webview frame');
+  await writeFile(path.join(webviewDirectory, 'service-worker.js'), '/* webview worker */');
+  const gateway = await startGateway({ config, directory: dir, workbench, webviewDirectory, proof, stop() {} });
   t.after(async () => {
     await gateway.close();
     for (const s of sockets) s.destroy();
@@ -130,9 +135,28 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const localWorkbench = await request(local, '/');
   assert.equal(await localWorkbench.text(), 'workbench');
   assert.equal(localWorkbench.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'none'");
+  assert.equal(record.at(-1)['x-steamharness-webview-port'], String(localPort));
   const localWorker = await request(local, `${workerFrame}?vscode-coi=3`, { 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'iframe' });
   assert.equal(localWorker.headers.get('content-security-policy'), "default-src 'self'; frame-ancestors 'self'");
   assert.equal((await request(local, workerFrame, { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'iframe' })).status, 403);
+
+  const originHost = { Host: `${'a'.repeat(52)}.localhost:${localPort}` };
+  const webviewPath = '/_studio/webview/';
+  const shell = `${webviewPath}index.html?parentOrigin=${encodeURIComponent(local)}`;
+  const localView = await request(local, shell, originHost);
+  assert.equal(await localView.text(), 'webview shell');
+  assert.equal(localView.headers.get('content-security-policy'), `frame-ancestors ${local}`);
+  const nestedView = await request(local, `${webviewPath}fake.html`, originHost);
+  assert.equal(nestedView.headers.get('content-security-policy'), `frame-ancestors 'self' ${local} http://localhost:${localPort}`);
+  const worker = await request(local, `${webviewPath}service-worker.js`, originHost);
+  assert.equal(await worker.text(), '/* webview worker */');
+  assert.equal(worker.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  assert.equal((await request(local, `${webviewPath}index.html?parentOrigin=${encodeURIComponent(workbenchOrigin)}`, originHost)).status, 403);
+  assert.equal((await request(local, shell, originHost, {})).status, 405);
+  assert.equal((await request(local, '/', originHost)).status, 404);
+  assert.equal((await request(local, `${endpoint}manage`, originHost, { action: 'status' })).status, 404);
+  assert.equal((await request(local, `${webviewPath}../web/manage`, originHost)).status, 404);
+  assert.equal((await request(workbenchOrigin, shell, originHost)).status, 403);
 
   const { pair } = await (await admin({ action: 'generate', origin: workbenchOrigin })).json();
   assert.ok(pair.link.endsWith(`/pair#code=${pair.code}`));
@@ -144,8 +168,9 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const setCookie = redeemed.headers.get('set-cookie');
   assert.match(setCookie, /; Path=\/; HttpOnly; Secure; SameSite=Strict;/);
   const cookie = setCookie.split(';')[0];
-  assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value' })).text(), 'workbench');
+  assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value', 'X-Steamharness-Webview-Port': String(localPort) })).text(), 'workbench');
   assert.equal(record.at(-1)['x-steamharness-gateway'], proof);
+  assert.equal(record.at(-1)['x-steamharness-webview-port'], undefined);
   assert.equal(record.at(-1).cookie, '');
   const socketsBefore = workbenchSockets.size;
   for (let index = 0; index < 20; index++) {
@@ -167,6 +192,12 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
     const { id } = JSON.parse(Buffer.from((await registration.read()).value).toString());
     return { id, controller, registration };
   };
+  const localEntry = await register();
+  const { url: localUrl } = await (await request(local, endpoint + 'preview', {}, { id: localEntry.id })).json();
+  const localPreview = await fetch(`${localUrl}/`);
+  assert.equal(await localPreview.text(), 'preview');
+  assert.equal(localPreview.headers.get('content-security-policy'), `default-src 'none'; frame-ancestors 'self' ${local} http://*.localhost:${localPort}; base-uri 'none'`);
+  localEntry.controller.abort();
   const { id, controller } = await register();
   assert.equal((await request(workbenchOrigin, endpoint + 'preview', {}, { id })).status, 401);
   const { url } = await (await request(workbenchOrigin, endpoint + 'preview', { Cookie: cookie }, { id })).json();
