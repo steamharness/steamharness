@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { pinnedKernel } from './helpers/pinned-kernel.mjs';
 
+const launchpadFocusFiles = ['src/vs/workbench/browser/window.ts', 'src/vs/workbench/electron-browser/window.ts'];
 const original = 'alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\n';
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const commit = cwd => git(cwd, ['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid',
@@ -56,7 +57,8 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/browser/studioLaunchpadPicker.ts', 'src/vs/workbench/browser/media/studioLaunchpad.css',
     'src/vs/code/electron-main/app.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
     'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts',
-    'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts'];
+    'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts',
+    ...launchpadFocusFiles];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
     'src/vs/workbench/contrib/webview/browser/webview.ts', 'src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts',
     'src/vs/workbench/contrib/webview/browser/pre/index.html', 'src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts',
@@ -96,6 +98,21 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   assert.deepEqual(await fs.readFile(path.join(upstream, files[2])), local);
   assert.equal(await fs.readFile(path.join(upstream, 'notes.txt'), 'utf8'), 'untracked work\n');
   assert.equal(git(upstream, ['rev-parse', '--is-shallow-repository']).trim(), 'true');
+});
+
+test('the desktop launchpad background focus patch can be applied twice without staging changes', async t => {
+  const { root, upstream } = await pinnedKernel(t, launchpadFocusFiles);
+  const name = '0157-studio-launchpad-background-focus.patch';
+  await fs.copyFile(path.join(ROOT, 'patches', name), path.join(root, 'patches', name));
+  const index = await fs.readFile(path.join(upstream, '.git/index'));
+  const read = () => Promise.all(launchpadFocusFiles.map(file => fs.readFile(path.join(upstream, file), 'utf8')));
+  await applyPatches(root, upstream);
+  const patched = await read();
+  assert.match(patched[0], /protected onElementFocus\(/u);
+  assert.match(patched[1], /targetWindow === mainWindow && this\.nativeEnvironmentService\.window\.isStudioLaunchpad/u);
+  await applyPatches(root, upstream);
+  assert.deepEqual(await read(), patched);
+  assert.deepEqual(await fs.readFile(path.join(upstream, '.git/index')), index);
 });
 
 test('integrated receipts follow descendant commits but invalidate changed patch contents and unrelated revisions', async t => {

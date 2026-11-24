@@ -1,0 +1,42 @@
+diff --git a/src/vs/workbench/browser/window.ts b/src/vs/workbench/browser/window.ts
+index 9d376a2adaa3ca8e095230f98e443746d351ab0b..ea8886897b559f68e1aa0185acae26526318a819 100644
+--- a/src/vs/workbench/browser/window.ts
++++ b/src/vs/workbench/browser/window.ts
+@@ -86,7 +86,7 @@ export abstract class BaseWindow extends Disposable {
+ 		};
+ 	}
+ 
+-	private onElementFocus(targetWindow: CodeWindow): void {
++	protected onElementFocus(targetWindow: CodeWindow): void {
+ 
+ 		// Check if focus should transfer: the application currently has focus somewhere, but not in the target window.
+ 		if (!targetWindow.document.hasFocus() && hasAppFocus()) {
+diff --git a/src/vs/workbench/electron-browser/window.ts b/src/vs/workbench/electron-browser/window.ts
+index b60c0adc62c0fea363ebc9f38436524724e15cff..2e78945e73d6510dfb01c9aab086a6d6cc70fcc6 100644
+--- a/src/vs/workbench/electron-browser/window.ts
++++ b/src/vs/workbench/electron-browser/window.ts
+@@ -69,7 +69,7 @@ import { IUriIdentityService } from '../../platform/uriIdentity/common/uriIdenti
+ import { IPreferencesService } from '../services/preferences/common/preferences.js';
+ import { IUtilityProcessWorkerWorkbenchService } from '../services/utilityProcess/electron-browser/utilityProcessWorkerWorkbenchService.js';
+ import { registerWindowDriver } from '../services/driver/browser/driver.js';
+-import { mainWindow } from '../../base/browser/window.js';
++import { CodeWindow, mainWindow } from '../../base/browser/window.js';
+ import { BaseWindow } from '../browser/window.js';
+ import { IHostService } from '../services/host/browser/host.js';
+ import { IStatusbarService, ShowTooltipCommand, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
+@@ -139,6 +139,15 @@ export class NativeWindow extends BaseWindow {
+ 		this.create();
+ 	}
+ 
++	protected override onElementFocus(targetWindow: CodeWindow): void {
++		// Background Launchpad refreshes may restore DOM focus while an independent IM window is in front.
++		// Only an explicit window activation should bring the Launchpad back to the foreground.
++		if (targetWindow === mainWindow && this.nativeEnvironmentService.window.isStudioLaunchpad) {
++			return;
++		}
++		super.onElementFocus(targetWindow);
++	}
++
+ 	protected registerListeners(): void {
+ 
+ 		// Layout
