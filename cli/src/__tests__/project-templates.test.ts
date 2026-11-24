@@ -24,12 +24,13 @@ async function linkCore(directory: string) {
 }
 
 describe('project templates', () => {
-  it('ships three minimal starters and two independent bilingual examples', async () => {
+  it('ships both Bot engines as starters alongside Workflow and Kanban templates', async () => {
     const templates = await listProjectTemplates();
-    expect(templates.filter(template => template.kind === 'starter').map(template => template.projectType)).toEqual(['workflow', 'bot', 'kanban']);
-    expect(templates.filter(template => template.kind === 'example').map(template => template.id)).toEqual([
-      'workflow-hello', 'bot-tools',
+    expect(templates.filter(template => template.kind === 'starter').map(template => template.id)).toEqual([
+      'workflow-starter', 'bot-starter', 'bot-llm', 'kanban-starter',
     ]);
+    expect(templates.filter(template => template.projectType === 'bot').map(template => template.id)).toEqual(['bot-starter', 'bot-llm']);
+    expect(templates.filter(template => template.kind === 'example').map(template => template.id)).toEqual(['workflow-hello']);
     expect(templates.every(template => template.name.en && template.name['zh-CN'] && template.description.en && template.description['zh-CN'])).toBe(true);
   });
 
@@ -70,10 +71,14 @@ describe('project templates', () => {
         expect(output).toBe(template.id === 'workflow-starter' ? 'Ready' : template.id === 'workflow-hello' ? 'Hello'
           : 'Local reply');
         if (template.projectType === 'bot') {
-          expect(first.output?.items?.find(item => item.id === 'agent-answer')).toMatchObject({ title: 'Output', collapsed: false });
-        }
-        if (template.id === 'bot-tools') {
-          expect((await execute(2)).output?.items?.find(item => item.id === 'agent-answer')?.content).toBe('Local reply');
+          const engine = template.id === 'bot-starter' ? 'agent' : 'llm';
+          expect(project.conversation?.engine).toBe(engine);
+          const answer = first.output?.items?.find(item => item.id === 'agent-answer');
+          expect(answer?.content).toBe('Local reply');
+          if (engine === 'agent') expect(answer).toMatchObject({ title: 'Output', collapsed: false });
+          const second = await execute(2);
+          expect(second.status).toBe('success');
+          expect(second.output?.items?.find(item => item.id === 'agent-answer')?.content).toBe('Local reply');
         }
       } finally { runtime.dispose(); }
     }

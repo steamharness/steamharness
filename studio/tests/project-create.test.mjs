@@ -115,11 +115,20 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ harness: harness.version, cli: cli.version }));
   const runtime = projectTemplatesRuntime(extension, 'zh-cn');
   const templates = await runtime.templates();
-  assert.deepEqual(templates.map(template => template.id), ['workflow-starter', 'bot-starter', 'kanban-starter', 'workflow-hello', 'bot-tools']);
+  assert.deepEqual(templates.map(template => template.id), ['workflow-starter', 'bot-starter', 'bot-llm', 'kanban-starter', 'workflow-hello']);
   assert.equal(templates[0].name, '\u5de5\u4f5c\u6d41');
-  for (const templateId of ['bot-starter', 'bot-tools']) {
+  const english = await projectTemplatesRuntime(extension, 'en').templates();
+  for (const catalog of [templates, english]) {
+    assert.deepEqual(catalog.filter(template => template.projectType === 'bot').map(({ name, kind }) => [name, kind]), [
+      ['Core Agent', 'starter'], ['Core LLM', 'starter'],
+    ]);
+  }
+  assert.match(templates.find(template => template.id === 'bot-llm').description, /不启动 Agent 会话/u);
+  assert.match(english.find(template => template.id === 'bot-llm').description, /without starting an Agent session/u);
+  for (const [templateId, engine] of [['bot-starter', 'agent'], ['bot-llm', 'llm']]) {
     const bot = await runtime.create({ templateId, name: templateId, parentDirectory: directory });
-    assert.match(await readFile(path.join(bot.directory, 'index.ts'), 'utf8'), /steamharness\.defineBot\(\{\s*engine: "agent",/u);
+    assert.equal(bot.projectType, 'bot');
+    assert.match(await readFile(path.join(bot.directory, 'index.ts'), 'utf8'), new RegExp(`steamharness\\.defineBot\\(\\{\\s*engine: "${engine}",`, 'u'));
   }
   const input = { templateId: 'workflow-starter', name: 'Created', parentDirectory: directory };
   await runtime.validate(input);
@@ -149,7 +158,7 @@ test('the shipped template runtime uses the host locale and exact bundled versio
 
   const bundled = path.join(directory, 'local bundle');
   const local = projectTemplatesRuntime(extension, 'en', bundled);
-  const localInput = { ...input, name: 'Portable' };
+  const localInput = { ...input, name: 'Portable', templateId: 'bot-llm' };
   await assert.rejects(local.create(localInput), { code: 'runtime-packages-unavailable' });
   await mkdir(bundled);
   const packages = {};
@@ -160,6 +169,7 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   await writeFile(path.join(bundled, 'runtime-packages.json'), JSON.stringify({ schemaVersion: 1, packages }));
   const portable = await local.create(localInput);
   const portableManifest = JSON.parse(await readFile(path.join(portable.directory, 'package.json'), 'utf8'));
+  assert.match(await readFile(path.join(portable.directory, 'index.ts'), 'utf8'), /engine: "llm",/u);
   assert.deepEqual(portableManifest.steamharnessRuntime, { version: '9.8.7' });
   assert.deepEqual(portableManifest.devDependencies, { steamharness: 'file:./vendor/steamharness/steamharness.tgz', '@steamharness/cli': 'file:./vendor/steamharness/steamharness-cli.tgz' });
   await writeFile(path.join(bundled, 'steamharness-cli.tgz'), 'damaged');

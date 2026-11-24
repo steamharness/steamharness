@@ -359,6 +359,8 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(await modal().locator('input[name="projectType"][value="workflow"]').evaluate(input => input === document.activeElement), true);
     await modal().locator('input[name="projectType"][value="workflow"]').focus(); await page.keyboard.press('ArrowRight');
     await modal().locator('input[name="projectType"][value="bot"]:checked').waitFor({ state: 'attached' });
+    assert.deepEqual(await modal().locator('.studio-create-template-name').allTextContents(), ['Core Agent', 'Core LLM']);
+    assert.equal(await modal().locator('input[name="templateId"]:checked').inputValue(), 'bot-starter');
     for (const type of ['bot', 'kanban', 'workflow']) {
       await modal().locator(`input[name="projectType"][value="${type}"]`).locator('..').click();
       const allowed = templates.filter(template => template.projectType === type).map(template => template.id);
@@ -481,7 +483,7 @@ for (const language of ['en', 'zh-cn']) {
     await call({ action: 'replace', text: '' }); await assertPlainUntitled();
     check(`${language}: native blank Untitled in both themes, typing, DOM paste, undo and clear`);
     await command('workbench.action.closeActiveEditor');
-    await start().locator('h1').waitFor();
+    await start().getByRole('heading', { name: 'workflow-starter', exact: true, level: 1 }).waitFor();
     assert.equal(await page.locator('.tabs-container .tab').count(), 0);
     check(`${language}: closing the empty file returns to the background Start workbench`);
     await call({ action: 'file', path: emptyFile }); assert.equal(await page.locator('.studio-start-overlay .studio-start:visible').count(), 0);
@@ -576,7 +578,7 @@ for (const language of ['en', 'zh-cn']) {
     await openCreation(targetPage, targetBridge.port);
     const sameModal = targetPage.locator('.studio-create-dialog');
     await sameModal.locator('input[name="projectType"][value="bot"]').locator('..').click();
-    await sameModal.locator('input[name="templateId"][value="bot-starter"]').locator('..').click();
+    await sameModal.locator('input[name="templateId"][value="bot-llm"]').locator('..').click();
     await sameModal.locator('[data-field="projectName"]').fill(sameName);
     await sameModal.locator('[data-field="parentDirectory"]').fill(creationParent);
     const sameSubmit = sameModal.locator('.dialog-buttons .monaco-button').filter({ hasText: language === 'en' ? /^Create$/ : /^创建$/ });
@@ -588,6 +590,7 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(sameBridge.error, undefined, sameBridge.error);
     await until(() => call({ action: 'state' }, sameBridge.port), state => !state.start.busy && !state.start.pending.length
       && state.start.projects.some(project => project.name === sameName && project.projectType === 'bot'), 'The reused window did not finish installation');
+    assert.match(await readFile(path.join(sameDirectory, 'index.ts'), 'utf8'), /engine: "llm",/u);
     assert.equal(context.pages().length, 2, 'Current-window selection must reuse the chosen window');
     assert.ok((await call({ action: 'installationLog' }, sameBridge.port)).includes(`Installing fixture dependencies in ${sameDirectory}`));
     assert.deepEqual((await call({ action: 'state' })).folders, [workdir]);
