@@ -73,6 +73,42 @@ async function checkImportedBot(page, zh = false) {
   assert.equal(await details.locator('.lp-detail-entries').getByText('Chat', { exact: true }).isVisible(), true);
 }
 
+async function checkLibraryReload(page, zh = false) {
+  await page.emulateMedia({ reducedMotion: zh ? 'reduce' : 'no-preference' });
+  // Observe from before workbench startup so even a single frame with a plain folder or empty shelf is caught.
+  await page.addInitScript(({ name, folder }) => {
+    const phases = window.studioTestLibraryPhases = [];
+    window.studioTestLibraryAnimated = false;
+    document.addEventListener('animationstart', event => {
+      if (event.animationName === 'lp-library-pulse') window.studioTestLibraryAnimated = true;
+    });
+    new MutationObserver(() => {
+      const library = document.querySelector('.lp-library');
+      if (!library) return;
+      const card = [...library.querySelectorAll('.lp-library-card')].find(card =>
+        [name, folder].includes(card.querySelector('.lp-caption strong')?.textContent));
+      const loading = library.querySelector('.lp-library-loading:not([hidden]) [role="status"]');
+      const empty = library.querySelector('.lp-empty');
+      const phase = loading ? (library.querySelector('.lp-library-card') || empty ? 'Premature content' : loading.textContent)
+        : card ? (card.querySelector('.lp-card-tags small')?.textContent === 'Bot' ? 'Bot' : 'Unrecognized project') : empty ? 'Empty library' : undefined;
+      if (phase && phases.at(-1) !== phase) phases.push(phase);
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  }, { name: importedBot.name, folder: path.basename(importedSource) });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const card = page.locator('.lp-library-card[data-key^="all:"]').filter({ hasText: importedBot.name });
+  await card.getByText('Bot', { exact: true }).waitFor({ timeout: 60_000 });
+  assert.equal(await card.locator('.lp-art-stack img').first().isVisible(), true);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  // Allow the debounced focus refresh to run without replacing the visible library with placeholders.
+  await delay(250);
+  assert.deepEqual(await page.evaluate(() => ({ phases: window.studioTestLibraryPhases, animated: window.studioTestLibraryAnimated })),
+    { phases: [zh ? '正在加载项目…' : 'Loading projects…', 'Bot'], animated: !zh });
+  assert.equal(await page.locator('.lp-library-loading').isVisible(), false);
+  await page.getByRole('button', { name: zh ? '源码' : 'Source', exact: true }).click();
+  await card.click();
+  await checkImportedBot(page, zh);
+}
+
 // Exercise the real account controller with a fixture for the private social commands.
 async function registerPlatformProfile(vscode) {
   const { registerCommand, executeCommand } = vscode.commands;
@@ -424,11 +460,8 @@ try {
   await localPage.getByRole('tab', { name: 'Library', exact: true }).click();
   await importFolder(localPage, importedSource);
   await checkImportedBot(localPage);
-  await localPage.reload({ waitUntil: 'domcontentloaded' });
-  await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Source', exact: true }).click({ timeout: 60_000 });
-  await localPage.locator('.lp-library-card[data-key^="all:"]').filter({ hasText: importedBot.name }).click({ timeout: 60_000 });
-  await checkImportedBot(localPage);
-  console.log('[OK] Import without opening · source Bot details and icon · plain folder · reload');
+  await checkLibraryReload(localPage);
+  console.log('[OK] Import without opening · source Bot details and icon · plain folder · first-load transition');
   assert.equal(await localPage.locator('.studio-mode-toggle').isVisible(), false);
   await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = await until(async () => {
@@ -489,6 +522,7 @@ try {
       await checkImportedBot(launchpad, zh);
       console.log(`[OK] ${name}: imported unopened folder as a source Bot`);
       if (zh) {
+        await checkLibraryReload(launchpad, zh);
         await launchpad.setViewportSize({ width: 390, height: 844 });
         assert.ok(await home.evaluate(element => element.scrollWidth <= element.clientWidth));
         await launchpad.setViewportSize({ width: 1280, height: 900 });

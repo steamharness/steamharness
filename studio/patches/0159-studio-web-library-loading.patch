@@ -1,0 +1,217 @@
+diff --git a/src/vs/workbench/browser/media/studioLaunchpad.css b/src/vs/workbench/browser/media/studioLaunchpad.css
+index 028b8d1fe14ddae107a27acdbdb54517d91c0a69..87106604afc982e1aeafc1bbf35b5ed1847552a9 100644
+--- a/src/vs/workbench/browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/browser/media/studioLaunchpad.css
+@@ -113,6 +113,15 @@
+ .lp-library-actions { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+ .lp-shelf-head { justify-content: flex-start; margin-bottom: 10px; }
+ .lp-collection { margin-top: 24px; }
++.studio-launchpad .lp-library-loading-status { margin-block-end: 10px; color: var(--lp-muted); }
++.lp-library-skeleton { inline-size: clamp(min(100%,178px),32%,100%); overflow: hidden; background: var(--lp-side); border: 1px solid var(--lp-line); border-radius: 5px; }
++.lp-library-skeleton :is(.lp-library-skeleton-cover,.lp-library-skeleton-title,.lp-library-skeleton-meta) { background: color-mix(in srgb,var(--lp-text) 13%,var(--lp-side)); }
++.lp-library-skeleton-cover { aspect-ratio: 16/9; }
++.lp-library-skeleton-title,.lp-library-skeleton-meta { border-radius: 3px; }
++.lp-library-skeleton-title { inline-size: 46%; block-size: 12px; }
++.lp-library-skeleton-meta { inline-size: 28%; block-size: 9px; }
++@media (prefers-reduced-motion: no-preference) { .monaco-workbench:not(.monaco-reduce-motion) .lp-library-skeleton { animation: lp-library-pulse 1.6s ease-in-out infinite; } }
++@keyframes lp-library-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+ .lp-library-grid,.lp-store-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(156px,100%),1fr)); gap: 14px; }
+ .lp-recent .lp-library-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(178px,32%); grid-template-columns: none; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+ .lp-recent .lp-library-grid:hover { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 50c36dec48233a491d5c1aac01ea0798ed5382a3..2ac61fc1666d570edc3bef002c64c7c938c61d40 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -54,7 +54,7 @@ export interface IStudioStartService {
+ 	readonly _serviceBrand: undefined;
+ 	readonly state: StudioStartState | undefined;
+ 	readonly onDidChange: Event<void>;
+-	setVisible(id: string, visible: boolean): void;
++	setVisible(id: string, visible: boolean): Promise<void> | void;
+ }
+ 
+ class StudioStartService extends Disposable implements IStudioStartService {
+@@ -77,15 +77,16 @@ class StudioStartService extends Disposable implements IStudioStartService {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalGetStartVisibility', () => this.visible.has('launchpad')));
+ 	}
+ 
+-	setVisible(id: string, visible: boolean): void {
++	setVisible(id: string, visible: boolean): Promise<void> | undefined {
+ 		const wasVisible = this.visible.size > 0;
+ 		const wasLaunchpadVisible = this.visible.has('launchpad');
+ 		if (visible) { this.visible.add(id); } else { this.visible.delete(id); }
+ 		const launchpadVisible = this.visible.has('launchpad');
+ 		// The overview still activates the extension, but only the launchpad needs periodic refreshes.
+ 		if (wasVisible !== (this.visible.size > 0) || wasLaunchpadVisible !== launchpadVisible) {
+-			void this.commands.executeCommand('studio.internalStartPageVisibility', launchpadVisible).catch(() => undefined);
++			return this.commands.executeCommand<void>('studio.internalStartPageVisibility', launchpadVisible).catch(() => undefined);
+ 		}
++		return undefined;
+ 	}
+ }
+ registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index 21bb67272052bbc8278fc27f71b6a57ea6faefc8..59961e83ac94d248ae208dc80093b33b6dbf818b 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -49,6 +49,7 @@ export class LaunchpadLibrary extends Disposable {
+ 	private readonly shelf = element('div', 'lp-shelf lp-scroll');
+ 	private readonly toolbar = element('header', 'lp-library-title');
+ 	private readonly content = element('div');
++	private readonly loading = element('div', 'lp-library-loading lp-collection');
+ 	private readonly createButton: HTMLButtonElement;
+ 	private readonly search = element('input', 'lp-query');
+ 	private readonly filters = element('div', 'lp-filters');
+@@ -103,12 +104,28 @@ export class LaunchpadLibrary extends Disposable {
+ 		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
+ 		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
+ 		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
+-		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.content);
++		const status = element('p', 'lp-library-loading-status', t('Loading projects…', '正在加载项目…'));
++		status.setAttribute('role', 'status');
++		const skeleton = element('div', 'lp-library-skeleton'), caption = element('div', 'lp-caption');
++		skeleton.setAttribute('aria-hidden', 'true');
++		caption.append(element('span', 'lp-library-skeleton-title'), element('span', 'lp-library-skeleton-meta'));
++		skeleton.append(element('div', 'lp-library-skeleton-cover'), caption);
++		this.loading.append(status, skeleton); this.loading.hidden = true;
++		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.loading, this.content);
+ 		this.element.append(rail, this.shelf);
+ 	}
+ 
+-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = []): void {
++	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = [], loading = false): void {
+ 		this.createButton.disabled = !canCreate;
++		const wasLoading = !this.loading.hidden;
++		if (wasLoading !== loading) {
++			this.loading.hidden = !loading;
++			if (loading) {
++				this.content.setAttribute('aria-busy', 'true');
++				this.render();
++			} else { this.content.removeAttribute('aria-busy'); }
++		}
++		if (loading) { return; }
+ 		const signature = JSON.stringify([recent, windows, actionScope, category, builtinProjects]); if (signature === this.signature) { return; }
+ 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
+ 		this.actionScope = actionScope;
+@@ -358,6 +375,8 @@ export class LaunchpadLibrary extends Disposable {
+ 	}
+ 
+ 	private render(): void {
++		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
++		if (!this.loading.hidden) { return; }
+ 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
+ 		const category = this.filter === 'product' ? this.category : undefined;
+ 		const members = category && new Set(category.projectUris);
+@@ -380,7 +399,6 @@ export class LaunchpadLibrary extends Disposable {
+ 			return inFilter(p) || !!(parent && inFilter(parent));
+ 		});
+ 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
+-		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+ 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
+ 		this.renderIndex(indexRows, builtins, query ? this.searchCollapsed : this.collapsed);
+ 		const selected = this.selected && this.projects.get(this.selected);
+diff --git a/src/vs/workbench/browser/studioLaunchpadView.ts b/src/vs/workbench/browser/studioLaunchpadView.ts
+index 697c82530487ed57f118f215889268c66ef78172..dbc21569167f534f5576c42835995d28a7b6f237 100644
+--- a/src/vs/workbench/browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/browser/studioLaunchpadView.ts
+@@ -19,6 +19,7 @@ export interface LaunchpadState {
+ 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; notificationUnread: boolean;
+ 	dismissedSocialNoticeIds?: ReadonlySet<string>;
+ 	libraryCategory?: LibraryProjectCategory;
++	libraryLoading?: boolean;
+ }
+ interface LaunchpadActions extends LibraryActions, StoreActions {
+ 	open(): void; workspace(): void; settings(): void;
+@@ -163,7 +164,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		const preview = notice ? `${notice.title}${notice.detail ? `: ${notice.detail}` : ''}` : '';
+ 		if (this.noticeContent.textContent !== preview) { this.noticeContent.textContent = this.latestNotice.title = preview; }
+ 		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
+-		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory, state.builtinProjects);
++		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory, state.builtinProjects, state.libraryLoading);
+ 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
+ 		this.profile?.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread, state.dismissedSocialNoticeIds);
+ 		if (this.picker.dialog.open) { this.picker.update(); }
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index 4b5bc1521d18d1da11a54f3f1bd792fba3a6b7a4..19db1743b30b7ca9f9d699d0df030bd49b19e806 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -81,7 +81,8 @@ export class StudioWebLaunchpad extends Disposable {
+ 	private readonly inboxRequests = new Map<string, string>();
+ 	private socialUnread = false;
+ 	private noticeRevision = 0;
+-	private projects: LaunchpadProject[] = [];
++	private projects?: LaunchpadProject[];
++	private startVisibilitySettled = false;
+ 	private recent = new Map<string, RecentProject>();
+ 	private builtinProjects?: LaunchpadProject[];
+ 	private revision = 0;
+@@ -177,7 +178,19 @@ export class StudioWebLaunchpad extends Disposable {
+ 			this.view.element.remove();
+ 		}));
+ 
+-		const visible = () => start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
++		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
++		const changed = () => { ++this.revision; refresh.schedule(); };
++		const visible = () => {
++			const isVisible = !document.hidden && !this.view.element.hidden;
++			const activation = start.setVisible('launchpad', isVisible);
++			if (isVisible && !start.state && !this.startVisibilitySettled && activation) {
++				void activation.then(() => {
++					this.startVisibilitySettled = true;
++					// If the extension failed to publish its state, fall back to browser history.
++					if (!start.state && !this._store.isDisposed) { changed(); }
++				});
++			}
++		};
+ 		const hideHome = () => { this.view.closePicker(); this.view.setVisible(false); visible(); };
+ 		const showHome = () => {
+ 			const fromSettings = this.settings.isOpen;
+@@ -232,8 +245,6 @@ export class StudioWebLaunchpad extends Disposable {
+ 		const poll = mainWindow.setInterval(() => this.refreshProfile(), 60_000);
+ 		this._register(toDisposable(() => mainWindow.clearInterval(poll)));
+ 
+-		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
+-		const changed = () => { ++this.revision; refresh.schedule(); };
+ 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
+ 		this._register(start.onDidChange(changed));
+ 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshProfile(); }));
+@@ -334,12 +345,14 @@ export class StudioWebLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async refreshProjects(): Promise<void> {
++		const state = this.start.state;
++		if (!state && !this.startVisibilitySettled) { return; }
+ 		const revision = this.revision;
+ 		const history = await this.workspaces.getRecentlyOpened();
+ 		if (revision !== this.revision || this._store.isDisposed) { return; }
+ 		const projects = new Map<string, LaunchpadProject>();
+ 		const recent = new Map<string, RecentProject>();
+-		for (const row of this.start.state?.recent ?? []) {
++		for (const row of state?.recent ?? []) {
+ 			if (row.kind !== 'folder' && row.kind !== 'workspace') { continue; }
+ 			const uri = this.hostUri(URI.parse(row.uri));
+ 			if (!uri) { continue; }
+@@ -358,11 +371,11 @@ export class StudioWebLaunchpad extends Disposable {
+ 		// Browser history keeps paths only. Use the host's file URIs so the desktop reader also matches installed-project records.
+ 		const uninspected = new Map<string, LaunchpadProject>();
+ 		for (const project of projects.values()) {
+-			if (project.kind === 'folder' && !project.artwork) {
++			if (project.kind === 'folder' && (!this.projects || !project.artwork)) {
+ 				uninspected.set(URI.parse(project.uri).with({ scheme: Schemas.file, authority: '' }).toString(), project);
+ 			}
+ 		}
+-		if (this.start.state && uninspected.size) {
++		if (state && uninspected.size) {
+ 			const detected = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', [...uninspected.keys()]).catch(() => undefined);
+ 			if (revision !== this.revision || this._store.isDisposed) { return; }
+ 			for (const { uri, projectName, ...metadata } of detected ?? []) {
+@@ -391,7 +404,8 @@ export class StudioWebLaunchpad extends Disposable {
+ 	private paint(): void {
+ 		const state = this.start.state;
+ 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
+-		this.view.update({ windows: [], recent: this.projects.filter(project => !builtins.has(project.uri)), builtinProjects: this.builtinProjects,
++		this.view.update({ windows: [], recent: this.projects?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
++			libraryLoading: this.projects === undefined,
+ 			platform: !!state?.platform, account: this.account, inbox: this.inbox, store: state?.recommendations, canCreate: !!state?.canCreate && !state.busy,
+ 			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread() });
+ 	}
