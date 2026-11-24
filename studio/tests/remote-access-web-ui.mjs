@@ -116,19 +116,29 @@ async function checkLibraryReload(page, zh = false) {
 }
 
 // Exercise the real account controller with a fixture for the private social commands.
-async function registerPlatformProfile(vscode) {
+async function registerPlatformProfile(vscode, context, account) {
   const { registerCommand, executeCommand } = vscode.commands;
-  const chats = [{ id: 'fixture-chat', name: 'Fixture chat', group: true, unread: 0, preview: 'Hello' },
-    { id: 'another-chat', name: 'Another chat', unread: 0, preview: 'Hi' }];
+  const chats = [{ id: 'fixture-chat&archive', name: 'Fixture chat', group: true, unread: 0, preview: 'Hello' },
+    { id: 'bot-chat', name: 'Fixture bot', badge: 'Bot', unread: 0, preview: 'Hi' }];
+  const friend = { id: 'friend', name: 'Fixture friend', relation: 'friend' };
   registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: chats }));
-  registerCommand('studio.getSocialSnapshot', () => ({ people: [{ id: 'friend', name: 'Fixture friend', relation: 'friend' }], favorites: [{ id: 'favorite', title: 'Fixture favorite' }], notices: [] }));
+  registerCommand('studio.getSocialSnapshot', () => ({ people: [friend], favorites: [{ id: 'favorite', title: 'Fixture favorite' }], notices: [] }));
   registerCommand('studio.getLaunchpadDirectory', () => ({ groups: [], conversations: [] }));
   registerCommand('studio.hasUnreadNotices', () => false);
-  registerCommand('studio.openLaunchpadInbox', async (requestId, conversation) => {
-    const chat = chats.find(item => item.id === conversation);
-    if (!chat) return 'Unexpected conversation';
+  let owner;
+  context.subscriptions.push(account.onDidChange(state => {
+    if (owner && state.status !== 'checking' && account.getAccountScopeKey() !== owner) {
+      owner = undefined;
+      void executeCommand('studio.internalCloseLaunchpadApp', 'fixture');
+    }
+  }));
+  registerCommand('studio.openLaunchpadInbox', async (requestId, conversation, user) => {
+    if (!await account.connect()) return 'Sign in to Studio.';
+    const chat = user === friend.id ? { ...friend, preview: '' } : chats.find(item => item.id === conversation);
+    if (!chat) return 'This conversation is unavailable to the current account.';
+    owner = account.getAccountScopeKey();
     if (!await executeCommand('studio.internalPrepareLaunchpadApp', 'fixture', {})) return 'Unable to prepare the fixture';
-    return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: conversation, title: chat.name,
+    return executeCommand('studio.internalShowLaunchpadApp', 'fixture', requestId, { id: chat.id, title: chat.name,
       html: `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-fixture'; script-src 'nonce-fixture'">
       <style nonce="fixture">body{margin:0;padding:0;height:100vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto}main{overflow:auto}</style>
       <h1>${chat.name}</h1><main>${chat.preview}</main><footer><textarea aria-label="Message"></textarea></footer>
@@ -188,41 +198,78 @@ async function checkPlatformProfile(page, issuer) {
     const { innerWidth, innerHeight } = frame.ownerDocument.defaultView;
     return bounds.left === 0 && bounds.top === 0 && bounds.width === innerWidth && bounds.height === innerHeight;
   });
-  const waitForChat = async (tab, title) => {
-    // The preview runs inside the webview, not in the Launchpad document or a navigated URL.
+  const waitForChat = async (tab, title, target) => {
     await tab.locator(`.studio-chat-window[aria-label="${title}"]`).waitFor();
     await content(tab).getByRole('heading', { name: title, exact: true }).waitFor();
     await until(async () => (await tab.title()) === title, `The IM tab did not take the title ${title}.`);
-    assert.equal(tab.url(), 'about:blank');
+    const address = new URL(tab.url());
+    assert.deepEqual([address.origin, address.pathname, [...address.searchParams], address.hash],
+      [new URL(url).origin, new URL(url).pathname, [['im', 'chat'], target], '']);
     await until(() => fillsViewport(tab), `The IM tab did not fill the browser viewport: ${title}.`, 5_000);
   };
+  const group = ['conversation_id', 'fixture-chat&archive'];
+  const bot = ['conversation_id', 'bot-chat'];
   const first = await openTab(page, () => chat.click());
-  await waitForChat(first, 'Fixture chat');
+  await waitForChat(first, 'Fixture chat', group);
+  const groupUrl = first.url();
   const narrow = { width: 420, height: 680 };
   await first.setViewportSize(narrow);
   await until(async () => await fillsViewport(first) && await content(first).locator('footer').evaluate((composer, height) =>
     composer.getBoundingClientRect().bottom === height && composer.previousElementSibling.getBoundingClientRect().height > 0, narrow.height),
   'The message area and composer did not follow the resized IM tab.', 5_000);
-  const second = await openTab(page, () => profile.getByRole('button', { name: 'Another chat Hi' }).click());
-  await waitForChat(second, 'Another chat');
+  const second = await openTab(page, () => profile.getByRole('button', { name: /Fixture bot/ }).click());
+  await waitForChat(second, 'Fixture bot', bot);
   assert.equal(await first.locator('.studio-chat-window[aria-label="Fixture chat"]').isVisible(), true);
   assert.equal(page.url(), url);
   assert.equal(await chat.isVisible(), true);
+  await profile.getByRole('tab', { name: 'Contacts & friends', exact: true }).click();
+  const contact = await openTab(page, () => profile.getByRole('button', { name: 'Fixture friend' }).click());
+  await waitForChat(contact, 'Fixture friend', ['user_id', 'friend']);
+  await contact.close();
+  // Reload the opener away from the profile; each chat owns its own preview and session.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  profile = await openProfile(page);
+  await waitForChat(second, 'Fixture bot', bot);
+  const direct = await page.context().newPage();
+  await direct.goto(groupUrl, { waitUntil: 'domcontentloaded' });
+  assert.equal(await direct.evaluate(() => window.opener), null);
+  await waitForChat(direct, 'Fixture chat', group);
+  await direct.reload({ waitUntil: 'domcontentloaded' });
+  await waitForChat(direct, 'Fixture chat', group);
   await first.close();
-  assert.equal(await second.locator('.studio-chat-window').isVisible(), true);
-  const reopened = await openTab(page, () => chat.click());
-  await waitForChat(reopened, 'Fixture chat');
-  console.log('[OK] IM group chat fills its tab and resizes · separate conversations · Launchpad stays open');
-  const closed = Promise.all([second.waitForEvent('close'), reopened.waitForEvent('close')]);
-  await writeFile(path.join(directory, 'profile-commands.json'), 'logout');
-  await closed;
+  await waitForChat(second, 'Fixture bot', bot);
+  const missing = await page.context().newPage();
+  await missing.goto(new URL('?im=chat&conversation_id=missing', url).href, { waitUntil: 'domcontentloaded' });
+  await missing.getByRole('status').filter({ hasText: 'This conversation is unavailable to the current account.' }).waitFor();
+  assert.equal(await webview(missing).count(), 0);
+  await missing.close();
+  console.log('[OK] IM group, Bot and friend URLs · independent tabs · direct visit and reload · full viewport');
+  await page.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
+  const accountSection = '#settings-navigation [data-section="account"]';
+  const settings = await until(async () => {
+    for (const frame of page.frames()) {
+      if (await frame.locator(accountSection).isVisible().catch(() => false)) return frame;
+    }
+  }, 'The platform Launchpad did not open the account settings.', 30_000);
+  await settings.locator(accountSection).click();
+  await settings.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await Promise.all([second, direct].map(async tab => {
+    await tab.getByRole('status').filter({ hasText: 'Your IM session ended.' }).waitFor({ timeout: 15_000 });
+    assert.equal(await webview(tab).count(), 0);
+  }));
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
   await Promise.all([signIn(profile).waitFor(), signIn(otherProfile).waitFor({ timeout: 10_000 })]);
   assert.equal(await chat.count(), 0);
+  await direct.reload({ waitUntil: 'domcontentloaded' });
+  await direct.getByRole('status').filter({ hasText: 'Sign in to Studio.' }).waitFor();
+  assert.equal(await webview(direct).count(), 0);
+  await direct.close();
+  await second.close();
   await other.close();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await signIn(await openProfile(page)).waitFor();
   assert.equal(issuer.revoked, true);
-  console.log('[OK] Platform account · device approval · restore on reload and new tab · shared sign-out · two IM tabs');
+  console.log('[OK] Platform account · device approval · restore on reload and new tab · shared sign-out blocks IM URLs');
 }
 
 async function runProfileIssuer() {
@@ -267,27 +314,21 @@ async function runPlatformProfile(context) {
   const extensions = path.join(state, 'extensions');
   const fixture = path.join(extensions, 'studio.studio-workstation-999.0.0');
   await mkdir(fixture, { recursive: true });
+  await symlink(path.join(ROOT, 'extensions/studio-workstation/dist'), path.join(fixture, 'dist'), process.platform === 'win32' ? 'junction' : 'dir');
   // Override the built-in extension only in this isolated server profile.
   await writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'studio-workstation', publisher: 'studio', version: '999.0.0',
-    engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
+    engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished', 'onCommand:studio.openLaunchpadInbox'] }));
   const issuer = await runProfileIssuer();
   const registry = path.join(state, 'instance.json');
   let startupError, runner, page, origin;
   try {
     await build({ stdin: { resolveDir: ROOT, contents: `
       import * as vscode from 'vscode';
-      import { unlink } from 'node:fs/promises';
       import { createHash } from 'node:crypto';
       import { activateProjectAccount } from './extensions/studio-workstation/src/workflow-auth.ts';
       export async function activate(context) {
-        await activateProjectAccount(context, undefined, true, ${JSON.stringify(issuer.origin)}, value => createHash('sha256').update(value).digest('hex'));
-        await (${registerPlatformProfile.toString()})(vscode);
-        const signal = ${JSON.stringify(path.join(directory, 'profile-commands.json'))};
-        const timer = setInterval(async () => {
-          try { await unlink(signal); } catch { return; }
-          await vscode.commands.executeCommand('studio.logout');
-        }, 100);
-        context.subscriptions.push({ dispose: () => clearInterval(timer) });
+        const account = await activateProjectAccount(context, undefined, true, ${JSON.stringify(issuer.origin)}, value => createHash('sha256').update(value).digest('hex'));
+        await (${registerPlatformProfile.toString()})(vscode, context, account);
       }` }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(fixture, 'extension.cjs') });
     const port = await availablePort(); origin = `http://127.0.0.1:${port}`;
     runner = runManagedWeb({ directory: state, storage: path.join(state, 'runs'),
@@ -545,6 +586,11 @@ try {
       await launchpad.getByRole('heading', { name: zh ? '配对 SteamHarness Studio' : 'Pair with SteamHarness Studio' }).waitFor();
       await launchpad.goto(new URL(`/?workspace=${encodeURIComponent(workspaceFile)}`, origin).href, { waitUntil: 'domcontentloaded' });
       assert.equal(new URL(launchpad.url()).pathname, '/pair');
+      const imQuery = '?im=chat&conversation_id=paired-conversation';
+      if (!zh) {
+        await launchpad.goto(`${origin}/${imQuery}`, { waitUntil: 'domcontentloaded' });
+        assert.equal(launchpad.url(), `${origin}/pair${imQuery}`);
+      }
       await settings.getByRole('combobox', { name: 'Remote address' }).selectOption(origin);
       await settings.getByRole('button', { name: 'Generate pairing code' }).click();
       const qr = settings.getByRole('img', { name: 'Pairing QR code' });
@@ -571,6 +617,11 @@ try {
       }
       await writeFile(caseFile, name);
       await launchpad.getByRole('button', { name: zh ? '确认配对' : 'Confirm pairing' }).click();
+      if (!zh) {
+        await launchpad.waitForURL(`${origin}/${imQuery}`);
+        await launchpad.locator('.studio-chat-status').waitFor({ timeout: 60_000 });
+        await launchpad.goto(origin, { waitUntil: 'domcontentloaded' });
+      }
       const home = launchpad.locator('.studio-launchpad');
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       assert.equal(new URL(launchpad.url()).pathname, '/');

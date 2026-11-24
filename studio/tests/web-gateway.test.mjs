@@ -126,6 +126,11 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
     return { socket, response: (await first)[0].toString() };
   }
   assert.equal((await request(workbenchOrigin, '/', { Accept: 'text/html', 'X-Forwarded-Host': new URL(local).host })).headers.get('location'), '/pair');
+  const imQuery = '?im=chat&conversation_id=group_a%26b';
+  assert.equal((await request(workbenchOrigin, `/${imQuery}&returnTo=//other.example&token=no`, { Accept: 'text/html' })).headers.get('location'), '/pair' + imQuery);
+  assert.equal((await request(workbenchOrigin, `/${imQuery}&user_id=another`, { Accept: 'text/html' })).headers.get('location'), '/pair');
+  const pairDocument = await (await request(workbenchOrigin, '/pair' + imQuery)).text();
+  assert.ok(pairDocument.includes(`location.replace("/${imQuery}")`));
   assert.equal((await request(workbenchOrigin, '/static/resource')).status, 401);
   assert.equal((await request(workbenchOrigin, workerFrame)).status, 401);
   const denied = await upgrade(); assert.match(denied.response, /403/); denied.socket.destroy();
@@ -169,6 +174,7 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.match(setCookie, /; Path=\/; HttpOnly; Secure; SameSite=Strict;/);
   const cookie = setCookie.split(';')[0];
   assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value', 'X-Steamharness-Webview-Port': String(localPort) })).text(), 'workbench');
+  assert.equal((await request(workbenchOrigin, '/pair' + imQuery, { Cookie: cookie })).headers.get('location'), '/' + imQuery);
   assert.equal(record.at(-1)['x-steamharness-gateway'], proof);
   assert.equal(record.at(-1)['x-steamharness-webview-port'], undefined);
   assert.equal(record.at(-1).cookie, '');

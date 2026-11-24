@@ -2,7 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 import qrcode from 'qrcode-generator';
 import { equalSecret, isSecret, openSessions, secret, SESSION_SECONDS } from './sessions.mjs';
-import { pairPage } from './pair-page.mjs';
+import { imPairQuery, pairPage } from './pair-page.mjs';
 import { relay, relayUpgrade } from './relay.mjs';
 import { isLocalWebviewHost, serveLocalWebview } from './webview.mjs';
 
@@ -182,8 +182,9 @@ export async function startGateway({ config, directory, workbench, webviewDirect
         if (!workbenchOrigin(req, entry.origin)) return json(res, 403, { error: 'origin' });
         const owner = identity(req, entry.origin, entry.local);
         if (url.pathname === '/pair' && req.method === 'GET') {
-          if (owner) { res.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); res.end(); return; }
-          return pairPage(req, res);
+          const imQuery = imPairQuery(url.searchParams);
+          if (owner) { res.writeHead(303, { Location: '/' + imQuery, 'Cache-Control': 'no-store' }); res.end(); return; }
+          return pairPage(req, res, imQuery);
         }
         if (url.pathname.startsWith(route)) {
           if (!isWrite(req) || req.headers.origin !== entry.origin || req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin') return json(res, 403, { error: 'origin' });
@@ -211,7 +212,8 @@ export async function startGateway({ config, directory, workbench, webviewDirect
         }
         if (!owner) {
           if (req.method === 'GET' && (req.headers['sec-fetch-dest'] === 'document' || String(req.headers.accept).includes('text/html'))) {
-            res.writeHead(303, { Location: '/pair', 'Cache-Control': 'no-store' }); res.end(); return;
+            const imQuery = url.pathname === '/' ? imPairQuery(url.searchParams) : '';
+            res.writeHead(303, { Location: '/pair' + imQuery, 'Cache-Control': 'no-store' }); res.end(); return;
           }
           return json(res, 401, { error: 'pair' });
         }

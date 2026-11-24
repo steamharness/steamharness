@@ -1,6 +1,23 @@
 import { randomBytes } from 'node:crypto';
 
-export function pairPage(req, res) {
+export function imPairQuery(query) {
+  const [view, ...duplicates] = query.getAll('im');
+  if (duplicates.length) return '';
+  const result = new URLSearchParams();
+  const conversations = query.getAll('conversation_id'), users = query.getAll('user_id');
+  if (view === 'chat' && conversations.length + users.length === 1) {
+    const [id] = conversations.length ? conversations : users;
+    if (!id || id.length > (conversations.length ? 256 : 100) || /[\u0000-\u001f\u007f]/u.test(id)) return '';
+    result.set('im', view);
+    result.set(conversations.length ? 'conversation_id' : 'user_id', id);
+  } else if (['add-contact', 'create-group'].includes(view) && !conversations.length && !users.length) {
+    result.set('im', view);
+  } else return '';
+  // Carry only the IM target, not arbitrary redirect paths, credentials or workbench parameters.
+  return '?' + result;
+}
+
+export function pairPage(req, res, imQuery) {
   const zh = /^zh(?:[-;,]|$)/i.test(req.headers['accept-language'] ?? '');
   const s = zh ? { title: '配对 SteamHarness Studio', code: '配对码', submit: '确认配对', waiting: '正在配对…',
     hint: '在宿主机的 Studio 设置 → 远程访问中生成配对码。', warning: '此设备将获得完整访问权限，包括文件和终端。',
@@ -25,11 +42,11 @@ small{display:block;color:var(--muted);margin-top:.75rem}#status{margin:.75rem 0
 <form><label for="code">${s.code}</label><input id="code" name="code" required maxlength="32" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false" autocomplete="off"><button>${s.submit}</button><small>${s.warning}</small><p id="status" role="status"></p></form></main>
 <script nonce="${nonce}">
 const form=document.querySelector('form'), code=document.querySelector('#code'), button=document.querySelector('button'), status=document.querySelector('#status'), text=${JSON.stringify(s)};
-const prefill=()=>{if(!location.hash)return;const value=new URLSearchParams(location.hash.slice(1)).get('code');if(value!==null)code.value=value.slice(0,32);history.replaceState(null,'',location.pathname);};
+const prefill=()=>{if(!location.hash)return;const value=new URLSearchParams(location.hash.slice(1)).get('code');if(value!==null)code.value=value.slice(0,32);history.replaceState(null,'',location.pathname+${JSON.stringify(imQuery)});};
 prefill();addEventListener('hashchange',prefill);
 form.addEventListener('submit',async event=>{event.preventDefault();button.disabled=true;button.textContent=text.waiting;status.textContent='';try{
 const response=await fetch('/_studio/web/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code.value})});
-if(response.ok){location.replace('/');return}status.textContent=response.status===429?text.limit:response.status===401?text.invalid:text.failed;
+if(response.ok){location.replace(${JSON.stringify('/' + imQuery)});return}status.textContent=response.status===429?text.limit:response.status===401?text.invalid:text.failed;
 }catch{status.textContent=text.failed}button.disabled=false;button.textContent=text.submit;code.focus();code.select()});
 </script></html>`);
 }

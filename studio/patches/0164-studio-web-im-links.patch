@@ -1,0 +1,570 @@
+diff --git a/src/vs/code/browser/workbench/workbench.ts b/src/vs/code/browser/workbench/workbench.ts
+index ce7a8e94524cc38183f3af6d1d9d1a6c6bbb7b7d..0e0ccd9f968caee961ca9369294cb7b7662a9f23 100644
+--- a/src/vs/code/browser/workbench/workbench.ts
++++ b/src/vs/code/browser/workbench/workbench.ts
+@@ -19,6 +19,7 @@ import product from '../../../platform/product/common/product.js';
+ import { ISecretStorageProvider } from '../../../platform/secrets/common/secrets.js';
+ import { isFolderToOpen, isWorkspaceToOpen } from '../../../platform/window/common/window.js';
+ import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
++import { readStudioWebImRoute, type StudioWebImTarget } from '../../../workbench/common/studioWebImRoute.js';
+ import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
+ import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
+ import { create } from '../../../workbench/workbench.web.main.internal.js';
+@@ -423,6 +424,10 @@ class WorkspaceProvider implements IWorkspaceProvider {
+ 		let payload = Object.create(null);
+ 
+ 		const query = new URL(document.location.href).searchParams;
++		const studioIm = config.studioWeb && config.remoteAuthority ? readStudioWebImRoute(query) : undefined;
++		if (studioIm) {
++			return new WorkspaceProvider(undefined, payload, config, false, studioIm);
++		}
+ 		query.forEach((value, key) => {
+ 			switch (key) {
+ 
+@@ -489,6 +494,7 @@ class WorkspaceProvider implements IWorkspaceProvider {
+ 		readonly payload: object,
+ 		private readonly config: IWorkbenchConstructionOptions,
+ 		readonly studioLaunchpad: boolean,
++		readonly studioIm?: StudioWebImTarget | 'invalid',
+ 	) {
+ 	}
+ 
+@@ -644,6 +650,7 @@ function readCookie(name: string): string | undefined {
+ 	create(mainWindow.document.body, {
+ 		...config,
+ 		studioLaunchpad: workspaceProvider.studioLaunchpad,
++		studioIm: workspaceProvider.studioIm,
+ 		studioProjectEntry,
+ 		windowIndicator: config.windowIndicator ?? { label: '$(remote)', tooltip: `${product.nameShort} Web` },
+ 		settingsSyncOptions: config.settingsSyncOptions ? { enabled: config.settingsSyncOptions.enabled, } : undefined,
+diff --git a/src/vs/workbench/browser/media/studioLaunchpad.css b/src/vs/workbench/browser/media/studioLaunchpad.css
+index d5a06fe728a9a30267a051ae1cb136da46030ef7..831191ec30017feaf9e2dfc9145bcd56620784e3 100644
+--- a/src/vs/workbench/browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/browser/media/studioLaunchpad.css
+@@ -260,6 +260,15 @@
+ .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
+ .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
+ .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
++.monaco-workbench.studio-web-im-window .part { visibility: hidden; }
++.studio-web-im-window :is(.studio-chat-window,.studio-chat-status) { position: fixed; inset: 0; z-index: 24; background: var(--vscode-editor-background); }
++.studio-chat-status { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; text-align: center; padding: 16px; color: var(--vscode-foreground); }
++.studio-chat-status p { margin: 0; overflow-wrap: anywhere; }
++.studio-chat-status[hidden],.studio-chat-actions[hidden] { display: none; }
++.studio-chat-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 12px; }
++.studio-chat-actions a { color: var(--vscode-textLink-foreground); }
++.studio-chat-actions button { font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 1px solid var(--vscode-button-border,transparent); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
++.studio-chat-actions button:hover { background: var(--vscode-button-hoverBackground); }
+ .studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
+ .studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index 5629097b29fa8de9130fcf35e89cb9f587c34aff..424ba40d123635c7ec836e440c15af1a657155b2 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -10,7 +10,6 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { Schemas } from '../../base/common/network.js';
+ import { basenameOrAuthority } from '../../base/common/resources.js';
+ import { URI } from '../../base/common/uri.js';
+-import { generateUuid } from '../../base/common/uuid.js';
+ import { getNLSLanguage } from '../../nls.js';
+ import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
+ import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
+@@ -22,9 +21,9 @@ import { ILabelService } from '../../platform/label/common/label.js';
+ import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
++import { studioWebImTarget } from '../common/studioWebImRoute.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
+-import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { IHostService } from '../services/host/browser/host.js';
+ import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
+ import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
+@@ -35,7 +34,7 @@ import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+ import { LaunchpadProjectMetadata, StoreListingDetails } from './studioLaunchpadCards.js';
+ import { StudioNotificationInbox } from './studioNotificationInbox.js';
+-import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
++import { openStudioWebIm } from './studioWebLaunchpadApp.js';
+ import './media/studioLaunchpad.css';
+ 
+ function studioLabel(en: string, zh: string): string { return getNLSLanguage()?.startsWith('zh') ? zh : en; }
+@@ -71,14 +70,12 @@ export class StudioWebLaunchpad extends Disposable {
+ 
+ 	private readonly view: StudioLaunchpadView;
+ 	private readonly settings: StudioLaunchpadSettings;
+-	private readonly app: StudioWebLaunchpadApp;
+ 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+ 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 160));
+ 	private account?: LaunchpadAccount;
+ 	private accountRevision = 0;
+ 	private inbox?: LaunchpadInbox;
+ 	private inboxRevision = 0;
+-	private readonly inboxRequests = new Map<string, string>();
+ 	private socialUnread = false;
+ 	private noticeRevision = 0;
+ 	private projects?: LaunchpadProject[];
+@@ -106,7 +103,6 @@ export class StudioWebLaunchpad extends Disposable {
+ 		@IHoverService hoverService: IHoverService,
+ 		@IWebviewService webviews: IWebviewService,
+ 		@IWebviewViewService webviewViews: IWebviewViewService,
+-		@IAuxiliaryWindowService windows: IAuxiliaryWindowService,
+ 	) {
+ 		super();
+ 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
+@@ -126,10 +122,10 @@ export class StudioWebLaunchpad extends Disposable {
+ 			profile: {
+ 				contextMenu,
+ 				signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+-				inbox: (id, title) => run(this.openInbox(id, undefined, undefined, title)),
+-				chatUser: (id, title) => run(this.openInbox(undefined, id, undefined, title)),
+-				addContact: () => run(this.openInbox(undefined, undefined, 'add-contact', studioLabel('Add friend', '添加好友'))),
+-				createGroup: () => run(this.openInbox(undefined, undefined, 'create-group', studioLabel('Start a group chat', '发起群聊'))),
++				inbox: id => this.openInbox(id),
++				chatUser: id => this.openInbox(undefined, id),
++				addContact: () => this.openInbox(undefined, undefined, 'add-contact'),
++				createGroup: () => this.openInbox(undefined, undefined, 'create-group'),
+ 				confirmRemoveFriend: async name => (await dialogService.confirm({
+ 					message: studioLabel(`Remove “${name}” from your friends?`, `从好友中移除「${name}」？`),
+ 					primaryButton: studioLabel('Remove friend', '移除好友'),
+@@ -170,7 +166,6 @@ export class StudioWebLaunchpad extends Disposable {
+ 		this._register(toDisposable(() => {
+ 			++this.revision;
+ 			++this.accountRevision; ++this.inboxRevision; ++this.noticeRevision;
+-			this.inboxRequests.clear();
+ 			start.setVisible('launchpad', false);
+ 			for (const part of parts) { part.inert = false; }
+ 			this.view.element.remove();
+@@ -199,19 +194,12 @@ export class StudioWebLaunchpad extends Disposable {
+ 			this.refreshProfile();
+ 		};
+ 		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, hideHome, message => notifications.error(message), webviews, webviewViews));
+-		this.app = this._register(new StudioWebLaunchpadApp(windows, studioLabel, webviews, opener, clipboard,
+-			(conversation, user) => run(this.openInbox(conversation, user))));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) =>
+ 			this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { showHome(); } }));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => {
+ 			showHome(); this.view.select('store'); return true;
+ 		}));
+-		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) =>
+-			!!this.account?.signedIn && this.app.prepare(key, app?.accountUrl)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[2]) =>
+-			this.app.show(key, id, view)));
+-		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.app.clear(key)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshProfile()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', () => {
+ 			this.refreshInbox.schedule(); this.view.refreshDirectory();
+@@ -267,10 +255,7 @@ export class StudioWebLaunchpad extends Disposable {
+ 		if (changed) {
+ 			++this.inboxRevision; ++this.noticeRevision;
+ 			this.inbox = undefined; this.socialUnread = false;
+-			this.inboxRequests.clear();
+-			this.view.setInboxActionBusy('add-contact', false);
+-			this.view.setInboxActionBusy('create-group', false);
+-			this.app.reset(); this.refreshProfile();
++			this.refreshProfile();
+ 		}
+ 		this.paint();
+ 	}
+@@ -310,29 +295,11 @@ export class StudioWebLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
+-	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<void> {
+-		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
+-		if (!this.account?.signedIn || !target || this.inboxRequests.has(target)) { return; }
+-		const id = generateUuid();
+-		this.inboxRequests.set(target, id);
++	private openInbox(conversation?: string, user?: string, action?: InboxAction): void {
++		const target = studioWebImTarget(conversation, user, action);
++		if (!this.account?.signedIn || !target) { return; }
+ 		this.view.closePicker();
+-		if (action) { this.view.setInboxActionBusy(action, true); }
+-		let opened = false;
+-		try {
+-			// Open the tab while the click still has user activation, not after the gateway round trip.
+-			if (!await this.app.open(id, title)) { return; }
+-			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', id, conversation, user, action, title).catch(() => undefined);
+-			opened = result === true;
+-			if (!opened && this.app.isOpen(id)) {
+-				this.notifications.warn(typeof result === 'string' ? result : studioLabel('Could not open IM', '无法打开 IM'));
+-			}
+-		} finally {
+-			if (!opened) { this.app.close(id); }
+-			if (this.inboxRequests.get(target) === id) {
+-				this.inboxRequests.delete(target);
+-				if (action) { this.view.setInboxActionBusy(action, false); }
+-			}
+-		}
++		openStudioWebIm(target, this.notifications);
+ 	}
+ 
+ 	private hostUri(uri: URI): URI | undefined {
+diff --git a/src/vs/workbench/browser/studioWebLaunchpadApp.ts b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+index eddfa62ea2af611d1de994a5efd8aa963f51b398..210f33a20e8c17b5c066295f25fe349631606f89 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpadApp.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpadApp.ts
+@@ -4,104 +4,142 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { addDisposableListener } from '../../base/browser/dom.js';
++import { mainWindow } from '../../base/browser/window.js';
+ import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ import { URI } from '../../base/common/uri.js';
++import { generateUuid } from '../../base/common/uuid.js';
++import { getNLSLanguage } from '../../nls.js';
+ import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
++import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
++import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
++import { studioWebImTarget, type StudioWebImTarget, studioWebImUrl } from '../common/studioWebImRoute.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+-import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+-import { element, LaunchpadLabel } from './studioLaunchpadPicker.js';
++import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
++import { element } from './studioUiElements.js';
+ 
+ interface LaunchpadAppView { id: string; title: string; html: string }
+-interface ChatTab extends IDisposable {
+-	readonly life: DisposableStore;
+-	window?: IAuxiliaryWindow;
+-	loading?: HTMLElement;
+-	key?: string;
++
++function label(en: string, zh: string): string { return getNLSLanguage()?.startsWith('zh') ? zh : en; }
++
++export function openStudioWebIm(target: StudioWebImTarget, notifications: INotificationService): boolean {
++	if (mainWindow.open(studioWebImUrl(new URL(mainWindow.location.href), target).href, '_blank')) { return true; }
++	notifications.warn(label('The browser blocked the IM tab. Allow pop-ups for this site and try again.', '浏览器拦截了 IM 标签页。请允许此站点打开弹出式窗口后重试。'));
++	return false;
+ }
+ 
+-/** The launchpad owns the gateway preview; each conversation gets its own browser tab. */
++/** Each IM address restores its own account and preview through the regular Studio host. */
+ export class StudioWebLaunchpadApp extends Disposable {
+ 
++	private requestId?: string;
+ 	private prepared?: { key: string; accountUrl?: string };
+-	private readonly tabs = this._register(new DisposableMap<string, ChatTab>());
++	private readonly mount = this._register(new MutableDisposable<DisposableStore>());
++	private readonly status = element('main', 'studio-chat-status');
++	private readonly message = element('p', 'studio-chat-loading', label('Opening IM…', '正在打开 IM…'));
++	private readonly actions = element('div', 'studio-chat-actions');
++	private readonly home = new URL('?launchpad=1', mainWindow.location.href);
++	private readonly unavailable = label('Could not open IM.', '无法打开 IM。');
++	private readonly root: HTMLElement;
+ 
+ 	constructor(
+-		private readonly windows: IAuxiliaryWindowService,
+-		private readonly t: LaunchpadLabel,
+-		private readonly webviews: IWebviewService,
+-		private readonly opener: IOpenerService,
+-		private readonly clipboard: IClipboardService,
+-		private readonly openConversation: (conversation?: string, user?: string) => void,
+-	) { super(); }
++		target: StudioWebImTarget | 'invalid',
++		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
++		@ICommandService private readonly commands: ICommandService,
++		@IWebviewService private readonly webviews: IWebviewService,
++		@IOpenerService private readonly opener: IOpenerService,
++		@IClipboardService private readonly clipboard: IClipboardService,
++		@INotificationService private readonly notifications: INotificationService,
++	) {
++		super();
++		this.root = layout.mainContainer;
++		this.message.setAttribute('role', 'status');
++		const back = element('a', '', label('Back to Launchpad', '返回启动台'));
++		back.href = this.home.href;
++		this.actions.append(back);
++		if (target !== 'invalid') {
++			const retry = element('button', '', label('Retry', '重试'));
++			retry.type = 'button';
++			this._register(addDisposableListener(retry, 'click', () => mainWindow.location.reload()));
++			this.actions.append(retry);
++		}
++		this.actions.hidden = true;
++		this.status.append(this.message, this.actions);
++		this.root.append(this.status);
++		const parts = [...this.root.querySelectorAll<HTMLElement>('.part')].filter(part => !part.inert);
++		for (const part of parts) { part.inert = true; }
++		this._register(toDisposable(() => {
++			this.release();
++			for (const part of parts) { part.inert = false; }
++			this.status.remove();
++		}));
++		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) => {
++			if (!this.requestId || this.prepared || this._store.isDisposed) { return false; }
++			this.prepared = { key, accountUrl: app?.accountUrl };
++			return true;
++		}));
++		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) =>
++			this.show(key, requestId, view)));
++		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => {
++			if (this.prepared?.key === key) {
++				this.prepared = undefined; // The extension host has already revoked this preview.
++				this.fail(label('Your IM session ended.', 'IM 会话已断开。'));
++			}
++		}));
+ 
+-	prepare(key: string, accountUrl: string | undefined): boolean {
+-		if (this.prepared?.key !== key) {
+-			if (this.prepared) { this.clear(this.prepared.key); }
+-			this.prepared = { key, accountUrl };
++		if (target === 'invalid') {
++			this.fail(label('This IM link is invalid.', '此 IM 链接无效。'));
++		} else {
++			void this.open(target);
+ 		}
+-		return true;
+ 	}
+ 
+-	clear(key: string): void {
+-		if (this.prepared?.key !== key) { return; }
+-		this.prepared = undefined;
+-		for (const [id, tab] of this.tabs) {
+-			if (tab.key === key) { this.close(id); }
+-		}
++	private async open(target: StudioWebImTarget): Promise<void> {
++		const id = this.requestId = generateUuid();
++		const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', id,
++			target.kind === 'conversation' ? target.id : undefined, target.kind === 'user' ? target.id : undefined,
++			'id' in target ? undefined : target.kind).catch(() => undefined);
++		if (this.requestId !== id || this._store.isDisposed) { return; }
++		this.requestId = undefined;
++		if (result !== true) { this.fail(typeof result === 'string' ? result : this.unavailable); }
+ 	}
+ 
+-	reset(): void {
++	private release(): void {
++		this.requestId = undefined;
++		const key = this.prepared?.key;
+ 		this.prepared = undefined;
+-		this.tabs.clearAndDisposeAll();
++		this.mount.clear();
++		if (key) { void this.commands.executeCommand('studio.internalReleaseHostedLaunchpadApp', key).catch(() => undefined); }
+ 	}
+ 
+-	async open(id: string, title?: string): Promise<boolean> {
+-		if (this._store.isDisposed) { return false; }
+-		const life = new DisposableStore();
+-		const tab: ChatTab = { life, dispose: () => life.dispose() };
+-		this.tabs.set(id, tab);
+-		try {
+-			const window = await this.windows.open({ asTab: true });
+-			if (life.isDisposed || window.window.closed) { window.dispose(); this.close(id); return false; }
+-			tab.window = window;
+-			life.add(window);
+-			life.add(addDisposableListener(window.window, 'pagehide', () => this.close(id)));
+-			window.window.document.title = title || 'IM';
+-			tab.loading = window.container.appendChild(element('div', 'studio-chat-loading', this.t('Opening IM…', '正在打开 IM…')));
+-			Object.assign(tab.loading.style, {
+-				position: 'fixed', inset: '0', display: 'grid', placeItems: 'center',
+-				color: 'var(--vscode-descriptionForeground)', background: 'var(--vscode-editor-background)',
+-			});
+-			tab.loading.setAttribute('role', 'status');
+-			return true;
+-		} catch { this.close(id); return false; }
++	private fail(message: string): void {
++		this.release();
++		mainWindow.document.title = 'IM';
++		this.message.textContent = message;
++		this.message.classList.remove('studio-chat-loading');
++		this.actions.hidden = false;
++		this.status.hidden = false;
+ 	}
+ 
+-	isOpen(id: string): boolean {
+-		const tab = this.tabs.get(id);
+-		return !!tab?.window && !tab.life.isDisposed && !tab.window.window.closed;
++	private close(): void {
++		if (mainWindow.opener) { mainWindow.close(); }
++		if (!mainWindow.closed) { mainWindow.location.replace(this.home.href); }
+ 	}
+ 
+-	close(id: string): void { this.tabs.deleteAndLeak(id)?.dispose(); }
+-
+-	async show(key: string, id: string, view: LaunchpadAppView): Promise<boolean> {
+-		const prepared = this.prepared, tab = this.tabs.get(id), window = tab?.window;
+-		if (!prepared || prepared.key !== key || !view?.id || !tab || !window || tab.key || !this.isOpen(id)) { return false; }
+-		tab.key = key;
+-		const life = tab.life;
+-		const isCurrent = () => this.prepared === prepared && this.isOpen(id);
++	private async show(key: string, requestId: string, view: LaunchpadAppView): Promise<boolean> {
++		const prepared = this.prepared;
++		if (!prepared || prepared.key !== key || requestId !== this.requestId || !view?.id || this.mount.value || this._store.isDisposed) { return false; }
++		const life = this.mount.value = new DisposableStore();
++		const isCurrent = () => this.prepared === prepared && !life.isDisposed;
+ 		const ready = new DeferredPromise<boolean>();
+ 		life.add(toDisposable(() => { void ready.complete(false); }));
+ 		const surface = element('div', 'studio-chat-window');
+ 		surface.setAttribute('role', 'document');
+ 		surface.setAttribute('aria-label', view.title);
+-		// An auxiliary tab may not have the workbench CSS. Size the webview against the tab's viewport directly.
+-		Object.assign(surface.style, { position: 'fixed', inset: '0', overflow: 'hidden', background: 'var(--vscode-editor-background)', visibility: 'hidden' });
++		surface.style.visibility = 'hidden';
+ 		life.add(toDisposable(() => surface.remove()));
+ 		let shown = false;
+-		const fail = () => { if (shown) { this.close(id); } else { void ready.complete(false); } };
++		const fail = () => { if (shown) { this.fail(this.unavailable); } else { void ready.complete(false); } };
+ 		try {
+ 			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: {}, extension: undefined,
+ 				contentOptions: { allowScripts: true, localResourceRoots: [] } }));
+@@ -110,10 +148,14 @@ export class StudioWebLaunchpadApp extends Disposable {
+ 			life.add(webview.onMessage(({ message }) => {
+ 				if (message?.type === 'studio-launchpad-ready') { void ready.complete(true); }
+ 				if (!shown || !isCurrent()) { return; }
+-				if (message?.type === 'studio-launchpad-close') { this.close(id); }
++				if (message?.type === 'studio-launchpad-close') { this.close(); }
+ 				else if (message?.type === 'studio-launchpad-open-conversation') {
+-					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
+-					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
++					const target = studioWebImTarget(typeof message.conversation === 'string' ? message.conversation : undefined,
++						typeof message.user === 'string' ? message.user : undefined);
++					if (!target) { return; }
++					if (message.closeSource === true) {
++						mainWindow.location.replace(studioWebImUrl(new URL(mainWindow.location.href), target).href);
++					} else { openStudioWebIm(target, this.notifications); }
+ 				} else if (message?.type === 'studio-sidebar-account' && prepared.accountUrl) {
+ 					const uri = URI.parse(prepared.accountUrl);
+ 					if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }).catch(() => undefined); }
+@@ -123,16 +165,16 @@ export class StudioWebLaunchpadApp extends Disposable {
+ 					void this.clipboard.writeText(message.text).then(() => reply(true), () => reply(false));
+ 				}
+ 			}));
+-			window.container.append(surface);
+-			webview.mountTo(surface, window.window);
++			this.root.append(surface);
++			webview.mountTo(surface, mainWindow);
+ 			deadline.schedule();
+ 			webview.setHtml(view.html);
+ 			if (!await ready.p || !isCurrent()) { return false; }
+ 			deadline.cancel();
+ 			shown = true;
+-			window.window.document.title = view.title;
+-			tab.loading?.remove();
+-			tab.loading = undefined;
++			mainWindow.document.title = view.title;
++			this.message.classList.remove('studio-chat-loading');
++			this.status.hidden = true;
+ 			surface.style.visibility = '';
+ 			return true;
+ 		} catch { return false; }
+diff --git a/src/vs/workbench/browser/web.api.ts b/src/vs/workbench/browser/web.api.ts
+index 70cad2f151000bf7b4ade556724a9e42fe9dc704..d027c47cdd4e0a9d309eaa0868b0135ea366f06d 100644
+--- a/src/vs/workbench/browser/web.api.ts
++++ b/src/vs/workbench/browser/web.api.ts
+@@ -17,6 +17,7 @@ import type { IProgress, IProgressCompositeOptions, IProgressDialogOptions, IPro
+ import type { ITextEditorOptions } from '../../platform/editor/common/editor.js';
+ import type { IFolderToOpen, IWorkspaceToOpen } from '../../platform/window/common/window.js';
+ import type { IStudioProjectEntry } from '../../platform/window/common/studioProjectWindow.js';
++import type { StudioWebImTarget } from '../common/studioWebImRoute.js';
+ import type { EditorGroupLayout } from '../services/editor/common/editorGroupsService.js';
+ import type { IEmbedderTerminalOptions } from '../services/terminal/common/embedderTerminalService.js';
+ import type { IAuthenticationProvider } from '../services/authentication/common/authentication.js';
+@@ -151,6 +152,7 @@ export interface IWorkbenchConstructionOptions {
+ 	/** Set by the managed SteamHarness Studio Web host. */
+ 	readonly studioWeb?: boolean;
+ 	readonly studioLaunchpad?: boolean;
++	readonly studioIm?: StudioWebImTarget | 'invalid';
+ 	readonly studioProjectEntry?: IStudioProjectEntry;
+ 
+ 	//#region Connection related configuration
+diff --git a/src/vs/workbench/browser/web.main.ts b/src/vs/workbench/browser/web.main.ts
+index 7de895ae0b4975594b84dd707d6750e82babc4a4..74f001494b8b6441c413a60d0a93dbae70a5d552 100644
+--- a/src/vs/workbench/browser/web.main.ts
++++ b/src/vs/workbench/browser/web.main.ts
+@@ -101,6 +101,7 @@ import { IDefaultAccountService } from '../../platform/defaultAccount/common/def
+ import { DefaultAccountService } from '../services/accounts/browser/defaultAccount.js';
+ import { AccountPolicyService, IAccountPolicyGateService } from '../services/policies/common/accountPolicyService.js';
+ import { StudioWebLaunchpad, StudioWebLaunchpadNavigation } from './studioWebLaunchpad.js';
++import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
+ import { StudioNotificationInbox } from './studioNotificationInbox.js';
+ 
+ export interface IBrowserMainWorkbench {
+@@ -154,11 +155,15 @@ export class BrowserMain extends Disposable {
+ 		// Window
+ 		this._register(instantiationService.createInstance(BrowserWindow));
+ 		if (this.configuration.studioWeb) {
+-			const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
+-			if (studioLaunchpad && this.configuration.remoteAuthority) {
+-				this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));
++			if (this.configuration.studioIm && this.configuration.remoteAuthority) {
++				this._register(instantiationService.createInstance(StudioWebLaunchpadApp, this.configuration.studioIm));
+ 			} else {
+-				this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
++				const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
++				if (studioLaunchpad && this.configuration.remoteAuthority) {
++					this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));
++				} else {
++					this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
++				}
+ 			}
+ 		}
+ 
+@@ -278,8 +283,10 @@ export class BrowserMain extends Disposable {
+ 	}
+ 
+ 	protected createWorkbench(domElement: HTMLElement, serviceCollection: ServiceCollection, logService: ILogService): IBrowserMainWorkbench {
+-		const launchpad = this.configuration.studioWeb && this.configuration.studioLaunchpad && this.configuration.remoteAuthority;
+-		return new Workbench(domElement, launchpad ? { extraClasses: ['studio-launchpad-window', 'studio-web-launchpad-window', 'lp-no-native-bar'] } : undefined, serviceCollection, logService);
++		const studioWeb = this.configuration.studioWeb && this.configuration.remoteAuthority;
++		const extraClasses = studioWeb && this.configuration.studioIm ? ['studio-web-im-window'] : studioWeb && this.configuration.studioLaunchpad
++			? ['studio-launchpad-window', 'studio-web-launchpad-window', 'lp-no-native-bar'] : undefined;
++		return new Workbench(domElement, extraClasses ? { extraClasses } : undefined, serviceCollection, logService);
+ 	}
+ 
+ 	private registerListeners(workbench: IBrowserMainWorkbench): void {
+diff --git a/src/vs/workbench/common/studioWebImRoute.ts b/src/vs/workbench/common/studioWebImRoute.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..192691336e56f6e96be755702b00a1dff767d6fe
+--- /dev/null
++++ b/src/vs/workbench/common/studioWebImRoute.ts
+@@ -0,0 +1,45 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export type StudioWebImTarget =
++	| { kind: 'conversation' | 'user'; id: string }
++	| { kind: 'add-contact' | 'create-group' };
++
++export function studioWebImTarget(conversation?: string, user?: string, action?: 'add-contact' | 'create-group'): StudioWebImTarget | undefined {
++	if (action) { return { kind: action }; }
++	if (user && /^[\w.-]{1,100}$/.test(user)) { return { kind: 'user', id: user }; }
++	if (conversation && conversation.length <= 256 && !/^(user|action):|[\u0000-\u001f\u007f]/u.test(conversation)) {
++		return { kind: 'conversation', id: conversation };
++	}
++	return undefined;
++}
++
++export function readStudioWebImRoute(query: URLSearchParams): StudioWebImTarget | 'invalid' | undefined {
++	const route = query.get('im');
++	if (route === null) { return undefined; }
++	if (query.getAll('im').length === 1) {
++		const conversations = query.getAll('conversation_id'), users = query.getAll('user_id');
++		if (route === 'chat' && conversations.length + users.length === 1) {
++			return studioWebImTarget(conversations[0], users[0]) ?? 'invalid';
++		}
++		if ((route === 'add-contact' || route === 'create-group') && !conversations.length && !users.length) {
++			return { kind: route };
++		}
++	}
++	return 'invalid';
++}
++
++export function studioWebImUrl(workbench: URL, target: StudioWebImTarget): URL {
++	const url = new URL(workbench.href);
++	url.search = '';
++	url.hash = '';
++	if ('id' in target) {
++		url.searchParams.set('im', 'chat');
++		url.searchParams.set(target.kind === 'user' ? 'user_id' : 'conversation_id', target.id);
++	} else {
++		url.searchParams.set('im', target.kind);
++	}
++	return url;
++}
