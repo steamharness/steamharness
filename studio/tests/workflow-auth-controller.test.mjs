@@ -319,6 +319,14 @@ test('Studio Web polls for approval and signs in without requesting a desktop ca
   assert.equal(f.panel.type, 'studio.settings');
 });
 
+test('the Web Launchpad restores and verifies a saved account without opening settings', async t => {
+  const f = await fixture(t, { connect: false, launchpad: true, uiKind: 2 });
+  await until(() => f.controller.getState().status === 'authenticated');
+  assert.deepEqual(f.requestUrls, ['http://127.0.0.1:7126/api/auth/me']);
+  assert.ok(f.executed.some(item => item.id === 'studio.internalUpdateAccountMenuState' && item.args[0].status === 'authenticated'));
+  assert.equal(f.panels.length, 0);
+});
+
 test('failed login enables another attempt and the login panel cannot write settings', async t => {
   const f = await fixture(t, { signedIn: false });
   await f.commands.get('studio.openLogin')(); const login = f.panel;

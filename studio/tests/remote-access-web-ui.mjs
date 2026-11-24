@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertUpstream } from '../scripts/distribution.mjs';
 import { webConfig } from '../scripts/web/config.mjs';
@@ -72,17 +73,9 @@ async function checkImportedBot(page, zh = false) {
   assert.equal(await details.locator('.lp-detail-entries').getByText('Chat', { exact: true }).isVisible(), true);
 }
 
-// Simulate the platform commands, without using a real account or the private extension.
+// Exercise the real account controller with a fixture for the private social commands.
 async function registerPlatformProfile(vscode) {
   const { registerCommand, executeCommand } = vscode.commands;
-  const account = signedIn => signedIn
-    ? { status: 'authenticated', hasAccount: true, name: 'Fixture account', scopeKey: 'a'.repeat(64) }
-    : { status: 'signed-out', hasAccount: false, name: 'Not signed in' };
-  let current = account(false);
-  const publish = signedIn => executeCommand('studio.internalUpdateAccountMenuState', current = account(signedIn));
-  registerCommand('studio.internalGetAccountMenuState', () => current);
-  registerCommand('studio.launchpadSignIn', () => publish(true));
-  registerCommand('studio-test.profile.signOut', () => publish(false));
   const chats = [{ id: 'fixture-chat', name: 'Fixture chat', unread: 0, preview: 'Hello' },
     { id: 'another-chat', name: 'Another chat', unread: 0, preview: 'Hi' }];
   registerCommand('studio.getLaunchpadInbox', () => ({ connection: 'connected', items: chats }));
@@ -99,14 +92,31 @@ async function registerPlatformProfile(vscode) {
     });
   });
   await executeCommand('studio.internalUpdateStartState', { version: 1, platform: true, labels: {}, hasWorkspace: false, projects: [], recent: [], pending: [], canCreate: false, busy: false });
-  await publish(false);
 }
 
-async function checkPlatformProfile(page) {
-  const profile = page.locator('#lp-page-profile');
+async function openProfile(page) {
   await page.locator('.studio-launchpad').getByRole('tab', { name: 'My Studio', exact: true }).click({ timeout: 60_000 });
-  await profile.getByRole('button', { name: 'Sign in', exact: true }).click({ timeout: 60_000 });
+  return page.locator('#lp-page-profile');
+}
+
+async function checkPlatformProfile(page, issuer) {
+  const signIn = profile => profile.getByRole('button', { name: 'Sign in', exact: true });
+  let profile = await openProfile(page);
+  const approval = await openTab(page, () => signIn(profile).click({ timeout: 60_000 }));
+  await approval.getByRole('button', { name: 'Approve test sign-in' }).click();
   await profile.getByText('Fixture account', { exact: true }).waitFor();
+  await approval.close();
+  const verified = issuer.verified;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  profile = await openProfile(page);
+  await profile.getByText('Fixture account', { exact: true }).waitFor();
+  assert.ok(issuer.verified > verified, 'Reload must verify the saved account, not only repaint its name');
+  assert.equal(issuer.started, 1);
+
+  const other = await page.context().newPage();
+  await other.goto(page.url(), { waitUntil: 'domcontentloaded' });
+  const otherProfile = await openProfile(other);
+  await otherProfile.getByText('Fixture account', { exact: true }).waitFor();
   await profile.getByRole('tab', { name: 'Contacts & friends', exact: true }).click();
   await profile.getByText('Fixture friend', { exact: true }).waitFor();
   await profile.getByRole('tab', { name: 'Favorites', exact: true }).click();
@@ -132,11 +142,52 @@ async function checkPlatformProfile(page) {
   const reopened = await openTab(page, () => chat.click());
   await waitForChat(reopened, 'Fixture chat');
   const closed = Promise.all([second.waitForEvent('close'), reopened.waitForEvent('close')]);
-  await writeFile(path.join(directory, 'profile-commands.json'), JSON.stringify('studio-test.profile.signOut'));
+  await writeFile(path.join(directory, 'profile-commands.json'), 'logout');
   await closed;
-  await profile.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+  await Promise.all([signIn(profile).waitFor(), signIn(otherProfile).waitFor({ timeout: 10_000 })]);
   assert.equal(await chat.count(), 0);
-  console.log('[OK] Platform profile · two IM tabs · Launchpad stays in place · sign-out cleanup');
+  await other.close();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await signIn(await openProfile(page)).waitFor();
+  assert.equal(issuer.revoked, true);
+  console.log('[OK] Platform account · device approval · restore on reload and new tab · shared sign-out · two IM tabs');
+}
+
+async function runProfileIssuer() {
+  const profile = { userId: 'account-fixture', displayName: 'Fixture account', email: null };
+  const accessToken = randomUUID(), apiKeyId = 'fixture-api-key';
+  const issuer = { started: 0, verified: 0, revoked: false, origin: '', close: () => close(server) };
+  let approved = false;
+  const server = http.createServer((req, res) => {
+    const route = new URL(req.url, issuer.origin).pathname;
+    req.resume();
+    const json = (data, status = 200) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+    const success = data => json({ errCode: 0, data });
+    if (route === '/login/device') {
+      if (req.method === 'POST') approved = true;
+      return res.writeHead(200, { 'Content-Type': 'text/html' }).end(approved ? 'Approved' : '<form method="post"><button>Approve test sign-in</button></form>');
+    }
+    if (route === '/api/auth/device/start') {
+      issuer.started++;
+      return success({ deviceCode: 'fixture-device', userCode: 'ABCD-1234', verificationUriComplete: `${issuer.origin}/login/device`,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(), intervalSeconds: 1 });
+    }
+    if (route === '/api/auth/device/token') {
+      return approved ? success({ accessToken, apiKey: { id: apiKeyId }, user: profile }) : json({ errCode: 409, errMessage: 'authorization_pending' }, 409);
+    }
+    if (req.headers.authorization !== `Bearer ${accessToken}` || issuer.revoked) return json({ errCode: 401 }, 401);
+    if (route === '/api/auth/me') {
+      issuer.verified++;
+      return success({ profile, principal: { apiKeyId } });
+    }
+    if (route === '/api/auth/logout') {
+      issuer.revoked = true;
+      return success({ revoked: true });
+    }
+    return json({ errCode: 404 }, 404);
+  });
+  issuer.origin = `http://127.0.0.1:${await listen(server, '127.0.0.1')}`;
+  return issuer;
 }
 
 async function runPlatformProfile(context) {
@@ -147,35 +198,42 @@ async function runPlatformProfile(context) {
   // Override the built-in extension only in this isolated server profile.
   await writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'studio-workstation', publisher: 'studio', version: '999.0.0',
     engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
-  await writeFile(path.join(fixture, 'extension.cjs'), `const vscode=require('vscode'), fs=require('node:fs/promises');
-    exports.activate=async(context)=>{
-      await (${registerPlatformProfile.toString()})(vscode);
-      const signal=${JSON.stringify(path.join(directory, 'profile-commands.json'))};
-      const timer=setInterval(async()=>{
-        try{await fs.unlink(signal);}catch{return;}
-        await vscode.commands.executeCommand('studio-test.profile.signOut');
-      },100);
-      context.subscriptions.push({dispose:()=>clearInterval(timer)});
-    };`);
-  const port = await availablePort(), origin = `http://127.0.0.1:${port}`;
-  let startupError;
-  const runner = runManagedWeb({ directory: state, storage: path.join(state, 'runs'),
-    config: await webConfig({}, port), prepare: async () => ({ upstream: upstream.directory, args: [
-      '--server-data-dir', state, '--extensions-dir', extensions, '--disable-workspace-trust', '--telemetry-level', 'off',
-    ] }) }).catch(error => { startupError = error; });
+  const issuer = await runProfileIssuer();
   const registry = path.join(state, 'instance.json');
-  const page = await context.newPage();
+  let startupError, runner, page, origin;
   try {
+    await build({ stdin: { resolveDir: ROOT, contents: `
+      import * as vscode from 'vscode';
+      import { unlink } from 'node:fs/promises';
+      import { createHash } from 'node:crypto';
+      import { activateProjectAccount } from './extensions/studio-workstation/src/workflow-auth.ts';
+      export async function activate(context) {
+        await activateProjectAccount(context, undefined, true, ${JSON.stringify(issuer.origin)}, value => createHash('sha256').update(value).digest('hex'));
+        await (${registerPlatformProfile.toString()})(vscode);
+        const signal = ${JSON.stringify(path.join(directory, 'profile-commands.json'))};
+        const timer = setInterval(async () => {
+          try { await unlink(signal); } catch { return; }
+          await vscode.commands.executeCommand('studio.logout');
+        }, 100);
+        context.subscriptions.push({ dispose: () => clearInterval(timer) });
+      }` }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(fixture, 'extension.cjs') });
+    const port = await availablePort(); origin = `http://127.0.0.1:${port}`;
+    runner = runManagedWeb({ directory: state, storage: path.join(state, 'runs'),
+      config: await webConfig({}, port), prepare: async () => ({ upstream: upstream.directory, args: [
+        '--server-data-dir', state, '--extensions-dir', extensions, '--disable-workspace-trust', '--telemetry-level', 'off',
+      ] }) }).catch(error => { startupError = error; });
+    page = await context.newPage();
     await until(async () => { if (startupError) throw startupError; return readJson(registry).catch(() => undefined); }, 'Profile fixture did not start.');
     await page.goto(origin, { waitUntil: 'domcontentloaded' });
-    await checkPlatformProfile(page).catch(async error => {
+    await checkPlatformProfile(page, issuer).catch(async error => {
       const screen = await page.locator('body').innerText().catch(() => '');
       throw new Error(`Platform profile failed: ${screen.slice(0, 1500)}`, { cause: error });
     });
   } finally {
-    await page.close();
+    await page?.close();
     if (await readJson(registry).catch(() => undefined)) await post(origin, 'manage', { action: 'stop' }).catch(() => undefined);
     await runner;
+    await issuer.close();
   }
 }
 

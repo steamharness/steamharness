@@ -219,6 +219,10 @@ export class AccountController implements vscode.Disposable {
     await vscode.commands.executeCommand('setContext', 'studio.platformAvailable', this.platform);
     await this.readLanguagePreference();
     await this.userModels.reload();
+    if (this.platform && vscode.env.uiKind === vscode.UIKind.Web) {
+      // Restore even when no Account view or platform extension has requested a connection yet.
+      void this.connect().catch(() => undefined);
+    }
   }
   async connect(): Promise<Connection | undefined> {
     if (!this.platform) return undefined;
