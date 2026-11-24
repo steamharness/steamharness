@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { hydrateUserSettings, userSettingsJsonReplacer } from '../web/user-settings';
-import { projectWithUserSettings, projectParamArgs, type Project } from '../web/workflow-types';
+import { conversationModelName, projectWithUserSettings, projectParamArgs, type Project } from '../web/workflow-types';
 import type { UserSettings } from 'steamharness';
 
 const settings: UserSettings = { agent: { permissionPolicy: 'workspace', models: [
@@ -13,6 +13,7 @@ it('user model defaults honor system-only policy and remain empty in saved proje
   const configured = projectWithUserSettings(project, settings);
   expect(configured.fields[0].userSettingValue).toBe('system');
   expect(configured.fields[0].userModelSources).toEqual({ system: 'system' });
+  expect(configured.fields[0].options).toEqual([{ value: 'system', label: 'Plan', description: 'subscribed' }]);
   expect(projectParamArgs(configured.fields, { model: '' })).toEqual([]);
   expect(projectParamArgs(configured.fields, { model: 'system' })).toEqual(['--model', 'system']);
   expect(projectParamArgs(configured.fields, { model: 'inherit' })).toEqual(['--model', 'inherit']);
@@ -21,15 +22,23 @@ it('user model defaults honor system-only policy and remain empty in saved proje
     entrypoints: [{ id: 'secondary', fields: project.fields }] }, settings);
   expect(unrestricted.fields[0].userModelSources).toEqual({ third: 'third-party', system: 'system' });
   expect(unrestricted.entrypoints[0].fields[0].userModelSources).toEqual(unrestricted.fields[0].userModelSources);
+  expect(unrestricted.entrypoints[0].fields[0].options).toEqual([
+    { value: 'third', label: 'Custom', description: 'actual' }, { value: 'system', label: 'Plan', description: 'subscribed' },
+  ]);
   expect(unrestricted.fields[0].userSettingValue).toBe('third');
+  expect(conversationModelName({ params: { model: '' } }, unrestricted.fields)).toBe('Custom');
+  expect(conversationModelName({ params: { model: 'system' } }, unrestricted.fields)).toBe('Plan');
   expect(project.fields[0].userModelSources).toBeUndefined();
+  expect(project.fields[0].options).toBeUndefined();
   expect(JSON.stringify(unrestricted)).not.toContain('apiKey');
   const standalone = projectWithUserSettings(project, { agent: { permissionPolicy: 'auto' } });
   expect(standalone.fields[0].userSetting).toBeUndefined();
   expect(standalone.fields[0].userModelSources).toBeUndefined();
+  expect(standalone.fields[0].options).toBeUndefined();
   const emptyStudio = projectWithUserSettings(project, { agent: { permissionPolicy: 'auto', models: [] } });
   expect(emptyStudio.fields[0].userSetting).toEqual(project.fields[0].userSetting);
   expect(emptyStudio.fields[0].userSettingValue).toBe('');
+  expect(emptyStudio.fields[0].options).toEqual([]);
 });
 it('histories, public state and exports omit keys; recovery rehydrates only the same endpoint reference', () => {
   const serialized = JSON.stringify({ agentParameters: { userSettings: settings }, messages: [{ userSettings: settings }] }, userSettingsJsonReplacer);

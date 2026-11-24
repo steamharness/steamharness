@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import type { ConversationSession, ParamState, Project } from '../web/workflow-types';
+import { projectWithUserSettings, type ConversationSession, type ParamState, type Project } from '../web/workflow-types';
 import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY, createConfigurationState, applyConfigurationAction, type ProjectConfigurationState } from '@steamharness/project-configuration';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
@@ -404,6 +404,38 @@ it('opens user model settings directly for an empty list and keeps the draft whe
   expect(document.querySelector('[role=option]')?.textContent).toContain('Saved user model');
   expect(host.postMessage.mock.calls.filter(([message]) => message.type === 'open-user-setting')).toHaveLength(1);
   expect(f.input.value).toBe('Keep my model setup draft');
+});
+
+it('keeps the selected user model when a settings update rebuilds the composer during a run', async () => {
+  const f = await fixture({ requiredModel: true });
+  const descriptor: Project = { ...f.project, fields: f.project.fields.map(field => field.name === 'model'
+    ? { ...field, userSetting: { key: 'agent.model', mode: 'default' } } : field) };
+  const model = { id: 'flash', name: 'deepseek-flash', model: 'deepseek-flash', source: 'system' as const, credentialId: 'fixture' };
+  const withModels = (...models: (typeof model)[]) =>
+    projectWithUserSettings(descriptor, { agent: { permissionPolicy: 'auto', models } });
+  f.receive({ project: withModels(model), parameterRevision: 2 });
+  f.reply({ model: { resolvedOptions: [{ value: model.id, label: model.name }] } });
+  expect(f.action('ai').textContent).toContain(model.name);
+  const requests = f.requests().length;
+
+  f.receive({ running: true });
+  f.sessions[0].messages[0].model = model.name;
+  f.type('Next message draft');
+  f.receive({ project: withModels(model, { ...model, id: 'other', name: 'Other model', model: 'other' }), parameterRevision: 3 });
+  expect(f.requests()).toHaveLength(requests);
+  expect(document.querySelector('.message.assistant .message-metadata')?.textContent).toContain(model.name);
+  expect(f.action('ai').textContent).toContain(model.name);
+  expect(f.action('ai').textContent).not.toContain('Configure model');
+  f.action('ai').click();
+  expect(document.querySelector('[role=option][aria-selected=true]')?.textContent).toContain(model.name);
+  expect(document.querySelectorAll('[role=option]')).toHaveLength(2);
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'open-user-setting')).toBe(false);
+  expect(f.input.value).toBe('Next message draft');
+
+  f.receive({ running: false });
+  expect(f.requests()).toHaveLength(requests + 1);
+  f.reply({ model: { resolvedOptions: [{ value: model.id, label: model.name }] } });
+  expect(f.action('ai').textContent).toContain(model.name);
 });
 
 it('loads dynamic parameters once and reuses the per-conversation cache on navigation', async () => {

@@ -368,6 +368,8 @@ export function projectParameters(project: Project, entrypointId?: string): Para
 export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings): Project {
   const models = (settings.agent.models ?? []).filter(model => project.agentModelPolicy?.allowThirdParty !== false || model.source === 'system');
   const sources = Object.fromEntries(models.map(model => [model.id, model.source]));
+  // The composer can open during a run, when background parameter resolution is paused.
+  const modelOptions = models.map(model => ({ value: model.id, label: model.name, description: model.model }));
   const fields = (parameters: Parameters) => parameters.fields.map(field => {
     if (!field.userSetting) return field;
     if (field.userSetting.key === 'agent.model' && settings.agent.models === undefined) {
@@ -376,7 +378,7 @@ export function projectWithUserSettings(project: Project, settings: import('stea
       return fallback;
     }
     return field.userSetting.key === 'agent.model'
-      ? { ...field, userModelSources: sources, userSettingValue: models[0]?.id ?? '' }
+      ? { ...field, options: modelOptions, userModelSources: sources, userSettingValue: models[0]?.id ?? '' }
       : { ...field, userSettingValue: settings.agent.permissionPolicy };
   });
   return { ...project, fields: fields(project), entrypoints: project.entrypoints.map(entry => ({ ...entry, fields: fields(entry) })) };
