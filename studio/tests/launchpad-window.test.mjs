@@ -269,6 +269,39 @@ test('background creation is silent and concurrent tray requests share the conso
   assert.deepEqual(windows.resolveContextWindow.call({ getWindowById: () => window }, { contextWindowId: 1 }, false), { windowToUse: undefined, forceNewWindow: true });
 });
 
+test('tray clear-read is scoped to the resident Launchpad, and cancels on account change', async () => {
+  const { WindowsMainService } = loadKernel('linux');
+  const sent = [], warnings = [];
+  const launchpad = Object.assign(mockWindow(true), { isReady: true, send: (...args) => sent.push(args) });
+  const project = Object.assign(mockWindow(false), { isReady: true, send: () => assert.fail('A project window cannot handle tray notifications') });
+  const windows = Object.assign(Object.create(WindowsMainService.prototype), {
+    getWindows: () => [project, launchpad], getWindowById: id => id === launchpad.id ? launchpad : project,
+    dialogMainService: { showMessageBox: async options => warnings.push(options.type) },
+  });
+  const snapshot = { count: 0, items: [] };
+  windows.setStudioTrayNotifications(launchpad.id, snapshot, 'account-a');
+  const result = windows.clearReadStudioTrayNotifications();
+  const [channel, id, scope, action] = sent[0];
+  assert.deepEqual([channel, scope, action], ['vscode:studioTrayNotificationAction', 'account-a', 'clearRead']);
+  windows.finishStudioTrayNotificationAction(project.id, id, false);
+  await windows.clearReadStudioTrayNotifications();
+  assert.equal(sent.length, 1, 'a duplicate click and a reply from a different window cannot complete the action');
+  windows.finishStudioTrayNotificationAction(launchpad.id, id, true);
+  await result;
+  assert.deepEqual(warnings, []);
+
+  const canceled = windows.clearReadStudioTrayNotifications();
+  const oldId = sent[1][1];
+  windows.setStudioTrayNotifications(launchpad.id, snapshot, 'account-b');
+  await canceled;
+  assert.deepEqual(warnings, []);
+  const newAction = windows.clearReadStudioTrayNotifications();
+  windows.finishStudioTrayNotificationAction(launchpad.id, oldId, true);
+  windows.finishStudioTrayNotificationAction(launchpad.id, sent[2][1], false);
+  await newAction;
+  assert.deepEqual(warnings, ['warning'], 'only a failure in the current account is reported');
+});
+
 test('second launch without paths reveals the console and an explicit path takes normal project routing', async () => {
   const calls = [];
   const launch = Object.assign(Object.create(LaunchMainService.prototype), { windowsMainService: {
@@ -331,7 +364,7 @@ test('the branded tray icon preserves launchpad and quit actions', async () => {
       constructor(icon) { super(); assert.equal(icon, image); statusIcon = this; }
       setToolTip() {} setContextMenu() {} popUpContextMenu() {} destroy() { calls.push('destroy'); }
     } });
-  const tray = createStudioTray(() => calls.push('show'), () => calls.push('quit'));
+  const tray = createStudioTray(() => calls.push('show'), () => calls.push('quit'), async () => true, () => calls.push('clear'), assert.fail);
   assert.equal(templateImage, isMacintosh);
   statusIcon.emit('click'); items[0].click(); items.at(-1).click(); tray.dispose();
   assert.deepEqual(calls, ['show', 'show', 'quit', 'destroy']);

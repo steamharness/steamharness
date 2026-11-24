@@ -68,7 +68,8 @@ function fixture(platform, language, markAll = async () => true) {
   };
   const module = { exports: {} };
   runInNewContext(code, { module, Buffer, require: filename => modules[path.basename(filename)] });
-  const tray = module.exports.createStudioTray(() => actions.push('launchpad'), () => actions.push('quit'), markAll, error => { errors.push(error); });
+  const tray = module.exports.createStudioTray(() => actions.push('launchpad'), () => actions.push('quit'), markAll,
+    () => actions.push('clear-read'), error => { errors.push(error); });
   return { tray, icon, panels, actions, icons, titles, tooltips, original, errors };
 }
 
@@ -144,17 +145,27 @@ test('mark all waits for acknowledgement and keeps failed notifications retryabl
   assert.equal(attempts, 2);
 });
 
-test('right click keeps the original menu and dismisses the preview', async () => {
+test('right click dismisses the preview and clear-read does not mark unread notifications', async () => {
   const { tray, icon, panels, actions } = fixture('mac', 'en');
   tray.setNotifications(snapshot(1));
   icon.emit('click', {});
   await setImmediate();
   icon.emit('right-click');
   assert.equal(panels[0].isDestroyed(), true);
-  assert.deepEqual(Array.from(icon.menu, ({ label, type }) => label ?? type), ['Show Launchpad', 'separator', 'Quit SteamHarness Studio']);
-  icon.menu[0].click(); icon.menu[2].click();
-  assert.deepEqual(actions, ['launchpad', 'quit']);
-  assert.equal(fixture('linux', 'en').icon.menu.length, 3);
+  assert.deepEqual(Array.from(icon.menu, ({ label, type }) => label ?? type), ['Show Launchpad', 'Clear Read Notifications', 'separator', 'Quit SteamHarness Studio']);
+  icon.menu[1].click(); icon.menu[0].click(); icon.menu[3].click();
+  assert.deepEqual(actions, ['clear-read', 'launchpad', 'quit']);
+  icon.emit('click', {}); await setImmediate();
+  assert.equal(panels[1].state.count, 1);
+});
+
+test('the Chinese clear-read menu item is present even with no unread notifications', () => {
+  const { icon, actions } = fixture('mac', 'zh-cn');
+  icon.emit('right-click');
+  const action = icon.menu.find(item => item.label === '清空已读消息');
+  action.click();
+  assert.deepEqual(actions, ['clear-read']);
+  assert.equal(fixture('linux', 'en').icon.menu[1].label, 'Clear Read Notifications');
 });
 
 test('a broken preload closes the empty preview and opens the Launchpad without clearing unread', async () => {

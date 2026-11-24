@@ -58,6 +58,97 @@ async function checkRecentToolbar({ page, panel, names, t, openWindow, screensho
   await (await openWindow(openGroup, 'group_created')).close(); await closed;
 }
 
+const unreadNotice = (row, t) => row.getByRole('button', { name: t('Mark read', '标为已读'), exact: true })
+  .or(row.getByRole('img', { name: t('Unread', '未读'), exact: true }));
+
+export async function checkStudioNoticeAcknowledgement({ page, rows, t }) {
+  const repeatedError = 'Repeated release compilation error';
+  const repeatedRow = rows.filter({ hasText: repeatedError });
+  const otherRow = rows.filter({ hasText: 'Unrelated project error' });
+  await page.evaluate(title => {
+    window.seedLegacyNotice('1000-old',title);
+    window.seedLegacyNotice('2000-old',title);
+    window.notify(title);
+    window.notify(title); // The first toast is closed by replacement, not by the user.
+    window.notify('Unrelated project error').close();
+  }, repeatedError);
+  await unreadNotice(repeatedRow, t).waitFor();
+  await unreadNotice(otherRow, t).waitFor();
+  assert.equal(await repeatedRow.count(), 1, 'legacy and current duplicates share one row');
+  await page.evaluate(title => window.acknowledgeNotice(title), repeatedError);
+  await unreadNotice(repeatedRow, t).waitFor({ state: 'detached' });
+  assert.equal(await unreadNotice(otherRow, t).isVisible(), true, 'project-window acknowledgement leaves other errors unread');
+  await page.evaluate(title => { window.notify(title); }, repeatedError);
+  await unreadNotice(repeatedRow, t).waitFor();
+  assert.equal(await repeatedRow.count(), 1, 'a new failure after acknowledgement reopens the same row');
+}
+
+export async function checkTrayClearRead({ page, rows, t, enhanced }) {
+  const cleared = rows.filter({ hasText: 'Already acknowledged workbench error' });
+  const other = rows.filter({ hasText: 'Unrelated project error' });
+  const repeated = rows.filter({ hasText: 'Repeated release compilation error' });
+  const hosted = rows.filter({ hasText: 'Old request' });
+  await page.evaluate(() => {
+    const title = 'Already acknowledged workbench error';
+    window.seedLegacyNotice('3000-cleared',title,{read:true});
+    window.seedLegacyNotice('4000-cleared',title,{read:true});
+    window.notify(title);
+    window.acknowledgeNotice(title);
+    window.seedLegacyNotice('5000-other-scope','Other account history',{owner:'b'.repeat(64),read:true});
+  });
+  await cleared.locator('.codicon-mail-read').waitFor();
+  if (enhanced) { await hosted.waitFor(); }
+  await page.waitForFunction(() => window.trayState?.items.some(item => item.title === 'Unrelated project error'));
+  assert.deepEqual(await page.evaluate(async () => {
+    const before = window.trayState.count, actions = window.actions.length;
+    await window.trayAction('clear-read','clearRead');
+    await window.trayAction('clear-again','clearRead');
+    return {
+      result: window.trayActionResult,
+      unchanged: window.trayState.count === before,
+      stored: ['3000-cleared','4000-cleared','5000-other-scope'].map(id => window.hasStoredNotice(id)),
+      writes: window.actions.slice(actions).filter(([id]) => ['studio.markAllNoticesRead','studio.markAllImMessagesRead','studio.changeSocial'].includes(id)),
+    };
+  }), { result:{id:'clear-again',success:true}, unchanged:true, stored:[false,false,true], writes:[] });
+  await cleared.waitFor({state:'detached'});
+  await unreadNotice(other, t).waitFor();
+  await unreadNotice(repeated, t).waitFor();
+  if (!enhanced) return;
+
+  await hosted.waitFor({state:'detached'});
+  const invitation = rows.filter({hasText:'Dana'});
+  await invitation.waitFor();
+  const accept = { name: t('Accept', '接受'), exact: true };
+  if (!await invitation.getByRole('button', accept).isVisible()) {
+    await invitation.getByRole('button').click();
+    await page.getByRole('dialog').getByRole('button', accept).waitFor();
+    await page.keyboard.press('Escape');
+  }
+  await unreadNotice(rows.filter({hasText:'Erin'}), t).waitFor();
+  await page.evaluate(() => {
+    window.addSocialNotice({id:'after-clear',title:'Read after clear',source:'studio',read:true});
+    window.holdScopedSocialSnapshot = true;
+    window.trayAction('old-account-clear','clearRead');
+    window.updateAccount({scopeKey:'b'.repeat(64)});
+    window.resumeScopedSocialSnapshot();
+  });
+  await page.waitForFunction(() => window.trayActionResult?.id === 'old-account-clear');
+  assert.deepEqual(await page.evaluate(() => window.trayActionResult), {id:'old-account-clear',success:false});
+  await rows.filter({hasText:'Other account history'}).waitFor();
+  await page.evaluate(() => window.updateAccount({scopeKey:'a'.repeat(64)}));
+  await rows.filter({hasText:'Read after clear'}).waitFor();
+  assert.equal(await hosted.count(), 0, 'clearing survives a rebuilt notification list for the same account');
+
+  await page.evaluate(() => {
+    window.imTrayFixture = {count:2,items:[{title:'IM unread after clear'}]};
+    window.refreshInbox();
+  });
+  await page.waitForFunction(() => window.trayState.items.some(item => item.title === 'IM unread after clear'));
+  await page.evaluate(() => window.trayAction('mark-all-after-clear','markAllRead'));
+  assert.deepEqual(await page.evaluate(() => window.trayActionResult), {id:'mark-all-after-clear',success:true});
+  await page.waitForFunction(() => window.trayState.count === 0);
+}
+
 export async function checkProfileSections({ page, profile, frame, t, screenshot }) {
   const tab = (en, zh) => profile.getByRole('tab', { name: t(en, zh), exact: true });
   const friends = tab('Contacts & friends', '通讯录与好友'), favorites = tab('Favorites', '收藏'), notices = tab('Notifications', '通知');
@@ -145,6 +236,7 @@ export async function checkProfileSections({ page, profile, frame, t, screenshot
   assert.equal(await oldRequest.locator('.lp-avatar').textContent(), 'O');
   await rows.filter({ hasText: 'Ordinary Studio notice' }).locator('.codicon-mail').waitFor();
   await screenshot('profile-notification-avatars');
+  await checkStudioNoticeAcknowledgement({ page, rows, t });
   const requestDetails = page.getByRole('dialog', { name: t('Notification details', '通知详情') });
   const accept = button(requestDetails, 'Accept', '接受');
   await oldRequest.getByRole('button').press('Enter');

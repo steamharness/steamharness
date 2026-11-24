@@ -1,0 +1,359 @@
+diff --git a/src/vs/workbench/electron-browser/media/studioLaunchpad.css b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+index 874444ad2a657d599a77b0f86325c5abdd662954..174cc2a0c106fca50a62a7ee5ea21022621989f3 100644
+--- a/src/vs/workbench/electron-browser/media/studioLaunchpad.css
++++ b/src/vs/workbench/electron-browser/media/studioLaunchpad.css
+@@ -97,6 +97,12 @@
+ .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
+ .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
+ .studio-launchpad .lp-index-row[aria-current=page] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
++.lp-index-branch,.lp-index-line { display: flex; gap: 2px; }
++.lp-index-branch,.lp-index-children { flex-direction: column; }
++.lp-index-line > .lp-index-row { flex: 1; min-width: 0; }
++.studio-launchpad .lp-index-toggle { flex: 0 0 26px; padding: 0; }
++.lp-index-children { display: flex; gap: 2px; margin-inline-start: 15px; padding-inline-start: 4px; border-inline-start: 1px solid var(--lp-line); }
++.lp-index-children[hidden] { display: none; }
+ .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+ .lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
+ .lp-library-title { display: grid; gap: 12px; }
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 01f73996e80037d85c41826e33b584e8d5264765..2f88322120b30c70c84cc665391b376c96785b31 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -11,8 +11,9 @@ import { encodeBase64 } from '../../base/common/buffer.js';
+ import { CancellationTokenSource } from '../../base/common/cancellation.js';
+ import { Event } from '../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { ResourceSet } from '../../base/common/map.js';
+ import { Schemas } from '../../base/common/network.js';
+-import { basenameOrAuthority } from '../../base/common/resources.js';
++import { basenameOrAuthority, extUriBiasedIgnorePathCase } from '../../base/common/resources.js';
+ import { MicrotaskDelay } from '../../base/common/symbols.js';
+ import { URI } from '../../base/common/uri.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+@@ -29,6 +30,7 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
+ import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
+ import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../platform/opener/common/opener.js';
++import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
+ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+ import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+@@ -49,7 +51,9 @@ import type { LibraryDetailAction, LibraryProjectCategory } from './studioLaunch
+ import './media/studioLaunchpad.css';
+ 
+ type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
++type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
+ type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
++const workstationExtensionId = 'studio.studio-workstation';
+ const launchpadSettingsViewType = 'studio.launchpadSettings';
+ 
+ export class StudioLaunchpad extends Disposable {
+@@ -60,12 +64,14 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly appRequests = new Map<string, string>();
+ 	private windows: LaunchpadProject[] = [];
+ 	private recent: LaunchpadProject[] = [];
++	private hasProjectSnapshot = false;
++	private managedWorkspaceUris = new Set<string>();
+ 	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
+ 	private readonly missing = new Set<string>();
+ 	private readonly editsSinceSnapshot = new Map<number, boolean>();
+ 	private inbox?: LaunchpadInbox;
+ 	private libraryCategory?: LibraryProjectCategory;
+-	private libraryExtras = { projects: [] as LaunchpadProject[], hiddenUris: [] as string[] };
++	private libraryExtras?: LibraryExtras;
+ 	private readonly openingManaged = new Set<string>();
+ 	private account?: LaunchpadState['account'];
+ 	private windowRevision = 0;
+@@ -101,12 +107,13 @@ export class StudioLaunchpad extends Disposable {
+ 		@IContextMenuService contextMenu: IContextMenuService,
+ 		@IHoverService hoverService: IHoverService,
+ 		@IClipboardService clipboard: IClipboardService,
++		@IUserDataProfilesService private readonly profiles: IUserDataProfilesService,
+ 	) {
+ 		super();
+ 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
+ 			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
+ 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+-		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
++		const saved = extensionStorage.getExtensionState(workstationExtensionId, true)?.['studio.recentProjects'];
+ 		if (Array.isArray(saved)) {
+ 			for (const row of saved.slice(0, 50)) {
+ 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
+@@ -575,15 +582,35 @@ export class StudioLaunchpad extends Disposable {
+ 		if (uri.toString() !== project.uri) { await this.workspaces.removeRecentlyOpened([URI.parse(project.uri)]); }
+ 	}
+ 
++	private async readManagedWorkspaceRoots(): Promise<URI[]> {
++		const roots = new ResourceSet(uri => extUriBiasedIgnorePathCase.getComparisonKey(uri));
++		for (const profile of this.profiles.profiles) {
++			roots.add(URI.joinPath(profile.globalStorageHome.with({ scheme: Schemas.file }), workstationExtensionId));
++		}
++		// Generated workspaces can use canonical paths even when the profile uses an alias.
++		const canonical = await Promise.all([...roots].map(root => this.files.realpath(root).catch(() => undefined)));
++		for (const root of canonical) {
++			if (root) { roots.add(URI.file(root.fsPath)); }
++		}
++		return [...roots];
++	}
++
+ 	private async readProjects(): Promise<void> {
+ 		const revision = ++this.windowRevision;
+ 		// An edit/save can arrive after getWindows takes its snapshot but before history returns.
+ 		this.editsSinceSnapshot.clear();
+-		const [windows, recent] = await Promise.all([this.native.getWindows({ includeAuxiliaryWindows: false }), this.workspaces.getRecentlyOpened()]);
++		const [windows, recent, managedRoots] = await Promise.all([
++			this.native.getWindows({ includeAuxiliaryWindows: false }), this.workspaces.getRecentlyOpened(), this.readManagedWorkspaceRoots(),
++		]);
+ 		if (this.windowRevision !== revision) { return; }
++		const managedUris = new Set<string>();
+ 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
+ 			const uri = URI.revive(raw);
+-			return { kind, uri: uri.toString(), name: label || basenameOrAuthority(uri), path: uri.scheme === 'file' ? uri.fsPath : uri.toString(true) };
++			const key = uri.toString();
++			if (kind === 'workspace' && managedRoots.some(root => extUriBiasedIgnorePathCase.isEqualOrParent(uri, root))) {
++				managedUris.add(key);
++			}
++			return { kind, uri: key, name: label || basenameOrAuthority(uri), path: uri.scheme === Schemas.file ? uri.fsPath : uri.toString(true) };
+ 		};
+ 		this.windows = windows.flatMap(window => {
+ 			const dirty = this.editsSinceSnapshot.get(window.id) ?? window.dirty;
+@@ -593,6 +620,8 @@ export class StudioLaunchpad extends Disposable {
+ 			return isWorkspaceIdentifier(window.workspace) ? [{ ...project(window.workspace.configPath, 'workspace'), windowId: window.id, dirty }] : [];
+ 		});
+ 		this.recent = recent.workspaces.map(row => isRecentFolder(row) ? project(row.folderUri, 'folder', row.label) : project(row.workspace.configPath, 'workspace', row.label));
++		this.managedWorkspaceUris = managedUris;
++		this.hasProjectSnapshot = true;
+ 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
+ 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
+ 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
+@@ -608,17 +637,19 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private scheduleLibraryCategory(): void {
+ 		++this.libraryCategoryRevision;
+-		if (this.start.state?.platform) { this.refreshLibraryCategory.schedule(); }
++		// Resolve parent aliases against the first native snapshot before showing managed projects.
++		if (this.hasProjectSnapshot && this.start.state?.platform) { this.refreshLibraryCategory.schedule(this.libraryExtras ? undefined : 0); }
+ 		else { this.refreshLibraryCategory.cancel(); }
+ 	}
+ 
+ 	private async readLibraryProducts(): Promise<void> {
+ 		const revision = this.libraryCategoryRevision;
+-		const extra = await this.commands.executeCommand<typeof this.libraryExtras>('studio.listLibraryExtraProjects').catch(() => undefined);
++		const folders = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && p.uri.startsWith('file:')).map(p => p.uri))];
++		const extra = await this.commands.executeCommand<LibraryExtras>('studio.listLibraryExtraProjects', folders).catch(() => undefined);
+ 		if (revision !== this.libraryCategoryRevision) { return; }
+ 		if (extra && JSON.stringify(extra) !== JSON.stringify(this.libraryExtras)) { this.libraryExtras = extra; this.paint(); }
+ 		if (!this.account?.signedIn) { return; }
+-		const uris = [...new Set([...this.recent.filter(p => p.kind === 'folder'), ...this.windows.filter(p => p.kind === 'folder'), ...this.libraryExtras.projects].filter(p => p.uri.startsWith('file:')).map(p => p.uri))];
++		const uris = [...new Set([...folders, ...(this.libraryExtras?.projects ?? []).map(p => p.uri).filter(uri => uri.startsWith('file:'))])];
+ 		const category = await this.commands.executeCommand<LibraryProjectCategory | null | undefined>('studio.getLibraryProjectCategory', uris).catch(() => undefined);
+ 		// Undefined means temporarily unavailable; null explicitly removes the optional category.
+ 		if (revision !== this.libraryCategoryRevision || category === undefined) { return; }
+@@ -720,10 +751,26 @@ export class StudioLaunchpad extends Disposable {
+ 		}
+ 	}
+ 
++	private async clearReadNotices(): Promise<void> {
++		const scope = this.trayScope;
++		this.notices.clearRead();
++		if (!this.start.state?.platform || !this.account?.signedIn) { return; }
++		const account = this.account.scopeKey;
++		if (!account) { throw new Error('The notification account is unavailable'); }
++		const feed = await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account);
++		if (scope !== this.trayScope || this._store.isDisposed) { return; }
++		if (!feed) { throw new Error('Social data unavailable'); }
++		if ('notices' in feed) { this.notices.dismissReadSocialNotices(account, feed.notices); }
++		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
++	}
++
+ 	private paint(): void {
+ 		const state = this.start.state;
+-		const extra = new Map(this.libraryExtras.projects.map(project => [project.uri, project]));
+-		const hidden = new Set(this.libraryExtras.hiddenUris);
++		const projects = this.libraryExtras?.projects ?? [];
++		const extra = new Map(projects.map(project => [project.uri, project]));
++		const hidden = new Set(this.libraryExtras?.hiddenUris);
++		// Extension-owned workspaces need their library record, not a filename fallback.
++		const visible = (row: LaunchpadProject) => !hidden.has(row.uri) && (extra.has(row.uri) || !this.managedWorkspaceUris.has(row.uri));
+ 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
+ 		const live = new Map<string, LaunchpadProject>();
+ 		for (const window of this.windows) {
+@@ -741,24 +788,11 @@ export class StudioLaunchpad extends Disposable {
+ 				name: details.projectName || info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
+ 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+ 		};
+-		const history = new Map(this.recent.filter(row => !hidden.has(row.uri)).map(row => [row.uri, row]));
+-		for (const row of this.libraryExtras.projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
+-		this.view.update({ windows: this.windows.filter(row => !hidden.has(row.uri)).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
++		const history = new Map(this.recent.filter(visible).map(row => [row.uri, row]));
++		for (const row of projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
++		this.view.update({ windows: this.windows.filter(visible).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+ 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
++			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,
+ 			libraryCategory: this.libraryCategory });
+ 	}
+ }
+-	private async clearReadNotices(): Promise<void> {
+-		const scope = this.trayScope;
+-		this.notices.clearRead();
+-		if (!this.start.state?.platform || !this.account?.signedIn) { return; }
+-		const account = this.account.scopeKey;
+-		if (!account) { throw new Error('The notification account is unavailable'); }
+-		const feed = await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account);
+-		if (scope !== this.trayScope || this._store.isDisposed) { return; }
+-		if (!feed) { throw new Error('Social data unavailable'); }
+-		if ('notices' in feed) { this.notices.dismissReadSocialNotices(account, feed.notices); }
+-		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
+-	}
+-
+-			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+index f2a4799b7b4c07722d365f939ee9b6d09ea1d33c..a3c1fe4fd022b0eba11b30b009d1a241deb6e8a3 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadCards.ts
+@@ -19,6 +19,7 @@ export interface LibraryArtwork {
+ export interface LaunchpadProject extends StudioProjectDetails {
+ 	artwork?: LibraryArtwork;
+ 	managed?: true;
++	parentUri?: string;
+ }
+ 
+ export interface StoreListing {
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+index 0f0be552e9f4205456b5d8c11ac796ba2eb0ed6b..2a51a4e335865d6feec06ec618eac6e3cf53b6a5 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpadLibrary.ts
+@@ -50,6 +50,8 @@ export class LaunchpadLibrary extends Disposable {
+ 	private readonly search = element('input', 'lp-query');
+ 	private readonly filters = element('div', 'lp-filters');
+ 	private readonly categoryButton: HTMLButtonElement;
++	private readonly collapsed = new Set<string>();
++	private readonly searchCollapsed = new Set<string>();
+ 	private category?: LibraryProjectCategory;
+ 	private filter = 'all';
+ 	private signature?: string;
+@@ -72,7 +74,7 @@ export class LaunchpadLibrary extends Disposable {
+ 		super();
+ 		const rail = element('aside', 'lp-rail');
+ 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
+-		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
++		this.search.addEventListener('input', () => { this.searchCollapsed.clear(); this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+ 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
+ 		const railHeading = element('div', 'lp-rail-heading');
+ 		const hover: IDelayedHoverOptions = {
+@@ -130,6 +132,7 @@ export class LaunchpadLibrary extends Disposable {
+ 
+ 	resetFilters(): void {
+ 		this.homeScroll = this.shelf.scrollTop = 0;
++		this.searchCollapsed.clear();
+ 		if (this.search.value || this.filter !== 'all') { this.search.value = ''; this.filter = 'all'; this.render(); }
+ 	}
+ 
+@@ -138,6 +141,9 @@ export class LaunchpadLibrary extends Disposable {
+ 		this.pendingSelection = uri && !this.projects.has(uri) ? uri : undefined;
+ 		if (this.pendingSelection || uri === this.selected) { return; }
+ 		if (!this.selected) { this.homeScroll = this.shelf.scrollTop; }
++		const project = uri ? this.projects.get(uri) : undefined;
++		const parent = project && this.parentProject(project);
++		if (parent) { (this.search.value.trim() ? this.searchCollapsed : this.collapsed).delete(parent.uri); }
+ 		this.selected = uri; this.render();
+ 		this.shelf.scrollTop = uri ? 0 : this.homeScroll;
+ 		if (uri) { this.content.querySelector('h1')?.focus({ preventScroll: true }); }
+@@ -230,7 +236,8 @@ export class LaunchpadLibrary extends Disposable {
+ 
+ 	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
+ 		if (source === 'account' && !this.actionScope) { this.detailActionStates.delete(source); return; }
+-		const key = JSON.stringify([project.uri, project.kind, project.missing, project.managed, project.projectType, project.distribution, source === 'account' ? this.actionScope : '']);
++		const target = [project.uri, project.missing, project.managed];
++		const key = JSON.stringify(source === 'local' ? target : [...target, project.kind, project.projectType, project.distribution, this.actionScope]);
+ 		let state = this.detailActionStates.get(source);
+ 		if (!state || state.key !== key) {
+ 			state = { key, items: [] };
+@@ -250,12 +257,61 @@ export class LaunchpadLibrary extends Disposable {
+ 		return state;
+ 	}
+ 
++	private parentProject(project: LaunchpadProject): LaunchpadProject | undefined {
++		const parent = project.parentUri ? this.projects.get(project.parentUri) : undefined;
++		return parent && !parent.parentUri ? parent : undefined;
++	}
++
++	private renderIndex(rows: LaunchpadProject[], collapsed: Set<string>): void {
++		const roots = new Set(rows.map(p => p.uri));
++		const branches = new Map<string, LaunchpadProject[]>();
++		for (const p of rows) {
++			const parent = this.parentProject(p);
++			if (!parent) { continue; }
++			roots.delete(p.uri);
++			roots.add(parent.uri);
++			let children = branches.get(parent.uri);
++			if (!children) { branches.set(parent.uri, children = []); }
++			children.push(p);
++		}
++		const row = (p: LaunchpadProject) => {
++			const b = button('', '', () => this.show(p.uri), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri;
++			if (p.uri === this.selected) { b.setAttribute('aria-current', 'page'); }
++			this.bindMenu(b, p); return b;
++		};
++		const items: HTMLElement[] = [];
++		for (const p of this.projects.values()) {
++			if (!roots.has(p.uri)) { continue; }
++			const children = branches.get(p.uri);
++			if (!children) { items.push(row(p)); continue; }
++			const branch = element('div', 'lp-index-branch'), line = element('div', 'lp-index-line');
++			const group = element('div', 'lp-index-children'); group.id = 'lp-index-children-' + items.length;
++			const project = row(p); project.id = group.id + '-parent';
++			group.setAttribute('role', 'group'); group.setAttribute('aria-labelledby', project.id);
++			group.append(...children.map(row));
++			const toggle = button('', '', () => {
++				if (!collapsed.delete(p.uri)) { collapsed.add(p.uri); }
++				update();
++			}, 'lp-index-toggle');
++			const update = () => {
++				group.hidden = collapsed.has(p.uri);
++				toggle.title = `${group.hidden ? this.t('Expand Bot instances', '展开 Bot 分身') : this.t('Collapse Bot instances', '折叠 Bot 分身')}: ${p.name}`;
++				toggle.setAttribute('aria-label', toggle.title);
++				toggle.setAttribute('aria-expanded', String(!group.hidden));
++				toggle.replaceChildren(icon(group.hidden ? 'chevron-right' : 'chevron-down'));
++			};
++			toggle.dataset.key = 'branch:' + p.uri;
++			toggle.setAttribute('aria-controls', group.id);
++			update(); line.append(project, toggle); branch.append(line, group); items.push(branch);
++		}
++		this.index.replaceChildren(...items);
++	}
++
+ 	private render(): void {
+ 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
+ 		const category = this.filter === 'product' ? this.category : undefined;
+ 		const members = category && new Set(category.projectUris);
+-		const rows = [...this.projects.values()].filter(p => {
+-			if (query && !`${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) { return false; }
++		const inFilter = (p: LaunchpadProject) => {
+ 			switch (this.filter) {
+ 				case 'installed': return p.distribution === 'release' || p.distribution === 'download';
+ 				case 'source': return p.distribution === 'source';
+@@ -263,15 +319,18 @@ export class LaunchpadLibrary extends Disposable {
+ 				case 'product': return !p.missing && members?.has(p.uri) === true;
+ 				default: return true;
+ 			}
++		};
++		const matches = [...this.projects.values()].filter(p => !query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query));
++		const rows = matches.filter(inFilter);
++		// In the index, instances inherit their parent's folder/source/installed category, but not its IM binding.
++		const indexRows = this.filter === 'all' || category ? rows : matches.filter(p => {
++			const parent = this.parentProject(p);
++			return inFilter(p) || !!(parent && inFilter(parent));
+ 		});
+ 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
+ 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+ 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
+-		this.index.replaceChildren(...rows.map(p => {
+-			const b = button('', '', () => this.show(p.uri), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri;
+-			if (p.uri === this.selected) { b.setAttribute('aria-current', 'page'); }
+-			this.bindMenu(b, p); return b;
+-		}));
++		this.renderIndex(indexRows, query ? this.searchCollapsed : this.collapsed);
+ 		const selected = this.selected && this.projects.get(this.selected);
+ 		this.toolbar.hidden = !!selected;
+ 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };

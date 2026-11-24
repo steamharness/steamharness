@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
-import { checkLibraryExperience } from './launchpad-library-ui.mjs';
+import { checkFolderBotBranches, checkFolderBotStartup, checkLibraryExperience } from './launchpad-library-ui.mjs';
 import { checkProfileRowInteractions } from './launchpad-profile-ui.mjs';
+import { checkStudioNoticeAcknowledgement, checkTrayClearRead } from './launchpad-profile-ui.mjs';
 import { storeFixture } from './launchpad-store-ui.mjs';
 
 // Render the desktop controller, creation dialog and Settings UI with isolated host services.
@@ -24,7 +25,9 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   import { URI } from './src/vs/base/common/uri.ts';
   import { decodeBase64 } from './src/vs/base/common/buffer.ts';
   import { StudioNotificationInbox } from './src/vs/workbench/electron-browser/studioNotificationInbox.ts';
-  import { NotificationChangeType } from './src/vs/workbench/common/notifications.ts';
+  import { NotificationService } from './src/vs/workbench/services/notification/common/notificationService.ts';
+  import { Severity } from './src/vs/platform/notification/common/notification.ts';
+  import { InMemoryStorageService, StorageScope, StorageTarget } from './src/vs/platform/storage/common/storage.ts';
   import { Emitter, Event } from './src/vs/base/common/event.ts';
   import { observableValue } from './src/vs/base/common/observable.ts';
   import { OverlayWebview } from './src/vs/workbench/contrib/webview/browser/overlayWebview.ts';
@@ -61,6 +64,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
   const serverUrl = 'https://studio.example.test';
   let account = { status:'authenticated', statusLabel:zh?'服务器已连接':'Server Connected', hasAccount:true, name:'My account', email:'me@example.test', avatarUrl:chatAvatar, scopeKey:'a'.repeat(64), serverUrl };
+  if (!window.enhanced) account = { localProfile: true };
   const commandEvent = new Emitter();
   const kernelCommand = (id,...args) => CommandsRegistry.getCommand('studio.internal'+id).handler(undefined,...args);
   const publishAccount = () => commandEvent.fire({commandId:'studio.internalUpdateAccountMenuState', args:[account]});
@@ -86,21 +90,28 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     favorites.push({id:'saved-content',title:'Favorite without conversation',detail:'Stored message content'});
     window.refreshSocial();
   };
+  window.addSocialNotice = notice => notices.push(notice);
   window.addHostedImNotice = () => {
     notices.push({id:'im-unread:fixture',title:'2',source:'im',read:false});
     window.refreshSocial();
   };
   const commands = { onDidExecuteCommand:commandEvent.event, async executeCommand(id, ...args) {
     window.actions.push([id,...args]);
-    if (id === 'studio.listLibraryExtraProjects') return { projects: [...folderBots], hiddenUris: [...removedFolderBots] };
+    if (id === 'studio.listLibraryExtraProjects') {
+      if (startupBot && window.holdFolderBotStartup) {
+        await new Promise(resolve => { window.resumeFolderBotStartup = resolve; });
+      }
+      const projects = startupBot ? [...folderBots, { ...startupBot, parentUri: args[0].find(uri => uri === history[6].uri) ?? startupBot.parentUri }] : [...folderBots];
+      return { projects, hiddenUris: [...removedFolderBots, ...(startupRemoved ? [startupRemoved.toString()] : [])] };
+    }
     if (id === 'studio.listFolderBotActions') {
-      if (args[0].kind!=='folder' || args[0].name!=='Imported folder') return [];
-      if (window.holdFolderActions) await new Promise(resolve=>window.resumeFolderActions=resolve);
+      if (args[0].kind!=='folder' || args[0].missing) return [];
+      if (args[0].name==='Imported folder' && window.holdFolderActions) await new Promise(resolve=>window.resumeFolderActions=resolve);
       return [{id:'create-folder-bot',label:zh?'用 Bot 打开…':'Open with Bot…'}];
     }
     if (id === 'studio.runFolderBotAction' && args[1] === 'create-folder-bot') {
       const name = 'Folder Bot ' + (folderBots.length + 1), uri = URI.file('/profile/'+name+'.code-workspace').toString();
-      folderBots.push({uri,name,kind:'workspace',managed:true,path:URI.parse(args[0]).fsPath,projectType:'bot'});
+      folderBots.push({uri,name,kind:'workspace',managed:true,parentUri:args[0],path:URI.parse(args[0]).fsPath,projectType:'bot'});
       kernelCommand('LibraryProjectCategoryChanged');
       return {workspace:uri};
     }
@@ -137,6 +148,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     if (id === 'studio.getSocialSnapshot') {
       if (args[1] === 'notices' && args[2] !== account.scopeKey) throw new Error('Wrong notice account');
       const owned = account.scopeKey === 'a'.repeat(64);
+      if (args[1] === 'notices' && window.holdScopedSocialSnapshot) {
+        window.holdScopedSocialSnapshot = false;
+        await new Promise(resolve => { window.resumeScopedSocialSnapshot = resolve; });
+      }
       if (window.socialGate) await window.socialGate;
       if (window.socialFailure === 'unsupported') return {unavailable:'unsupported'};
       if (window.socialFailure) throw new Error('Service unavailable');
@@ -205,11 +220,36 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const workspace = URI.file('/projects/Sample.code-workspace');
   const historyChange = new Emitter();
   const recent = { workspaces: [{ workspace:{id:'workspace',configPath:workspace} },...folders.map(folderUri=>({folderUri}))] };
+  const profileStorage = URI.file('/var/studio/User/globalStorage');
+  const workstationStorage = URI.joinPath(profileStorage, 'studio.studio-workstation');
+  const canonicalWorkstationStorage = workstationStorage.with({ path: '/private' + workstationStorage.path });
+  const startupOrdinary = URI.file('/projects/folder-bots/035a4096-66aa-496b-8ebc-f94288f3bc76.code-workspace');
+  let startupBot, startupRemoved;
+  window.seedFolderBotStartup = () => {
+    const recentWorkspace = configPath => ({ workspace: { id: configPath.toString(), configPath } });
+    recent.workspaces.unshift(recentWorkspace(startupOrdinary));
+    if (window.enhanced) {
+      const configPath = URI.joinPath(canonicalWorkstationStorage, 'folder-bots', 'b488125a-b8f6-478c-9cbd-c0f37d26a549.code-workspace');
+      startupRemoved = URI.joinPath(workstationStorage, 'folder-bots', '56941969-b1e9-4858-986a-ccccccecc7bc.code-workspace');
+      startupBot = { uri: configPath.toString(), name: 'Project 2 · Local assistant', kind: 'workspace', managed: true,
+        parentUri: URI.file('/canonical/Project 2').toString(), path: folders[6].fsPath, projectType: 'bot' };
+      windows.push({ id: 39, ...recentWorkspace(configPath) });
+      recent.workspaces.unshift(recentWorkspace(configPath), recentWorkspace(startupRemoved));
+      window.holdFolderBotStartup = true;
+    }
+  };
+  window.clearFolderBotStartup = () => {
+    const remove = new Set([startupOrdinary.toString(), startupBot?.uri, startupRemoved?.toString()]);
+    recent.workspaces = recent.workspaces.filter(row => !remove.has(row.workspace?.configPath.toString()));
+    if (startupBot) { windows.splice(windows.findIndex(row => row.id === 39), 1); }
+    startupBot = startupRemoved = undefined;
+    historyChange.fire();
+  };
   const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#2563eb"/></svg>');
   const history = folders.map((uri,i) => ({uri:uri.toString(),kind:'folder',label:uri.path.split('/').at(-1),lastOpened:1700000000000-i*86400000}));
   window.libraryCategoryUris = [history[2].uri, history[4].uri];
   window.setLibraryCategory = names => {
-    window.libraryCategoryUris = history.filter(row=>names.includes(row.label)).map(row=>row.uri);
+    window.libraryCategoryUris = [...history.filter(row=>names.includes(row.label)), ...folderBots.filter(row=>names.includes(row.name))].map(row=>row.uri);
     kernelCommand('LibraryProjectCategoryChanged');
   };
   const detected = new Map([[history[0].uri,{projectType:'workflow',version:'1.2.0',projectId:'294b1eec-23fa-42cf-9fd3-2417f71c0570',distribution:'source',entries:[{entryId:'main',name:'Main workflow',type:'workflow',primary:true},{entryId:'chat',name:'Chat',type:'bot',primary:false}],artwork:{entries:[avatar,avatar]},avatarUrl:avatar}],[history[2].uri,{projectType:'bot',distribution:'download',artwork:{entries:[avatar]}}],[history[3].uri,{artwork:{files:['notes.txt','demo.js','README.md']}}]]);
@@ -230,10 +270,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const edits = new Emitter();
   window.projectReads = { windows:0, history:0, stats:0 };
   window.openRequests = [];
+  window.trayAction = (id, action, scope = window.trayState.scope) => window.events['vscode:studioTrayNotificationAction']({}, id, scope, action);
   window.editProject = (id, dirty) => { windows.find(w=>w.id===id).dirty=dirty; edits.fire({windowId:id,dirty}); };
   const native = {onDidChangeWindowDirty:edits.event, getWindows:async()=>{window.projectReads.windows++; return windows.map(w=>({...w}));}, focusWindow:async o=>window.actions.push(['focus',o.targetWindowId]),
     setStudioTrayNotifications:async (notices,scope)=>{ window.trayState={...notices,scope}; },
-    finishStudioTrayMarkAll:async (id,success)=>{ window.trayReadResult={id,success}; },
+    finishStudioTrayNotificationAction:async (id,success)=>{ window.trayActionResult={id,success}; },
     showItemInFolder:async path=>window.actions.push(['reveal',path]),
     async showMessageBox({message,detail,buttons}) {
       const dialog = document.createElement('dialog'); dialog.className = 'native-message';
@@ -254,7 +295,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   const dialogs = { pickFolderAndOpen:async opts=>window.actions.push(['pickFolder',opts.forceNewWindow]), pickWorkspaceAndOpen:async opts=>window.actions.push(['pickWorkspace',opts.forceNewWindow]),
     showOpenDialog: async opts=>{ window.actions.push(['pickPaths',opts]); return window.selectedPaths?.map(path=>URI.file(path)); } };
   const opener = {open:async (uri,opts)=>window.actions.push(['external',uri.toString(),opts.openExternal])};
-  const files = {readFile:async()=>({value:decodeBase64(window.coverBytes)}), stat: async uri=>{
+  const files = {readFile:async()=>({value:decodeBase64(window.coverBytes)}), realpath: async uri => uri.toString() === workstationStorage.toString() ? canonicalWorkstationStorage : undefined, stat: async uri=>{
     window.projectReads.stats++;
     if (uri.path===window.missingPath) throw new FileOperationError('Missing',FileOperationResult.FILE_NOT_FOUND);
     const isFile=uri.path===workspace.path||uri.path==='/projects/notes.txt'||uri.path.endsWith('/'+window.coverName);
@@ -288,10 +329,16 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   window.startLaunchpad = () => {
     root.classList.add('studio-launchpad-window');
     const auxiliary = new BrowserAuxiliaryWindowService(layout, dialogs, {getValue:()=>undefined}, {publicLog2(){}}, {onDidChangeFullScreen:Event.None,focus(){}}, {}, {});
-    const records = new Map(), notification = new Emitter(), valueChange = new Emitter();
-    const notices = new StudioNotificationInbox({keys:()=>Array.from(records.keys()),getObject:key=>records.get(key),onDidChangeValue:()=>valueChange.event,store(key,value){records.set(key,value);valueChange.fire({key});},remove:key=>{records.delete(key);valueChange.fire({key});}}, {model:{onDidChangeNotification:notification.event}},commands);
-    window.notify = text=>notification.fire({kind:NotificationChangeType.ADD,item:{message:{raw:text}}});
+    const noticeStorage = new InMemoryStorageService();
+    const launchpadNotifications = new NotificationService(noticeStorage), projectNotifications = new NotificationService(noticeStorage);
+    const notices = new StudioNotificationInbox(noticeStorage, launchpadNotifications, commands);
+    const projectNotices = new StudioNotificationInbox(noticeStorage, projectNotifications, commands);
     window.localNotices=()=>notices.list(); window.readNotice=id=>notices.read(id);
+    window.notify = message=>projectNotifications.notify({ severity:Severity.Error, message, source:{ id:'studio.studio-workstation', label:'SteamHarness Workstation' } });
+    window.acknowledgeNotice = title=>projectNotifications.model.notifications.find(item=>item.message.raw===title).acknowledge();
+    window.seedLegacyNotice = (id,title,{ owner = account.localProfile ? 'local' : account.scopeKey, read = false } = {}) =>
+      noticeStorage.store('studio.notificationInbox.'+id, { owner, id, title, source:'studio', read }, StorageScope.PROFILE, StorageTarget.MACHINE);
+    window.hasStoredNotice = id => noticeStorage.get('studio.notificationInbox.' + id, StorageScope.PROFILE) !== undefined;
     window.notify('Owner not yet known');
     const contextView = new ContextViewService(layout);
     const menus = new ContextMenuService({publicLog2(){}},{error:e=>{throw e;}},contextView,{lookupKeybinding:()=>undefined},{},contextKeys);
@@ -312,7 +359,8 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
       recent.workspaces=[...entries,...recent.workspaces.filter(row=>!paths.has((row.folderUri??row.workspace.configPath).path))]; historyChange.fire();
     },removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); historyChange.fire();
-    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])});
+    }},layout,commands,dialogs,{error:e=>{throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])},
+    {profiles: [{ globalStorageHome: profileStorage.with({ scheme: 'vscode-userdata' }) }]});
     window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.refreshSocial=()=>window.events['vscode:studioSocialChanged']({});
@@ -320,7 +368,14 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     window.duplicateProject=(id,newId)=>{ windows.push({...windows.find(w=>w.id===id),id:newId,dirty:true}); changed(); };
     window.showHome=()=>CommandsRegistry.getCommand('studio.internalShowLaunchpad').handler();
     window.openInbox=()=>CommandsRegistry.getCommand('studio.internalOpenLaunchpadInbox').handler();
-    window.stopLaunchpad=()=>{controller.dispose();hover.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();notification.dispose();valueChange.dispose();};
+    window.stopLaunchpad=()=>{
+      controller.dispose();hover.dispose();menus.dispose();contextView.dispose();auxiliary.dispose();notices.dispose();projectNotices.dispose();
+      for (const notifications of [launchpadNotifications,projectNotifications]) {
+        for (const item of [...notifications.model.notifications]) item.close();
+        notifications.dispose();
+      }
+      noticeStorage.dispose();
+    };
     window.cleanup=()=>{ window.stopLaunchpad(); settingsResolver.dispose(); webviewViews.dispose(); sashes.forEach(sash=>sash.dispose()); commandEvent.dispose(); startEvent.dispose(); edits.dispose(); historyChange.dispose(); layoutChange.dispose(); };
   };
 ` }, tsconfig: `${kernel}/src/tsconfig.json`, bundle: true, write: false, outdir: 'out', target: 'es2022',
@@ -516,7 +571,9 @@ async function checkProjectStatusGuide(page, language) {
 
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 const statusGuideOnly = process.argv.includes('--status-guide-only');
+const folderBotsOnly = process.argv.includes('--folder-bots-only');
 const profileRowsOnly = process.argv.includes('--profile-rows-only');
+const notificationsOnly = process.argv.includes('--notifications-only');
 try {
   const project = await browser.newPage();
   await project.route('http://127.0.0.1:4321/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
@@ -604,6 +661,13 @@ try {
     await page.locator('.studio-launchpad').waitFor({timeout:5000}).catch(error=>{throw new Error(errors.join('\n') || error.message);});
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'the splash leaves as soon as the launchpad renders');
     assert.equal(await page.evaluate(() => typeof window.resumeHistory), 'function', 'history has not returned at handoff');
+    if (folderBotsOnly) {
+      await page.evaluate(() => {
+        window.seedFolderBotStartup();
+        if (window.enhanced) { window.signOut(); }
+        window.activateProjects();
+      });
+    }
     await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
     await checkProjectStatusGuide(page, language);
@@ -612,6 +676,15 @@ try {
       assert.deepEqual(errors, []);
       await page.close();
       console.log(`${stem}: project status legend, mouse and keyboard interaction, and narrow layout passed`);
+      continue;
+    }
+    if (folderBotsOnly) {
+      await checkFolderBotStartup({ page, enhanced });
+      await checkFolderBotBranches({ page, language, enhanced });
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(`${stem}: folder Bot first paint, creation, library branches and filters passed`);
       continue;
     }
     if (profileRowsOnly) {
@@ -626,6 +699,22 @@ try {
       console.log(`${stem}: profile list row navigation, menus, dates and unread indicators passed`);
       continue;
     }
+    if (notificationsOnly) {
+      const t = (en, zh) => language === 'zh-cn' ? zh : en;
+      if (enhanced) {
+        await page.evaluate(() => window.activateProjects());
+        await page.waitForFunction(() => window.trayState?.items.some(item => item.title.includes('Erin')));
+      }
+      await page.getByRole('button', { name: t('Studio notifications', 'Studio 通知'), exact: true }).click();
+      const rows = page.locator('#lp-page-profile').getByRole('tabpanel').getByRole('listitem');
+      await checkStudioNoticeAcknowledgement({ page, rows, t });
+      await checkTrayClearRead({ page, rows, t, enhanced });
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(`${stem}: notification acknowledgement, duplicate history and tray clear-read passed`);
+      continue;
+    }
     await checkLibraryExperience({ page, language, enhanced, checkEditorSashes, checkProjectDrop,
       screenshot: name => page.screenshot({path:fileURLToPath(new URL(stem+'-'+name+'.png',proof))}), loads:()=>loads });
     if (enhanced) {
@@ -638,22 +727,22 @@ try {
       await page.waitForFunction(() => window.trayState?.items.some(item=>item.detail==='Tray message preview') && window.trayState.items.some(item=>item.title==='Local Studio notification'));
       await page.evaluate(async () => {
         window.serviceAccountScope='b'.repeat(64);
-        await window.events['vscode:studioTrayMarkAll']({},'account-update-pending',window.trayState.scope);
+        await window.trayAction('account-update-pending','markAllRead');
         delete window.serviceAccountScope;
       });
-      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.imTrayFixture.count]), [false,2], 'a newer account in the extension host cannot be cleared by the old tray');
+      assert.deepEqual(await page.evaluate(() => [window.trayActionResult.success,window.imTrayFixture.count]), [false,2], 'a newer account in the extension host cannot be cleared by the old tray');
       await page.evaluate(() => {
         window.imMarkAllFails=true;
-        window.events['vscode:studioTrayMarkAll']({},'failed',window.trayState.scope);
+        window.trayAction('failed','markAllRead');
       });
-      await page.waitForFunction(() => window.trayReadResult?.id==='failed');
-      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [false,2]);
+      await page.waitForFunction(() => window.trayActionResult?.id==='failed');
+      assert.deepEqual(await page.evaluate(() => [window.trayActionResult.success,window.trayState.count]), [false,2]);
       await page.evaluate(() => {
         window.imMarkAllFails=false;
-        window.events['vscode:studioTrayMarkAll']({},'read-all',window.trayState.scope);
+        window.trayAction('read-all','markAllRead');
       });
-      await page.waitForFunction(() => window.trayReadResult?.id==='read-all');
-      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [true,0]);
+      await page.waitForFunction(() => window.trayActionResult?.id==='read-all');
+      assert.deepEqual(await page.evaluate(() => [window.trayActionResult.success,window.trayState.count]), [true,0]);
       await page.evaluate(() => {
         Object.defineProperty(document,'hidden',{configurable:true,value:true});
         window.imTrayFixture=undefined;
@@ -662,15 +751,15 @@ try {
         window.addHostedImNotice();
       });
       await page.waitForFunction(() => window.trayState?.count===1 && window.trayState.items.length === 1);
-      await page.evaluate(() => window.events['vscode:studioTrayMarkAll']({},'offline',window.trayState.scope));
-      assert.deepEqual(await page.evaluate(() => [window.trayReadResult.success,window.trayState.count]), [false,1], 'a hosted summary must stay unread until IM can be cleared');
+      await page.evaluate(() => window.trayAction('offline','markAllRead'));
+      assert.deepEqual(await page.evaluate(() => [window.trayActionResult.success,window.trayState.count]), [false,1], 'a hosted summary must stay unread until IM can be cleared');
       await page.evaluate(() => {
         delete document.hidden;
         const previousScope=window.trayState.scope;
         window.updateAccount({scopeKey:'b'.repeat(64)});
-        window.events['vscode:studioTrayMarkAll']({},'old-account',previousScope);
+        window.trayAction('old-account','markAllRead',previousScope);
       });
-      assert.deepEqual(await page.evaluate(() => window.trayReadResult), {id:'old-account',success:false});
+      assert.deepEqual(await page.evaluate(() => window.trayActionResult), {id:'old-account',success:false});
     }
     await page.evaluate(()=>window.cleanup()); assert.deepEqual(errors,[]); await page.close(); console.log(`${language}: launchpad resources, layout, keyboard actions, window changes, library import, drag and drop, creation${enhanced?', account and settings':''} passed`);
   }

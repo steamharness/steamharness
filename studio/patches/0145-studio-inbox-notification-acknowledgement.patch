@@ -1,0 +1,373 @@
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts b/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
+index 6d1673fda1adcf4c4b2e80521a8db9e0e0bcd0c6..6ac5f130320fa95910809a32ac3b544e9b80eaf8 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationAccessibleView.ts
+@@ -98,6 +98,7 @@ export class NotificationAccessibleView implements IAccessibleViewImplementation
+ 					return;
+ 				}
+ 				notification = focusedNotification;
++				notification.acknowledge();
+ 				if (list instanceof WorkbenchList) {
+ 					notificationIndex = list.indexOf(notification);
+ 				}
+@@ -113,6 +114,7 @@ export class NotificationAccessibleView implements IAccessibleViewImplementation
+ 				() => focusList(),
+ 				'accessibility.verbosity.notification',
+ 				() => {
++					notification.acknowledge();
+ 					notificationListeners?.dispose();
+ 					notificationListeners = new DisposableStore();
+ 					updateContent();
+@@ -158,6 +160,7 @@ function getActionsFromNotification(notification: INotificationViewItem, accessi
+ 		checked: action.checked,
+ 		class: ThemeIcon.asClassName(Codicon.bell),
+ 		run: () => {
++			notification.acknowledge();
+ 			const result = action.run();
+ 			notification.close();
+ 			return result;
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts b/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
+index 93dfef8cc7cac7b454b5e47dc0561830b1861e23..3635e74c61631cae4bedaa5436ec778f63586cd5 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsCommands.ts
+@@ -170,6 +170,7 @@ export function registerNotificationCommands(center: INotificationsCenterControl
+ 			if (!primaryAction) {
+ 				return;
+ 			}
++			notification.acknowledge();
+ 			actionRunner.run(primaryAction, notification);
+ 			notification.close();
+ 			actionRunner.dispose();
+diff --git a/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts b/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
+index 7072403873471b7ef39507d00f3af0d685b69fcb..77b610c095300f892e8d495a8735c9bd147854c9 100644
+--- a/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsViewer.ts
+@@ -406,14 +406,12 @@ export class NotificationTemplateRenderer extends Disposable {
+ 		this.renderSeverity(notification);
+ 
+ 		// Message
+-		if (notification.acknowledge) {
+-			this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
+-				const selection = getWindow(this.template.message).getSelection();
+-				if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
+-					notification.acknowledge?.();
+-				}
+-			}));
+-		}
++		this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
++			const selection = getWindow(this.template.message).getSelection();
++			if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
++				notification.acknowledge();
++			}
++		}));
+ 		const messageCustomHover = this.inputDisposables.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), this.template.message, ''));
+ 		const messageOverflows = this.renderMessage(notification, messageCustomHover);
+ 
+@@ -462,7 +460,10 @@ export class NotificationTemplateRenderer extends Disposable {
+ 	private renderMessage(notification: INotificationViewItem, customHover: IManagedHover): boolean {
+ 		clearNode(this.template.message);
+ 		this.template.message.appendChild(NotificationMessageRenderer.render(notification.message, {
+-			callback: link => this.openerService.open(URI.parse(link), { allowCommands: true }),
++			callback: link => {
++				notification.acknowledge();
++				void this.openerService.open(URI.parse(link), { allowCommands: true });
++			},
+ 			toDispose: this.inputDisposables
+ 		}));
+ 
+@@ -530,6 +531,7 @@ export class NotificationTemplateRenderer extends Disposable {
+ 				protected override async runAction(action: IAction): Promise<void> {
+ 
+ 					// Run action
++					notification.acknowledge();
+ 					that.actionRunner.run(action, notification);
+ 
+ 					// Hide notification (unless explicitly prevented)
+diff --git a/src/vs/workbench/common/notifications.ts b/src/vs/workbench/common/notifications.ts
+index 7d51a17048adc99e9dc027ad63313d90886d5087..ac2fb48097c4a89c01c21d1f32b977373e1cbc96 100644
+--- a/src/vs/workbench/common/notifications.ts
++++ b/src/vs/workbench/common/notifications.ts
+@@ -324,7 +324,7 @@ export interface INotificationViewItem {
+ 	readonly onDidChangeVisibility: Event<boolean>;
+ 	readonly onDidChangeContent: Event<INotificationViewItemContentChangeEvent>;
+ 	readonly onDidClose: Event<void>;
+-	readonly acknowledge?: () => void;
++	readonly onDidAcknowledge: Event<void>;
+ 
+ 	expand(): void;
+ 	collapse(skipEvents?: boolean): void;
+@@ -336,6 +336,7 @@ export interface INotificationViewItem {
+ 
+ 	updateVisibility(visible: boolean): void;
+ 
++	acknowledge(): void;
+ 	close(): void;
+ 	dismiss(): void;
+ 
+@@ -475,6 +476,9 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 	private readonly _onDidChangeContent = this._register(new Emitter<INotificationViewItemContentChangeEvent>());
+ 	readonly onDidChangeContent = this._onDidChangeContent.event;
+ 
++	private readonly _onDidAcknowledge = this._register(new Emitter<void>());
++	readonly onDidAcknowledge = this._onDidAcknowledge.event;
++
+ 	private readonly _onDidChangeVisibility = this._register(new Emitter<boolean>());
+ 	readonly onDidChangeVisibility = this._onDidChangeVisibility.event;
+ 
+@@ -583,7 +587,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		private _source: string | INotificationSource | undefined,
+ 		progress: INotificationProgressProperties | undefined,
+ 		actions?: INotificationActions,
+-		readonly acknowledge?: () => void
++		private readonly acknowledgeCallback?: () => void
+ 	) {
+ 		super();
+ 
+@@ -742,7 +746,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		}
+ 
+ 		this._expanded = true;
+-		this.acknowledge?.();
++		this.acknowledge();
+ 		this._onDidChangeExpansion.fire();
+ 	}
+ 
+@@ -766,6 +770,11 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		}
+ 	}
+ 
++	acknowledge(): void {
++		this._onDidAcknowledge.fire();
++		this.acknowledgeCallback?.();
++	}
++
+ 	close(): void {
+ 		this._onDidClose.fire();
+ 
+@@ -773,7 +782,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 	}
+ 
+ 	dismiss(): void {
+-		this.acknowledge?.();
++		this.acknowledge();
+ 		this.close();
+ 	}
+ 
+diff --git a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+index d22c72dece96384411ec1b72fb9cddd97d9914be..0606e861433d2d12b3b8dee385d0e0bb98223b3a 100644
+--- a/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
++++ b/src/vs/workbench/electron-browser/studioDesktopNotifications.ts
+@@ -60,6 +60,7 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 	const lifetime = new DisposableStore();
+ 	let closed = false;
+ 	let activating = false;
++	let acknowledging = false;
+ 	let handle: INotificationHandle | undefined;
+ 	const clearNative = () => {
+ 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
+@@ -75,8 +76,9 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
+ 	};
+ 	const closeIfIdle = () => { if (!handle && !native && !activating) { close(); } };
+ 	const acknowledge = () => {
+-		if (!closed) {
+-			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined);
++		if (!closed && !acknowledging) {
++			acknowledging = true;
++			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined).finally(() => { acknowledging = false; });
+ 		}
+ 	};
+ 	const activate = async (focus: boolean) => {
+diff --git a/src/vs/workbench/electron-browser/studioNotificationInbox.ts b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+index 60d55ee1cc8a39df90ff640826bdbc04fdd41480..0d6821a1be871d1423cb9f9913e540ed1323e984 100644
+--- a/src/vs/workbench/electron-browser/studioNotificationInbox.ts
++++ b/src/vs/workbench/electron-browser/studioNotificationInbox.ts
+@@ -3,26 +3,35 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { Emitter } from '../../base/common/event.js';
+-import { Disposable } from '../../base/common/lifecycle.js';
++import { Emitter, Event } from '../../base/common/event.js';
++import { StringSHA1 } from '../../base/common/hash.js';
++import { Disposable, DisposableMap } from '../../base/common/lifecycle.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+ import { ICommandService } from '../../platform/commands/common/commands.js';
+ import { INotificationService } from '../../platform/notification/common/notification.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
+-import { NotificationChangeType } from '../common/notifications.js';
++import { INotificationViewItem, NotificationChangeType } from '../common/notifications.js';
+ import { NotificationService } from '../services/notification/common/notificationService.js';
+ import type { StudioNotice } from './studioLaunchpadProfile.js';
+ 
+ const prefix = 'studio.notificationInbox.';
+ const scope = StorageScope.PROFILE, target = StorageTarget.MACHINE;
+-interface Notice extends StudioNotice { owner: string }
++const titleLimit = 500;
++interface Notice extends StudioNotice { owner: string; fingerprint?: string }
+ 
+-/** One key per event: simultaneous project windows cannot overwrite each other's notifications. */
++function fingerprint(item: INotificationViewItem): string {
++	const hash = new StringSHA1();
++	hash.update(JSON.stringify([item.sourceId, item.sourceId === undefined ? item.source : undefined, item.severity, item.message.raw, item.message.linkedText.nodes]));
++	return hash.digest();
++}
++
++/** Separate occurrence keys preserve independent writes from project windows. */
+ export class StudioNotificationInbox extends Disposable {
+ 	private owner?: string;
+ 	private stored?: Notice[];
+ 	private revision = 0;
+ 	private readonly change = this._register(new Emitter<void>());
++	private readonly acknowledgements = this._register(new DisposableMap<INotificationViewItem>());
+ 	readonly onDidChange = this.change.event;
+ 
+ 	constructor(@IStorageService private readonly storage: IStorageService, @INotificationService notifications: INotificationService, @ICommandService commands: ICommandService) {
+@@ -36,29 +45,81 @@ export class StudioNotificationInbox extends Disposable {
+ 			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
+ 		}));
+ 		const model = (notifications as NotificationService).model;
+-		this._register(model.onDidChangeNotification(e => {
+-			if (!this.owner || e.kind !== NotificationChangeType.ADD || e.item.hasActiveProgress || e.item.sourceId === 'studio.builtinIm') { return; }
+-			const id = `${Date.now()}-${generateUuid()}`;
+-			this.storage.store(prefix + id, { owner: this.owner, id, title: e.item.message.raw.slice(0, 500), source: 'studio', read: false }, scope, target);
+-			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
++		this._register(model.onDidChangeNotification(({ kind, item }) => {
++			if (kind === NotificationChangeType.REMOVE) {
++				this.acknowledgements.deleteAndDispose(item);
++			}
++			const owner = this.owner;
++			if (owner && kind === NotificationChangeType.ADD && !item.hasActiveProgress && item.sourceId !== 'studio.builtinIm') {
++				this.add(item, owner);
++			}
+ 		}));
+ 		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); } }));
+ 		// Until the profile is known, do not persist potentially account-specific text.
+ 		const rev = this.revision;
+ 		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
+ 	}
++
++	private add(item: INotificationViewItem, owner: string): void {
++		const key = fingerprint(item);
++		const existing = this.owned().find(notice => notice.fingerprint === key && !notice.read);
++		const id = existing?.id ?? `${Date.now()}-${generateUuid()}`;
++		this.acknowledgements.set(item, Event.once(item.onDidAcknowledge)(() => {
++			// An old toast must not acknowledge a later occurrence or another account's notice.
++			if (this.owner === owner && this.get(id)?.read === false) {
++				this.read(id);
++			}
++		}));
++		if (!existing) {
++			const notice: Notice = { owner, id, title: item.message.raw.slice(0, titleLimit), fingerprint: key, source: 'studio', read: false };
++			this.storage.store(prefix + id, notice, scope, target);
++			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
++		}
++	}
++
+ 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
+ 	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
+-	list(): StudioNotice[] { return this.owned().slice(0, 100); }
+-	unread(): StudioNotice[] { return this.owned().filter(notice => !notice.read); }
+-	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
+-	readAll(): void {
+-		for (const notice of this.owned()) {
+-			if (!notice.read) { this.read(notice.id); }
++	private get(id: string): Notice | undefined {
++		const notice = this.storage.getObject(prefix + id, scope) as Notice | undefined;
++		return this.owner && notice?.owner === this.owner && notice.id === id ? notice : undefined;
++	}
++
++	private groups(): Notice[][] {
++		const notices = this.owned();
++		// Older records only have the displayed title. Do not match a potentially truncated or ambiguous title to a newer record.
++		const byTitle = new Map<string, string | null>();
++		for (const notice of notices) {
++			if (notice.fingerprint && notice.title.length < titleLimit) {
++				const previous = byTitle.get(notice.title);
++				byTitle.set(notice.title, previous === undefined || previous === notice.fingerprint ? notice.fingerprint : null);
++			}
+ 		}
++		const groups = new Map<string, Notice[]>();
++		for (const notice of notices) {
++			const key = notice.fingerprint ?? (notice.title.length >= titleLimit ? `occurrence:${notice.id}` : byTitle.get(notice.title) ?? `legacy:${notice.title}`);
++			const group = groups.get(key);
++			if (group) {
++				group.push(notice);
++			} else {
++				groups.set(key, [notice]);
++			}
++		}
++		return [...groups.values()];
+ 	}
++
++	list(): StudioNotice[] { return this.groups().slice(0, 100).map(group => ({ ...group[0], read: group.every(notice => notice.read) })); }
++	unread(): StudioNotice[] { return this.groups().flatMap(group => group.find(notice => !notice.read) ?? []); }
++	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
++	readAll(): void { this.markRead(this.owned()); }
+ 	read(id: string): void {
+-		const item = this.storage.getObject(prefix + id, scope) as Notice | undefined;
+-		if (this.owner && item?.owner === this.owner && item.id === id) { this.storage.store(prefix + id, { ...item, read: true }, scope, target); }
++		const notice = this.get(id);
++		if (notice) {
++			this.markRead(this.groups().find(group => group.some(item => item.id === id)) ?? [notice]);
++		}
++	}
++
++	private markRead(notices: Notice[]): void {
++		const entries = notices.filter(notice => !notice.read).map(notice => ({ key: prefix + notice.id, value: { ...notice, read: true }, scope, target }));
++		this.storage.storeAll(entries, false);
+ 	}
+ }
+diff --git a/src/vs/workbench/test/browser/notificationsToasts.test.ts b/src/vs/workbench/test/browser/notificationsToasts.test.ts
+index 85a4f664d0a29fb83004c6b0f837eeabeb9f7783..857086c9de7c50b0f20ef808a02c8c72a7d4306e 100644
+--- a/src/vs/workbench/test/browser/notificationsToasts.test.ts
++++ b/src/vs/workbench/test/browser/notificationsToasts.test.ts
+@@ -5,6 +5,7 @@
+ 
+ import assert from 'assert';
+ import { Dimension, getWindow } from '../../../base/browser/dom.js';
++import { toAction } from '../../../base/common/actions.js';
+ import { timeout } from '../../../base/common/async.js';
+ import { Event } from '../../../base/common/event.js';
+ import { DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
+@@ -70,7 +71,8 @@ suite('NotificationsToasts', () => {
+ 		const { container, model, toasts } = await createToasts();
+ 		const visible = Event.toPromise(toasts.onDidChangeVisibility);
+ 		let acknowledged = 0;
+-		model.addNotification({ severity: Severity.Info, message: 'New message', onDidAcknowledge: () => acknowledged++ });
++		model.addNotification({ severity: Severity.Info, message: 'New message' });
++		disposables.add(model.notifications[0].onDidAcknowledge(() => acknowledged++));
+ 		await visible;
+ 		const message = container.querySelector<HTMLElement>('.notification-list-item-message')!;
+ 		const selection = getWindow(message).getSelection()!;
+@@ -87,6 +89,19 @@ suite('NotificationsToasts', () => {
+ 		assert.deepStrictEqual([model.notifications.length, acknowledged], [0, 2]);
+ 	}));
+ 
++	test('acknowledges an ordinary notification before its Details action runs', async () => {
++		const { container, model, toasts } = await createToasts();
++		const visible = Event.toPromise(toasts.onDidChangeVisibility);
++		const interactions: string[] = [];
++		const details = toAction({ id: 'details', label: 'Details', run: () => interactions.push('details') });
++		model.addNotification({ severity: Severity.Error, message: 'Compilation failed', actions: { primary: [details] } });
++		disposables.add(model.notifications[0].onDidAcknowledge(() => interactions.push('acknowledged')));
++		await visible;
++		assert.deepStrictEqual(interactions, [], 'an automatically expanded notification is still unread');
++		container.querySelector<HTMLElement>('.notification-list-item-buttons-container .monaco-button')!.click();
++		assert.deepStrictEqual(interactions, ['acknowledged', 'details']);
++	});
++
+ 	test('shows one toast for rapidly added duplicate notifications', async () => {
+ 		const { container, model, toasts } = await createToasts();
+ 		const toastVisible = Event.toPromise(toasts.onDidChangeVisibility);
+diff --git a/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts b/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts
+index f794750aa6ed9919b255ce8d5370600031df901f..581ab82966b4ad701ebf48a25ed744fd190ad6bb 100644
+--- a/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts
++++ b/src/vs/workbench/test/browser/studioDesktopNotifications.test.ts
+@@ -47,6 +47,7 @@ suite('StudioDesktopNotifications', () => {
+ 			await post('old');
+ 			await post('current'); // Replaces the previous notification without acknowledging it.
+ 			const item = model.notifications[0];
++			item.acknowledge(); // The renderer acknowledges before invoking the Details action.
+ 			const opening = item.actions!.primary![0].run();
+ 			item.close(); // The primary button automatically closes its notification, without waiting for the action.
+ 			await target.complete('launchpadInbox');
