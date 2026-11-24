@@ -18,6 +18,7 @@ import './range-field.css';
 import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
+import { BotArtifactLibrary, type ArtifactAvailability } from './bot-artifacts';
 import { requestAction } from './action-dialog';
 import { fileSelectionOptions } from './image-cropper';
 import { ConversationForkDialog } from './conversation-fork-dialog';
@@ -110,7 +111,7 @@ function initialize(): void {
   });
   mountAggregateToolbar();
 
-  interface State { conversationUi?: KanbanConversationUi; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
+  interface State { conversationUi?: KanbanConversationUi; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string; botArtifacts?: ArtifactAvailability; botArtifactScope?: { instance: boolean; label: string } }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -277,11 +278,28 @@ function initialize(): void {
     resume: () => post({ type: 'queue-run' }),
     changed: () => queueMicrotask(() => { if (state) render(state, false); }),
   });
+  let openArtifacts = false;
+  let artifactSource: { conversationId: string; artifact: string } | undefined;
+  const library = new BotArtifactLibrary({ navigate: (conversationId, artifact) => {
+    artifactSource = { conversationId, artifact };
+    if (state?.activeId === conversationId) revealArtifact(); else navigate(conversationId);
+  } });
+  function revealArtifact() {
+    if (!artifactSource || state?.activeId !== artifactSource.conversationId) return;
+    const card = transcript.querySelector<HTMLElement>(`[data-bot-artifact="${artifactSource.artifact}"]`);
+    if (card) {
+      const previous = card.closest<HTMLDetailsElement>('details.conversation-segment');
+      if (previous) previous.open = true;
+      artifactSource = undefined; followingLatest = false;
+      card.scrollIntoView({ block: 'center' }); card.focus({ preventScroll: true });
+    }
+  }
   const dialogs = new ConversationTools({
     path: target => post({ type: 'open-path', ...target }),
     browser: url => post({ type: 'open-url', url }),
     account: () => post({ type: 'open-account' }),
     configurations: configurationPanel,
+    artifacts: { available: () => !!state?.botArtifacts && !hostHistory() && !embeddedConversation, open: () => library.open() },
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
       changed: policies => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies }) }),
@@ -1125,6 +1143,7 @@ function initialize(): void {
       view.output = new ConversationOutput(view.content, {
         displayText: text => displayMentions(text),
         composer: true,
+        artifact: item => library.card(item, !hostHistory() && !embeddedConversation),
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
         browser: url => post({ type: 'open-url', url }),
@@ -1280,6 +1299,10 @@ function initialize(): void {
     if (fromServer) submissions.retain(next.project.uri, new Set(next.sessions.map(session => session.id)));
     next = { ...next, sessions: next.sessions.map(session => submissions.project(next.project.uri, session, fromServer)) };
     state = next;
+    const artifactScope = next.botArtifactScope;
+    library.configure(embeddedConversation ? undefined : next.botArtifacts,
+      artifactScope?.instance ? t('Bot instance: {0}', artifactScope.label) : t('Original Bot: {0}', artifactScope?.label ?? next.project.name));
+    if (openArtifacts && next.project.projectType === 'bot') { openArtifacts = false; library.open(); }
     for (const [key, request] of stopRequests) {
       const target = next.sessions.find(session => session.id === request.sessionId);
       const recoveringStop = request.runId === target?.activeRunId && request.taskIds?.length
@@ -1472,6 +1495,7 @@ function initialize(): void {
     if (paramsNeedInit && !busy() && !pendingSend() && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
     updateControls();
     if (switching && !next.running && !composerArea.hidden && document.hasFocus()) { textarea.focus(); }
+    revealArtifact();
     if (switching) { transcriptScrollTop = transcript.scrollTop; }
     syncTranscriptLayout();
     if (conversationView && switching) { persist(); }
@@ -1741,6 +1765,10 @@ function initialize(): void {
       dialogs.skillsResult(event.data.requestId, event.data.value, event.data.type === 'error' ? event.data.message : undefined); return;
     }
     const message = event.data;
+    if (event.source === window.parent && message?.type === 'workflow-host' && message.openBotArtifacts === true && !embeddedConversation) {
+      if (state?.project.projectType === 'bot') library.open(); else openArtifacts = true;
+      return;
+    }
     if (message?.type === 'error' && state && message.projectUri && message.projectUri !== state.project.uri) return;
     if (fileIcons.receive(message)) return;
     if (message.type === 'error' && message.requestType === 'resolve') {

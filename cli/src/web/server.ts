@@ -48,6 +48,7 @@ import { projectServerBrowserLink } from './project-server-link';
 import { folderBotDataRoot, projectDataDirectory } from './project-data-directory';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import { hostConversation } from './host-conversation';
+import { respondToBotArtifacts } from './bot-artifacts';
 import type { EntryConversationSnapshot } from 'steamharness';
 
 import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
@@ -154,6 +155,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
   const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
+  const localArtifactHost = hostKind === 'studio' && options.host?.localBotArtifacts === true && !folderBot?.background;
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, folderBot, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
@@ -179,7 +181,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     run: (request, emit, onModelRequest) => {
       const settings = hydrateUserSettings(request.userSettings, userSettings);
-      const input = { ...request, userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
+      const input = { ...request, allowBotArtifactPublish: artifactStore && !isHostConversation(request.conversationId) ? true as const : undefined,
+        userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
     resolveParams: (...args) => executor.resolveParams(...args),
@@ -207,6 +210,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();
   const runtimePersistence = options.runtimePersistence ?? createLocalRuntimePersistence({ directory: path.join(activityDirectory, 'runtime') });
+  const artifactStore = localArtifactHost && project.projectType === 'bot' && descriptor.tools?.some(tool => tool.name === 'bot_files_publish')
+    ? runtimePersistence.botArtifacts?.({ projectId: project.id, entryId: project.entryId }) : undefined;
   let storageIdentity = '';
   let storageEpoch = 0;
   let storageReset = Promise.resolve();
@@ -274,7 +279,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project: publicProject, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: platformUi || aiConnection ? { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } } : undefined,
-    authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
+    authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision,
+    ...(localArtifactHost && project.projectType === 'bot' ? { botArtifacts: artifactStore ? 'ready' : 'upgrade',
+      botArtifactScope: { instance: !!folderBot, label: folderBot ? options.host?.localBotArtifactLabel || project.name : project.name } } : {}) });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
   };
@@ -1018,6 +1025,16 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
+        if (url.pathname === '/api/bot-artifacts' || url.pathname.startsWith('/api/bot-artifacts/')) {
+          const allowed = artifactStore && !studioPreviewMount(request) && host.host === new URL(origin).host;
+          try {
+            if (allowed && request.method === 'GET' && !url.pathname.endsWith('/content')) await refreshHistory();
+            // Host/IM conversations are intentionally not a source in this view.
+            respondToBotArtifacts(request, response, url, allowed ? artifactStore : undefined, json,
+              artifact => controller.sessions.some(session => session.id === artifact.source.conversationId && !session.origin));
+          } catch { if (!response.headersSent) json(response, 500, { code: 'BOT_ARTIFACTS_UNAVAILABLE' }); }
+          return;
+        }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
           const clientId = url.searchParams.get('clientId') ?? '';

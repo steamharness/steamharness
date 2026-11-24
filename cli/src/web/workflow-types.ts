@@ -218,6 +218,8 @@ export interface Run {
   resolvedInputs?: ResolvedInput[];
   resumeAfterRequestId?: string;
   toolPermissionPolicies?: ToolPolicies;
+  /** Internal host admission; never read from browser or model arguments. */
+  allowBotArtifactPublish?: true;
 }
 
 export interface Runtime {

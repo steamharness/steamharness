@@ -5,6 +5,7 @@ export { copyRuntimePersistence } from "./backup";
 export { createMemoryRuntimePersistence, SnapshotMemoryStorage } from "./memory";
 export type { BotMemoryScope, BotMemoryStore, BotMemoryRequest, BotMemoryEntry, BotMemorySummary, BotMemoryAddress, BotMemoryProperties } from "./bot-memory";
 export type { BotFileWorkspace } from "./bot-files";
+export type { BotArtifact, BotArtifactSource, BotArtifactStore } from "./bot-artifacts";
 export { createServerAgentStorage, ServerAgentStorage, type ServerAgentStorageOptions } from "./server";
 
 // Keep persisted delta semantics aligned with the bundled runtime. This helper

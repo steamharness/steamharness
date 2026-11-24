@@ -28,6 +28,8 @@ export function createRuntimeStateStorage(options: {
   };
   const persistence: RuntimePersistence = {
     botFiles: scope => resolve().botFiles?.(scope),
+    botArtifacts: scope => resolve().botArtifacts?.(scope),
+    allowBotArtifactPublish: options.persistence?.allowBotArtifactPublish === true,
     botMemory(scope) {
       const source = resolve();
       if (source.botMemory) return source.botMemory(scope);

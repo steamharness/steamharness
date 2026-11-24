@@ -5,13 +5,14 @@ import type { NodeContext } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import { currentBotRequestId } from "./bot-lifecycle";
 import { BOT_FILES_SYSTEM_PROMPT, BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES, createBotFileTools, resolveBotFiles } from "./bot-files";
+import { BOT_ARTIFACT_GUIDANCE, BOT_ARTIFACT_TOOL, createBotArtifactTool } from "./bot-artifact";
 import { readAgentToolDefinitions, resolveAgentPermissionPolicySetting } from "./permission";
 import { BUILTIN_AGENT_TOOL_NAMES, createBuiltinAgentTools } from "./tools";
 import type { AgentTool, AgentToolSet } from "./types";
 
 export function llmBotTools(overrides?: ToolPermissionDefinition[]): ToolPermissionDefinition[] {
   if (overrides !== undefined && !Array.isArray(overrides)) throw new HarnessError({ type: "input_validation", message: "Bot tools must be an array." });
-  const tools = new Map([...readAgentToolDefinitions(), ...BOT_FILE_TOOL_DEFINITIONS].map(tool => [tool.name, {
+  const tools = new Map([...readAgentToolDefinitions(), ...BOT_FILE_TOOL_DEFINITIONS, BOT_ARTIFACT_TOOL].map(tool => [tool.name, {
     ...tool,
     ...(tool.name === "runtime_info" ? { description: "查看本轮的项目、宿主与实际运行版本。" } : {}),
     enabled: tool.name === "runtime_info", autoApprove: tool.name === "runtime_info",
@@ -31,16 +32,19 @@ export async function createLLMBotToolRunner(
   definitions: ToolPermissionDefinition[], context: NodeContext,
   factory?: () => AgentToolSet | AgentTool[] | Promise<AgentToolSet | AgentTool[]>,
   permissionPolicy?: unknown,
+  localConversation = true,
 ) {
   const permissions = context.toolPermissions ?? createProjectToolPermissionContext({ definitions, projectName: "bot", runId: String(context.metadata?.runId ?? "run") });
   const enabled = new Set(definitions.filter(tool => permissions.getTool(tool.name)?.enabled).map(tool => tool.name));
-  const builtinNames = new Set<string>([...BUILTIN_AGENT_TOOL_NAMES, ...BOT_FILE_TOOL_NAMES]);
+  const builtinNames = new Set<string>([...BUILTIN_AGENT_TOOL_NAMES, ...BOT_FILE_TOOL_NAMES, BOT_ARTIFACT_TOOL.name]);
   const readOnly = resolveAgentPermissionPolicySetting(permissionPolicy) === "read-only";
   const files = enabled.has("bash") || BOT_FILE_TOOL_NAMES.some(name => enabled.has(name)) ? resolveBotFiles(context) : undefined;
   const workdir = path.resolve(String(context.metadata?.entryRootDir ?? context.runtimeInfo?.project.directory ?? process.cwd()));
   const builtin = createBuiltinAgentTools({ Type, scope: { workdir, allowedDirectories: [workdir] }, engine: "llm", runtimeInfo: context.runtimeInfo,
     botFiles: readOnly ? undefined : files });
   if (files) builtin.push(...createBotFileTools(files, readOnly));
+  const delivery = !readOnly && localConversation && enabled.has(BOT_ARTIFACT_TOOL.name) ? createBotArtifactTool(context) : undefined;
+  if (delivery) builtin.push(delivery);
   const created = factory && [...enabled].some(name => !builtinNames.has(name)) ? await factory() : undefined;
   const set: AgentToolSet | undefined = Array.isArray(created) ? { tools: created } : created;
   try {
@@ -58,9 +62,10 @@ export async function createLLMBotToolRunner(
 
     return {
       tools,
-      botFileGuidance: files && (active.has("bash") || BOT_FILE_TOOL_NAMES.some(name => active.has(name))) ? BOT_FILES_SYSTEM_PROMPT : undefined,
+      botFileGuidance: [files && (active.has("bash") || BOT_FILE_TOOL_NAMES.some(name => active.has(name))) && BOT_FILES_SYSTEM_PROMPT,
+        delivery && BOT_ARTIFACT_GUIDANCE].filter(Boolean).join("\n\n") || undefined,
       close: () => set?.close?.(),
-      async execute(call: ToolCall): Promise<{ result: ToolResultMessage; executed: boolean }> {
+      async execute(call: ToolCall): Promise<{ result: ToolResultMessage; executed: boolean; delivery?: unknown }> {
         context.abortSignal?.throwIfAborted();
         const error = (text: string, executed = false) => ({ result: { role: "toolResult" as const, toolCallId: call.id, toolName: call.name,
           content: [{ type: "text" as const, text }], isError: true, timestamp: Date.now() }, executed });
@@ -80,7 +85,8 @@ export async function createLLMBotToolRunner(
           const output = await tool.execute(call.id, args, context.abortSignal);
           context.abortSignal?.throwIfAborted();
           return { result: { role: "toolResult", toolCallId: call.id, toolName: tool.name, content: output.content,
-            isError: output.isError === true, timestamp: Date.now() }, executed: true };
+            isError: output.isError === true, timestamp: Date.now() }, executed: true,
+            ...(tool === delivery && output.isError !== true ? { delivery: output.details } : {}) };
         } catch {
           context.abortSignal?.throwIfAborted();
           return error("Tool execution failed.", true);

@@ -223,6 +223,18 @@ test('launching a source entry reuses the project window and leaves Steam before
   assert.equal(f.saved.get('studio.workbenchMode'), 'ide');
 });
 
+test('a release Bot opens its requested artifact library without passing a conversation ID', async t => {
+  const uri = 'file:///release';
+  const f = fixture(t, new Map(), { releaseOnly: true, projectUri: uri }, false);
+  f.state.startupEntry = { uri, entryId: 'bot', botArtifacts: true };
+  const starts = [];
+  f.prepare = async (...args) => { starts.push(args); return true; };
+  f.render(); f.publish(true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(starts, [[uri, 'bot', undefined, true]]);
+  assert.deepEqual(f.errors, []);
+});
+
 test('a window closed before the first render does not create Steam UI or start a project', t => {
   const f = fixture(t, new Map(), { releaseOnly: true, projectUri: 'file:///release' }, false);
   f.controller.dispose();

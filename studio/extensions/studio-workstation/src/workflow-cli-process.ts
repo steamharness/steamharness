@@ -113,6 +113,7 @@ export async function startProjectCli(options: {
   surface: 'editor' | 'assistant'; platform?: boolean; assistant?: Project['assistant']; signal?: AbortSignal;
   authRoot?: string;
   folderBot?: Project['folderBot'];
+  localBotArtifactLabel?: string;
   assistantProjectDir?: string;
   expectedProjectId?: string;
   webAppEntries?: import("@steamharness/project-manifest").ProjectEntry[];
@@ -228,7 +229,8 @@ export async function startProjectCli(options: {
         }
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
-      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [] })}\n`);
+      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [],
+        ...(options.localBotArtifactLabel && { localBotArtifacts: true, localBotArtifactLabel: options.localBotArtifactLabel }) })}\n`);
     });
     webAppConfigurations = ready.webAppConfigurations ?? {};
     readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;

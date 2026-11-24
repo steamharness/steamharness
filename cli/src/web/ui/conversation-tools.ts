@@ -17,6 +17,7 @@ export interface ProjectSettingsOptions {
   browser?(url: string): void;
   account?(): void;
   configurations?: ProjectConfigurationsPanel;
+  artifacts?: { available(): boolean; open(): void };
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
   skills?: SkillGuidesLoader;
@@ -104,6 +105,11 @@ export class ConversationTools {
       const description = document.createElement('p'); description.className = 'project-information-description'; description.textContent = project.manifest.description; text.append(description);
     }
     identity.append(text); overview.append(identity);
+    if (this.settings.artifacts?.available()) {
+      const open = iconButton('archive', t('Bot artifact library'), () => { this.close(); this.settings.artifacts?.open(); });
+      open.className = 'prompt-button'; open.append(document.createTextNode(t('Bot artifact library')));
+      overview.append(open);
+    }
     for (const section of projectInformation(project)) {
       const details = document.createElement('details'); details.className = 'project-information-section'; details.open = !!section.expanded;
       const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('chevron-right')}<span>${escapeHtml(section.title)}</span>`;

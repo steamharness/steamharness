@@ -1,0 +1,178 @@
+diff --git a/src/vs/platform/window/common/studioProjectWindow.ts b/src/vs/platform/window/common/studioProjectWindow.ts
+index 7b5211f134913791f3ba4faebaba296863c04bd3..163a79a9c19f2a14f35d0f450ff3d0ee4b701181 100644
+--- a/src/vs/platform/window/common/studioProjectWindow.ts
++++ b/src/vs/platform/window/common/studioProjectWindow.ts
+@@ -13,19 +13,21 @@ export interface IStudioProjectEntry {
+ 	readonly uri: string;
+ 	readonly entryId?: string;
+ 	readonly conversationId?: string;
++	readonly botArtifacts?: true;
+ }
+ 
+ export function studioEntryForOpenables(toOpen: readonly IWindowOpenable[], options: IOpenWindowOptions): IStudioProjectEntry | undefined {
+ 	const [item] = toOpen;
+ 	const entry = options.studioProjectEntry;
+ 	if (!entry || toOpen.length !== 1 || options.addMode || options.removeMode) { return undefined; }
+-	const { conversationId } = entry;
++	const { conversationId, botArtifacts } = entry;
+ 	if (conversationId !== undefined && (typeof conversationId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(conversationId))) { return undefined; }
++	if (botArtifacts !== undefined && botArtifacts !== true) { return undefined; }
+ 	if (isFolderToOpen(item)) {
+-		return { uri: URI.revive(item.folderUri).toString(), entryId: entry.entryId, ...(conversationId && { conversationId }) };
++		return { uri: URI.revive(item.folderUri).toString(), entryId: entry.entryId, ...(conversationId && { conversationId }), ...(botArtifacts && { botArtifacts }) };
+ 	}
+-	if (conversationId && isWorkspaceToOpen(item) && hasWorkspaceFileExtension(URI.revive(item.workspaceUri))) {
+-		return { uri: URI.revive(item.workspaceUri).toString(), conversationId };
++	if ((conversationId || botArtifacts) && isWorkspaceToOpen(item) && hasWorkspaceFileExtension(URI.revive(item.workspaceUri))) {
++		return { uri: URI.revive(item.workspaceUri).toString(), ...(conversationId && { conversationId }), ...(botArtifacts && { botArtifacts }) };
+ 	}
+ 	return undefined;
+ }
+@@ -39,7 +41,7 @@ export function studioEntryForFolder(entry: IStudioProjectEntry | undefined, fol
+ 
+ export function studioEntryForWorkspace(entry: IStudioProjectEntry | undefined, workspace: IAnyWorkspaceIdentifier | undefined): IStudioProjectEntry | undefined {
+ 	if (isSingleFolderWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.uri); }
+-	if (entry?.conversationId && isWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.configPath); }
++	if ((entry?.conversationId || entry?.botArtifacts) && isWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.configPath); }
+ 	return undefined;
+ }
+ 
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index 59961e83ac94d248ae208dc80093b33b6dbf818b..269224c6dd5338f7efaea98c22d8a8863f998a2a 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -30,6 +30,7 @@ export interface LibraryActions {
+ 	importProjects(): void;
+ 	project(p: LaunchpadProject, entryId?: string): void;
+ 	runProject?(p: LaunchpadProject, entryId?: string): void;
++	openBotArtifacts?(p: LaunchpadProject, entryId?: string): void;
+ 	remove(p: LaunchpadProject): void;
+ 	reveal?(p: LaunchpadProject): void;
+ 	copyPath(p: LaunchpadProject): void;
+@@ -427,12 +428,30 @@ export class LaunchpadLibrary extends Disposable {
+ 			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), studioBotIcon);
+ 			const im = this.detailActionGroup(selected, t('IM integration', 'IM 集成'), 'comment-discussion');
+ 			secondaryActions.append(bot.element, im.element);
++			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
++			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
++			const artifacts = this.actions.openBotArtifacts && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
++			if (artifacts) {
++				const group = element('section', 'lp-detail-action-group');
++				const label = t('Bot management', 'Bot 管理');
++				group.setAttribute('aria-label', label);
++				const controls = element('div', 'lp-detail-group-actions');
++				for (const entry of botEntries) {
++					const title = t('Artifact library', '产物库');
++					const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, 'archive',
++						() => this.actions.openBotArtifacts?.(selected, entry?.entryId), 'studio-project-action lp-outline');
++					open.dataset.key = `bot-artifacts:${selected.uri}:${entry?.entryId ?? ''}`;
++					controls.append(open);
++				}
++				group.append(element('h2', '', label), controls);
++				secondaryActions.append(group);
++			}
+ 			// Local actions resolve independently of IM. Update each group only when its actions change.
+ 			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
+ 			this.updateDetailActions = () => {
+ 				bot.update(local?.items);
+ 				im.update(account?.items);
+-				secondaryActions.hidden = bot.element.hidden && im.element.hidden;
++				secondaryActions.hidden = bot.element.hidden && im.element.hidden && !artifacts;
+ 			};
+ 			this.updateDetailActions();
+ 			const usage = this.projectUsage(selected);
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 17d8eac0736a625c86e7fd6872095cfb4d513ec3..128b3f006e9d90866c93f986923b14af774f6bd0 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -230,7 +230,10 @@ export class StudioModeContribution extends Disposable {
+ 				if (next) {
+ 					let prepared: boolean | undefined;
+ 					const prepare = async () => {
+-						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri, ...(entry ? [entry.entryId, entry.conversationId] : [])); }
++						try {
++							const target = [projectUri, ...(entry ? [entry.entryId] : []), ...(entry?.conversationId || entry?.botArtifacts ? [entry.conversationId] : []), ...(entry?.botArtifacts ? [true] : [])];
++							return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', ...target);
++						}
+ 						catch (error) {
+ 							if (revision !== this.revision || this._store.isDisposed) { return undefined; }
+ 							throw error;
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 0088fdcc42ccfb1c40482d2a675220ae171b76d1..ac4313b448f6b604d41e645b3185595d4608f85e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -137,6 +137,7 @@ export class StudioLaunchpad extends Disposable {
+ 			create: () => run(commands.executeCommand('studio.createProject')),
+ 			importProjects: () => run(this.pickProjectsToImport()),
+ 			project: (project, entryId) => run(this.openProject(project, entryId)),
++			openBotArtifacts: (project, entryId) => run(this.openProject(project, entryId, undefined, true)),
+ 			remove: project => run(this.removeProject(project)),
+ 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
+ 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
+@@ -478,14 +479,14 @@ export class StudioLaunchpad extends Disposable {
+ 		return true;
+ 	}
+ 
+-	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string): Promise<void> {
++	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string, botArtifacts?: true): Promise<void> {
+ 		if (project.builtin) {
+-			await this.openBuiltinProject(project, entryId);
++			await this.openBuiltinProject(project, entryId, botArtifacts);
+ 			return;
+ 		}
+ 		if (project.managed) {
+ 			const result = await this.commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, 'open-folder-bot');
+-			if (result?.workspace) { await this.openManagedWorkspace(result.workspace); }
++			if (result?.workspace) { await this.openManagedWorkspace(result.workspace, undefined, botArtifacts); }
+ 			return;
+ 		}
+ 		const uri = URI.parse(project.uri);
+@@ -502,18 +503,18 @@ export class StudioLaunchpad extends Disposable {
+ 			distribution = metadata?.distribution;
+ 		}
+ 		if (this._store.isDisposed) { return; }
+-		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId);
++		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId || !!botArtifacts);
+ 		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
+ 		if (!runEntry && live?.windowId !== undefined) {
+ 			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
+ 		}
+ 		this.missing.delete(project.uri);
+ 		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
+-			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: { entryId, conversationId } } : {}),
++			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: { entryId, conversationId, botArtifacts } } : {}),
+ 		});
+ 	}
+ 
+-	private async openBuiltinProject(project: LaunchpadProject, entryId?: string): Promise<void> {
++	private async openBuiltinProject(project: LaunchpadProject, entryId?: string, botArtifacts?: true): Promise<void> {
+ 		if (this.openingBuiltins.has(project.uri)) { return; }
+ 		this.openingBuiltins.add(project.uri);
+ 		try {
+@@ -523,21 +524,21 @@ export class StudioLaunchpad extends Disposable {
+ 				.then(([declaration, manifest]) => parseStudioReleaseProject(project.uri, declaration, manifest, this.language), () => undefined);
+ 			if (this._store.isDisposed) { return; }
+ 			if (!release) { throw new Error(this.language.startsWith('zh') ? '内置项目的发行文件不可用，请重新构建或修复 Studio。' : 'The built-in project release is unavailable. Rebuild or repair Studio.'); }
+-			const windows = entryId === undefined ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
++			const windows = entryId === undefined && !botArtifacts ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
+ 			if (this._store.isDisposed) { return; }
+ 			const live = windows.find(window => isSingleFolderWorkspaceIdentifier(window.workspace) && extUriBiasedIgnorePathCase.isEqual(URI.revive(window.workspace.uri), uri));
+ 			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }
+-			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: entryId === undefined ? {} : { entryId } }); }
++			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: { entryId, botArtifacts } }); }
+ 		} finally { this.openingBuiltins.delete(project.uri); }
+ 	}
+ 
+-	private async openManagedWorkspace(value: string, conversationId?: string): Promise<void> {
++	private async openManagedWorkspace(value: string, conversationId?: string, botArtifacts?: true): Promise<void> {
+ 		const uri = URI.parse(value);
+ 		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
+ 		this.openingManaged.add(value);
+ 		try {
+-			if (conversationId) {
+-				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId } });
++			if (conversationId || botArtifacts) {
++				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId, botArtifacts } });
+ 				return;
+ 			}
+ 			const windows = await this.native.getWindows({ includeAuxiliaryWindows: false });

@@ -120,6 +120,33 @@ export function createBotFileWorkspace(runtimeRoot: string, scopeKey: string, cl
       } finally { await handle.close(); }
     },
 
+    async snapshotArtifact(ref: string, maxBytes: number, signal?: AbortSignal) {
+      if (!ref.startsWith("artifacts/")) throw new Error("Only files under artifacts can be delivered.");
+      signal?.throwIfAborted();
+      const file = await target(ref);
+      const before = assertRegularFile(await stat(file));
+      const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+      try {
+        const opened = assertRegularFile(await handle.stat());
+        if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("The file changed while opening it.");
+        if (opened.size > maxBytes) throw new Error(`A delivered file must be at most ${maxBytes / 1024 / 1024} MiB.`);
+        const bytes = Buffer.alloc(opened.size);
+        let offset = 0;
+        while (offset < bytes.length) {
+          signal?.throwIfAborted();
+          const { bytesRead } = await handle.read(bytes, offset, Math.min(bytes.length - offset, 1024 * 1024), offset);
+          if (!bytesRead) break;
+          offset += bytesRead;
+        }
+        const after = await handle.stat();
+        if (offset !== bytes.length || after.nlink !== 1 || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
+          throw new Error("The file changed during delivery; try again when it is ready.");
+        }
+        signal?.throwIfAborted();
+        return { name: path.basename(file), bytes };
+      } finally { await handle.close(); }
+    },
+
     async write(ref: string, text: string, overwrite: boolean) {
       const bytes = Buffer.byteLength(text);
       if (bytes > BOT_FILE_WRITE_LIMIT || text.includes("\0")) throw new Error("Write at most 128 KiB of UTF-8 text without NUL per file.");

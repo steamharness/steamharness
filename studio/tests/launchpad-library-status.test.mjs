@@ -8,7 +8,7 @@ const kernel = new URL('../upstream/vscode/src/vs/workbench/browser/', import.me
 const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('studioLaunchpadLibrary.ts', kernel))],
   bundle: true, platform: 'browser', format: 'iife', globalName: 'studio', loader: { '.css': 'empty' }, write: false });
 
-function fixture(t, language = 'en') {
+function fixture(t, language = 'en', actions = {}) {
   const { window } = new JSDOM('', { runScripts: 'outside-only' });
   const { LaunchpadLibrary } = window.eval(`${outputFiles[0].text}\nstudio;`);
   const project = (name, extra) => ({ uri: `file:///${name}`, kind: 'folder', path: `/${name}`, name, ...extra });
@@ -21,7 +21,7 @@ function fixture(t, language = 'en') {
     },
     showInstantHover(options, focus) { guide.activation = { options, focus }; },
   };
-  const library = new LaunchpadLibrary((en, zh) => language === 'zh-cn' ? zh : en, { hoverService, readActivity: projects => read(projects) });
+  const library = new LaunchpadLibrary((en, zh) => language === 'zh-cn' ? zh : en, { hoverService, readActivity: projects => read(projects), ...actions });
   t.after(() => { library.dispose(); window.close(); });
   window.document.body.append(library.element);
   const row = p => library.element.querySelector(`.lp-index-row[data-key="index:${p.uri}"]`);
@@ -30,6 +30,23 @@ function fixture(t, language = 'en') {
 }
 
 for (const language of ['en', 'zh-cn']) {
+  test(`the artifact library is a secondary action for the chosen Bot entry (${language})`, t => {
+    const calls = [], f = fixture(t, language, { openBotArtifacts: (p, entry) => calls.push([p.uri, entry]) });
+    const bot = f.project('aggregate', { projectType: 'workflow', entries: [
+      { type: 'workflow', entryId: 'build', name: 'Build', primary: true },
+      { type: 'bot', entryId: 'ops', name: 'Ops' }, { type: 'bot', entryId: 'qa', name: 'QA' },
+    ] });
+    f.library.update([bot], [], true, '');
+    f.library.show(bot.uri);
+    const secondary = f.library.element.querySelector('.lp-detail-secondary');
+    const controls = [...secondary.querySelectorAll('button[data-key^="bot-artifacts:"]')];
+    assert.ok(!secondary.hidden);
+    assert.deepEqual(controls.map(button => button.textContent.trim()), language === 'zh-cn' ? ['产物库 · Ops', '产物库 · QA'] : ['Artifact library · Ops', 'Artifact library · QA']);
+    assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-artifacts:"]'), null);
+    controls[1].click();
+    assert.deepEqual(calls, [[bot.uri, 'qa']]);
+  });
+
   test(`the library heading opens a localized status guide by hover or activation (${language})`, t => {
     const { library, guide } = fixture(t, language);
     const help = library.element.querySelector('.lp-rail-heading > h2 + button');

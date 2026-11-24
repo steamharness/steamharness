@@ -34,13 +34,14 @@ export class ProjectSidebar implements vscode.Disposable {
   readonly onDidChange = this.change.event;
   private readonly builtin = new Map<string, { item: SidebarItem; viewId: string; provider: vscode.WebviewViewProvider; hosted?: HostedSidebarProject }>();
   private readonly providers = new Map<string, { dispose(): void }>();
-  private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void>; openConversation(id: string): void }>();
+  private readonly mounts = new Map<string, { close(): void; recheck(): Promise<void>; openConversation(id: string): void; openArtifacts(): void }>();
   private resident?: { id: string; key: string; signal: AbortSignal; ready: Promise<{ key: string; preview: HostedSidebarPreview; title: string }>; close(): void };
   private syncQueue = Promise.resolve();
   private editQueue = Promise.resolve();
   private started = false;
   private assistantOverride?: { project: SidebarProjectSource; exclusive: boolean };
   private assistantConversation?: string;
+  private assistantArtifacts = false;
   private workspaceProjects = new Map<string, WorkspaceSidebarProject>();
   private disposed = false;
   private visibleTabs = '';
@@ -138,6 +139,15 @@ export class ProjectSidebar implements vscode.Disposable {
     const mounted = this.mounts.get('assistant');
     if (mounted) mounted.openConversation(id);
     else this.assistantConversation = id;
+    await this.sync();
+    await vscode.commands.executeCommand('studio.developerAssistant.focus');
+    return true;
+  }
+
+  async openAssistantArtifacts(): Promise<boolean> {
+    if (!this.assistantOverride?.exclusive || this.disposed) return false;
+    const mounted = this.mounts.get('assistant');
+    if (mounted) mounted.openArtifacts(); else this.assistantArtifacts = true;
     await this.sync();
     await vscode.commands.executeCommand('studio.developerAssistant.focus');
     return true;
@@ -312,7 +322,8 @@ export class ProjectSidebar implements vscode.Disposable {
     this.mounts.get(id)?.close();
     let closed = false, opening: AbortController | undefined, conversation: AssistantConversation | undefined;
     let selection = id === 'assistant' ? this.assistantConversation : undefined;
-    if (id === 'assistant') this.assistantConversation = undefined;
+    let artifactsPending = id === 'assistant' && this.assistantArtifacts;
+    if (id === 'assistant') { this.assistantConversation = undefined; this.assistantArtifacts = false; }
     const lifecycle: vscode.Disposable[] = [];
     const status = (message: string, retry = false) => {
       if (!closed) view.webview.html = sidebarStatusHtml(message, retry ? t('Retry') : undefined);
@@ -331,6 +342,7 @@ export class ProjectSidebar implements vscode.Disposable {
         conversation = running;
         if (selection && selection !== target) running.openConversation?.(selection);
         selection = undefined;
+        if (artifactsPending) { artifactsPending = false; running.openArtifacts?.(); }
         void running.closed.then(() => {
           if (!closed && conversation === running) { conversation = undefined; void running.dispose(); status(t('The project stopped.'), true); }
         });
@@ -357,6 +369,7 @@ export class ProjectSidebar implements vscode.Disposable {
         if (conversation?.openConversation) conversation.openConversation(target);
         else selection = target;
       },
+      openArtifacts: () => { if (conversation?.openArtifacts) conversation.openArtifacts(); else artifactsPending = true; },
     };
     this.mounts.set(id, current);
     view.webview.options = { enableScripts: true, localResourceRoots: [] };

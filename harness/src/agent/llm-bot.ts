@@ -12,6 +12,7 @@ import { defineProject, runStreamNode } from "../workflow/index";
 import { HarnessError } from "../workflow/errors";
 import { deepFreezeBotOutput, replayBotOutput, type BotDefinition, type BotLLMOptions } from "./bot";
 import { withBotRequest } from "./bot-lifecycle";
+import { botArtifactChunks } from "./bot-artifact";
 import { createLLMBotToolRunner, llmBotTools } from "./llm-bot-tools";
 import { selectConfiguredConversationModel } from "./model-resolution";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
@@ -111,7 +112,7 @@ export function createLLMBot<Input extends AgentInput>(
       const node = createOutputNode<typeof nodeInput, AgentOutputPayload>({ name: NODE, metadata: { type: "llm-stream" },
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
-          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)), finalInput.permissionPolicy);
+          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)), finalInput.permissionPolicy, !host);
           const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions, runner.botFileGuidance].filter(Boolean).join("\n\n") || undefined;
           const round: LLMBotToolRound = { tools: runner.tools, transcript: [] };
           const callIds = new Set<string>();
@@ -149,8 +150,9 @@ export function createLLMBot<Input extends AgentInput>(
               }
               round.transcript.push(response.message);
               for (const call of calls) {
-                const { result, executed: ran } = await runner.execute(call);
+                const { result, executed: ran, delivery } = await runner.execute(call);
                 if (ran) executed++;
+                if (delivery) yield* botArtifactChunks(delivery);
                 round.transcript.push(result);
               }
             }

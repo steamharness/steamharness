@@ -111,6 +111,20 @@ test('Bot conversation launches keep the default entry and route to the exact fo
   assert.equal(f.studioEntryForOpenables([{ workspaceUri: workspace }], { studioProjectEntry: { conversationId: 'malformed' } }), undefined);
 });
 
+test('artifact library launches once for the selected Bot folder or managed instance', () => {
+  const f = fixture();
+  const folder = f.URI.file('/projects/chat');
+  const instance = f.URI.file('/studio/instances/bot.code-workspace');
+  const options = { studioProjectEntry: { entryId: 'assistant', botArtifacts: true } };
+  const bot = f.studioEntryForOpenables([{ folderUri: folder }], options);
+  assert.equal(f.studioEntryForWorkspace(bot, { id: 'bot', uri: folder }).botArtifacts, true);
+  assert.equal(bot.entryId, 'assistant');
+  const managed = f.studioEntryForOpenables([{ workspaceUri: instance }], options);
+  assert.deepEqual({ ...f.studioEntryForWorkspace(managed, { id: 'copy', configPath: instance }) }, { uri: instance.toString(), botArtifacts: true });
+  assert.equal(f.studioEntryForWorkspace(managed, { id: 'another', configPath: f.URI.file('/studio/instances/different.code-workspace') }), undefined);
+  assert.equal(f.studioEntryForOpenables([{ folderUri: folder }], { studioProjectEntry: { botArtifacts: 'true' } }), undefined);
+});
+
 test('the project-window patch reproduces the kernel changes repeatedly without changing the index', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-project-window-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));

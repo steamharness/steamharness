@@ -16,6 +16,7 @@ interface OutputOptions {
   copy(text: string, button: HTMLButtonElement): void;
   plan(text: string): void;
   file(id: string): void;
+  artifact?(item: OutputItem): HTMLElement;
   path?(target: FileLinkTarget): void;
   browser?(url: string): void;
   subagent?(conversationId: number, ownerId: string): void;
@@ -154,16 +155,18 @@ export class ConversationOutput {
       block.text?.trim() || block.item && typeof block.item.content === 'string' && block.item.content.trim()
       && (block.item.metadata?.plan === true || !block.item.collapsed && ['markdown', 'text', undefined].includes(block.item.contentType))
     );
+    const isDelivery = (block: OutputBlock): boolean => !('entries' in block) && block.item?.metadata?.kind === 'bot-artifact';
     let finalIndex = -1, lastCardIndex = -1;
     for (const [index, block] of blocks.entries()) {
       if (isFinal(block)) finalIndex = index;
-      if (!('entries' in block) && block.card) lastCardIndex = index;
+      if (isDelivery(block) || !('entries' in block) && block.card) lastCardIndex = index;
     }
     if (finalIndex < 0) finalIndex = lastCardIndex;
     // A failed turn keeps its separate error message visible; all prior output
     // belongs to its process. Without an error, keep the available diagnostics.
     const failed = (message.status === 'failed' || message.status === 'timed_out') && !!message.error?.trim();
     const intermediate = new Set(blocks.filter((block, index) => {
+      if (isDelivery(block)) return false;
       if (failed) return true;
       if (!('entries' in block) && (block.card || block.item && ringOutputContent(block.item))) return false;
       return index < finalIndex || 'entries' in block || !!block.answer || !!block.timer;
@@ -419,6 +422,10 @@ export class ConversationOutput {
   }
 
   private item(item: OutputItem, files: Attachment[]): HTMLElement {
+    if (item.metadata?.kind === 'bot-artifact') {
+      if (this.options.artifact) return this.options.artifact(item);
+      const hidden = document.createElement('div'); hidden.hidden = true; return hidden;
+    }
     const record = activityRecord(item);
     if (record) return renderActivityRecord(record, files, this.options);
     if (ringOutputContent(item)) {

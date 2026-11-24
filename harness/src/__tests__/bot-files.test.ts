@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { link, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -211,6 +211,88 @@ test("a Bot file write with auto-approve off parks without creating a file", { t
   await assert.rejects(async () => bot.workflow.run({ errCode: 0, errMessage: "", prompt: "Write a report" }, current), /waiting for approval/);
   assert.equal(approvals.length, 1);
   assert.equal((await files.list(undefined, 0, 40)).exists, false);
+});
+
+test("artifact delivery is lazy, immutable, separately scoped, and fenced by a durable call receipt", async t => {
+  const directory = await fixture(t), scope = createTestResources();
+  const persistence = createLocalRuntimePersistence({ directory });
+  const isolate = createLocalRuntimePersistence({ directory: path.join(directory, 'folder-bots', 'copy') });
+  t.after(async () => { await isolate.close(); await persistence.close(); });
+  const store = persistence.botArtifacts!(scope)!;
+  assert.deepEqual(store.list(), { artifacts: [] });
+  await assert.rejects(stat(path.join(directory, 'bot-deliveries')), { code: 'ENOENT' });
+  const files = persistence.botFiles!(scope)!;
+  const { artifacts, temp, root } = await files.list(undefined, 0, 1);
+  const ref = `${artifacts}/报告.md`;
+  const source = { conversationId: 'original', requestId: 'send', runId: 'worker', outputId: 'tool' };
+  await files.write(ref, 'original', false);
+  await files.write(`${temp}/tmp.txt`, 'temporary', false);
+  await assert.rejects(store.publish({ path: `${temp}/tmp.txt` }, source, 'tmp'), /Only files under artifacts/);
+  await assert.rejects(store.publish({ path: `${artifacts}/../report` }, source, 'escape'), /Bot-relative path/);
+  const large = await files.write(`${artifacts}/large.txt`, '', false);
+  await truncate(large.absolutePath, 50 * 1024 * 1024 + 1);
+  await assert.rejects(store.publish({ path: `${artifacts}/large.txt` }, source, 'large'), /50 MiB/);
+  await mkdir(path.join(root, artifacts, 'folder'));
+  await assert.rejects(store.publish({ path: `${artifacts}/folder` }, source, 'folder'), /regular file/);
+  await link(large.absolutePath, path.join(root, artifacts, 'alias.txt'));
+  await assert.rejects(store.publish({ path: `${artifacts}/alias.txt` }, source, 'alias'), /regular file/);
+  const [first, duplicate] = await Promise.all([store.publish({ path: ref }, source, 'once'), store.publish({ path: ref }, source, 'once')]);
+  assert.deepEqual(first, duplicate);
+  await files.write(ref, 'replacement', true);
+  assert.deepEqual(await store.publish({ path: ref }, { ...source, runId: 'reconnected' }, 'once'), first);
+  await assert.rejects(store.publish({ path: ref, title: 'Changed' }, source, 'once'), /different file/);
+  const second = await store.publish({ path: ref, title: 'Second delivery' }, { ...source, conversationId: 'later' }, 'again');
+  const page = store.list(undefined, 1);
+  assert.deepEqual(page.artifacts, [second]); assert.deepEqual(store.list(page.nextBefore, 1).artifacts, [first]);
+  assert.equal(isolate.botArtifacts!(scope)!.get(first.id), undefined);
+  assert.equal(persistence.botArtifacts!({ ...scope, entryId: 'another' })!.get(first.id), undefined);
+  await persistence.close();
+  const reopened = createLocalRuntimePersistence({ directory }); t.after(() => reopened.close());
+  const saved = reopened.botArtifacts!(scope)!;
+  assert.equal(Buffer.from(saved.read(first.id)!.bytes).toString(), 'original');
+  assert.equal(saved.delete(first.id), true);
+  assert.equal(saved.get(first.id), undefined);
+  assert.equal(saved.read(first.id), undefined);
+  assert.equal(saved.delete(first.id), false);
+  await assert.rejects(saved.publish({ path: ref }, source, 'once'), /removed by the user/);
+  assert.equal((await reopened.botFiles!(scope)!.read(ref, 0)).text, 'replacement');
+});
+
+test("an admitted Agent Bot publishes a dedicated card; Plan and non-admitted hosts never offer delivery", { timeout: 15_000 }, async t => {
+  const directory = await fixture(t);
+  const allowed = createLocalRuntimePersistence({ directory, allowBotArtifactPublish: true });
+  const denied = createLocalRuntimePersistence({ directory });
+  t.after(async () => { await allowed.close(); await denied.close(); });
+  const mock = fauxProvider({ models: [{ id: "delivery", contextWindow: 100_000, maxTokens: 1000 }] });
+  const models = createModels(); models.setProvider(mock.provider);
+  const bot = defineBot({ engine: "agent", memory: { enabled: false }, agent: { models, resolvedModel: models.getModel("faux", "delivery")!, tools: [], ...{ retryDelayMs: 0 } } });
+  const run = async (persistence: typeof allowed, mode: "build" | "plan", invoke: boolean) => {
+    const current = context({ runtimePersistence: persistence, runId: "workflow-run" });
+    const files = persistence.botFiles!(current)!;
+    const locations = await files.list(undefined, 0, 40);
+    const ref = `${locations.artifacts}/report.md`;
+    if (invoke) await files.write(ref, "report", false);
+    current.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: "bot", runId: "workflow-run" });
+    let offered = false;
+    mock.setResponses([request => {
+      offered = getCurrentTools(request.messages).some(tool => tool.name === "bot_files_publish");
+      return invoke ? fauxAssistantMessage([fauxToolCall("bot_files_publish", { path: ref, title: "Report" })], { stopReason: "toolUse" }) : fauxAssistantMessage("Done");
+    }, fauxAssistantMessage("Done")]);
+    const output = await withUserSettings({ agent: { permissionPolicy: "workspace" } }, () => bot.workflow.run({
+      errCode: 0, errMessage: "", agent: mode, requestId: "stable-request", prompt: "Deliver the report" }, current));
+    assert.equal(offered, invoke);
+    return { current, output };
+  };
+  await run(denied, 'build', false);
+  await run(allowed, 'plan', false);
+  const { current, output } = await run(allowed, 'build', true);
+  const [artifact] = allowed.botArtifacts!(current)!.list().artifacts;
+  assert.ok(artifact);
+  assert.equal(artifact.source.requestId, 'stable-request');
+  assert.equal(artifact.source.conversationId, current.conversation.conversationId);
+  const card = output.items.find(item => item.metadata?.kind === 'bot-artifact');
+  assert.equal(card?.id, artifact.id);
+  assert.deepEqual(card?.content, { id: artifact.id, name: 'report.md', size: 6 });
 });
 
 test("LLM Bot file tools are opt-in, respect read-only, and use the same host storage", async t => {

@@ -2,6 +2,17 @@ const entryBase = () => document.querySelector<HTMLMetaElement>('meta[name=steam
 const studioMount = () => /^\/p\/[\w-]{43}(?=\/|$)/.exec(entryBase())?.[0] ?? '';
 const sessionKey = () => `steamharness-web-session${studioMount()}`;
 
+/** Embedded Studio frames may not receive the session cookie. Keep the token in a header. */
+export function requestBotArtifact(suffix: string, init: RequestInit = {}): Promise<Response> {
+  if (!/^(?:\?before=[1-9]\d*|\/ba_[a-f0-9]{32}(?:\/content(?:\?preview=1)?)?)?$/u.test(suffix)) return Promise.reject(new Error('Invalid artifact route.'));
+  const url = new URL(`${entryBase()}/api/bot-artifacts${suffix}`, location.href);
+  if (url.origin !== location.origin) return Promise.reject(new Error('Invalid artifact origin.'));
+  const headers = new Headers(init.headers);
+  const token = sessionStorage.getItem(sessionKey());
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url.pathname + url.search, { ...init, headers, cache: 'no-store', redirect: 'error' });
+}
+
 function mountedPath(path: string): string {
   const base = entryBase(), mount = studioMount();
   if (!path.startsWith('/') || path.startsWith('//') || mount && path.startsWith(`${mount}/`)) return path;

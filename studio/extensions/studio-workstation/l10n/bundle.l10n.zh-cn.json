@@ -366,6 +366,7 @@
   "Reconnect": "恢复连接",
   "Reconnecting": "重连中",
   "Refresh": "刷新",
+  "Update the project CLI to open the Bot artifact library.": "更新该项目的 CLI 后即可打开 Bot 产物库。",
   "Related project \"{0}\" has not been imported. Import it first.": "关联项目“{0}”尚未导入，请先导入。",
   "Related Projects": "关联项目",
   "Related resources": "关联资源",

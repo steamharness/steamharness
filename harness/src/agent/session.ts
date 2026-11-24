@@ -12,6 +12,7 @@ import type { RunOutputItemInput } from "../node/output/index";
 import type { TokenUsageAggregate } from "../token-usage/index";
 import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
 import { durableContextMessages } from "./durable-context";
+import { botArtifactItem, BOT_ARTIFACT_TOOL } from "./bot-artifact";
 import { createAgentRetryChunks, formatAgentSearchSources } from "./output-items";
 import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
@@ -1222,6 +1223,7 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
   tasks: readonly TaskRecord<JsonValue, JsonValue, JsonValue>[] = [], liveTools: readonly { taskId?: number; details?: unknown }[] = []): RunOutputItemInput[] {
   const items: RunOutputItemInput[] = [];
   const calls = new Map<string, RunOutputItemInput>();
+  const deliveries = new Set<string>();
   const toolTasks = new Map(tasks.flatMap(task => {
     const input = object(task.input);
     return input.kind === "model" && typeof input.callId === "string" ? [[`${input.assistant}:${input.callId}`, task] as const] : [];
@@ -1267,6 +1269,11 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       if (message.role === "toolResult") {
         const item = calls.get(message.toolCallId);
         if (item) { item.content = { ...object(item.content), output: { content: message.content, details: message.details }, status: message.isError ? "failed" : "success" }; item.metadata!.status = message.isError ? "failed" : "success"; }
+        // Durable turns rebuild their cards from committed tool results, not the transient stream.
+        if (!message.isError && message.toolName === BOT_ARTIFACT_TOOL.name) {
+          const delivery = botArtifactItem(message.details);
+          if (delivery && !deliveries.has(delivery.id)) { deliveries.add(delivery.id); items.push(delivery); }
+        }
       }
     }
   }

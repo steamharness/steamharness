@@ -25,6 +25,7 @@ export interface WebReady {
   traceModelRequestProtocolVersion?: number;
   hostConversationProtocolVersion?: number;
   folderBotProtocolVersion?: number;
+  botArtifactProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
   runtime?: { harnessVersion: string; harnessPath: string };

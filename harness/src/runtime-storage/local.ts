@@ -14,10 +14,12 @@ import { SnapshotMemoryStorage } from "./memory";
 import { createLocalOutputJournal } from "./output-journal";
 import { createSqliteBotMemoryStore, type BotMemoryStore } from "./bot-memory";
 import { createBotFileWorkspace } from "./bot-files";
+import { createBotArtifactStore } from "./bot-artifacts";
 
 export interface LocalRuntimePersistenceOptions {
   /** Host-owned directory, isolated by project/entry and optionally account. */
   directory: string;
+  allowBotArtifactPublish?: boolean;
 }
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -68,11 +70,18 @@ export function createLocalRuntimePersistence(options: LocalRuntimePersistenceOp
   const session = (key: string) => db().prepare("SELECT file,deleted FROM agent_sessions WHERE key=?").get(key) as { file: string; deleted: number } | undefined;
   const fileFor = (key: string) => path.join(directory, "agents", `${digest(key)}.sqlite`);
   const outputs = createLocalOutputJournal(db);
+  const botKey = (projectId: string, entryId: string) => digest(JSON.stringify([projectId.toLowerCase(), entryId]));
 
   return {
+    allowBotArtifactPublish: options.allowBotArtifactPublish === true,
     botFiles({ projectId, entryId }) {
       assertOpen();
-      return createBotFileWorkspace(root, digest(JSON.stringify([projectId.toLowerCase(), entryId])));
+      return createBotFileWorkspace(root, botKey(projectId, entryId));
+    },
+    botArtifacts({ projectId, entryId }) {
+      assertOpen();
+      const key = botKey(projectId, entryId);
+      return createBotArtifactStore(path.join(directory, "bot-deliveries", `${key}.sqlite`), createBotFileWorkspace(root, key), assertOpen);
     },
     botMemory(scope) {
       assertOpen();

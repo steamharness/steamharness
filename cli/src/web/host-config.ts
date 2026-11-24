@@ -15,6 +15,9 @@ export interface WebHostConfiguration {
   resourceProjects?: string[];
   userSettings?: UserSettings;
   folderBot?: FolderBotHost;
+  /** Native local Studio only. Configured through the private host pipe. */
+  localBotArtifacts?: true;
+  localBotArtifactLabel?: string;
 }
 
 export interface FolderBotHost {
@@ -93,6 +96,8 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
+    ...(configuration.localBotArtifacts === true && !folderBot?.background ? { localBotArtifacts: true as const,
+      localBotArtifactLabel: typeof configuration.localBotArtifactLabel === 'string' ? configuration.localBotArtifactLabel.trim().slice(0, 160) : undefined } : {}),
     connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true, folderBot,
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

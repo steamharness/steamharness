@@ -150,6 +150,14 @@ Local `bash` still starts in the project workspace by default. Set `directory` t
 
 The built-in prompt guides the Bot to keep intermediate files and deliverables separate, then report the path to a requested deliverable. For example: “Keep the working files in your temporary directory, save the final report under artifacts, and tell me where it is.”
 
+### Deliver files and find them later
+
+Ask the Bot to deliver a finished file in a local Studio conversation. An Agent Bot calls `bot_files_publish` with a relative file `path` under `artifacts/YYYY-MM-DD/` and an optional `title`. Each file can be up to 50 MiB. The tool respects tool approval, and LLM Bots must enable it explicitly. Delivery is not available in Plan, read-only, paired Web, or IM conversations.
+
+Each delivery adds a file card to the conversation. Open **Project details → Bot management → Artifact library** to find deliveries from other conversations of the same original Bot or instance. Preview common text or image files, or download the file. The library does not include temporary files or files that were never delivered.
+
+Delivery keeps the file as it was at that moment. Overwriting the source file or deleting the original conversation does not change the snapshot; a deleted conversation can no longer be opened from its delivery. Confirming removal marks the old card as removed and leaves the source file intact.
+
 ## Skills and host previews
 
 List skill directories under `agent.skills.directories`. Relative paths resolve from the current entry root. When directories contain skills with the same name, the first one wins.

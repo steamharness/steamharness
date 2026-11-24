@@ -289,9 +289,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     start: async (project, surface, signal, options) => {
       const runtime = await selectedRuntime();
       const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
+      const localArtifacts = options?.embedded === true && !browser && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop && !project.folderBot?.background;
       const lease = await hosts.acquire(
       // A headless caller must not lease the CLI that received the embedded page's account.
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null]), project,
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts]), project,
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
@@ -330,6 +331,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
           assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
+          localBotArtifactLabel: localArtifacts ? project.folderBot ? project.name : project.aggregateName || project.name : undefined,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,

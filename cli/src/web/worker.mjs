@@ -237,7 +237,8 @@ try {
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
       localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
     const { createLocalRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
-    runtimePersistence = createLocalRuntimePersistence({ directory: path.join(dataDir, 'runtime') });
+    runtimePersistence = createLocalRuntimePersistence({ directory: path.join(dataDir, 'runtime'),
+      allowBotArtifactPublish: request.method === 'run' && request.runtimeHost?.kind === 'studio' && request.allowBotArtifactPublish === true && !request.folderBot?.background });
     if (runtimePersistence && request.method === 'run' && request.resumeAgent) {
       const deadline = Date.now() + 35_000;
       const acquire = async operation => {

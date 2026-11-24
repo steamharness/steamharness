@@ -175,6 +175,20 @@ test("restored failed responses never display unexecuted tool calls as running",
   assert.equal(items.filter(item => item.metadata?.partType === "tool").length, 0);
 });
 
+test("durable turns restore one artifact card for each successful delivery receipt", () => {
+  const artifact = { id: "ba_0123456789abcdef0123456789abcdef", name: "report.md", title: "Report", size: 6 };
+  const result = (id: number, toolName: string, isError = false) => ({ id, kind: "pi.toolResult", model: [{
+    role: "toolResult", toolName, toolCallId: `call-${id}`, content: [], isError, details: { botArtifact: artifact },
+  }] });
+  const project = (...entries: ReturnType<typeof result>[]) => projectSessionEntries(
+    entries as unknown as Parameters<typeof projectSessionEntries>[0], undefined, "artifact-turn");
+  assert.deepEqual(project(result(1, "other_tool"), result(2, "bot_files_publish", true)), []);
+  const items = project(result(1, "bot_files_publish"), result(2, "bot_files_publish"));
+  assert.equal(items.length, 1);
+  assert.deepEqual(items[0]?.content, { id: artifact.id, name: artifact.name, size: artifact.size });
+  assert.equal(items[0]?.metadata?.kind, "bot-artifact");
+});
+
 test("session trace items preserve model spans and match persisted tools by assistant entry as well as call ID", () => {
   const response = (startedAt: number, endedAt: number) => ({ ...ai.fauxAssistantMessage([
     { type: "thinking", thinking: "Inspect the database" }, ai.fauxText("Checking"),

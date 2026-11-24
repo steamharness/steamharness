@@ -49,6 +49,8 @@ import { createAgentRuntime, resolveAgentWorkdir, type AgentRuntimeInternalOptio
 import { createSkillTools } from "./skills";
 import { BOT_MEMORY_SYSTEM_PROMPT, BOT_MEMORY_TOOL_NAMES, createBotMemoryRecall, createBotMemoryTools, isBotMemoryEnabled } from "./memory";
 import { BOT_FILES_SYSTEM_PROMPT, BOT_FILE_TOOL_NAMES, createBotFileTools, resolveBotFiles } from "./bot-files";
+import { BOT_ARTIFACT_GUIDANCE, BOT_ARTIFACT_TOOL, botArtifactChunks, createBotArtifactTool } from "./bot-artifact";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { BotFileWorkspace } from "../runtime-storage/bot-files";
 import { DEFAULT_AGENT_EFFORT, DEFAULT_AGENT_MODE } from "./types";
 import type {
@@ -256,13 +258,18 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     let runtime: AgentRuntime;
     const bot = botNodeLifecycle(this);
     let botFiles: BotFileWorkspace | undefined;
+    let delivery: AgentTool | undefined;
     try {
       const planResume = await resolvePlanResume(context, system.input);
       // A run parks on either a plan awaiting approval or a question awaiting an answer.
       runInput = planResume ?? await resolveAskResume(context, system.input) ?? system.input;
       if (planResume?.planResume !== undefined) runInput.requestId = `${system.input.requestId}:plan:${planResume.planResume.requestId}`;
       botFiles = bot ? resolveBotFiles(context) : undefined;
-      runtime = await this.resolveRuntime(runInput, context, botFiles);
+      const canDeliver = bot && input.hostInput === undefined && parseAgentMode(runInput.agent ?? this.options.mode) !== "plan"
+        && resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy) !== "read-only"
+        && context.toolPermissions?.getTool(BOT_ARTIFACT_TOOL.name)?.enabled !== false;
+      if (canDeliver) delivery = createBotArtifactTool(context, runInput.requestId);
+      runtime = await this.resolveRuntime(runInput, context, botFiles, !!delivery);
     } catch (error) {
       await closeIgnoringFailure(system.close);
       throw error;
@@ -285,12 +292,13 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         if (customTools.some(tool => BOT_MEMORY_TOOL_NAMES.includes(tool.name as typeof BOT_MEMORY_TOOL_NAMES[number]))) {
           throw new Error("Bot memory_* tool names are reserved by Core.");
         }
-        if (customTools.some(tool => BOT_FILE_TOOL_NAMES.includes(tool.name))) throw new Error("Bot bot_files_* tool names are reserved by Core.");
+        if (customTools.some(tool => BOT_FILE_TOOL_NAMES.includes(tool.name) || tool.name === BOT_ARTIFACT_TOOL.name)) throw new Error("Bot bot_files_* tool names are reserved by Core.");
         const readOnly = parseAgentMode(runInput.agent ?? this.options.mode) === "plan"
           || resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy) === "read-only";
         const memoryTools = isBotMemoryEnabled(context, bot.memoryDefaultEnabled)
           ? createBotMemoryTools({ context, defaultEnabled: bot.memoryDefaultEnabled, input: runInput, readOnly }) : [];
         const fileTools = botFiles ? createBotFileTools(botFiles, readOnly) : [];
+        if (delivery) fileTools.push(delivery);
         if (memoryTools.length || fileTools.length) toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...memoryTools, ...fileTools] };
       }
       if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
@@ -524,6 +532,9 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
               ...(event.phase === "end" && event.isError === true ? { error: event.result } : {}),
               started: event.phase === "update",
             });
+            if (delivery && event.toolName === BOT_ARTIFACT_TOOL.name && event.phase === "end" && event.isError !== true) {
+              yield* botArtifactChunks((event.result as { details?: unknown } | undefined)?.details);
+            }
             break;
           }
 
@@ -692,7 +703,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     };
   }
 
-  private async resolveRuntime(input: AgentInput, context: NodeContext, botFiles?: BotFileWorkspace): Promise<AgentRuntime> {
+  private async resolveRuntime(input: AgentInput, context: NodeContext, botFiles?: BotFileWorkspace, canDeliver = false): Promise<AgentRuntime> {
     const key = readSessionKey(this.options, context);
     const persistence = context.metadata?.["runtimePersistence"] as import("../runtime-storage/history").RuntimePersistence | undefined;
     const durable = context.conversation?.enabled && input.hostInput === undefined;
@@ -704,7 +715,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
       runtimeInfo: context.runtimeInfo,
-      botGuidance: [memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT, botFiles && BOT_FILES_SYSTEM_PROMPT].filter(Boolean).join("\n\n") || undefined,
+      botGuidance: [memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT, botFiles && BOT_FILES_SYSTEM_PROMPT, canDeliver && BOT_ARTIFACT_GUIDANCE].filter(Boolean).join("\n\n") || undefined,
       botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
       botFiles,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,

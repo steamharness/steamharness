@@ -163,7 +163,7 @@ describe("steamharness-generator contract", () => {
       when: { param: "plan", value: "true" } }]);
     expect(structure.conversation?.commands?.map(command => command.command)).toEqual(["export", "compact"]);
     expect(structure.conversation?.userInput).toEqual({ effects: [{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }] });
-    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls", "sleep", "runtime_info", "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search", "memory_link", "memory_unlink", "bot_files_list", "bot_files_read", "bot_files_write", "bot_files_move", "bot_files_delete", "update_plan"]);
+    expect(structure.tools?.map((tool) => tool.name)).toEqual(["read", "write", "edit", "bash", "grep", "find", "ls", "sleep", "runtime_info", "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search", "memory_link", "memory_unlink", "bot_files_list", "bot_files_read", "bot_files_write", "bot_files_move", "bot_files_delete", "bot_files_publish", "update_plan"]);
     expect(structure.conversation?.openai?.outputItemId).toBe("agent-answer");
     expect(structure.conversation?.recovery).toEqual({ enabled: true, startup: "automatic" });
     expect(structure.tokenUsage).toEqual({ enabled: true, display: true });

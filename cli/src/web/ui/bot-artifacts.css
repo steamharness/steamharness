@@ -1,0 +1,20 @@
+.bot-artifact-library { width: min(760px, calc(100vw - 24px)); }
+.bot-artifact-library .dialog-body:not(:hover):not(:focus-within) { scrollbar-color: transparent transparent; }
+.bot-artifact-library .icon-button, .bot-artifact-card .icon-button { flex: none; }
+.bot-artifact-identity { margin: 0 0 10px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+.bot-artifact-list { margin: 0; padding: 0; list-style: none; }
+.bot-artifact-row, .bot-artifact-card { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bot-artifact-row { justify-content: space-between; border-bottom: 1px solid var(--border); padding: 8px 0; }
+.bot-artifact-label { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bot-artifact-filename { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.bot-artifact-description { color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+.bot-artifact-actions { display: flex; gap: 2px; flex-wrap: wrap; }
+.bot-artifact-actions[hidden], .bot-artifact-card[hidden] { display: none; }
+.bot-artifact-card { flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.bot-artifact-status:empty { display: none; }
+.bot-artifact-preview:not([hidden]) { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.bot-artifact-preview > header { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.bot-artifact-preview > header > span { flex: 1; }
+.bot-artifact-preview img { max-width: 100%; max-height: 40vh; object-fit: contain; }
+.bot-artifact-preview pre { max-height: 34vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .bot-artifact-row { align-items: flex-start; flex-direction: column; } }

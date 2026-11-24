@@ -1010,6 +1010,8 @@ Bot 用 `steamharness.defineBot()` 声明。必须显式选择 `engine: "agent"`
 
 `bot_files_list({})` 返回根路径和按宿主本地日期计算的 `temp/YYYY-MM-DD`、`artifacts/YYYY-MM-DD`；用 `path` 浏览已有日期或子目录。临时文件用 `temp`，交付件用 `artifacts`，源文件仍在项目工作区。其余文件工具只接受区内相对路径：读用 `nextByteOffset` 翻页，写传 `text`（UTF-8 最多 128 KiB，显式 `overwrite` 才能覆盖），移动传 `destination` 且不覆盖，删除限单个文件。文件不随发行包同步，也不会自动创建为对话附件。
 
+本地 Studio 对话提供 `bot_files_publish({ path, title? })` 时，用它交付 `artifacts/YYYY-MM-DD/` 内已完成的文件，每个最多 50 MiB。工具保存独立快照并返回交付 ID；聊天卡片和该 Bot 的产物库引用同一份快照。它不发送 IM，也不在配对 Web、Plan、只读会话中提供。LLM Bot 须显式启用，与其他内置文件工具相同。
+
 本地 `bash` 默认工作目录不变，可传 `directory: "temp" | "artifacts"` 在当天的目录运行。子进程收到 `TMPDIR`、`TMP`、`TEMP` 及绝对路径 `STEAMHARNESS_BOT_TEMP_DIR`、`STEAMHARNESS_BOT_ARTIFACT_DIR`；不读取这些变量的命令显式传输出路径。Core 提示词已说明这些用法，业务 Bot 不用重复写一套。自定义运行存储宿主须提供 `RuntimePersistence.botFiles` 才会启用目录工具；`createLocalRuntimePersistence` 已支持。
 
 以下 Agent 配置只适用于 `engine: "agent"`。
