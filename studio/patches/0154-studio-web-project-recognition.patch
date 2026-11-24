@@ -1,0 +1,113 @@
+diff --git a/src/vs/workbench/browser/studioLaunchpadCards.ts b/src/vs/workbench/browser/studioLaunchpadCards.ts
+index 60b6bfb1344185083205a4512c4fb5431e1a5d95..f40916f0477b54a17c1f32a6b5dff405c0433b75 100644
+--- a/src/vs/workbench/browser/studioLaunchpadCards.ts
++++ b/src/vs/workbench/browser/studioLaunchpadCards.ts
+@@ -23,6 +23,8 @@ export interface LaunchpadProject extends StudioProjectDetails {
+ 	parentUri?: string;
+ }
+ 
++export type LaunchpadProjectMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
++
+ export interface StoreListing {
+ 	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
+ }
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index 1ab8673020cf0b4aa9c7f4a82387ad37e82e45fe..0412cf2f224dff3f9b00aab2aa93cd949d44ba18 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -33,7 +33,7 @@ import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js'
+ import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
+ import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
+ import { CatalogPage } from './studioLaunchpadStore.js';
+-import { StoreListingDetails } from './studioLaunchpadCards.js';
++import { LaunchpadProjectMetadata, StoreListingDetails } from './studioLaunchpadCards.js';
+ import { StudioNotificationInbox } from './studioNotificationInbox.js';
+ import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
+ import './media/studioLaunchpad.css';
+@@ -327,14 +327,14 @@ export class StudioWebLaunchpad extends Disposable {
+ 		const history = await this.workspaces.getRecentlyOpened();
+ 		if (revision !== this.revision || this._store.isDisposed) { return; }
+ 		const projects = new Map<string, LaunchpadProject>();
+-		this.recent = new Map();
++		const recent = new Map<string, RecentProject>();
+ 		for (const row of this.start.state?.recent ?? []) {
+ 			if (row.kind !== 'folder' && row.kind !== 'workspace') { continue; }
+ 			const uri = this.hostUri(URI.parse(row.uri));
+ 			if (!uri) { continue; }
+ 			const key = uri.toString();
+ 			if (!projects.has(key)) {
+-				this.recent.set(key, row);
++				recent.set(key, row);
+ 				projects.set(key, { ...row, uri: key, kind: row.kind, name: row.projectName ?? row.label, path: this.labels.getUriLabel(uri) });
+ 			}
+ 		}
+@@ -344,6 +344,24 @@ export class StudioWebLaunchpad extends Disposable {
+ 				projects.set(uri.toString(), { uri: uri.toString(), kind: folder ? 'folder' : 'workspace', name: row.label ?? basenameOrAuthority(uri), path: this.labels.getUriLabel(uri) });
+ 			}
+ 		}
++		// Browser history keeps paths only. Use the host's file URIs so the desktop reader also matches installed-project records.
++		const uninspected = new Map<string, LaunchpadProject>();
++		for (const project of projects.values()) {
++			if (project.kind === 'folder' && !project.artwork) {
++				uninspected.set(URI.parse(project.uri).with({ scheme: Schemas.file, authority: '' }).toString(), project);
++			}
++		}
++		if (this.start.state && uninspected.size) {
++			const detected = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', [...uninspected.keys()]).catch(() => undefined);
++			if (revision !== this.revision || this._store.isDisposed) { return; }
++			for (const { uri, projectName, ...metadata } of detected ?? []) {
++				const project = uninspected.get(uri);
++				if (project) {
++					projects.set(project.uri, { ...project, ...metadata, name: projectName ?? project.name });
++				}
++			}
++		}
++		this.recent = recent;
+ 		this.projects = [...projects.values()];
+ 		this.paint();
+ 	}
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 5cdf2c19e37e9c12b47e751096c2546006eb39ec..fde7d3e5067877b25c41c64b6971b952fee1f26e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -46,12 +46,11 @@ import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView }
+ import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
+ import { InboxAction, LaunchpadDirectory, LaunchpadMenuAccount, SocialResult, StudioNotice, studioNoticeTitle } from '../browser/studioLaunchpadProfile.js';
+ import { CatalogPage } from '../browser/studioLaunchpadStore.js';
+-import { StoreListingDetails } from '../browser/studioLaunchpadCards.js';
++import { LaunchpadProjectMetadata, StoreListingDetails } from '../browser/studioLaunchpadCards.js';
+ import type { LibraryDetailAction, LibraryProjectCategory } from '../browser/studioLaunchpadLibrary.js';
+ import { StudioLaunchpadSettings } from '../browser/studioLaunchpadSettings.js';
+ import '../browser/media/studioLaunchpad.css';
+ 
+-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
+ type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
+ type BuiltinLibrary = { projects: LaunchpadProject[]; pending?: boolean };
+ const workstationExtensionId = 'studio.studio-workstation';
+@@ -67,7 +66,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private hasProjectSnapshot = false;
+ 	private managedWorkspaceUris = new Set<string>();
+ 	private builtinWorkspaceUris = new Set<string>();
+-	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
++	private readonly savedProjects = new Map<string, LaunchpadProjectMetadata & { name?: string; lastOpened?: number }>();
+ 	private readonly missing = new Set<string>();
+ 	private readonly editsSinceSnapshot = new Map<number, boolean>();
+ 	private inbox?: LaunchpadInbox;
+@@ -485,7 +484,7 @@ export class StudioLaunchpad extends Disposable {
+ 		let distribution = project.distribution;
+ 		if (!distribution && !project.artwork && project.kind === 'folder') {
+ 			// A click can arrive before the asynchronous library scan populates this row.
+-			const [metadata] = await this.commands.executeCommand<LibraryMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
++			const [metadata] = await this.commands.executeCommand<LaunchpadProjectMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
+ 			distribution = metadata?.distribution;
+ 		}
+ 		if (this._store.isDisposed) { return; }
+@@ -610,7 +609,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
+ 		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
+ 		if (others.length) {
+-			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
++			const rows = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
+ 			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
+ 		}
+ 	}

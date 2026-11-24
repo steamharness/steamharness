@@ -20,6 +20,9 @@ const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'sh-web-ui
 const upstream = await assertUpstream(), publicRoot = path.dirname(ROOT), data = path.join(directory, 'server');
 const workspace = path.join(directory, 'workflow'), companion = path.join(directory, 'extensions/remote-fixture');
 const workspaceFile = path.join(directory, 'remote.code-workspace');
+const importedSource = path.join(directory, 'imported source folder'), importedPlain = path.join(directory, 'imported plain folder');
+const importedBot = { id: randomUUID(), name: 'Imported Bot', version: '0.8.1', defaultEntry: 'main',
+  entries: [{ entryId: 'main', type: 'bot', name: 'Chat', root: '.', entry: 'index.ts' }] };
 const registryFile = path.join(data, 'instance.json');
 const caseFile = path.join(directory, 'fixture-case.txt');
 const close = server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
@@ -44,6 +47,28 @@ async function checkLocalProfile(home, zh = false) {
   await profile.getByRole('tab', { name: zh ? '通知' : 'Notifications', exact: true }).waitFor();
   assert.equal(await profile.getByRole('button', { name: zh ? '登录' : 'Sign in', exact: true }).count(), 0);
   await home.getByRole('tab', { name: zh ? '仓库' : 'Library', exact: true }).click();
+}
+
+async function importFolder(page, folder, zh = false) {
+  await page.locator('.studio-launchpad').getByRole('button', { name: zh ? '导入项目' : 'Import project', exact: true }).click();
+  const picker = page.locator('.quick-input-widget');
+  await picker.locator('.quick-input-list .monaco-list-row').first().waitFor();
+  const input = picker.locator('input').first();
+  await input.fill(path.dirname(folder) + path.sep);
+  await picker.getByText(path.basename(folder), { exact: true }).click();
+  await picker.getByRole('button', { name: zh ? '导入' : 'Import', exact: true }).click();
+  await picker.waitFor({ state: 'hidden' });
+}
+
+async function checkImportedBot(page, zh = false) {
+  const details = page.locator('.studio-launchpad .lp-project-details');
+  await details.getByRole('heading', { name: importedBot.name, exact: true }).waitFor();
+  const facts = details.locator('.lp-detail-facts');
+  for (const value of [zh ? '源码 · IDE' : 'Source · IDE', 'Bot', importedBot.version, importedBot.id]) {
+    assert.equal(await facts.getByText(value, { exact: true }).isVisible(), true, `Missing project metadata: ${value}`);
+  }
+  assert.equal(await details.locator('.lp-detail-mark img').isVisible(), true);
+  assert.equal(await details.locator('.lp-detail-entries').getByText('Chat', { exact: true }).isVisible(), true);
 }
 
 // Simulate the platform commands, without using a real account or the private extension.
@@ -200,6 +225,11 @@ try {
     const declarationFile = path.join(project, 'steamharness.json'), declaration = await readJson(declarationFile);
     await writeFile(declarationFile, JSON.stringify({ ...declaration, id: randomUUID() }));
   }
+  await mkdir(importedPlain);
+  await mkdir(importedSource);
+  // This folder is never opened. Import reads the declaration and does not run the entry.
+  await writeFile(path.join(importedSource, 'steamharness.json'), JSON.stringify(importedBot));
+  await writeFile(path.join(importedSource, 'index.ts'), `throw new Error('Import must not execute the project');`);
   await writeFile(workspaceFile, JSON.stringify({ folders: examples.map(name => ({ path: name })), settings: { 'git.enabled': false, 'workbench.startupEditor': 'none' } }));
   // Record only the disposable Workflow CLI process so recovery can be exercised without touching other sessions.
   const workflowCli = path.join(workspace, 'node_modules/@steamharness/cli');
@@ -304,6 +334,18 @@ try {
   await waitForBrowserExtensionHost(localPage);
   await localPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
   await checkLocalProfile(localPage.locator('.studio-launchpad'));
+  await importFolder(localPage, importedPlain);
+  const plain = localPage.locator('.lp-project-details');
+  await plain.getByRole('heading', { name: path.basename(importedPlain), exact: true }).waitFor();
+  assert.equal(await plain.locator('.lp-detail-facts').getByText('Folder', { exact: true }).isVisible(), true);
+  await localPage.getByRole('tab', { name: 'Library', exact: true }).click();
+  await importFolder(localPage, importedSource);
+  await checkImportedBot(localPage);
+  await localPage.reload({ waitUntil: 'domcontentloaded' });
+  await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Source', exact: true }).click({ timeout: 60_000 });
+  await localPage.locator('.lp-library-card[data-key^="all:"]').filter({ hasText: importedBot.name }).click({ timeout: 60_000 });
+  await checkImportedBot(localPage);
+  console.log('[OK] Import without opening · source Bot details and icon · plain folder · reload');
   await runPlatformProfile(localContext);
   assert.equal(await localPage.locator('.studio-mode-toggle').isVisible(), false);
   await localPage.locator('.studio-launchpad').getByRole('button', { name: 'Settings', exact: true }).click();
@@ -368,6 +410,9 @@ try {
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       await checkLocalProfile(home, zh);
       console.log(`[OK] ${name}: paired, reached Launchpad and restored session on reload`);
+      await importFolder(page, importedSource, zh);
+      await checkImportedBot(page, zh);
+      console.log(`[OK] ${name}: imported unopened folder as a source Bot`);
       if (zh) {
         await page.setViewportSize({ width: 390, height: 844 });
         assert.ok(await home.evaluate(element => element.scrollWidth <= element.clientWidth));
