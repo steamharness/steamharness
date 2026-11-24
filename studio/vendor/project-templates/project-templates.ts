@@ -6,6 +6,7 @@ import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamhar
 import type { DeclaredProjectInfo } from '@steamharness/project-info';
 import { isProjectUuid } from '@steamharness/workflow-ids';
 import { copyProjectRuntimeArchives, projectRuntimeSpec, readProjectRuntimeArchives } from './project-runtime-packages';
+import { parseJsonSummaryOptions } from './project-templates/workflow-draft/json-summary';
 
 export type ProjectTemplateType = 'workflow' | 'bot' | 'kanban';
 export interface ProjectTemplateDefinition {
@@ -81,6 +82,26 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
 
 export async function createProjectFromTemplate(request: CreateProjectFromTemplateRequest): Promise<CreatedTemplateProject> {
   request.signal?.throwIfAborted();
+  const template = (await listProjectTemplates()).find(entry => entry.id === request.templateId);
+  if (!template) { throw new ProjectTemplateError('invalid-template', 'Unknown project template.'); }
+  return createProject(request, template);
+}
+
+/** The draft is a fixed Workflow, not a template that can supply arbitrary project source. */
+export async function createJsonSummaryDraft(request: Omit<CreateProjectFromTemplateRequest, 'templateId' | 'allocateProjectId' | 'deferProjectId'> & { options: unknown }): Promise<CreatedTemplateProject> {
+  const options = parseJsonSummaryOptions(request.options);
+  const template: ProjectTemplateDefinition = {
+    id: 'workflow-draft', projectType: 'workflow', kind: 'starter', name: { en: 'JSON summary', 'zh-CN': 'JSON 汇总' },
+    description: { en: '', 'zh-CN': '' }, entryFile: 'index.ts', files: ['index.ts', 'json-summary.ts'],
+  };
+  // Pick the allowed inputs explicitly; a draft always has a new local identity.
+  const { name, parentDirectory, signal, versions, runtimePackageDirectory } = request;
+  return createProject({ name, parentDirectory, signal, ...(runtimePackageDirectory === undefined ? { versions: versions! } : { runtimePackageDirectory }) }, template,
+    { filename: 'draft-options.json', content: JSON.stringify(options, null, 2) + '\n' });
+}
+
+async function createProject(request: Omit<CreateProjectFromTemplateRequest, 'templateId'>, template: ProjectTemplateDefinition, extra?: { filename: string; content: string }): Promise<CreatedTemplateProject> {
+  request.signal?.throwIfAborted();
   const name = validateProjectName(request.name);
   const { versions, runtimePackageDirectory } = request;
   if (runtimePackageDirectory === undefined && (!versions || !exactVersion.test(versions.harness) || !exactVersion.test(versions.cli))) {
@@ -90,8 +111,6 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const runtimeDependencies = archives
     ? Object.fromEntries(archives.map(({ name, file }) => [name, projectRuntimeSpec(file)]))
     : { steamharness: versions!.harness, '@steamharness/cli': versions!.cli };
-  const template = (await listProjectTemplates()).find(entry => entry.id === request.templateId);
-  if (!template) { throw new ProjectTemplateError('invalid-template', 'Unknown project template.'); }
   let parent: string;
   try {
     if (!path.isAbsolute(request.parentDirectory)) { throw new Error('Not absolute'); }
@@ -121,8 +140,9 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   // Read and render everything before reserving the destination folder.
   const files = await Promise.all(template.files.map(async filename => {
     const content = await readFile(path.join(templateRoot, template.sources?.[filename] ?? `${template.id}/${filename}`), 'utf8');
-    return { filename, content: content.replaceAll('__PROJECT_NAME_HTML__', escapeHtml(name)).replaceAll('__PROJECT_TITLE__', name) };
+    return { filename, content: content.replaceAll('__PROJECT_NAME_HTML__', () => escapeHtml(name)).replaceAll('__PROJECT_TITLE__', () => name) };
   }));
+  if (extra) files.push(extra);
   request.signal?.throwIfAborted();
   try { await mkdir(directory); }
   catch (error) {
@@ -155,6 +175,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
       await mkdir(path.dirname(path.join(directory, file.filename)), { recursive: true });
       await writeFile(path.join(directory, file.filename), file.content, { flag: 'wx' });
     }
+    request.signal?.throwIfAborted();
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
   return { id: projectManifest.id, ...(idAllocationError === undefined ? {} : { idAllocationError }), name, directory, projectType: template.projectType, entryFile: template.entryFile };
 }

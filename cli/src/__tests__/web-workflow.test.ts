@@ -57,6 +57,20 @@ async function service(legacy?: ConversationSession[]) {
 }
 
 describe('Workflow workspace controller', () => {
+  it('starts the worker only after the same durable write has admitted the run', async () => {
+    const first = controller();
+    first.save.mockRejectedValueOnce(new Error('Storage is unavailable'));
+    await expect(first.controller.start({ entrypointId: 'main', params: {} })).rejects.toThrow('Storage is unavailable');
+    await first.controller.idle();
+    expect(first.runtime.run).not.toHaveBeenCalled();
+
+    const second = controller();
+    const record = await second.controller.start({ entrypointId: 'main', params: {} });
+    await second.controller.idle();
+    expect(second.runtime.run).toHaveBeenCalledOnce();
+    expect(second.save.mock.calls.filter(([workspace]) => workspace.runs[0]?.id === record.id && workspace.runs[0]?.status === 'running')).toHaveLength(1);
+    expect(second.save.mock.lastCall?.[0].runs[0]?.status).toBe('success');
+  });
   it('does not persist parameter validation errors across successful runs or a new draft', async () => {
     const { app, post, state, runtime: executor } = await service();
     const invalid = await post({ type: 'workflow-run', entrypointId: 'main', params: { subject: '' } });

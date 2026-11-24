@@ -1,0 +1,6 @@
+.workflow-draft-dialog { width: min(540px, calc(100vw - 24px)); }
+.workflow-draft-dialog form { display: grid; gap: 10px; margin-bottom: 10px; }
+.workflow-draft-dialog label { display: grid; gap: 4px; }
+.workflow-draft-dialog input, .workflow-draft-dialog select { width: 100%; min-width: 0; }
+.workflow-draft-dialog ol, .workflow-draft-dialog ul { margin: 0; padding-inline-start: 24px; overflow-wrap: anywhere; }
+.workflow-draft-dialog form button { justify-self: end; }

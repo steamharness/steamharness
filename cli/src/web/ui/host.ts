@@ -17,7 +17,7 @@ import { acquireHostKeyboard } from './host-keyboard';
 import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
-export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; reloadProject?(draft?: Message): Promise<void> }
+export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -31,7 +31,19 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     }
   }, { capture: true });
   const embedded = (globalThis as unknown as { acquireVsCodeApi?: () => Host }).acquireVsCodeApi;
-  if (embedded) { return embedded(); }
+  if (embedded) {
+    const api = embedded();
+    return {
+      ...api,
+      copyText: async (text: string): Promise<boolean> => {
+        try {
+          return (await api.postMessage({ type: 'copy', text })) !== false;
+        } catch {
+          return false;
+        }
+      },
+    };
+  }
   const returnTicket = restoreSignInReturn();
   const keyboard = acquireHostKeyboard();
   let windowChrome: ProjectWindowChrome | undefined;
@@ -356,6 +368,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   return {
     keyboard,
     editing: { get enabled() { return editHost; } },
+    copyText,
     reloadProject: async (draft) => {
       if (draft) await connection.request(draft);
       const reply = (await connection.request({ type: 'project-reload' })).find(message => message.type === 'project-reloaded');

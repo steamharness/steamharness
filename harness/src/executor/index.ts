@@ -1,5 +1,5 @@
 import { isDefinedBot } from "../agent/bot";
-import { folderPermissionCeiling, validateLocalFolderContext, type LocalFolderHostContext } from "./folder-context";
+import { folderPermissionCeiling, folderProfile, validateFolderBotProfile, validateLocalFolderContext, type LocalFolderHostContext } from "./folder-context";
 import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
@@ -31,6 +31,7 @@ import type {
 import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
 export { LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION, type LocalFolderHostContext } from "./folder-context";
+export { LOCAL_BOT_PROFILE_PROTOCOL_VERSION, parseFolderBotProfile, type FolderBotProfile } from "./bot-profile";
 import type { AccessActor } from "@steamharness/project-access";
 import { createExecutorResources, type EntryDeclaration } from "./entry-resources";
 import type { ToolPermissionContext } from "../tool-permissions/index";
@@ -792,6 +793,7 @@ async function runLocalProjectWithReportInternal(
   assertLocalProjectIsExecutable(projectDir, projectName, options.entryId, options.env);
   const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
   const folderContext = validateLocalFolderContext(projectStorageDeclaration.registration, options.folderContext, projectStorageDeclaration.projectId);
+  const botProfile = validateFolderBotProfile(options.folderContext);
   const args = options.args ?? [];
   const env = options.env ?? process.env;
   const startedAt = new Date();
@@ -957,19 +959,21 @@ async function runLocalProjectWithReportInternal(
       reporter,
       userInput: options.userInput,
     });
-    const context: RunContext & { [folderPermissionCeiling]?: LocalFolderHostContext['permissionCeiling'] } = {
+    const context: RunContext & { [folderPermissionCeiling]?: LocalFolderHostContext['permissionCeiling']; [folderProfile]?: LocalFolderHostContext['profile'] } = {
       ...extraContext,
       config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       ...createExecutorResources(projectStorageDeclaration, { ...options, runId, conversationId: conversation.conversationId, abortSignal: abortController.signal }, () => context),
       folderContext,
       [folderPermissionCeiling]: options.folderContext?.permissionCeiling,
+      [folderProfile]: botProfile,
       conversation,
       tokenUsage,
       userInput,
       toolPermissions: options.inheritedToolPermissions ?? createProjectToolPermissionContext({
         definitions: execution.tools,
         policies: options.toolPermissionPolicies,
+        disabledTools: botProfile?.tools?.disabled,
         userInput,
         projectName,
         runId,

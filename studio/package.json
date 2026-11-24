@@ -39,6 +39,7 @@
     "test:assistant-permissions-ui": "node tests/assistant-permissions-ui.mjs",
     "test:conversation-ui": "node tests/conversation-ui.mjs",
     "test:bot-artifacts-ui": "node tests/bot-artifacts-ui.mjs",
+    "test:bot-memory-ui": "node tests/bot-memory-ui.mjs",
     "test:conversation-clipboard-ui": "node tests/conversation-clipboard-desktop-ui.mjs",
     "test:offline-ui": "node tests/offline-workbench-ui.mjs",
     "test:workflow-ui": "node tests/workflow-ui.mjs",

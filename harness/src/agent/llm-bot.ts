@@ -14,13 +14,13 @@ import { deepFreezeBotOutput, replayBotOutput, type BotDefinition, type BotLLMOp
 import { withBotRequest } from "./bot-lifecycle";
 import { botArtifactChunks } from "./bot-artifact";
 import { createLLMBotToolRunner, llmBotTools } from "./llm-bot-tools";
-import { selectConfiguredConversationModel } from "./model-resolution";
+import { assertFolderBotModel, selectConfiguredConversationModel } from "./model-resolution";
 import { AGENT_ANSWER_ITEM_ID } from "./output-items";
 import { readRuntimeLocaleSafe } from "./plan";
 import { createAgentProjectInput, resolveAgentImageFiles } from "./project";
 import { inheritConversationModelParams } from "./project-executor";
-import { applyAgentProjectFixedValues } from "./project-params";
-import { applyFolderAgentInput } from "../executor/folder-context";
+import { applyAgentProjectFixedValues, fixedAgentModel } from "./project-params";
+import { applyFolderAgentInput, folderBotResponsibilities, readFolderBotProfile } from "../executor/folder-context";
 import { readAgentSystemCredentials, selectAgentSystemLLM } from "./system-llm";
 import type { AgentInput, AgentOutputPayload } from "./types";
 
@@ -98,7 +98,10 @@ export function createLLMBot<Input extends AgentInput>(
       }) : resolved;
       if (!prepared || typeof prepared.prompt !== "string") throw new HarnessError({ type: "input_validation", message: "Bot prepareInput must return an input with a prompt." });
       context.abortSignal?.throwIfAborted();
-      const finalInput = applyFolderAgentInput(applyAgentProjectFixedValues(prepared, params), context);
+      const finalInput = applyFolderAgentInput(applyAgentProjectFixedValues(prepared, params), context, fixedAgentModel(params));
+      const profile = readFolderBotProfile(context);
+      assertFolderBotModel(finalInput, { modelSource: llm.modelSource }, profile?.modelId);
+      if (Array.isArray(profile?.skills)) throw new HarnessError({ type: "input_validation", message: "The skills selected in this folder Bot profile are unavailable for the source project." });
       const route = await resolveProvider(finalInput, llm, context.abortSignal);
       const provider = route.provider;
       if (!(provider instanceof PiAiLLMProvider)) throw new HarnessError({ type: "provider_call", message: "LLM Bots require a pi-ai provider." });
@@ -113,7 +116,7 @@ export function createLLMBot<Input extends AgentInput>(
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
           const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)), finalInput.permissionPolicy, !host);
-          const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions, runner.botFileGuidance].filter(Boolean).join("\n\n") || undefined;
+          const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions, runner.botFileGuidance, folderBotResponsibilities(context)].filter(Boolean).join("\n\n") || undefined;
           const round: LLMBotToolRound = { tools: runner.tools, transcript: [] };
           const callIds = new Set<string>();
           try {

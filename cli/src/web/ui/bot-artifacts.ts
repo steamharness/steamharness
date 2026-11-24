@@ -16,6 +16,7 @@ function detail(value: string, className = ''): HTMLElement {
 
 export class BotArtifactLibrary {
   private availability?: ArtifactAvailability;
+  private removalRevision?: number;
   private readonly dialog = document.createElement('dialog');
   private readonly title = document.createElement('h2');
   private readonly identity = document.createElement('p');
@@ -53,9 +54,14 @@ export class BotArtifactLibrary {
     document.body.append(this.dialog);
   }
 
-  configure(status: ArtifactAvailability | undefined, identity: string): void {
+  configure(status: ArtifactAvailability | undefined, identity: string, removalRevision?: number): void {
     this.availability = status;
     this.identity.textContent = identity;
+    if (status === 'ready' && this.removalRevision !== removalRevision && removalRevision !== undefined) {
+      document.querySelectorAll('[data-bot-artifact]').forEach(card => card.dispatchEvent(new Event('bot-artifact-refresh')));
+      if (this.dialog.open) void this.page();
+    }
+    this.removalRevision = removalRevision;
   }
 
   open(focusId?: string): void {
@@ -91,12 +97,14 @@ export class BotArtifactLibrary {
     let withdrawn = false;
     const removed = () => { withdrawn = true; state.textContent = t('Artifact removed'); controls.hidden = true; };
     root.addEventListener('bot-artifact-removed', removed);
-    void requestBotArtifact(`/${id}`).then(response => {
+    const validate = () => void requestBotArtifact(`/${id}`).then(response => {
       if (withdrawn) return;
       if (response.status === 404) removed();
       else if (response.ok) { state.textContent = fileSize(Number(value.size) || 0); controls.hidden = false; }
       else state.textContent = t('Artifact unavailable');
     }, () => { state.textContent = t('Artifact unavailable'); });
+    root.addEventListener('bot-artifact-refresh', validate);
+    validate();
     return root;
   }
 

@@ -30,8 +30,25 @@ function fixture(t, language = 'en', actions = {}) {
 }
 
 for (const language of ['en', 'zh-cn']) {
+  test(`schedules are a secondary action of each local Workflow entry (${language})`, t => {
+    const calls = [], f = fixture(t, language, { openProjectSchedules: (project, entry) => calls.push([project.uri, entry]) });
+    const entries = [{ type: 'workflow', entryId: 'build', name: 'Build' }, { type: 'workflow', entryId: 'review', name: 'Review' }, { type: 'bot', entryId: 'chat', name: 'Chat' }];
+    const source = f.project('source', { distribution: 'source', projectType: 'aggregate', entries });
+    const release = f.project('release', { distribution: 'release', projectType: 'aggregate', entries });
+    f.library.update([source, release], [], true, '');
+    f.library.show(source.uri);
+    const controls = [...f.library.element.querySelectorAll('.lp-detail-secondary button[data-key^="workflow-schedules:"]')];
+    const title = language === 'zh-cn' ? 'Workflow 定时计划' : 'Workflow schedules';
+    assert.deepEqual(controls.map(button => button.textContent.trim()), [`${title} · Build`, `${title} · Review`]);
+    assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="workflow-schedules:"]'), null);
+    controls[1].click();
+    assert.deepEqual(calls, [[source.uri, 'review']]);
+    f.library.show(release.uri);
+    assert.equal(f.library.element.querySelector('button[data-key^="workflow-schedules:"]'), null);
+  });
+
   test(`the artifact library is a secondary action for the chosen Bot entry (${language})`, t => {
-    const calls = [], f = fixture(t, language, { openBotArtifacts: (p, entry) => calls.push([p.uri, entry]) });
+    const calls = [], f = fixture(t, language, { openBotArtifacts: (p, entry) => calls.push([p.uri, entry]), openBotMemory: (p, entry) => calls.push([p.uri, entry, 'memory']) });
     const bot = f.project('aggregate', { projectType: 'workflow', entries: [
       { type: 'workflow', entryId: 'build', name: 'Build', primary: true },
       { type: 'bot', entryId: 'ops', name: 'Ops' }, { type: 'bot', entryId: 'qa', name: 'QA' },
@@ -44,7 +61,11 @@ for (const language of ['en', 'zh-cn']) {
     assert.deepEqual(controls.map(button => button.textContent.trim()), language === 'zh-cn' ? ['产物库 · Ops', '产物库 · QA'] : ['Artifact library · Ops', 'Artifact library · QA']);
     assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-artifacts:"]'), null);
     controls[1].click();
-    assert.deepEqual(calls, [[bot.uri, 'qa']]);
+    const memory = [...secondary.querySelectorAll('button[data-key^="bot-memory:"]')];
+    assert.deepEqual(memory.map(button => button.textContent.trim()), language === 'zh-cn' ? ['记忆管理 · Ops', '记忆管理 · QA'] : ['Memory management · Ops', 'Memory management · QA']);
+    assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-memory:"]'), null);
+    memory[0].click();
+    assert.deepEqual(calls, [[bot.uri, 'qa'], [bot.uri, 'ops', 'memory']]);
   });
 
   test(`the library heading opens a localized status guide by hover or activation (${language})`, t => {

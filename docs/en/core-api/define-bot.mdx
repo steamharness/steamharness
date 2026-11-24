@@ -128,6 +128,16 @@ The model decides what to retain from the conversation; it does not copy every m
 
 Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 
+### Manage memory in Studio
+
+In local Studio, open an Agent Bot's **Project details → Bot management → Memory management**. Check that the panel shows the original Bot or the intended instance. Filter by keyword, category, or exact properties such as `{"status":"live"}`. Open an entry to read its body, properties, and incoming and outgoing links, or to edit it and remove links.
+
+On supported runtimes, edits by the user and by the Bot record the actor, changes, and revision. Bot edits also record available run and conversation references. Existing memories remain available, but the panel does not invent history from before the upgrade.
+
+Previous values from edits and link changes are kept for 30 days. You can undo a change only while the entry is still at the revision that change produced. Undo creates a new revision. If another window or a Bot has already edited the entry, refresh before resolving the conflict.
+
+An entry with incoming links cannot be forgotten. Inspect those links and remove the ones that are no longer needed. Confirming **Forget memory** removes the entry and its recoverable values from the memory database. Other memories, the original conversation, and external backups are unaffected. The Bot's `memory_delete` also keeps no recoverable old values.
+
 ## Bot files
 
 A Bot can keep drafts, working copies of downloads and intermediate output under `temp/YYYY-MM-DD/`, and save reports and other deliverables under `artifacts/YYYY-MM-DD/`. The date follows local time on the execution host. The host creates directories on the first write or local shell call. Project source stays in the workspace, and other output locations requested by the user still follow the usual permissions.

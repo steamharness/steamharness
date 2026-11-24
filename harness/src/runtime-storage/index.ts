@@ -4,6 +4,8 @@ export { createLocalRuntimePersistence, type LocalRuntimePersistenceOptions } fr
 export { copyRuntimePersistence } from "./backup";
 export { createMemoryRuntimePersistence, SnapshotMemoryStorage } from "./memory";
 export type { BotMemoryScope, BotMemoryStore, BotMemoryRequest, BotMemoryEntry, BotMemorySummary, BotMemoryAddress, BotMemoryProperties } from "./bot-memory";
+export { BOT_MEMORY_MANAGEMENT_VERSION } from "./bot-memory-journal";
+export type { BotMemoryChange, BotMemoryChangeSource, BotMemoryDelta } from "./bot-memory-journal";
 export type { BotFileWorkspace } from "./bot-files";
 export type { BotArtifact, BotArtifactSource, BotArtifactStore } from "./bot-artifacts";
 export { createServerAgentStorage, ServerAgentStorage, type ServerAgentStorageOptions } from "./server";

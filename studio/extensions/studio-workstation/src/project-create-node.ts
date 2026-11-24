@@ -14,6 +14,7 @@ interface TemplateModule {
   validateProjectName(value: string): string;
   listProjectTemplates(): Promise<Array<Omit<StartTemplate, 'name' | 'description'> & { name: Record<string, string>; description: Record<string, string> }>>;
   createProjectFromTemplate(input: CreateProjectFromTemplateRequest): Promise<CreatedProject>;
+  createJsonSummaryDraft(input: Omit<CreateProjectFromTemplateRequest, 'templateId' | 'allocateProjectId' | 'deferProjectId'> & { options: unknown }): Promise<CreatedProject>;
   registerTemplateProject(input: { directory: string; signal?: AbortSignal; allocateProjectId: (project: TemplateProjectRegistration) => Promise<string> }): Promise<string>;
 }
 
@@ -22,6 +23,9 @@ export function defaultProjectParentDirectory(): string { return path.join(homed
 export function projectTemplatesRuntime(extensionDirectory: string, locale: string, runtimePackageDirectory?: string) {
   const directory = path.join(extensionDirectory, 'dist');
   const module = (): Promise<TemplateModule> => import(pathToFileURL(path.join(directory, 'project-templates.mjs')).href);
+  const dependencies = async () => runtimePackageDirectory === undefined
+    ? { versions: JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8')) }
+    : { runtimePackageDirectory };
   const validate = async (input: ProjectCreationInput): Promise<void> => {
     const name = (await module()).validateProjectName(input.name);
     try {
@@ -49,11 +53,12 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
       allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>, deferProjectId = false): Promise<CreatedProject> => {
       await validate(input);
       signal?.throwIfAborted();
-      const dependencySource = runtimePackageDirectory === undefined
-        ? { versions: JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8')) }
-        : { runtimePackageDirectory };
+      const dependencySource = await dependencies();
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
       return (await module()).createProjectFromTemplate({ ...input, ...dependencySource, signal, allocateProjectId, deferProjectId });
+    },
+    createRunDraft: async (input: { name: string; parentDirectory: string; options: unknown }, signal?: AbortSignal): Promise<CreatedProject> => {
+      return (await module()).createJsonSummaryDraft({ ...input, ...await dependencies(), signal });
     },
     register: async (directory: string, signal: AbortSignal, allocateProjectId: (project: TemplateProjectRegistration) => Promise<string>): Promise<string> =>
       (await module()).registerTemplateProject({ directory, signal, allocateProjectId }),

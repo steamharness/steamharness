@@ -9,7 +9,7 @@ import type { AgentInput, AgentOutputPayload, AgentProjectOptions, AgentToolSet 
 import type { AgentSessionOptions, AgentSessionSnapshot } from "./session-types";
 import { normalizeToolPermissionDefinitions, type ToolPermissionDefinition } from "../tool-permissions/index";
 import { createCoreBotProject, createAgentProjectInput, resolveAgentImageFiles } from "./project";
-import { applyAgentProjectFixedValues, createAgentProjectParams, registerAgentProject } from "./project-params";
+import { applyAgentProjectFixedValues, createAgentProjectParams, fixedAgentModel, registerAgentProject } from "./project-params";
 import { inheritAgentProjectParams } from "./project-executor";
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { assertConversationCommands } from "../executor/conversation-commands";
@@ -26,6 +26,7 @@ import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration"
 import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
 import { BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES } from "./bot-files";
 import { BOT_ARTIFACT_TOOL } from "./bot-artifact";
+import { BOT_JSON_SUMMARY_DEFINITION } from "./bot-json-summary";
 import { createLLMBot } from "./llm-bot";
 import { applyFolderAgentInput } from "../executor/folder-context";
 
@@ -117,13 +118,13 @@ export function assertBotLLMOptions(value: unknown): asserts value is BotLLMOpti
 }
 export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | "skills"> & { createSession?: unknown } = {}, overrides: ToolPermissionDefinition[] = []): ToolPermissionDefinition[] {
   normalizeToolPermissionDefinitions(overrides);
-  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, ...BOT_FILE_TOOL_DEFINITIONS, BOT_ARTIFACT_TOOL,
+  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, ...BOT_FILE_TOOL_DEFINITIONS, BOT_ARTIFACT_TOOL, BOT_JSON_SUMMARY_DEFINITION,
     { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
     ...(agent.session?.subagents || agent.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ...(agent.skills ? [{ name: "skill", label: "Skills", enabled: true, autoApprove: true }] : []),
     ...(agent.session?.toolSearch ? [{ name: "tool_search", label: "Find tools", enabled: true, autoApprove: true }] : []),
     ...(agent.session?.codeMode ? [{ name: "codemode", label: "Code Mode", enabled: true, autoApprove: true }] : [])];
-  const configured = overrides.map(tool => (BOT_FILE_TOOL_NAMES.includes(tool.name) || tool.name === BOT_ARTIFACT_TOOL.name)
+  const configured = overrides.map(tool => (BOT_FILE_TOOL_NAMES.includes(tool.name) || tool.name === BOT_ARTIFACT_TOOL.name || tool.name === BOT_JSON_SUMMARY_DEFINITION.name)
     ? { ...tool, approvalMode: tool.approvalMode ?? "always" as const } : tool);
   return [...new Map([...defaults, ...configured].map(tool => [tool.name, tool])).values()];
 }
@@ -153,6 +154,7 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     if (Object.hasOwn(agent, key)) invalid(`Bot agent.${key} is not customizable.`);
   }
   const params = botParams("agent", agent, options.params);
+  const lockedModel = fixedAgentModel(params);
   const memoryDefaultEnabled = botMemoryDefault(options.memory);
   const conversation = botConversationDefaults("agent", options.conversation);
   assertBotPresentation(conversation, params);
@@ -169,14 +171,14 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     const key = `steamharness.bot.input:${requestId}`;
     const persist = !!options.prepareInput && input.hostInput === undefined;
     const saved = persist ? (await context.conversation.getValue()).values[key] as Input | undefined : undefined;
-    if (saved && reuse) return applyFolderAgentInput(applyAgentProjectFixedValues(saved, params) as Input, context);
+    if (saved && reuse) return applyFolderAgentInput(applyAgentProjectFixedValues(saved, params) as Input, context, lockedModel);
     const executor = inputContexts.get(input) ?? ownerContexts.get(ownerKey(context));
     const parsed = await resolveAgentImageFiles(context.folderContext ? { ...input, workdir: context.folderContext.directory, allowedDirectories: undefined } : input, context, `${options.name ?? "bot"}-input`);
     const prepared = options.prepareInput ? await withBotRequest(requestId, () => options.prepareInput!(parsed, {
       ...context, args: executor?.args ?? [], paramValues: executor?.paramValues ?? {} }), context) : parsed;
     if (!prepared || typeof prepared.prompt !== "string") invalid("Bot prepareInput must return an AgentInput with a prompt.");
     context.abortSignal?.throwIfAborted();
-    const result = applyFolderAgentInput({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context);
+    const result = applyFolderAgentInput({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context, lockedModel);
     if (persist) await context.conversation.setValue(key, result);
     return result;
   }

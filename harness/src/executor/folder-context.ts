@@ -6,17 +6,20 @@ import { getUserSettings } from "../user-settings";
 import { HarnessError } from "../workflow/errors";
 import { resolveAgentPermissionPolicySetting } from "../agent/permission";
 import type { AgentInput, AgentPermissionPolicy } from "../agent/types";
+import { parseFolderBotProfile, type FolderBotProfile } from "./bot-profile";
 
 export interface LocalFolderHostContext extends FolderContext {
   /** Optionally pin the source project identity before loading its code. */
   readonly projectId?: string;
   /** The highest policy the local owner has authorized for this host. */
   readonly permissionCeiling?: AgentPermissionPolicy;
+  readonly profile?: FolderBotProfile;
 }
 
 export const LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION = 1;
 export const folderPermissionCeiling = Symbol("folderPermissionCeiling");
-type FolderAgentContext = Pick<NodeContext, "folderContext"> & { [folderPermissionCeiling]?: AgentPermissionPolicy };
+export const folderProfile = Symbol("folderProfile");
+type FolderAgentContext = Pick<NodeContext, "folderContext"> & { [folderPermissionCeiling]?: AgentPermissionPolicy; [folderProfile]?: FolderBotProfile };
 const levels = ["read-only", "workspace", "auto"] as const;
 
 export function validateLocalFolderContext(registration: ProjectEntry, host: LocalFolderHostContext | undefined, projectId: string): FolderContext | undefined {
@@ -34,12 +37,32 @@ export function validateLocalFolderContext(registration: ProjectEntry, host: Loc
   throw new HarnessError({ type: "input_validation", message: "The local Bot folder is unavailable or has changed." });
 }
 
-export function applyFolderAgentInput<T extends AgentInput>(input: T, context: FolderAgentContext): T {
+export function readFolderBotProfile(context: FolderAgentContext): FolderBotProfile | undefined { return context.folderContext ? context[folderProfile] : undefined; }
+
+export function folderBotResponsibilities(context: FolderAgentContext): string | undefined {
+  const responsibility = readFolderBotProfile(context)?.responsibility;
+  return responsibility && `Local Bot instance responsibilities (subject to the project's existing instructions and permissions):\n${responsibility}`;
+}
+
+export function validateFolderBotProfile(host: LocalFolderHostContext | undefined): FolderBotProfile | undefined {
+  if (host?.profile === undefined) return;
+  try { return parseFolderBotProfile(host.profile); }
+  catch { throw new HarnessError({ type: 'input_validation', message: 'Invalid local Bot profile.' }); }
+}
+
+export function applyFolderAgentInput<T extends AgentInput>(input: T, context: FolderAgentContext, fixedModel?: unknown): T {
   if (!context.folderContext) return input;
-  const permissionPolicy = input.permissionPolicy === undefined ? getUserSettings().agent.permissionPolicy : resolveAgentPermissionPolicySetting(input.permissionPolicy);
+  const profile = readFolderBotProfile(context);
+  const hostPolicy = getUserSettings().agent.permissionPolicy;
+  let permissionPolicy = input.permissionPolicy === undefined ? hostPolicy : resolveAgentPermissionPolicySetting(input.permissionPolicy);
+  if (profile && levels.indexOf(permissionPolicy) > levels.indexOf(hostPolicy)) permissionPolicy = hostPolicy;
+  const limit = profile?.tools?.ceiling;
+  if (limit && levels.indexOf(permissionPolicy) > levels.indexOf(limit)) permissionPolicy = limit;
   const ceiling = context[folderPermissionCeiling];
   if (ceiling && levels.indexOf(permissionPolicy) > levels.indexOf(ceiling)) {
     throw new HarnessError({ type: "tool_permission_denied", message: "Approve the Bot's expanded permissions in the local host before running it." });
   }
-  return { ...input, permissionPolicy, workdir: context.folderContext.directory };
+  const model = profile?.modelId;
+  if (model && fixedModel !== undefined && fixedModel !== model) throw new HarnessError({ type: 'input_validation', message: 'The folder Bot model override conflicts with the source project’s fixed model.' });
+  return { ...input, ...(model && { model }), permissionPolicy, workdir: context.folderContext.directory };
 }

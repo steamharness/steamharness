@@ -46,6 +46,9 @@ import { defaultServerUrl } from '../service-url';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
 import { folderBotDataRoot, projectDataDirectory } from './project-data-directory';
+import { readFolderBotProfile } from './folder-bot-profile';
+import { previewRunDraft } from './workflow-draft';
+import { workflowScheduleHandler } from './workflow-schedule';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import { hostConversation } from './host-conversation';
 import { respondToBotArtifacts } from './bot-artifacts';
@@ -155,7 +158,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   rememberModelKeys(userSettings);
   let resourceProjects = options.host?.resourceProjects ?? [];
   const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
-  const localArtifactHost = hostKind === 'studio' && options.host?.localBotArtifacts === true && !folderBot?.background;
+  // The stdio capability is issued only by the local desktop Bot host.
+  const localBotManagement = hostKind === 'studio' && options.host?.localBotArtifacts === true && !folderBot?.background;
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, folderBot, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
@@ -181,7 +185,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     run: (request, emit, onModelRequest) => {
       const settings = hydrateUserSettings(request.userSettings, userSettings);
-      const input = { ...request, allowBotArtifactPublish: artifactStore && !isHostConversation(request.conversationId) ? true as const : undefined,
+      const input = { ...request, allowBotArtifactPublish: artifactStore && request.allowBotArtifactPublish && !isHostConversation(request.conversationId) ? true as const : undefined,
         userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
@@ -192,9 +196,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
-  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
+  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string; botMemoryManagementVersion?: number; folderBotProfileVersion?: number } };
   try {
     if (!descriptor) throw new Error(inspected.errors.join('\n') || 'No Workflow project found.');
+    if (folderBot?.profileRecord && descriptor.runtime?.folderBotProfileVersion !== 1) throw new Error('Update the project SDK to use this folder Bot profile.');
     if (!options.runtime) assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion);
     if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
   } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
@@ -210,8 +215,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();
   const runtimePersistence = options.runtimePersistence ?? createLocalRuntimePersistence({ directory: path.join(activityDirectory, 'runtime') });
-  const artifactStore = localArtifactHost && project.projectType === 'bot' && descriptor.tools?.some(tool => tool.name === 'bot_files_publish')
-    ? runtimePersistence.botArtifacts?.({ projectId: project.id, entryId: project.entryId }) : undefined;
+  const botScope = { projectId: project.id, entryId: project.entryId };
+  const localBot = localBotManagement && project.projectType === 'bot';
+  const artifactStore = localBot && descriptor.tools?.some(tool => tool.name === 'bot_files_publish') ? runtimePersistence.botArtifacts?.(botScope) : undefined;
+  const workflowDrafts = localBot && project.conversation?.engine === 'agent' && descriptor.tools?.some(tool => tool.name === 'bot_json_summary');
+  let artifactRemovalRevision: number | undefined;
+  const memoryStore = localBot && project.conversation?.engine === 'agent' && descriptor.runtime?.botMemoryManagementVersion === 1
+    ? runtimePersistence.botMemory?.(botScope) : undefined;
   let storageIdentity = '';
   let storageEpoch = 0;
   let storageReset = Promise.resolve();
@@ -272,7 +282,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(JSON.parse(JSON.stringify(value, userSettingsJsonReplacer)), [...sensitiveTokens], false));
   const exportData = (value: unknown) => JSON.stringify(redactProjectData(value, [...sensitiveTokens], false), userSettingsJsonReplacer, 2);
-  const exportSession = (session: ConversationSession) => exportData({ ...session, messages: session.messages.map(withoutModelRequest) });
+  const exportSession = (session: ConversationSession) => exportData({ ...session, messages: session.messages.map(withoutModelRequest),
+    ...(session.agentParameters && { agentParameters: { ...session.agentParameters, folderBotProfile: undefined } }) });
   const sharedState = () => {
     // LLM Bots have no Workflow diagram. Static call definitions can contain the authored system prompt.
     const publicProject = project.conversation?.engine === 'llm' ? { ...project, definitions: undefined } : project;
@@ -280,7 +291,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: platformUi || aiConnection ? { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } } : undefined,
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision,
-    ...(localArtifactHost && project.projectType === 'bot' ? { botArtifacts: artifactStore ? 'ready' : 'upgrade',
+    ...(localBot ? { botArtifacts: artifactStore ? 'ready' : 'upgrade', artifactRemovalRevision, workflowDrafts: !!workflowDrafts,
+      botMemory: project.conversation?.engine === 'llm' ? 'unsupported' : memoryStore?.manage ? 'ready' : 'upgrade',
       botArtifactScope: { instance: !!folderBot, label: folderBot ? options.host?.localBotArtifactLabel || project.name : project.name } } : {}) });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
@@ -367,6 +379,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     canDrain: session => storageReady && !session.origin,
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
+    folderBotProfile: folderBot?.profileRecord ? () => readFolderBotProfile(folderBot, project.entryId) : undefined,
     independent: session => ownership?.independent(session.id) ?? (() => undefined),
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
@@ -429,6 +442,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
+  const scheduleKey = hostKind === 'studio' && !options.host?.assistant && !folderBot ? options.host?.workflowScheduleKey : undefined;
+  const schedule = scheduleKey && projectController && workflowHistory ? workflowScheduleHandler(project, projectController, workflowHistory,
+    () => storageReady && !closing && !configurations.state.profilePolicy) : undefined;
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
     webAppBinding: () => webApps[project.entryId],
     webAppLogin: options.onWebAppLogin ? configuration => options.onWebAppLogin!(project.entryId, configuration) : undefined,
@@ -596,9 +612,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let signInHandoff: { state: string; previousClientId: string; ticket: string; selectedId?: string } | undefined;
   const json = (response: ServerResponse, status: number, value: unknown) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(value)); };
   const authMatches = (value: string) => { const a = Buffer.from(value), b = Buffer.from(capability); return a.length === b.length && timingSafeEqual(a, b); };
-  const readBody = async (request: IncomingMessage): Promise<Message> => {
+  const readBody = async (request: IncomingMessage, limit = 72 * 1024 * 1024): Promise<Message> => {
     let size = 0; const chunks: Buffer[] = [];
-    for await (const chunk of request) { size += chunk.length; if (size > 72 * 1024 * 1024) { throw new Error('Request exceeds 72 MiB.'); } chunks.push(chunk); }
+    for await (const chunk of request) { size += chunk.length; if (size > limit) { throw new Error(limit === 72 * 1024 * 1024 ? 'Request exceeds 72 MiB.' : 'Request exceeds the size limit.'); } chunks.push(chunk); }
     const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!value || typeof value !== 'object' || Array.isArray(value)) { throw new Error('Invalid request.'); }
     return value;
@@ -624,7 +640,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!card) { throw new Error(t('This resource no longer exists.')); }
     return { card, reference: source };
   };
-  const handleMessage = async (message: Message): Promise<Message[]> => {
+  const handleMessage = async (message: Message, allowDelivery = false): Promise<Message[]> => {
     const held: Array<() => void> = [];
     try {
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
@@ -897,7 +913,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const references = command ? [] : pathReferences(message.references);
         const configurationSelection=await configurations.selection();
         if(revision!==authRevision)throw new Error('Workflow login changed. Send the message again.');
-        await controller.send({ text, params, states, entrypointId, attachments, configurationSelection, ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
+        await controller.send({ text, params, states, entrypointId, attachments, configurationSelection, ...(allowDelivery && { allowBotArtifactPublish: true }), ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
       case 'stop': {
@@ -916,7 +932,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
       case 'draft': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references)); break;
-      case 'retry': await controller.retry(String(message.messageId), current); break;
+      case 'retry': await controller.retry(String(message.messageId), current, allowDelivery ? true : undefined); break;
       case 'resume': await controller.resume(String(message.messageId), String(message.requestId), message.values ?? {}, current); break;
       case 'tool-policy': {
         const tools = projectParameters(project, entrypointId).tools ?? [];
@@ -1022,9 +1038,58 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (request.headers['sec-fetch-site'] === 'cross-site') { json(response, 403, { message: 'Invalid request origin.' }); return; }
         const value = String(request.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${cookie}=`))?.slice(cookie.length + 1) ?? '';
         const bearer = String(request.headers.authorization ?? '').replace(/^Bearer /, '');
+        if (url.pathname === '/api/host-workflow-schedule') {
+          // Do not accept the normal Web session capability on the private desktop route.
+          if (!schedule || !scheduleKey || request.method !== 'POST' || forwarded && host.host !== new URL(origin).host
+            || studioPreviewMount(request) || request.headers.origin || request.headers['sec-fetch-site']
+            || bearer.length !== scheduleKey.length || !/^[a-f0-9]{64}$/u.test(bearer)
+            || !timingSafeEqual(Buffer.from(bearer), Buffer.from(scheduleKey))) { json(response, 404, { code: 'WORKFLOW_SCHEDULE_UNAVAILABLE' }); return; }
+          const body = await readBody(request, 32_768);
+          const result = await schedule(body);
+          json(response, 200, result.status === 'view' ? { ...result, viewUrl: `${origin}${options.mount?.basePath ?? ''}/#session=${capability}` } : result); return;
+        }
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
+        if (url.pathname === '/api/workflow-draft') {
+          if (!workflowDrafts || studioPreviewMount(request) || host.host !== new URL(origin).host) { json(response, 404, { code: 'WORKFLOW_DRAFT_UNAVAILABLE' }); return; }
+          if (request.method !== 'POST') { json(response, 405, { code: 'METHOD_NOT_ALLOWED' }); return; }
+          try {
+            const requestBody = await readBody(request, 4096);
+            const { sessionId, messageId } = requestBody;
+            if (Object.keys(requestBody).some(key => key !== 'messageId' && key !== 'sessionId') || typeof sessionId !== 'string' || sessionId.length > 128
+              || typeof messageId !== 'string' || messageId.length > 300) { json(response, 400, { code: 'INVALID_WORKFLOW_DRAFT_REQUEST' }); return; }
+            await refreshHistory();
+            const session = controller.sessions.find(item => item.id === sessionId);
+            const draft = previewRunDraft(session, session?.messages.find(item => item.id === messageId));
+            if (draft) json(response, 200, draft); else json(response, 404, { code: 'WORKFLOW_DRAFT_UNAVAILABLE' });
+          } catch { json(response, 400, { code: 'INVALID_WORKFLOW_DRAFT_REQUEST' }); }
+          return;
+        }
+        if (url.pathname === '/api/bot-memory') {
+          if (!memoryStore?.manage || studioPreviewMount(request) || host.host !== new URL(origin).host) { json(response, 404, { code: 'BOT_MEMORY_UNAVAILABLE' }); return; }
+          if (request.method !== 'POST') { json(response, 405, { code: 'METHOD_NOT_ALLOWED' }); return; }
+          let input: Message;
+          try { input = await readBody(request, 96 * 1024); }
+          catch { json(response, 400, { code: 'BOT_MEMORY_INVALID_INPUT' }); return; }
+          try {
+            const value = await memoryStore.manage(input, { actor: 'user' });
+            if (input.action === 'history' && Array.isArray(value.changes)) {
+              await refreshHistory();
+              const ids = new Set(controller.sessions.map(session => session.id));
+              value.changes = value.changes.map(change => ({ ...change, sourceAvailable: ids.has(change.source?.conversationId) }));
+            }
+            json(response, 200, value);
+          } catch (error) {
+            const code = (error as { code?: string }).code;
+            if (code === 'BOT_MEMORY_INVALID_INPUT') json(response, 400, { code });
+            else if (code === 'BOT_MEMORY_NOT_FOUND') json(response, 404, { code });
+            else if (['BOT_MEMORY_REVISION_CONFLICT', 'BOT_MEMORY_ALREADY_EXISTS', 'BOT_MEMORY_REFERENCED', 'BOT_MEMORY_UNDO_UNAVAILABLE', 'BOT_MEMORY_STORAGE_BUSY',
+              'BOT_MEMORY_RELATION_ALREADY_EXISTS', 'BOT_MEMORY_RELATION_NOT_FOUND'].includes(code ?? '')) json(response, 409, { code });
+            else json(response, 500, { code: 'BOT_MEMORY_UNAVAILABLE' });
+          }
+          return;
+        }
         if (url.pathname === '/api/bot-artifacts' || url.pathname.startsWith('/api/bot-artifacts/')) {
           const allowed = artifactStore && !studioPreviewMount(request) && host.host === new URL(origin).host;
           try {
@@ -1068,7 +1133,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             json(response, 200, { messages: await handleMessage(message) }); return;
           }
           let messages: Message[] = [];
-          const operation = () => handleMessage(message).then(value => { messages = value; });
+          const delivery = !!artifactStore && !studioPreviewMount(request) && host.host === new URL(origin).host;
+          const operation = () => handleMessage(message, delivery).then(value => { messages = value; });
           const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'verify', 'logout', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
@@ -1119,6 +1185,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     refreshingHistory = true;
     void refreshHistory().then(() => {
       if (storageReady) conversationController?.recover();
+      if (clients.size && artifactStore?.removalRevision) {
+        const revision = artifactStore.removalRevision();
+        if (revision !== artifactRemovalRevision) { artifactRemovalRevision = revision; broadcast(); }
+      }
       const signature = JSON.stringify([...clients].map(client => {
         const id = clientIds.get(client) ?? '', selected = selections.get(id) ?? controller.activeId;
         return [id, selected, selectAccess(id, selected)];
@@ -1326,7 +1396,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
       try {
         await conversationController?.idle(); if (storageReady) await conversationController?.persist();
-        await projectController?.idle(); if (storageReady) await projectController?.persist(); await pendingSave.catch(() => undefined);
+        await projectController?.idle(); if (storageReady && workflowHistory?.ownsHistory) await projectController?.persist(); await pendingSave.catch(() => undefined);
       } finally { await ownership?.close(); await workflowHistory?.reset(); if (!options.runtimePersistence) await runtimePersistence?.close(); await activity?.close(); }
     })(),
   };

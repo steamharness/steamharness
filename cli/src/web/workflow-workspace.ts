@@ -12,6 +12,7 @@ export interface Draft {
   policies: ToolPolicies;
 }
 export interface RunRecord {
+  schedule?: import('steamharness').ScheduleSourceMetadata;
   entryRequest?: { sourceEntryId: string; requestId: string; signature: string };
   id: string;
   scopeId: string;
@@ -48,6 +49,7 @@ export interface WorkspaceContract {
   migratedConversations?: boolean;
 }
 export interface StartInput {
+  schedule?: import('steamharness').ScheduleSourceMetadata;
   title?: string;
   entryRequest?: { sourceEntryId: string; requestId: string; signature: string };
   entrypointId?: string;

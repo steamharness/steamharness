@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants, promises as fs } from "node:fs";
 import path from "node:path";
+import { readBotArtifactSnapshot } from "./bot-artifact-reader";
 
 export const BOT_FILE_AREAS = ["temp", "artifacts"] as const;
 export type BotFileArea = typeof BOT_FILE_AREAS[number];
@@ -78,6 +79,7 @@ export function createBotFileWorkspace(runtimeRoot: string, scopeKey: string, cl
     if (!parent) throw fileMissing();
     return path.join(parent, parts.at(-1)!);
   }
+  const readSnapshot = (ref: string, maxBytes: number, signal?: AbortSignal) => readBotArtifactSnapshot(base, [...scope, ...fileParts(ref, true)], maxBytes, signal);
 
   return {
     async list(ref: string | undefined, offset: number, limit: number) {
@@ -120,31 +122,11 @@ export function createBotFileWorkspace(runtimeRoot: string, scopeKey: string, cl
       } finally { await handle.close(); }
     },
 
+    readSnapshot,
     async snapshotArtifact(ref: string, maxBytes: number, signal?: AbortSignal) {
       if (!ref.startsWith("artifacts/")) throw new Error("Only files under artifacts can be delivered.");
-      signal?.throwIfAborted();
-      const file = await target(ref);
-      const before = assertRegularFile(await stat(file));
-      const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-      try {
-        const opened = assertRegularFile(await handle.stat());
-        if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("The file changed while opening it.");
-        if (opened.size > maxBytes) throw new Error(`A delivered file must be at most ${maxBytes / 1024 / 1024} MiB.`);
-        const bytes = Buffer.alloc(opened.size);
-        let offset = 0;
-        while (offset < bytes.length) {
-          signal?.throwIfAborted();
-          const { bytesRead } = await handle.read(bytes, offset, Math.min(bytes.length - offset, 1024 * 1024), offset);
-          if (!bytesRead) break;
-          offset += bytesRead;
-        }
-        const after = await handle.stat();
-        if (offset !== bytes.length || after.nlink !== 1 || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
-          throw new Error("The file changed during delivery; try again when it is ready.");
-        }
-        signal?.throwIfAborted();
-        return { name: path.basename(file), bytes };
-      } finally { await handle.close(); }
+      const parts = fileParts(ref, true);
+      return { name: parts.at(-1)!, bytes: await readSnapshot(ref, maxBytes, signal) };
     },
 
     async write(ref: string, text: string, overwrite: boolean) {

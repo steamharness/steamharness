@@ -1,0 +1,33 @@
+.bot-memory-dialog { width: min(960px, calc(100vw - 24px)); }
+.bot-memory-muted { color: var(--vscode-descriptionForeground); }
+.bot-memory-dialog p { margin: 6px 0; }
+.bot-memory-status:empty { display: none; }
+.bot-memory-filters, .bot-memory-link-form, .bot-memory-inline { display: flex; align-items: end; gap: 7px; flex-wrap: wrap; }
+.bot-memory-inline { align-items: center; }
+.bot-memory-filters label { flex: 1 1 142px; min-width: 0; }
+.bot-memory-dialog label { display: flex; flex-direction: column; gap: 4px; }
+.bot-memory-dialog input, .bot-memory-dialog textarea { width: 100%; min-width: 0; }
+.bot-memory-dialog textarea { min-height: 92px; resize: vertical; }
+.bot-memory-grid { display: grid; grid-template-columns: minmax(150px, 28%) minmax(0, 1fr); gap: 14px; margin-top: 12px; }
+.bot-memory-grid > aside { min-width: 0; border-right: 1px solid var(--border); padding-right: 10px; }
+.bot-memory-dialog ul { list-style: none; padding: 0; margin: 0 0 8px; }
+.bot-memory-list li + li { border-top: 1px solid var(--border); }
+.bot-memory-result { text-align: start; width: 100%; padding: 7px; border: 0; color: inherit; background: transparent; }
+.bot-memory-result:hover { background: var(--vscode-list-hoverBackground); }
+.bot-memory-result[aria-pressed=true] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground, inherit); }
+.bot-memory-result small { display: block; opacity: .85; }
+.bot-memory-detail { min-width: 0; overflow-wrap: anywhere; }
+.bot-memory-detail > header { display: flex; align-items: center; gap: 6px; }
+.bot-memory-detail h3 { flex: 1; font-size: 1.08em; margin: 0; }
+.bot-memory-detail h4 { font-size: 1em; margin: 0 0 6px; }
+.bot-memory-detail section, .bot-memory-history li { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+.bot-memory-detail pre { white-space: pre-wrap; max-height: 26vh; overflow: auto; margin: 4px 0; }
+.bot-memory-detail dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 10px; margin: 0; }
+.bot-memory-detail dd { margin: 0; }
+.bot-memory-property { display: block; padding: 2px 0; }
+.bot-memory-editor { display: grid; gap: 8px; }
+@media (max-width: 590px) {
+  .bot-memory-grid { grid-template-columns: minmax(0, 1fr); }
+  .bot-memory-grid > aside { border: 0; border-bottom: 1px solid var(--border); padding: 0 0 8px; }
+  .bot-memory-list { max-height: 24vh; overflow-y: auto; }
+}

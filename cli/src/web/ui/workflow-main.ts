@@ -347,9 +347,19 @@ bindProjectReload(host, message => renderRequestError(element('error'), message)
     params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode };
 });
 element('project-info').onclick = () => { if (state) { fields.close(); dialogs.projectInfo(state.project); } };
+let pendingScheduleRun: string | undefined;
+const openScheduledRun = () => {
+  if (!state || !connected || !pendingScheduleRun) return;
+  const id = pendingScheduleRun; pendingScheduleRun = undefined;
+  post({ type: 'workflow-select', id });
+};
 addEventListener('message', event => {
   if (event.source !== null && event.source !== window.parent) return;
   const message = event.data;
+  if (message?.type === 'workflow-host' && event.source && event.source === window.parent && window.parent !== window
+    && typeof message.showScheduledRun === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(message.showScheduledRun)) {
+    pendingScheduleRun = message.showScheduledRun; openScheduledRun(); return;
+  }
   if (message?.type === 'workflow-output-page') { outputPager.receive(message); return; }
   if (message?.type === 'project-skills-result' || message?.type === 'error' && message.requestType === 'project-skills') {
     dialogs.skillsResult(message.requestId, message.value, message.type === 'error' ? message.message : undefined); return;
@@ -357,9 +367,11 @@ addEventListener('message', event => {
   if (message?.type === 'state' && message.project?.projectType === 'workflow') {
     if (!stateRevisions.accept(message)) return;
     applyState(message);
+    openScheduledRun();
   }
   else if (message?.type === 'connection') {
     const restored = !connected && message.status === 'connected'; connected = message.status === 'connected'; controls(); if (restored) { resolve(); }
+    openScheduledRun();
     if (!connected) { dialogs.close(); }
   } else if (message?.type === 'params' && message.requestId === requestId && message.entrypointId === entrypointId) {
     resolving = false;

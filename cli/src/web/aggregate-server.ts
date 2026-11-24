@@ -147,6 +147,7 @@ document.querySelector('button').onclick=async event=>{event.target.disabled=tru
       if (!match[2]) { response.writeHead(302, { Location: `${url.pathname}/${url.search}` }); response.end(); return; }
       const entryId = match[1]!, runtime = entries.get(entryId);
       if (runtime) { request.url = `${match[2]}${url.search}`; runtime.handle(request, response); return; }
+      if (match[2] === '/api/host-workflow-schedule') { response.writeHead(404).end(); return; }
       response.setHeader('Content-Type','application/json; charset=utf-8'); response.setHeader('Cache-Control','no-store');
       response.setHeader('X-Content-Type-Options','nosniff'); response.setHeader('Referrer-Policy','no-referrer');
       const requestOrigin = `http://${request.headers.host}`;

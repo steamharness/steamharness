@@ -68,6 +68,8 @@ export interface DurableAgentState {
 
 export interface DurableAgentOptions {
   botGuidance?: string;
+  instanceGuidance?: string;
+  builtinSkills?: boolean;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
@@ -394,13 +396,14 @@ export class DurableAgent {
     tools.push(...remoteTools.filter(tool => this.state.tools.some(allowed => allowed.name === tool.name)).map(withEnvironmentByteReads));
     this.session?.setTools(tools);
     const promptSection = section("workflow", async (input, ctx) => {
+      const builtinSkills = this.options.builtinSkills === false ? undefined : BUILTIN_AGENT_SKILLS_PROMPT;
       const role = await input.read.snapshot(AgentRoleDoc, input.conversationId, ctx);
       if (typeof role?.definition?.systemPrompt !== "string") {
         const prepared = await this.session?.botSystemPromptFor(input.conversationId);
         if (prepared === undefined) return this.state.systemPrompt;
-        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botGuidance].filter(Boolean).join("\n\n");
+        return [this.state.systemPrompt.startsWith(AGENT_PLAN_SYSTEM_PROMPT) ? AGENT_PLAN_SYSTEM_PROMPT : "", prepared, builtinSkills, this.options.botGuidance].filter(Boolean).join("\n\n");
       }
-      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, this.options.botGuidance].filter(Boolean).join("\n\n");
+      return [role.definition.systemPrompt, builtinSkills, this.options.botGuidance].filter(Boolean).join("\n\n");
     }, { tag: false });
     this.registry.install(defineExtension({
       name: "workflow",
@@ -600,7 +603,13 @@ export class DurableAgent {
               }
             }
           }
-          if (replaced || toolsChanged || recalled) return { messages };
+          const instanceGuidance = this.options.instanceGuidance;
+          if (instanceGuidance) {
+            const firstMessage = messages.findIndex(message => message.role !== "system");
+            const index = firstMessage < 0 ? messages.length : firstMessage;
+            messages = [...messages.slice(0, index), { role: "system", content: instanceGuidance, timestamp: Date.now() }, ...messages.slice(index)];
+          }
+          if (replaced || toolsChanged || recalled || instanceGuidance) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {

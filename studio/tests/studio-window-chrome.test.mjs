@@ -53,10 +53,11 @@ function dragFixture() {
 
 test('project drag regions stay anchored to their own webview at different sizes and dispose with it', () => {
   const { drag, overlay } = dragFixture();
+  const maxWidth = 'max(0px, calc(75% - var(--studio-window-chrome-right, 0px)))';
   drag.update({ version: 1, width: 800, height: 600, regions: [{ x: 200, y: 0, width: 400, height: 48 }] });
-  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '8%' });
+  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '8%', maxWidth });
   drag.update({ version: 1, width: 1600, height: 1200, regions: [{ x: 400, y: 0, width: 800, height: 48 }] });
-  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '4%' });
+  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '4%', maxWidth });
   drag.update({ version: 1, width: 800, height: 600, regions: [] });
   assert.equal(overlay.children.length, 0);
   drag.dispose(); assert.equal(overlay.removed, true);

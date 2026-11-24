@@ -1,0 +1,44 @@
+:root { color-scheme: light dark; }
+[hidden] { display: none !important; }
+body { margin: 0; font: var(--vscode-font-size) var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+main { max-width: 1040px; margin: auto; padding: 20px; user-select: text; }
+h1 { font-size: 20px; margin: 0 0 8px; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+p { margin: 5px 0; overflow-wrap: anywhere; }
+.heading { padding-bottom: 16px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.layout { display: grid; grid-template-columns: minmax(155px, 1fr) minmax(0, 3fr); gap: 22px; margin-top: 18px; }
+section + section { border-top: 1px solid var(--vscode-panel-border); padding-top: 16px; }
+form, .interval-rule { display: grid; gap: 10px; }
+.field-grid, .window { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; }
+.window { grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; margin-bottom: 6px; }
+.window button { min-height: 30px; }
+.field { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+input:not([type=checkbox]), textarea, select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 30px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; padding: 4px 7px; border-radius: 4px; }
+textarea { resize: vertical; font-family: var(--vscode-editor-font-family); }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 27px; max-width: 100%; padding: 3px 8px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; font: inherit; cursor: pointer; }
+button span { overflow-wrap: anywhere; }
+.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.primary:hover { background: var(--vscode-button-hoverBackground); }
+.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.muted, time, small { color: var(--vscode-descriptionForeground); }
+.status { min-height: 1.5em; margin: 8px 0; }
+.days, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.actions { margin: 8px 0; }
+.plan-list, #schedules section:last-child ol { list-style-type: none; padding: 0; }
+.plan-list li { margin: 5px 0; }
+.plan-list button { width: 100%; justify-content: start; }
+.plan-list small { margin-inline-start: auto; }
+.plan-list [aria-pressed=true] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.plan-list [aria-pressed=true] small { color: inherit; }
+.receipt { border-bottom: 1px solid var(--vscode-panel-border); padding: 7px 0; }
+.receipt > div { display: flex; gap: 5px 12px; align-items: baseline; flex-wrap: wrap; }
+.receipt button { margin-top: 5px; }
+.preview-list { margin: 0; padding-inline-start: 22px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: transparent; }
+:hover::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }
+@media (max-width: 590px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; } }
+@media (max-width: 360px) { main { padding: 10px; } .field-grid, .window { grid-template-columns: minmax(0,1fr); } }

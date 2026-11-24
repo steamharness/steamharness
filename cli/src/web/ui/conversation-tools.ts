@@ -18,6 +18,7 @@ export interface ProjectSettingsOptions {
   account?(): void;
   configurations?: ProjectConfigurationsPanel;
   artifacts?: { available(): boolean; open(): void };
+  memory?: { available(): boolean; open(): void };
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
   skills?: SkillGuidesLoader;
@@ -109,6 +110,10 @@ export class ConversationTools {
       const open = iconButton('archive', t('Bot artifact library'), () => { this.close(); this.settings.artifacts?.open(); });
       open.className = 'prompt-button'; open.append(document.createTextNode(t('Bot artifact library')));
       overview.append(open);
+    }
+    if (this.settings.memory?.available()) {
+      const open = iconButton('database', t('Memory management'), () => { this.close(); this.settings.memory?.open(); });
+      open.className = 'prompt-button'; open.append(document.createTextNode(t('Memory management'))); overview.append(open);
     }
     for (const section of projectInformation(project)) {
       const details = document.createElement('details'); details.className = 'project-information-section'; details.open = !!section.expanded;

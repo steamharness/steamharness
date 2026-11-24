@@ -20,6 +20,10 @@ export function readAgentProjectContract(project: unknown): AgentProjectParamCon
   return typeof project === "object" && project !== null ? contracts.get(project) : undefined;
 }
 
+export function fixedAgentModel(params: BotParamDeclaration[]): unknown {
+  return normalizeProjectParamDeclarations(params).params.find(field => field.name === "model")?.fixedValue;
+}
+
 /** The assistant parameter contract, shared by runtime and static inspection. */
 export function createAgentProjectParams(options: AgentProjectOptions = {}): BotParamDeclaration[] {
   const defaults: BotParamDeclaration[] = [

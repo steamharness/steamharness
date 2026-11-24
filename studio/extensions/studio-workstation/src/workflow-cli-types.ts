@@ -26,6 +26,9 @@ export interface WebReady {
   hostConversationProtocolVersion?: number;
   folderBotProtocolVersion?: number;
   botArtifactProtocolVersion?: number;
+  botMemoryProtocolVersion?: number;
+  workflowScheduleProtocolVersion?: number;
+  folderBotProfileVersion?: number;
   userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
   runtime?: { harnessVersion: string; harnessPath: string };
@@ -56,6 +59,8 @@ export interface Launcher {
   templates?(): Promise<StartTemplate[]>;
   validateProjectCreation?(input: ProjectCreationInput): Promise<void>;
   createProject?(input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal): Promise<CreatedProject>;
+  createRunDraft?(input: { name: string; parentDirectory: string; options: unknown }, signal?: AbortSignal): Promise<CreatedProject>;
+  openProjectSchedules?(project: Project, openRun: (id: string, liveUrl?: string) => Promise<void>): Promise<void>;
   registerProject?(directory: string, signal: AbortSignal): Promise<string>;
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
   hasProjectDependencies?(directory: string): Promise<boolean>;

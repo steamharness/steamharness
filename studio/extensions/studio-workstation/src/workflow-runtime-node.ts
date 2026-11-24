@@ -32,6 +32,8 @@ import { readRunningLibraryProjects } from './library-activity';
 import { ProjectUsageService } from './project-usage-service';
 import type { ManagedUsageTarget } from './project-usage-types';
 import { usingStudioWeb, studioPreview } from './remote-access-node';
+import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
+import { openProjectSchedules } from './workflow-schedule-view';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -42,7 +44,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const webDataDirectory = (browser && process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR) || path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
   const usage = new ProjectUsageService(webDataDirectory, path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'),
     account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined);
-  context.subscriptions.push(usage);
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
@@ -59,6 +60,28 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   });
   const userModelsChanged = account.onDidChangeUserModels?.(syncUserSettings);
   const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
+  const localDesktop = !vscode.env.remoteName && typeof vscode.env.uiKind === 'number' && vscode.env.uiKind === vscode.UIKind.Desktop;
+  const desktop = !browser && localDesktop;
+  const startSchedules = () => new WorkflowScheduleRuntime(path.join(context.globalStorageUri.fsPath, 'workflow', 'schedules'), webDataDirectory,
+    directory => Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false)).catch(() => false),
+    async (target, workflowScheduleKey, signal) => {
+      const runtime = await selectedRuntime();
+      signal.throwIfAborted();
+      const startup = new AbortController();
+      const abort = () => startup.abort(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      try {
+        return await startProjectCli({ projectDir: target.directory, expectedProjectId: target.projectId, entryId: target.entryId,
+          nodePath: runtime.nodePath, runtime, theme: 'dark', locale: vscode.env.language, surface: 'editor', userSettings: settingsSnapshot(),
+          dataDir: webDataDirectory, authRoot, workflowScheduleKey, signal: AbortSignal.any([startup.signal, controller.signal]) });
+      } finally { signal.removeEventListener('abort', abort); }
+    }, error => console.warn('Studio Workflow scheduler:', error instanceof Error ? error.message : 'unknown error'));
+  let workflowSchedules: WorkflowScheduleRuntime | undefined;
+  if (desktop) {
+    // Schedule storage must not prevent unrelated projects and tools from opening.
+    try { workflowSchedules = startSchedules(); }
+    catch (error) { console.warn('Studio schedule storage:', error instanceof Error ? error.message : 'unknown error'); }
+  }
   const configurationService = {
     systemModelCatalog: async (signal: AbortSignal) => {
       const catalog = await account.getSystemModelCatalog(AbortSignal.any([signal, controller.signal]));
@@ -198,6 +221,18 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const combined = AbortSignal.any([signal, controller.signal]);
       return templates.create(input, combined, undefined, true);
     },
+    createRunDraft: !desktop ? undefined : (input, signal = controller.signal) => {
+      assertAvailable();
+      return templates.createRunDraft(input, AbortSignal.any([signal, controller.signal]));
+    },
+    openProjectSchedules: !desktop ? undefined : async (project, openRun) => {
+      if (!workflowSchedules) throw new Error(t('Could not open local schedule storage.'));
+      if (project.projectType !== 'workflow' || project.assistant || project.folderBot || project.distribution === 'release' || !project.manifest?.version
+        || isBuiltinProjectDirectory(project.folderPath)) throw new Error(t('Schedules are available for trusted local Workflow source projects.'));
+      const target = { directory: await realpath(project.folderPath), projectId: project.id, entryId: project.entryId, version: project.manifest.version };
+      await workflowSchedules.verifyTarget(target).catch(error => { throw new Error(error.message === 'authorization-changed' ? t('Trust this project folder before running it.') : t('The project entry has changed or is no longer available.')); });
+      openProjectSchedules(context, workflowSchedules, project, target, openRun);
+    },
     registerProject: async (directory, signal) => {
       assertAvailable();
       const combined = AbortSignal.any([signal, controller.signal]);
@@ -239,7 +274,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     readSidebarEntries: vscode.env.remoteName && !browser ? undefined : readSidebarProjectEntries,
     readLibraryActivity: vscode.env.remoteName && !browser ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
-    readProjectUsage: browser || !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop ? input => usage.request(input) : undefined,
+    readProjectUsage: browser || desktop ? input => usage.request(input) : undefined,
     previewWeb: browser ? studioPreview : undefined,
     openHostedSidebar: async (...args) => {
       const preview = await (await import('./hosted-sidebar-preview')).openHostedSidebar(...args);
@@ -265,7 +300,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return { projects, errors };
     },
     localAssistantDirectory: assistantDirectory,
-    listBuiltinProjectDirectories: !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop ? listBuiltinProjectDirectories : undefined,
+    listBuiltinProjectDirectories: localDesktop ? listBuiltinProjectDirectories : undefined,
     isBuiltinProjectDirectory,
     inspectAssistant: async (target, folders) => {
       assertAvailable();
@@ -289,7 +324,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     start: async (project, surface, signal, options) => {
       const runtime = await selectedRuntime();
       const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
-      const localArtifacts = options?.embedded === true && !browser && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop && !project.folderBot?.background;
+      const localArtifacts = options?.embedded === true && desktop && !project.folderBot?.background;
       const lease = await hosts.acquire(
       // A headless caller must not lease the CLI that received the embedded page's account.
       JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts]), project,
@@ -310,6 +345,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const runSignal = AbortSignal.any([hostSignal, controller.signal]);
       let bridge: StudioControlBridge | undefined;
       try {
+        const workflowScheduleKey = workflowSchedules && !project.assistant && !project.folderBot && project.distribution !== 'release'
+          && !isBuiltinProjectDirectory(project.folderPath) && project.entries.some(entry => entry.type === 'workflow') ? WorkflowScheduleRuntime.capability() : undefined;
         let studioControl: StudioControlConfiguration | undefined;
         const assistantAggregate = project.id === DEVELOPER_ASSISTANT_PROJECT_ID
           && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
@@ -332,6 +369,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
           localBotArtifactLabel: localArtifacts ? project.folderBot ? project.name : project.aggregateName || project.name : undefined,
+          workflowScheduleKey,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,
@@ -346,6 +384,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           assertAvailable();
         }
         const entries = session.ready.project.entries;
+        if (workflowScheduleKey) await workflowSchedules!.register(project.folderPath, project.id, session, workflowScheduleKey).catch(() => undefined);
         const restrictedConfigurations = session.ready.restrictedConfigurationEntries?.some(entryId => entries.some(entry => entry.entryId === entryId));
         // Hosted Web Apps keep their provider-scoped session. An aggregate with
         // restricted configurations also needs the project account for role checks.
@@ -468,6 +507,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return lease;
     },
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
-    dispose: () => { controller.abort(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
+    dispose: () => { controller.abort(); workflowSchedules?.dispose(); usage.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
   };
 }

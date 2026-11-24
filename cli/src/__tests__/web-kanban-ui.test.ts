@@ -124,6 +124,29 @@ it('copies only current preview requests through the UI clipboard and delegates 
   await vi.waitFor(() => expect(replies).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'copy-2', ok: false }), '*'));
 });
 
+it('routes native edit commands and host clipboard requests for a hosted Web app', async () => {
+  const writeText = vi.fn(async () => {});
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  cleanup.push(() => { if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard); else delete (navigator as any).clipboard; });
+  const { sources, sendState } = await fixture('en');
+  sources[0].onopen!();
+  const webAppState = (revision: number, nonce: string, url = `${location.origin}/kanban/${nonce}/index.html`) => ({
+    type: 'state', project: { id: 'im', entryId: 'im', aggregateName: 'IM', name: 'IM', projectType: 'kanban', folderPath: '/im', uri: 'file:///im', fields: [], entrypoints: [], entries: [{ entryId: 'im', type: 'kanban', name: 'IM' }] },
+    account: { status: 'authenticated', serverUrl: 'https://server.test', revision, user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
+    authenticationRevision: 1, stateRevision: revision, serverInstanceId: 'kanban-process',
+    kanban: { revision, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url, nonce, webApp: true, permissions: ['microphone'] } },
+  });
+  sources.at(-1)!.onmessage!({ data: JSON.stringify(webAppState(1, 'first')) });
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!, replies = vi.spyOn(frame.contentWindow!, 'postMessage');
+  const receive = (data: object) => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, origin: location.origin, data }));
+  receive({ type: 'steamharness:web-app-edit', version: 1, nonce: 'first', command: 'paste', clipboardData: { text: 'native paste' } });
+  expect(replies).toHaveBeenCalledWith({ type: 'steamharness:kanban-edit-command', nonce: 'first', command: 'paste', clipboardData: { text: 'native paste' } }, '*');
+  receive({ type: 'steamharness:web-app-clipboard', version: 1, nonce: 'first', requestId: 'copy-native', text: 'selected' });
+  await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('selected'));
+  await vi.waitFor(() => expect(replies).toHaveBeenCalledWith({ type: 'steamharness:web-app-clipboard-result', version: 1, nonce: 'first', requestId: 'copy-native', ok: true }, '*'));
+});
+
 it.each(['entries.runEntrypoint', 'conversations.viewMessage'])('keeps the Workflow receipt window through the Kanban page adapter (%s)', async operation => {
   const { sources, sendState, fetcher } = await fixture('en');
   sources[0]!.onopen!(); sendState(1);

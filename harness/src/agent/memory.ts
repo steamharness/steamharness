@@ -123,8 +123,12 @@ export function createBotMemoryTools(options: { context: NodeContext; defaultEna
         const request = validateBotMemoryRequest({ ...args, action: descriptor.action });
         const persistence = context.metadata?.runtimePersistence as RuntimePersistence | undefined;
         if (!persistence?.botMemory) throw new Error("The host does not provide Bot project memory storage.");
-        const requestId = JSON.stringify([context.conversation?.conversationId ?? "", currentBotRequestId() ?? options.input.requestId ?? context.metadata?.runId ?? "", currentBotToolCallId() ?? toolCallId]);
-        const result = await persistence.botMemory({ projectId: context.projectId, entryId: context.entryId }).execute(request, requestId);
+        const conversationId = context.conversation?.conversationId;
+        const runId = typeof context.metadata?.runId === "string" ? context.metadata.runId : undefined;
+        const turnId = currentBotRequestId() ?? options.input.requestId ?? runId;
+        const requestId = JSON.stringify([conversationId ?? "", turnId ?? "", currentBotToolCallId() ?? toolCallId]);
+        const result = await persistence.botMemory({ projectId: context.projectId, entryId: context.entryId }).execute(request, requestId,
+          { actor: "bot", conversationId, runId, requestId: turnId });
         return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: {} };
       },
     } as unknown as AgentTool];

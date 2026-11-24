@@ -7,7 +7,13 @@ description: "Configure time-window or Cron schedules for Workflow entrypoints a
 
 A schedule invokes a Workflow operation according to time rules, creating an independent run for each fire. Bot and Kanban cannot be scheduled targets. The selected operation does not first execute the default operation.
 
-Current CLI and Studio support preset declarations and structure checks, without a schedule-management page. Trigger, overlap, and history rules below describe a scheduling host integration. Server does not execute schedules.
+In Studio desktop, open **Project library → Project details → Workflow schedules**. Schedules are available for trusted local source projects. If the project contains several Workflow entries, choose the entry first, then select the operation in the schedule panel.
+
+1. Select **New schedule**, then choose the time zone and rule. You can also start from one of the project's **Suggested schedules**.
+2. Select **Preview next five** to check the times. Saving validates the operation and its parameters without running the project.
+3. Select **Enable schedule** and confirm the folder, entry, version, and time zone. To test it once, select **Run now** without enabling the schedule.
+
+The project needs a version of the SteamHarness CLI that supports schedules. When Studio shows an upgrade prompt, update that project's runtime. Studio does not change project dependencies automatically.
 
 ## Trigger rules
 
@@ -30,7 +36,7 @@ type ScheduleTrigger =
     };
 ```
 
-When a schedule is saved, its host validates the time zone, windows, Cron expression, target entrypoint, and parameters, then shows the next five fire times. Parameters may only use the entrypoint's existing static values; date placeholder templates are not supported. For dynamic values such as "today", read the current time inside the Workflow using the business time zone.
+Schedules accept only the operation's declared static parameters. File inputs and date placeholders are not supported. For a value such as “today,” read the current time in the business time zone inside the Workflow. Do not put credentials in schedule parameters.
 
 ## Recommended schedules
 
@@ -61,11 +67,13 @@ A preset ID must match `/^[a-z][a-z0-9_-]{0,63}$/`, be unique within the project
 
 ## Scheduling Boundary
 
-Server stores projects and data without scheduling or executing them. Applications may use the pure schedule parsing and preview helpers locally; project uploads never create scheduled execution.
+Studio fires schedules only while it is running locally and the device is awake. Occurrences missed while Studio was closed or the device was asleep are recorded as **Missed**, not run later. Opening multiple Studio windows does not duplicate a trigger. If the folder, source version, or trust status changes, affected triggers are skipped with a reason in history.
+
+Server does not execute schedules. Uploading a project does not create a schedule, and the standalone CLI does not start a background scheduler.
 
 ## Overlap, waiting, and history
 
-If the previous run for a schedule has not finished, the new fire is recorded as `skipped_overlap`; it is neither queued nor retried. A run that is waiting for user input is still unfinished, so later fires are skipped as well. The user can continue the original run by providing the requested input.
+If the previous run is unfinished, the trigger is recorded as `skipped_overlap`. It is not queued or retried. A run waiting for approval or input still counts as unfinished. Select **Trigger history → Open original run** to respond in that run.
 
 Every scheduled run records the following information in its run history, summary, and report:
 
@@ -82,8 +90,8 @@ Every scheduled run records the following information in its run history, summar
 
 The Schedule page shows the enabled state, rule, time zone, version, entrypoint, next fire, recent results, and skip reason. It also lets you trigger the schedule once and inspect its fire history. Manual triggers still follow the same overlap rules.
 
-You cannot edit or delete a schedule while it has a `pending`, `running`, or `waiting_for_input` fire. This prevents a recovered fire from switching to a different version, entrypoint, or parameter set, and preserves the schedule and fire history while its run continues. Wait for the run to finish or for the pending input to be completed before changing the schedule.
+You can pause a schedule while it is queued, running, or waiting for input, but you cannot edit or delete it. Pausing does not cancel a run that has already started. After editing a schedule, save and enable it again.
 
 ## Kanban integration
 
-Schedules and fire history remain scoped by `projectId + entryId`, with `entrypointId` identifying internal operations.
+Schedules and trigger history are scoped to the local source folder, `projectId`, and `entryId`. `entrypointId` identifies the operation.

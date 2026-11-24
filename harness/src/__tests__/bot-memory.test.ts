@@ -239,6 +239,10 @@ test("separate Bot conversations can create, link, read and unlink a structured 
   ]);
   assert.equal((await run("relate-structure")).errCode, 0);
   assert.deepEqual((await store.execute({ action: "get", id: target.id, relations: "incoming" })).relations, []);
+  const changes = (await store.manage!({ action: "history", id: target.id }, { actor: "user" })).changes as import("../runtime-storage/bot-memory-journal").BotMemoryChange[];
+  assert.equal(changes[0]!.action, "update");
+  assert.equal(changes[0]!.source.actor, "bot");
+  assert.equal(changes[0]!.source.requestId, "relate-structure");
 });
 
 test("separate Bot conversations retrieve the same project memory while a disabled switch blocks calls", async t => {

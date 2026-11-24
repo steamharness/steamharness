@@ -4,13 +4,16 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fail, validateBotMemoryProperties, validateBotMemoryRequest } from "./bot-memory-request";
 import type { BotMemoryEntry, BotMemoryProperties, BotMemoryRequest, BotMemorySummary } from "./bot-memory-request";
+import { createBotMemoryJournal, initializeBotMemoryJournal, memoryFieldDelta, type BotMemoryChangeSource, type BotMemoryDelta, type BotMemoryFields } from "./bot-memory-journal";
 
 export { BotMemoryError, validateBotMemoryRequest } from "./bot-memory-request";
 export type { BotMemoryAddress, BotMemoryEntry, BotMemoryProperties, BotMemoryRequest, BotMemorySummary } from "./bot-memory-request";
 
 export interface BotMemoryScope { projectId: string; entryId: string }
 export interface BotMemoryStore {
-  execute(request: BotMemoryRequest, requestId?: string): Promise<Record<string, unknown>>;
+  execute(request: BotMemoryRequest, requestId?: string, source?: BotMemoryChangeSource): Promise<Record<string, unknown>>;
+  /** Trusted host API. Not available as a model tool. */
+  manage?(request: unknown, source: BotMemoryChangeSource): Promise<Record<string, unknown>>;
   close(): void;
 }
 
@@ -24,7 +27,7 @@ function memoryTable(table: "bot_memories" | "bot_memories_new"): string {
 }
 
 function initializeSchema(database: DatabaseSync): void {
-  database.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; BEGIN IMMEDIATE;");
+  database.exec("PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
   try {
     const columns = database.prepare("PRAGMA table_info(bot_memories)").all();
     if (columns.length === 0) database.exec(memoryTable("bot_memories"));
@@ -44,8 +47,9 @@ function initializeSchema(database: DatabaseSync): void {
         PRIMARY KEY(project_id,entry_id,source_id,relation,target_id), CHECK(source_id<>target_id),
         FOREIGN KEY(project_id,entry_id,source_id) REFERENCES bot_memories(project_id,entry_id,id) ON DELETE CASCADE,
         FOREIGN KEY(project_id,entry_id,target_id) REFERENCES bot_memories(project_id,entry_id,id) ON DELETE RESTRICT);
-      CREATE INDEX IF NOT EXISTS bot_memory_backlinks ON bot_memory_relations(project_id,entry_id,target_id,relation,source_id);
-      COMMIT;`);
+      CREATE INDEX IF NOT EXISTS bot_memory_backlinks ON bot_memory_relations(project_id,entry_id,target_id,relation,source_id);`);
+    initializeBotMemoryJournal(database);
+    database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
     throw error;
@@ -58,6 +62,8 @@ const summary = (row: Record<string, unknown>): BotMemorySummary => ({ ...metada
   ...(typeof row.title === "string" ? { title: row.title } : {}), ...(typeof row.summary === "string" ? { summary: row.summary } : {}) });
 const propertiesOf = (row: Record<string, unknown>): BotMemoryProperties => JSON.parse(row.properties as string) as BotMemoryProperties;
 const entry = (row: Record<string, unknown>): BotMemoryEntry => ({ ...summary(row), content: row.content as string, properties: propertiesOf(row) });
+const valuesOf = (row: Record<string, unknown>): BotMemoryFields => ({ content: row.content as string, title: row.title as string | null,
+  summary: row.summary as string | null, properties: propertiesOf(row) });
 
 const scopeFilter = "project_id=? AND entry_id=?";
 const byId = `${scopeFilter} AND id=?`;
@@ -79,10 +85,13 @@ function memoryFilters(scope: string[], request: Extract<BotMemoryRequest, { act
 }
 
 /** A host chooses the file and identity. Model arguments can never select another Bot. */
-export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: string }): BotMemoryStore {
+export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: string; clock?: () => number }): BotMemoryStore {
   if (!options.projectId || !options.entryId) throw new Error("Bot memory requires projectId and entryId.");
   const scope = [options.projectId.toLowerCase(), options.entryId];
+  const clock = options.clock ?? Date.now;
+  const journal = createBotMemoryJournal(scope);
   let database: DatabaseSync | undefined, closed = false;
+  let nextPrune = 0;
   const db = () => {
     if (closed) throw new Error("Bot memory storage is closed.");
     if (database) return database;
@@ -95,6 +104,40 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
   const find = (selector: { id?: string; category?: string; key?: string }) => selector.id !== undefined
     ? db().prepare(`SELECT * FROM bot_memories WHERE ${byId}`).get(...scope, selector.id)
     : db().prepare(`SELECT * FROM bot_memories WHERE ${scopeFilter} AND category=? AND key=?`).get(...scope, selector.category!, selector.key!);
+  const bump = (database: DatabaseSync) => Number(database.prepare("UPDATE bot_memory_sequence SET revision=revision+1 WHERE singleton=1 RETURNING revision").get()!.revision);
+  const beginForget = (database: DatabaseSync) => {
+    try {
+      // In WAL mode an exclusive transaction still allows old snapshots.
+      // Leave that mode before removal, or fail without changing the memory.
+      if (database.prepare("PRAGMA journal_mode").get()?.journal_mode === "wal") {
+        if (database.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new Error();
+      }
+      database.exec("BEGIN EXCLUSIVE");
+      if (database.prepare("PRAGMA journal_mode").get()?.journal_mode === "wal") {
+        database.exec("ROLLBACK"); throw new Error();
+      }
+    } catch { fail("BOT_MEMORY_STORAGE_BUSY", "Another process is reading this memory database. Close it and try forgetting again."); }
+  };
+  const prune = (database: DatabaseSync, now: number) => {
+    if (now < nextPrune) return;
+    journal.prune(database, now);
+    nextPrune = now + 60_000;
+  };
+  const writeFields = (database: DatabaseSync, id: string, fields: BotMemoryFields, revision: number, iso: string) => {
+    database.prepare(`UPDATE bot_memories SET content=?,title=?,summary=?,properties=?,revision=?,updated_at=? WHERE ${byId}`)
+      .run(fields.content, fields.title, fields.summary, JSON.stringify(fields.properties), revision, iso, ...scope, id);
+  };
+  const writeLink = (database: DatabaseSync, id: string, target: string, relation: string, linked: boolean) => {
+    if (!find({ id: target })) fail("BOT_MEMORY_NOT_FOUND", "The target memory does not exist in this Bot.");
+    const args = [...scope, id, relation, target];
+    const change = linked ? database.prepare("INSERT INTO bot_memory_relations VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING").run(...args)
+      : database.prepare(`DELETE FROM bot_memory_relations WHERE ${relationFilter}`).run(...args);
+    if (!change.changes) fail(linked ? "BOT_MEMORY_RELATION_ALREADY_EXISTS" : "BOT_MEMORY_RELATION_NOT_FOUND",
+      linked ? "This relation already exists." : "This relation does not exist.");
+  };
+  const updateRevision = (database: DatabaseSync, id: string, revision: number, iso: string) => {
+    database.prepare(`UPDATE bot_memories SET revision=?,updated_at=? WHERE ${byId}`).run(revision, iso, ...scope, id);
+  };
 
   const readRelations = (id: string, direction: "incoming" | "outgoing", limit: number, offset: number) => {
     const [from, to] = direction === "outgoing" ? ["source_id", "target_id"] : ["target_id", "source_id"];
@@ -111,9 +154,9 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
     return { relations, ...(rows.length > relations.length ? { nextOffset: offset + relations.length } : {}) };
   };
 
-  return {
-    async execute(input, requestId) {
-      const request = validateBotMemoryRequest(input), database = db();
+  const execute = async (input: BotMemoryRequest, requestId?: string, source?: BotMemoryChangeSource, listAll = false): Promise<Record<string, unknown>> => {
+      const request = validateBotMemoryRequest(input), database = db(), time = clock();
+      prune(database, time);
       if (request.action === "search") {
         const { keywords } = request, limit = request.limit ?? 5, offset = request.offset ?? 0;
         // Literal substring matching also works for Chinese and does not interpret SQL wildcards.
@@ -167,7 +210,7 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
           } catch (error) { database.exec("ROLLBACK"); throw error; }
         }
         const limit = request.limit ?? 10, offset = request.offset ?? 0;
-        if (request.category === undefined && request.query === undefined && request.where === undefined) {
+        if (!listAll && request.category === undefined && request.query === undefined && request.where === undefined) {
           const rows = database.prepare("SELECT category,COUNT(*) AS count FROM bot_memories WHERE project_id=? AND entry_id=? GROUP BY category ORDER BY category LIMIT ? OFFSET ?").all(...scope, limit + 1, offset);
           return { categories: rows.slice(0, limit).map(row => ({ category: row.category, count: Number(row.count) })), ...(rows.length > limit ? { nextOffset: offset + limit } : {}) };
         }
@@ -183,7 +226,7 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
       }
       if (requestId !== undefined && (!requestId || requestId.length > 1_000)) return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory request ID.");
       const fingerprint = createHash("sha256").update(JSON.stringify(request)).digest("hex");
-      database.exec("BEGIN IMMEDIATE");
+      if (request.action === "delete") beginForget(database); else database.exec("BEGIN IMMEDIATE");
       try {
         if (requestId) {
           const receipt = database.prepare("SELECT fingerprint,result FROM bot_memory_receipts WHERE project_id=? AND entry_id=? AND request_id=?").get(...scope, requestId);
@@ -192,53 +235,107 @@ export function createSqliteBotMemoryStore(options: BotMemoryScope & { file: str
             database.exec("COMMIT"); return JSON.parse(receipt.result as string) as Record<string, unknown>;
           }
         }
-        const revision = Number(database.prepare("UPDATE bot_memory_sequence SET revision=revision+1 WHERE singleton=1 RETURNING revision").get()!.revision);
-        const now = new Date().toISOString();
+        const revision = bump(database);
+        const now = new Date(time).toISOString();
         let result: Record<string, unknown>;
         if (request.action === "save") {
           if (find(request)) fail("BOT_MEMORY_ALREADY_EXISTS", "This category and key already exist. Read the memory, then update its revision.");
           const row = database.prepare(`INSERT INTO bot_memories(project_id,entry_id,category,key,content,revision,created_at,updated_at,title,summary,properties)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING ${indexColumns}`)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING *`)
             .get(...scope, request.category, request.key, request.content ?? "", revision, now, now, request.title ?? null, request.summary ?? null,
               JSON.stringify(request.properties ?? {}))!;
           result = { memory: metadata(row) };
+          journal.append(database, { id: row.id as string, revision, action: "save", now: time, source, delta: memoryFieldDelta(undefined, valuesOf(row)) });
         } else {
           const previous = find("sourceId" in request ? { id: request.sourceId } : request)
             ?? fail("BOT_MEMORY_NOT_FOUND", "This memory does not exist.");
           const current = metadata(previous);
           if (current.revision !== request.expectedRevision) fail("BOT_MEMORY_REVISION_CONFLICT", "This memory changed. Read its latest revision before writing.");
+          let delta: BotMemoryDelta | undefined;
           if (request.action === "delete") {
             if (database.prepare(`SELECT 1 FROM bot_memory_relations WHERE ${scopeFilter} AND target_id=? LIMIT 1`).get(...scope, current.id)) {
               fail("BOT_MEMORY_REFERENCED", "Other memories reference this memory. Read its incoming relations and unlink them before deleting it.");
             }
             database.prepare(`DELETE FROM bot_memories WHERE ${byId}`).run(...scope, current.id);
-            result = { deleted: true, id: current.id, category: current.category, key: current.key, revision };
+            journal.forget(database, current.id);
+            result = { deleted: true, id: current.id, revision };
           } else if (request.action === "update") {
-            const fields = request.properties || request.removeProperties
-              ? JSON.stringify(validateBotMemoryProperties(Object.fromEntries(Object.entries({ ...propertiesOf(previous), ...request.properties })
-                .filter(([name]) => !request.removeProperties?.includes(name))))) : previous.properties as string;
-            database.prepare(`UPDATE bot_memories SET content=?,title=?,summary=?,properties=?,revision=?,updated_at=? WHERE ${byId}`)
-              .run(request.content === undefined ? previous.content as string : request.content ?? "",
-                request.title === undefined ? previous.title as string | null : request.title,
-                request.summary === undefined ? previous.summary as string | null : request.summary, fields, revision, now, ...scope, current.id);
+            const before = valuesOf(previous);
+            const fields: BotMemoryFields = { ...before,
+              ...(request.content !== undefined ? { content: request.content ?? "" } : {}),
+              ...(request.title !== undefined ? { title: request.title } : {}),
+              ...(request.summary !== undefined ? { summary: request.summary } : {}),
+              ...(request.properties || request.removeProperties ? { properties: validateBotMemoryProperties(Object.fromEntries(
+                Object.entries({ ...before.properties, ...request.properties }).filter(([name]) => !request.removeProperties?.includes(name)))) } : {}) };
+            writeFields(database, current.id, fields, revision, now);
+            delta = memoryFieldDelta(before, fields);
             result = { memory: { ...current, revision, updatedAt: now } };
           } else {
-            if (!find({ id: request.targetId })) fail("BOT_MEMORY_NOT_FOUND", "The target memory does not exist in this Bot.");
-            const args = [...scope, current.id, request.relation, request.targetId];
-            if (request.action === "link") {
-              const linked = database.prepare("INSERT INTO bot_memory_relations VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING").run(...args);
-              if (!linked.changes) fail("BOT_MEMORY_RELATION_ALREADY_EXISTS", "This relation already exists.");
-            } else {
-              const unlinked = database.prepare(`DELETE FROM bot_memory_relations WHERE ${relationFilter}`).run(...args);
-              if (!unlinked.changes) fail("BOT_MEMORY_RELATION_NOT_FOUND", "This relation does not exist.");
-            }
-            database.prepare(`UPDATE bot_memories SET revision=?,updated_at=? WHERE ${byId}`).run(revision, now, ...scope, current.id);
+            const linked = request.action === "link";
+            writeLink(database, current.id, request.targetId, request.relation, linked);
+            updateRevision(database, current.id, revision, now);
+            delta = { link: { targetId: request.targetId, relation: request.relation, before: !linked, after: linked } };
             result = { [request.action === "link" ? "linked" : "unlinked"]: true, memory: { ...current, revision, updatedAt: now } };
           }
+          journal.append(database, { id: current.id, revision, previousRevision: current.revision, action: request.action === "delete" ? "forget" : request.action,
+            now: time, source, delta });
         }
-        // Receipts contain metadata only, so deletion does not leave a second copy of memory content.
         if (requestId) database.prepare("INSERT INTO bot_memory_receipts VALUES(?,?,?,?,?)").run(...scope, requestId, fingerprint, JSON.stringify(result));
-        database.exec("COMMIT"); return result;
+        database.exec("COMMIT");
+        return result;
+      } catch (error) { database.exec("ROLLBACK"); throw error; }
+  };
+
+  return {
+    execute,
+    async manage(input, source) {
+      const request = input as Record<string, unknown> | undefined;
+      if (!request || typeof request !== "object" || Array.isArray(request)) return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory management request.");
+      const { action } = request;
+      if (action === "list") {
+        const validated = validateBotMemoryRequest({ ...request, action: "get" });
+        if (validated.action !== "get" || validated.id !== undefined || validated.key !== undefined) return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory list filters.");
+        return execute(validated, undefined, source, true);
+      }
+      if (action === "forget") return execute(validateBotMemoryRequest({ ...request, action: "delete" }), undefined, source);
+      if (action === "delete") return fail("BOT_MEMORY_INVALID_INPUT", "Use the explicit forget action to delete memory.");
+      if (action !== "history" && action !== "undo") return execute(validateBotMemoryRequest(request), undefined, source);
+      const allowed = action === "history" ? ["action", "id", "before"] : ["action", "id", "expectedRevision", "revision"];
+      if (Object.keys(request).some(key => !allowed.includes(key)) || typeof request.id !== "string") return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory history arguments.");
+      const id = request.id;
+      validateBotMemoryRequest({ action: "get", id });
+      const integer = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+      const database = db(), time = clock();
+      prune(database, time);
+      if (action === "history") {
+        if (request.before !== undefined && !integer(request.before)) return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory history cursor.");
+        return journal.list(database, id, find({ id })?.revision as number | undefined, time, request.before as number | undefined);
+      }
+      if (!integer(request.revision) || !integer(request.expectedRevision)) return fail("BOT_MEMORY_INVALID_INPUT", "Invalid memory revision.");
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const previous = find({ id }) ?? fail("BOT_MEMORY_NOT_FOUND", "This memory does not exist.");
+        if (previous.revision !== request.expectedRevision || previous.revision !== request.revision) {
+          fail("BOT_MEMORY_REVISION_CONFLICT", "This memory changed. Read its latest revision before undoing.");
+        }
+        const undone = Number(previous.revision), previousDelta = journal.undoable(database, id, undone, time);
+        const revision = bump(database), iso = new Date(time).toISOString();
+        let delta: BotMemoryDelta;
+        if ("link" in previousDelta) {
+          const { link } = previousDelta;
+          writeLink(database, id, link.targetId, link.relation, link.before);
+          updateRevision(database, id, revision, iso);
+          delta = { link: { ...link, before: link.after, after: link.before } };
+        } else {
+          const before = valuesOf(previous);
+          const restored = { ...before, ...Object.fromEntries(previousDelta.fields.map(field => [field.field, field.before])) };
+          writeFields(database, id, restored, revision, iso);
+          delta = memoryFieldDelta(before, restored);
+        }
+        journal.append(database, { id, revision, previousRevision: undone, action: "undo", now: time, source, delta, undoOf: undone });
+        const result = entry(find({ id })!);
+        database.exec("COMMIT");
+        return { memory: result };
       } catch (error) { database.exec("ROLLBACK"); throw error; }
     },
     close() { if (!closed) { closed = true; database?.close(); database = undefined; } },

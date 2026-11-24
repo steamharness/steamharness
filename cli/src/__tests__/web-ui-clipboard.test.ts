@@ -75,6 +75,7 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   vi.stubGlobal('acquireVsCodeApi', undefined);
   vi.stubGlobal('addEventListener', (type: string, listener: (event: any) => void) => listeners.set(type, listener));
   const host = acquireProjectHost();
+  expect(typeof host.copyText).toBe('function');
   const receive = (source: unknown, extra: Record<string, any>) => listeners.get('message')!({ source, data: { type: 'workflow-host', ...extra } });
   receive({}, { editCommand: 'paste' });
   receive(parent, { editCommand: 'insertHTML' });

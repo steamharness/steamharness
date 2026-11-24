@@ -20,6 +20,7 @@ interface ControllerOptions {
   canDrain?(session: ConversationSession): boolean;
   configurationRevision?(): number;
   userSettings?(): UserSettings;
+  folderBotProfile?(): Run['folderBotProfile'];
   independent?(session: ConversationSession): (() => void) | Promise<() => void>;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
@@ -186,8 +187,9 @@ export class ConversationController {
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
   private currentUserSettings(): UserSettings { return parseUserSettings(this.options.userSettings?.() ?? getUserSettings()); }
-  private settingsChanged(owner: ConversationSession): boolean {
+  private settingsChanged(owner: ConversationSession, profile = this.options.folderBotProfile?.()): boolean {
     if (!owner.agentParameters) return false;
+    if (!isDeepStrictEqual(owner.agentParameters.folderBotProfile, profile)) return true;
     const current = this.currentUserSettings();
     const saved = owner.agentParameters.userSettings;
     if (saved?.agent.models === undefined || current.agent.models === undefined) return !isDeepStrictEqual(saved, current);
@@ -308,12 +310,14 @@ export class ConversationController {
     if (editingId && !entry.queuedInputs?.some(item => item.id === editingId)) throw new Error(t('Queued message no longer exists.'));
     if (this.project.conversation?.durable?.enabled && (entry.agent || entry.activeRunId || entry.agentOwnerId)) {
       const owner = this.owner(entry);
+      const folderBotProfile = this.options.folderBotProfile?.();
+      const deliveryChanged = owner.agentParameters?.allowBotArtifactPublish !== input.allowBotArtifactPublish;
       if (owner.agentInterrupted) await this.agentCommand(owner.id, { type: 'snapshot', requestId: `interrupt:${id}` });
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
       if (mode === 'followUp' && (this.agentBusy(entry) || !this.draining.has(entry.id) && entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry)))) {
         if (!this.project.conversation?.inputQueue?.enabled) throw new Error(t('The current session is running.'));
         queued.hostQueued = true;
-        if (owner.agentParameters && (this.settingsChanged(owner) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) queued.configurationPending = true;
+        if (owner.agentParameters && (deliveryChanged || this.settingsChanged(owner, folderBotProfile) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) queued.configurationPending = true;
         const index = editingId ? entry.queuedInputs!.findIndex(item => item.id === editingId) : -1;
         if (index >= 0) { queued.id = entry.queuedInputs![index].id; entry.queuedInputs![index] = queued; }
         else (entry.queuedInputs ??= []).push(queued);
@@ -322,7 +326,7 @@ export class ConversationController {
       }
       const args = projectParamArgs(parameters.fields, input.params, input.states);
       const previous = owner.agentParameters;
-      const configChanged = previous && (this.settingsChanged(owner) || previous.configurationRevision !== this.options.configurationRevision?.()
+      const configChanged = previous && (deliveryChanged || this.settingsChanged(owner, folderBotProfile) || previous.configurationRevision !== this.options.configurationRevision?.()
         || input.configurationSelection && !isDeepStrictEqual(previous.configurationSelection, input.configurationSelection));
       if (configChanged) {
         if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(pendingAgentInput)) {
@@ -344,10 +348,14 @@ export class ConversationController {
           if (!preserveDraft) entry.draft = { text: '', attachments: [] };
           this.start(entry, queued); await this.persist(); return;
         }
-        owner.agentParameters = { userSettings: this.currentUserSettings(), configurationRevision: this.options.configurationRevision?.(), args, entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(owner.toolPermissionPolicies ?? {})) };
+        owner.agentParameters = { userSettings: this.currentUserSettings(), folderBotProfile, configurationRevision: this.options.configurationRevision?.(), args, entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(owner.toolPermissionPolicies ?? {})) };
       }
       const planIndex = previous?.args.indexOf('--plan') ?? -1;
-      if (owner.agentParameters) owner.agentParameters.configurationSelection = input.configurationSelection;
+      if (owner.agentParameters) {
+        owner.agentParameters.configurationSelection = input.configurationSelection;
+        owner.agentParameters.folderBotProfile = folderBotProfile;
+        owner.agentParameters.allowBotArtifactPublish = input.allowBotArtifactPublish;
+      }
       if (planIndex >= 0 && previous!.args[planIndex + 1] !== 'false' && owner.activeRunId) throw new Error(t("The current session is running."));
       if (attachmentsUnsupported(input.attachments)) throw new Error(t('This session accepts image attachments.'));
       if (!input.references?.length && (input.text === '/compact' || input.text === '/summarize')) {
@@ -400,10 +408,11 @@ export class ConversationController {
       ] as const) { if (files.length) { args.push(flag, JSON.stringify(files.map(({ previewUrl: _, ...reference }) => reference))); } }
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
-      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { userSettings: this.currentUserSettings(), configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
+      const folderBotProfile = this.options.folderBotProfile?.();
+      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || input.references?.[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, references: input.references, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
-      answer = { userSettings: this.currentUserSettings(), id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
+      answer = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
       answer.runId = answer.id;
       answer.configurationSelection = input.configurationSelection;
       entry.messages.push(answer);
@@ -411,6 +420,8 @@ export class ConversationController {
     const configurationSelection = input.configurationSelection ?? (resumeAgent ? entry.agentParameters?.configurationSelection : answer.configurationSelection);
     const request: Run = {
       userSettings: this.project.conversation?.durable?.enabled ? entry.agentParameters?.userSettings ?? answer.userSettings : answer.userSettings,
+      folderBotProfile: resumeAgent && entry.agentParameters ? entry.agentParameters.folderBotProfile : answer.folderBotProfile,
+      allowBotArtifactPublish: resumeAgent && entry.agentParameters ? entry.agentParameters.allowBotArtifactPublish : answer.allowBotArtifactPublish,
       resumeAgent,
       interruptAgent: entry.agentInterrupted === true,
       configurationSelection,
@@ -1326,7 +1337,7 @@ export class ConversationController {
     const agent = this.owner(entry).agent, conversationId = entry.agentConversationId ?? agent?.conversationId;
     return agent?.turns.find(turn => turn.conversationId === conversationId && turn.requestId === (input.requestId ?? input.id));
   }
-  async retry(id: string, entry = this.current): Promise<void> {
+  async retry(id: string, entry = this.current, allowBotArtifactPublish?: true): Promise<void> {
     this.assertCurrentEngine(entry);
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');
     if (index < 0) return;
@@ -1334,6 +1345,9 @@ export class ConversationController {
     const answer = entry.messages[index];
     if (answer?.recovering && !entry.activeRunId && !answer.cancelRequested) {
       const anchor = this.project.conversation?.durable?.enabled ? this.agentAnchor(this.owner(entry)) : undefined;
+      if (!allowBotArtifactPublish && (anchor?.allowBotArtifactPublish || answer.allowBotArtifactPublish || entry.agentParameters?.allowBotArtifactPublish)) {
+        throw new Error(t('Resume this delivery turn from the local Studio conversation.'));
+      }
       if (anchor) anchor.recoveryAttempts = 0;
       entry.recoveryPaused = false; answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
     }
@@ -1344,15 +1358,17 @@ export class ConversationController {
       const prior = { ...answer };
       answer.items = []; answer.content = ''; answer.recovering = false;
       answer.userSettings = this.currentUserSettings();
+      answer.folderBotProfile = this.options.folderBotProfile?.();
+      answer.allowBotArtifactPublish = allowBotArtifactPublish;
       try { this.start(entry, { ...user.input, id: answer.id!, createdAt: user.createdAt ?? Date.now() }, answer); }
       catch (error) { Object.assign(answer, prior); throw error; }
       await this.persist(); return;
     }
-    if (user.input) { await this.send(user.input, entry, true); return; }
+    if (user.input) { await this.send({ ...user.input, allowBotArtifactPublish }, entry, true); return; }
     const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = { ...entry.parameterValues?.[user.entrypointId ?? ''] };
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
-    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry, true);
+    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references, allowBotArtifactPublish }, entry, true);
   }
   private assertCurrentEngine(entry: ConversationSession): void {
     if (archivedConversation(this.project, entry)) throw new Error(t('This conversation belongs to a different Bot engine.'));

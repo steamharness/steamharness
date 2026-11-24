@@ -1,0 +1,13 @@
+diff --git a/product.json b/product.json
+index e1f35551527994329c7610fc9607464b2410c708..b6c1221de4718b52854a5985690e988f8be279b2 100644
+--- a/product.json
++++ b/product.json
+@@ -36,7 +36,7 @@
+   "electronArtifactFeed": "",
+   "urlProtocol": "steamharness-studio-dev",
+   "agentsTelemetryAppName": "agents",
+-  "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
++  "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/stable/8a14f0cc1b08d531eb83255ea3764ae22aa932b5/out/vs/workbench/contrib/webview/browser/pre/",
+   "builtInExtensions": [
+     {
+       "name": "ms-vscode.js-debug-companion",

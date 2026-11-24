@@ -5,7 +5,8 @@ import { projectDisplayName, projectWindowKey, type Project } from './workflow-t
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, projectConversationId, type ProjectWindowChrome } from './workflow-webview';
-import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
+import { bindDraftSave } from './workflow-draft-host';
+import { AssistantViewProvider, type AssistantConversation, type BotManagementPanel } from './assistant-view';
 import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
 import { InfoView } from './workflow-info-view';
@@ -60,7 +61,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; session: WebSession; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void>; openConversation(id: string): void; openArtifacts(): void }>();
+  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; session: WebSession; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void>; openConversation(id: string): void; openBotPanel(panel: BotManagementPanel): void }>();
   const findWorkspace = (project: Project, primary = false) => {
     const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project) && (!primary || entry.panel.viewType === 'studio.project'));
     return candidates.find(entry => entry.panel.active) ?? candidates.find(entry => entry.running) ?? candidates[0];
@@ -296,6 +297,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         });
         return true;
       };
+      const draft = project.projectType === 'bot' && !project.assistant && !launcher.previewWeb && !vscode.env.remoteName && !project.folderBot?.background
+        && launcher.createRunDraft && bindDraftSave({ webview: panel.webview, project, address: () => session.ready.url,
+          active: () => !closed && projectAvailable(project), create: launcher.createRunDraft, open: directory => openProjectFolder(vscode.Uri.file(directory), () => !disposed) });
+      if (draft) listeners.push(draft);
       listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, browserOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
         if (account.platform && message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
@@ -321,7 +326,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         }
         if (message?.type === 'workflow-frame-ready') {
           frameLoaded = true;
-          if (artifactsPending) openArtifacts();
+          if (botPanelPending) openBotPanel(botPanelPending);
           const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
           if (entry?.close === close) { entry.loaded = true; }
           frameReady(); updateEntry();
@@ -341,20 +346,21 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !browserOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
       let selection = conversationId ? { id: conversationId, revision: globalThis.crypto.randomUUID() } : undefined;
-      let frameLoaded = false, artifactsPending = false;
-      const openArtifacts = () => {
+      let frameLoaded = false, botPanelPending: BotManagementPanel | undefined;
+      const openBotPanel = (target: BotManagementPanel) => {
         if (closed || project.projectType !== 'bot' || launcher.previewWeb || vscode.env.remoteName) return;
-        if (session.ready.botArtifactProtocolVersion !== 1) {
-          artifactsPending = false;
-          void vscode.window.showWarningMessage(t('Update the project CLI to open the Bot artifact library.'));
+        const artifacts = target === 'artifacts';
+        if ((artifacts ? session.ready.botArtifactProtocolVersion : session.ready.botMemoryProtocolVersion) !== 1) {
+          botPanelPending = undefined;
+          void vscode.window.showWarningMessage(artifacts ? t('Update the project CLI to open the Bot artifact library.') : t('Update the project CLI to manage Bot memory.'));
           return;
         }
-        artifactsPending = !frameLoaded;
-        if (frameLoaded) void panel.webview.postMessage({ type: 'workflow-host', openBotArtifacts: true });
+        botPanelPending = frameLoaded ? undefined : target;
+        if (frameLoaded) void panel.webview.postMessage({ type: 'workflow-host', ...(artifacts ? { openBotArtifacts: true } : { openBotMemory: true }) });
       };
       const renderFrame = () => {
         frameLoaded = false;
-        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection);
+        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft });
       };
       const openConversation = (id: string) => {
         if (closed || project.projectType !== 'bot' || !projectConversationId(id)) return;
@@ -364,7 +370,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       renderFrame();
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
-        workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close, openConversation, openArtifacts });
+        workspaces.set(panel, { panel, project, session, running: true, loaded: false, ready, close, openConversation, openBotPanel });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
@@ -392,7 +398,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           }
         }));
       output.appendLine(`SteamHarness Web: ${projectDisplayName(project)}${session.ready.runtime ? `; Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}` : ''}`);
-      updateEntry(); return { dispose: close, closed: session.closed, openConversation, openArtifacts };
+      updateEntry(); return { dispose: close, closed: session.closed, openConversation, openBotPanel };
     } catch (error) { await close(); if ('reveal' in panel) { panel.dispose(); } throw error; }
   };
   const revealProject = (panel: vscode.WebviewPanel, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, reveal = true): Promise<void> => {
@@ -414,7 +420,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       check();
     });
   };
-  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false, conversationId?: string, botArtifacts = false): Promise<void> => {
+  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false, conversationId?: string, botPanel?: BotManagementPanel): Promise<void> => {
     const primary = viewColumn === vscode.ViewColumn.One && !toolTab;
     signal?.throwIfAborted();
     const selected = target?.releasePreview ? target : target?.builtin === 'analysis' ? target : target?.uri ? findProject(target.uri, target.entryId) : currentProject();
@@ -435,13 +441,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const existing = findWorkspace(selected, primary);
     if (existing?.running) {
       if (conversationId) existing.openConversation(conversationId);
-      if (botArtifacts) existing.openArtifacts();
+      if (botPanel) existing.openBotPanel(botPanel);
       await revealProject(existing.panel, viewColumn, signal); return;
     }
     const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab, undefined, conversationId); })(); opening.set(projectWindowKey(selected), created);
     try {
       const workspace = await created; signal?.throwIfAborted();
-      if (botArtifacts) workspace.openArtifacts?.();
+      if (botPanel) workspace.openBotPanel?.(botPanel);
       const panel = findWorkspace(selected, primary)?.panel;
       if (panel && (signal || existing && viewColumn !== undefined)) { await revealProject(panel, viewColumn, signal, !!existing); }
     } finally { opening.delete(projectWindowKey(selected)); }
@@ -639,6 +645,47 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     vscode.window.registerTreeDataProvider('studio.projects', projectWindows),
     vscode.window.registerWebviewPanelSerializer('studio.project', projectSerializer),
     vscode.window.registerWebviewPanelSerializer('studio.projectTool', projectSerializer),
+    register('studio.internalOpenProjectSchedules', async (target: { uri?: string; entryId?: string } = {}) => {
+      if (!launcher.openProjectSchedules || !vscode.workspace.isTrusted) throw new Error(t('Schedules are available for trusted local Workflow source projects.'));
+      let project: Project | undefined;
+      if (target.uri) {
+        const uri = vscode.Uri.parse(target.uri);
+        if (uri.scheme !== 'file' || uri.query || uri.fragment || !await vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', uri.toString(), false)) {
+          throw new Error(t('Trust this project folder before running it.'));
+        }
+        project = await resolveProjectTab(uri, target.entryId);
+      } else project = currentProject();
+      if (!project || !projectAvailable(project)) throw new Error(t('The project entry has changed or is no longer available.'));
+      const selected = project;
+      await launcher.openProjectSchedules(selected, async (id, liveUrl) => {
+        if (!projectConversationId(id) || !projectAvailable(selected) || !await vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(selected.folderPath).toString(), false)) {
+          throw new Error(t('Trust this project folder before running it.'));
+        }
+        if (liveUrl && findWorkspace(selected)?.session.ready.url !== liveUrl) {
+          const title = projectDisplayName(selected);
+          const panel = vscode.window.createWebviewPanel('studio.workflowScheduledRun', title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+          const pick = bindProjectPathPicker(panel.webview, vscode.Uri.file(selected.folderPath));
+          const clipboard = bindProjectClipboard(panel.webview);
+          const openPath = bindProjectPathOpen(panel.webview, vscode.Uri.file(selected.folderPath));
+          const browser = bindProjectBrowserOpen(panel.webview);
+          const download = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
+          const receive = panel.webview.onDidReceiveMessage(message => { pick.receive(message) || clipboard.receive(message) || openPath.receive(message) || browser.receive(message) || download.receive(message); });
+          const styling = vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() }));
+          panel.onDidDispose(() => { receive.dispose(); clipboard.dispose(); pick.dispose(); openPath.dispose(); browser.dispose(); download.dispose(); styling.dispose(); });
+          panel.webview.html = projectFrameHtml(liveUrl, title, selected.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language,
+            undefined, undefined, false, false, true, undefined, { showScheduledRun: id });
+          return;
+        }
+        await openProject(selected, undefined, undefined, true);
+        const entry = findWorkspace(selected);
+        if (!entry) throw new Error(t('Unable to open the resource.'));
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([entry.ready, new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error(t('Unable to open the resource.'))), 20_000); })]);
+          await entry.panel.webview.postMessage({ type: 'workflow-host', showScheduledRun: id });
+        } finally { clearTimeout(timeout); }
+      });
+    }),
     register('studio.openProjectConfigurations', async (projectDir: string, entryId?: string) => {
       if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
       const uri = vscode.Uri.file(projectDir).toString();
@@ -676,21 +723,22 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
-    register('studio.internalRunProjectEntry', async ({ uri, entryId, conversationId, botArtifacts }: { uri: string; entryId?: string; conversationId?: string; botArtifacts?: true }) => {
+    register('studio.internalRunProjectEntry', async ({ uri, entryId, conversationId, botArtifacts, botMemory }: { uri: string; entryId?: string; conversationId?: string; botArtifacts?: true; botMemory?: true }) => {
       await initialScan;
       if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
+      const botPanel = botMemory === true ? 'memory' : botArtifacts === true ? 'artifacts' : undefined;
       if (conversationId !== undefined && !projectConversationId(conversationId)) return;
       if (conversationId && vscode.workspace.workspaceFile?.toString() === uri && await sidebar.openAssistantConversation(conversationId)) return;
-      if (botArtifacts === true && vscode.workspace.workspaceFile?.toString() === uri && await sidebar.openAssistantArtifacts()) return;
+      if (botPanel && vscode.workspace.workspaceFile?.toString() === uri && await sidebar.openAssistantBotPanel(botPanel)) return;
       const select = () => provider.projects.find(project => project.uri === uri && project.entryId === (entryId ?? project.defaultEntry));
       let project = select();
       if (!project) { await refresh(); project = select(); }
       if (!project || !projectAvailable(project) || conversationId && (project.projectType !== 'bot' || project.defaultEntry !== project.entryId)
-        || botArtifacts && project.projectType !== 'bot') { throw new Error(t('The project entry has changed or is no longer available.')); }
+        || botPanel && project.projectType !== 'bot') { throw new Error(t('The project entry has changed or is no longer available.')); }
       if (lockedWindow || await vscode.commands.executeCommand<boolean>('studio.internalIsReleaseWindow').then(Boolean, () => false)) {
-        await vscode.commands.executeCommand('studio.internalLaunchProjectEntry', { uri, entryId: project.entryId, conversationId, botArtifacts });
+        await vscode.commands.executeCommand('studio.internalLaunchProjectEntry', { uri, entryId: project.entryId, conversationId, botArtifacts, botMemory });
       } else {
-        await openProject(project, undefined, undefined, false, conversationId, botArtifacts === true);
+        await openProject(project, undefined, undefined, false, conversationId, botPanel);
       }
     }),
     register('studio.openProjectWindow', (target?: Project) => openProjectWindow(target)),
@@ -703,7 +751,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }),
     vscode.commands.registerCommand('studio.internalUpdateWindowChrome', (chrome: ProjectWindowChrome) => { if (chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); } }),
     vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
-    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string, entryId?: string, conversationId?: string, botArtifacts?: true) => {
+    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string, entryId?: string, conversationId?: string, botArtifacts?: true, botMemory?: true) => {
       const project = projectUri ? findProject(projectUri, entryId) : currentProject();
       if (conversationId !== undefined && (!projectConversationId(conversationId) || project?.projectType !== 'bot' || project.defaultEntry !== project.entryId)) return false;
       if (!project || !projectAvailable(project)) {
@@ -721,7 +769,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         controller.signal.addEventListener('abort', abort, { once: true });
       });
       try {
-        await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal, false, conversationId, botArtifacts === true && project.projectType === 'bot'), canceled]);
+        const botPanel = project.projectType === 'bot' ? botMemory === true ? 'memory' : botArtifacts === true ? 'artifacts' : undefined : undefined;
+        await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal, false, conversationId, botPanel), canceled]);
         const entry = findWorkspace(project, true);
         if (!entry?.running) { return false; }
         panelClosed = entry.panel.onDidDispose(() => controller.abort());

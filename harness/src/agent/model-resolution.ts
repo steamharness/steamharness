@@ -4,6 +4,16 @@ import { agentConfiguredModels } from "./model-settings";
 import { readAgentSystemCredentials, resolveAgentBridgeBaseUrl, shouldFallbackFromSystemAI, startAgentSystemLLMRuntime } from "./system-llm";
 import type { AgentInput, AgentRuntimeOptions } from "./types";
 
+/** A configured instance model cannot silently fall back to another provider. */
+export function assertFolderBotModel(input: AgentInput, options: AgentRuntimeOptions, model: string | undefined): void {
+  if (model === undefined) return;
+  const { models, systemOnly } = agentConfiguredModels(undefined, options.modelSource);
+  if (input.baseUrl !== undefined || input.apiKey !== undefined || options.baseUrl !== undefined || options.apiKey !== undefined || options.models !== undefined || options.resolvedModel !== undefined
+    || !models.some(entry => entry.id === model && (!systemOnly || entry.source === 'system'))) {
+    throw new HarnessError({ type: 'input_validation', message: `The model selected in this folder Bot profile (${model}) is unavailable for the source project.` });
+  }
+}
+
 /** Shared by both Bot engines. Resolving a selection does not open a proxy bridge. */
 export async function selectConfiguredConversationModel(
   requested: string | undefined,

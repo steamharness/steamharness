@@ -3,7 +3,7 @@ import { conversationModelName, type ConversationMessage, type ConversationSessi
 type Event = Record<string, unknown>;
 interface EventSummary { count: number; events: Event[]; starts: Map<string, number>; ends: Map<string, number> }
 
-export function withoutModelRequest({ modelRequest: _private, modelRequestExecutionId: _link, modelRequestCount: _count, ...message }: ConversationMessage): Omit<ConversationMessage, 'modelRequest' | 'modelRequestExecutionId' | 'modelRequestCount'> {
+export function withoutModelRequest({ modelRequest: _private, modelRequestExecutionId: _link, modelRequestCount: _count, folderBotProfile: _profile, ...message }: ConversationMessage): Omit<ConversationMessage, 'modelRequest' | 'modelRequestExecutionId' | 'modelRequestCount' | 'folderBotProfile'> {
   return message;
 }
 
@@ -26,7 +26,7 @@ export class ConversationState {
         }
         return view;
       });
-      return { ...session, agent: this.agent(session.agent), messages };
+      return { ...session, ...(session.agentParameters && { agentParameters: { ...session.agentParameters, folderBotProfile: undefined } }), agent: this.agent(session.agent), messages };
     });
   }
 

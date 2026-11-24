@@ -19,6 +19,14 @@ import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
 let frameContextMenu = false;
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (host.copyText) return await host.copyText(text);
+    return (await host.postMessage({ type: 'copy', text })) !== false;
+  } catch {
+    return false;
+  }
+}
 interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string; webApp?: boolean; permissions?: string[]; accountUrl?: string }; }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
@@ -186,7 +194,27 @@ window.addEventListener('message', event => {
         y: rect.top + message.y * rect.height / (frame.clientHeight || rect.height || 1), editable: message.editable, selection: message.selection });
       return;
     }
-    if (message.type === 'steamharness:web-app-account' && state.preview.webApp && event.origin === new URL(state.preview.url).origin) { if (state.preview.accountUrl) void host.postMessage({ type: 'open-url', url: state.preview.accountUrl }); return; }
+    if (message.type === 'steamharness:web-app-account' && state.preview.webApp && event.origin === new URL(state.preview.url, window.location.href).origin) { if (state.preview.accountUrl) void host.postMessage({ type: 'open-url', url: state.preview.accountUrl }); return; }
+    if (message.type === 'steamharness:web-app-edit' && state.preview.webApp && event.origin === new URL(state.preview.url, window.location.href).origin) {
+      if (message.version !== 1 || !state?.preview.webApp || !['copy','paste','cut','selectAll','undo','redo'].includes(message.command)) return;
+      const { command, clipboardData, nonce } = message;
+      frame.contentWindow?.postMessage({ type: 'steamharness:kanban-edit-command', nonce, command, ...(command === 'paste' && clipboardData ? { clipboardData } : {}) }, '*');
+      return;
+    }
+    if (message.type === 'steamharness:web-app-contextmenu' && state.preview.webApp && event.origin === new URL(state.preview.url, window.location.href).origin) {
+      if (message.version !== 1 || !Number.isFinite(message.x) || !Number.isFinite(message.y) || typeof message.editable !== 'boolean' || typeof message.selection !== 'boolean') return;
+      const rect = frame.getBoundingClientRect();
+      void host.postMessage({ type: 'context-menu', x: rect.left + message.x * rect.width / (frame.clientWidth || rect.width || 1), y: rect.top + message.y * rect.height / (frame.clientHeight || rect.height || 1), editable: message.editable, selection: message.selection });
+      return;
+    }
+    if (message.type === 'steamharness:web-app-clipboard' && state.preview.webApp && event.origin === new URL(state.preview.url, window.location.href).origin) {
+      if (message.version !== 1 || typeof message.requestId !== 'string' || !message.requestId || message.requestId.length > 128 || typeof message.text !== 'string' || message.text.length > 1000000) return;
+      const nonce = state.preview.nonce, target = frame.contentWindow;
+      void copyText(message.text).then(ok => {
+        if (nonce === state?.preview.nonce && target === frame.contentWindow) target?.postMessage({ type: 'steamharness:web-app-clipboard-result', version: 1, nonce, requestId: message.requestId, ok: ok !== false }, '*');
+      }).catch(() => { if (nonce === state?.preview.nonce && target === frame.contentWindow) target?.postMessage({ type: 'steamharness:web-app-clipboard-result', version: 1, nonce, requestId: message.requestId, ok: false }, '*'); });
+      return;
+    }
     if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
       if (document.activeElement === frame) host.keyboard?.forward(message.event);
       return;

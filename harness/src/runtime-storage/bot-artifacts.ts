@@ -31,6 +31,7 @@ export interface BotArtifactStore {
   get(id: string): BotArtifact | undefined;
   read(id: string): { artifact: BotArtifact; bytes: Uint8Array } | undefined;
   delete(id: string): boolean;
+  removalRevision?(): number;
 }
 
 type Row = NonNullable<ReturnType<ReturnType<DatabaseSync["prepare"]>["get"]>>;
@@ -120,6 +121,9 @@ export function createBotArtifactStore(file: string, files: BotFileWorkspace, as
       // Retain an opaque receipt so recovery cannot re-create a removed delivery.
       return use(true, db => Number(db.prepare(`UPDATE bot_artifacts SET bytes=NULL,title='',name='',size=0,
         conversation_id='',run_id='',request_id='',output_id='' WHERE id=? AND bytes IS NOT NULL`).run(id).changes) === 1) ?? false;
+    },
+    removalRevision() {
+      return use(false, db => Number(db.prepare('SELECT COUNT(*) AS count FROM bot_artifacts WHERE bytes IS NULL').get()!.count)) ?? 0;
     },
   };
 }

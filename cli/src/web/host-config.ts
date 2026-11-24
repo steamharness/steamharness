@@ -18,6 +18,7 @@ export interface WebHostConfiguration {
   /** Native local Studio only. Configured through the private host pipe. */
   localBotArtifacts?: true;
   localBotArtifactLabel?: string;
+  workflowScheduleKey?: string;
 }
 
 export interface FolderBotHost {
@@ -26,6 +27,7 @@ export interface FolderBotHost {
   directory: string;
   background: boolean;
   permissionCeiling?: UserSettings['agent']['permissionPolicy'];
+  profileRecord?: string;
 }
 
 function parseFolderBot(value: unknown): FolderBotHost {
@@ -35,7 +37,9 @@ function parseFolderBot(value: unknown): FolderBotHost {
     typeof item.background !== 'boolean' || (item.background ? !['read-only', 'workspace', 'auto'].includes(item.permissionCeiling ?? '') : item.permissionCeiling !== undefined)) {
     throw new Error('Invalid local folder Bot host.');
   }
-  return { id: item.id, projectId: item.projectId, directory: item.directory, background: item.background, permissionCeiling: item.permissionCeiling };
+  if (item.profileRecord !== undefined && (typeof item.profileRecord !== 'string' || !path.isAbsolute(item.profileRecord)
+    || item.profileRecord.includes('\0') || path.basename(item.profileRecord) !== `${item.id}.json`)) throw new Error('Invalid local Bot profile record.');
+  return { id: item.id, projectId: item.projectId, directory: item.directory, background: item.background, permissionCeiling: item.permissionCeiling, profileRecord: item.profileRecord };
 }
 
 export function parseHostResourceProjects(value: unknown): string[] {
@@ -98,6 +102,8 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     ...(configuration.localBotArtifacts === true && !folderBot?.background ? { localBotArtifacts: true as const,
       localBotArtifactLabel: typeof configuration.localBotArtifactLabel === 'string' ? configuration.localBotArtifactLabel.trim().slice(0, 160) : undefined } : {}),
+    ...(configuration.surface === 'editor' && !folderBot && typeof configuration.workflowScheduleKey === 'string' && /^[a-f0-9]{64}$/u.test(configuration.workflowScheduleKey)
+      ? { workflowScheduleKey: configuration.workflowScheduleKey } : {}),
     connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true, folderBot,
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

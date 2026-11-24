@@ -5,8 +5,20 @@ const sessionKey = () => `steamharness-web-session${studioMount()}`;
 /** Embedded Studio frames may not receive the session cookie. Keep the token in a header. */
 export function requestBotArtifact(suffix: string, init: RequestInit = {}): Promise<Response> {
   if (!/^(?:\?before=[1-9]\d*|\/ba_[a-f0-9]{32}(?:\/content(?:\?preview=1)?)?)?$/u.test(suffix)) return Promise.reject(new Error('Invalid artifact route.'));
-  const url = new URL(`${entryBase()}/api/bot-artifacts${suffix}`, location.href);
-  if (url.origin !== location.origin) return Promise.reject(new Error('Invalid artifact origin.'));
+  return requestLocalManagement(`/api/bot-artifacts${suffix}`, init);
+}
+
+export function requestBotMemory(input: object, signal?: AbortSignal): Promise<Response> {
+  return requestLocalManagement('/api/bot-memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal });
+}
+
+export function requestRunDraft(sessionId: string, messageId: string, signal?: AbortSignal): Promise<Response> {
+  return requestLocalManagement('/api/workflow-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, messageId }), signal });
+}
+
+function requestLocalManagement(route: string, init: RequestInit): Promise<Response> {
+  const url = new URL(`${entryBase()}${route}`, location.href);
+  if (url.origin !== location.origin) return Promise.reject(new Error('Invalid project management origin.'));
   const headers = new Headers(init.headers);
   const token = sessionStorage.getItem(sessionKey());
   if (token) headers.set('Authorization', `Bearer ${token}`);

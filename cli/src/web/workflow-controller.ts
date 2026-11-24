@@ -31,7 +31,8 @@ export class Controller {
     for (const record of this.workspace.runs) {
       delete record.submittingInput;
       if (record.status === 'running' || record.status === 'waiting_for_input') {
-        record.status = 'interrupted'; record.error = t("Run interrupted");
+        record.status = record.schedule && record.pendingInput ? 'waiting_for_input' : 'interrupted';
+        if (record.status === 'interrupted') record.error = t("Run interrupted");
         this.clearTimers(record);
       }
     }
@@ -76,23 +77,33 @@ export class Controller {
     if (this.running || this.task) { throw new Error('A workflow is already running or waiting for input.'); }
   }
   async start(input: StartInput): Promise<RunRecord> {
+    const previous = input.schedule && this.runs.find(run => run.id === input.schedule!.fireId);
+    if (previous) {
+      if (previous.schedule?.scheduleId !== input.schedule?.scheduleId) throw new Error('Scheduled run identity changed.');
+      return previous;
+    }
     this.assertAvailable();
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = input.inputMode === 'raw' ? parseProjectArgs(input.rawArgs ?? '[]')
       : (validateProjectValues(parameters.fields, input.params, input.states), projectParamArgs(parameters.fields, input.params, input.states));
     const files = await this.inputFiles([input.params, args]);
     this.assertAvailable();
-    const draft = this.draft(input.entrypointId);
-    const id = globalThis.crypto.randomUUID(), now = Date.now();
+    const draft = input.schedule ? undefined : this.draft(input.entrypointId);
+    const id = input.schedule?.fireId ?? globalThis.crypto.randomUUID(), now = Date.now();
+    const policies = draft?.policies ?? Object.fromEntries((parameters.tools ?? []).map(tool => [tool.name, { enabled: tool.enabled, autoApprove: false }]));
     const record: RunRecord = {
       id, scopeId: id, entrypointId: input.entrypointId, entryRequest: input.entryRequest,
       title: input.title ?? this.project.entrypoints.find(entry => entry.id === input.entrypointId)?.title ?? this.project.name,
-      createdAt: now, updatedAt: now, status: 'running', args: [...args], params: { ...input.params }, policies: structuredClone(draft.policies),
+      createdAt: now, updatedAt: now, status: 'running', args: [...args], params: { ...input.params }, policies: structuredClone(policies),
+      ...(input.schedule && { schedule: input.schedule }),
       items: [], events: [], files, nodes: [], logs: '', resolvedInputs: [],
     };
-    this.runs.unshift(record); this.workspace.selectedId = id;
-    draft.values = { ...input.params }; draft.rawArgs = input.rawArgs ?? draft.rawArgs; draft.inputMode = input.inputMode ?? 'form';
-    this.launch(record); await this.persist(); return record;
+    this.runs.unshift(record);
+    if (draft) {
+      this.workspace.selectedId = id;
+      draft.values = { ...input.params }; draft.rawArgs = input.rawArgs ?? draft.rawArgs; draft.inputMode = input.inputMode ?? 'form';
+    }
+    await this.launch(record); return record;
   }
   async rerun(previousId: string): Promise<RunRecord> {
     this.assertAvailable();
@@ -104,22 +115,25 @@ export class Controller {
     const record: RunRecord = { id, scopeId: id, title: previous.title, entrypointId: previous.entrypointId, createdAt: now, updatedAt: now,
       status: 'running', args: [...previous.args], params: structuredClone(previous.params), policies: structuredClone(previous.policies),
       items: [], events: [], files, nodes: [], logs: '', resolvedInputs: [] };
-    this.runs.unshift(record); this.workspace.selectedId = id; this.launch(record); await this.persist(); return record;
+    this.runs.unshift(record); this.workspace.selectedId = id; await this.launch(record); return record;
   }
   private async inputFiles(value: unknown) {
     return Promise.all([...projectStorageReferences(value).files].map(async id => (await this.runtime.readFile(this.project, id)).reference));
   }
-  private launch(record: RunRecord): void {
+  private launch(record: RunRecord): Promise<void> {
     record.status = 'running'; record.error = undefined; record.updatedAt = Date.now();
     this.workspace.occupiedId = record.id;
     const task: Task = { record, cancelled: false, finished: Promise.resolve() };
     this.task = task; this.changed();
-    task.finished = this.execute(task).catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
+    // Both the caller and the worker wait on the same durable admission.
+    const admitted = this.persist();
+    task.finished = this.execute(task, admitted).catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
+    return admitted;
   }
-  private async execute(task: Task): Promise<void> {
+  private async execute(task: Task, admitted: Promise<void>): Promise<void> {
     const record = task.record, pending = record.pendingInput;
     try {
-      await this.persist();
+      await admitted;
       this.outputFailure = undefined;
       if (this.options.journal && !record.outputSummary) {
         record.outputSummary = await this.options.journal.append(record.id, {
@@ -129,7 +143,7 @@ export class Controller {
         await this.persist();
       }
       if (task.cancelled || this.disposed) { throw new Error('Stopped.'); }
-      const report = await this.runtime.run({
+      const result = await this.runtime.run({
         project: this.project, conversationId: record.scopeId, args: record.args, entrypointId: record.entrypointId,
         runId: record.id, toolPermissionPolicies: record.policies,
         entryCall: record.entryRequest ? { entryId: record.entryRequest.sourceEntryId } : undefined,
@@ -171,6 +185,7 @@ export class Controller {
         }
         record.updatedAt = Date.now(); this.changed(); this.scheduleSave();
       });
+      const report = record.schedule ? { ...result, ...record.schedule } : result;
       await this.outputWrites;
       if (this.outputFailure) throw this.outputFailure;
       if (task.cancelled || this.disposed) { throw new Error('Stopped.'); }
@@ -238,7 +253,7 @@ export class Controller {
     const form = Object.fromEntries(request.params.map(field => [field.name, projectFormValue(field, values[field.name] ?? request.defaultValues?.[field.name])]));
     record.submittingInput = { requestId, nodeName: request.nodeName, values: resolvedProjectValues(request.params, form),
       submittedAt: new Date().toISOString(), request, precedingOutputItemIds: allItems.map((item, index) => typeof item.id === 'string' ? item.id : String(index)) };
-    this.launch(record); await this.persist();
+    await this.launch(record);
   }
   async stop(reason = 'Stopped.'): Promise<void> {
     const record = this.occupied;

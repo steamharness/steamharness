@@ -67,6 +67,7 @@ export interface SkillToolOptions {
    * the one shipped beside it.
    */
   directories: readonly string[];
+  selected?: readonly string[];
   /**
    * Consulted before a call runs. Throwing blocks it; throwing
    * `user_input_required` parks the run instead.
@@ -95,6 +96,8 @@ interface SkillEntry {
  * uses the agent's other tools and those tools' permissions.
  */
 export async function createSkillTools(options: SkillToolOptions): Promise<AgentTool[]> {
+  const selected = options.selected && new Set(options.selected);
+  if (selected) await selectSkills(options.directories, selected);
   const Type = options.Type ?? await loadTypebox();
 
   const tool = {
@@ -139,7 +142,7 @@ export async function createSkillTools(options: SkillToolOptions): Promise<Agent
     async execute(_toolCallId: string, params: unknown) {
       const args = (params ?? {}) as SkillActionArgs;
       await options.approve?.(SKILL_TOOL_NAME, args);
-      const payload = await runSkillAction(options.directories, args);
+      const payload = await runSkillAction(options.directories, args, selected);
       return { content: [{ type: "text" as const, text: JSON.stringify(payload) }], details: {} };
     },
   } as unknown as AgentTool;
@@ -156,11 +159,12 @@ export async function createSkillTools(options: SkillToolOptions): Promise<Agent
 export async function runSkillAction(
   directories: readonly string[],
   args: SkillActionArgs,
+  selected?: ReadonlySet<string>,
 ): Promise<unknown> {
   const offset = pageInteger(args.offset, 0, "skill offset", 0, Number.MAX_SAFE_INTEGER);
   const limit = pageInteger(args.limit, MAX_SKILL_FILE_CHARS, "skill limit", 1, MAX_SKILL_FILE_CHARS);
   if (args.action === "list") {
-    const skills = await listSkills(directories);
+    const skills = await selectSkills(directories, selected);
     const wanted = typeof args.skill === "string" ? args.skill.trim() : "";
     if (wanted !== "") {
       const skill = requireSkill(skills, wanted);
@@ -185,7 +189,7 @@ export async function runSkillAction(
   }
 
   if (args.action === "read") {
-    const skills = await listSkills(directories);
+    const skills = await selectSkills(directories, selected);
     const wanted = typeof args.skill === "string" ? args.skill.trim() : "";
     const skill = requireSkill(skills, wanted);
     const relative = typeof args.path === "string" && args.path.trim() !== ""
@@ -206,6 +210,14 @@ export async function runSkillAction(
   }
 
   throw new Error('skill action must be "list" or "read".');
+}
+
+async function selectSkills(directories: readonly string[], selected?: ReadonlySet<string>): Promise<SkillEntry[]> {
+  const skills = await listSkills(directories);
+  if (!selected) return skills;
+  const available = skills.filter(skill => selected.has(skill.name));
+  if (available.length !== selected.size) throw new Error("The skills selected in this folder Bot profile are unavailable for the source project.");
+  return available;
 }
 
 async function listSkills(directories: readonly string[]): Promise<SkillEntry[]> {

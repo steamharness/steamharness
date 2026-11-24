@@ -96,12 +96,14 @@ export function createToolApprovalGate(): ToolApprovalGate {
 export function createProjectToolPermissionContext(options: {
   definitions?: ToolPermissionDefinition[];
   policies?: ToolPermissionPolicyMap;
+  disabledTools?: readonly string[];
   userInput?: NodeContext["userInput"];
   projectName: string;
   runId: string;
 }): ToolPermissionContext {
   const definitions = normalizeToolPermissionDefinitions(options.definitions);
   const policies = normalizeToolPermissionPolicies(options.policies, definitions);
+  const denied = new Set(options.disabledTools);
   const resolved = new Map(
     definitions.map((definition) => [
       definition.name,
@@ -116,7 +118,9 @@ export function createProjectToolPermissionContext(options: {
     requiresUserApproval: true,
     getTool(name) {
       const normalizedName = normalizeToolName(name);
-      return normalizedName === undefined ? undefined : resolved.get(normalizedName);
+      if (normalizedName === undefined) return;
+      const definition = resolved.get(normalizedName);
+      return denied.has(normalizedName) ? { ...definition, name: normalizedName, enabled: false, autoApprove: false } : definition;
     },
     requireToolApproval(input) {
       return requireProjectToolApproval({

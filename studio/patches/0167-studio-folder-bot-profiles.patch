@@ -1,0 +1,66 @@
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index f66a10b6f5f740bafdc926db73146535cbf2bd79..479223fb24162da7353378e79d9d594a089c97a9 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -281,7 +281,7 @@ export class LaunchpadLibrary extends Disposable {
+ 		return state;
+ 	}
+ 
+-	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string) {
++	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string, alwaysVisible = false) {
+ 		const group = element('section', 'lp-detail-action-group');
+ 		group.setAttribute('aria-label', label);
+ 		const controls = element('div', 'lp-detail-group-actions');
+@@ -311,7 +311,7 @@ export class LaunchpadLibrary extends Disposable {
+ 					action.dataset.detailAction = item.id;
+ 					return action;
+ 				});
+-				group.hidden = !buttons.length;
++				group.hidden = !alwaysVisible && !buttons.length;
+ 				controls.replaceChildren(...buttons);
+ 				if (focused) { buttons.find(action => action.dataset.key === focused)?.focus({ preventScroll: true }); }
+ 			},
+@@ -432,9 +432,10 @@ export class LaunchpadLibrary extends Disposable {
+ 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
+ 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
+ 			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
++			const label = t('Bot management', 'Bot 管理');
++			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
+ 			if (canManageBot) {
+-				const group = element('section', 'lp-detail-action-group');
+-				const label = t('Bot management', 'Bot 管理');
++				const group = management?.element ?? element('section', 'lp-detail-action-group');
+ 				group.setAttribute('aria-label', label);
+ 				const controls = element('div', 'lp-detail-group-actions');
+ 				for (const entry of botEntries) {
+@@ -446,13 +447,15 @@ export class LaunchpadLibrary extends Disposable {
+ 					if (this.actions.openBotArtifacts) { add('bot-artifacts', t('Artifact library', '产物库'), 'archive', () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
+ 					if (this.actions.openBotMemory) { add('bot-memory', t('Memory management', '记忆管理'), 'database', () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
+ 				}
+-				group.append(element('h2', '', label), controls);
++				if (!management) { group.append(element('h2', '', label)); }
++				group.append(controls);
+ 				secondaryActions.append(group);
+ 			}
+ 			// Local actions resolve independently of IM. Update each group only when its actions change.
+ 			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
+ 			this.updateDetailActions = () => {
+-				bot.update(local?.items);
++				bot.update(management ? [] : local?.items);
++				management?.update(local?.items);
+ 				im.update(account?.items);
+ 				secondaryActions.hidden = bot.element.hidden && im.element.hidden && !canManageBot;
+ 			};
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 0a374282163c1b709b709a3ab4c3bbc895b53259..96bf97673156d03feeb09e88a27072d8997b7c9a 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -153,7 +153,7 @@ export class StudioLaunchpad extends Disposable {
+ 			runDetailAction: async (project, id) => {
+ 				if (!this.start.state?.platform) { return; }
+ 				try {
+-					if (id === 'create-folder-bot') {
++					if (['create-folder-bot', 'edit-folder-bot-profile', 'copy-folder-bot', 'export-folder-bot-template', 'import-folder-bot-template'].includes(id)) {
+ 						const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id);
+ 						if (local?.workspace) { await this.openManagedWorkspace(local.workspace); }
+ 						return;

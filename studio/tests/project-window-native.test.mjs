@@ -125,6 +125,17 @@ test('artifact library launches once for the selected Bot folder or managed inst
   assert.equal(f.studioEntryForOpenables([{ folderUri: folder }], { studioProjectEntry: { botArtifacts: 'true' } }), undefined);
 });
 
+test('memory management carries only the selected Bot entry or managed workspace', () => {
+  const f = fixture(), folder = f.URI.file('/projects/chat'), workspace = f.URI.file('/studio/instances/bot.code-workspace');
+  const options = { studioProjectEntry: { entryId: 'assistant', botMemory: true } };
+  assert.deepEqual({ ...f.studioEntryForOpenables([{ folderUri: folder }], options) }, { uri: folder.toString(), entryId: 'assistant', botMemory: true });
+  const managed = f.studioEntryForOpenables([{ workspaceUri: workspace }], options);
+  assert.deepEqual({ ...f.studioEntryForWorkspace(managed, { id: 'copy', configPath: workspace }) }, { uri: workspace.toString(), botMemory: true });
+  assert.equal(f.studioEntryForWorkspace(managed, { id: 'copy', configPath: f.URI.file('/unrelated.code-workspace') }), undefined);
+  assert.equal(f.studioEntryForOpenables([{ folderUri: folder }], { studioProjectEntry: { botMemory: 'true' } }), undefined);
+  assert.equal(f.studioEntryForOpenables([{ folderUri: folder }], { studioProjectEntry: { botMemory: true, botArtifacts: true } }), undefined);
+});
+
 test('the project-window patch reproduces the kernel changes repeatedly without changing the index', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-project-window-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));

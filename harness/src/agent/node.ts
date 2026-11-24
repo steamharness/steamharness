@@ -16,7 +16,9 @@ import { createToolApprovalGate } from "../tool-permissions/index";
 import { HarnessError } from "../workflow/errors";
 import { assertCurrentProjectConfigurationAccess } from "../configuration";
 import { retryAgentConfigurationAccess } from "./provider-retry";
-import { resolveAgentSystemAIInput } from "./model-resolution";
+import { assertFolderBotModel, resolveAgentSystemAIInput } from "./model-resolution";
+import { folderBotResponsibilities, readFolderBotProfile } from "../executor/folder-context";
+import { BOT_JSON_SUMMARY_DEFINITION, BOT_JSON_SUMMARY_GUIDANCE, createBotJsonSummaryTool } from "./bot-json-summary";
 export { resolveAgentSystemAIInput } from "./model-resolution";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
 import { resolveAgentPermissionPolicySetting } from "./permission";
@@ -251,6 +253,11 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     // not a provider the SDK knows, so building the runtime from the raw input
     // would fail on an "unknown model" before the bridge is ever considered.
     await retryAgentConfigurationAccess(assertCurrentProjectConfigurationAccess, { signal: context.abortSignal });
+    const profile = readFolderBotProfile(context);
+    assertFolderBotModel(input, this.options, profile?.modelId);
+    if (Array.isArray(profile?.skills) && (!this.options.skills || context.toolPermissions?.getTool("skill")?.enabled === false)) {
+      throw new HarnessError({ type: "input_validation", message: "The skills selected in this folder Bot profile are unavailable for the source project." });
+    }
     const system = await resolveAgentSystemAIInput({ ...input,
       requestId: input.requestId ?? `${String(context.metadata?.["runId"] ?? randomUUID())}:${this.name}`,
     }, this.options, context.abortSignal);
@@ -281,10 +288,10 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         const created = await this.options.createTools(context);
         toolSet = Array.isArray(created) ? { tools: created } : created;
       }
-      if (this.options.skills && context.toolPermissions?.getTool("skill")?.enabled !== false) {
+      if (profile?.skills !== "off" && this.options.skills && context.toolPermissions?.getTool("skill")?.enabled !== false) {
         const gate = createToolApprovalGate();
         const roots = this.options.skills.directories.map(directory => path.resolve(String(context.metadata?.entryRootDir ?? process.cwd()), directory));
-        const skills = await createSkillTools({ directories: roots, approve: async (name, args) => { await gate.approve({ name, arguments: args }, context); } });
+        const skills = await createSkillTools({ directories: roots, selected: profile?.skills, approve: async (name, args) => { await gate.approve({ name, arguments: args }, context); } });
         toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
       }
       if (bot) {
@@ -292,13 +299,14 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         if (customTools.some(tool => BOT_MEMORY_TOOL_NAMES.includes(tool.name as typeof BOT_MEMORY_TOOL_NAMES[number]))) {
           throw new Error("Bot memory_* tool names are reserved by Core.");
         }
-        if (customTools.some(tool => BOT_FILE_TOOL_NAMES.includes(tool.name) || tool.name === BOT_ARTIFACT_TOOL.name)) throw new Error("Bot bot_files_* tool names are reserved by Core.");
+        if (customTools.some(tool => BOT_FILE_TOOL_NAMES.includes(tool.name) || tool.name === BOT_ARTIFACT_TOOL.name || tool.name === BOT_JSON_SUMMARY_DEFINITION.name)) throw new Error("Bot file and summary tool names are reserved by Core.");
         const readOnly = parseAgentMode(runInput.agent ?? this.options.mode) === "plan"
           || resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy) === "read-only";
         const memoryTools = isBotMemoryEnabled(context, bot.memoryDefaultEnabled)
           ? createBotMemoryTools({ context, defaultEnabled: bot.memoryDefaultEnabled, input: runInput, readOnly }) : [];
         const fileTools = botFiles ? createBotFileTools(botFiles, readOnly) : [];
         if (delivery) fileTools.push(delivery);
+        if (delivery && botFiles && context.toolPermissions?.getTool(BOT_JSON_SUMMARY_DEFINITION.name)?.enabled !== false) fileTools.push(createBotJsonSummaryTool(botFiles));
         if (memoryTools.length || fileTools.length) toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...memoryTools, ...fileTools] };
       }
       if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
@@ -715,7 +723,10 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
       runtimeInfo: context.runtimeInfo,
-      botGuidance: [memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT, botFiles && BOT_FILES_SYSTEM_PROMPT, canDeliver && BOT_ARTIFACT_GUIDANCE].filter(Boolean).join("\n\n") || undefined,
+      botGuidance: [memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT, botFiles && BOT_FILES_SYSTEM_PROMPT, canDeliver && BOT_ARTIFACT_GUIDANCE,
+        canDeliver && context.toolPermissions?.getTool(BOT_JSON_SUMMARY_DEFINITION.name)?.enabled !== false && BOT_JSON_SUMMARY_GUIDANCE].filter(Boolean).join("\n\n") || undefined,
+      instanceGuidance: folderBotResponsibilities(context),
+      builtinSkills: readFolderBotProfile(context)?.skills === undefined,
       botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
       botFiles,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,

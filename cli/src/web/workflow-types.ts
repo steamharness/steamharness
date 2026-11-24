@@ -220,6 +220,7 @@ export interface Run {
   toolPermissionPolicies?: ToolPolicies;
   /** Internal host admission; never read from browser or model arguments. */
   allowBotArtifactPublish?: true;
+  folderBotProfile?: import('steamharness').FolderBotProfile;
 }
 
 export interface Runtime {
@@ -247,6 +248,8 @@ export interface Runtime {
 
 export interface ConversationMessage {
   userSettings?: import('steamharness').UserSettings;
+  folderBotProfile?: Run['folderBotProfile'];
+  allowBotArtifactPublish?: true;
   configurationSelection?: Run['configurationSelection'];
   contextEpoch?: number;
   sessionRequestId?: string;
@@ -287,12 +290,12 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; allowBotArtifactPublish?: true; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   origin?: 'host';
   engine?: NonNullable<Project['conversation']>['engine'];
-  agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
+  agentParameters?: { userSettings?: import('steamharness').UserSettings; folderBotProfile?: Run['folderBotProfile']; allowBotArtifactPublish?: true; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;

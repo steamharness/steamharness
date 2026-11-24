@@ -46,6 +46,13 @@ export class WorkflowHistory {
     }).catch(error => { if (this.lease === acquiring) this.lease = undefined; throw error; });
     return acquiring;
   }
+  get ownsHistory(): boolean { return !!this.lease; }
+  async prepareScheduledWrite(): Promise<WorkspaceContract | undefined> {
+    await this.pending;
+    const alreadyOwned = this.ownsHistory;
+    await this.acquire();
+    return alreadyOwned ? undefined : this.read();
+  }
   read(): Promise<WorkspaceContract> {
     const next = this.pending.then(() => this.load());
     this.pending = next.catch(() => undefined); return next;

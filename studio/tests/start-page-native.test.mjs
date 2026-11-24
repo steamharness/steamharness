@@ -11,8 +11,6 @@ import { pinnedKernel } from './helpers/pinned-kernel.mjs';
 import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const file = 'src/vs/workbench/browser/parts/editor/studioStart.ts';
-const css = 'src/vs/workbench/browser/parts/editor/media/studioStart.css';
-const overviewPatch = '0088-studio-project-overview.patch';
 const source = await readFile(path.join(ROOT, 'upstream/vscode', file), 'utf8');
 const compiled = await build({ entryPoints: [path.join(ROOT, 'upstream/vscode', file)], bundle: true, platform: 'browser', format: 'iife',
   globalName: 'studioStart', loader: { '.css': 'empty' }, write: false });
@@ -95,43 +93,46 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   view.dispose();
 });
 
-const localUsagePatch = '0142-studio-project-local-usage.patch';
-for (const [patchNames, files] of [
-  [[overviewPatch], [file, css, 'src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts', 'src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts']],
-  [['0070-studio-start-partial-status.patch'], [file]],
-  [['0069-studio-editor-group-close.patch'], ['src/vs/workbench/browser/parts/editor/editor.contribution.ts', 'src/vs/workbench/browser/parts/editor/media/editorgroupview.css', 'src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css']],
-  [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
-  [['0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
-  [['0067-studio-start-recent-projects.patch'], [file, css]],
-]) test(`${patchNames.join(' + ')} replays twice and preserves the index`, async t => {
+for (const patchName of ['0088-studio-project-overview.patch', '0070-studio-start-partial-status.patch', '0069-studio-editor-group-close.patch',
+  '0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch']) {
+test(`${patchName} replays against its original files and preserves the index`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-setup-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const fork = await kernelLock();
   const kernel = path.join(directory, 'vscode');
-  for (const name of files) {
-    await mkdir(path.dirname(path.join(kernel, name)), { recursive: true });
-    await copyFile(path.join(ROOT, 'upstream/vscode', name), path.join(kernel, name));
+  const patch = path.join(ROOT, 'patches', patchName), ancestor = path.join(directory, 'ancestor.index');
+  const original = (args, encoding = 'utf8') => execFileSync('git', args, { cwd: fork.directory, env: { ...process.env, GIT_INDEX_FILE: ancestor }, encoding, stdio: ['ignore', 'pipe', 'pipe'] });
+  const files = original(['apply', '--numstat', patch]).trimEnd().split('\n').map(line => line.split('\t')[2]);
+  try {
+    if (patchName === '0070-studio-start-partial-status.patch') {
+      // This older patch omits blob IDs. Use the parent of its actual integration commit.
+      original(['read-tree', 'fbd49daf3a780ede690297b6394f689747a8ffbb^']);
+    } else original(['apply', `--build-fake-ancestor=${ancestor}`, patch]);
+  } catch (error) {
+    if (original(['rev-parse', '--is-shallow-repository']).trim() === 'true') return t.skip('The historical patch base is unavailable in this shallow checkout.');
+    throw error;
   }
-  await mkdir(path.join(directory, 'patches'));
-  // Replay later refinements too, restricted to this fixture's files.
-  const sequence = patchNames.includes(overviewPatch) ? [...patchNames, '0107-studio-project-type-icons.patch'] : patchNames.includes('0067-studio-start-recent-projects.patch')
-    ? [...patchNames, '0076-studio-release-startup.patch', '0078-studio-start-recommendations.patch', '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch']
-    : [...patchNames, '0083-studio-explicit-platform-tools.patch', overviewPatch, '0107-studio-project-type-icons.patch'];
-  for (const patchName of [...sequence, '0093-studio-agent-library.patch', '0095-studio-library-project-details.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch', localUsagePatch]) {
-    const patch = await readFile(path.join(ROOT, 'patches', patchName), 'utf8');
-    const relevant = patch.split(/(?=^diff --git )/m).filter(part => files.some(name => part.startsWith(`diff --git a/${name} b/${name}\n`))).join('');
-    if (relevant) await writeFile(path.join(directory, 'patches', patchName), relevant);
-  }
+  await mkdir(kernel); await mkdir(path.join(directory, 'patches'));
+  const tracked = original(['ls-files', '-z', '--', ...files]).split('\0').filter(Boolean);
+  if (tracked.length) original(['checkout-index', `--prefix=${kernel}/`, '--', ...tracked]);
+  original(['apply', '--cached', patch]);
+  const after = new Set(original(['ls-files', '-z', '--', ...files]).split('\0').filter(Boolean));
+  const expected = files.map(name => after.has(name) ? original(['show', `:${name}`], 'buffer') : null);
+  await copyFile(patch, path.join(directory, 'patches', patchName));
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
-  for (const patchName of (await readdir(path.join(directory, 'patches'))).sort().reverse()) { git(['apply', '--reverse', path.join(directory, 'patches', patchName)]); }
   git(['add', '.']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture']);
   const index = git(['write-tree']);
   for (let attempt = 0; attempt < 2; attempt++) {
     await applyPatches(directory, kernel);
-    for (const name of files) { assert.equal(await readFile(path.join(kernel, name), 'utf8'), await readFile(path.join(ROOT, 'upstream/vscode', name), 'utf8')); }
+    for (const [i, name] of files.entries()) {
+      const result = await readFile(path.join(kernel, name)).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      assert.deepEqual(result, expected[i], name);
+    }
     assert.equal(git(['write-tree']), index);
   }
 });
+}
 
 test('the complete patch series applies to the pinned kernel and preserves local edits', async t => {
   const files = new Set();

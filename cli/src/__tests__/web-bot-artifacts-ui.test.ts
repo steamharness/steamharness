@@ -11,6 +11,20 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); document.body.replaceChildren(); document.head.replaceChildren(); });
 
+it('refreshes an existing card when another window removes a snapshot', async () => {
+  let removed = false;
+  vi.stubGlobal('fetch', vi.fn(async () => removed ? new Response('', { status: 404 }) : Response.json(record)));
+  const library = new BotArtifactLibrary({ navigate: vi.fn() });
+  library.configure('ready', 'Bot instance', 0);
+  const card = library.card({ title: 'Report', content: record }); document.body.append(card);
+  const actions = card.querySelector<HTMLElement>('.bot-artifact-actions')!;
+  await expect.poll(() => actions.hidden).toBe(false);
+  removed = true;
+  library.configure('ready', 'Bot instance', 1);
+  await expect.poll(() => actions.hidden).toBe(true);
+  expect(card.textContent).toContain('Artifact removed');
+});
+
 it('pages only delivered files, previews text without rendering markup, and can open its source', async () => {
   const navigate = vi.fn();
   const second = { ...record, title: 'Older', id: 'ba_1123456789abcdef0123456789abcdef', conversationId: undefined };

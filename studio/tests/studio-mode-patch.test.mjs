@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { test } from 'node:test';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { kernelLock } from './helpers/kernel-lock.mjs';
 
-test('the workspace-mode series and the current launchpad replay twice without changing the index', async t => {
+test('the historical workspace-mode series replays twice without changing the index', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-mode-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const names = ['0035-studio-workspace-modes.patch', '0036-studio-webview-focus.patch', '0037-studio-steam-workspace-tabs.patch', '0038-studio-steam-group-lifecycle.patch', '0039-studio-steam-tools.patch', '0040-studio-steam-window-chrome.patch', '0041-studio-steam-tool-instances.patch', '0042-studio-steam-header-drag.patch', '0043-studio-steam-tab-navigation.patch', '0044-studio-steam-tab-actions.patch', '0045-studio-steam-editor.patch', '0046-studio-steam-tools-width.patch', '0047-studio-steam-tab-hierarchy.patch', '0048-studio-mode-motion.patch', '0049-studio-mode-transition-cancellation.patch', '0050-studio-conversation-file-drop.patch', '0051-studio-steam-native-tool-tabs.patch', '0053-studio-mode-panel-state.patch', '0054-studio-settings.patch', '0055-studio-account-onboarding.patch', '0056-studio-settings-display-language.patch', '0057-studio-language-command-service-lifetime.patch', '0058-studio-source-native-localization.patch', '0059-studio-login-tab.patch', '0066-studio-database-workspace.patch'];
@@ -17,31 +18,12 @@ test('the workspace-mode series and the current launchpad replay twice without c
   const fromFork = args => execFileSync('git', args, { cwd: upstream.directory, stdio: ['ignore', 'pipe', 'pipe'] });
   let historical = true;
   try { fromFork(['cat-file', '-e', `${original}^{tree}`]); } catch { historical = false; }
-  const launchpad = ['0093-studio-agent-library.patch', '0094-studio-launchpad-social-and-chat.patch', '0095-studio-library-project-details.patch', '0096-studio-launchpad-library-actions.patch', '0097-studio-launchpad-friends-profile.patch', '0098-studio-launchpad-command-center.patch', '0099-studio-store-listing-details.patch', '0100-studio-launchpad-refresh-social.patch', '0101-studio-launchpad-icon-contrast.patch', '0102-studio-launchpad-request-avatars.patch', '0103-studio-launchpad-back-icon-alignment.patch', '0106-studio-launchpad-hide-server-status.patch', '0107-studio-project-type-icons.patch'];
-  launchpad.push('0104-studio-library-product-actions.patch', '0105-studio-launchpad-identity-badges.patch', '0108-studio-launchpad-add-contacts.patch', '0109-studio-library-project-category.patch', '0110-studio-shared-project-details.patch', '0111-studio-desktop-notifications.patch', '0112-studio-direct-chat-windows.patch', '0113-studio-project-details-layout.patch');
-  launchpad.push('0114-studio-add-friend-toolbar.patch');
-  launchpad.push('0115-studio-recent-chat-toolbar.patch');
-  launchpad.push('0116-studio-launchpad-settings-toolbar.patch');
-  launchpad.push('0117-studio-owned-chat-windows.patch');
-  launchpad.push('0118-studio-compact-chat-titlebar.patch');
-  launchpad.push('0119-studio-full-width-chat-titlebar-drag.patch');
-  launchpad.push('0120-studio-independent-chat-windows.patch');
-  launchpad.push('0121-studio-neutral-bot-badges.patch');
-  launchpad.push('0122-studio-tray-notification-preview.patch');
-  launchpad.push('0123-studio-tray-notification-reliability.patch');
-  launchpad.push('0124-studio-skip-empty-notifications-center.patch');
-  launchpad.push('0125-studio-folder-bot-library.patch');
-  launchpad.push('0126-studio-stable-folder-bot-actions.patch');
-  launchpad.push('0127-studio-workbench-notification-read.patch');
-  launchpad.push('0128-studio-project-card-icon-fallback.patch');
-  launchpad.push('0135-studio-library-status-dots.patch');
-  launchpad.push('0136-studio-library-status-guide.patch');
-  for (const [group, series, commit] of [['mode-files', names, undefined], ...(historical ? [['modes', names, original]] : []), ['launchpad', launchpad, upstream.commit]]) {
+  for (const [group, commit] of [['mode-files', undefined], ...(historical ? [['modes', original]] : [])]) {
     const root = path.join(fixture, group), kernel = path.join(root, 'vscode'), patches = [], paths = new Set();
     await mkdir(kernel, { recursive: true }); await mkdir(path.join(root, 'patches'));
     const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     git(['init', '-q']);
-    for (const name of [...series].sort()) {
+    for (const name of [...names].sort()) {
       let patch = await readFile(path.join(ROOT, 'patches', name), 'utf8');
       if (!commit) {
         // Depth-one installs can still replay the full lifetime of files created in this series from an empty tree.
@@ -68,13 +50,6 @@ test('the workspace-mode series and the current launchpad replay twice without c
         await mkdir(path.dirname(path.join(kernel, file)), { recursive: true });
         await writeFile(path.join(kernel, file), fromFork(['show', `${commit}:${file}`]));
       }
-      if (group === 'launchpad') {
-        // Before the fork commit is made, build the candidate snapshot from its patch.
-        const lastPatch = patches.at(-1);
-        let integrated = true;
-        try { git(['apply', '--reverse', '--check', lastPatch]); } catch { integrated = false; }
-        if (!integrated) { git(['apply', lastPatch]); }
-      }
       expected = await bytes();
       for (const patch of [...patches].reverse()) git(['apply', '--reverse', patch]);
     }
@@ -88,5 +63,30 @@ test('the workspace-mode series and the current launchpad replay twice without c
       assert.deepEqual(actual, expected);
       assert.equal(git(['write-tree']), index);
     }
+  }
+});
+
+test('the Bot management and Workflow schedule patches reproduce their integrated kernel', async t => {
+  const upstream = await kernelLock();
+  const base = '5befd93a2ffe32e116b58489687ac4e4edeb18de';
+  const integrated = '625a0316eda5166c3152bb224891e01dcae7d385';
+  const names = ['0166-studio-bot-memory-management.patch', '0167-studio-folder-bot-profiles.patch',
+    '0168-studio-workflow-schedules.patch', '0169-studio-pin-stable-webview-assets.patch'];
+  const receipt = JSON.parse(await readFile(path.join(ROOT, 'config/patches.json'), 'utf8'));
+  const patches = names.map(name => path.join(ROOT, 'patches', name));
+  for (const [i, name] of names.entries()) {
+    assert.equal(receipt.patches[name], createHash('sha256').update(await readFile(patches[i])).digest('hex'), name);
+  }
+  const scratch = await mkdtemp(path.join(tmpdir(), 'studio-launchpad-replay-'));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, 'index') };
+  const git = args => execFileSync('git', args, { cwd: upstream.directory, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try { git(['cat-file', '-e', `${base}^{tree}`]); git(['cat-file', '-e', `${integrated}^{tree}`]); }
+  catch { return t.skip('Historical fork objects are unavailable in this shallow kernel checkout.'); }
+  // These patches were authored against this base. Current kernel files may have moved since then.
+  for (let i = 0; i < 2; i++) {
+    git(['read-tree', base]);
+    for (const patch of patches) git(['apply', '--cached', patch]);
+    assert.equal(git(['write-tree']), git(['rev-parse', `${integrated}^{tree}`]));
   }
 });

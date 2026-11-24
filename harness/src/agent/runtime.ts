@@ -80,6 +80,9 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   runtimeInfo?: ProjectRuntimeInfo;
   /** Core-owned guidance retained alongside custom and prepared personas. */
   botGuidance?: string;
+  /** Active instance guidance should never be appended to the durable transcript. */
+  instanceGuidance?: string;
+  builtinSkills?: boolean;
   botFiles?: BotFileWorkspace;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
   /** Host lease; pending work outlives the foreground answer. */
@@ -425,6 +428,8 @@ class ProjectAgentRuntime implements AgentRuntime {
         workdir: this.options.workdir,
         storage: this.options.storage,
         botGuidance: this.options.botGuidance,
+        instanceGuidance: this.options.instanceGuidance,
+        builtinSkills: this.options.builtinSkills,
         botMemoryRecall: this.options.botMemoryRecall,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
@@ -870,7 +875,7 @@ function applyRunConfiguration(
   const systemPrompt = parsed.agent === "plan"
     ? [AGENT_PLAN_SYSTEM_PROMPT, parsed.systemPrompt].filter(isNonEmpty).join("\n\n")
     : parsed.systemPrompt ?? options.systemPrompt ?? defaultAgentSystemPrompt();
-  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT, options.botGuidance].filter(isNonEmpty).join("\n\n");
+  agent.state.systemPrompt = [systemPrompt, options.builtinSkills === false ? undefined : BUILTIN_AGENT_SKILLS_PROMPT, options.botGuidance].filter(isNonEmpty).join("\n\n");
 
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.

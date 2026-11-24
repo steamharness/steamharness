@@ -59,6 +59,7 @@ export interface LocalFolderBotScope {
   directory: string;
   background: boolean;
   permissionCeiling?: 'read-only' | 'workspace' | 'auto';
+  profileRecord?: string;
 }
 
 export interface Project extends Parameters {

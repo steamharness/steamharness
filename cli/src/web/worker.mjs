@@ -157,6 +157,7 @@ try {
 } = await import(coreUrl);
   const core = await import(coreUrl);
   if (request.folderBot && core.LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION !== 1) throw new Error('Update the project SDK to run a local folder Bot.');
+  if (request.folderBot?.profileRecord && core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION !== 1) throw new Error('Update the project SDK to use this folder Bot profile.');
   // IPC callbacks execute outside the async scope that registered the listener.
   // Re-enter the same run snapshot for every command and its asynchronous work.
   const connection = (url, token) => url && token ? { serverUrl: url, accessToken: token } : undefined;
@@ -176,6 +177,9 @@ try {
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
+    let memoryManagement;
+    try { memoryManagement = (await import(resolve('steamharness/runtime-storage', coreUrl))).BOT_MEMORY_MANAGEMENT_VERSION; }
+    catch { /* An older SDK may not export runtime storage. */ }
     for (const folderPath of request.paths) {
       try {
         const pkg = JSON.parse(readFileSync(path.join(folderPath, 'steamharness.json'), 'utf8'));
@@ -189,7 +193,7 @@ try {
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
           entries: manifest.entries, defaultEntry: manifest.defaultEntry,
-          runtime: { harnessVersion: coreManifest.version, harnessPath },
+          runtime: { harnessVersion: coreManifest.version, harnessPath, botMemoryManagementVersion: memoryManagement, folderBotProfileVersion: core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
@@ -351,7 +355,7 @@ try {
       }
       const running = runLocalProjectWithReport({
         runtimeHost: request.runtimeHost,
-        folderContext: request.folderBot && { directory: request.folderBot.directory, projectId: request.folderBot.projectId, permissionCeiling: request.folderBot.permissionCeiling },
+        folderContext: request.folderBot && { directory: request.folderBot.directory, projectId: request.folderBot.projectId, permissionCeiling: request.folderBot.permissionCeiling, profile: request.folderBotProfile },
         entryConversationHost,
         entryCall: request.entryCall,
         readOnly: request.readOnly === true,

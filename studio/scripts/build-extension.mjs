@@ -49,7 +49,7 @@ export async function buildExtension({ watch = false } = {}) {
       await esbuild.build(option);
     }
   }
-  for (const [entry, name] of [['account', 'account'], ['login', 'login'], ['trace', 'trace'], ['info', 'info'], ['versions', 'versions'], ['welcome', 'welcome']]) {
+  for (const [entry, name] of [['account', 'account'], ['login', 'login'], ['trace', 'trace'], ['info', 'info'], ['versions', 'versions'], ['welcome', 'welcome'], ['schedules', 'schedules']]) {
     const ui = {
       absWorkingDir: directory, entryPoints: [`webview/${entry}.ts`], bundle: true, platform: 'browser',
       target: 'es2022', outfile: `dist/${name}-ui.js`, logLevel: 'info', loader: { '.svg': 'dataurl' },
@@ -60,6 +60,7 @@ export async function buildExtension({ watch = false } = {}) {
   await buildDocumentPreviews({ watch });
   const require = createRequire(import.meta.url);
   await fs.copyFile(path.join(directory, 'webview/scrollbars.css'), path.join(directory, 'dist/scrollbars.css'));
+  await fs.copyFile(path.join(directory, 'webview/schedules.css'), path.join(directory, 'dist/schedules.css'));
   await fs.copyFile(path.join(directory, 'resources/model-icons/LICENSE'), path.join(directory, 'dist/model-icons-LICENSE.txt'));
   const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
   await fs.cp(path.join(codicons, 'dist'), path.join(directory, 'dist/codicons'), { recursive: true });

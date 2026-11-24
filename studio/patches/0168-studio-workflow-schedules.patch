@@ -1,0 +1,48 @@
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index 479223fb24162da7353378e79d9d594a089c97a9..2f4644abe65a50cc491fb8764ab0e46e0cb321d6 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -36,4 +36,5 @@ export interface LibraryActions {
+ 	reveal?(p: LaunchpadProject): void;
+ 	copyPath(p: LaunchpadProject): void;
++	openProjectSchedules?(p: LaunchpadProject, entryId?: string): void;
+ 	contextMenu: IContextMenuService;
+ 	hoverService: IHoverService;
+@@ -461,6 +462,26 @@ export class LaunchpadLibrary extends Disposable {
+ 			};
+ 			this.updateDetailActions();
++			let detailActions = secondaryActions;
++			if (this.actions.openProjectSchedules && selected.distribution === 'source' && selected.kind === 'folder' && !selected.missing && !selected.builtin && !selected.managed && selected.uri.startsWith('file:')) {
++				const entries = (selected.entries ?? []).filter(entry => entry.type === 'workflow');
++				const workflows = entries.length ? entries : selected.projectType === 'workflow' ? [undefined] : [];
++				if (workflows.length) {
++					const label = t('Workflow schedules', 'Workflow 定时计划');
++					const group = element('section', 'lp-detail-action-group');
++					const controls = element('div', 'lp-detail-group-actions');
++					for (const entry of workflows) {
++						const title = workflows.length > 1 ? `${label} · ${entry?.name ?? entry?.entryId}` : label;
++						const open = button(title, 'calendar', () => this.actions.openProjectSchedules?.(selected, entry?.entryId), 'studio-project-action lp-outline');
++						open.dataset.key = `workflow-schedules:${selected.uri}:${entry?.entryId ?? ''}`;
++						controls.append(open);
++					}
++					group.setAttribute('aria-label', label);
++					group.append(element('h2', '', label), controls);
++					detailActions = element('div', 'lp-detail-secondary');
++					detailActions.append(secondaryActions, group);
++				}
++			}
+ 			const usage = this.projectUsage(selected);
+-			const detail = projectDetails(selected, t, { actions, secondaryActions, usage: usage?.element,
++			const detail = projectDetails(selected, t, { actions, secondaryActions: detailActions, usage: usage?.element,
+ 				openEntry: canRun ? runProject : undefined });
+ 			this.content.replaceChildren(detail); restoreFocus();
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 96bf97673156d03feeb09e88a27072d8997b7c9a..05a3eed8c75e9984995254f3d975d77d04b1d4d4 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -144,4 +144,5 @@ export class StudioLaunchpad extends Disposable {
+ 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
+ 			usage: projectUsageBridge(commands, clipboard),
++			openProjectSchedules: (project, entryId) => run(commands.executeCommand('studio.internalOpenProjectSchedules', { uri: project.uri, entryId })),
+ 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
+ 			cover: project => this.cover(project),
