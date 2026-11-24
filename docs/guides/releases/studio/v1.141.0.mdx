@@ -1,0 +1,18 @@
+---
+title: "Studio v1.141.0"
+description: "开源 Studio v1.141.0 的更新说明。"
+---
+
+# Studio v1.141.0
+
+2026-11-24
+
+#### 新增
+
+- 浏览器工作站可以在宿主机上打开项目。另一台设备需要通过 HTTPS 和一次性配对码连接；仅将配对码交给可访问宿主机文件和终端的人。 {/* note: paired-browser-workbench */}
+- 项目库区分本机项目、仓库和内置项目，可查看本地用量，并为同一项目打开多个独立的 Bot 工作区。 {/* note: studio-project-library */}
+- 新建 Bot 时可选 Core Agent 或 Core LLM 模板；Workflow Agent 首次运行时会引导选择模型。 {/* note: studio-bot-templates */}
+
+#### 修复
+
+- 工作站从项目库打开本地预览时，预览在当前浏览器工作站内加载。 {/* note: local-web-preview */}

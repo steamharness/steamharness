@@ -1,0 +1,28 @@
+---
+title: "Core v0.2.5"
+description: "Changes and migration steps for Core v0.2.5."
+---
+
+# Core v0.2.5
+
+2026-11-24
+
+#### Added
+
+- LLM Bots can use built-in and project tools under the project's tool and approval settings. Only the read-only `runtime_info` tool is enabled by default. {/* note: llm-bot-tools */}
+- A project can run multiple folder-based Bot instances, each with its own workspace for conversations, structured memory links, and files organized by date. {/* note: folder-bot-instances */}
+
+#### Breaking Changes
+
+- `defineBot` requires an explicit `engine: "agent"` or `engine: "llm"`. {/* note: bot-engine-selection */}
+  Migration: Set `engine: "agent"` in existing Agent projects. Choose `engine: "llm"` for new projects that need model conversations and on-demand tools without an Agent.
+- The built-in Workflow LLM providers now use pi-ai and no longer accept AI SDK-specific options. {/* note: workflow-llm-provider */}
+  Migration: Remove the old provider-specific options and check that your model endpoint supports SSE. `createLLMNode` still returns a complete result.
+
+#### Changed
+
+- Local runs keep files on the host by default. Connect explicitly to use remote storage or system AI. {/* note: explicit-platform-connection */}
+
+#### Fixed
+
+- A Bot can call a Workflow in the same project without a false session-engine mismatch. {/* note: bot-nested-workflow-engine-check */}

@@ -81,7 +81,14 @@ const flagValue = flag => {
   const index = args.findIndex(argument => argument === flag || argument.startsWith(`${flag}=`));
   return index < 0 ? undefined : args[index] === flag ? args[index + 1] : args[index].slice(flag.length + 1);
 };
-const webDirectory = () => path.join(ROOT, process.env.STEAMHARNESS_STUDIO_INTERNAL === '1' ? '.studio/web-internal-server-data' : '.studio/web-server-data');
+const webDirectory = () => {
+  const managedDirectory = process.env.STEAMHARNESS_STUDIO_WEB_DATA_DIR;
+  if (managedDirectory) {
+    if (!path.isAbsolute(managedDirectory)) throw new Error('STEAMHARNESS_STUDIO_WEB_DATA_DIR must be absolute.');
+    return managedDirectory;
+  }
+  return path.join(ROOT, process.env.STEAMHARNESS_STUDIO_INTERNAL === '1' ? '.studio/web-internal-server-data' : '.studio/web-server-data');
+};
 const projectWebData = profile => path.join(profile, 'User/globalStorage/studio.studio-workstation/workflow/web');
 
 async function doctor() {

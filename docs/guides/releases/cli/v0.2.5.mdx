@@ -1,0 +1,22 @@
+---
+title: "CLI v0.2.5"
+description: "CLI v0.2.5 的更新说明与迁移步骤。"
+---
+
+# CLI v0.2.5
+
+2026-11-24
+
+#### 新增
+
+- CLI Web 提供项目重载入口，支持流式 Bot 回复、工具审批、队列、停止和重试。 {/* note: web-bot-controls */}
+- 本机宿主可通过 stdio 在后台运行并恢复 Bot 对话；托管 Bot 的历史可单独以只读方式打开。 {/* note: hosted-bot-history */}
+
+#### 变更
+
+- 普通本地开发不恢复平台会话。需要受控项目配置或系统 AI 时，分别选择 `--online project` 或 `--online ai`。 {/* note: explicit-platform-connection */}
+- 切换 Bot 引擎后开启新会话，并保留旧会话记录。 {/* note: bot-engine-history */}
+
+#### 修复
+
+- CLI Web 的浏览器登录在同一标签页返回原项目和 Bot 会话；项目入口启动失败时可在恢复页重试。 {/* note: cli-web-recovery */}

@@ -1,0 +1,28 @@
+---
+title: "Core v0.2.5"
+description: "Core v0.2.5 的更新说明与迁移步骤。"
+---
+
+# Core v0.2.5
+
+2026-11-24
+
+#### 新增
+
+- LLM Bot 可以调用内置和项目工具，并遵守项目的工具启用和审批设置；默认仅启用只读的 `runtime_info`。 {/* note: llm-bot-tools */}
+- 同一项目可运行多个目录型 Bot 实例，会话、结构化记忆链接和按日期归档的文件保存在各自的工作区。 {/* note: folder-bot-instances */}
+
+#### 破坏性变更
+
+- `defineBot` 必须明确指定 `engine: "agent"` 或 `engine: "llm"`。 {/* note: bot-engine-selection */}
+  迁移：已有 Agent 项目补上 `engine: "agent"`；仅需模型对话和按需工具调用的新项目可选 `engine: "llm"`。
+- Workflow 内置 LLM Provider 改用 pi-ai，不再接收 AI SDK 专用选项。 {/* note: workflow-llm-provider */}
+  迁移：移除旧的 Provider 专用选项，并确认模型端点支持 SSE；`createLLMNode` 仍返回完整结果。
+
+#### 变更
+
+- 本地运行的文件默认留在本机，使用远端存储或系统 AI 时再显式连接。 {/* note: explicit-platform-connection */}
+
+#### 修复
+
+- Bot 调用同项目的 Workflow 时不再误报会话引擎已变更。 {/* note: bot-nested-workflow-engine-check */}

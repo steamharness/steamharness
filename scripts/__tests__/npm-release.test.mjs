@@ -9,7 +9,6 @@ import test from "node:test";
 import {
   fetchRegistryState,
   npmReleasePlan,
-  parseDatedVersion,
   parseDevVersion,
   runNpmRelease,
   serviceChannelForPlan,
@@ -58,9 +57,9 @@ test("the command resolves its repository root independently of the working dire
   }
 });
 
-test("manually selected stable and alpha refs select separate npm tags", () => {
+test("only stable versions can publish from release tags", () => {
   assert.deepEqual(npmReleasePlan(release("0.1.3")), { version: "0.1.3", distTag: "latest" });
-  assert.deepEqual(npmReleasePlan(release("0.1.3-20261117001")), { version: "0.1.3-20261117001", distTag: "alpha" });
+  assert.throws(() => npmReleasePlan(release("0.1.3-20261117001")), /prerelease/);
 });
 
 test("ordinary releases and pushes cannot publish, and a dev prerelease cannot publish from a tag", () => {
@@ -78,16 +77,12 @@ test("tag identity, paired versions, SDK pin and peer pin must all agree", () =>
 });
 
 test("dated versions require a real calendar date and a 001-999 sequence", () => {
-  assert.deepEqual(parseDatedVersion("0.2.0-20261117001"), { date: "20261117", month: 11, day: 17, year: 2026, sequence: 1 });
-  assert.deepEqual(parseDatedVersion("0.2.0-20240229003"), { date: "20240229", month: 2, day: 29, year: 2024, sequence: 3 });
-  assert.equal(parseDatedVersion("0.2.0-20260229001"), undefined, "2026 is not a leap year");
-  assert.equal(parseDatedVersion("0.2.0-20261312001"), undefined, "month 13");
-  assert.equal(parseDatedVersion("0.2.0-20261132001"), undefined, "day 32");
-  assert.equal(parseDatedVersion("0.2.0-20261117000"), undefined, "sequence 000");
   assert.equal(parseDevVersion("0.2.0-dev.20261117001").sequence, 1);
+  assert.equal(parseDevVersion("0.2.0-dev.20240229003").day, 29);
+  assert.equal(parseDevVersion("0.2.0-dev.20260229001"), undefined);
+  assert.equal(parseDevVersion("0.2.0-dev.20261312001"), undefined);
+  assert.equal(parseDevVersion("0.2.0-dev.20261132001"), undefined);
   assert.equal(parseDevVersion("0.2.0-dev.20261117000"), undefined);
-  assert.throws(() => npmReleasePlan(release("0.2.0-20261132001")), /calendar|dated/i);
-  assert.throws(() => npmReleasePlan(release("0.2.0-20261117000")), /calendar|dated/i);
 });
 
 test("manual dev publication retains its branch and prerelease restrictions", () => {
@@ -99,7 +94,7 @@ test("manual dev publication retains its branch and prerelease restrictions", ()
 });
 
 test("each dist-tag bakes the matching service channel", () => {
-  assert.equal(serviceChannelForPlan({ distTag: "alpha" }), "alpha");
+  assert.throws(() => serviceChannelForPlan({ distTag: "alpha" }), /dist-tag/);
   assert.equal(serviceChannelForPlan({ distTag: "latest" }), "main");
   assert.equal(serviceChannelForPlan({ distTag: "dev" }), "dev");
   assert.throws(() => serviceChannelForPlan({ distTag: "next" }), /dist-tag/);
@@ -150,10 +145,10 @@ test("registry reads treat 404 as not-published and refuse on network errors", a
   );
 });
 
-test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for a manual alpha dispatch", async () => {
+test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for a manual dev dispatch", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "npm-release-"));
   try {
-    const version = "0.2.0-20261117001";
+    const version = "0.2.0-dev.20261117001";
     await mkdir(path.join(root, "harness"), { recursive: true });
     await mkdir(path.join(root, "cli"), { recursive: true });
     await Promise.all([
@@ -169,17 +164,17 @@ test("the entrypoint exports NPM_DIST_TAG and STEAMHARNESS_SERVICE_CHANNEL for a
     await writeFile(envPath, "");
     const result = await runNpmRelease({
       root,
-      env: { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: `refs/tags/steamharness/v${version}`, GITHUB_ENV: envPath },
+      env: { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/heads/dev", GITHUB_ENV: envPath },
       fetchImpl: stubRegistry({
         steamharness: { versions: { "0.1.2": {} }, "dist-tags": { latest: "0.1.2" } },
         "@steamharness/cli": { versions: { "0.1.2": {} }, "dist-tags": { latest: "0.1.2" } },
       }),
     });
-    assert.equal(result.distTag, "alpha");
-    assert.equal(result.serviceChannel, "alpha");
+    assert.equal(result.distTag, "dev");
+    assert.equal(result.serviceChannel, "dev");
     const env = await readFile(envPath, "utf8");
-    assert.match(env, /^NPM_DIST_TAG=alpha$/mu);
-    assert.match(env, /^STEAMHARNESS_SERVICE_CHANNEL=alpha$/mu);
+    assert.match(env, /^NPM_DIST_TAG=dev$/mu);
+    assert.match(env, /^STEAMHARNESS_SERVICE_CHANNEL=dev$/mu);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

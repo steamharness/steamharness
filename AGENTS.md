@@ -5,7 +5,7 @@
 ## 提交与推送
 
 - 每轮修改（包括文档和配置）完成后，先执行涉及目录要求的验证。在所属仓库检查 `git status`，只暂存本轮相关路径，核对 `git diff --cached` 并执行 `git diff --cached --check`，再按独立逻辑提交。既有或并行改动仅在用户明确要求时一并处理；凭据、忽略文件、运行产物和私有实现不得入库。
-- 日常改动提交到 `dev` 并推送到 `origin/dev`。附加 Git worktree 首次修改时新建任务分支，后续继续提交并推送该分支。只有用户明确指定时才改动 `main` 或 `alpha`；用户明确要求暂不提交或推送时照办。不强推，也不绕过分支保护。
+- 日常改动提交到 `dev` 并推送到 `origin/dev`。附加 Git worktree 首次修改时新建任务分支，后续继续提交并推送该分支。只有用户明确指定时才改动 `main`；用户明确要求暂不提交或推送时照办。不强推，也不绕过分支保护。
 - 修改 Studio 内核等 Git 子模块时，先按子仓规则提交和推送，确认提交能从配置的子仓远端取回，再在本仓单独提交并推送指针。在增强版工作区中完成跨仓改动时，本仓推送成功后，再到父仓更新 `open-sources` 指针。
 - 交付前核对远端目标分支，报告提交号和验证结果。要求的检查未通过或推送受阻时，说明实际结果和剩余操作，不把仅有本地提交当作已推送。提交和推送不等于发版或部署。
 
@@ -45,7 +45,7 @@ node --test scripts/__tests__/*.test.mjs
 ## 发布
 
 - 公开包只有 `steamharness`（SDK）与 `@steamharness/cli`（CLI），两者同一条版本线，一起抬高版本号。其余包保持 `private: true`。
-- npm 只用于独立公开分发，不是增强版应用发版的前置条件。不要为本地打包创建 tag 或发布 npm。需公开发布时，手动运行 `release.yml`：选定 `steamharness/vX.Y.Z` tag 发 `latest`，日期预发布 tag 发 `alpha`，或从 `dev` 分支发日期版到 `dev`。创建 GitHub Release 不触发 npm。凭证走 npm Trusted Publishing（OIDC），SDK 必须先于 CLI。
+- npm 只用于独立公开分发，不是增强版应用发版的前置条件。不要为本地打包创建 tag 或发布 npm。需公开发布时，手动运行 `release.yml`：选定 `steamharness/vX.Y.Z` tag 发 `latest`，或从 `dev` 分支发日期版到 `dev`。创建 GitHub Release 不触发 npm。凭证走 npm Trusted Publishing（OIDC），SDK 必须先于 CLI。
 - 仅在用户明确要求编写、更新或定版发布日志时处理日志。日常代码、文档、配置修改及构建、发布、部署指令本身均不触发，不主动新增、补写或归档日志。下述日志路径、双语格式和定版发布顺序仅在收到该类指令后适用。
 - 收到明确的发布日志指令后，将用户可见变化写到 `docs/guides/releases/<组件>/unreleased.mdx` 及 `docs/en/guides/releases/<组件>/unreleased.mdx`。明确要求新版本日志定版时，生成双语 `v<版本>.mdx`，先确认版本页可访问，GitHub Release 正文链接到对应版本页。格式、校验和定版规则见 `docs/AGENTS.md`。
 - npm 工作流使用 `scripts/npm-release.mjs`，不调用拆分仓库时期的 `shared/release-tools/` 发布门禁；不要给旧特性分支发布工具接入 npm 工作流。

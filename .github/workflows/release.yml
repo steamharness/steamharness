@@ -1,8 +1,8 @@
 # 发布 npm 包。
 #
 # 独立手动发布，不由产品流水线、推送或 GitHub Release 触发。
-# 选择 steamharness/vX.Y.Z tag 发 latest，日期预发布 tag 发 alpha，
-# 或选择 dev 分支发表日期 dev 版本。版本必须与包清单一致。
+# 选择 steamharness/vX.Y.Z tag 发 latest，或选择 dev 分支发布日期 dev 版本。
+# 版本必须与包清单一致。
 #
 # 凭证：npm Trusted Publishing（OIDC）。workflow 里的 id-token 权限让 npm CLI 用
 # 这一次运行的 OIDC 令牌换出短期发布凭证，GitHub 里不存放任何 npm token。

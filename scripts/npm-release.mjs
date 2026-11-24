@@ -6,26 +6,9 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const PUBLIC_PACKAGES = ['steamharness', '@steamharness/cli'];
 const REGISTRY_BASE = process.env.STEAMHARNESS_NPM_REGISTRY_URL?.replace(/\/+$/u, '') || 'https://registry.npmjs.org';
 const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
-const DATED_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\d{8})(\d{3})$/u;
 const DEV_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-dev\.(\d{8})(\d{3})$/u;
 
-/** 日期版本必须落在真实日历上：月份 1-12，日按月份与闰年校验。 */
-export function parseDatedVersion(version) {
-  const match = DATED_VERSION.exec(String(version).trim());
-  if (!match) return undefined;
-  const [, , , , datePart, sequencePart] = match;
-  const month = Number(datePart.slice(4, 6));
-  const day = Number(datePart.slice(6, 8));
-  const year = Number(datePart.slice(0, 4));
-  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  if (year < 2000 || month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return undefined;
-  const sequence = Number(sequencePart);
-  if (sequence < 1 || sequence > 999) return undefined;
-  return { date: datePart, month, day, year, sequence };
-}
-
-/** dev 版本同样校验真实日期与 001-999 的日内序号。 */
+/** dev 版本校验真实日期与 001-999 的日内序号。 */
 export function parseDevVersion(version) {
   const match = DEV_VERSION.exec(String(version).trim());
   if (!match) return undefined;
@@ -43,7 +26,6 @@ export function parseDevVersion(version) {
 
 /** plan 的 dist-tag 对应构建时烘入的服务通道。 */
 export function serviceChannelForPlan(plan) {
-  if (plan.distTag === 'alpha') return 'alpha';
   if (plan.distTag === 'latest') return 'main';
   if (plan.distTag === 'dev') return 'dev';
   throw new Error(`Unknown npm dist-tag: ${plan.distTag}`);
@@ -58,8 +40,6 @@ export function npmReleasePlan({eventName,ref,coreVersion,cliVersion,cliCoreVers
   if(coreVersion!==cliVersion)throw new Error('Core and CLI versions must match.');
   if(cliCoreVersion!==coreVersion)throw new Error('CLI must pin the exact SDK version being published.');
   if(cliPeerVersion!==coreVersion)throw new Error('CLI peerDependency must equal the exact SDK version being published.');
-  if(!STABLE_VERSION.test(coreVersion)&&!DATED_VERSION.test(coreVersion)&&!DEV_VERSION.test(coreVersion))
-    throw new Error(`Package version is not a supported release version: ${coreVersion}`);
   if(ref==='refs/heads/dev') {
     if(parseDevVersion(coreVersion)===undefined)
       throw new Error('Manual dev publication requires the dev branch and a dated dev prerelease (X.Y.Z-dev.YYYYMMDDNNN).');
@@ -67,9 +47,8 @@ export function npmReleasePlan({eventName,ref,coreVersion,cliVersion,cliCoreVers
   }
   if(ref!==`refs/tags/steamharness/v${coreVersion}`)
     throw new Error('Select dev or the steamharness/v* tag that matches the package version.');
-  if(STABLE_VERSION.test(coreVersion))return {version:coreVersion,distTag:'latest'};
-  if(parseDatedVersion(coreVersion)!==undefined)return {version:coreVersion,distTag:'alpha'};
-  throw new Error('A prerelease tag requires an alpha version (X.Y.Z-YYYYMMDDNNN) with a real calendar date and sequence 001-999.');
+  if(!STABLE_VERSION.test(coreVersion))throw new Error('Release tags require a stable X.Y.Z version, not a prerelease.');
+  return {version:coreVersion,distTag:'latest'};
 }
 
 /**

@@ -417,7 +417,7 @@ try {
   await writeFile(path.join(importedSource, 'steamharness.json'), JSON.stringify(importedBot));
   await writeFile(path.join(importedSource, 'index.ts'), `throw new Error('Import must not execute the project');`);
   await writeFile(workspaceFile, JSON.stringify({ folders: examples.map(name => ({ path: name })), settings: { 'git.enabled': false, 'workbench.startupEditor': 'none' } }));
-  // Record only the disposable Workflow CLI process so recovery can be exercised without touching other sessions.
+  // Record only the disposable SteamHarness CLI process so recovery leaves other sessions alone.
   await writeFile(caseFile, 'local');
   const workflowCli = path.join(workspace, 'node_modules/@steamharness/cli');
   await mkdir(workflowCli, { recursive: true });

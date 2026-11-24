@@ -1,0 +1,22 @@
+---
+title: "CLI v0.2.5"
+description: "Changes and migration steps for CLI v0.2.5."
+---
+
+# CLI v0.2.5
+
+2026-11-24
+
+#### Added
+
+- CLI Web can reload the project and provides streaming Bot replies, tool approvals, queueing, stop, and retry controls. {/* note: web-bot-controls */}
+- Local hosts can run and resume Bot conversations in the background over stdio. Hosted Bot history can be opened separately in read-only mode. {/* note: hosted-bot-history */}
+
+#### Changed
+
+- Local development no longer restores a platform session by default. Use `--online project` for managed project settings or `--online ai` for system AI. {/* note: explicit-platform-connection */}
+- Changing the Bot engine starts a new session and preserves the previous session history. {/* note: bot-engine-history */}
+
+#### Fixed
+
+- Browser sign-in in CLI Web returns to the original project and Bot session in the same tab. If an entry fails to start, retry from its recovery page. {/* note: cli-web-recovery */}
