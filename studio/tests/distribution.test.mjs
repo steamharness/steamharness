@@ -118,24 +118,30 @@ test('overlay entrypoints retain the registered extension identity when Node res
   assert.equal(await fs.realpath(path.join(registered, manifest.main)), owner);
 });
 
-test('the default file icon theme is packaged from a verified VSIX in desktop and web products', async t => {
+test('default built-ins use verified VSIXs and pass through the preservation opt-in in desktop and web products', async t => {
   const { root, upstream } = await fixture(t);
   const defaults = JSON.parse(await fs.readFile(path.join(ROOT, 'config/default-extensions.json'), 'utf8'));
   const icons = defaults.find(extension => extension.id === 'file-icons.file-icons');
   assert.equal(icons?.builtin, true, 'The default icon theme must ship in the app, not be installed by the dev launcher.');
+  const sqlite = defaults.find(extension => extension.id === 'yy0931.vscode-sqlite3-editor');
+  assert.equal(sqlite?.builtin, true);
   const contents = Buffer.from('bundled extension fixture');
   const extension = { ...icons,
     url: `data:application/octet-stream;base64,${contents.toString('base64')}`,
     sha256: createHash('sha256').update(contents).digest('hex') };
-  await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify([extension,
+  const sqliteFixture = { ...sqlite, url: extension.url, sha256: extension.sha256 };
+  await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify([extension, sqliteFixture,
     { id: 'example.user-extension', url: 'https://offline.invalid/do-not-download' }]));
   const { product } = await prepareDistribution(root);
   assert.deepEqual(product.builtInExtensions[0], baseProduct.builtInExtensions[0]);
-  const bundled = product.builtInExtensions[1];
-  assert.equal(product.builtInExtensions.length, 2);
+  const [, bundled, preserved] = product.builtInExtensions;
+  assert.equal(product.builtInExtensions.length, 3);
   assert.equal(bundled.name, extension.id);
   assert.equal(bundled.version, extension.version);
   assert.equal(bundled.sha256, extension.sha256);
+  assert.equal(bundled.preserveVsixContents, undefined);
+  assert.equal(preserved.name, sqlite.id);
+  assert.equal(preserved.preserveVsixContents, true);
   assert.deepEqual(await fs.readFile(path.resolve(upstream, bundled.vsix)), contents);
   const web = JSON.parse(await fs.readFile(path.join(upstream, 'product.overrides.json'), 'utf8'));
   assert.deepEqual(web.builtInExtensions, product.builtInExtensions);

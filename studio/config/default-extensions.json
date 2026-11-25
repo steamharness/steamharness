@@ -21,6 +21,7 @@
     "sha256": "9711fe8fcdd1d996025ab101d1cef40d1482327e621f55f3fef5cb641138d848",
     "repository": "https://github.com/yy0931/sqlite3-editor",
     "license": "GPL-3.0",
-    "builtin": true
+    "builtin": true,
+    "preserveVsixContents": true
   }
 ]

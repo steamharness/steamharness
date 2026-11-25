@@ -209,7 +209,8 @@ export async function prepareDistribution(root = ROOT, { linkBuiltinExtension = 
     for (const extension of bundled) {
       const vsix = await ensureExtensionVsix(root, extension);
       product.builtInExtensions.push({ name: extension.id, version: extension.version, sha256: extension.sha256,
-        vsix: path.relative(upstream.directory, vsix).replaceAll('\\', '/') });
+        vsix: path.relative(upstream.directory, vsix).replaceAll('\\', '/'),
+        ...(extension.preserveVsixContents === true ? { preserveVsixContents: true } : {}) });
     }
   }
   const generated = JSON.stringify(product, null, 2);
