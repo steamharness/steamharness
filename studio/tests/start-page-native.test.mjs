@@ -30,7 +30,8 @@ for (const language of ['en', 'zh-cn']) test(`native overview renders only curre
   window.IntersectionObserver = class { observe() {} disconnect() {} };
   const { StudioStartView } = window.eval(`${compiled.outputFiles[0].text}\nstudioStart;`);
   const calls = [], service = { state: undefined, onDidChange: callback => { service.change = callback; return { dispose() {} }; }, setVisible() {} };
-  const view = new StudioStartView(document.getElementById('host'), service, { executeCommand: async (...args) => calls.push(JSON.parse(JSON.stringify(args))) }, { writeText: async () => {} });
+  const view = new StudioStartView(document.getElementById('host'), service, { executeCommand: async (...args) => calls.push(JSON.parse(JSON.stringify(args))) },
+    { writeText: async () => {} }, { getObject: () => undefined });
   const { element } = view;
   assert.equal(element.getAttribute('aria-busy'), 'true');
   assert.equal(element.querySelectorAll('button').length, 0);

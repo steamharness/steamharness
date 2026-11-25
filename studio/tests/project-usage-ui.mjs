@@ -8,6 +8,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, sourcefile: 'usage-fix
   export { StudioStartView } from './src/vs/workbench/browser/parts/editor/studioStart.ts';
   export { StudioLaunchpadView } from './src/vs/workbench/browser/studioLaunchpadView.ts';
   export { projectUsageBridge } from './src/vs/workbench/browser/studioProjectUsage.ts';
+  export { InMemoryStorageService } from './src/vs/platform/storage/common/storage.ts';
   import './src/vs/workbench/browser/media/studioLaunchpad.css';` },
   bundle: true, platform: 'browser', format: 'iife', globalName: 'usageFixture', write: false, outdir: 'unused', loader: { '.woff2': 'dataurl' } });
 const script = bundle.outputFiles.find(file => file.path.endsWith('.js')).text;
@@ -31,21 +32,22 @@ try {
     await page.addStyleTag({ content: styles });
     await page.addScriptTag({ content: script });
     await page.evaluate(() => {
-      const { StudioLaunchpadView, StudioStartView, projectUsageBridge } = window.usageFixture;
+      const { StudioLaunchpadView, StudioStartView, projectUsageBridge, InMemoryStorageService } = window.usageFixture;
       const projects = ['Aggregate', 'Other'].map(name => ({ name, kind: 'folder', uri: `file:///${name}`, path: `/${name}`, distribution: 'source',
         projectId: name, version: '1.2.3', entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', primary: true }] }));
       const requests = window.requests = [], cancelled = window.cancelled = [], clipboard = window.clipboard = [];
       const commands = { async executeCommand(command, arg) {
         if (command !== 'studio.internalProjectUsage') return;
         if (arg.cancel) { cancelled.push(arg.id); return; }
-        return new Promise(resolve => requests.push({ ...arg, resolve }));
+        return new Promise((resolve, reject) => requests.push({ ...arg, resolve, reject }));
       } };
       const clip = { async writeText(value) { clipboard.push(value); } };
+      const storage = new InMemoryStorageService();
       const memoryPath = window.memoryPath = '/support/Studio/runtime/' + 'directory-'.repeat(12) + '/memory.sqlite';
-      window.resolveUsage = (uri, bytes, parts = ['runtime', 'directory']) => {
+      window.resolveUsage = (uri, bytes, parts = ['runtime', 'directory'], directoryState = 'ok') => {
         for (const reading of requests.filter(item => !item.done && item.uri === uri && parts.includes(item.part))) {
           reading.done = true;
-          const usage = reading.part === 'directory' ? { state: 'ok', bytes, path: '/Aggregate', files: 1200, directories: 11,
+          const usage = reading.part === 'directory' ? { state: directoryState, bytes, path: '/Aggregate', files: 1200, directories: 11,
             folders: Array.from({ length: 10 }, (_, i) => ({ name: `folder-${i + 1}`, state: 'ok', bytes: (10 - i) * 1024 })) } : {
             state: 'partial', size: { state: 'ok', bytes: 225280 }, location: '/support/Studio', entries: [
               { entryId: 'agent', name: 'Agent', type: 'bot', conversation: { state: 'ok', bytes: 24576, sessions: 3, messages: 21 },
@@ -59,7 +61,15 @@ try {
           reading.resolve({ part: reading.part, usage, measuredAt: Date.now() });
         }
       };
-      const view = new StudioLaunchpadView(window._VSCODE_NLS_LANGUAGE, { usage: projectUsageBridge(commands, clip),
+      window.failUsage = uri => {
+        for (const reading of requests.filter(item => !item.done && item.uri === uri)) {
+          reading.done = true;
+          if (reading.part === 'directory') {
+            reading.resolve({ part: reading.part, usage: { state: 'unavailable', folders: [] }, measuredAt: Date.now() });
+          } else { reading.reject(new Error('Extension host unavailable')); }
+        }
+      };
+      const view = new StudioLaunchpadView(window._VSCODE_NLS_LANGUAGE, { usage: projectUsageBridge(commands, clip, storage),
         hoverService: { setupDelayedHover: () => ({ dispose() {} }) } });
       const state = { recent: projects, windows: [], canCreate: false, platform: false, notices: [], notificationUnread: false };
       document.getElementById('launchpad').append(view.element);
@@ -74,7 +84,7 @@ try {
           entries: projects[0].entries.map(entry => ({ ...entry, available: true, projectType: entry.type })) };
         const service = { state: { version: 1, labels: { overview: 'Overview' }, recent: [], pending: [], hasWorkspace: true, projects: [project] },
           onDidChange: () => ({ dispose() {} }), setVisible() {} };
-        window.overview = new StudioStartView(host, service, commands, clip);
+        window.overview = new StudioStartView(host, service, commands, clip, storage);
       };
     });
     assert.equal(await page.locator('.lp-project-usage').count(), 0);
@@ -82,12 +92,15 @@ try {
     const panel = page.locator('.lp-project-usage');
     await panel.getByRole('heading', { name: zh ? '本机用量' : 'Local usage' }).waitFor();
     assert.equal(await panel.evaluate(element => element.nextElementSibling.className), 'lp-detail-entries');
+    const status = panel.getByRole('status');
+    assert.equal(await status.textContent(), zh ? '正在统计…' : 'Measuring…');
+    await page.waitForFunction(() => window.requests.length === 2);
     await page.evaluate(() => window.resolveUsage('file:///Aggregate', 4096, ['runtime']));
     await panel.getByText('24 KiB', { exact: true }).first().waitFor();
     assert.match(await panel.innerText(), zh ? /3 个会话 · 21 条消息/u : /3 sessions · 21 messages/u);
-    await page.evaluate(() => window.resolveUsage('file:///Aggregate', 4096));
+    await page.evaluate(() => window.resolveUsage('file:///Aggregate', 4096, ['directory'], 'partial'));
     const workingSize = panel.locator('.lp-usage-metric').first();
-    await workingSize.getByText('4 KiB', { exact: true }).waitFor();
+    await workingSize.getByText('≥ 4 KiB', { exact: true }).waitFor();
     const folders = panel.locator('details').first();
     await folders.locator('summary').click();
     assert.equal(await folders.locator('.lp-usage-folders dt').count(), 8);
@@ -105,27 +118,58 @@ try {
     const refresh = panel.getByRole('button', { name: zh ? '刷新用量' : 'Refresh usage' });
     await refresh.click();
     assert.equal(await refresh.getAttribute('aria-disabled'), 'true');
-    assert.equal(await workingSize.getByText('4 KiB', { exact: true }).isVisible(), true);
-    await page.evaluate(() => window.resolveUsage('file:///Aggregate', 8192));
-    await page.waitForFunction(() => document.activeElement?.dataset.key?.endsWith(':refresh'));
-    assert.match(await workingSize.innerText(), /8 KiB/u);
-    if (process.env.STUDIO_USAGE_SCREENSHOTS) await panel.screenshot({ path: `${process.env.STUDIO_USAGE_SCREENSHOTS}/usage-${language}.png` });
-    await page.setViewportSize({ width: 410, height: 840 });
-    assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
-
-    await refresh.click();
+    assert.equal(await workingSize.getByText('≥ 4 KiB', { exact: true }).isVisible(), true);
     await page.evaluate(() => {
       window.view.select('library', 'file:///Other');
       window.resolveUsage('file:///Aggregate', 65536);
     });
+    assert.equal(await workingSize.locator('.lp-usage-value').textContent(), '—');
     assert.equal(await page.evaluate(() => window.cancelled.length), 2);
-    assert.doesNotMatch(await panel.innerText(), /64 KiB/u);
+    await page.waitForFunction(() => window.requests.length === 6);
     await page.evaluate(() => window.view.select('profile'));
     assert.equal(await page.evaluate(() => window.cancelled.length), 4);
+
+    // Reopening within the old freshness window renders the partial snapshot synchronously,
+    // but starts a real refresh. Neither cancelled nor unavailable results replace it.
+    await page.evaluate(() => window.view.select('library', 'file:///Aggregate'));
+    assert.equal(await status.textContent(), zh ? '正在更新…' : 'Updating…');
+    assert.equal(await workingSize.locator('.lp-usage-value').textContent(), '≥ 4 KiB');
+    assert.equal(await panel.getByText('24 KiB', { exact: true }).first().isVisible(), true);
+    await page.waitForFunction(() => window.requests.length === 8);
+    await page.evaluate(() => window.failUsage('file:///Aggregate'));
+    await status.getByText(zh ? '更新失败，显示上次结果' : 'Update failed; showing previous data', { exact: true }).waitFor();
+    assert.equal(await workingSize.locator('.lp-usage-value').textContent(), '≥ 4 KiB');
+    assert.equal(await panel.getByText('24 KiB', { exact: true }).first().isVisible(), true);
+    await page.setViewportSize({ width: 410, height: 840 });
+    assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    await page.setViewportSize({ width: 1120, height: 840 });
+
+    await refresh.click();
+    await page.evaluate(() => window.resolveUsage('file:///Aggregate', 8192));
+    await page.waitForFunction(() => document.activeElement?.dataset.key?.endsWith(':refresh'));
+    await workingSize.getByText('8 KiB', { exact: true }).waitFor();
+    if (process.env.STUDIO_USAGE_SCREENSHOTS) await panel.screenshot({ path: `${process.env.STUDIO_USAGE_SCREENSHOTS}/usage-${language}.png` });
+    await page.setViewportSize({ width: 410, height: 840 });
+    assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+
+    await page.evaluate(() => {
+      window.view.select('profile');
+      window.view.select('library', 'file:///Other');
+      window.view.select('library', 'file:///Aggregate');
+    });
+    assert.equal(await workingSize.locator('.lp-usage-value').textContent(), '8 KiB');
+    await page.waitForFunction(() => window.requests.length === 12);
+    assert.deepEqual(await page.evaluate(() => window.requests.slice(-2).map(({ uri, refresh }) => [uri, refresh])),
+      [['file:///Aggregate', true], ['file:///Aggregate', true]]);
+
+    // An independent detail view/bridge reads the same saved profile values.
     await page.evaluate(() => window.showOverview());
-    await page.waitForFunction(() => window.requests.length === 10);
+    const overview = page.locator('#overview .lp-usage-metric').first();
+    assert.equal(await overview.locator('.lp-usage-value').textContent(), '8 KiB');
+    await page.waitForFunction(() => window.requests.length === 14);
     await page.evaluate(() => window.resolveUsage('file:///Aggregate', 16384));
-    await page.locator('#overview .lp-usage-metric').first().getByText('16 KiB', { exact: true }).waitFor();
+    await overview.getByText('16 KiB', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.requests.every(({ refresh }) => refresh === true)), true);
     assert.deepEqual(errors, []);
     await page.close();
     console.log(`Project usage UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);
