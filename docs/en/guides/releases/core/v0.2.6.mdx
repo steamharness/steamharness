@@ -1,0 +1,18 @@
+---
+title: "Core v0.2.6"
+description: "Release notes for Core v0.2.6."
+---
+
+# Core v0.2.6
+
+2026-11-25
+
+#### Added
+
+- Bots can use separate memory stores for different project directories. Hosts that support directory selection accept `projectPath` on `memory_*` tools. Omitting it uses the existing store, and existing memories are not moved. {/* note: bot-project-memory */}
+- Bots can deliver files in supported local conversations. Each delivery preserves the file as it was at the time, so later edits to the source do not change the delivered copy. {/* note: bot-artifact-snapshots */}
+- Trusted Bots in local Studio can request secure credential input. The Bot learns only whether the credential was saved, already existed, or was declined, not the credential itself. {/* note: protected-bot-credential-input */}
+
+#### Fixed
+
+- Core retries reading system AI credentials after a temporary service failure. {/* note: system-ai-credential-retry */}
