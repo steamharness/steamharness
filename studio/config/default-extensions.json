@@ -1,9 +1,12 @@
 [
   {
-    "id": "nextbook.file-and-folder-icons",
-    "version": "1.0.4",
-    "url": "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/nextbook/vsextensions/file-and-folder-icons/1.0.4/vspackage",
-    "sha256": "3f312246663532ddc1351a4f8b093dbc55bea882a14378c6c23836870acd44f7"
+    "id": "file-icons.file-icons",
+    "version": "1.1.0",
+    "url": "https://open-vsx.org/api/file-icons/file-icons/1.1.0/file/file-icons.file-icons-1.1.0.vsix",
+    "sha256": "3eb65b1e6cf6a3284487b52c391165b27ea73f007e839c9f3682182665bbf0d2",
+    "repository": "https://github.com/file-icons/vscode",
+    "license": "MIT",
+    "builtin": true
   },
   {
     "id": "MS-CEINTL.vscode-language-pack-zh-hans",

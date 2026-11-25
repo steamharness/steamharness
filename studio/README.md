@@ -124,7 +124,9 @@ Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方
 
 通用设置保存到用户配置，包括主题、跟随系统、显示语言、开始页、最近项目数量及运行环境。编辑器设置支持用户与工作区目标，提示工作区覆盖，支持搜索、逐项恢复默认，并保留设置 JSON 和快捷键编辑器入口。显示语言使用现有语言包选择和重启流程；目录和远程高级配置继续使用对应的 JSON 设置文件。
 
-Studio 启动时排除上游内置的 GitHub Copilot，并通过 `chat.disableAIFeatures` 默认隐藏 AI 入口。桌面和 Web 首次启动自动安装 [File & Folder Icons](https://marketplace.visualstudio.com/items?itemName=nextbook.file-and-folder-icons)，默认图标主题为 `file-icons`；已安装的扩展和用户自行选择的主题会保留。该扩展未发布到 Open VSX，安装包从原 Marketplace 下载，版本与 SHA-256 固定在 `config/default-extensions.json`，缓存位于 `.studio/`。
+Studio 启动时排除上游内置的 GitHub Copilot，并通过 `chat.disableAIFeatures` 默认隐藏 AI 入口。
+
+桌面和 Web 构建都内置 [File Icons](https://github.com/file-icons/vscode)。默认主题 `file-icons` 同时显示文件和文件夹图标，用户已选的主题保持不变。构建从 Open VSX 获取 `config/default-extensions.json` 指定版本的 VSIX，校验 SHA-256 后缓存到 `.studio/`；运行时无须下载主题。
 
 ## 开发与检查
 

@@ -118,10 +118,13 @@ test('overlay entrypoints retain the registered extension identity when Node res
   assert.equal(await fs.realpath(path.join(registered, manifest.main)), owner);
 });
 
-test('bundled default extensions use verified local VSIX files in desktop and web products', async t => {
+test('the default file icon theme is packaged from a verified VSIX in desktop and web products', async t => {
   const { root, upstream } = await fixture(t);
+  const defaults = JSON.parse(await fs.readFile(path.join(ROOT, 'config/default-extensions.json'), 'utf8'));
+  const icons = defaults.find(extension => extension.id === 'file-icons.file-icons');
+  assert.equal(icons?.builtin, true, 'The default icon theme must ship in the app, not be installed by the dev launcher.');
   const contents = Buffer.from('bundled extension fixture');
-  const extension = { id: 'example.database', version: '1.0.0', builtin: true,
+  const extension = { ...icons,
     url: `data:application/octet-stream;base64,${contents.toString('base64')}`,
     sha256: createHash('sha256').update(contents).digest('hex') };
   await fs.writeFile(path.join(root, 'config/default-extensions.json'), JSON.stringify([extension,

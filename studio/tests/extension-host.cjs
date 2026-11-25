@@ -14,8 +14,13 @@ exports.run = async () => {
   assert.ok(fs.existsSync(path.join(extension.extensionPath, 'dist/developer-assistant/skills/steamharness-generator/SKILL.md')), 'The dedicated assistant skill must be packaged.');
   assert.equal(vscode.extensions.getExtension('GitHub.copilot-chat'), undefined, 'Built-in Copilot must be excluded.');
   assert.equal(vscode.workspace.getConfiguration('chat').get('disableAIFeatures'), true, 'Default AI features must be hidden.');
-  assert.equal(vscode.workspace.getConfiguration('workbench').get('iconTheme'), 'file-icons', 'Studio must default to File Icons.');
-  assert.ok(vscode.extensions.getExtension('nextbook.file-and-folder-icons'), 'Default icon extension must be installed.');
+  const iconTheme = vscode.workspace.getConfiguration('workbench').get('iconTheme');
+  assert.equal(iconTheme, 'file-icons', 'Studio must default to File Icons.');
+  const icons = vscode.extensions.getExtension('file-icons.file-icons');
+  const contribution = icons?.packageJSON.contributes?.iconThemes?.find(theme => theme.id === iconTheme);
+  assert.ok(contribution, 'The bundled extension must contribute the default icon theme.');
+  const theme = JSON.parse(fs.readFileSync(path.join(icons.extensionPath, contribution.path), 'utf8'));
+  assert.ok(theme.iconDefinitions[theme.file] && theme.iconDefinitions[theme.folder], 'The default theme must provide file and folder icons.');
 
   const commands = new Set(await vscode.commands.getCommands(true));
   for (const command of extension.packageJSON.contributes.commands) {
