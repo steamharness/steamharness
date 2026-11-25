@@ -87,8 +87,42 @@ try {
     state = { ...state, systemAvailable: true };
     await send({ type: 'settings-models', state });
     assert.ok((await pane.innerText()).includes(zh ? '暂无可用的系统 AI 模型，请检查当前登录账户和 AI 套餐。' : 'No system AI models available. Check your signed-in account and AI subscription.'), 'The missing built-in catalogue explains the shared account state');
+    const plans = pane.locator('[data-model-group="system"] .settings-model-plans');
+    const aiPage = 'https://studio-settings.example.test/settings/ai';
+    await send({ type: 'settings-models', state: { ...state, plans: { loading: true, failed: false } } });
+    assert.equal(await plans.getAttribute('aria-busy'), 'true');
+    await send({ type: 'settings-models', state: { ...state, plans: { loading: false, failed: true } } });
+    assert.equal(await plans.getByRole('status').textContent(), zh ? '暂时无法加载 AI 套餐。' : 'Unable to load AI plans.');
+    await send({ type: 'settings-models', state: { ...state, plans: { loading: false, failed: false, catalog: { url: `${aiPage}#ai-group-subscriptions`, offers: [] } } } });
+    assert.equal(await plans.getByRole('status').textContent(), zh ? '暂无在售的 AI 套餐。' : 'No AI plans are currently available.');
+    const planCatalogue = { url: `${aiPage}#ai-group-subscriptions`, offers: [1, 2, 3].map(id => ({
+      name: zh ? `示例套餐 ${id}` : `Example plan ${id}`, url: `${aiPage}#ai-subscription-${id}`,
+      description: zh ? '示例套餐说明' : 'Example plan description', price: zh ? `¥${id * 20}.00 / 30 天` : `CN¥${id * 20}.00 / 30 days`,
+    })) };
+    const withPlans = { ...state, plans: { loading: false, failed: false, catalog: planCatalogue } };
+    await send({ type: 'settings-models', state: withPlans });
+    assert.equal(await plans.getByRole('heading', { name: zh ? '在售 AI 套餐' : 'Available AI plans' }).count(), 1);
+    assert.equal(await plans.getByRole('listitem').count(), 3);
+    assert.deepEqual(await plans.getByRole('link').evaluateAll(links => links.map(link => link.href)), [planCatalogue.url, ...planCatalogue.offers.map(offer => offer.url)]);
+    assert.equal(await plans.evaluate(section => {
+      const viewport = section.closest('.settings-model-table-viewport').getBoundingClientRect();
+      const bounds = section.getBoundingClientRect();
+      return bounds.left >= viewport.left && bounds.right <= viewport.right && section.scrollWidth <= section.clientWidth;
+    }), true, 'All plan details fit without the table’s horizontal scroll');
+    const plan = plans.getByRole('link', { name: planCatalogue.offers[0].name });
+    await plan.focus(); await send({ type: 'settings-models', state: withPlans });
+    assert.equal(await plan.evaluate(link => link === document.activeElement), true, 'A catalogue update preserves keyboard focus on the selected link');
+    if (theme === 'dark' && width === 640) await screenshot('plan-offers');
+    if (theme === 'dark' && width === 360) {
+      await page.context().route(aiPage, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><h1>Plan details</h1>' }));
+      const [popup] = await Promise.all([page.waitForEvent('popup'), plan.press('Enter')]);
+      await popup.waitForURL(planCatalogue.offers[0].url);
+      assert.equal(await popup.getByRole('heading', { name: 'Plan details' }).count(), 1);
+      await popup.close();
+    }
     state = { ...state, systemAvailable: false };
-    await send({ type: 'settings-models', state });
+    await send({ type: 'settings-models', state: { ...state, plans: withPlans.plans } });
+    assert.equal(await plans.count(), 0, 'Open-source Studio never shows platform plans');
     await edit(firstRow).click(); assert.equal(await page.locator('#user-model-apiKey').inputValue(), '');
     await send({ type: 'settings-models', state }); // Replacing rows must not break the dialog's return focus.
     await cancel.click(); assert.equal(await edit(firstRow).evaluate(button => document.activeElement === button), true);
@@ -96,7 +130,8 @@ try {
     const brandModels = ['openai/gpt-6.1-sol', 'anthropic.claude-sonnet-4-5', 'gemini-2.5-pro', 'deepseek-chat', 'qwen3-coder', 'kimi-k2', 'MiniMax-M3', 'doubao-seed-1-6', 'grok-4', 'mistral-large', 'meta-llama/Llama-4', 'glm-4.5'];
     const builtins = brandModels.map((model, index) => ({ id: `system-${index}`, source: 'system', credentialId: 'plan-one', model, name: `Built-in Model ${index}` }));
     state = { ...state, systemAvailable: true, entries: [...state.entries, ...builtins], providerNames: Object.fromEntries(builtins.map(model => [model.id, 'My AI account'])) };
-    await send({ type: 'settings-models', state });
+    await send({ type: 'settings-models', state: { ...state, plans: withPlans.plans } });
+    assert.equal(await plans.count(), 0, 'Available built-in models replace the offers');
     const systemGroup = pane.locator('[data-model-group="system"]'), customGroup = pane.locator('[data-model-group="third-party"]');
     assert.deepEqual(await pane.locator('tbody').evaluateAll(groups => groups.map(group => group.dataset.modelGroup)), ['system', 'third-party']);
     assert.equal(await systemGroup.locator('[data-model-id]').count(), 12, 'All available built-in models appear without adding them');
@@ -182,7 +217,12 @@ try {
     assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= 360);
     assert.ok(footer.y + footer.height <= 360 && footer.y >= box.y, 'Actions remain visible when the fields scroll');
     await screenshot('short-dialog');
-    await page.locator('#user-model-apiKind').click(); await page.keyboard.press('Escape');
+    const protocol = page.locator('#user-model-apiKind');
+    await protocol.scrollIntoViewIfNeeded();
+    await protocol.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await protocol.press('Enter');
+    await dialog.locator('.settings-dropdown-menu:popover-open').waitFor();
+    await page.keyboard.press('Escape');
     assert.equal(await dialog.isVisible(), true, 'Escape closes the dropdown before the dialog');
     assert.equal(await dialog.locator('.settings-dropdown-menu:popover-open').count(), 0);
     await page.keyboard.press('Escape'); assert.equal(await dialog.count(), 0);
@@ -190,7 +230,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await add.click(); await send({ type: 'settings-navigate', state: { section: 'general' } });
     assert.equal(await dialog.count(), 0, 'Host navigation never leaves an orphaned modal');
-    checks.push(`${language}/${theme}/${width}: compact rows, offline brand icons, translucent hover, modal focus, save errors, secrets, built-in refresh races, grouped actions, search and short-window scrolling`);
+    checks.push(`${language}/${theme}/${width}: plan offers and links, compact rows, offline brand icons, translucent hover, modal focus, save errors, secrets, built-in refresh races, grouped actions, search and short-window scrolling`);
     await page.close();
   }
   assert.deepEqual(errors, []); console.log(JSON.stringify({ checks, errors, screenshots: output.pathname }, null, 2));

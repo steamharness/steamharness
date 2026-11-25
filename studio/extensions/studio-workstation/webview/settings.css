@@ -156,7 +156,7 @@
 .settings-model-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 220px; padding: 32px 24px; text-align: center; }
 .settings-model-empty > .codicon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; font-size: 24px; color: var(--vscode-descriptionForeground); background: var(--vscode-button-secondaryBackground); }
 .settings-model-empty p { max-width: 380px; }
-.settings-model-table-viewport { overflow: auto; }
+.settings-model-table-viewport { overflow: auto; container-type: inline-size; }
 .settings-model-table-viewport:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .settings-model-table { min-width: 600px; border-spacing: 0; border-collapse: separate; background: var(--vscode-editor-background); line-height: 20px; }
 .settings-model-table th, .settings-model-table td { padding: 5px 12px; vertical-align: middle; border-bottom: 1px solid var(--vscode-panel-border); }
@@ -180,6 +180,18 @@
 .settings-model-group button:hover { background: var(--vscode-list-hoverBackground); }
 .settings-model-group small { margin: 0; font-weight: 400; }
 .settings-model-table td[colspan] { padding: 8px 12px; text-align: left; }
+/* The empty group fits the viewport even when populated model columns need to scroll. */
+.settings-model-built-in-empty { position: sticky; inset-inline-start: 12px; max-width: calc(100cqi - 24px); font-family: var(--vscode-font-family, sans-serif); }
+.settings-model-plans { display: grid; gap: 6px; margin-top: 12px; }
+.settings-model-plans header, .settings-model-plan-title { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; }
+.settings-model-plans h3 { font-size: 12px; }
+.settings-model-plans ul { list-style: none; padding: 0; margin: 0; }
+.settings-model-plans li { padding: 7px 0; border-top: 1px solid var(--vscode-panel-border); }
+.settings-model-plans li > p { font-size: 11px; margin-top: 2px; }
+.settings-model-plans a { color: var(--vscode-textLink-foreground); overflow-wrap: anywhere; }
+.settings-model-plans a .codicon { font-size: 11px; margin-inline-start: 4px; }
+.settings-model-plans a:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.settings-model-plan-title > span { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .settings-model-identity { display: flex; align-items: center; gap: 8px; min-height: 28px; }
 .settings-model-identity > .codicon { flex-shrink: 0; color: var(--vscode-descriptionForeground); }
 .settings-model-name { display: flex; align-items: center; gap: 8px; min-width: 0; }

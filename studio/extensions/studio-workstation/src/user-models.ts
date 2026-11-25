@@ -2,6 +2,7 @@ import type * as vscode from 'vscode';
 import { parseAgentModels } from '../../../../shared/project-configuration/agent-models';
 import { t } from './localization';
 import type { ConfiguredAgentModel, UserModelsState, UserModelCatalogProvider, UserModelCatalog, UserModelWriteLock } from './user-model-types';
+import type { UserModelPlans } from './user-model-plan-types';
 
 export const USER_MODELS_SECRET = 'studio.agent.models';
 interface StoredModels { revision: number; models: ConfiguredAgentModel[]; defaultModelId?: string }
@@ -29,6 +30,9 @@ export class UserModels implements vscode.Disposable {
   private catalogAbort?: AbortController;
   private catalogPending?: Promise<UserModelCatalog>;
   private catalogValue?: { value: UserModelCatalog; checkedAt: number };
+  private plansAbort?: AbortController;
+  private plansCheckedAt?: number;
+  private plansValue?: UserModelPlans;
   private connectionIdentity?: string;
   private pending = Promise.resolve();
   private generation = 0;
@@ -69,6 +73,10 @@ export class UserModels implements vscode.Disposable {
   private clearCatalog(): void {
     this.catalogAbort?.abort(); this.catalogAbort = undefined; this.catalogPending = undefined;
     this.systemModels = []; this.providerNames = {}; this.catalogError = undefined; this.catalogValue = undefined;
+    this.invalidatePlans(); this.plansValue = undefined;
+  }
+  private invalidatePlans(): void {
+    this.plansAbort?.abort(); this.plansAbort = undefined; this.plansCheckedAt = undefined;
   }
   setConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     const identity = connection ? JSON.stringify([connection.serverUrl, connection.accessToken]) : undefined;
@@ -77,7 +85,8 @@ export class UserModels implements vscode.Disposable {
     if (this.provider) void this.refreshCatalog().catch(() => undefined);
   }
   /** One host-wide refresh feeds settings and every runtime using the same snapshot. */
-  refreshCatalog(): Promise<UserModelCatalog> {
+  refreshCatalog(refreshPlans = false): Promise<UserModelCatalog> {
+    if (refreshPlans) this.invalidatePlans();
     if (this.catalogPending) return this.catalogPending;
     if (!this.provider || this.disposed) return Promise.resolve({ entries: [], unavailable: true });
     const controller = new AbortController(); this.catalogAbort = controller; this.catalogError = undefined;
@@ -94,6 +103,7 @@ export class UserModels implements vscode.Disposable {
       })));
       if (controller.signal.aborted || this.disposed || this.catalogAbort !== controller) throw new Error(t('Model catalogue changed. Refresh and try again.'));
       this.systemModels = models.filter((model): model is NonNullable<typeof model> => !!model); this.providerNames = providers;
+      if (this.systemModels.length || catalog.unavailable) { this.invalidatePlans(); this.plansValue = undefined; }
       this.catalogValue = { value: structuredClone(catalog), checkedAt: Date.now() };
       return catalog;
     }).catch(error => {
@@ -106,6 +116,26 @@ export class UserModels implements vscode.Disposable {
       if (this.catalogAbort === controller) { this.catalogPending = undefined; this.catalogAbort = undefined; this.changed(); }
     });
     this.catalogPending = pending; this.changed(); return pending;
+  }
+  private canShowPlans(): boolean {
+    return !!(this.provider?.loadPlans && this.connectionIdentity && this.catalogValue && !this.catalogValue.value.unavailable && !this.systemModels.length);
+  }
+  /** The settings surface asks for offers without adding any work to runtime model resolution. */
+  refreshPlans(): Promise<void> | undefined {
+    const provider = this.provider;
+    if (!provider?.loadPlans || !this.canShowPlans() || this.catalogPending || this.plansAbort ||
+      this.plansCheckedAt !== undefined && Date.now() - this.plansCheckedAt < 30_000) return;
+    const controller = new AbortController(); this.plansAbort = controller;
+    return Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      return provider.loadPlans!(controller.signal);
+    }).then(value => {
+      if (this.plansAbort === controller) this.plansValue = structuredClone(value);
+    }).catch(() => {
+      if (this.plansAbort === controller) this.plansValue = undefined;
+    }).finally(() => {
+      if (this.plansAbort === controller) { this.plansAbort = undefined; this.plansCheckedAt = Date.now(); }
+    });
   }
   private effectiveModels(stored = this.stored): ConfiguredAgentModel[] {
     const systems = this.systemModels.map(model => {
@@ -127,6 +157,10 @@ export class UserModels implements vscode.Disposable {
     }
     return { revision: this.stored.revision, systemAvailable: !!this.provider, error: this.error,
       catalogLoading: !!this.catalogPending, catalogError: this.catalogError, providerNames,
+      ...(this.canShowPlans() && (this.plansAbort || this.plansValue || this.plansCheckedAt !== undefined) ? { plans: {
+        loading: !!this.plansAbort, failed: !this.plansAbort && !this.plansValue,
+        catalog: this.plansValue && structuredClone(this.plansValue),
+      } } : {}),
       entries: this.models().map(model => {
         if (model.source === 'system') return model;
         const { apiKey, ...entry } = model;

@@ -53,6 +53,43 @@ test('user model secrets persist across workspaces without entering webview stat
 
 const catalog = (models = [{ id: system.model, name: 'Subscribed model' }]) => ({ entries: [{ id: system.credentialId, name: 'My account', models }] });
 
+test('settings loads plans on demand only for a confirmed empty account catalogue', async t => {
+  const f = fixture(); t.after(() => f.store.dispose());
+  const url = 'https://server.test/settings/ai#ai-group-subscriptions';
+  const offers = [{ name: 'Plan', price: 'CN¥20.00 / 30 days', url: 'https://server.test/settings/ai#ai-subscription-1' }];
+  let response = catalog(); const requests = [];
+  f.store.registerCatalogProvider({ load: async () => response, loadPlans: signal => new Promise((resolve, reject) => requests.push({ signal, resolve, reject })) });
+  f.store.setConnection({ serverUrl: 'https://server.test', accessToken: 'test-account-one' });
+  await f.store.refreshCatalog();
+  assert.equal(f.store.refreshPlans(), undefined);
+  response = { entries: [] }; await f.store.refreshCatalog();
+  assert.equal(requests.length, 0, 'Model refresh alone does not request plans');
+  const loading = f.store.refreshPlans();
+  assert.equal(f.store.refreshPlans(), undefined, 'Concurrent reads are deduplicated');
+  await Promise.resolve();
+  assert.equal(f.store.state().plans.loading, true);
+  assert.deepEqual((await f.store.catalog(signal())).entries, [], 'A slow plan request does not block model reads');
+  requests[0].resolve({ url, offers }); await loading;
+  const published = f.store.state().plans.catalog;
+  assert.deepEqual(published.offers, offers);
+  published.offers[0].name = 'Changed';
+  assert.deepEqual(f.store.state().plans.catalog.offers, offers);
+  assert.equal(f.store.refreshPlans(), undefined, 'Reopening settings reuses a recent result');
+  await f.store.refreshCatalog(true);
+  const retry = f.store.refreshPlans(); await Promise.resolve();
+  assert.deepEqual(f.store.state().plans.catalog.offers, offers, 'Refreshing retains the visible plans until the new result arrives');
+  requests[1].reject(new Error('private error body')); await retry;
+  assert.equal(f.store.state().plans.failed, true);
+  assert.equal(f.store.state().catalogError, undefined);
+  await f.store.refreshCatalog(true);
+  const stale = f.store.refreshPlans(); await Promise.resolve();
+  f.store.setConnection(undefined);
+  assert.equal(requests[2].signal.aborted, true);
+  requests[2].resolve({ url, offers }); await stale;
+  assert.equal(f.store.state().plans, undefined, 'An in-flight result cannot cross sign-out');
+  assert.equal(f.store.refreshPlans(), undefined);
+});
+
 test('runtime catalogue reads reuse recent snapshots, expire and preserve explicit refresh', async t => {
   const f = fixture(); t.after(() => f.store.dispose());
   let calls = 0, now = Date.now(); t.mock.method(Date, 'now', () => now);

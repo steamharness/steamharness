@@ -480,7 +480,7 @@ export class AccountController implements vscode.Disposable {
   private publishSettings(): void {
     if (!this.panel) { return; }
     void this.panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
-    void this.panel.webview.postMessage({ type: 'settings-models', state: this.userModels.state() });
+    this.publishModels();
     const panel = this.panel, epoch = ++this.settingsStatusEpoch;
     void Promise.all([
       vscode.commands.executeCommand<SettingsState['nodeRuntime']>('studio.internalGetNodeRuntime').then(value => value, () => undefined),
@@ -491,6 +491,15 @@ export class AccountController implements vscode.Disposable {
       this.desktopNotificationStatus = notifications;
       void panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
     }, () => undefined);
+  }
+
+  private publishModels(): void {
+    const panel = this.panel;
+    if (!panel) return;
+    const plans = panel.visible && this.viewState.section === 'models' ? this.userModels.refreshPlans() : undefined;
+    const post = () => { void this.panel?.webview.postMessage({ type: 'settings-models', state: this.userModels.state() }); };
+    post();
+    if (plans) void plans.then(post);
   }
 
   private settingsSnapshot(): SettingsState {
@@ -558,6 +567,7 @@ export class AccountController implements vscode.Disposable {
         const previous = this.viewState.section;
         this.viewState = settingsViewState(message.state);
         if (this.platform && previous !== 'account' && this.viewState.section === 'account') void this.connect();
+        if (previous !== 'models' && this.viewState.section === 'models') this.publishModels();
         return;
       }
       if (this.remoteAccess && message.type === 'settings-remote-access' && typeof message.requestId === 'string' && message.requestId.length <= 64) {
@@ -600,7 +610,7 @@ export class AccountController implements vscode.Disposable {
         try {
           if (message.action === 'catalog') {
             if (this.platform) await this.connect();
-            const catalog = await this.userModels.refreshCatalog();
+            const catalog = await this.userModels.refreshCatalog(true);
             if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-model-catalog', requestId: message.requestId, catalog });
           } else {
             await this.userModels.update(message, signal);

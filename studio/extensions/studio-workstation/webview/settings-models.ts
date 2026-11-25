@@ -165,14 +165,54 @@ export class SettingsModels {
     for (const button of this.list.querySelectorAll('button')) button.disabled = !!this.pending;
     this.root.setAttribute('aria-busy', String(!!this.pending));
   }
+  private planLink(label: string, href: string): HTMLAnchorElement | undefined {
+    const url = URL.parse(href);
+    if (!url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) return undefined;
+    const link = node('a', label); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.dataset.modelFocus = `plan:${url.href}`;
+    link.append(icon('link-external'));
+    return link;
+  }
+  private renderBuiltInEmpty(cell: HTMLTableCellElement): void {
+    const content = node('div', undefined, 'settings-model-built-in-empty');
+    const plans = this.state.plans;
+    const message = node('p', this.state.catalogError ?? (this.state.catalogLoading && !plans?.catalog ? t('Loading...')
+      : plans ? t('No built-in models available.') : t('No system AI models available. Check your signed-in account and AI subscription.')),
+    this.state.catalogError ? 'setting-error' : 'muted');
+    message.setAttribute('role', 'status'); content.append(message); cell.append(content);
+    if (!plans) return;
+    const section = node('section', undefined, 'settings-model-plans');
+    const heading = node('h3', t('Available AI plans')); heading.id = 'settings-model-plans-title';
+    section.setAttribute('aria-labelledby', heading.id);
+    section.setAttribute('aria-busy', String(plans.loading));
+    const header = node('header'); header.append(heading);
+    const all = plans.catalog && this.planLink(t('View all plans'), plans.catalog.url);
+    if (all) header.append(all);
+    section.append(header); content.append(section);
+    const offers = node('ul');
+    for (const plan of plans.catalog?.offers ?? []) {
+      const link = this.planLink(plan.name, plan.url);
+      if (!link) continue;
+      const item = node('li'), title = node('div', undefined, 'settings-model-plan-title');
+      title.append(link, node('span', plan.price)); item.append(title);
+      if (plan.description) item.append(node('p', plan.description, 'muted'));
+      offers.append(item);
+    }
+    if (offers.childElementCount) section.append(offers);
+    else {
+      const status = node('p', plans.loading ? t('Loading...') : plans.failed ? t('Unable to load AI plans.') : t('No AI plans are currently available.'), 'muted');
+      status.setAttribute('role', 'status'); section.append(status);
+    }
+  }
   private render(): void {
     const focused = this.list.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.modelFocus : undefined;
     const previousScroll = this.list.querySelector('.settings-model-table-viewport')?.scrollLeft ?? 0;
     this.refresh.hidden = !this.state.systemAvailable;
     this.catalogueStatus.parentElement!.hidden = !this.state.systemAvailable;
-    this.catalogueStatus.textContent = this.state.catalogError ?? (this.state.catalogLoading ? t('Loading...') : this.state.entries.some(entry => entry.source === 'system') ? '' : t('No system AI models available. Check your signed-in account and AI subscription.'));
+    const hasBuiltIns = this.state.entries.some(entry => entry.source === 'system');
+    this.catalogueStatus.textContent = hasBuiltIns ? this.state.catalogError ?? (this.state.catalogLoading ? t('Loading...') : '') : '';
     this.catalogueStatus.classList.toggle('setting-error', !!this.state.catalogError);
-    this.account.hidden = this.state.entries.some(entry => entry.source === 'system');
+    this.account.hidden = hasBuiltIns;
     this.list.replaceChildren();
     if (!this.state.entries.length && !this.state.systemAvailable) {
       const empty = node('div', undefined, 'settings-card settings-model-empty');
@@ -202,7 +242,9 @@ export class SettingsModels {
       heading.append(toggle); group.append(heading); body.append(group); table.append(body);
       if (this.collapsed.has(sourceKind)) continue;
       if (!entries.length) {
-        const row = node('tr'); const empty = node('td', this.state.catalogLoading && sourceKind === 'system' ? t('Loading...') : sourceKind === 'system' ? t('No system AI models available. Check your signed-in account and AI subscription.') : t('No custom models configured.'), 'muted');
+        const row = node('tr'), empty = node('td');
+        if (sourceKind === 'system') this.renderBuiltInEmpty(empty);
+        else { empty.textContent = t('No custom models configured.'); empty.className = 'muted'; }
         empty.colSpan = 3; row.append(empty); body.append(row);
       }
       for (const entry of entries) {
@@ -247,7 +289,7 @@ export class SettingsModels {
     }
     viewport.scrollLeft = previousScroll;
     this.busy();
-    if (focused) Array.from(this.list.querySelectorAll<HTMLButtonElement>('[data-model-focus]:not(:disabled)'))
+    if (focused) Array.from(this.list.querySelectorAll<HTMLElement>('[data-model-focus]:not(:disabled)'))
       .find(button => button.dataset.modelFocus === focused)?.focus({ preventScroll: true });
   }
   handle(message: any): boolean {
@@ -268,7 +310,7 @@ export class SettingsModels {
       this.catalogRequest = undefined;
       if (message.state) this.state = message.state;
       this.render();
-      if (message.message) this.catalogueStatus.textContent = message.message;
+      if (message.message && !this.state.catalogError) this.catalogueStatus.textContent = message.message;
       this.changed();
       return true;
     }

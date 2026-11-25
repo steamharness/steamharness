@@ -159,6 +159,27 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
 });
 
+test('selecting Models loads current plan offers when the built-in model catalogue is empty', async t => {
+  const f = await fixture(t);
+  let calls = 0, finish;
+  const url = 'http://127.0.0.1:7126/settings/ai#ai-group-subscriptions';
+  const offers = [{ name: 'Offer', price: 'CN¥25.00 / 30 days', url: 'http://127.0.0.1:7126/settings/ai#ai-subscription-25' }];
+  f.controller.registerModelCatalogProvider({ load: async () => ({ entries: [] }), loadPlans: () => { ++calls; return new Promise(resolve => { finish = resolve; }); } });
+  await f.controller.getSystemModelCatalog(new AbortController().signal);
+  f.commands.get('studio.openSettings')({ section: 'general' });
+  const panel = f.panel;
+  await panel.message({ type: 'ready' });
+  assert.equal(calls, 0);
+  await panel.message({ type: 'settings-view-state', state: { section: 'models' } });
+  const latest = () => panel.webview.messages.filter(message => message.type === 'settings-models').at(-1)?.state.plans;
+  assert.equal(calls, 1);
+  assert.equal(latest().loading, true);
+  finish({ url, offers });
+  await until(() => latest()?.catalog);
+  assert.deepEqual(latest().catalog, { url, offers });
+  assert.ok(!JSON.stringify(panel.webview.messages).includes('test-token'));
+});
+
 test('only enhanced desktop settings expose IM notification switches and system permissions', async t => {
   for (const [platform, uiKind, enabled] of [[true, 1, true], [true, 2, false], [false, 1, false]]) {
     const f = await fixture(t, { platform, uiKind, connect: false });
