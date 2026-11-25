@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { currentPlatformConnections, type PlatformConnection } from "../../platform-connections";
 import { HarnessError } from "../../workflow/errors";
 import { toAgentModelAttributes } from "./model-attributes";
@@ -18,6 +19,10 @@ export type {
 
 const CREDENTIAL_REFRESH_WINDOW_MS = 60_000;
 const CATALOG_CACHE_TTL_MS = 30_000;
+const CATALOG_REFRESH_TIMEOUT_MS = 30_000;
+const CATALOG_ATTEMPT_TIMEOUT_MS = 15_000;
+const CATALOG_RETRY_DELAYS_MS = [500, 1_000] as const;
+const RETRYABLE_CATALOG_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 type ServerLLMSupportedProviderType = Extract<
   LLMProviderType,
   "openai-responses" | "anthropic"
@@ -366,40 +371,53 @@ class ServerLLMCredentialManager {
   private refresh(signal?: AbortSignal): Promise<ServerLLMCredentialCatalog> {
     if (this.refreshPromise) return waitForCatalog(this.refreshPromise, signal);
     // Each caller can cancel its wait without cancelling another run's shared refresh.
-    const request = this.fetchCatalog(AbortSignal.timeout(15_000)).finally(() => {
+    const request = this.fetchCatalog().finally(() => {
       if (this.refreshPromise === request) this.refreshPromise = undefined;
     });
     this.refreshPromise = request;
     return waitForCatalog(request, signal);
   }
 
-  private async fetchCatalog(signal?: AbortSignal): Promise<ServerLLMCredentialCatalog> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(
-        joinServerUrl(this.connection.serverUrl, "/api/ai/catalog"),
-        {
+  private async fetchCatalog(): Promise<ServerLLMCredentialCatalog> {
+    // Retry the read-only catalogue request, never the model call or the Bot turn.
+    const deadline = performance.now() + CATALOG_REFRESH_TIMEOUT_MS;
+    const url = joinServerUrl(this.connection.serverUrl, "/api/ai/catalog");
+    for (let attempt = 0; ; attempt++) {
+      const timeout = Math.min(CATALOG_ATTEMPT_TIMEOUT_MS, Math.ceil(deadline - performance.now()));
+      let response: Response;
+      let payload: ApiResponse<ServerLLMCredentialCatalog>;
+      try {
+        response = await this.fetchImpl(url, {
           headers: {
             Accept: "application/json",
             Authorization: `Bearer ${this.connection.token}`,
           },
-          signal,
-        },
-      );
-    } catch (error) {
-      throw new HarnessError({
-        type: "provider_call",
-        message: `Could not connect to the private AI service to load credentials: ${this.connection.serverUrl}`,
-        metadata: {
-          cause: redactConnectionSecret(error instanceof Error ? error.message : String(error), this.connection.token),
-          steamHarnessI18n: createI18nDescriptor("serverAiCredentialsConnectionFailed", {
-            url: this.connection.serverUrl,
-          }),
-        },
-      });
+          signal: AbortSignal.timeout(Math.max(1, timeout)),
+        });
+        payload = await readApiResponse<ServerLLMCredentialCatalog>(response);
+      } catch (error) {
+        if (await waitForCatalogRetry(attempt, deadline)) continue;
+        throw new HarnessError({
+          type: "provider_call",
+          message: `Could not connect to the private AI service to load credentials: ${this.connection.serverUrl}`,
+          metadata: {
+            cause: redactConnectionSecret(error instanceof Error ? error.message : String(error), this.connection.token),
+            steamHarnessI18n: createI18nDescriptor("serverAiCredentialsConnectionFailed", {
+              url: this.connection.serverUrl,
+            }),
+          },
+        });
+      }
+      if (RETRYABLE_CATALOG_STATUSES.has(response.status) && await waitForCatalogRetry(
+        attempt, deadline, readRetryAfterMs(response.headers.get("retry-after"), this.now()),
+      )) continue;
+      return this.acceptCatalogResponse(response, payload);
     }
+  }
 
-    const payload = await readApiResponse<ServerLLMCredentialCatalog>(response);
+  private acceptCatalogResponse(
+    response: Response, payload: ApiResponse<ServerLLMCredentialCatalog>,
+  ): ServerLLMCredentialCatalog {
     if (response.status === 401 || response.status === 403 || response.status === 404) this.catalog = undefined;
     if (response.status === 404) {
       throw new HarnessError({
@@ -435,6 +453,22 @@ class ServerLLMCredentialManager {
     this.fetchedAt = this.now();
     return catalog;
   }
+}
+
+async function waitForCatalogRetry(attempt: number, deadline: number, retryAfterMs = 0): Promise<boolean> {
+  const backoff = CATALOG_RETRY_DELAYS_MS.at(attempt);
+  if (backoff === undefined) return false;
+  const delay = Math.max(backoff, retryAfterMs);
+  if (delay >= deadline - performance.now()) return false;
+  await sleep(delay);
+  return performance.now() < deadline;
+}
+
+function readRetryAfterMs(value: string | null, now: number): number {
+  if (value === null) return 0;
+  if (/^\d+$/.test(value)) return Number(value) * 1_000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
 }
 
 function waitForCatalog<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -689,8 +723,9 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
     if (isRecord(payload) && typeof payload.errCode === "number" && typeof payload.errMessage === "string") {
       return payload as unknown as ApiResponse<T>;
     }
-  } catch {
-    // Converted to a stable protocol error below.
+  } catch (error) {
+    // Retry an interrupted successful response, not malformed JSON or an HTTP denial.
+    if (response.ok && !(error instanceof SyntaxError)) throw error;
   }
   return {
     errCode: response.status,

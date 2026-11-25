@@ -460,6 +460,62 @@ test('cancelling one catalogue waiter leaves other runs able to use the shared r
   } finally { globalThis.fetch = previousFetch; restoreEnvSnapshot(previous); }
 });
 
+test("server AI shares retries after a connection failure and a temporary HTTP failure", async t => {
+  const connection = { serverUrl: "https://catalog-retry.example.test", accessToken: "account-token" };
+  let reads = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    switch (++reads) {
+      case 1: throw new TypeError("fetch failed");
+      case 2: return new Response("Service unavailable", { status: 503 });
+      default: return createCatalogResponse();
+    }
+  });
+
+  const [first, second] = await Promise.all([
+    getServerLLMCredentials({ connection }),
+    getServerLLMCredentials({ connection }),
+  ]);
+  assert.deepEqual(first.map(credential => credential.id), ["provider:4"]);
+  assert.deepEqual(second.map(credential => credential.id), ["provider:4"]);
+  assert.equal(reads, 3);
+  await getServerLLMCredentials({ connection });
+  assert.equal(reads, 3);
+});
+
+test("server AI retries a timeout while reading a successful catalogue response", async t => {
+  const connection = { serverUrl: "https://catalog-timeout.example.test", accessToken: "account-token" };
+  const signals: (AbortSignal | null | undefined)[] = [];
+  t.mock.method(globalThis, "fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+    signals.push(init?.signal);
+    if (signals.length > 1) return createCatalogResponse();
+    return new Response(new ReadableStream({
+      start(controller) { controller.error(new DOMException("The operation timed out", "TimeoutError")); },
+    }));
+  });
+
+  assert.equal((await getServerLLMCredentials({ connection })).length, 1);
+  assert.equal(signals.length, 2);
+  assert.ok(signals.every(Boolean));
+  assert.notEqual(signals[0], signals[1]);
+});
+
+test("server AI does not retry denial, invalid catalogue data, or a rate limit beyond the deadline", async t => {
+  const connection = { serverUrl: "https://catalog-no-retry.example.test", accessToken: "account-token" };
+  for (const [response, message] of [
+    [Response.json({ errCode: 401, errMessage: "Sign in required" }, { status: 401 }), /Sign in required/],
+    [new Response("Not JSON"), /invalid response/],
+    [Response.json({ errCode: 429, errMessage: "Slow down" }, { status: 429, headers: { "Retry-After": "30" } }), /Slow down/],
+  ] as const) {
+    const fetch = t.mock.method(globalThis, "fetch", async () => response.clone());
+    try {
+      await assert.rejects(getServerLLMCredentials({ connection }), message);
+      assert.equal(fetch.mock.callCount(), 1);
+    } finally {
+      fetch.mock.restore();
+    }
+  }
+});
+
 test('a denied credential refresh cannot reuse a previously valid proxy token', async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(['STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY']);
@@ -511,7 +567,7 @@ test("server LLM provider keeps a still-valid token when refresh fails", async (
     const [credential] = await getServerLLMCredentials();
     const result = await credential!.createProvider({ model: "gpt-test" }).chat({ prompt: "hi" });
     assert.equal(result.text, "hello");
-    assert.equal(catalogReads, 2);
+    assert.equal(catalogReads, 4);
     assert.equal(proxyAuthorization, "Bearer still-valid-token");
   } finally {
     globalThis.fetch = previousFetch;

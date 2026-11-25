@@ -6,6 +6,7 @@ import { AGENT_MODELS_CONFIGURATION_KEY, withProjectConfiguration } from "../con
 import { createProjectConversationContext } from "../conversation/index";
 import { combineNodeExecutionHooks, createNodeExecutionReporter } from "../executor/report";
 import { analyzeProjectScriptSource } from "../executor/rules";
+import { withPlatformConnections } from "../platform-connections";
 import type { ConfiguredAgentModel } from "@steamharness/project-configuration";
 import { createProjectTokenUsageContext } from "../token-usage/index";
 import type { LLMBotModelRequestSnapshot, RunContext } from "../types/index";
@@ -49,6 +50,39 @@ test("LLM Bot statically exposes shared tools and project declarations without l
   assert.throws(() => defineBot({} as never), /requires engine/);
   assert.ok(analyzeProjectScriptSource(`export const executor = steamharness.defineBot({});`).executorConfigurationViolations.some(error => error.name === "engine"));
   assert.throws(() => defineBot({ engine: "llm", llm: {}, agent: {} } as never), /requires engine: "agent"/);
+});
+
+test("LLM Bot recovers from a failed system AI catalogue read without replaying the turn", async t => {
+  const ai = { serverUrl: "https://bot-ai.example.test", accessToken: "account-token" };
+  const selected = { id: "system-model", name: "System model", model: "test-model", source: "system", credentialId: "provider:4" } satisfies ConfiguredAgentModel;
+  let catalogReads = 0;
+  const modelRequests: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url) === `${ai.serverUrl}/api/ai/catalog`) {
+      if (++catalogReads === 1) throw new TypeError("fetch failed");
+      return Response.json({ errCode: 0, errMessage: "", data: {
+        credentials: [{ id: selected.credentialId, name: "System AI", platform: "openai", providerType: "openai-responses",
+          models: [selected.model], proxyPath: "/api/ai/proxy/provider%3A4", credentialToken: "proxy-token",
+          expiresAt: new Date(Date.now() + 600_000).toISOString() }],
+        fetchedAt: new Date().toISOString(),
+      } });
+    }
+    assert.equal(String(url), `${ai.serverUrl}/api/ai/proxy/provider%3A4/responses`);
+    modelRequests.push(JSON.parse(String(init?.body)).model);
+    return llmSSE("openai-responses", "Recovered reply");
+  });
+
+  const run = context("catalog-recovery");
+  const bot = defineBot({ engine: "llm", llm: { modelSource: "project" } });
+  await withPlatformConnections({ ai }, () => withProjectConfiguration({ ...snapshot, values: {
+    [AGENT_MODELS_CONFIGURATION_KEY]: [selected],
+  } }, () => bot.workflow.run({ ...input("catalog-recovery", "Hello"), model: selected.id }, run)));
+
+  assert.equal(catalogReads, 2);
+  assert.deepEqual(modelRequests, [selected.model]);
+  assert.deepEqual((await run.conversation.getValue()).messages.map(message => [message.role, message.content]), [
+    ["user", "Hello"], ["assistant", "Recovered reply"],
+  ]);
 });
 
 for (const [apiKind, wire] of [["openai-responses", "openai-responses"], ["openai-completions", "openai-completion"], ["anthropic-messages", "anthropic"]] as const) {

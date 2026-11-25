@@ -19,6 +19,9 @@ Call `getServerLLMCredentials({ signal })` to obtain the catalogue available to 
 | Proxy credentials are about to expire | Refresh credentials online |
 | The account or service URL changes | Load the corresponding catalogue |
 | One caller cancels its wait | Other callers' shared refresh continues |
+| A catalogue request hits a network error, timeout, rate limit, or temporary service failure | Retry up to twice within the 30-second refresh budget |
+
+Authentication and permission errors are not retried. If the service asks the client to wait longer than the time left, the client returns the error.
 
 Catalogues and short-lived tokens remain in memory. Server still authorizes every model request.
 
